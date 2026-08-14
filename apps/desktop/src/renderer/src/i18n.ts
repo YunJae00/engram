@@ -1,0 +1,536 @@
+const en = {
+  'capture.lockPrivate': 'Private — engines never see this',
+  'capture.lockWorkspace': 'Workspace capture',
+  // One verb for one action. The UI used to say "jot", "toss" and "remember"
+  // for the same thing, so nobody learned a name for it — and "jot" is a word
+  // non-native speakers do not know. Everything says REMEMBER now — including
+  // the floating launcher that opens the composer.
+  'capture.submit': 'Remember',
+  'capture.openTitle': 'Remember a thought, or ask your brain about one (Ctrl+L)',
+  'capture.dropTitle': 'Drop to capture',
+  'capture.dropSub': 'md · txt · pdf · png/jpg · mp3/wav/m4a · .url — anything else waits in the inbox',
+  // Which verb Enter is loaded with, in the hint slot, live as the text
+  // changes. One box for two verbs is only an improvement if the box admits
+  // which one it is about to fire.
+
+  // top chrome strip
+  'settings.contentTitle': 'Documents the librarian may read',
+  'settings.contentHint': 'Pick the folders you work in. When a document there is saved, what changed becomes a memory — read locally, never uploaded.',
+  'settings.contentAdd': 'Add folder…',
+  'settings.contentRemove': 'Remove',
+  'settings.localTitle': 'Local AI (no subscription needed)',
+  'settings.localHint': 'Runs entirely on this machine ({ram}GB RAM detected). Download a brain, pick it, done — the librarian uses Claude when connected and this otherwise.',
+  'settings.localRecommended': 'Recommended for this PC',
+  'settings.localDownload': 'Download',
+  'settings.localCancel': 'Cancel',
+  'settings.localUse': 'Use',
+  'topbar.tabBrain': 'Brain',
+  'topbar.tabSky': 'Cosmos',
+  'sky.empty': 'Your cosmos is empty',
+  'sky.emptyHint': 'Press Remember below and write a first thought — each memory becomes a star, and the librarian strings the constellations.',
+  'sky.legendFresh': 'fresh',
+  'sky.legendFading': 'fading',
+  'sky.legendRecalled': 'recalled this week',
+
+  // Brain view — the organized memory, readable
+  'brain.railTitle': 'Topics ({count})',
+  'brain.railFilter': 'Filter topics…',
+  'brain.railNoMatch': 'No topic matches',
+  'brain.railMore': '{count} more — type to narrow',
+  'brain.memberCount': '{count} memories',
+  'brain.memberOne': '1 memory',
+  'brain.aging': '{count} aging',
+  'brain.memories': 'Connected memories · {count}',
+  'brain.memoriesPlain': 'Memories · {count}',
+  'brain.synthesisHead': 'Synthesis',
+  'brain.noHub': 'The librarian writes this topic’s synthesis on its next tidy.',
+  'brain.noTopics': 'No topics yet — the librarian connects memories as they arrive.',
+  'brain.unconnected': 'Not yet connected',
+  'brain.unconnectedHint': 'Memories the librarian hasn’t wired anywhere yet — they join topics as connections form.',
+  'brain.empty': 'Nothing connected yet',
+  'brain.emptyHint': 'Capture a few thoughts — the librarian links them into topics and they appear here.',
+  'empty.capture': 'Press Remember below, type a thought, hit Enter — the librarian files it for you.',
+  'brain.graphOpen': 'View in the cosmos',
+  'brain.showMore': 'Show {count} more',
+  'activity.list': 'List',
+  'topbar.canvas': 'Canvas',
+  'topbar.syncNone': 'sync —',
+  'topbar.syncError': 'sync error',
+  'topbar.syncClean': '✓ synced',
+  'topbar.absorbing': 'absorbing {done}/{total}',
+  'topbar.engineConnected': 'AI connected: {ids}',
+  'topbar.engineConnect': 'Connect an AI engine',
+  'topbar.engineConnectShort': 'Connect AI',
+  'topbar.tidy': 'Tidy',
+  'topbar.tidyTitle': 'Tidy now — run the librarian',
+  'topbar.tidyPending': '{n} item(s) the librarian has not organized yet — Tidy now',
+
+  // no-engine banner (canvas top): the connect nudge + waiting-capture count
+  'banner.noBrain': 'No AI brain yet — the librarian is waiting. Download one (free, runs on this PC).',
+  'banner.getBrain': 'Get a brain',
+  'banner.waiting': '{n} waiting',
+  'banner.login': 'Log in',
+  // Four failures, four sentences — they need four different actions from the
+  // user, and collapsing them into "the login may have expired" told a user who
+  // was merely over their limit to re-authenticate, which never helped.
+  'banner.notResponding': '{ids} is connected but its last calls failed — nothing is lost, the librarian retries',
+  'banner.tooSlow': '{ids} answered too slowly and was stopped — usually a network stall; it retries on the next run',
+  'banner.loginExpired': '{ids} needs you to log in again — the librarian is paused until you do',
+  'banner.quota': '{ids} hit its usage limit — the librarian paused and picks up where it left off once it resets',
+  'banner.offline': "{ids} can't reach the internet — the librarian resumes as soon as the connection is back",
+  'banner.check': 'Check',
+  // The label is the affordance: this is the one button a morning starts with.
+  'topbar.today': 'Today',
+  'topbar.todayTitle': "Today — what's still open, and this morning's brief",
+  'topbar.todayDue': '{n} open loop(s) due today or already overdue',
+  'topbar.chatTitle': 'Chat with the librarian (Ctrl+L)',
+  'topbar.searchTitle': 'Search & commands (Ctrl+P)',
+  'topbar.settingsTitle': 'Settings',
+  'topbar.teamChanges': 'What the team changed',
+  'topbar.close': 'Close',
+  'topbar.sweepRunning': 'Librarian tidying…',
+  'topbar.filing': 'Filing your capture…',
+  'topbar.sweepDone': 'Tidy complete',
+  // A halted sweep used to report "Tidy complete" over work it had not done.
+  // These say what stopped it AND that the work is kept, not lost.
+  'topbar.sweepDeferred': 'Tidy paused — {n} left for the next run',
+  'topbar.sweepQuota': 'Tidy paused — {n} left, the AI hit its usage limit',
+  'topbar.sweepAuth': 'Tidy paused — {n} left, log in to the AI again',
+  'topbar.jobJ1': 'Absorbing notes',
+  'topbar.jobJ2': 'Linking',
+  'topbar.jobJ3': 'Suggesting links',
+  'topbar.jobJ4': 'Merging duplicates',
+  'topbar.jobJ5': 'Freshness check',
+  'topbar.jobJ6': 'Dating notes',
+  'topbar.jobJ7': 'Deep pass',
+  'topbar.jobJ8': 'Writing brief',
+
+  // librarian progress widget (floating, bottom-left)
+  'absorb.title': 'Librarian at work',
+  'absorb.paused': 'Paused — {n} waiting',
+  'absorb.waitingEngine': '{n} waiting for an AI engine',
+  'absorb.done': 'Absorb complete',
+  'absorb.dismiss': 'Dismiss',
+  'absorb.minimize': 'Minimize',
+  'absorb.pillPaused': '{n} waiting',
+  'absorb.stop': 'Stop after this step',
+  'absorb.resume': 'Resume',
+  // Quota is the same shape as no-engine and was simply missed: Resume can only
+  // re-hit the same limit, so the widget explains instead of offering a button
+  // that does nothing. Auth is the same, except the user CAN fix it.
+  'absorb.quotaPaused': '{n} waiting — the AI hit its usage limit',
+  'absorb.quotaHint': 'Nothing is lost. Tidying resumes on its own once the limit resets.',
+  'absorb.authPaused': '{n} waiting — the AI needs you to log in again',
+  'absorb.login': 'Log in',
+
+  // The floating question — a card at the edge of the screen while the user is
+  // working somewhere else. Every string here is read in about a second, from
+  // across a monitor, by someone who did not ask for it.
+  // floating assistant bubble
+  'bubble.open': 'Ask Engram',
+  'bubble.min': 'Minimize to button',
+  'bubble.quit': 'Quit Engram',
+  'bubble.quitAsk': 'Quit Engram?',
+  'bubble.quitWhy': 'Memory-keeping stops until you open it again — sessions during that time are picked up on the next start.',
+  'bubble.quitYes': 'Quit',
+  'bubble.quitNo': 'Keep running',
+  'bubble.hint': 'Ask your memory anything — what you decided, where you left off, what a thing was.',
+  'bubble.placeholder': 'Ask your memory…',
+  'bubble.send': 'Send',
+  'bubble.thinking': 'Searching your memory',
+  'bubble.thinkingLong': 'Thinking',
+  'bubble.thinkingCold': 'Waking the local model — first answer takes a moment',
+
+  // shell opening state (shown while a big vault is still being read)
+  'shell.opening': 'Opening your vault…',
+  // …and the state where it is never going to open. Name the folder: the
+  // usual causes are all visible once you look at it (moved, renamed, on a
+  // disconnected drive, mid-sync).
+  'shell.failedTitle': 'Could not open your vault',
+  'shell.failedBody': 'Engram was pointed at this folder but could not read it.',
+  'shell.failedReveal': 'Show the folder',
+  'shell.failedRetry': 'Try again',
+  // sky starter chips (first-run empty state)
+  'starter.try': 'Not sure what to remember? Try one:',
+  'starter.ex1': 'A decision made today',
+  'starter.ex1Seed': 'Decided today: ',
+  'starter.ex2': 'Something I keep forgetting',
+  'starter.ex2Seed': 'I keep forgetting: ',
+  'starter.ex3': 'Something coming up next week',
+  'starter.ex3Seed': 'Next week: ',
+  'starter.import': 'Already have notes? Import a folder (md/txt)',
+
+  // librarian activity feed (under the briefing)
+
+  // today sheet (right slide-over — live open loops, then the latest brief)
+  'today.deskTotal': 'At the desk today · {hours}h',
+  'today.fadingHead': 'Fading memories — worth a glance',
+  'today.fadingDays': 'quiet for {n}d',
+  'today.title': 'Today',
+  'today.empty': 'No briefing yet — run Tidy once.',
+  'today.close': 'Close',
+  'today.refresh': 'Refresh',
+  'today.refreshing': 'Going over your vault again…',
+  'today.checkedAt': 'Checked at {time}',
+  'today.loopsTitle': 'Still open',
+  // Truthful, not cheerful: an empty list means nothing was MARKED, which is
+  // not the same as nothing being left to do — say which one this is.
+  'today.loopsNone': 'Nothing in your vault is marked as still open. Notes get a deadline when a capture mentions one, or when you add due_at yourself.',
+  'today.loopOverdue': 'Overdue',
+  'today.loopToday': 'Due today',
+  'today.loopWeek': 'This week',
+  'today.loopLater': 'Later',
+  'today.loopNoDeadline': 'No deadline',
+  'today.dueLate': '{n}d late',
+  'today.dueNow': 'today',
+  'today.dueIn': 'in {n}d',
+  'today.openToday': 'opened today',
+  'today.openFor': 'open {n}d',
+  'today.loopDoneTitle': 'Done — take it off this list',
+  'today.loopClosed': 'Closed: {title}',
+
+  'digest.title': 'Weekly digest',
+  'digest.empty': 'No weekly digest yet — the librarian writes one once a week of work has piled up.',
+
+  // note type identity (row/page labels + help legend)
+  'type.decision': 'Decision',
+  'type.concept': 'Concept',
+  'type.howto': 'Guide',
+  'type.troubleshooting': 'Troubleshooting',
+  'type.log': 'Log',
+  'type.event': 'Event',
+  'type.fact': 'Fact',
+  'type.question': 'Question',
+  'type.imported': 'Imported',
+  'type.artifact': 'Artifact',
+  'type.hub': 'Topic hub',
+  'type.meeting': 'Meeting',
+  'type.idea': 'Idea',
+  'type.reference': 'Reference',
+  'type.note': 'Note',
+
+  // relative time on meta rows
+
+  // list view
+  'list.filter': 'Filter notes…',
+  'list.allOwners': 'All owners',
+  'list.more': 'Show all {n}',
+  'list.empty': 'No notes to show',
+
+  // workspace switcher
+  'ws.switch': 'Switch workspace',
+  'ws.new': 'New workspace…',
+  'ws.join': 'Join team workspace…',
+  'ws.newTitle': 'New workspace',
+  'ws.joinTitle': 'Join team workspace',
+  'ws.namePlaceholder': 'Workspace name',
+  'ws.urlPlaceholder': 'Invite URL',
+  'ws.create': 'Create',
+  'ws.joinAction': 'Join',
+  'ws.cancel': 'Cancel',
+  'ws.switching': 'Opening "{name}"…',
+  'ws.switchingSub': 'Engram restarts into the selected workspace — just a moment.',
+  'workspace.githubBackup': 'Back up to GitHub…',
+
+  // GitHub backup (browser-assisted, no OAuth app)
+  'github.title': 'Back up to GitHub',
+  'github.intro': 'This backs your vault up to a private GitHub repo that only you own. Two quick steps — no tokens, no setup.',
+  'github.openRepo': 'Open GitHub to create the repo',
+  'github.openHint': 'On GitHub, the name is filled in and it is set to private — just click "Create repository", then copy its URL back here.',
+  'github.urlLabel': 'Paste the repository URL',
+  'github.urlPlaceholder': 'https://github.com/you/engram-vault',
+  'github.connect': 'Connect',
+  'github.connecting': 'Backing up…',
+  'github.backedUp': 'Backed up — changes now sync to GitHub',
+  'github.alreadyConnected': 'This workspace is already connected to a GitHub backup.',
+  'github.failed': 'Backup failed',
+  'github.retry': 'The repo is linked — fix the issue (sign in / create the repo) and press Connect again.',
+  'github.cancel': 'Cancel',
+  'github.connectedTo': 'Backed up to',
+  'github.upToDate': 'Up to date — every change is on GitHub.',
+  'github.pending': '{ahead} to push · {behind} to pull.',
+  'github.stateError': 'Could not read the backup state — press Sync now to retry.',
+  'github.autoSync': 'Sync automatically',
+  'github.autoSyncHint': 'Pushes and pulls every 5 minutes in the background. Turn it off to sync only when you press Sync now.',
+  'github.syncNow': 'Sync now',
+  'github.syncing': 'Syncing…',
+  'github.synced': 'Synced with GitHub',
+  'github.done': 'Done',
+
+  // settings — GitHub backup entry (near the MCP section)
+  'settings.githubTitle': 'GitHub backup',
+  'settings.githubHint': 'Push this workspace to a private GitHub repo you own, so it is backed up and syncs across your machines. Opens a browser to sign in the first time.',
+  'settings.githubButton': 'Back up to GitHub…',
+
+  // command palette / search
+  'palette.label': 'Command palette',
+  'palette.searchPlaceholder': 'Find a note — title or anything inside it…',
+  'palette.commandPlaceholder': 'Run a command…',
+  'palette.empty': 'No results',
+  'palette.contentMatches': 'Content matches',
+  'palette.openReview': 'Open review',
+  'palette.openInbox': 'Open scrap pile (inbox)',
+  'palette.openDigest': 'Read the weekly digest',
+  'palette.copyPack': 'Copy context pack for an external AI',
+  'palette.teamCreate': 'Team: create a shared vault…',
+  'palette.teamJoin': 'Team: join via invite URL…',
+  'palette.import': 'Import a folder of notes…',
+
+  // transient toasts
+  'toast.synced': 'Synced',
+  'toast.syncedConflicts': 'Synced — {count} merge card(s) to review',
+  'toast.noTeam': 'No team connected — “Team: create” in the command palette (Ctrl+Shift+P)',
+  'toast.contextPack': 'Context pack copied ({file})',
+  'toast.absorbed': 'All imported notes absorbed',
+
+  // feature-action toasts (phase 2)
+  'toast.approved': 'Approved [{type}]',
+  'toast.rejected': 'Rejected — recorded as a counterexample',
+  'toast.promoted': 'Promoted to the inbox — the librarian will file it',
+  'toast.engineReady': '{id} connected — auto-organizing is on',
+  'banner.updateReady': 'Engram {version} is downloaded and ready to install',
+  'banner.updateRestart': 'Restart now',
+  'toast.logsExported': 'Logs exported to {path}',
+  'toast.settingsSaved': 'Settings saved — some changes apply on next launch',
+  'toast.teamJoined': 'Joined the team vault',
+  'toast.imported': 'Imported {count} notes — absorbing gradually',
+
+  // note sheet + editor
+  'sheet.back': '← Back to note',
+  'sheet.hint': 'Esc to close · edits save automatically',
+  'sheet.closeNote': 'Close note',
+  'sheet.olderVersion': 'Older version',
+  'sheet.current': 'Current',
+  'sheet.hidePreview': 'Hide preview',
+  'sheet.showPreview': 'Show preview',
+  'sheet.verifyTitle': 'Still valid — reset the freshness clock',
+  'sheet.noDate': 'no date',
+  'sheet.loopOn': 'Still open',
+  'sheet.loopOff': 'Done',
+  'sheet.loopOnTitle': 'Still open — shows in Today. Click when it is finished.',
+  'sheet.loopOffTitle': 'Not an open loop. Click to put it in Today.',
+  'sheet.noOwner': 'no owner',
+  'sheet.lineage': 'Lineage · {count} versions',
+
+  // connections panel (note sheet) + preview link rows
+  'sheet.connections': 'Connections · {count}',
+  'sheet.linksOut': 'Linked to',
+  'sheet.linksIn': 'Linked from',
+  'sheet.unlinkTitle': 'Cut this link — the librarian remembers not to reconnect them',
+  'sheet.unlinked': 'Link cut — noted so it is not re-proposed',
+
+  // review overlay + detail
+  'review.empty': 'Nothing to review — the librarian has no questions',
+  'review.oneAnswer': 'one answer settles {count} more:',
+  'toast.approvedIssue': 'Approved — {count} related question(s) resolved with it',
+  'review.keys': 'A approve · R reject · E edit · {arrows} move',
+  'review.rejectPlaceholder': 'Why is this wrong? (recorded to AGENTS.md counterexamples)',
+  'review.confirmReject': 'Confirm reject',
+  'review.cancel': 'Cancel',
+  'review.keepA': 'Keep A',
+  'review.keepB': 'Keep B',
+  'review.keepBoth': 'Keep both',
+  'review.stillValid': 'Still valid',
+  'review.retire': 'Retire',
+  'review.approve': 'Approve (A)',
+  'review.reject': 'Reject (R)',
+  'review.doneEditing': 'Done editing',
+  'review.edit': 'Edit (E)',
+  'review.diffCurrent': 'Current — {title}',
+  'review.diffNew': '(new)',
+  'review.diffProposed': 'Proposed',
+  'review.diffA': 'A — {title}',
+  'review.diffB': 'B — {title}',
+  'review.questions': 'Questions ({count})',
+  'review.newTarget': 'new',
+  'review.closeReview': 'Close review',
+  'review.cardNewNote': 'New note',
+  'review.cardSupersede': 'Supersede',
+  'review.cardConflict': 'Conflict',
+  'review.cardStale': 'Stale',
+  'review.cardMerge': 'Merge',
+  'review.cardChronology': 'Chronology',
+  'review.cardClosure': 'Done?',
+
+  // scrap pile (inbox)
+  'inbox.title': 'Scrap pile — waiting for the librarian',
+  'inbox.empty': 'Nothing waiting — press Remember and write a thought',
+  'inbox.failedItems': 'Failed items',
+  'inbox.retry': 'Retry',
+  'inbox.connectEngine': 'Connect an AI engine to start auto-organizing',
+  'inbox.close': 'Close',
+
+  // the panel: transcript + the one composer
+  'chat.title': 'Librarian',
+  // The empty state teaches both gestures, because one box now serves both.
+  'chat.empty': 'Write a thought and press Enter to remember it. Start with ? to ask instead — answers cite current notes only.',
+  'chat.emptyOffline': 'No AI engine yet. Thoughts you write here are still kept safe — connect an engine to ask questions about them.',
+  'chat.kept': 'Remembered — the librarian is filing it',
+  'chat.keptPending': 'Remembered — waiting in the scrap pile',
+  'chat.record': 'Record',
+  'chat.recordTitle': 'Record as a note',
+  'chat.connectPlaceholder': 'Connect an AI engine to chat',
+  'chat.reconnect': 'Reconnect AI',
+  'chat.connectAi': 'Connect AI',
+  'chat.send': 'Send',
+  'chat.placeholder': 'Ask your memory — or tell it to remember something…',
+
+  // settings
+  'settings.title': 'Settings',
+  'settings.groupConnections': 'Connections',
+  'settings.autoStart': 'Start at login',
+  'settings.deskJournal': 'Desk journal — record foreground app + window titles',
+  'settings.mcpTitle': 'AI tools connection (MCP)',
+  'settings.mcpHint': 'Claude, Codex or any MCP-capable tool can capture into and recall from this brain. Claude clients connect automatically on launch; use Copy JSON to wire up anything else.',
+  'toast.mcpConnected': 'Claude connection refreshed — {targets}',
+  'settings.mcpDesktop': 'Claude Desktop',
+  'settings.mcpCode': 'Claude Code',
+  'settings.mcpCopy': 'Copy JSON',
+  'settings.mcpCopied': 'Config copied — paste it into your MCP client settings.',
+  'settings.mcpReconnect': 'Reconnect clients',
+  'settings.mcpWorking': 'Connecting…',
+  'settings.mcpConnected': 'Connected — {names}',
+  'settings.mcpFailedList': 'Could not connect {names} — see Diagnostics',
+  'settings.mcpNoClients': 'No Claude client found on this machine yet. Install Claude Desktop or Claude Code, then reconnect.',
+  'settings.watchTitle': 'Learning from your Claude sessions',
+  'settings.watchHint':
+    'While Engram is open, conversations you have in Claude Code are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Each summary is one small Claude request, so it uses your own plan. Close Engram and it stops. Anything in your private folder is never read.',
+  'settings.semanticTitle': 'Semantic search',
+  'settings.semanticIdle': 'Starts with the app',
+  'settings.versionKey': 'Version',
+  'settings.semanticHint': 'A local model (bge-m3) lets meaning find your memories — "splitting documents" finds the note that only says "chunking". It downloads once, then works fully offline; nothing leaves this machine.',
+  'settings.semanticLoading': 'Preparing model',
+  'settings.semanticIndexing': 'Indexing memories',
+  'settings.semanticReady': 'Ready',
+  'settings.semanticError': 'Unavailable',
+  // first-run guided tour (once, packaged builds)
+  'tour.welcomeTitle': 'Welcome to Engram',
+  'tour.welcomeBody': 'Your second brain lives here — everything you put in becomes a memory the librarian organizes for you. A 30-second tour of the four things that matter.',
+  'tour.cosmosTitle': 'Cosmos — your memories as stars',
+  'tour.cosmosBody': 'Every memory is a star. Bright means fresh, dim means aging, a gold ring means recently recalled. Click a star to open it, scroll to zoom.',
+  'tour.captureTitle': 'Remember — and ask, in the same box',
+  'tour.captureBody': 'This opens the one place you talk to your brain. Type a thought however it comes out and press Enter to keep it; start with ? to ask instead, and the librarian answers from your memories with clickable receipts.',
+  'tour.tidyTitle': 'Tidy — the librarian at work',
+  'tour.tidyBody': 'The librarian organizes on its own and asks before changing anything it\'s unsure about. The badge counts questions and unfiled captures — click to review.',
+  'tour.brainTitle': 'Brain — your memories, organized',
+  'tour.brainBody': 'Connected memories grow into topics; the librarian writes a synthesis for each. This is the "show me what I know about X, cleanly" view.',
+  'tour.next': 'Next',
+  'tour.skip': 'Skip',
+  'tour.start': 'Start using Engram',
+  'settings.save': 'Save',
+  'settings.diagnostics': 'Diagnostics',
+  'settings.cancel': 'Cancel',
+
+  // diagnostics + embedded terminal
+  'diag.title': 'Diagnostics',
+  'diag.checking': 'Checking…',
+  'diag.apiKeyWarning': '{keys} detected — that means API billing, not your subscription. Engram never uses these keys.',
+  'diag.connected': 'Connected',
+  'diag.teamSync': 'team sync',
+  'diag.noTeam': 'no team connected (that is fine)',
+  'diag.bundledGit': 'bundled git',
+  'diag.gitReady': 'ready — no system git needed',
+  'diag.gitSystem': 'not bundled — using system git',
+  'diag.exportLogs': 'Export logs',
+  'diag.close': 'Close',
+
+  // onboarding
+  'onboard.continue': 'Continue',
+  'onboard.setupError': 'Setup hit a snag — nothing is lost, just try again.',
+  'onboard.s1Title': 'Where should your vault live?',
+  'onboard.s1Sub': 'One folder holds everything — notes, sources and your private space.',
+  'onboard.modelDownload': 'Download',
+  'onboard.modelNote': 'Runs entirely on this machine ({ram}GB RAM detected). Skip now and download later in Settings — the librarian waits quietly until a brain arrives.',
+  'onboard.s2Title': 'Download your AI brain',
+  'onboard.s2Sub': 'Free, and it runs entirely on this PC — nothing you write ever leaves the machine. One download and the librarian starts organizing for you.',
+  // Logging in is the one step that cannot be automated (it is the user's own
+  // Anthropic account), so the UI does the next best thing: run it in place
+  // and say plainly which of the three states they are in.
+  'onboard.skipForNow': 'Skip for now',
+  'onboard.s3Title': 'Bring everything in',
+  'onboard.s3Sub': 'Point at any folder of .md/.txt — Obsidian vault or plain files. Copied, never modified.',
+  'onboard.filesFrom': 'files from',
+  'onboard.chooseFolder': 'Choose a folder…',
+  'onboard.skip': 'Skip',
+  'onboard.s4Title': 'Working with a team?',
+  'onboard.s4Sub': 'Paste an invite URL to join a shared vault, or set this up later from the command palette.',
+  'onboard.invitePlaceholder': 'Invite URL (optional)',
+  'onboard.later': 'Later',
+  'onboard.s5Title': 'Remember your first thought',
+  'onboard.s5Sub': 'Anything at all — the librarian files it (or keeps it safe until one connects).',
+  'onboard.firstPlaceholder': 'e.g. Meeting moved to Friday, Jimin owns the release',
+  'onboard.settingUp': 'Setting things up…',
+  'onboard.start': 'Start using Engram',
+
+  // quick-capture window
+  'quick.title': 'Quick capture',
+  'quick.lockedPrivate': 'private',
+  'quick.lockedWorkspace': 'workspace',
+  'quick.placeholder': 'Remember anything — text, a screenshot (Ctrl+V), or drag a file. Enter to save.',
+  'quick.hint': 'Enter to capture · Shift+Enter for a new line · Esc to dismiss',
+
+  // action dialogs (palette-launched team / import flows)
+  'palette.importTitle': 'Import a folder',
+  'palette.importCount': '{count} file(s) · {kb} KB from',
+  'palette.importNote': 'Originals are copied, never modified. Notes are searchable immediately and absorbed gradually.',
+  'palette.importAction': 'Import',
+  'palette.cancel': 'Cancel',
+  'palette.importing': 'Importing…',
+  'palette.choosingFolder': 'Choosing folder…',
+  'palette.teamJoinTitle': 'Join a team vault',
+  'palette.working': 'Working…',
+  'palette.invitePlaceholder': 'Invite URL (git remote)',
+  'palette.join': 'Join',
+
+  // floating help panel
+  'help.open': 'Help & quick actions',
+  'help.quickActions': 'Quick actions',
+  // One verb everywhere — this said "Capture" for the action the rest of the
+  // UI calls Remember, which is the split the merged composer just closed.
+  'help.quickCapture': 'Remember',
+  'help.quickReview': 'Review',
+  'help.quickChat': 'Chat',
+  'help.quickSearch': 'Search',
+  'help.howTitle': 'How Engram works',
+  'help.how1': 'Remember anything',
+  'help.how2': 'The librarian files it',
+  'help.how3': 'Answer its questions with A/R/E',
+  'help.how4': 'Ask the vault in chat',
+  'help.legendTitle': 'Legend',
+  'help.legendTypes': 'Card types',
+  'help.legendFresh': 'fresh',
+  'help.legendExpiring': 'expiring',
+  'help.legendStale': 'stale',
+  'help.legendConflict': 'conflicting pair',
+  'help.legendPrivate': 'private capture the AI never reads',
+  'help.shortcutsTitle': 'Shortcuts',
+  'help.scSearch': 'search',
+  'help.scCommands': 'commands',
+  'help.scChat': 'chat',
+  'help.scQuick': 'quick capture (global)',
+  'help.scReview': 'in review',
+  'help.scClose': 'close',
+} as const
+
+export type StringKey = keyof typeof en
+
+// macOS reads Cmd where Windows/Linux read Ctrl. Handlers already accept both
+// (metaKey || ctrlKey everywhere); the string tables stay written with "Ctrl"
+// and this one pass rewrites the labels, so no key needs a per-OS variant.
+// Guarded so the tables also load outside the preload bridge (tests, tooling).
+const isMac = typeof window !== 'undefined' && window.engram?.platform === 'darwin'
+
+// Platform-correct modifier label for UI built from parts (e.g. HelpPanel).
+export const MOD_LABEL = isMac ? 'Cmd' : 'Ctrl'
+
+export type Translate = (key: StringKey, vars?: Record<string, string | number>) => string
+
+// Look up a key and fill {name} placeholders from `vars`. Unknown placeholders
+// are left untouched so a template mistake is visible. On macOS the "Ctrl+"
+// labels are rewritten to "Cmd+" in one pass.
+export const t: Translate = (key, vars) => {
+  let template: string = en[key]
+  if (isMac) template = template.replace(/\bCtrl\+/g, 'Cmd+')
+  if (!vars) return template
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match))
+}

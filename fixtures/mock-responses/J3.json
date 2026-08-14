@@ -1,0 +1,10 @@
+{
+  "cards": [
+    {
+      "cardType": "conflict",
+      "targets": ["n-price-0001", "n-price-0002"],
+      "rationale": "프로 요금제 가격이 월 5만원과 월 7만원으로 상충한다.",
+      "proposed": "최신 확인된 가격으로 통일하고 나머지는 폐기"
+    }
+  ]
+}

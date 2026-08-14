@@ -1,0 +1,48 @@
+{
+  "name": "engram-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A second brain that runs entirely on your machine",
+  "author": "YunJae Kwon",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.25.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "canvas",
+      "electron",
+      "esbuild",
+      "tesseract.js"
+    ],
+    "overrides": {
+      "brace-expansion@1": "1.1.16",
+      "brace-expansion@2": "2.1.2",
+      "fast-uri": "^3.1.4",
+      "tar": ">=7.5.21",
+      "adm-zip": ">=0.6.0"
+    }
+  },
+  "scripts": {
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run css-scan",
+    "dev": "pnpm --filter desktop dev",
+    "dist": "pnpm --filter desktop dist",
+    "smoke:clean-env": "pnpm --filter desktop smoke:clean-env",
+    "test:e2e": "pnpm --filter desktop test:e2e",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "lint": "eslint .",
+    "test": "vitest run --project unit && vitest run --project timing",
+    "todo-scan": "node scripts/todo-scan.mjs",
+    "css-scan": "node scripts/css-orphan-scan.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}

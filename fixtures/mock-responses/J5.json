@@ -1,0 +1,16 @@
+{
+  "cards": [
+    {
+      "cardType": "stale",
+      "targets": ["n-sprint-0001"],
+      "rationale": "5월 스프린트 회의 노트의 확인 기한이 지났다.",
+      "proposed": "폐기하거나 아직 유효하면 시계를 리셋"
+    },
+    {
+      "cardType": "stale",
+      "targets": ["n-idea-0001"],
+      "rationale": "임시 아이디어 메모(ephemeral)의 7일 창이 지났다.",
+      "proposed": "폐기하거나 정식 노트로 승격"
+    }
+  ]
+}

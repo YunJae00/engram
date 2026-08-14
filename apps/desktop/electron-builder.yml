@@ -1,0 +1,88 @@
+# the old dev.strata.app identity keep their own uninstall entry — acceptable
+# while the audience is a handful of testers; do NOT change this again.
+appId: dev.engram.app
+productName: Engram
+# source stays private while the built installers + latest.yml are downloadable.
+# `--publish always` uploads there; every installed app reads its app-update.yml
+# (baked from this block) and self-updates. Update the token's repo, not this.
+publish:
+  provider: github
+  owner: YunJae00
+  repo: engram
+  releaseType: release
+directories:
+  output: dist
+  buildResources: build
+# out/** carries the bundled app; production node_modules (the prebuilt pty
+# + npm for the engine installer) are collected by electron-builder itself.
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: bundle
+    to: bin
+    filter: ["**/*"]
+asar: true
+# Native inference (node-llama-cpp) cannot run from inside the asar — its
+# .node addons and runtime libraries load from real paths.
+asarUnpack:
+  - "node_modules/node-llama-cpp/**"
+  - "node_modules/@node-llama-cpp/**"
+npmRebuild: false
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+# onnxruntime-node (semantic search) ships binaries for every OS in one
+# package — each platform build strips the other platforms' ~100MB.
+# NOTE: every per-platform files list MUST repeat the positive patterns —
+# an exclusion-only list makes electron-builder implicitly add "**/*",
+# which once packed bundle-cache (the raw model!) and src into the asar
+linux:
+  target:
+    - AppImage
+    - tar.gz
+  category: Office
+  maintainer: engram@local
+  files:
+    - out/**
+    - package.json
+    - "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/win32/**"
+    - "!node_modules/@node-llama-cpp/win-*/**"
+    - "!node_modules/@node-llama-cpp/mac-*/**"
+win:
+  # nsis only — the zip twin re-uploaded the whole 600MB payload every release
+  # and nothing consumed it (the updater feeds on the nsis differential).
+  target:
+    - nsis
+  files:
+    - out/**
+    - package.json
+    - "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/linux/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
+    # 510MB for an acceleration Vulkan already provides on the same NVIDIA
+    # cards (node-llama-cpp probes vulkan → cpu when cuda is absent), and we
+    # ship x64 only. Kept: win-x64 (cpu fallback) + win-x64-vulkan (gpu).
+    - "!node_modules/@node-llama-cpp/win-x64-cuda/**"
+    - "!node_modules/@node-llama-cpp/win-x64-cuda-ext/**"
+    - "!node_modules/@node-llama-cpp/win-arm64/**"
+    - "!node_modules/@node-llama-cpp/mac-*/**"
+    - "!node_modules/@node-llama-cpp/linux-*/**"
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  category: public.app-category.productivity
+  darkModeSupport: true
+  files:
+    - out/**
+    - package.json
+    - "!node_modules/onnxruntime-node/bin/napi-v6/linux/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v6/win32/**"
+    - "!node_modules/@node-llama-cpp/win-*/**"
+    - "!node_modules/@node-llama-cpp/linux-*/**"

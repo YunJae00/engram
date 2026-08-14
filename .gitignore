@@ -1,0 +1,24 @@
+node_modules/
+tmp/
+dist/
+coverage/
+*.log
+.engram/
+.DS_Store
+apps/desktop/bundle/
+apps/desktop/out/
+apps/desktop/test-results/
+
+# design-sync machine state
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+.git-history-backup/
+
+.claude/
+CLAUDE.md
+KICKOFF.md
+apps/desktop/bundle-cache/
+.claude/worktrees/

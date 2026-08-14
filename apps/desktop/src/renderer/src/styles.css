@@ -1,0 +1,1812 @@
+@import './assets/fonts/fonts.css';
+
+:root {
+  --font: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK KR', 'Malgun Gothic', system-ui, sans-serif;
+  --mono: 'Spline Sans Mono', 'SF Mono', Consolas, 'Pretendard Variable', 'Noto Sans Mono CJK KR', 'D2Coding', monospace;
+  --radius-s: 7px;
+  --radius-m: 9px;
+  --radius-l: 13px;
+  /* Kanwas-clean design pass: one radius voice for object cards and panels;
+     every card surface below derives from these two tokens. */
+  --radius-card: 12px;
+  --radius-panel: 16px;
+}
+
+[data-theme='light'] {
+  --editor-bg: #ffffff;
+  --sidebar-bg: #f2f4f8;
+  --activity-bg: #33343a;
+  --panel-bg: #eef0f4;
+  --tab-inactive-bg: #e3e6ec;
+  --tab-border: #e0e2ea;
+  --fg: #2b2b33;
+  --fg-strong: #1c1c22;
+  --fg-dim: #585a66;
+  --fg-faint: #888b98;
+  --border: #e0e2ea;
+  --border-soft: #e9ebf1;
+  --input-bg: #ffffff;
+  --input-border: #d3d7e0;
+  --hover-bg: #e3e6ec;
+  --selected-bg: #33343a;
+  --selected-fg: #ffffff;
+  --accent: #33343a;
+  --accent-hover: #55575f;
+  --accent-soft: #ecedf1;
+  --accent-line: #c8cad2;
+  --button-bg: #33343a;
+  --button-hover: #55575f;
+  --button-fg: #ffffff;
+  --statusbar-bg: #33343a;
+  --statusbar-fg: #ffffff;
+  --danger: #b0603b;
+  --clay: #b0603b;
+  --clay-soft: #f4e6dd;
+  --gild: #a9832f;
+  --teal: #3c6b66;
+  --ok: #5f8a4c;
+  --focus-ring: #8a8c94;
+  --widget-bg: #ffffff;
+  --widget-border: #e0e2ea;
+  --card-top: #ffffff;
+  --card-bot: #f4f6fa;
+  --chrome-top: #f9fafc;
+  --chrome-bot: #eef0f4;
+  --canvas-dot: rgba(70, 74, 92, 0.085);
+  /* Resting card shadow — tighter than --shadow-card; the card now carries a real
+     1px border so this drops the inset ring and stays a soft, close lift. */
+  --shadow-card-rest: 0 2px 6px -3px rgba(35, 38, 55, 0.22);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 10px 26px -12px rgba(35, 38, 55, 0.32), 0 0 0 1px rgba(90, 95, 120, 0.14);
+  --shadow-card-hover: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 18px 38px -14px rgba(35, 38, 55, 0.4), 0 0 0 1px rgba(90, 95, 120, 0.24);
+  --shadow-float: 0 16px 36px -14px rgba(40, 44, 60, 0.4), 0 0 0 1px rgba(90, 95, 120, 0.16);
+  --shadow-sheet: 0 40px 90px -30px rgba(20, 20, 30, 0.55), 0 0 0 1px rgba(90, 95, 120, 0.14);
+}
+
+[data-theme='dark'] {
+  --editor-bg: #2e2f36;
+  --sidebar-bg: #292a30;
+  --activity-bg: #1d1e23;
+  --panel-bg: #222329;
+  --tab-inactive-bg: #2b2c33;
+  --tab-border: #3b3c45;
+  --fg: #d6d7de;
+  --fg-strong: #f3f4f8;
+  --fg-dim: #9a9ba6;
+  --fg-faint: #6f717c;
+  --border: #3b3c45;
+  --border-soft: #34353d;
+  --input-bg: #26272d;
+  --input-border: #3b3c45;
+  --hover-bg: #35363e;
+  --selected-bg: #c9cbd6;
+  --selected-fg: #222329;
+  --accent: #c9cbd6;
+  --accent-hover: #dcdee6;
+  --accent-soft: #3a3b44;
+  --accent-line: #4a4b55;
+  --button-bg: #c9cbd6;
+  --button-hover: #dcdee6;
+  --button-fg: #222329;
+  --statusbar-bg: #c9cbd6;
+  --statusbar-fg: #222329;
+  --danger: #c07b57;
+  --clay: #c07b57;
+  --clay-soft: #3d332c;
+  --gild: #c29c4a;
+  --teal: #5d938c;
+  --ok: #7fa96b;
+  --focus-ring: #8a8c94;
+  --widget-bg: #2e2f36;
+  --widget-border: #3b3c45;
+  --card-top: #33343b;
+  --card-bot: #2b2c33;
+  --chrome-top: #2f3037;
+  --chrome-bot: #26272d;
+  --canvas-dot: rgba(255, 255, 255, 0.042);
+  --shadow-card-rest: 0 2px 6px -3px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 26px -12px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.35);
+  --shadow-card-hover: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 38px -14px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.09);
+  --shadow-float: 0 16px 36px -14px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-sheet: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--panel-bg);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* Overlay-style scrollbars: invisible at rest, a slim thumb while you're
+   actually over a scrolling region — no permanent chrome anywhere. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+:hover::-webkit-scrollbar-thumb, *:hover > ::-webkit-scrollbar-thumb { background: rgba(120, 123, 140, 0.3); }
+::-webkit-scrollbar-thumb:hover { background: rgba(120, 123, 140, 0.55); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; border-radius: var(--radius-s); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+button.primary {
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  color: var(--button-fg);
+  padding: 5px 16px;
+  border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  line-height: 20px;
+  box-shadow: 0 2px 8px -2px rgba(40, 44, 60, 0.5);
+  transition: filter 120ms ease;
+}
+button.primary:hover { filter: brightness(1.12); }
+button.secondary {
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  padding: 4px 15px; border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+  transition: background 120ms ease, color 120ms ease;
+}
+button.secondary:hover { background: var(--hover-bg); color: var(--fg); }
+input, textarea, select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-m);
+  padding: 4px 10px;
+}
+input:focus, textarea:focus { border-color: var(--focus-ring); }
+
+.shell { display: flex; flex-direction: column; height: 100%; }
+.canvas { position: relative; display: flex; flex: 1; min-height: 0; }
+.canvas > .brain-view, .canvas > .list-view, .canvas > .sky-view { flex: 1; min-width: 0; }
+
+.settings-fact-sub { display: block; font-size: 10.5px; color: var(--fg-faint); font-family: var(--mono); margin-top: 2px; }
+.setting-note { font-size: 11.5px; color: var(--fg-dim); line-height: 1.5; padding: 2px 0 6px; }
+.model-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
+.model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.model-name { font-size: 13px; font-weight: 650; color: var(--fg); display: flex; align-items: center; gap: 7px; }
+.model-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+}
+.model-desc { font-size: 11.5px; color: var(--fg-dim); }
+.model-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.model-progress { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-dim); min-width: 38px; text-align: right; }
+.model-active { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg); cursor: pointer; }
+
+.setting-select {
+  padding: 5px 9px; border-radius: var(--radius-s); border: 1px solid var(--input-border);
+  background: var(--input-bg); color: var(--fg); font-size: 12.5px;
+}
+.setting-color { width: 46px; height: 26px; padding: 0; border: 1px solid var(--input-border); border-radius: var(--radius-s); background: var(--input-bg); }
+
+/* Folded: one quiet pill. The ring is the liveness signal — a thin arc
+   turning, not a spinner icon shouting from the corner. */
+.absorb-widget.folded {
+  /* row, explicitly — the base widget is a column, and inline-flex alone
+     stacked the ring above its label into a two-storey blob */
+  display: inline-flex; flex-direction: row; align-items: center; gap: 7px; width: auto;
+  padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  font-size: 11.5px; font-weight: 600; color: var(--fg-dim);
+}
+.absorb-widget.folded:hover { color: var(--fg); border-color: var(--fg-faint); }
+.absorb-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--ok); }
+.absorb-dot.paused { background: var(--clay); }
+.absorb-ring {
+  width: 11px; height: 11px; border-radius: 999px; flex: none;
+  border: 1.6px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  animation: absorb-turn 900ms linear infinite;
+}
+@keyframes absorb-turn { to { transform: rotate(360deg); } }
+/* Header controls: two quiet ghosts in a row, not absolute squares fighting
+   for the corner. */
+.absorb-controls { display: flex; gap: 2px; margin-left: auto; }
+.absorb-fold, .absorb-dismiss {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: var(--radius-s);
+  border: none; background: transparent; cursor: pointer;
+  color: var(--fg-faint);
+  transition: background 100ms ease, color 100ms ease;
+}
+.absorb-fold:hover, .absorb-dismiss:hover { background: var(--hover-bg); color: var(--fg-dim); }
+
+/* ── Sky: the Engram home — every memory a star ─────────────────── */
+.sky-view { position: relative; overflow: hidden; background: var(--panel-bg); }
+.sky-view .topic-graph { position: absolute; inset: 0; }
+.sky-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  text-align: center; padding: 24px;
+}
+.sky-empty-title { font-size: 16px; font-weight: 600; color: var(--fg-strong); }
+.sky-empty-hint { font-size: 12.5px; color: var(--fg-dim); max-width: 380px; line-height: 1.5; }
+.sky-try { margin-top: 10px; justify-content: center; }
+.sky-legend {
+  position: absolute; top: 14px; left: 16px;
+  display: flex; gap: 14px; align-items: center;
+  font-family: var(--font); font-size: 10.5px; color: var(--fg-faint);
+  pointer-events: none;
+}
+.sky-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.sky-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--card-top); border: 1.4px solid var(--fg-dim); }
+/* The legend's three dots must actually differ, or it teaches nothing. `dim`
+   and `halo` had rules and `bright` never did, so "fresh" was the bare dot —
+   legible next to dim, but not the lit star it is describing. */
+.sky-dot.bright { background: var(--gild, var(--accent)); border-color: transparent; box-shadow: 0 0 5px var(--gild, var(--accent)); }
+.sky-dot.dim { opacity: 0.4; }
+.sky-dot.halo { box-shadow: 0 0 0 2px color-mix(in srgb, var(--gild) 55%, transparent); }
+
+/* ── Librarian progress widget (floating, bottom-left) ───────────
+   Unified floating chrome (absorb / help): one calm translucent card —
+   blurred widget-bg, 1px input-border, --radius-card, --shadow-float;
+   the help button keeps the opposite bottom-right corner. */
+.absorb-widget {
+  position: fixed; left: 16px; bottom: 64px; z-index: 35;
+  width: 212px;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 11px 13px;
+  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--input-border); border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+  animation: fade-in 120ms ease-out;
+}
+.absorb-head { display: flex; align-items: center; gap: 7px; }
+.absorb-head .spin { color: var(--fg-dim); flex-shrink: 0; }
+.absorb-title { font-size: 12.5px; font-weight: 600; color: var(--fg-strong); }
+.absorb-progress { display: flex; flex-direction: column; gap: 4px; }
+.absorb-track { height: 4px; border-radius: 999px; background: var(--hover-bg); overflow: hidden; }
+.absorb-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 220ms ease; }
+.absorb-caption { font-family: var(--font); font-size: 10.5px; color: var(--fg-dim); }
+.absorb-stage { font-size: 11.5px; color: var(--fg-dim); line-height: 1.4; }
+.absorb-elapsed { font-family: var(--font); font-size: 11px; color: var(--fg-dim); }
+.absorb-actions { display: flex; }
+.absorb-btn {
+  font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+  color: var(--fg-dim); background: var(--hover-bg);
+  transition: background 100ms ease, color 100ms ease;
+}
+.absorb-btn:hover { background: var(--accent-soft); color: var(--fg-strong); }
+.absorb-btn.primary {
+  color: var(--fg-strong); font-weight: 600;
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+}
+.absorb-btn.primary:hover { background: var(--hover-bg); }
+
+/* ── Top bar (the only chrome) ───────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 14px 0 18px; flex-shrink: 0;
+  background: linear-gradient(180deg, var(--chrome-top), var(--chrome-bot));
+  border-bottom: 1px solid var(--border);
+  /* frameless window: the top bar IS the title bar — draggable, with the
+     native window controls overlaying its right edge */
+  -webkit-app-region: drag;
+  width: env(titlebar-area-width, 100%);
+}
+/* macOS: the native traffic lights overlay the bar's LEFT edge (Windows puts
+   its controls on the right, handled by titlebar-area-width above) — start
+   the content after them. Fullscreen hides the lights, so the padding drops.
+   The width env var must NOT apply here: on macOS it subtracts the traffic
+   light area, which sits on the left — keeping it would cut the bar short on
+   the right instead. The left inset is what the padding already covers. */
+:root[data-platform='darwin'] .topbar { width: 100%; }
+:root[data-platform='darwin']:not([data-fullscreen]) .topbar { padding-left: 84px; }
+.topbar button, .topbar .canvas-tabs, .topbar input { -webkit-app-region: no-drag; }
+/* The mark inherits its surface colour — a hard-coded one turned it dark
+   on the dark floating button. */
+.logomark { display: block; }
+.workspace-btn .logomark { color: var(--fg-strong); }
+.canvas-tabs { display: flex; gap: 2px; background: var(--hover-bg); border-radius: 999px; padding: 3px; flex-shrink: 0; }
+.canvas-tab { display: inline-flex; align-items: center; gap: 5px; padding: 3px 15px; border-radius: 999px; color: var(--fg-dim); font-size: 12.5px; font-weight: 500; transition: all 120ms ease; }
+.canvas-tab:hover { color: var(--fg); }
+.canvas-tab.active { background: var(--editor-bg); color: var(--fg-strong); box-shadow: 0 1px 3px rgba(20, 22, 35, 0.18); }
+.topbar-spacer { flex: 1; }
+.topbar-status { font-family: var(--font); font-size: 11px; color: var(--fg-faint); padding: 0 7px; white-space: nowrap; }
+.topbar-status.as-button { cursor: pointer; border-radius: 999px; height: 28px; flex-shrink: 0; }
+.topbar-status.as-button:hover { background: var(--hover-bg); color: var(--fg); }
+/* live status line (sweep / absorb): spinner + label. Long text ellipsizes
+   so it can never push the right-side actions out of the bar. */
+.topbar-status.live { display: inline-flex; align-items: center; gap: 5px; min-width: 0; flex-shrink: 1; max-width: 300px; }
+.topbar-status.live > svg { flex-shrink: 0; }
+.topbar-status.live .status-label { overflow: hidden; text-overflow: ellipsis; }
+@keyframes engram-spin { to { transform: rotate(360deg); } }
+.spin { animation: engram-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+/* engine presence dot — a filled circle, ok-tinted halo when connected */
+.engine-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
+.engine-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+.engine-dot.warn { background: var(--gild); }
+.engine-status { display: inline-flex; align-items: center; gap: 5px; }
+.topbar-action {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px; border-radius: 999px; flex-shrink: 0;
+  color: var(--fg-dim); font-size: 12px; font-weight: 500;
+  transition: background 120ms ease, color 120ms ease;
+}
+.topbar-action:hover { background: var(--hover-bg); color: var(--fg); }
+.topbar-action.zap {
+  color: var(--accent); font-weight: 600;
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+}
+.topbar-action.zap:hover { filter: brightness(1.04); }
+.topbar-action .badge { position: absolute; top: -2px; right: -2px; }
+
+/* Today: the morning surface's front door. It was a grey glyph lost in the
+   icon row and nobody opened it, so it now owns the top-right corner the way
+   the help button owns the bottom-right — labelled, lifted off the strip, and
+   carrying the number of loops that want an answer today. Last child of
+   .topbar, whose env(titlebar-area-width) clamp + 14px right padding keep it
+   off the native window-control overlay on Windows. */
+.today-dock { position: absolute; right: 16px; top: 16px; z-index: 29; }
+
+.connect-banner {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  z-index: 25; display: flex; align-items: center; gap: 8px;
+  max-width: min(620px, calc(100% - 220px));
+  padding: 7px 10px 7px 14px; border-radius: var(--radius-card);
+  background: var(--widget-bg); box-shadow: var(--shadow-float);
+  color: var(--fg-dim); font-size: 12.5px; line-height: 1.35;
+  animation: fade-in 200ms ease-out;
+}
+.connect-banner svg { color: var(--accent); flex-shrink: 0; }
+.connect-banner > span { min-width: 0; }
+.connect-banner-btn {
+  flex-shrink: 0; padding: 3px 12px; border-radius: 999px;
+  background: var(--selected-bg); color: var(--selected-fg);
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.connect-banner-btn:hover { filter: brightness(1.06); }
+/* Update-ready: the same pill, but it persists (a toast is easy to miss) and
+   carries the button that applies the update. Sits below whichever
+   connect/health banner already holds the top slot. */
+.update-banner { color: var(--fg); }
+.update-banner svg { color: var(--gild, var(--accent)); }
+.update-banner.stacked { top: 62px; }
+.today-button {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 36px; padding: 0 14px; border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--input-border); box-shadow: var(--shadow-float);
+  color: var(--fg-strong); font-size: 12.5px; font-weight: 600;
+  transition: color 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+.today-button:hover { transform: translateY(-1px); }
+.today-button svg { color: var(--fg-dim); flex-shrink: 0; }
+.today-button.due { border-color: var(--clay); }
+.today-button.due svg { color: var(--clay); }
+.today-count {
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--clay); color: #fff; font-size: 10.5px; font-weight: 700;
+}
+
+/* ── Remember launcher (the composer at rest) ────────────────── */
+.remember-dock { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 29; }
+.remember-button {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 36px; padding: 0 16px; border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--input-border); box-shadow: var(--shadow-float);
+  color: var(--fg-strong); font-size: 12.5px; font-weight: 600;
+  transition: color 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+.remember-button:hover { transform: translateY(-1px); border-color: var(--accent-line); }
+.remember-button svg { color: var(--fg-dim); flex-shrink: 0; }
+
+/* ── Sheets (note / review overlays) ─────────────────────────── */
+.sheet-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(28, 29, 38, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in 140ms ease-out;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.note-sheet, .review-sheet {
+  width: min(1060px, calc(100vw - 64px)); height: min(720px, calc(100vh - 72px));
+  background: var(--editor-bg); border: none;
+  border-radius: 14px; overflow: hidden;
+  box-shadow: var(--shadow-sheet);
+  display: flex; flex-direction: column;
+  animation: sheet-up 180ms ease-out;
+}
+@keyframes sheet-up { from { transform: translateY(18px); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } }
+.sheet-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sheet-hint { font-family: var(--font); font-size: 10.5px; color: var(--fg-faint); }
+.sheet-close { color: var(--fg-dim); font-size: 14px; padding: 4px 9px; border-radius: 999px; }
+.sheet-close:hover { background: var(--hover-bg); color: var(--fg); }
+.note-sheet .note-editor { flex: 1; min-height: 0; }
+.review-sheet { flex-direction: row; }
+.review-list { width: 280px; border-right: 1px solid var(--border); background: var(--sidebar-bg); overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+/* One row per issue: the lead question, plus fold-chips for sibling cards
+   that the lead's answer will settle (they auto-dismiss on approval). */
+.issue-row { display: flex; flex-direction: column; border-radius: var(--radius-s); }
+.issue-row.selected { background: var(--selected-bg); }
+.issue-row.selected .side-title, .issue-row.selected .side-sub { color: var(--selected-fg); }
+.issue-row .side-item.selected, .issue-row .side-item:hover { background: transparent; }
+.issue-siblings { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 0 12px 7px; }
+.issue-siblings-note { font-family: var(--font); font-size: 10px; color: var(--fg-faint); }
+.issue-row.selected .issue-siblings-note { color: var(--selected-fg); opacity: 0.75; }
+.issue-chip {
+  font-family: var(--font); font-size: 10px; line-height: 1;
+  padding: 3px 7px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--fg-dim); background: var(--panel-bg);
+}
+.issue-chip:hover { background: var(--hover-bg); }
+.issue-chip.selected { background: var(--fg-strong); border-color: var(--fg-strong); color: var(--panel-bg); }
+.review-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
+.review-close { position: absolute; top: 8px; right: 10px; z-index: 5; }
+.review-main .review-detail { flex: 1; }
+
+/* Today sheet — right-side slide-over: the note sheet's scrim + Escape/✕, but
+   the panel is docked to the right (never centered) and slides in from the edge.
+   The weekly digest sheet is the same slide-over, so it shares the geometry. */
+.today-refresh {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--input-border); background: var(--widget-bg);
+  color: var(--fg-dim); font-size: 11.5px; font-weight: 600;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.today-refresh:hover { color: var(--fg-strong); border-color: var(--fg-faint); }
+.today-refresh:disabled { cursor: default; color: var(--fg-faint); }
+/* Reuses engram-spin so the existing prefers-reduced-motion rule covers it —
+   a private keyframe here would have spun for users who asked it not to. */
+.today-refresh.busy svg { animation: engram-spin 700ms linear infinite; }
+@media (prefers-reduced-motion: reduce) { .today-refresh.busy svg { animation: none; } }
+
+.today-overlay, .digest-overlay { align-items: stretch; justify-content: flex-end; }
+.today-sheet, .digest-sheet {
+  width: min(460px, calc(100vw - 48px)); height: 100vh;
+  background: var(--editor-bg); border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-sheet);
+  display: flex; flex-direction: column;
+  animation: slide-left 180ms ease-out;
+}
+.today-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.today-title, .digest-title { font-family: var(--font); font-size: 18px; font-weight: 600; color: var(--fg-strong); }
+.today-date { font-family: var(--font); font-size: 11px; color: var(--fg-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.today-sheet .sheet-header,
+.digest-sheet .sheet-header {
+  padding-right: calc(16px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px));
+}
+
+.today-body, .digest-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 22px 24px; }
+/* Open loops sit above the brief and are separated by a rule, so the live
+   half of the sheet never blurs into the markdown the librarian wrote. */
+/* Placeholders, not dimmed text: 0.45 opacity over real content read as a
+   broken render rather than a wait. Grey bars are unambiguous — nothing is
+   pretending to be readable. */
+.today-skeleton { display: flex; flex-direction: column; gap: 9px; padding-bottom: 8px; }
+.skeleton-bar {
+  height: 11px; border-radius: 5px; background: var(--hover-bg);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.skeleton-bar.head { height: 15px; width: 42%; margin-top: 10px; background: var(--border); }
+.skeleton-bar.head.short { width: 28%; margin-top: 18px; }
+@keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+/* Same courtesy the app's other spinner gets: no pulse for anyone who asked
+   the OS to stop moving things. */
+@media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
+
+.today-refreshing {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 0 2px; font-size: 12px; color: var(--fg-dim);
+}
+.today-refreshing svg { color: var(--fg-faint); }
+
+/* The measured day: hours per app + the titles actually held, above the brief. */
+.today-desk { padding: 14px 0 16px; border-bottom: 1px solid var(--border-soft); }
+.today-desk-total {
+  font-family: var(--font); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-faint);
+}
+.today-desk-row {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 8px;
+  font-size: 12.5px; line-height: 1.5;
+}
+.today-desk-app { flex: none; min-width: 88px; font-weight: 600; color: var(--fg-dim); }
+.today-desk-hours { flex: none; font-variant-numeric: tabular-nums; color: var(--fg-faint); }
+.today-desk-titles {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--fg-faint);
+}
+
+.today-loops { padding: 16px 0 18px; border-bottom: 1px solid var(--border-soft); }
+.today-section-head {
+  font-family: var(--font); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-faint);
+}
+.today-quiet, .digest-empty { margin-top: 9px; font-size: 12.5px; line-height: 1.6; color: var(--fg-faint); }
+.today-no-brief, .digest-empty { margin-top: 18px; }
+.today-loop-group { margin-top: 14px; }
+.today-loop-group-head {
+  display: flex; align-items: center; gap: 7px; margin: 0 0 3px 10px;
+  font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--fg-dim);
+}
+/* Urgency reads as colour before it reads as words — clay for late, gild for
+   today, teal for the week ahead, faint for everything not yet pressing. */
+.today-loop-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
+.today-loop-group[data-urgency='overdue'] .today-loop-dot { background: var(--clay); }
+.today-loop-group[data-urgency='today'] .today-loop-dot { background: var(--gild); }
+.today-loop-group[data-urgency='this-week'] .today-loop-dot { background: var(--teal); }
+.today-loop-count { font-weight: 500; color: var(--fg-faint); }
+.today-loop-row {
+  display: flex; align-items: center; width: 100%;
+  border-radius: var(--radius-s); transition: background 100ms ease;
+}
+.today-loop-row:hover { background: var(--hover-bg); }
+.today-loop-open {
+  display: flex; align-items: baseline; gap: 12px; flex: 1; min-width: 0;
+  padding: 7px 4px 7px 10px; text-align: left; background: none; border: 0;
+}
+/* Closing a loop is destructive-ish and permanent-looking, so it stays out of
+   the way until the row is hovered — the list reads as titles, not as a column
+   of checkboxes demanding to be ticked. Keyboard focus reveals it too. */
+.today-loop-done {
+  flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 26px;
+  margin-right: 6px; border-radius: var(--radius-s); border: 0; background: none;
+  color: var(--fg-faint); opacity: 0; transition: opacity 100ms ease, color 100ms ease;
+}
+.today-loop-row:hover .today-loop-done, .today-loop-done:focus-visible { opacity: 1; }
+.today-loop-done:hover { color: var(--teal); background: var(--hover-bg); }
+.today-loop-title {
+  flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; color: var(--fg);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.today-loop-due { flex-shrink: 0; font-family: var(--font); font-size: 11px; color: var(--fg-faint); white-space: nowrap; }
+.today-loop-group[data-urgency='overdue'] .today-loop-due { color: var(--clay); }
+
+/* chat as a right slide-over inside the canvas */
+.canvas .chat-panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 30; box-shadow: -12px 0 32px -12px rgba(25, 28, 40, 0.35); animation: slide-left 160ms ease-out; }
+@keyframes slide-left { from { transform: translateX(24px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
+
+.badge {
+  position: absolute; bottom: 6px; right: 6px;
+  background: var(--clay); color: #ffffff;
+  font-family: var(--font);
+  font-size: 9px; font-weight: 600;
+  min-width: 16px; height: 16px; line-height: 16px;
+  text-align: center; border-radius: 999px; padding: 0 4px;
+}
+
+.side-list { list-style: none; flex: 1; padding: 0 8px; }
+.side-item {
+  display: flex; flex-direction: column; align-items: flex-start;
+  width: 100%; padding: 3px 12px; text-align: left;
+  border-radius: var(--radius-s);
+  transition: background 100ms ease;
+}
+.side-item:hover { background: var(--hover-bg); }
+.side-item.selected { background: var(--selected-bg); }
+.side-item.selected .side-title, .side-item.selected .side-sub { color: var(--selected-fg); }
+.side-item.static { cursor: default; }
+.side-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 22px; }
+.side-sub { display: block; color: var(--fg-dim); font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.empty-hint { padding: 8px 20px; color: var(--fg-dim); font-size: 12px; }
+.section-label { padding: 10px 20px 2px; color: var(--fg-faint); font-family: var(--font); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+
+.failures { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.failures .section-label { padding: 0; }
+.failure-item { color: var(--danger); font-size: 12px; }
+.engine-banner {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent-line);
+  padding: 8px 12px; color: var(--fg); font-size: 12px; border-radius: var(--radius-s);
+}
+.engine-banner .warn-icon { color: var(--gild); vertical-align: -2px; margin-right: 5px; }
+
+.empty-view { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-dim); padding: 24px; font-size: 13px; }
+/* A canvas tab can render these as its direct root (loading/empty) — without
+   flex:1 they shrink to content and hug the left edge of the canvas row. */
+.canvas > .empty-view, .canvas > .empty-state { flex: 1; }
+body.bubble-host { background: transparent; }
+.bubble-dot {
+  width: 52px; height: 52px; margin: 2px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--selected-bg); color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer; user-select: none; touch-action: none;
+}
+.bubble-dot:hover { background: var(--accent-hover); }
+.bubble-chat {
+  display: flex; flex-direction: column; height: 100vh; box-sizing: border-box;
+  border-radius: 14px; border: 1px solid var(--border);
+  background: var(--card-top); overflow: hidden;
+}
+.bubble-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border-soft);
+}
+.bubble-brand { font-size: 13px; font-weight: 700; color: var(--fg); }
+.bubble-bar-btns { display: flex; gap: 2px; }
+.bubble-x {
+  -webkit-app-region: no-drag; border: none; background: transparent;
+  color: var(--fg-faint); font-size: 12px; cursor: pointer; padding: 2px 7px; border-radius: 6px; line-height: 1.4;
+}
+.bubble-x:hover { background: var(--hover-bg); color: var(--fg); }
+.bubble-list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.bubble-hint { color: var(--fg-faint); font-size: 13.5px; line-height: 1.5; padding: 6px 2px; }
+/* The wait, made visible: three breathing dots, a plain-language status and
+   a second counter, so a long local answer never reads as a hang. */
+.bubble-thinking {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--fg-faint); font-variant-numeric: tabular-nums;
+}
+.bubble-dots { display: inline-flex; gap: 3px; }
+.bubble-dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  animation: bubble-dot 1.1s ease-in-out infinite;
+}
+.bubble-dots i:nth-child(2) { animation-delay: 0.15s; }
+.bubble-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bubble-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble-dots i { animation: none; opacity: 0.6; }
+}
+.bubble-brand { display: inline-flex; align-items: center; gap: 5px; }
+
+.bubble-msg {
+  max-width: 94%; box-sizing: border-box; min-width: 0;
+  font-size: 14px; line-height: 1.6; border-radius: 11px; padding: 9px 13px;
+  overflow-wrap: anywhere;
+}
+.bubble-msg.user { align-self: flex-end; background: var(--selected-bg); color: var(--selected-fg); }
+.bubble-msg.assistant { align-self: flex-start; background: var(--accent-soft); color: var(--fg); }
+.bubble-msg.error { background: var(--clay-soft); color: var(--clay); }
+.bubble-msg-body :is(p, ul, ol) { margin: 0 0 6px; }
+.bubble-msg-body :is(p, ul, ol):last-child { margin-bottom: 0; }
+.bubble-msg-body :is(ul, ol) { padding-left: 18px; }
+.bubble-msg-body code { font-size: 12.5px; overflow-wrap: anywhere; }
+.bubble-msg-body pre { overflow-x: auto; max-width: 100%; }
+.bubble-msg-body a { color: inherit; text-decoration: underline; cursor: pointer; }
+.bubble-send { flex: none; border: 0; cursor: pointer; }
+/* The panel's input — the bubble's, at panel width. */
+.chat-write { display: flex; gap: 7px; align-items: center; padding: 9px; border-top: 1px solid var(--border-soft); }
+.chat-write input {
+  flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
+  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 13px;
+}
+/* The librarian's spoken morning — prose, not a list. */
+.nudge-spoken { display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.55; color: var(--fg-dim); }
+.nudge-spoken p { margin: 0; }
+.nudge-spoken p:first-child { color: var(--fg); font-weight: 600; }
+/* ✕'s "really?" — an in-card sheet, top of the chat, no second window. */
+.bubble-confirm { padding: 12px 14px; border-bottom: 1px solid var(--border-soft); background: var(--card-bot); }
+.bubble-confirm-q { font-size: 14px; font-weight: 700; color: var(--fg); }
+.bubble-confirm-why { font-size: 12.5px; color: var(--fg-faint); line-height: 1.45; margin: 4px 0 9px; }
+.bubble-confirm-actions { display: flex; gap: 7px; }
+.bubble-confirm-actions button {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--fg-dim); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.bubble-confirm-actions button:hover { background: var(--hover-bg); }
+.bubble-confirm-yes { background: var(--clay-soft); border-color: var(--clay); color: var(--clay); }
+.bubble-write { padding: 9px; border-top: 1px solid var(--border-soft); display: flex; gap: 7px; align-items: center; }
+.bubble-write input {
+  width: 100%; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
+  border: 1px solid var(--input-border); background: var(--input-bg);
+  color: var(--fg); font-size: 12.5px;
+}
+/* The panel's twin: retrieval receipts inside the pre-first-token bubble. */
+.nudge-why {
+  margin: 0; max-height: 190px; overflow-y: auto;
+  font-size: 12.5px; color: var(--fg-faint);
+}
+.nudge-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+.nudge-actions button {
+  padding: 7px 13px; border-radius: 9px; border: 1px solid var(--border);
+  background: transparent; color: var(--fg-dim); font-size: 12.5px; font-weight: 600;
+}
+.nudge-actions button:hover { background: var(--hover-bg); color: var(--fg); }
+.nudge-primary { background: var(--selected-bg) !important; color: var(--selected-fg) !important; border-color: transparent !important; }
+.nudge-hands {
+  border: 1px solid var(--border); border-radius: 9px; overflow: hidden;
+}
+.nudge-hands-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 9px; font-size: 10.5px; font-weight: 600; color: var(--fg-faint);
+  background: var(--hover-bg);
+}
+.nudge-copy {
+  padding: 2px 9px; border: none; border-radius: 6px;
+  background: var(--selected-bg); color: var(--selected-fg);
+  font-size: 10.5px; font-weight: 600;
+}
+.nudge-hands-body {
+  margin: 0; padding: 8px 10px; max-height: 130px; overflow-y: auto;
+  font-family: var(--font); font-size: 11.5px; line-height: 1.5;
+  color: var(--fg-dim); white-space: pre-wrap; word-break: keep-all;
+}
+
+/* The typed answer — Enter files it as the user's own note above the rest. */
+.nudge-write input {
+  width: 100%; padding: 7px 11px; border-radius: 9px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--fg); font-size: 12.5px; font-family: var(--font);
+}
+.nudge-write input::placeholder { color: var(--fg-faint); }
+.nudge-write input:focus { outline: none; border-color: var(--accent); }
+.nudge-open {
+  align-self: flex-start; padding: 0; background: none; border: none;
+  color: var(--accent); font-size: 11px; text-decoration: underline;
+}
+
+/* Boot states. Both had no rule at all: .vault-opening was left behind by the
+   CaptureBar sweep (414aa35) and .vault-failed is new, and an unstyled element
+   does not throw — it just renders wrong, which is how a deleted rule shipped
+   unnoticed for four days. */
+.vault-opening { animation: skeleton-pulse 1.8s ease-in-out infinite; }
+.vault-failed {
+  flex-direction: column; gap: 10px; max-width: 520px; margin: 0 auto; text-align: center;
+}
+.vault-failed strong { color: var(--fg); font-size: 15px; }
+.vault-failed p { margin: 0; }
+/* The path and the error, selectable: the first question anyone answering a
+   report will ask is which folder, and the second is what it actually said. */
+.vault-failed-path, .vault-failed-why {
+  max-width: 100%; padding: 6px 10px; border-radius: var(--radius-sm, 6px);
+  background: var(--widget-bg); color: var(--fg-dim);
+  font-family: var(--font-mono, monospace); font-size: 11.5px; line-height: 1.45;
+  overflow-wrap: anywhere; user-select: text;
+}
+.vault-failed-actions { display: flex; gap: 8px; margin-top: 4px; }
+.vault-failed-actions button {
+  padding: 5px 14px; border-radius: 999px;
+  background: var(--selected-bg); color: var(--selected-fg);
+  font-size: 12px; font-weight: 600;
+}
+.vault-failed-actions button:hover { filter: brightness(1.06); }
+/* The shared empty-state grammar (the Sky keeps its starter card). */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; height: 100%; min-height: 40vh; padding: 24px; text-align: center;
+}
+.empty-state svg { color: var(--fg-faint); }
+.empty-state-title { font-size: 16.5px; color: var(--fg-faint); }
+.empty-state-hint {
+  max-width: 420px;
+  font-family: var(--font); font-size: 11px; letter-spacing: 0.02em; line-height: 1.6;
+  color: var(--fg-faint);
+}
+
+/* ── Brain view: the organized memory as readable pages ───────────
+   Rail = the topics the librarian's links have grown; page = one topic as a
+   document (synthesis → connected memories). Calm, typography-first. */
+.brain-view { display: flex; height: 100%; min-height: 0; }
+.brain-rail {
+  width: 264px; flex-shrink: 0; overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 10px 0 16px;
+}
+.brain-rail .section-label { font-size: 11px; padding: 10px 20px 10px; }
+.brain-item {
+  display: flex; flex-direction: column; gap: 6px;
+  width: calc(100% - 16px); margin: 0 8px 2px;
+  padding: 12px 12px 13px; text-align: left;
+  border-radius: var(--radius-s);
+  color: var(--fg-dim);
+}
+.brain-item:hover { background: var(--hover-bg); }
+.brain-item.selected {
+  background: var(--selected-bg);
+  color: var(--selected-fg);
+}
+.brain-item.selected .brain-item-title,
+.brain-item.selected .brain-item-meta { color: var(--selected-fg); }
+.brain-item-title {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: 14px; line-height: 1.45;
+}
+.brain-item.unconnected { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
+.brain-item.unconnected .brain-item-title { color: var(--fg-faint); font-size: 12.5px; }
+.brain-item-meta { font-family: var(--font); font-size: 11.5px; color: var(--fg-faint); }
+.brain-item-aging { color: var(--clay); }
+
+.brain-scroll {
+  flex: 1; min-width: 0; overflow-y: auto;
+  display: flex; align-items: flex-start; justify-content: center; gap: 8px;
+}
+/* The page uses the width it gets: prose (header/synthesis) stays at a
+   readable measure, while the memories grid grows to two columns on wide
+   windows instead of leaving the right half of the screen empty. */
+.brain-page { flex: 0 1 1160px; min-width: 0; padding: 36px 40px 120px; }
+.brain-memories {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  column-gap: 36px;
+}
+/* Jump to the Cosmos tab — the topic's one action, a quiet chip riding the
+   header meta row (it moved out of the rail: it belongs to the topic, not
+   the navigation). */
+.brain-graph-open {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: auto; flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--border); background: var(--editor-bg);
+  font-family: var(--font); font-size: 11px; color: var(--fg-dim);
+}
+.brain-graph-open:hover { color: var(--fg); box-shadow: var(--shadow-card-rest); }
+/* Topic filter (shown once the rail is big enough to need it). */
+.brain-rail-filter {
+  display: block; width: calc(100% - 28px); margin: 2px 14px 6px;
+  padding: 5px 10px; border-radius: var(--radius-m);
+  border: 1px solid var(--input-border); background: var(--input-bg);
+  font-family: var(--font); font-size: 12px; color: var(--fg);
+}
+.brain-rail-filter::placeholder { color: var(--fg-faint); }
+.topic-graph { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; }
+.sky-surface { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Ghost anchors: one transparent 12px box per star mirroring its screen
+   position. They give the canvas the DOM it does not have — a stable
+   [data-node-id] handle and an aria-label a screen reader can read — and they
+   move only when the camera COMMITS (settle, reset, focus fit, resize), never
+   per gesture frame. The layer is inert; each anchor stays hittable so a
+   driver's click resolves to the star it aimed at, and the coordinates it fires
+   reach the host's own picker either way. */
+.tg-ghost { position: absolute; inset: 0; pointer-events: none; }
+.tg-ghost-node {
+  position: absolute; width: 12px; height: 12px;
+  background: transparent; pointer-events: auto;
+}
+/* Paint-free state markers. The canvas draws the topic spotlight; these only
+   say out loud, where a test or an accessibility tree can read it, which stars
+   are lit and which have receded. */
+.tg-ghost-node.spot, .tg-ghost-node.faded { background: transparent; }
+/* Header block: title, meta and the topic's action grouped tightly, closed
+   by a hairline — the sections below each open with their own head. */
+.brain-header { padding-bottom: 8px; }
+.brain-title { font-size: 27px; font-weight: 600; line-height: 1.25; margin: 0; color: var(--fg-strong); }
+.brain-header-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; min-height: 26px; }
+.brain-meta {
+  display: flex; align-items: center; gap: 5px; min-width: 0;
+  font-family: var(--font); font-size: 11px; color: var(--fg-faint);
+}
+.brain-meta-aging { color: var(--clay); }
+/* Sections: generous air above, a small uppercase head with a trailing
+   hairline (the .brain-divider grammar, now the rule for every section). */
+.brain-section { margin-top: 30px; }
+.brain-section-head {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 12px;
+  font-family: var(--font); font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--fg-faint);
+}
+.brain-section-head::after { content: ''; flex: 1; height: 1px; background: color-mix(in srgb, var(--fg-faint) 45%, transparent); }
+.brain-synthesis { font-size: 14.5px; line-height: 1.7; }
+.brain-synthesis ul { margin: 6px 0 6px 20px; }
+.brain-synthesis li { margin: 8px 0; }
+.brain-synthesis h2, .brain-synthesis h3 { font-family: var(--font); font-size: 13px; font-weight: 600; margin: 14px 0 4px; color: var(--fg-dim); }
+.brain-synthesis strong { font-weight: 600; color: var(--fg-strong); }
+.brain-nohub {
+  padding: 10px 14px;
+  border: 1px dashed var(--border); border-radius: var(--radius-card);
+  font-family: var(--font); font-size: 12px; color: var(--fg-faint);
+}
+/* The resurfacing queue (Today sheet): fading-but-stored memories, one quiet
+   list — a glance re-lights them. */
+.today-fading { padding: 16px 0 4px; border-top: 1px solid var(--border-soft); margin-top: 16px; }
+.today-fading-row {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  margin-top: 8px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: var(--font); font-size: 12.5px; line-height: 1.5; text-align: left;
+  color: var(--fg-dim); opacity: 0.75;
+}
+.today-fading-row:hover, .today-fading-row:focus-visible { opacity: 1; color: var(--fg); }
+.today-fading-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-fading-days { flex: none; font-variant-numeric: tabular-nums; color: var(--fg-faint); font-size: 11px; }
+
+/* Dim memories (activation below the luminance floor): readable, visibly
+   cooler, never hidden — stale is not gone. */
+.memory-dim { opacity: 0.58; }
+.memory-dim:hover, .memory-dim:focus-visible { opacity: 1; }
+
+.memory-row {
+  /* stretch, explicitly: the UA button style is align-items:center, which
+     shrink-wraps .memory-head to max-content — long titles then escape the
+     ellipsis and paint over the neighbouring grid column. */
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%;
+  padding: 13px 12px; margin: 0 -12px; text-align: left;
+  border-radius: var(--radius-m);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg-faint) 32%, transparent);
+}
+.memory-row:hover { background: var(--hover-bg); }
+.memory-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.memory-head svg { color: var(--fg-faint); flex-shrink: 0; }
+/* Where a memory came from — the session's folder name ("strata", "novel").
+   Quiet by design: context is orientation, not decoration. */
+.ctx-chip {
+  padding: 1px 7px; border-radius: 999px; background: var(--hover-bg);
+  color: var(--fg-faint); font-size: 10px; font-weight: 600; line-height: 1.6;
+  white-space: nowrap; flex: none;
+}
+.ctx-chip-title { margin-left: 8px; font-size: 11px; vertical-align: 3px; }
+.memory-title {
+  min-width: 0; font-size: 14.5px; color: var(--fg-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.memory-date { margin-left: auto; flex-shrink: 0; font-family: var(--font); font-size: 10.5px; color: var(--fg-faint); }
+/* The row's layers indent to the title's left edge (past the 12px type icon
+   + 7px gap) so title / excerpt / reason read as one aligned stack. */
+.memory-excerpt {
+  padding-left: 19px;
+  font-size: 12.5px; line-height: 1.5; color: var(--fg-dim);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.memory-reason {
+  display: flex; align-items: center; gap: 4px; padding-left: 19px;
+  font-family: var(--font); font-size: 10.5px; color: var(--fg-faint);
+}
+.memory-reason svg { flex-shrink: 0; opacity: 0.7; }
+.brain-more {
+  display: block; margin: 14px 0 0;
+  padding: 7px 12px; border-radius: var(--radius-s);
+  border: 1px dashed var(--border); background: transparent;
+  font-family: var(--font); font-size: 11px; letter-spacing: 0.04em; color: var(--fg-dim);
+}
+.brain-more:hover { color: var(--fg); background: var(--hover-bg); }
+
+/* ── Note editor ──────────────────────────────────────────────── */
+.note-editor { display: flex; flex-direction: column; height: 100%; }
+.meta-bar {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 16px; min-height: 30px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; font-size: 12px;
+}
+.meta-chip { border-radius: 999px; padding: 1px 9px; color: var(--fg-dim); }
+.meta-chip.meta-fresh { display: inline-flex; align-items: center; min-height: 20px; }
+.meta-chip:hover { background: var(--hover-bg); color: var(--fg); }
+.meta-chip.select { appearance: none; background: transparent; border: none; cursor: pointer; font-size: 12px; }
+.meta-input { width: 130px; font-size: 12px; padding: 1px 8px; }
+.meta-loop { display: inline-flex; align-items: center; gap: 4px; }
+.meta-loop svg { opacity: 0.55; }
+.meta-loop.on { color: var(--clay); border-color: var(--clay); }
+.meta-loop.on svg { opacity: 1; }
+
+.meta-status { margin-left: auto; color: var(--fg-faint); font-family: var(--font); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.lineage-strip { border-bottom: 1px solid var(--border); padding: 2px 16px; }
+.lineage-toggle { color: var(--fg-dim); font-size: 11px; }
+.lineage-toggle:hover { color: var(--fg); }
+.lineage-chain { display: flex; align-items: center; gap: 4px; padding: 4px 0 6px; overflow-x: auto; }
+.lineage-arrow { color: var(--fg-faint); font-size: 11px; }
+.lineage-node { border: 1px solid var(--input-border); border-radius: 999px; padding: 0 9px; font-family: var(--font); font-size: 10.5px; color: var(--fg-dim); white-space: nowrap; line-height: 18px; }
+.lineage-node:hover { background: var(--hover-bg); color: var(--fg); }
+.lineage-node.current { color: var(--fg); border-color: var(--accent-line); background: var(--accent-soft); }
+.lineage-node.me { background: var(--hover-bg); color: var(--fg-strong); }
+
+.links-panel {
+  border-bottom: 1px solid var(--border); padding: 6px 16px 8px;
+  max-height: 42%; overflow-y: auto; flex-shrink: 0;
+}
+.links-head {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--font); font-size: 11px; color: var(--fg-dim);
+}
+.links-group { margin-top: 5px; }
+.links-group-label {
+  font-family: var(--font); font-size: 10px; letter-spacing: 0.04em;
+  color: var(--fg-faint); text-transform: uppercase; margin-bottom: 2px;
+}
+.links-row {
+  display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0;
+  border-radius: 6px;
+}
+.links-row:hover { background: var(--hover-bg); }
+.links-row-open {
+  flex: 1; min-width: 0;
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 2px 6px; text-align: left;
+  color: var(--fg-dim);
+}
+.links-row:hover .links-row-open { color: var(--fg); }
+.links-row-open svg { flex: none; align-self: center; color: var(--fg-faint); }
+/* Cut a wrong link — hover-revealed so the panel stays calm. */
+.links-row-cut {
+  flex: none; display: none; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-right: 4px; border-radius: 5px;
+  color: var(--fg-faint);
+}
+.links-row:hover .links-row-cut { display: inline-flex; }
+.links-row-cut:hover { color: var(--clay); background: var(--hover-bg); }
+.links-row-title {
+  flex: none; max-width: 40%;
+  font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.links-row-reason {
+  flex: 1; min-width: 0;
+  font-family: var(--font); font-size: 11px; color: var(--fg-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.editor-split { display: flex; flex: 1; min-height: 0; }
+.cm-host { flex: 1; min-width: 0; overflow: auto; }
+.cm-host .cm-editor { height: 100%; font-size: 14px; }
+.cm-host .cm-editor.cm-focused { outline: none; }
+.cm-host .cm-gutters { border-right: none; }
+/* CodeMirror defaults to bare `monospace`, which routes Hangul to the OS
+   fallback (GulimChe on Windows). Our --mono stack carries Pretendard for
+   Korean glyphs — apply it to the source panes and gutters explicitly. */
+.cm-host .cm-content, .cm-host .cm-gutters, .diff-host .cm-content, .diff-host .cm-gutters {
+  font-family: var(--font);
+  line-height: 1.65;
+}
+.preview { flex: 1; min-width: 0; overflow: auto; padding: 16px 28px; border-left: 1px solid var(--border); font-size: 15px; line-height: 1.7; }
+.preview h1 { font-family: var(--font); font-size: 26px; font-weight: 600; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.preview h2 { font-family: var(--font); font-size: 20px; font-weight: 600; margin: 18px 0 8px; }
+.preview h3 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+.preview p, .preview ul, .preview ol { margin: 8px 0; }
+.preview li { margin-left: 22px; }
+.preview code { font-family: var(--mono); font-size: 0.9em; background: var(--hover-bg); padding: 1px 5px; border-radius: 4px; }
+.preview blockquote { border-left: 3px solid var(--accent-line); padding-left: 12px; color: var(--fg-dim); margin: 8px 0; font-family: var(--font); font-style: italic; font-size: 1.05em; }
+.preview-toggle { align-self: flex-end; color: var(--fg-faint); font-size: 11px; padding: 3px 16px; }
+.preview-toggle:hover { color: var(--fg); }
+
+/* ── Diff ─────────────────────────────────────────────────────── */
+.diff-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.diff-labels { display: flex; padding: 5px 16px; color: var(--fg-faint); font-family: var(--font); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.diff-labels span { flex: 1; }
+.diff-host { flex: 1; overflow: auto; }
+.diff-host .cm-mergeView { height: 100%; }
+.diff-host .cm-editor { font-size: 13px; }
+
+/* ── Review ───────────────────────────────────────────────────── */
+.review-detail { display: flex; flex-direction: column; height: 100%; }
+/* Right padding clears the absolutely-positioned ✕ so the keys hint never
+   slides under it (field report: "A approve · R reject" overlapped the close). */
+.review-header { display: flex; gap: 14px; align-items: baseline; padding: 12px 44px 12px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.review-type { font-weight: 700; font-size: 15px; color: var(--fg-strong); text-transform: capitalize; letter-spacing: -0.01em; }
+.review-rationale { color: var(--fg-dim); }
+.review-keys { margin-left: auto; color: var(--fg-faint); font-family: var(--font); font-size: 10.5px; }
+.review-keys svg { vertical-align: -2px; }
+.review-actions { display: flex; gap: 8px; padding: 10px 20px; border-top: 1px solid var(--border); }
+.proposal-edit { flex: 1; margin: 16px 20px; font-family: var(--font); font-size: 13px; line-height: 1.5; }
+.card-plain { flex: 1; overflow: auto; padding: 16px 28px; font-family: var(--font); font-size: 13px; white-space: pre-wrap; }
+.reject-form { display: flex; gap: 8px; padding: 10px 20px; border-top: 1px solid var(--border); background: var(--sidebar-bg); }
+.reject-form input { flex: 1; }
+
+/* ── Home ─────────────────────────────────────────────────────── */
+.zap { display: inline-flex; align-items: center; gap: 6px; }
+.zap:disabled { opacity: 0.6; cursor: default; }
+.brief { max-width: 760px; font-size: 15px; line-height: 1.7; margin-top: 12px; }
+.brief h1 { font-family: var(--font); font-size: 24px; font-weight: 600; margin: 18px 0 10px; }
+.brief h2 { font-family: var(--font); font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
+.brief ul { margin: 8px 0 8px 22px; }
+.brief p { margin: 8px 0; }
+.brief li { margin: 3px 0; }
+.brief strong { font-weight: 600; color: var(--fg-strong); }
+.brief code { font-family: var(--mono); font-size: 0.86em; }
+
+/* ── Palette (cmdk) ───────────────────────────────────────────── */
+.palette {
+  position: fixed; top: 12vh; left: 50%; transform: translateX(-50%);
+  width: 620px; max-width: 90vw;
+  background: var(--widget-bg);
+  border: none;
+  border-radius: var(--radius-l); z-index: 100; overflow: hidden;
+  box-shadow: var(--shadow-sheet);
+}
+.palette [cmdk-input] {
+  width: 100%; padding: 13px 17px;
+  background: transparent; color: var(--fg);
+  border: none; border-bottom: 1px solid var(--border);
+  border-radius: 0; outline: none; font-size: 15px;
+}
+.palette [cmdk-input]::placeholder { color: var(--fg-faint); }
+.palette [cmdk-list] { max-height: 340px; overflow-y: auto; padding: 6px; }
+.palette [cmdk-item] { padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; border-radius: var(--radius-s); }
+.palette [cmdk-item][data-selected='true'] { background: var(--selected-bg); color: var(--selected-fg); }
+.palette [cmdk-item][data-selected='true'] .side-sub { color: var(--selected-fg); }
+.palette [cmdk-empty] { padding: 12px 14px; color: var(--fg-dim); }
+
+/* freshness dots — canvas tone (teal / gild / clay) with a subtle inset edge */
+.fresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.fresh-green { background: var(--teal); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 62%, #000); }
+.fresh-amber { background: var(--gild); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gild) 62%, #000); }
+.fresh-red { background: var(--clay); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clay) 62%, #000); }
+
+/* Concrete capture examples — the Sky's first-run starter chips. */
+.starter-try {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  pointer-events: auto;
+}
+.starter-try-label { font-size: 11.5px; color: var(--fg-dim); flex-basis: 100%; }
+.starter-chip {
+  padding: 3px 10px; font-size: 11.5px; color: var(--fg);
+  background: var(--hover-bg); border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer;
+}
+.starter-chip:hover { border-color: var(--fg-faint); background: var(--card-top); }
+.starter-import {
+  margin-top: 8px; padding: 0; border: none; background: none;
+  font-size: 11.5px; color: var(--fg-dim); text-decoration: underline;
+  text-underline-offset: 2px; cursor: pointer; pointer-events: auto;
+  text-align: left;
+}
+.starter-import:hover { color: var(--fg); }
+
+/* ── List view chrome ────────────────────────────────────────────
+   One filter strip, one sticky section-head voice, one row grammar. */
+.view-filter-bar { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.view-filter {
+  width: 100%; max-width: 420px;
+  padding: 7px 12px; border-radius: var(--radius-m);
+  border: 1px solid var(--input-border); background: var(--input-bg);
+  font-family: var(--font); font-size: 13px; color: var(--fg);
+}
+.view-filter::placeholder { color: var(--fg-faint); }
+/* Sticky section heads — the List's month sections. */
+.view-section-head {
+  /* -1px + shadow seal: subpixel scroll rounding used to leave a hairline
+     seam above the sticky head where row text showed through. */
+  position: sticky; top: -1px; z-index: 2;
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 12px 24px 5px;
+  background: var(--panel-bg);
+  box-shadow: 0 -2px 0 var(--panel-bg);
+  font-family: var(--font); font-variant: small-caps;
+  font-size: 13.5px; letter-spacing: 0.04em; color: var(--fg-dim);
+}
+.view-section-count { font-family: var(--font); font-variant: normal; font-size: 11px; letter-spacing: 0; color: var(--fg-faint); }
+/* Empty state centers in the space BELOW the filter strip. */
+.list-view > .empty-state { flex: 1; min-height: 0; height: auto; }
+
+/* Chronology anchor mark on a row (timeline: pinned) — also worn by MetaBar. */
+.pin-mark { display: inline-flex; align-items: center; color: var(--fg-faint); }
+.meta-pin { vertical-align: -2px; margin-left: 4px; }
+
+/* ── List view (chronological browse of the living notes) ────────── */
+.list-view { display: flex; flex-direction: column; height: 100%; background: var(--panel-bg); }
+/* Owner lens (team vaults only): a quiet select beside the text filter. */
+.list-owner-filter {
+  flex-shrink: 0;
+  padding: 7px 10px; border-radius: var(--radius-m);
+  border: 1px solid var(--input-border); background: var(--input-bg);
+  font-family: var(--font); font-size: 12px; color: var(--fg-dim);
+}
+.list-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 110px; }
+.list-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 24px; width: 100%; text-align: left;
+  border-left: 2px solid transparent;
+  cursor: pointer; transition: background 100ms ease;
+}
+.list-row:hover { background: var(--hover-bg); }
+.list-row.active { background: var(--hover-bg); border-left-color: var(--accent); }
+.list-row:focus { outline: none; }
+.list-dot-slot { display: inline-flex; align-items: center; justify-content: center; width: 12px; flex-shrink: 0; color: var(--clay); }
+.list-title {
+  flex: 1; min-width: 0;
+  font-family: var(--font); font-size: 14px; color: var(--fg-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.list-type { font-family: var(--font); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-faint); flex-shrink: 0; }
+.list-owner {
+  flex-shrink: 0;
+  font-family: var(--font); font-size: 10.5px; color: var(--fg-dim);
+  padding: 1px 8px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--input-border) 80%, transparent);
+  background: var(--hover-bg);
+}
+.list-date { font-family: var(--font); font-size: 11px; color: var(--fg-faint); width: 82px; text-align: right; flex-shrink: 0; }
+.list-more {
+  display: block; margin: 8px 24px 0;
+  padding: 7px 12px; border-radius: var(--radius-s);
+  border: 1px dashed var(--border); background: transparent;
+  font-family: var(--font); font-size: 11px; letter-spacing: 0.04em; color: var(--fg-dim);
+  text-align: center; cursor: pointer;
+}
+.list-more:hover { background: var(--hover-bg); color: var(--fg); }
+
+/* ── First-run tour (coach marks, once) ──────────────────────────── */
+.tour-overlay { position: fixed; inset: 0; z-index: 140; }
+.tour-overlay.dimmed { background: rgba(15, 17, 26, 0.55); }
+/* The cutout: a ring around the real element, dimming everything else via
+   one giant shadow — the element itself stays fully visible. */
+.tour-highlight {
+  position: fixed; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(15, 17, 26, 0.55), 0 0 0 2px var(--editor-bg);
+  transition: all 220ms ease;
+}
+.tour-card {
+  position: fixed; width: 320px; padding: 16px 18px 13px;
+  background: var(--editor-bg); border-radius: var(--radius-card);
+  box-shadow: 0 18px 48px -12px rgba(15, 17, 26, 0.45);
+  animation: fade-in 180ms ease-out;
+}
+.tour-title { font-size: 14.5px; font-weight: 600; color: var(--fg-strong); margin-bottom: 6px; }
+.tour-body { font-size: 12.5px; line-height: 1.6; color: var(--fg-dim); }
+.tour-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.tour-dots { display: flex; gap: 5px; }
+.tour-dots span { width: 5px; height: 5px; border-radius: 999px; background: var(--fg-faint); opacity: 0.4; }
+.tour-dots span.active { opacity: 1; background: var(--fg-strong); }
+.tour-actions { display: flex; align-items: center; gap: 10px; }
+.tour-skip { font-family: var(--font); font-size: 12px; color: var(--fg-faint); }
+.tour-skip:hover { color: var(--fg-dim); }
+.tour-next {
+  padding: 5px 14px; border-radius: 999px;
+  background: var(--selected-bg); color: var(--selected-fg);
+  font-family: var(--font); font-size: 12px; font-weight: 500;
+}
+.tour-next:hover { filter: brightness(1.15); }
+
+/* ── Chat panel ───────────────────────────────────────────────── */
+.chat-panel {
+  width: 340px; flex-shrink: 0; position: relative;
+  border-left: 1px solid var(--border); background: var(--sidebar-bg);
+  display: flex; flex-direction: column;
+}
+.chat-resize {
+  position: absolute; left: -3px; top: 0; bottom: 0; width: 7px;
+  cursor: col-resize; z-index: 5;
+}
+.chat-resize:hover { background: color-mix(in srgb, var(--fg-faint) 25%, transparent); }
+/* Pre-first-token bubble: dots + a running clock, so a slow engine start
+   reads as thinking rather than a hang. */
+.chat-pending { display: inline-flex; align-items: baseline; gap: 7px; color: var(--fg-dim); }
+/* This is the "is it hung?" moment — the seconds before the first token, where
+   a cold engine start can run 3-4s. A STATIC ellipsis beside a ticking clock
+   reads as frozen, which is the opposite of what the markup was for. Motion is
+   the whole point, so it breathes; reduced-motion users keep the clock. */
+.chat-pending-dots { animation: skeleton-pulse 1.4s ease-in-out infinite; letter-spacing: 0.1em; }
+@media (prefers-reduced-motion: reduce) { .chat-pending-dots { animation: none; } }
+.chat-pending-clock { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); }
+.chat-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--fg-strong); }
+.chat-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--radius-s);
+  color: var(--fg-dim);
+}
+.chat-close:hover { background: var(--hover-bg); color: var(--fg); }
+
+.chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.chat-empty {
+  margin: auto; max-width: 240px; padding: 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center; color: var(--fg-dim); font-size: 12.5px; line-height: 1.6;
+}
+.chat-empty svg { color: var(--fg-faint); }
+.chat-message { display: flex; flex-direction: column; max-width: 100%; }
+.chat-message.user { align-items: flex-end; }
+.chat-message.assistant { align-items: flex-start; }
+.chat-bubble {
+  padding: 7px 13px; border-radius: 12px; font-size: 13px; line-height: 1.55;
+  max-width: 92%; overflow-wrap: break-word;
+}
+.chat-message.user .chat-bubble { background: var(--selected-bg); color: var(--selected-fg); border-bottom-right-radius: 4px; }
+.chat-message.assistant .chat-bubble { background: var(--editor-bg); box-shadow: 0 0 0 1px var(--border-soft); border-bottom-left-radius: 4px; }
+.chat-bubble p { margin: 4px 0; }
+.chat-bubble code { font-family: var(--mono); font-size: 0.9em; }
+/* Lists: the global reset zeroes ul padding, so default outside markers were
+   painting past the bubble edge (field report). Keep them inside. */
+.chat-bubble ul, .chat-bubble ol { margin: 4px 0; padding-left: 18px; }
+.chat-bubble li { margin: 3px 0; }
+.chat-bubble li::marker { color: var(--fg-faint); }
+/* The librarian's citations (note:// links) read as quiet chips, not raw
+   underlined titles mid-sentence. Truncated; click opens the note. */
+.chat-bubble a[href^='note://'] {
+  display: inline-block; max-width: 200px; vertical-align: -3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 8px; border-radius: 999px; line-height: 17px; font-size: 10.5px;
+  font-family: var(--font);
+  background: var(--hover-bg); color: var(--fg-dim);
+  box-shadow: 0 0 0 1px var(--border-soft);
+  text-decoration: none; cursor: pointer;
+}
+.chat-bubble a[href^='note://']:hover { color: var(--fg); background: var(--accent-soft); }
+.pin-button { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-dim); margin-top: 2px; padding: 1px 9px; border-radius: 999px; }
+.pin-button:hover { color: var(--fg); background: var(--hover-bg); }
+.chat-bubble.chat-error { display: flex; flex-direction: column; gap: 6px; }
+.chat-error-row { display: flex; align-items: flex-start; gap: 6px; }
+.chat-error-icon { color: var(--gild); flex-shrink: 0; margin-top: 2px; }
+.chat-reconnect {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--fg-dim); padding: 2px 9px; border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--border-soft);
+}
+.chat-reconnect:hover { color: var(--fg); background: var(--hover-bg); }
+.chat-connect-cta {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 2px;
+  font-size: 12px; color: var(--selected-fg); background: var(--selected-bg);
+  padding: 6px 13px; border-radius: 999px;
+}
+.chat-connect-cta:hover { filter: brightness(1.06); }
+
+/* A remembered item's receipt. It is not a turn in the conversation, so it
+   reads as a quiet full-width slip rather than a bubble — before this, a
+   thought typed into the panel answered with a toast and left no trace, which
+   in a surface full of answers read as "nothing happened". */
+.chat-kept {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 3px 6px;
+  padding: 6px 10px; border-radius: var(--radius-s);
+  background: var(--accent-soft); box-shadow: 0 0 0 1px var(--border-soft);
+}
+.chat-kept svg { color: var(--fg-faint); flex-shrink: 0; }
+.chat-kept.locked svg { color: var(--gild); }
+.chat-kept-label { flex: 1; min-width: 0; font-size: 11px; color: var(--fg-faint); }
+.chat-kept-undo {
+  flex-shrink: 0; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--input-border); background: transparent;
+  font-size: 10.5px; font-weight: 600; color: var(--fg-dim);
+}
+.chat-kept-undo:hover { color: var(--fg-strong); border-color: var(--fg-faint); }
+.chat-kept-undone { flex-shrink: 0; font-size: 10.5px; color: var(--fg-faint); }
+.chat-kept-text { flex: 1 1 100%; font-size: 12.5px; line-height: 1.5; color: var(--fg); }
+
+.chat-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
+.chat-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 3px 5px 3px 8px; border-radius: 999px;
+  background: var(--hover-bg); color: var(--fg-dim); font-size: 11.5px;
+}
+.chat-chip svg { flex-shrink: 0; color: var(--fg-faint); }
+.chat-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.chat-chip-x {
+  display: flex; align-items: center; justify-content: center;
+  padding: 1px; border-radius: 999px; color: var(--fg-faint);
+}
+.chat-chip-x:hover { color: var(--fg); background: var(--border); }
+
+/* Private mode caption + the echo strip: both used to float above the capture
+   card and now sit directly above the composer they belong to. */
+.private-caption {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 8px 14px 0; text-align: center; line-height: 1.4;
+  font-size: 11px; color: var(--fg-dim);
+}
+.private-caption svg { color: var(--gild); flex-shrink: 0; }
+/* The echo: notes the vault already holds on what is being typed — a quiet
+   widget strip, rows jump to the note. */
+.capture-echo {
+  margin: 8px 12px 0;
+  padding: 7px 10px 6px;
+  background: var(--widget-bg);
+  border: 1px solid color-mix(in srgb, var(--input-border) 80%, transparent);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card-rest);
+}
+.echo-label {
+  font-family: var(--font); font-size: 10px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--fg-faint); margin-bottom: 3px;
+}
+.echo-row {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 3px 6px; border-radius: 6px; text-align: left;
+  color: var(--fg-dim);
+}
+.echo-row:hover { background: var(--hover-bg); color: var(--fg); }
+.echo-row svg { color: var(--fg-faint); flex-shrink: 0; }
+.echo-title {
+  min-width: 0; font-size: 12.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.echo-stale {
+  flex-shrink: 0; margin-left: auto;
+  font-family: var(--font); font-size: 9.5px; letter-spacing: 0.03em;
+  color: var(--clay);
+}
+.echo-row .fresh-dot { flex-shrink: 0; }
+
+.chat-composer {
+  margin: 10px 12px 6px; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 14px;
+}
+.chat-composer:focus-within { border-color: var(--focus-ring); }
+.chat-composer.locked { border-color: var(--gild); }
+/* quiet affordance line: says the composer takes more than typed text */
+.capture-hint {
+  padding: 0 14px 10px; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font); font-size: 10.5px; color: var(--fg-faint);
+}
+.chat-textarea {
+  border: 0; background: transparent; resize: none; color: var(--fg);
+  padding: 10px 12px 4px; font-size: 13px; line-height: 1.5;
+  max-height: 110px; overflow-y: auto;
+}
+.chat-textarea::placeholder { color: var(--fg-faint); }
+.chat-textarea:focus { outline: none; }
+/* Two verbs need two buttons. At the panel's 320px minimum they wrap onto their
+   own row rather than squeezing the engine picker out of the toolbar. */
+.chat-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px 6px 8px; }
+.chat-toolbar-left { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+.chat-toolbar-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.chat-toolbar .lock-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--radius-s);
+}
+.chat-toolbar .lock-toggle:hover { background: var(--hover-bg); color: var(--fg); }
+.chat-toolbar .lock-toggle.locked { color: var(--gild); background: var(--accent-soft); }
+/* The Remember chip keeps the index card's quiet pin look — it is the primary
+   verb here, so it must not read as a second send button. */
+.capture-pin {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--fg);
+  padding: 5px 12px;
+  border: 1px solid var(--accent-line); border-radius: var(--radius-s);
+  background: var(--accent-soft);
+  transition: background 100ms ease;
+}
+.capture-pin:hover:not(:disabled) { background: var(--hover-bg); }
+.capture-pin:disabled { opacity: 0.4; cursor: default; }
+.capture-pin svg { color: var(--fg-dim); flex-shrink: 0; }
+.chat-engine-wrap { position: relative; display: inline-flex; align-items: center; }
+.chat-engine-pill {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--fg-dim); font-size: 12px; max-width: 140px;
+  padding: 3px 18px 3px 6px; border-radius: var(--radius-s);
+}
+.chat-engine-pill:hover { background: var(--hover-bg); }
+.chat-engine-chevron { position: absolute; right: 5px; color: var(--fg-faint); pointer-events: none; }
+.chat-send-btn {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 999px;
+  background: var(--accent); color: var(--button-fg);
+}
+.chat-send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.chat-send-btn:disabled { opacity: 0.4; cursor: default; }
+/* Two verbs, one Enter key. Whichever verb Enter is loaded with keeps its
+   emphasis and the other recedes to a plain affordance, so the toolbar can be
+   read at a glance instead of guessed at — the filled send button used to look
+   like THE action while Enter quietly remembered. */
+.capture-pin:not(.armed) { background: transparent; border-color: var(--input-border); color: var(--fg-dim); }
+.chat-send-btn:not(.armed) { background: transparent; border: 1px solid var(--input-border); color: var(--fg-dim); }
+.chat-send-btn:not(.armed):hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
+
+/* ── Drop overlay & quick capture ────────────────────────────── */
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 150;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, #2b2c33 45%, transparent);
+  backdrop-filter: blur(2px);
+  pointer-events: none; /* the drop lands on the shell container, not here */
+  animation: fade-in 120ms ease-out;
+}
+.drop-frame {
+  position: absolute; inset: 24px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  border: 2px dashed var(--input-border); border-radius: 20px;
+}
+.drop-title { font-family: var(--font); font-size: 18px; color: var(--fg-strong); }
+.drop-sub { font-family: var(--font); font-size: 12px; color: var(--fg-dim); }
+.quick-capture {
+  height: 100vh; display: flex; flex-direction: column;
+  background: var(--editor-bg); padding: 12px 16px; gap: 8px;
+  border: 1px solid var(--widget-border); border-radius: 14px;
+}
+.quick-capture.dragging { border-color: var(--accent); }
+.quick-header { display: flex; align-items: center; justify-content: space-between; }
+.quick-title { font-family: var(--font); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); }
+.lock-toggle { font-size: 12px; color: var(--fg-dim); padding: 2px 10px; border: 1px solid var(--input-border); border-radius: 999px; }
+.lock-toggle.locked { color: var(--fg-strong); border-color: var(--accent-line); background: var(--accent-soft); }
+.quick-capture textarea { flex: 1; resize: none; font-size: 14px; }
+.quick-hint { font-size: 11px; color: var(--fg-faint); }
+
+/* ── Onboarding ───────────────────────────────────────────────── */
+.onboarding {
+  height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--panel-bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--canvas-dot) 1px, transparent 0);
+  background-size: 26px 26px;
+}
+/* Frameless window, no top bar yet: give onboarding a draggable title strip
+   (it also hosts the native controls — traffic lights left on macOS,
+   overlay buttons right on Windows). */
+.onboarding::before {
+  content: ''; position: fixed; top: 0; left: 0; right: 0; height: 52px;
+  -webkit-app-region: drag;
+}
+.onboard-card {
+  width: 560px; max-width: 92vw;
+  background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+  border: none;
+  border-radius: 14px; padding: 32px 36px;
+  box-shadow: var(--shadow-sheet);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.onboard-card section { display: flex; flex-direction: column; gap: 12px; }
+.onboard-card h1 { font-family: var(--font); font-size: 24px; font-weight: 600; color: var(--fg-strong); }
+.onboard-sub { color: var(--fg-dim); font-size: 13px; line-height: 1.5; margin-top: -4px; margin-bottom: 14px; }
+.onboard-card input, .onboard-card textarea { width: 100%; font-size: 14px; padding: 7px 11px; }
+.onboard-card textarea { resize: none; }
+.onboard-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.onboard-steps { display: flex; gap: 6px; margin-bottom: 8px; }
+.step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.step-dot.active { background: var(--accent); }
+.step-dot.done { background: var(--fg-faint); }
+.engine-lights { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.engine-lights li { display: flex; align-items: center; gap: 8px; }
+.engine-name { color: var(--fg); }
+.engine-lights li.engine-ready .engine-name { font-weight: 600; }
+.engine-pill {
+  font-size: 11px; font-weight: 600; color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border-radius: 999px; padding: 1px 8px;
+}
+
+/* ── Settings & diagnostics ──────────────────────────────────── */
+.settings-box { width: min(760px, 92vw); }
+/* diagnostics grows to fit the embedded terminal — no inner scrolling */
+.setting-row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.setting-row > span:first-child { flex: 1 1 auto; min-width: 0; color: var(--fg-dim); }
+/* A one-line label never breaks mid-phrase: "Start at login" split across two
+   lines beside a floating tick read as a rendering fault, not a setting. */
+.setting-row:not(.column) > span:first-child { white-space: nowrap; }
+
+/* A single on/off reads better as a switch than as a lone tick box: it shows
+   its state by position and colour instead of by a 13px glyph, and it gives
+   the row a right-hand control with real weight to align to. */
+.switch {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 auto; position: relative; cursor: pointer;
+  width: 34px; height: 20px; border-radius: 999px;
+  background: var(--border); border: 1px solid transparent;
+  transition: background 140ms ease;
+}
+.switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 999px;
+  background: #fff; box-shadow: 0 1px 2px rgba(25, 28, 40, 0.35);
+  transition: transform 140ms ease;
+}
+.switch:checked { background: var(--teal); }
+.switch:checked::after { transform: translateX(14px); }
+.switch:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.setting-row.column { flex-direction: column; align-items: stretch; }
+.setting-hint { font-family: var(--font); font-size: 11.5px; color: var(--fg-dim); line-height: 1.45; }
+/* MCP connect row: compact left-aligned pills — a stretched grid treatment
+   here once wrapped the labels onto two lines. */
+.mcp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mcp-actions button.secondary { white-space: nowrap; flex: 0 0 auto; }
+.setting-row.column > span:first-child { flex: none; }
+/* Bounded, not full-bleed: a 570px-wide box for one short value looked like a
+   mistake next to a 13px checkbox. Both now end at the same right margin. */
+.setting-row select, .setting-row input[type='time'], .setting-row input[type='text'], .setting-row input:not([type]) {
+  flex: 0 1 320px; min-width: 0;
+}
+/* Section heading — a quiet divider, not a second title competing with the
+   sheet's own. */
+.settings-group-head {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-faint); margin-top: 4px;
+}
+.settings-group { display: flex; flex-direction: column; gap: 10px; }
+/* Facts, not settings: what this install IS. Same key/value shape as the
+   version line they sit with, so nothing here reads as clickable. */
+.settings-facts {
+  display: flex; flex-direction: column; gap: 4px;
+  padding-top: 12px; border-top: 1px solid var(--border);
+}
+.settings-fact { display: flex; align-items: baseline; gap: 12px; font-size: 11.5px; }
+.settings-fact-key { flex: 0 0 auto; color: var(--fg-faint); }
+.settings-fact-value { flex: 1 1 auto; min-width: 0; color: var(--fg-dim); text-align: right; }
+
+/* Onboarding login terminal: a centred modal, not a raw panel jammed in the
+   corner. The dialog is a flex column so the terminal fills the space it's
+   given instead of collapsing to a cut-off strip. */
+.brief-overlay {
+  position: fixed; inset: 0; z-index: 180;
+  background: rgba(28, 29, 38, 0.35);
+  display: flex; align-items: center; justify-content: center;
+}
+.brief-box {
+  width: 520px; max-width: 90vw; max-height: 70vh; overflow-y: auto;
+  background: var(--widget-bg); border: none;
+  border-radius: 14px; padding: 20px 24px;
+  box-shadow: var(--shadow-sheet);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.brief-title { font-family: var(--font); font-weight: 600; color: var(--fg-strong); font-size: 17px; }
+.brief-text { white-space: pre-wrap; font-size: 13px; font-family: var(--font); }
+/* Dialog footer: primary action rightmost, everywhere (settings, diagnostics,
+   onboarding all share this reading order). */
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+/* Version label: pushed to the far left of the action row by its own margin,
+   so the buttons keep their right-aligned order. */
+.brief-box input:not([type='checkbox']) { width: 100%; }
+.brief-box code { font-family: var(--mono); font-size: 12px; }
+
+/* ── GitHub backup dialog (two numbered steps) ───────────────── */
+.github-connect .brief-title { display: flex; align-items: center; gap: 8px; }
+.github-intro { font-size: 13px; font-family: var(--font); color: var(--fg-dim); line-height: 1.5; margin: 0; }
+/* Already backed up: the dialog stops being a wizard and reports. Teal and a
+   check, because "is my vault safe" should be answerable at a glance — and the
+   repo is named, so the answer is verifiable rather than merely reassuring. */
+.github-connected {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; border-radius: var(--radius-m);
+  background: var(--hover-bg); border: 1px solid var(--border);
+}
+.github-connected-head {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 500; color: var(--teal);
+}
+.github-remote {
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg);
+  word-break: break-all; line-height: 1.4;
+}
+.github-connected .setting-row { padding: 0; }
+/* A text-weight action: present for the one user who needs it, never competing
+   with the primary button next to it. */
+.link-button {
+  background: none; border: 0; padding: 4px 2px;
+  font-size: 12px; color: var(--fg-faint); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-button:hover { color: var(--fg-dim); }
+.github-step { display: flex; gap: 12px; align-items: flex-start; }
+.github-step-num {
+  flex: 0 0 22px; height: 22px; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-family: var(--font); font-size: 12px; font-weight: 600;
+}
+.github-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.github-url-label { font-family: var(--font); font-size: 12px; color: var(--fg-dim); }
+.github-error {
+  display: flex; flex-direction: column; gap: 4px;
+  font-family: var(--font); font-size: 12.5px; color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-radius: var(--radius-m); padding: 8px 10px;
+}
+.github-error .setting-hint { color: var(--fg-dim); }
+
+/* ── Toast ────────────────────────────────────────────────────── */
+/* Unified floating-chrome treatment (same as the widget / help button); the
+   old 3px near-black accent bar read as a heavy stray border. Sits above the
+   help dock (16px inset + 40px button + gap) instead of on top of it. */
+.toast {
+  position: fixed; bottom: 72px; right: 16px;
+  background: color-mix(in srgb, var(--widget-bg) 88%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: var(--fg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-card); padding: 9px 16px; z-index: 200; font-size: 12px;
+  box-shadow: var(--shadow-float);
+  animation: slide-in 150ms ease-out;
+}
+@keyframes slide-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Workspace switcher (top-bar vault selector) ─────────────── */
+.workspace-switcher { position: relative; -webkit-app-region: no-drag; }
+.workspace-trigger {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 8px 0 7px; margin-right: 4px;
+  border-radius: var(--radius-m);
+  font-family: var(--font); font-weight: 750; font-size: 15px;
+  color: var(--fg-strong); letter-spacing: -0.015em;
+  transition: background 120ms ease;
+}
+.workspace-trigger:hover { background: var(--hover-bg); }
+.workspace-name { line-height: 1; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.workspace-chevron { color: var(--fg-dim); flex-shrink: 0; }
+.workspace-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
+  min-width: 240px; padding: 6px;
+  background: var(--widget-bg);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-float);
+  display: flex; flex-direction: column; gap: 1px;
+  font-size: 13px; color: var(--fg);
+  animation: fade-in 120ms ease-out;
+}
+.workspace-row {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 7px 12px; text-align: left;
+  border-radius: var(--radius-s); color: var(--fg);
+  transition: background 100ms ease;
+}
+.workspace-row:hover { background: var(--hover-bg); }
+.workspace-row svg { color: var(--fg-dim); flex-shrink: 0; }
+.workspace-row-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-row .workspace-check { color: var(--accent); }
+.workspace-divider { height: 1px; margin: 5px 6px; background: var(--border); }
+/* Full-screen restart notice: shown from the moment a switch/create/join is
+   committed until the main process tears the window down and relaunches. */
+.workspace-switching {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: var(--panel-bg);
+  animation: fade-in 140ms ease-out;
+  cursor: wait;
+}
+.workspace-switching-title { font-size: 15px; font-weight: 600; color: var(--fg); margin-top: 6px; }
+.workspace-switching-sub { font-size: 12px; color: var(--fg-dim); }
+
+/* ── Help panel (floating cheatsheet) ────────────────────────── */
+/* Below the chat slide-over (z 30) so the composer's send button is never
+   intercepted when the button rests in its default bottom-right corner; still
+   above canvas content. */
+.help-dock { position: absolute; right: 16px; bottom: 16px; z-index: 29; }
+/* Help button + panel share the unified floating-chrome treatment. */
+.help-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--input-border); color: var(--fg-dim);
+  box-shadow: var(--shadow-float);
+  transition: color 120ms ease, transform 120ms ease;
+}
+.help-button:hover { color: var(--fg); transform: translateY(-1px); }
+/* First-run discoverability: an accent dot until the panel is opened once.
+   Deliberately static — an infinite animation stalls hidden-window rendering
+   (e2e runs under ENGRAM_HIDDEN) and would be noise anyway. */
+.help-button.pulse::after {
+  content: ''; position: absolute; top: -3px; right: -3px;
+  width: 10px; height: 10px; border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--editor-bg);
+}
+.help-panel {
+  position: absolute; right: 0; bottom: calc(100% + 10px);
+  width: 340px; max-height: 72vh; overflow-y: auto;
+  padding: 15px 16px;
+  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--input-border); border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+  display: flex; flex-direction: column; gap: 15px;
+  font-size: 12.5px; color: var(--fg);
+  animation: fade-in 120ms ease-out;
+}
+.help-section { display: flex; flex-direction: column; gap: 8px; }
+.help-heading {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--fg-faint);
+}
+.help-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.help-quick {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-s);
+  background: var(--hover-bg); color: var(--fg);
+  transition: background 100ms ease, color 100ms ease;
+}
+.help-quick:hover { background: var(--accent-soft); color: var(--fg-strong); }
+.help-quick svg { color: var(--fg-dim); flex-shrink: 0; }
+.help-steps { display: flex; flex-direction: column; gap: 5px; padding-left: 18px; color: var(--fg-dim); line-height: 1.45; }
+.help-legend { display: flex; flex-direction: column; gap: 6px; list-style: none; }
+.help-legend li { display: flex; align-items: center; gap: 9px; color: var(--fg-dim); }
+.help-subheading {
+  margin-top: 4px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--fg-faint);
+}
+/* the card-type set wraps into a compact two-up row rather than a tall column */
+.help-legend-types { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
+.help-legend-types li { gap: 7px; }
+.help-legend-types .help-glyph { color: var(--fg-dim); }
+.help-glyph { width: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.help-shortcuts { width: 100%; border-collapse: collapse; }
+.help-shortcuts td { padding: 3px 0; vertical-align: middle; color: var(--fg-dim); }
+.help-shortcuts td.help-keys { white-space: nowrap; width: 1%; padding-right: 16px; }
+.help-shortcuts kbd {
+  font-family: var(--mono); font-size: 10.5px;
+  padding: 1px 6px; border-radius: var(--radius-s);
+  background: var(--hover-bg); color: var(--fg); border: 1px solid var(--border);
+}
+.help-plus { color: var(--fg-faint); margin: 0 3px; font-size: 10px; }

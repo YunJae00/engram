@@ -1,0 +1,17 @@
+/* Bundled brand fonts — offline-first, no CDN.
+   Pretendard Variable carries the FULL Hangul set, so Korean renders in the
+   brand font instead of falling back to Malgun Gothic. */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+  src: url('./pretendard-variable.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Spline Sans Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('./spline-sans-mono.woff2') format('woff2');
+}

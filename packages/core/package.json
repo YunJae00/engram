@@ -1,0 +1,35 @@
+{
+  "name": "core",
+  "private": true,
+  "version": "0.1.0",
+  "author": "YunJae Kwon",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "engram": "bin/engram.mjs"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "demo:vault": "tsx src/demo/vault-demo.ts",
+    "bench": "node scripts/bench.mjs"
+  },
+  "devDependencies": {
+    "@types/diff": "^8.0.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "diff": "^9.0.0",
+    "gray-matter": "^4.0.3",
+    "mammoth": "^1.12.1",
+    "minisearch": "^7.2.0",
+    "pdfjs-dist": "^6.2.108",
+    "simple-git": "^3.36.0",
+    "tesseract.js": "^5.1.1",
+    "unpdf": "^0.12.2",
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
+  }
+}
