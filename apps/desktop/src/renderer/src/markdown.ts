@@ -12,9 +12,23 @@ function dedent(text: string): string {
   return flat.map((l) => (/^ {4,}\S/.test(l) ? l.trimStart() : l)).join('\n')
 }
 
+// Small models like to wrap a whole markdown answer in a ```markdown fence.
+// Rendered literally that is a grey code block of the answer, so unwrap it —
+// mid-stream too, where the closing fence has not arrived yet.
+function unfence(text: string): string {
+  const lines = text.split('\n')
+  const open = lines.findIndex((l) => l.trim() !== '')
+  if (open < 0 || !/^\s*```[a-zA-Z]*\s*$/.test(lines[open] ?? '')) return text
+  const fences = lines.filter((l) => /^\s*```/.test(l)).length
+  const lastText = lines.reduce((at, l, i) => (l.trim() === '' ? at : i), -1)
+  if (fences === 1) return lines.slice(open + 1).join('\n')
+  if (fences === 2 && /^\s*```\s*$/.test(lines[lastText] ?? '')) return lines.slice(open + 1, lastText).join('\n')
+  return text
+}
+
 // Mid-stream, a capture marker tail may arrive before main strips it from the
 // final text — never show the plumbing.
 export function answerHtml(text: string): string {
   const visible = text.split('<engram:capture')[0] ?? ''
-  return marked.parse(dedent(visible) || '…', { async: false }) as string
+  return marked.parse(dedent(unfence(visible)) || '…', { async: false }) as string
 }
