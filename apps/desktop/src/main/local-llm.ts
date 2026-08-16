@@ -236,6 +236,9 @@ function spawnChild(): Promise<ChildProcess | null> {
   if (childReady) return childReady
   childReady = new Promise<ChildProcess | null>((resolve) => {
     let settled = false
+    // Every exit from this function used to be silent, so a worker that never
+    // started looked exactly like a model that was simply slow.
+    flog('local-llm', `starting the inference worker (${workerPath()})`)
     const proc = fork(workerPath(), [], {
       execPath: process.execPath,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -268,10 +271,15 @@ function spawnChild(): Promise<ChildProcess | null> {
       if (message.type === 'done') waiter.resolve(message.text ?? '')
       else waiter.reject(new Error(message.message ?? 'inference failed'))
     })
-    proc.on('exit', () => {
+    proc.on('exit', (code, signal) => {
+      flog('local-llm', `inference worker exited (code ${code ?? '-'}, signal ${signal ?? '-'})`)
       child = null
       childReady = null
       failAllPending('the inference process exited')
+      if (!settled) {
+        settled = true
+        resolve(null)
+      }
     })
     proc.on('error', (err) => {
       flog('local-llm-worker-error', err)
@@ -287,6 +295,7 @@ function spawnChild(): Promise<ChildProcess | null> {
     setTimeout(() => {
       if (settled) return
       settled = true
+      flog('local-llm-load-failed', 'the inference worker never reported ready')
       resolve(child)
     }, 20_000)
   })
@@ -297,9 +306,15 @@ function spawnChild(): Promise<ChildProcess | null> {
 // nothing, and the load happens where it cannot freeze the UI.
 export async function warmLocalModel(): Promise<void> {
   const spec = await adoptDownloadedModel()
-  if (!spec) return
+  if (!spec) {
+    flog('local-llm', 'warm-up skipped — no model is downloaded')
+    return
+  }
   const proc = await spawnChild()
-  if (!proc) return
+  if (!proc) {
+    flog('local-llm-load-failed', 'warm-up could not start the inference worker')
+    return
+  }
   proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
 }
 

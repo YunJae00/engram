@@ -174,4 +174,11 @@ process.on('message', (raw: unknown) => {
   if (req.type === 'complete') void complete(req, modelPath, ctxTokens)
 })
 
+process.on('uncaughtException', (err: Error) => {
+  send({ type: 'load-failed', message: `worker crashed: ${err.message}` })
+})
+process.on('unhandledRejection', (err: unknown) => {
+  send({ type: 'load-failed', message: `worker rejected: ${String((err as Error)?.message ?? err)}` })
+})
+
 send({ type: 'ready' })
