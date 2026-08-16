@@ -624,6 +624,7 @@ body.bubble-host { background: transparent; }
   cursor: pointer; user-select: none; touch-action: none;
 }
 .bubble-dot:hover { background: var(--accent-hover); }
+.bubble-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bubble-chat {
   display: flex; flex-direction: column; height: 100vh; box-sizing: border-box;
   border-radius: 14px; border: 1px solid var(--border);
@@ -665,6 +666,15 @@ body.bubble-host { background: transparent; }
 }
 .bubble-brand { display: inline-flex; align-items: center; gap: 5px; }
 
+.bubble-stop { background: var(--clay); }
+.bubble-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.bubble-retry {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: inherit; opacity: 0.85;
+  border: 1px solid currentColor; border-radius: 999px; padding: 2px 9px; cursor: pointer;
+}
+.bubble-retry:hover { opacity: 1; }
+
 .bubble-msg {
   max-width: 94%; box-sizing: border-box; min-width: 0;
   font-size: 14px; line-height: 1.6; border-radius: 11px; padding: 9px 13px;
@@ -677,8 +687,24 @@ body.bubble-host { background: transparent; }
 .bubble-msg-body :is(p, ul, ol):last-child { margin-bottom: 0; }
 .bubble-msg-body :is(ul, ol) { padding-left: 18px; }
 .bubble-msg-body code { font-size: 12.5px; overflow-wrap: anywhere; }
-.bubble-msg-body pre { overflow-x: auto; max-width: 100%; }
+/* A narrow floating window has nowhere to scroll sideways to — wrap instead,
+   so a long line is always readable rather than clipped. */
+.bubble-msg-body pre {
+  max-width: 100%; margin: 0 0 6px;
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+}
+.bubble-msg-body pre:last-child { margin-bottom: 0; }
+.bubble-msg-body :is(table, img) { max-width: 100%; }
+.bubble-msg-body table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 12.5px; }
+.bubble-msg-body :is(th, td) { border: 1px solid var(--border-soft); padding: 3px 7px; text-align: left; }
 .bubble-msg-body a { color: inherit; text-decoration: underline; cursor: pointer; }
+/* A citation is a thing you click, not a word you read past. */
+.bubble-msg-body a[href^="note://"] {
+  display: inline-flex; align-items: center; text-decoration: none;
+  border: 1px solid currentColor; border-radius: 999px;
+  padding: 0 7px; margin: 0 1px; font-size: 12px; opacity: 0.85;
+}
+.bubble-msg-body a[href^="note://"]:hover { opacity: 1; background: var(--hover-bg); }
 .bubble-send { flex: none; border: 0; cursor: pointer; }
 /* The panel's input — the bubble's, at panel width. */
 .chat-write { display: flex; gap: 7px; align-items: center; padding: 9px; border-top: 1px solid var(--border-soft); }
@@ -701,12 +727,14 @@ body.bubble-host { background: transparent; }
 }
 .bubble-confirm-actions button:hover { background: var(--hover-bg); }
 .bubble-confirm-yes { background: var(--clay-soft); border-color: var(--clay); color: var(--clay); }
-.bubble-write { padding: 9px; border-top: 1px solid var(--border-soft); display: flex; gap: 7px; align-items: center; }
-.bubble-write input {
-  width: 100%; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
+.bubble-write { padding: 9px; border-top: 1px solid var(--border-soft); display: flex; gap: 7px; align-items: flex-end; }
+.bubble-write textarea {
+  flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
   border: 1px solid var(--input-border); background: var(--input-bg);
-  color: var(--fg); font-size: 12.5px;
+  color: var(--fg); font-size: 12.5px; font-family: inherit; line-height: 1.5;
+  resize: none; overflow-y: auto; max-height: 120px;
 }
+.bubble-write textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* The panel's twin: retrieval receipts inside the pre-first-token bubble. */
 .nudge-why {
   margin: 0; max-height: 190px; overflow-y: auto;

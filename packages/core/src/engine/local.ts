@@ -2,8 +2,10 @@ import { ENGINE_BUDGETS, type Engine, type EngineDetection, type EngineEvent, ty
 
 export interface LocalTransport {
   // One prompt in, the final text out. Reject → error event (classified by
-  // message below); respect the signal for cancellation.
-  complete(prompt: string, opts: { maxTokens?: number; signal?: AbortSignal }): Promise<string>
+  // message below); respect the signal for cancellation. `onToken` receives
+  // the answer in pieces as it is generated — optional, because the CLI's
+  // default transport has nothing to stream.
+  complete(prompt: string, opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void }): Promise<string>
   // Cheap presence check for detection: a model is chosen, on disk, and the
   // runtime can be had. MUST NOT load gigabytes — detection polls this on
   // focus and every few minutes.
@@ -30,23 +32,74 @@ export class LocalAdapter implements Engine {
     const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
     const onAbort = () => controller.abort(new Error('canceled'))
     job.signal?.addEventListener('abort', onAbort, { once: true })
+
+    // The transport hands tokens to a callback; this queue carries them into
+    // the generator in order, so none are lost between yields.
+    const queue: string[] = []
+    let wake: (() => void) | null = null
+    let settled = false
+    let answer = ''
+    let failure: unknown = null
+    const ring = () => {
+      const fn = wake
+      wake = null
+      fn?.()
+    }
+    const work = this.transport
+      .complete(job.prompt, {
+        signal: controller.signal,
+        onToken: (text) => {
+          if (text) queue.push(text)
+          ring()
+        },
+      })
+      .then((text) => {
+        answer = text
+      })
+      .catch((err: unknown) => {
+        failure = err ?? new Error('local model failed')
+      })
+      .finally(() => {
+        settled = true
+        ring()
+      })
+
     try {
-      const text = await this.transport.complete(job.prompt, { signal: controller.signal })
+      let streamed = ''
+      for (;;) {
+        while (queue.length > 0) {
+          const chunk = queue.shift()!
+          streamed += chunk
+          yield { type: 'token', text: chunk }
+        }
+        if (settled) break
+        await new Promise<void>((resolve) => {
+          wake = resolve
+        })
+      }
+      await work
+      if (failure !== null) {
+        // A caller's cancel ends silently — same contract as the claude adapter.
+        if (job.signal?.aborted) return
+        const timedOut = controller.signal.aborted
+        yield {
+          type: 'error',
+          message: timedOut
+            ? `[engram] timed out after ${timeoutMs}ms`
+            : `local model failed: ${String(failure).slice(0, 200)}`,
+          kind: timedOut ? 'timeout' : 'crash',
+        }
+        return
+      }
+      const text = answer.trim() ? answer : streamed
       if (!text.trim()) {
         yield { type: 'error', message: 'local model returned an empty answer', kind: 'unknown' }
         return
       }
-      yield { type: 'token', text }
+      // Nothing streamed (a transport without token support) still owes the
+      // caller the answer as one piece.
+      if (!streamed) yield { type: 'token', text }
       yield { type: 'result', text }
-    } catch (err) {
-      // A caller's cancel ends silently — same contract as the claude adapter.
-      if (job.signal?.aborted) return
-      const timedOut = controller.signal.aborted
-      yield {
-        type: 'error',
-        message: timedOut ? `[engram] timed out after ${timeoutMs}ms` : `local model failed: ${String(err).slice(0, 200)}`,
-        kind: timedOut ? 'timeout' : 'crash',
-      }
     } finally {
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)

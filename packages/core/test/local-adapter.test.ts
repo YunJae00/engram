@@ -69,6 +69,49 @@ describe('LocalAdapter', () => {
     expect(await run).toEqual([])
   })
 
+  it('streams each chunk as its own token event, then the whole answer', async () => {
+    const events = await collect(
+      adapter({
+        complete: async (_p, opts) => {
+          for (const piece of ['Hel', 'lo ', 'there']) {
+            opts.onToken?.(piece)
+            await new Promise((r) => setTimeout(r, 1))
+          }
+          return 'Hello there'
+        },
+      }).run({ prompt: 'p', workdir: process.cwd() as never }),
+    )
+    expect(events.filter((e) => e.type === 'token').map((e) => (e as { text: string }).text)).toEqual([
+      'Hel',
+      'lo ',
+      'there',
+    ])
+    expect(events.at(-1)).toEqual({ type: 'result', text: 'Hello there' })
+  })
+
+  it('a transport that never streams still emits the answer once', async () => {
+    const events = await collect(
+      adapter({ complete: async () => 'whole' }).run({ prompt: 'p', workdir: process.cwd() as never }),
+    )
+    expect(events).toEqual([
+      { type: 'token', text: 'whole' },
+      { type: 'result', text: 'whole' },
+    ])
+  })
+
+  it('a crash after partial streaming still reports the error', async () => {
+    const events = await collect(
+      adapter({
+        complete: async (_p, opts) => {
+          opts.onToken?.('half an ')
+          throw new Error('boom')
+        },
+      }).run({ prompt: 'p', workdir: process.cwd() as never }),
+    )
+    expect(events[0]).toEqual({ type: 'token', text: 'half an ' })
+    expect((events.at(-1) as Extract<EngineEvent, { type: 'error' }>).kind).toBe('crash')
+  })
+
   it('detect mirrors configured()', async () => {
     expect((await adapter({ configured: async () => false }).detect()).installed).toBe(false)
     expect((await adapter({}).detect()).installed).toBe(true)

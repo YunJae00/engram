@@ -178,7 +178,7 @@ let child: ChildProcess | null = null
 let childReady: Promise<ChildProcess | null> | null = null
 let lastUsed = 0
 let nextCallId = 1
-const pending = new Map<number, { resolve: (text: string) => void; reject: (err: Error) => void }>()
+const pending = new Map<number, { resolve: (text: string) => void; reject: (err: Error) => void; onToken?: (text: string) => void }>()
 
 function workerPath(): string {
   // The main bundle is ESM — resolve the sibling entry from this module's own
@@ -219,6 +219,10 @@ function spawnChild(): Promise<ChildProcess | null> {
       }
       const waiter = message.id === undefined ? undefined : pending.get(message.id)
       if (!waiter || message.id === undefined) return
+      if (message.type === 'chunk') {
+        waiter.onToken?.(message.text ?? '')
+        return
+      }
       pending.delete(message.id)
       if (message.type === 'done') waiter.resolve(message.text ?? '')
       else waiter.reject(new Error(message.message ?? 'inference failed'))
@@ -260,7 +264,10 @@ export async function warmLocalModel(): Promise<void> {
 
 let inFlight: Promise<string> | null = null
 
-export async function localComplete(prompt: string, opts: { maxTokens?: number; signal?: AbortSignal }): Promise<string> {
+export async function localComplete(
+  prompt: string,
+  opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void },
+): Promise<string> {
   // Serialize: local inference saturates the machine; overlapping jobs would
   // page-thrash. The librarian is serial anyway (concurrency 1).
   while (inFlight) await inFlight.catch(() => undefined)
@@ -289,9 +296,11 @@ export async function localComplete(prompt: string, opts: { maxTokens?: number; 
         clearTimeout(timer)
         reject(err)
       }
-      pending.set(id, { resolve: settle(resolve), reject: fail })
+      pending.set(id, { resolve: settle(resolve), reject: fail, onToken: opts.onToken })
       const onAbort = (): void => {
         pending.delete(id)
+        // Stop the generation itself, not just our interest in it.
+        proc.send({ type: 'abort', id })
         fail(new Error('canceled'))
       }
       if (opts.signal?.aborted) {

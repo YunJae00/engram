@@ -15,13 +15,30 @@ interface CompleteRequest {
   maxTokens: number
 }
 
-type WorkerRequest = LoadRequest | CompleteRequest | { type: 'unload' }
+type WorkerRequest = LoadRequest | CompleteRequest | { type: 'abort'; id: number } | { type: 'unload' }
+
+interface LlamaContext {
+  dispose(): Promise<void>
+  getSequence(): unknown
+}
+
+interface PromptOptions {
+  maxTokens?: number
+  signal?: AbortSignal
+  stopOnAbortSignal?: boolean
+  onTextChunk?: (text: string) => void
+}
+
+interface ChatSession {
+  prompt(text: string, o?: PromptOptions): Promise<string>
+  resetChatHistory?: () => void
+}
 
 interface Engine {
   llama: { dispose(): Promise<void> }
   model: {
     dispose(): Promise<void>
-    createContext(opts: { contextSize: number }): Promise<{ dispose(): Promise<void>; getSequence(): unknown }>
+    createContext(opts: { contextSize: number }): Promise<LlamaContext>
   }
   path: string
   contextSize: number
@@ -51,6 +68,9 @@ async function ensure(path: string, contextSize: number): Promise<Engine | null>
       const llama = await nlc.getLlama()
       const model = await llama.loadModel({ modelPath: path })
       engine = { llama, model, path, contextSize }
+      // Allocate the context here too: it costs seconds, and paying that during
+      // the background warm-up means the first question does not.
+      await prepareSession(engine, contextSize).catch(() => undefined)
       send({ type: 'loaded', ms: Date.now() - t0, gpu: String((llama as { gpu?: unknown }).gpu ?? 'unknown') })
       return engine
     } catch (err) {
@@ -63,31 +83,63 @@ async function ensure(path: string, contextSize: number): Promise<Engine | null>
   return loading
 }
 
+// One context, one sequence, one session — all reused. Allocating a 4k-token
+// KV cache per question was pure overhead, and a context only ever hands out a
+// limited number of sequences, so taking a fresh one per answer died on the
+// second question with 'No sequences left'. The session's history is cleared
+// instead; the caller sends its own history in the prompt anyway.
+let context: LlamaContext | null = null
+let session: ChatSession | null = null
+
+async function prepareSession(ready: Engine, contextSize: number): Promise<ChatSession> {
+  const nlc = (await import('node-llama-cpp')) as unknown as {
+    LlamaChatSession: new (o: { contextSequence: unknown; chatWrapper: unknown }) => ChatSession
+    // Explicit wrapper on purpose: auto-detection does not know this model
+    // family yet and silently yields empty answers.
+    GemmaChatWrapper: new () => unknown
+  }
+  if (!context) context = await ready.model.createContext({ contextSize })
+  if (!session) {
+    session = new nlc.LlamaChatSession({
+      contextSequence: context.getSequence(),
+      chatWrapper: new nlc.GemmaChatWrapper(),
+    })
+  }
+  return session
+}
+
+// Live cancels, so a user who presses Stop stops the GPU rather than just
+// hiding the answer they are still paying for.
+const running = new Map<number, AbortController>()
+
 async function complete(req: CompleteRequest, path: string, contextSize: number): Promise<void> {
+  const canceller = new AbortController()
+  running.set(req.id, canceller)
   try {
     const ready = await ensure(path, contextSize)
     if (!ready) throw new Error('no local model is active')
-    const nlc = (await import('node-llama-cpp')) as unknown as {
-      LlamaChatSession: new (o: { contextSequence: unknown; chatWrapper: unknown }) => {
-        prompt(text: string, o?: { maxTokens?: number }): Promise<string>
-      }
-      // Explicit wrapper on purpose: auto-detection does not know this model
-      // family yet and silently yields empty answers.
-      GemmaChatWrapper: new () => unknown
-    }
-    const context = await ready.model.createContext({ contextSize })
-    try {
-      const session = new nlc.LlamaChatSession({
-        contextSequence: context.getSequence(),
-        chatWrapper: new nlc.GemmaChatWrapper(),
-      })
-      const text = await session.prompt(req.prompt, { maxTokens: req.maxTokens })
-      send({ type: 'done', id: req.id, text })
-    } finally {
-      await context.dispose().catch(() => undefined)
-    }
+    const warm = session !== null
+    const chat = await prepareSession(ready, contextSize)
+    if (warm) chat.resetChatHistory?.()
+    // Streamed, not batched: the answer takes tens of seconds locally, and
+    // watching it arrive is the difference between slow and broken.
+    const text = await chat.prompt(req.prompt, {
+      maxTokens: req.maxTokens,
+      signal: canceller.signal,
+      stopOnAbortSignal: true,
+      onTextChunk: (chunk) => send({ type: 'chunk', id: req.id, text: chunk }),
+    })
+    send({ type: 'done', id: req.id, text })
   } catch (err) {
+    // A context that failed mid-answer may be poisoned; drop it so the next
+    // question starts clean.
+    const held = context
+    context = null
+    session = null
+    void held?.dispose().catch(() => undefined)
     send({ type: 'failed', id: req.id, message: String((err as Error).message ?? err) })
+  } finally {
+    running.delete(req.id)
   }
 }
 
@@ -102,7 +154,15 @@ process.on('message', (raw: unknown) => {
     void ensure(modelPath, ctxTokens)
     return
   }
+  if (req.type === 'abort') {
+    running.get(req.id)?.abort()
+    return
+  }
   if (req.type === 'unload') {
+    const heldCtx = context
+    context = null
+    session = null
+    void heldCtx?.dispose().catch(() => undefined)
     const held = engine
     engine = null
     if (held) {

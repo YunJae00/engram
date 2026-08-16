@@ -1,4 +1,4 @@
-import { ArrowUp } from 'lucide-react'
+import { ArrowUp, RotateCcw, Square } from 'lucide-react'
 import { marked } from 'marked'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
@@ -21,11 +21,23 @@ function streamingAt(list: Message[]): number {
   return -1
 }
 
+// A model that indents its bullets turns the whole answer into a markdown code
+// block, which then refuses to wrap and runs off the side of a narrow window.
+// Strip the shared indent so prose stays prose.
+function dedent(text: string): string {
+  const lines = text.split('\n')
+  const indents = lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length)
+  const shared = indents.length > 0 ? Math.min(...indents) : 0
+  const flat = shared > 0 ? lines.map((l) => l.slice(shared)) : lines
+  // Even after dedenting, a stray four-space line would still read as code.
+  return flat.map((l) => (/^ {4,}\S/.test(l) ? l.trimStart() : l)).join('\n')
+}
+
 const Bubble = memo(function Bubble({ text, onOpenNote }: { text: string; onOpenNote: (id: string) => void }) {
   // Mid-stream, a capture marker tail may arrive before main strips it from
   // the final text — never show the plumbing.
   const visible = text.split('<engram:capture')[0] ?? ''
-  const html = useMemo(() => marked.parse(visible || '…', { async: false }) as string, [visible])
+  const html = useMemo(() => marked.parse(dedent(visible) || '…', { async: false }) as string, [visible])
   const onClick = (e: React.MouseEvent) => {
     const link = (e.target as HTMLElement).closest('a')
     if (!link) return
@@ -61,10 +73,11 @@ export function BubbleView() {
   const [expanded, setExpanded] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
+  const lastAsk = useRef('')
   const [busy, setBusy] = useState(false)
   const [confirmQuit, setConfirmQuit] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   // Transparent window: only what this view draws exists on screen.
   useEffect(() => {
@@ -103,7 +116,10 @@ export function BubbleView() {
   }, [])
 
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
+    const list = listRef.current
+    if (!list) return
+    const distance = list.scrollHeight - list.scrollTop - list.clientHeight
+    if (distance < 120) list.scrollTo({ top: list.scrollHeight })
   }, [messages])
 
   // Esc: first backs out of the quit confirm, otherwise folds the chat.
@@ -117,6 +133,13 @@ export function BubbleView() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [expanded, confirmQuit])
+
+  useEffect(() => {
+    const box = inputRef.current
+    if (!box) return
+    box.style.height = 'auto'
+    box.style.height = `${Math.min(box.scrollHeight, 120)}px`
+  }, [text])
 
   const expand = async () => {
     await api.bubbleExpand()
@@ -153,16 +176,46 @@ export function BubbleView() {
 
   const openNote = (id: string) => void api.bubbleOpenNote(id)
 
-  const send = async (e: { preventDefault(): void }) => {
-    e.preventDefault()
-    const message = text.trim()
+  const ask = async (message: string) => {
     if (!message || busy) return
-    setText('')
+    lastAsk.current = message
     setBusy(true)
     const history = messages.filter((m) => !m.streaming && !m.error)
     setMessages((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }])
-    // engineId '' → the main process falls back to the first connected engine.
-    await api.chatSend({ engineId: '', message, history, channel: 'bubble' })
+    try {
+      // engineId '' → the main process falls back to the first connected engine.
+      await api.chatSend({ engineId: '', message, history, channel: 'bubble' })
+    } catch (err) {
+      // A rejected send used to leave the placeholder spinning with no way back.
+      setBusy(false)
+      setMessages((prev) => [
+        ...prev.filter((m) => !(m.role === 'assistant' && m.streaming)),
+        { role: 'assistant', text: String((err as Error).message ?? err), error: true },
+      ])
+    }
+  }
+
+  const send = async (e: { preventDefault(): void }) => {
+    e.preventDefault()
+    const message = text.trim()
+    if (!message) return
+    setText('')
+    await ask(message)
+  }
+
+  const stop = async () => {
+    await api.chatAbort('bubble').catch(() => undefined)
+    setBusy(false)
+    setMessages((prev) =>
+      prev.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || t('bubble.stopped') } : m)),
+    )
+  }
+
+  const retry = async () => {
+    const again = lastAsk.current
+    if (!again) return
+    setMessages((prev) => prev.filter((m) => !m.error))
+    await ask(again)
   }
 
   if (!expanded) {
@@ -171,7 +224,14 @@ export function BubbleView() {
         className="bubble-dot"
         data-testid="bubble-dot"
         role="button"
+        tabIndex={0}
         aria-label={t('bubble.open')}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            void expand()
+          }
+        }}
         onPointerDown={onDotDown}
         onPointerMove={onDotMove}
         onPointerUp={onDotUp}
@@ -211,7 +271,18 @@ export function BubbleView() {
         {messages.map((m, i) => (
           <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
             {m.role === 'assistant' ? (
-              m.streaming && !m.text ? <Thinking /> : <Bubble text={m.text} onOpenNote={openNote} />
+              m.error ? (
+                <span className="bubble-fail">
+                  {m.text}
+                  <button className="bubble-retry" onClick={() => void retry()}>
+                    <RotateCcw size={11} strokeWidth={2} aria-hidden /> {t('bubble.retry')}
+                  </button>
+                </span>
+              ) : m.streaming && !m.text ? (
+                <Thinking />
+              ) : (
+                <Bubble text={m.text} onOpenNote={openNote} />
+              )
             ) : (
               m.text
             )}
@@ -219,16 +290,26 @@ export function BubbleView() {
         ))}
       </div>
       <form className="bubble-write" onSubmit={send}>
-        <input
+        <textarea
           ref={inputRef}
           value={text}
+          rows={1}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) void send(e)
+          }}
           placeholder={t('bubble.placeholder')}
           maxLength={2000}
         />
-        <button type="submit" className="chat-send-btn armed bubble-send" aria-label={t('bubble.send')} disabled={busy || !text.trim()}>
-          <ArrowUp size={15} />
-        </button>
+        {busy ? (
+          <button type="button" className="chat-send-btn armed bubble-send bubble-stop" aria-label={t('bubble.stop')} title={t('bubble.stop')} onClick={() => void stop()}>
+            <Square size={11} strokeWidth={2.5} aria-hidden />
+          </button>
+        ) : (
+          <button type="submit" className="chat-send-btn armed bubble-send" aria-label={t('bubble.send')} disabled={!text.trim()}>
+            <ArrowUp size={15} />
+          </button>
+        )}
       </form>
     </div>
   )

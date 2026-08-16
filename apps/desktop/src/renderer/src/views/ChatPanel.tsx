@@ -1,4 +1,4 @@
-import { ArrowUp, FileText, MessageCircle, Pin, PlugZap, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { ArrowUp, FileText, MessageCircle, Pin, PlugZap, RefreshCw, Square, TriangleAlert, X } from 'lucide-react'
 import { marked } from 'marked'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
@@ -163,7 +163,9 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
   }, [])
 
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
+    const list = listRef.current
+    if (!list) return
+    if (list.scrollHeight - list.scrollTop - list.clientHeight < 120) list.scrollTo({ top: list.scrollHeight })
   }, [entries])
 
   const sendMessage = async (message: string) => {
@@ -173,13 +175,26 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
     setWaitSeconds(0)
     const history = entries.filter((e): e is ChatMessage => !isKept(e) && !e.streaming)
     setEntries((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true, tokens: 0 }])
-    await api.chatSend({
-      engineId: '',
-      message,
-      history,
-      noteId: activeNote?.id,
-      channel: 'panel',
-    })
+    try {
+      await api.chatSend({ engineId: '', message, history, noteId: activeNote?.id, channel: 'panel' })
+    } catch (err) {
+      // A rejected send left the placeholder spinning with nothing behind it.
+      setBusy(false)
+      setEntries((prev) => [
+        ...prev.filter((e) => isKept(e) || !(e.role === 'assistant' && e.streaming)),
+        { role: 'assistant', text: String((err as Error).message ?? err), error: true },
+      ])
+    }
+  }
+
+  const stop = async () => {
+    await api.chatAbort('panel').catch(() => undefined)
+    setBusy(false)
+    setEntries((prev) =>
+      prev.map((e) =>
+        !isKept(e) && e.role === 'assistant' && e.streaming ? { ...e, streaming: false, text: e.text || t('bubble.stopped') } : e,
+      ),
+    )
   }
 
   const submit = (e: { preventDefault(): void }) => {
@@ -264,6 +279,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
                 // carry a running clock so a slow start reads as thinking.
                 <div className="chat-bubble chat-pending">
                   <span className="chat-pending-dots">…</span>
+                  <span>{t(waitSeconds < 8 ? 'bubble.thinking' : waitSeconds < 30 ? 'bubble.thinkingLong' : 'bubble.thinkingCold')}</span>
                   {waitSeconds > 0 && <span className="chat-pending-clock">{waitSeconds}s</span>}
                 </div>
               ) : (
@@ -300,15 +316,28 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
           placeholder={noEngine ? t('chat.connectPlaceholder') : t('chat.placeholder')}
           maxLength={2000}
         />
-        <button
-          type="submit"
-          className="chat-send-btn armed"
-          data-testid="chat-send"
-          aria-label={t('chat.send')}
-          disabled={busy || noEngine || !text.trim()}
-        >
-          <ArrowUp size={15} />
-        </button>
+        {busy ? (
+          <button
+            type="button"
+            className="chat-send-btn armed bubble-stop"
+            data-testid="chat-stop"
+            aria-label={t('bubble.stop')}
+            title={t('bubble.stop')}
+            onClick={() => void stop()}
+          >
+            <Square size={11} strokeWidth={2.5} aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="chat-send-btn armed"
+            data-testid="chat-send"
+            aria-label={t('chat.send')}
+            disabled={noEngine || !text.trim()}
+          >
+            <ArrowUp size={15} />
+          </button>
+        )}
       </form>
     </aside>
   )

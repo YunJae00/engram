@@ -790,6 +790,10 @@ export function registerIpc(ctx: VaultContext): void {
     umbrella: await loadUmbrellaTerms(paths),
   }))
 
+  // Stopping a running answer is the difference between waiting and being
+  // stuck; the plumbing existed, nothing ever called it from the UI.
+  ipcMain.handle('chat:abort', (_e, channel?: 'panel' | 'bubble') => abortAllChat(channel))
+
   ipcMain.handle('notes:list', () => ctx.store.getAll().map(toDto))
 
   ipcMain.handle('memory:fading', () => {

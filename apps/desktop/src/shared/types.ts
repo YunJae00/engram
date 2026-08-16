@@ -319,6 +319,8 @@ export interface EngramApi {
   subjectKnowledge(): Promise<SubjectKnowledgeDto>
   // meaning-level edges (close-enough-to-link pairs) for the Brain grouping
   brainFabric(): Promise<BrainFabricDto>
+  // Stop a running answer on one surface (or every surface when omitted).
+  chatAbort(channel?: 'panel' | 'bubble'): Promise<void>
   fadingMemories(): Promise<FadingMemoryDto[]>
   openLoops(): Promise<OpenLoopDto[]>
   latestBrief(): Promise<string | null>

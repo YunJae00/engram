@@ -201,7 +201,8 @@ async function createMainWindow(hash?: string): Promise<void> {
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
   mainWin.on('leave-full-screen', () => broadcast({ type: 'window:fullscreen', value: false }))
   mainWin.on('close', (event) => {
-    abortAllChat()
+    // The bubble outlives the shell window — only stop the panel's own stream.
+    abortAllChat('panel')
     if (!quitting && !isHidden) {
       event.preventDefault()
       mainWin?.hide()
@@ -539,7 +540,7 @@ async function bootVault(root: string): Promise<VaultContext> {
     startSemantic(ctx)
     // Load the model while nobody is waiting, in the worker where it cannot
     // freeze a window — the first question then answers straight away.
-    setTimeout(() => void warmLocalModel(), 20_000)
+    setTimeout(() => void warmLocalModel(), 8_000)
   }
   return ctx
 }

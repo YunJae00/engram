@@ -87,6 +87,7 @@ const api: EngramApi = {
   sweep: () => ipcRenderer.invoke('sweep:run'),
   subjectKnowledge: () => ipcRenderer.invoke('aliases:knowledge'),
   brainFabric: () => ipcRenderer.invoke('brain:fabric'),
+  chatAbort: (channel?: 'panel' | 'bubble') => ipcRenderer.invoke('chat:abort', channel),
   fadingMemories: () => ipcRenderer.invoke('memory:fading'),
   openLoops: () => ipcRenderer.invoke('loops:list'),
   latestBrief: () => ipcRenderer.invoke('brief:latest'),

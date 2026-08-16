@@ -2,14 +2,19 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import { broadcast } from './ipc.js'
+import { warmLocalModel } from './local-llm.js'
 
 const COLLAPSED = { width: 56, height: 56 }
 const EXPANDED = { width: 440, height: 640 }
+const MIN = { width: 340, height: 380 }
 const MARGIN = 16
 
 interface BubbleState {
   x?: number
   y?: number
+  // The chat is resizable; the size the user settled on is theirs to keep.
+  w?: number
+  h?: number
   // Hidden via the tray toggle. The default is visible: the button being
   // discoverable without reading any docs is its entire reason to exist.
   hidden?: boolean
@@ -106,15 +111,14 @@ export async function startBubble(deps: {
   ipcMain.handle('bubble:expand', () => {
     if (!win || win.isDestroyed()) return
     const [bx = 0, by = 0] = win.getPosition()
+    const size = { width: state.w ?? EXPANDED.width, height: state.h ?? EXPANDED.height }
     // Grow up-left from the button so the corner the user knows stays put.
-    const { x, y } = clamp(
-      bx + COLLAPSED.width - EXPANDED.width,
-      by + COLLAPSED.height - EXPANDED.height,
-      EXPANDED.width,
-      EXPANDED.height,
-    )
+    const { x, y } = clamp(bx + COLLAPSED.width - size.width, by + COLLAPSED.height - size.height, size.width, size.height)
     expanded = true
-    win.setBounds({ x, y, ...EXPANDED })
+    void warmLocalModel()
+    win.setResizable(true)
+    win.setMinimumSize(MIN.width, MIN.height)
+    win.setBounds({ x, y, ...size })
     win.focus()
   })
 
@@ -129,6 +133,10 @@ export async function startBubble(deps: {
       COLLAPSED.height,
     )
     expanded = false
+    state.w = bounds.width
+    state.h = bounds.height
+    win.setMinimumSize(1, 1)
+    win.setResizable(false)
     win.setBounds({ x, y, ...COLLAPSED })
     state.x = x
     state.y = y
@@ -146,7 +154,8 @@ export async function startBubble(deps: {
   ipcMain.on('bubble:drag', (_e, dx: number, dy: number) => {
     if (!win || win.isDestroyed() || expanded) return
     const [x = 0, y = 0] = win.getPosition()
-    win.setPosition(Math.round(x + dx), Math.round(y + dy))
+    const spot = clamp(Math.round(x + dx), Math.round(y + dy), COLLAPSED.width, COLLAPSED.height)
+    win.setPosition(spot.x, spot.y)
   })
 
   // The renderer has already asked "really quit?" — this is the yes.
