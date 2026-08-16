@@ -64,6 +64,7 @@ function Shell() {
       // A citation clicked in the floating bubble: the main process already
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
+      else if (e.type === 'brain:setup') setSettingsOpen(true)
     })
   }, [showToast, t, openNote])
 
@@ -142,6 +143,8 @@ function Shell() {
     }
     window.addEventListener('engram:toggle-chat', toggleChat)
     window.addEventListener('engram:open-palette', openPalette)
+    const openBrainSetup = () => setSettingsOpen(true)
+    window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
     window.addEventListener('engram:open-import', openImport)
     window.addEventListener('engram:open-github', openGithub)
@@ -151,6 +154,7 @@ function Shell() {
     return () => {
       window.removeEventListener('engram:toggle-chat', toggleChat)
       window.removeEventListener('engram:open-palette', openPalette)
+      window.removeEventListener('engram:open-brain-setup', openBrainSetup)
       window.removeEventListener('engram:open-diagnostics', openDiag)
       window.removeEventListener('engram:open-import', openImport)
       window.removeEventListener('engram:open-github', openGithub)

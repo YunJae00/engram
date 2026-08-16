@@ -1,5 +1,5 @@
 import { Command } from 'cmdk'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SearchHitDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useApp } from '../state.js'
@@ -12,18 +12,37 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
   const { notes, openNote, openReview, openInbox, showToast, t } = useApp()
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHitDto[]>([])
+  const [searching, setSearching] = useState(false)
+  const searchSeq = useRef(0)
 
   useEffect(() => {
     setQuery('')
     setHits([])
+    setSearching(false)
   }, [mode])
 
   useEffect(() => {
     if (mode !== 'search' || query.trim().length === 0) {
       setHits([])
+      setSearching(false)
       return
     }
-    const timer = window.setTimeout(() => void api.search(query).then(setHits), 150)
+    setSearching(true)
+    // Sequence guard: a slow answer for an earlier keystroke must not overwrite
+    // the results for what the user has actually typed by now.
+    const stamp = ++searchSeq.current
+    const timer = window.setTimeout(() => {
+      void api
+        .search(query)
+        .then((found) => {
+          if (stamp !== searchSeq.current) return
+          setHits(found)
+          setSearching(false)
+        })
+        .catch(() => {
+          if (stamp === searchSeq.current) setSearching(false)
+        })
+    }, 150)
     return () => window.clearTimeout(timer)
   }, [mode, query])
 
@@ -56,7 +75,7 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
         autoFocus
       />
       <Command.List data-testid="palette-list">
-        <Command.Empty>{t('palette.empty')}</Command.Empty>
+        <Command.Empty>{searching ? t('palette.searching') : t('palette.empty')}</Command.Empty>
 
         {mode === 'search' && (
           <>

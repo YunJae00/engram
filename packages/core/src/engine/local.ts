@@ -31,6 +31,11 @@ export class LocalAdapter implements Engine {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
     const onAbort = () => controller.abort(new Error('canceled'))
+    // Cancelled before we even started: the listener below would never fire.
+    if (job.signal?.aborted) {
+      clearTimeout(timer)
+      return
+    }
     job.signal?.addEventListener('abort', onAbort, { once: true })
 
     // The transport hands tokens to a callback; this queue carries them into

@@ -1,7 +1,8 @@
 import { app, ipcMain, net } from 'electron'
 import { fork, type ChildProcess } from 'node:child_process'
-import { createWriteStream } from 'node:fs'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { createWriteStream, type WriteStream } from 'node:fs'
+import { once } from 'node:events'
+import { mkdir, readFile, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -103,21 +104,38 @@ const downloads = new Map<string, { controller: AbortController }>()
 
 async function chromiumStream(
   url: string,
-  onPart: (chunk: Uint8Array) => void,
+  from: number,
+  onPart: (chunk: Uint8Array) => Promise<void>,
   signal: AbortSignal,
-  onTotal: (n: number) => void,
+  onStart: (resumed: boolean, total: number) => void,
 ): Promise<void> {
   // Chromium's fetch, not Node's: corporate TLS-inspecting proxies break
   // Node's fetch while the browser stack negotiates fine.
-  const res = await net.fetch(url, { signal })
+  const res = await net.fetch(url, {
+    signal,
+    ...(from > 0 ? { headers: { Range: `bytes=${from}-` } } : {}),
+  })
   if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${res.status}`)
-  const total = Number(res.headers.get('content-length') ?? 0)
-  if (total > 0) onTotal(total)
+  // 206 means the server honoured the Range and the body continues where the
+  // partial file stopped; a 200 answer restarts from byte zero whatever we asked.
+  const resumed = from > 0 && res.status === 206
+  const length = Number(res.headers.get('content-length') ?? 0)
+  onStart(resumed, resumed ? from + length : length)
   const reader = res.body.getReader()
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
-    if (value) onPart(value)
+    if (value) await onPart(value)
+  }
+}
+
+async function freeSpaceOk(need: number): Promise<boolean> {
+  try {
+    const { bsize, bavail } = await statfs(modelsDir())
+    return bsize * bavail > need
+  } catch {
+    // Unknown is not a reason to refuse — the write error path catches it.
+    return true
   }
 }
 
@@ -128,18 +146,27 @@ async function downloadModel(id: string): Promise<{ ok: boolean; log?: string }>
   await mkdir(modelsDir(), { recursive: true })
   const finalPath = join(modelsDir(), spec.file)
   const partPath = `${finalPath}.part`
+  // Multi-gigabyte writes onto a nearly full disk fail late and confusingly.
+  const prior = await stat(partPath).catch(() => null)
+  if (!(await freeSpaceOk(spec.approxGB * 1e9 - (prior?.size ?? 0))))
+    return { ok: false, log: `not enough free disk space — ${spec.approxGB}GB needed` }
   const controller = new AbortController()
   downloads.set(id, { controller })
   announce()
-  let received = 0
+  let received = prior?.size ?? 0
   let total = spec.approxGB * 1e9
   let lastTick = 0
+  const sink: { out: WriteStream | null } = { out: null }
+  let writeFailure: Error | null = null
   try {
-    const out = createWriteStream(partPath)
     await chromiumStream(
       spec.url,
-      (chunk) => {
-        out.write(chunk)
+      prior?.size ?? 0,
+      async (chunk) => {
+        if (writeFailure) throw writeFailure
+        // Backpressure: a disk slower than the network used to buffer the
+        // whole difference in memory.
+        if (!sink.out!.write(chunk)) await once(sink.out!, 'drain')
         received += chunk.length
         const now = Date.now()
         if (now - lastTick > 500) {
@@ -148,19 +175,33 @@ async function downloadModel(id: string): Promise<{ ok: boolean; log?: string }>
         }
       },
       controller.signal,
-      (n) => {
-        total = n
+      (resumed, size) => {
+        if (size > 0) total = size
+        if (!resumed) received = 0
+        sink.out = createWriteStream(partPath, { flags: resumed ? 'a' : 'w' })
+        // Without this the first failed write (a full disk) is an unhandled
+        // error per chunk, each one a synchronous log write on the main thread.
+        sink.out.on('error', (err: Error) => {
+          writeFailure = err
+          controller.abort()
+        })
       },
     )
-    await new Promise<void>((resolve, reject) => out.end((err: unknown) => (err ? reject(err) : resolve())))
+    if (writeFailure) throw writeFailure
+    await new Promise<void>((resolve, reject) => sink.out?.end((err: unknown) => (err ? reject(err) : resolve())))
     await rename(partPath, finalPath)
     broadcast({ type: 'localmodel:progress', id, received: total, total })
     return { ok: true }
   } catch (err) {
-    await rm(partPath, { force: true }).catch(() => undefined)
-    if (controller.signal.aborted) return { ok: false, log: 'canceled' }
-    flog('localmodel-download-failed', err)
-    return { ok: false, log: String(err).slice(0, 200) }
+    sink.out?.destroy()
+    // Only a real cancel throws the partial away. A network drop keeps it, so
+    // pressing Download again resumes instead of restarting from zero.
+    if (controller.signal.aborted && !writeFailure) {
+      await rm(partPath, { force: true }).catch(() => undefined)
+      return { ok: false, log: 'canceled' }
+    }
+    flog('localmodel-download-failed', writeFailure ?? err)
+    return { ok: false, log: String(writeFailure ?? err).slice(0, 200) }
   } finally {
     downloads.delete(id)
     announce()

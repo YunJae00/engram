@@ -74,6 +74,9 @@ export function ReviewDetail() {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+      // Bare letters only: Ctrl/Cmd+A is select-all, and it used to approve the
+      // card and write the change to the vault with no undo.
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'a' || e.key === 'A') void approve()
       else if (e.key === 'r' || e.key === 'R') setRejecting(true)
       else if (e.key === 'e' || e.key === 'E') setEditing((v) => !v)

@@ -1,7 +1,7 @@
-import { ArrowUp, RotateCcw, Square } from 'lucide-react'
-import { marked } from 'marked'
+import { ArrowUp, Download, RotateCcw, Square } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { answerHtml } from '../markdown.js'
 import { Logomark } from '../components/Icon.js'
 import { t } from '../i18n.js'
 import type { ChatTurnDto } from '../../../shared/types.js'
@@ -21,23 +21,8 @@ function streamingAt(list: Message[]): number {
   return -1
 }
 
-// A model that indents its bullets turns the whole answer into a markdown code
-// block, which then refuses to wrap and runs off the side of a narrow window.
-// Strip the shared indent so prose stays prose.
-function dedent(text: string): string {
-  const lines = text.split('\n')
-  const indents = lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length)
-  const shared = indents.length > 0 ? Math.min(...indents) : 0
-  const flat = shared > 0 ? lines.map((l) => l.slice(shared)) : lines
-  // Even after dedenting, a stray four-space line would still read as code.
-  return flat.map((l) => (/^ {4,}\S/.test(l) ? l.trimStart() : l)).join('\n')
-}
-
 const Bubble = memo(function Bubble({ text, onOpenNote }: { text: string; onOpenNote: (id: string) => void }) {
-  // Mid-stream, a capture marker tail may arrive before main strips it from
-  // the final text — never show the plumbing.
-  const visible = text.split('<engram:capture')[0] ?? ''
-  const html = useMemo(() => marked.parse(dedent(visible) || '…', { async: false }) as string, [visible])
+  const html = useMemo(() => answerHtml(text), [text])
   const onClick = (e: React.MouseEvent) => {
     const link = (e.target as HTMLElement).closest('a')
     if (!link) return
@@ -56,7 +41,7 @@ function Thinking() {
   }, [])
   // The first answer after a cold start waits on the model itself; say so
   // rather than letting the silence look like a hang.
-  const key = seconds < 8 ? 'bubble.thinking' : seconds < 30 ? 'bubble.thinkingLong' : 'bubble.thinkingCold'
+  const key = seconds < 6 ? 'bubble.thinking' : seconds < 20 ? 'bubble.thinkingLong' : 'bubble.thinkingCold'
   return (
     <span className="bubble-thinking" data-testid="bubble-thinking">
       <span className="bubble-dots" aria-hidden>
@@ -75,7 +60,11 @@ export function BubbleView() {
   const [text, setText] = useState('')
   const lastAsk = useRef('')
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [confirmQuit, setConfirmQuit] = useState(false)
+  // With no brain downloaded there is nothing to ask; say so up front instead
+  // of taking the question and failing it.
+  const [hasBrain, setHasBrain] = useState(true)
   const listRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -86,7 +75,15 @@ export function BubbleView() {
   }, [])
 
   useEffect(() => {
+    void api.engines().then((list) => setHasBrain(list.length > 0))
+  }, [])
+
+  useEffect(() => {
     return api.onEvent((event) => {
+      if (event.type === 'engines:changed') setHasBrain(event.engines.length > 0)
+      // Not busy means nothing of ours is running: a stream still arriving is
+      // one we already stopped, and must not write into a newer bubble.
+      if (!busyRef.current) return
       // Every window hears every broadcast — only the bubble's own stream.
       if (event.type === 'chat:token' && event.channel === 'bubble') {
         setMessages((prev) => {
@@ -97,6 +94,7 @@ export function BubbleView() {
           return next
         })
       } else if (event.type === 'chat:done' && event.channel === 'bubble') {
+        busyRef.current = false
         setBusy(false)
         setMessages((prev) => {
           const at = streamingAt(prev)
@@ -106,6 +104,7 @@ export function BubbleView() {
           return next
         })
       } else if (event.type === 'chat:error' && event.channel === 'bubble') {
+        busyRef.current = false
         setBusy(false)
         setMessages((prev) => [
           ...prev.filter((m) => !(m.role === 'assistant' && m.streaming)),
@@ -179,6 +178,7 @@ export function BubbleView() {
   const ask = async (message: string) => {
     if (!message || busy) return
     lastAsk.current = message
+    busyRef.current = true
     setBusy(true)
     const history = messages.filter((m) => !m.streaming && !m.error)
     setMessages((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }])
@@ -187,6 +187,7 @@ export function BubbleView() {
       await api.chatSend({ engineId: '', message, history, channel: 'bubble' })
     } catch (err) {
       // A rejected send used to leave the placeholder spinning with no way back.
+      busyRef.current = false
       setBusy(false)
       setMessages((prev) => [
         ...prev.filter((m) => !(m.role === 'assistant' && m.streaming)),
@@ -204,6 +205,7 @@ export function BubbleView() {
   }
 
   const stop = async () => {
+    busyRef.current = false
     await api.chatAbort('bubble').catch(() => undefined)
     setBusy(false)
     setMessages((prev) =>
@@ -267,7 +269,20 @@ export function BubbleView() {
         </div>
       )}
       <div className="bubble-list" ref={listRef}>
-        {messages.length === 0 && <div className="bubble-hint">{t('bubble.hint')}</div>}
+        {messages.length === 0 && (
+          <div className="bubble-hint">
+            {hasBrain ? (
+              t('bubble.hint')
+            ) : (
+              <>
+                {t('bubble.noBrain')}
+                <button className="bubble-retry" onClick={() => void api.bubbleSetup()}>
+                  <Download size={11} strokeWidth={2} aria-hidden /> {t('bubble.getBrain')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {messages.map((m, i) => (
           <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
             {m.role === 'assistant' ? (
@@ -298,8 +313,9 @@ export function BubbleView() {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) void send(e)
           }}
-          placeholder={t('bubble.placeholder')}
+          placeholder={hasBrain ? t('bubble.placeholder') : t('bubble.noBrainPlaceholder')}
           maxLength={2000}
+          disabled={!hasBrain}
         />
         {busy ? (
           <button type="button" className="chat-send-btn armed bubble-send bubble-stop" aria-label={t('bubble.stop')} title={t('bubble.stop')} onClick={() => void stop()}>

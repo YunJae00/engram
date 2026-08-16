@@ -99,15 +99,25 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
     }
   }, [vaultReady])
 
+  const [syncing, setSyncing] = useState(false)
   const onSyncClick = async () => {
-    if (sync?.state === 'behind' || sync?.state === 'diverged') {
-      setBrief(await api.syncBrief())
-    } else if (sync && sync.state !== 'no-remote') {
-      const result = await api.syncNow()
-      setSync(result)
-      showToast(result.conflictCards ? t('toast.syncedConflicts', { count: result.conflictCards }) : t('toast.synced'))
-    } else {
-      showToast(t('toast.noTeam'))
+    if (syncing) return
+    setSyncing(true)
+    try {
+      if (sync?.state === 'behind' || sync?.state === 'diverged') {
+        setBrief(await api.syncBrief())
+      } else if (sync && sync.state !== 'no-remote') {
+        const result = await api.syncNow()
+        setSync(result)
+        showToast(result.conflictCards ? t('toast.syncedConflicts', { count: result.conflictCards }) : t('toast.synced'))
+      } else {
+        showToast(t('toast.noTeam'))
+      }
+    } catch (err) {
+      // A rejected pull/push used to be swallowed: the button simply did nothing.
+      showToast(t('toast.syncFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -198,7 +208,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
       {/* Solo vaults have no remote — a "sync —" placeholder is chrome noise,
           so the button only exists once there is something to sync with. */}
       {sync && sync.state !== 'no-remote' && (
-        <button className="topbar-status as-button" data-testid="sync-status" onClick={() => void onSyncClick()}>
+        <button className="topbar-status as-button" data-testid="sync-status" disabled={syncing} onClick={() => void onSyncClick()}>
           {syncLabel(t, sync)}
         </button>
       )}

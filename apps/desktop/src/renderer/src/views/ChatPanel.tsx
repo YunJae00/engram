@@ -1,8 +1,8 @@
 import { ArrowUp, FileText, MessageCircle, Pin, PlugZap, RefreshCw, Square, TriangleAlert, X } from 'lucide-react'
-import { marked } from 'marked'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { answerHtml } from '../markdown.js'
 import { useApp } from '../state.js'
 
 interface KeptEntry {
@@ -38,10 +38,10 @@ interface ChatPanelProps {
   onIntentConsumed?: () => void
 }
 
-// Open the diagnostics/reconnect overlay from anywhere (the shell listens for
-// this — same window-event idiom as engram:toggle-chat).
-function openDiagnostics(): void {
-  window.dispatchEvent(new Event('engram:open-diagnostics'))
+// Diagnostics can only REPORT that there is no engine; Settings is where a
+// brain is actually downloaded and picked. No-engine CTAs go there.
+function openBrainSetup(): void {
+  window.dispatchEvent(new Event('engram:open-brain-setup'))
 }
 
 // Since remembered items sit in the same list, a token can no longer assume the
@@ -63,9 +63,7 @@ function streamingIndex(entries: Entry[]): number {
 // instead of navigating (the receipt behind the answer).
 const ChatBubble = memo(function ChatBubble({ text }: { text: string }) {
   const { openNote } = useApp()
-  // A capture marker tail can stream in before main strips it — hide it.
-  const visible = text.split('<engram:capture')[0] ?? ''
-  const html = useMemo(() => marked.parse(visible || '…', { async: false }) as string, [visible])
+  const html = useMemo(() => answerHtml(text), [text])
   const onClick = (e: React.MouseEvent) => {
     const link = (e.target as HTMLElement).closest('a')
     if (!link) return
@@ -76,14 +74,17 @@ const ChatBubble = memo(function ChatBubble({ text }: { text: string }) {
   return <div className="chat-bubble" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
 })
 
+let keptTranscript: Entry[] = []
+
 const CHAT_MIN_W = 320
 const CHAT_MAX_W = 760
 const CHAT_WIDTH_KEY = 'engram.chat.width'
 
 export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps) {
   const { engines, notes, sheetNoteId, showToast, refresh, t } = useApp()
-  const [entries, setEntries] = useState<Entry[]>([])
+  const [entries, setEntries] = useState<Entry[]>(keptTranscript)
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [suppressRef, setSuppressRef] = useState(false)
   const [text, setText] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -103,6 +104,17 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
     }, 1000)
     return () => window.clearInterval(timer)
   }, [busy])
+
+  useEffect(() => {
+    keptTranscript = entries
+  }, [entries])
+
+  // Unmount (✕, Ctrl+L, the help panel) must end the run, not orphan it.
+  useEffect(() => {
+    return () => {
+      if (busyRef.current) void api.chatAbort('panel').catch(() => undefined)
+    }
+  }, [])
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault()
@@ -133,6 +145,9 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
   useEffect(() => {
     return api.onEvent((event) => {
       // The floating bubble shares the pipeline; its stream is not ours.
+      // Not busy means nothing of ours is running: a stream still arriving is
+      // one we already stopped, and must not write into a newer bubble.
+      if (!busyRef.current) return
       if (event.type === 'chat:token' && event.channel === 'panel') {
         setEntries((prev) => {
           const at = streamingIndex(prev)
@@ -143,6 +158,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
           return next
         })
       } else if (event.type === 'chat:done' && event.channel === 'panel') {
+        busyRef.current = false
         setBusy(false)
         setEntries((prev) => {
           const at = streamingIndex(prev)
@@ -153,6 +169,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
           return next
         })
       } else if (event.type === 'chat:error' && event.channel === 'panel') {
+        busyRef.current = false
         setBusy(false)
         setEntries((prev) => [
           ...prev.filter((m) => isKept(m) || !(m.role === 'assistant' && m.streaming)),
@@ -170,6 +187,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
 
   const sendMessage = async (message: string) => {
     if (!message || busy || engines.length === 0) return
+    busyRef.current = true
     setBusy(true)
     askedAtRef.current = Date.now()
     setWaitSeconds(0)
@@ -179,6 +197,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
       await api.chatSend({ engineId: '', message, history, noteId: activeNote?.id, channel: 'panel' })
     } catch (err) {
       // A rejected send left the placeholder spinning with nothing behind it.
+      busyRef.current = false
       setBusy(false)
       setEntries((prev) => [
         ...prev.filter((e) => isKept(e) || !(e.role === 'assistant' && e.streaming)),
@@ -188,6 +207,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
   }
 
   const stop = async () => {
+    busyRef.current = false
     await api.chatAbort('panel').catch(() => undefined)
     setBusy(false)
     setEntries((prev) =>
@@ -247,7 +267,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
             <MessageCircle size={26} />
             <span>{noEngine ? t('chat.emptyOffline') : t('chat.empty')}</span>
             {noEngine && (
-              <button className="chat-connect-cta" data-testid="chat-connect" onClick={openDiagnostics}>
+              <button className="chat-connect-cta" data-testid="chat-connect" onClick={openBrainSetup}>
                 <PlugZap size={14} strokeWidth={1.8} aria-hidden /> {t('chat.connectAi')}
               </button>
             )}
@@ -268,7 +288,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
                     <TriangleAlert className="chat-error-icon" size={12} strokeWidth={1.8} aria-hidden />
                     <span>{entry.text}</span>
                   </div>
-                  <button className="chat-reconnect" data-testid="chat-reconnect" onClick={openDiagnostics}>
+                  <button className="chat-reconnect" data-testid="chat-reconnect" onClick={openBrainSetup}>
                     <RefreshCw size={11} strokeWidth={1.8} aria-hidden /> {t('chat.reconnect')}
                   </button>
                 </div>
@@ -279,7 +299,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
                 // carry a running clock so a slow start reads as thinking.
                 <div className="chat-bubble chat-pending">
                   <span className="chat-pending-dots">…</span>
-                  <span>{t(waitSeconds < 8 ? 'bubble.thinking' : waitSeconds < 30 ? 'bubble.thinkingLong' : 'bubble.thinkingCold')}</span>
+                  <span>{t(waitSeconds < 6 ? 'bubble.thinking' : waitSeconds < 20 ? 'bubble.thinkingLong' : 'bubble.thinkingCold')}</span>
                   {waitSeconds > 0 && <span className="chat-pending-clock">{waitSeconds}s</span>}
                 </div>
               ) : (

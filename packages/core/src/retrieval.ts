@@ -2,6 +2,10 @@ import { collectResult, extractJson, type Engine, type EngineCwd } from './engin
 import type { SearchHit } from './search.js'
 
 export const WEAK_HIT_COUNT = 3
+// Expansion is a rescue attempt, not the answer. On a local model it runs a
+// whole extra generation ahead of the real one, so it gets a short leash and
+// the caller's cancel.
+export const EXPANSION_BUDGET_MS = 15_000
 export const MAX_EXPANDED_QUERIES = 5
 
 export function expansionPrompt(question: string): string {
@@ -14,13 +18,20 @@ export function expansionPrompt(question: string): string {
   ].join('\n')
 }
 
-export async function expandQueries(engine: Engine, workdir: EngineCwd, question: string): Promise<string[]> {
+export async function expandQueries(
+  engine: Engine,
+  workdir: EngineCwd,
+  question: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
   try {
     const raw = await collectResult(engine, {
       prompt: expansionPrompt(question),
       workdir,
       disallowTools: true,
       modelHint: 'fast',
+      timeoutMs: EXPANSION_BUDGET_MS,
+      ...(signal ? { signal } : {}),
     })
     const parsed = extractJson(raw) as { queries?: unknown } | null
     const list = Array.isArray(parsed?.queries) ? parsed.queries : []

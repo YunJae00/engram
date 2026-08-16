@@ -258,6 +258,7 @@ export type EngramEvent =
   | { type: 'chat:error'; channel: 'panel' | 'bubble'; message: string }
   // The floating bubble asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
+  | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.
   | { type: 'settings:changed'; settings: AppSettingsDto }
@@ -344,6 +345,7 @@ export interface EngramApi {
   bubbleCollapse(): Promise<void>
   // A citation clicked in the bubble: surface the main window on that note.
   bubbleOpenNote(id: string): Promise<void>
+  bubbleSetup(): Promise<void>
   // Collapsed-dot drag: screen-pixel deltas, fire-and-forget.
   bubbleDragBy(dx: number, dy: number): void
   // Confirmed quit from the bubble's ✕ — terminates the app like tray Quit.

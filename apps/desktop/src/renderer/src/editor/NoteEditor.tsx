@@ -16,10 +16,15 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const saveTimer = useRef<number | undefined>(undefined)
+  // The debounced save used to be CANCELLED on unmount, so the last keystrokes
+  // before closing the sheet were dropped. Keep the newest text and the note it
+  // belongs to, and flush on the way out.
+  const unsaved = useRef<{ id: string; text: string } | null>(null)
   const previewTimer = useRef<number | undefined>(undefined)
   const [note, setNote] = useState<NoteDto | null>(null)
   const [previewHtml, setPreviewHtml] = useState('')
   const [showPreview, setShowPreview] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -48,8 +53,13 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
             // character-accurate mirror — a beat behind is invisible.
             window.clearTimeout(previewTimer.current)
             previewTimer.current = window.setTimeout(() => setPreviewHtml(marked.parse(text, { async: false })), 120)
+            unsaved.current = { id: noteId, text }
+            setSaving(true)
             window.clearTimeout(saveTimer.current)
-            saveTimer.current = window.setTimeout(() => void api.saveNoteBody(noteId, text), 600)
+            saveTimer.current = window.setTimeout(() => {
+              unsaved.current = null
+              void api.saveNoteBody(noteId, text).finally(() => setSaving(false))
+            }, 600)
           }),
         ],
       })
@@ -58,6 +68,9 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
       cancelled = true
       window.clearTimeout(saveTimer.current)
       window.clearTimeout(previewTimer.current)
+      const pending = unsaved.current
+      unsaved.current = null
+      if (pending) void api.saveNoteBody(pending.id, pending.text)
       viewRef.current?.destroy()
       viewRef.current = null
     }
@@ -65,6 +78,7 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
 
   return (
     <div className="note-editor" data-testid="note-editor">
+      <div className="editor-save" data-testid="editor-save">{saving ? t('editor.saving') : t('editor.saved')}</div>
       {note && <MetaBar note={note} onChange={setNote} />}
       {note && <LineageStrip noteId={noteId} onDiff={onDiff} />}
       {note && <LinksPanel noteId={noteId} />}

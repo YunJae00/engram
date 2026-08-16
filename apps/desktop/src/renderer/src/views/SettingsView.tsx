@@ -14,6 +14,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [localModels, setLocalModels] = useState<LocalModelsStateDto | null>(null)
+  const [downloadFail, setDownloadFail] = useState<Record<string, string>>({})
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
@@ -174,11 +175,23 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                       {t('settings.localUse')}
                     </label>
                   ) : (
-                    <button className="secondary" onClick={() => void api.localModelDownload(m.id)}>
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setDownloadFail((prev) => ({ ...prev, [m.id]: '' }))
+                        void api.localModelDownload(m.id).then((r) => {
+                          if (!r.ok && r.log !== 'canceled')
+                            setDownloadFail((prev) => ({ ...prev, [m.id]: r.log ?? '' }))
+                        })
+                      }}
+                    >
                       {t('settings.localDownload')}
                     </button>
                   )}
                 </span>
+                {downloadFail[m.id] && (
+                  <span className="model-fail">{t('settings.localFailed', { reason: downloadFail[m.id]! })}</span>
+                )}
               </div>
             )
           })}

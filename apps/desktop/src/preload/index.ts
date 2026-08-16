@@ -19,6 +19,7 @@ const api: EngramApi = {
   bubbleExpand: () => ipcRenderer.invoke('bubble:expand'),
   bubbleCollapse: () => ipcRenderer.invoke('bubble:collapse'),
   bubbleOpenNote: (id: string) => ipcRenderer.invoke('bubble:openNote', id),
+  bubbleSetup: () => ipcRenderer.invoke('bubble:setup'),
   // fire-and-forget: drag deltas at pointer-move rate must never await
   bubbleDragBy: (dx: number, dy: number) => ipcRenderer.send('bubble:drag', dx, dy),
   bubbleQuit: () => ipcRenderer.invoke('bubble:quit'),

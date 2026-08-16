@@ -149,6 +149,11 @@ export async function startBubble(deps: {
     broadcast({ type: 'note:open', id })
   })
 
+  ipcMain.handle('bubble:setup', () => {
+    deps.showMainWindow()
+    broadcast({ type: 'brain:setup' })
+  })
+
   // Collapsed-dot drag (renderer pointer deltas): app-region drag was
   // unusable here — it swallows clicks, and the click IS the button.
   ipcMain.on('bubble:drag', (_e, dx: number, dy: number) => {
