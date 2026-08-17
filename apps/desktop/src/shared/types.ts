@@ -247,6 +247,9 @@ export type EngramEvent =
   // the semantic layer fell over (model download/load failed) — said once per
   // transition, so search quietly degrading to lexical is not fully silent
   | { type: 'semantic:error'; detail: string }
+  // local inference warm state: the chat panel shows a warming banner while
+  // the model loads and arms the composer when it lands
+  | { type: 'localllm:warm'; state: 'cold' | 'loading' | 'ready' }
   // the first engine detection after boot has finished — until this lands the
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
@@ -366,6 +369,8 @@ export interface EngramApi {
   activitySet(enabled: boolean): Promise<boolean>
   sessionWatchGet(): Promise<boolean>
   sessionWatchSet(enabled: boolean): Promise<boolean>
+  llmWarm(): Promise<'cold' | 'loading' | 'ready' | 'none'>
+  sendFeedback(): Promise<void>
   // promote a chat answer into an artifact note; returns the new note id
   buildPack(query?: string): Promise<{ file: string; content: string }>
   // team sync & bulk import

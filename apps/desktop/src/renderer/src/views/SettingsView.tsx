@@ -288,6 +288,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
         {/* Primary action sits rightmost — same order as diagnostics/onboarding. */}
         <div className="dialog-actions">
+          <button className="secondary" data-testid="settings-feedback" onClick={() => void api.sendFeedback()}>
+            {t('settings.feedback')}
+          </button>
           <button className="secondary" onClick={() => setShowDiagnostics(true)}>
             {t('settings.diagnostics')}
           </button>

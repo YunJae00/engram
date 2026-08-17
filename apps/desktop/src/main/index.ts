@@ -405,6 +405,19 @@ function registerBaseIpc(): void {
   // "which version?", and until now nothing in the UI could answer it.
   ipcMain.handle('app:version', () => app.getVersion())
 
+  // Send feedback: a prefilled GitHub issue with the environment facts every
+  // report needs. Only names — never vault content.
+  ipcMain.handle('feedback:open', async () => {
+    const env = [
+      `Engram ${app.getVersion()}`,
+      `${process.platform} ${process.arch}`,
+      `electron ${process.versions.electron}`,
+    ].join(' · ')
+    const body = `**What happened?**\n\n\n**What did you expect?**\n\n\n---\n${env}\n`
+    const url = `https://github.com/YunJae00/engram/issues/new?body=${encodeURIComponent(body)}`
+    await shell.openExternal(url)
+  })
+
   // Workspace registry/switcher — must work before a vault is booted (onboarding).
   registerWorkspaceIpc()
 

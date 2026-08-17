@@ -233,6 +233,18 @@ function failAllPending(reason: string): void {
   pending.clear()
 }
 
+// Warm state, tracked here because the worker only announces 'loaded' once
+// per load — a chat panel opening against an already-warm model must read
+// 'ready' without another round trip. 'cold' means the next question pays
+// the multi-second model load.
+export type LlmWarmState = 'cold' | 'loading' | 'ready'
+let warmState: LlmWarmState = 'cold'
+function setWarmState(next: LlmWarmState): void {
+  if (warmState === next) return
+  warmState = next
+  broadcast({ type: 'localllm:warm', state: next })
+}
+
 function spawnChild(): Promise<ChildProcess | null> {
   if (childReady) return childReady
   childReady = new Promise<ChildProcess | null>((resolve) => {
@@ -257,6 +269,7 @@ function spawnChild(): Promise<ChildProcess | null> {
       if (message.type === 'loaded') {
         flog('local-llm', `model loaded in ${message.ms}ms (worker, gpu: ${message.gpu ?? '?'})`)
         markEngineOk('local') // clears a red dot from an earlier failed load
+        setWarmState('ready')
         return
       }
       if (message.type === 'load-failed') {
@@ -264,6 +277,7 @@ function spawnChild(): Promise<ChildProcess | null> {
         // The model file's presence passes detection and pings exempt
         // 'local' — this message is the only evidence the brain is broken.
         markEngineUnhealthy('local', 'crash')
+        setWarmState('cold')
         return
       }
       const waiter = message.id === undefined ? undefined : pending.get(message.id)
@@ -280,6 +294,7 @@ function spawnChild(): Promise<ChildProcess | null> {
       flog('local-llm', `inference worker exited (code ${code ?? '-'}, signal ${signal ?? '-'})`)
       child = null
       childReady = null
+      setWarmState('cold')
       failAllPending('the inference process exited')
       if (!settled) {
         settled = true
@@ -321,6 +336,7 @@ export async function warmLocalModel(): Promise<void> {
     flog('local-llm-load-failed', 'warm-up could not start the inference worker')
     return
   }
+  if (warmState === 'cold') setWarmState('loading')
   proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
 }
 
@@ -338,6 +354,7 @@ export async function localComplete(
     if (!spec) throw new Error('no local model is active')
     const proc = await spawnChild()
     if (!proc) throw new Error('the inference process could not start')
+    if (warmState === 'cold') setWarmState('loading')
     proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
     lastUsed = Date.now()
     const id = nextCallId++
@@ -392,6 +409,7 @@ function armIdleUnload(): void {
     if (Date.now() - lastUsed < IDLE_UNLOAD_MS) return
     flog('local-llm', 'idle — unloading the model')
     child.send({ type: 'unload' })
+    setWarmState('cold')
     lastUsed = 0
   }, 60_000)
 }
@@ -428,6 +446,7 @@ export function stopLocalServer(): void {
   const proc = child
   child = null
   childReady = null
+  setWarmState('cold')
   failAllPending('shutting down')
   proc?.kill('SIGKILL')
 }
@@ -477,6 +496,16 @@ export function setModelsChangedHook(hook: () => void): void {
 
 export function registerLocalLlmIpc(): void {
   ipcMain.handle('localmodels:state', () => toDto())
+  // The chat panel calls this on open: 'none' = no downloaded model (nothing
+  // to warm), otherwise kick a warm-up and report where it stands. Progress
+  // arrives as localllm:warm broadcasts.
+  ipcMain.handle('localllm:warm', async (): Promise<LlmWarmState | 'none'> => {
+    if (warmState !== 'cold') return warmState
+    const spec = await adoptDownloadedModel()
+    if (!spec) return 'none'
+    void warmLocalModel()
+    return 'loading'
+  })
   ipcMain.handle('localmodels:download', (_e, id: string) =>
     downloadModel(id).then((r) => {
       announce()

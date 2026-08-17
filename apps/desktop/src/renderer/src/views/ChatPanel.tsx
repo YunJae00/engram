@@ -116,6 +116,32 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
     }
   }, [])
 
+  // Local brain warm-up: opening the panel starts the model load so the first
+  // question does not pay it. While it loads the composer shows a warming
+  // line and holds the send button — a question fired into a cold model reads
+  // as a hang. 'none' (no model, or a CLI engine answers) shows nothing.
+  const localActive = engines[0]?.id === 'local'
+  const [warm, setWarm] = useState<'cold' | 'loading' | 'ready' | 'none'>('none')
+  useEffect(() => {
+    if (!localActive) {
+      setWarm('none')
+      return
+    }
+    let stale = false
+    void api.llmWarm().then((state) => {
+      if (!stale) setWarm(state)
+    }).catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [localActive])
+  useEffect(() => {
+    return api.onEvent((event) => {
+      if (event.type === 'localllm:warm' && localActive) setWarm(event.state)
+    })
+  }, [localActive])
+  const warming = localActive && warm === 'loading'
+
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault()
     const startX = e.clientX
@@ -232,6 +258,9 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
 
   const submit = (e: { preventDefault(): void }) => {
     e.preventDefault()
+    // Enter submits the form even with the button disabled — while the model
+    // warms the text stays in the box instead of firing into a cold engine.
+    if (warming) return
     const message = text.trim()
     if (!message) return
     setText('')
@@ -340,13 +369,19 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
         </div>
       )}
 
+      {warming && (
+        <div className="chat-warming" data-testid="chat-warming" role="status">
+          <span className="chat-warming-dot" aria-hidden />
+          {t('chat.warming')}
+        </div>
+      )}
       <form className="chat-write" onSubmit={submit}>
         <input
           ref={inputRef}
           data-testid="chat-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={noEngine ? t('chat.connectPlaceholder') : t('chat.placeholder')}
+          placeholder={noEngine ? t('chat.connectPlaceholder') : warming ? t('chat.warmingPlaceholder') : t('chat.placeholder')}
           maxLength={2000}
         />
         {busy ? (
@@ -366,7 +401,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
             className="chat-send-btn armed"
             data-testid="chat-send"
             aria-label={t('chat.send')}
-            disabled={!text.trim()}
+            disabled={!text.trim() || warming}
           >
             <ArrowUp size={15} />
           </button>
