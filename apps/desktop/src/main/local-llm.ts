@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LocalModelDto, LocalModelsStateDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
+import { markEngineOk, markEngineUnhealthy } from './engine-health.js'
 import { flog } from './flog.js'
 
 interface ModelSpec {
@@ -255,10 +256,14 @@ function spawnChild(): Promise<ChildProcess | null> {
       }
       if (message.type === 'loaded') {
         flog('local-llm', `model loaded in ${message.ms}ms (worker, gpu: ${message.gpu ?? '?'})`)
+        markEngineOk('local') // clears a red dot from an earlier failed load
         return
       }
       if (message.type === 'load-failed') {
         flog('local-llm-load-failed', message.message)
+        // The model file's presence passes detection and pings exempt
+        // 'local' — this message is the only evidence the brain is broken.
+        markEngineUnhealthy('local', 'crash')
         return
       }
       const waiter = message.id === undefined ? undefined : pending.get(message.id)
@@ -296,6 +301,7 @@ function spawnChild(): Promise<ChildProcess | null> {
       if (settled) return
       settled = true
       flog('local-llm-load-failed', 'the inference worker never reported ready')
+      markEngineUnhealthy('local', 'crash')
       resolve(child)
     }, 20_000)
   })
@@ -461,9 +467,23 @@ function announce(): void {
   void toDto().then((dto) => broadcast({ type: 'localmodels:changed', state: dto }))
 }
 
+// Wired by index.ts once the vault is up: a model appearing or switching must
+// re-run engine detection right away, or the connect banner keeps saying
+// "no AI" until the next refocus or the 30-minute watch.
+let modelsChangedHook: (() => void) | null = null
+export function setModelsChangedHook(hook: () => void): void {
+  modelsChangedHook = hook
+}
+
 export function registerLocalLlmIpc(): void {
   ipcMain.handle('localmodels:state', () => toDto())
-  ipcMain.handle('localmodels:download', (_e, id: string) => downloadModel(id).then((r) => (announce(), r)))
+  ipcMain.handle('localmodels:download', (_e, id: string) =>
+    downloadModel(id).then((r) => {
+      announce()
+      if (r.ok) modelsChangedHook?.()
+      return r
+    }),
+  )
   ipcMain.handle('localmodels:cancel', (_e, id: string) => {
     downloads.get(id)?.controller.abort()
   })
@@ -474,6 +494,7 @@ export function registerLocalLlmIpc(): void {
     // The worker holds the old model; drop it so the next call loads the new one.
     stopLocalServer()
     announce()
+    modelsChangedHook?.()
   })
 }
 

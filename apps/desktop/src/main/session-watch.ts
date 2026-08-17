@@ -1,10 +1,43 @@
 import { buildJ11, JobRunner, MIN_TURNS_TO_CONSIDER, parseCodexSpan, parseSessionSpan, projectOfTranscript, readAgentsMd, type SessionTurn } from 'core'
-import { app } from 'electron'
+import { app, ipcMain } from 'electron'
 import { open, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { LIBRARIAN_RUN_OPTS, noteRunOutcome, runPipelineAsync } from './ipc.js'
 import type { VaultContext } from './vault.js'
+
+// Consent switch — the README privacy table promises AI CLI session harvest
+// is off by default. Absent state file = OFF; the Settings toggle writes it.
+const SESSION_STATE_FILE = () => join(app.getPath('userData'), 'session-watch.json')
+let sessionEnabled = false
+let watchCtx: VaultContext | null = null
+
+async function readSessionState(): Promise<boolean> {
+  try {
+    return (JSON.parse(await readFile(SESSION_STATE_FILE(), 'utf8')) as { enabled?: boolean }).enabled === true
+  } catch {
+    return false
+  }
+}
+
+export function isSessionWatchEnabled(): boolean {
+  return sessionEnabled
+}
+
+export async function setSessionWatchEnabled(enabled: boolean): Promise<void> {
+  sessionEnabled = enabled
+  await writeFile(SESSION_STATE_FILE(), JSON.stringify({ enabled })).catch(() => undefined)
+  if (enabled && watchCtx) startTimer(watchCtx)
+  if (!enabled) stopSessionWatch()
+}
+
+export function registerSessionWatchIpc(): void {
+  ipcMain.handle('sessionwatch:get', () => isSessionWatchEnabled())
+  ipcMain.handle('sessionwatch:set', async (_e, enabled: boolean) => {
+    await setSessionWatchEnabled(enabled)
+    return isSessionWatchEnabled()
+  })
+}
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 const CODEX_DIR = join(homedir(), '.codex', 'sessions')
@@ -353,10 +386,19 @@ export async function startSessionWatch(ctx: VaultContext): Promise<void> {
   // Packaged only: a dev run or an e2e worker must not harvest the developer's
   // real conversations into whatever vault the test happens to open.
   if (!app.isPackaged && process.env['ENGRAM_SESSION_WATCH'] !== '1') return
-  await loadCursors(ctx)
-  if (timer) clearInterval(timer)
-  timer = setInterval(() => void scan(ctx), SCAN_MS)
-  void scan(ctx)
+  watchCtx = ctx
+  sessionEnabled = process.env['ENGRAM_SESSION_WATCH'] === '1' || (await readSessionState())
+  if (!sessionEnabled) return // consent first — the Settings toggle starts us
+  startTimer(ctx)
+}
+
+function startTimer(ctx: VaultContext): void {
+  void loadCursors(ctx).then(() => {
+    if (!sessionEnabled) return
+    if (timer) clearInterval(timer)
+    timer = setInterval(() => void scan(ctx), SCAN_MS)
+    void scan(ctx)
+  })
 }
 
 export function stopSessionWatch(): void {

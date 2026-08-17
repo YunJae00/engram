@@ -96,6 +96,9 @@ function systemTheme(): 'light' | 'dark' {
 // Set once the Today sheet has been shown (auto-revealed after the first brief
 // or opened by hand) — the one-time reveal must never fire twice.
 const TODAY_SEEN_KEY = 'engram.today.seen'
+// One-time disclosure that the desk journal records by default — the privacy
+// promise is that the user knows what is being read.
+const DESK_NOTICE_KEY = 'engram.deskJournal.noticed'
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [activity, setActivity] = useState<Activity>('sky')
@@ -261,6 +264,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         void api.enginesDetected().then(setEnginesDetected).catch(() => undefined)
         void api.subjectKnowledge().then(setSubjectKnowledge).catch(() => undefined)
         void api.brainFabric().then(setFabric).catch(() => undefined)
+        if (localStorage.getItem(DESK_NOTICE_KEY) === null) {
+          localStorage.setItem(DESK_NOTICE_KEY, '1')
+          void api
+            .activityGet()
+            .then((on) => {
+              if (on) latest.current.showToast(latest.current.t('toast.deskJournalNotice'))
+            })
+            .catch(() => undefined)
+        }
       })
       .catch(() => undefined)
     const unsub = api.onEvent((event: EngramEvent) => {
@@ -289,6 +301,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (event.type === 'filing:done') setFiling(false)
       // Zero-click MCP hookup healed/attached a Claude — say so once.
       if (event.type === 'mcp:autoconnected') showToast(t('toast.mcpConnected', { targets: event.targets.join(', ') }))
+      // The semantic layer fell over — search quietly became lexical-only,
+      // invisible from results alone. One toast per transition; details in Settings.
+      if (event.type === 'semantic:error') showToast(t('toast.semanticError'))
       if (event.type === 'sweep:start') {
         setSweepStatus({ running: true, kind: 'running' })
         setSweepStartedAt(Date.now())

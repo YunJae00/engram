@@ -43,9 +43,9 @@ Engram only sees what you let it see, and nothing is ever uploaded — there is 
 | the composer | what you type | always on |
 | dropped files | the text of the file | per drop |
 | document folders | the *changed lines* of documents you save there | per folder, off by default |
-| browser history | page **titles and hosts** from the browser's own local history — never URLs, never content; login/auth pages are filtered out | off by default |
+| browser history | page **titles and hosts** from the browser's own local history — never URLs, never content; login/auth pages are filtered out | rides with the desk journal (below); off when it is off |
 | AI CLI sessions | transcripts of Claude Code / Codex sessions on this machine | off by default |
-| active window | app name and window title, for the "at the desk today" line | off by default |
+| active window | app name and window title, for the "at the desk today" line — the desk journal | **on by default**, announced on first run, one switch in Settings/tray |
 
 Everything lands as markdown in a folder you choose. `private/` is never passed to any engine. Derived state (embeddings, caches) lives under `.engram/` and can be deleted at any time.
 

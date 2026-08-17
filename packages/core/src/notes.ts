@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { generateNoteId } from './id.js'
 import type { DecayLevel, Note, NoteFrontmatter, NoteStatus, TimelineMode } from './schema.js'
@@ -31,7 +31,13 @@ export async function readNote(paths: VaultPaths, id: string): Promise<Note> {
 }
 
 export async function writeNote(paths: VaultPaths, note: Note): Promise<void> {
-  await writeFile(notePath(paths, note.front.id), serializeNote(note))
+  // Write-then-rename: an in-place write that dies mid-stream (ENOSPC,
+  // crash) leaves a truncated file and the previous good body is gone. The
+  // rename is atomic, so the note on disk is always one complete version.
+  const target = notePath(paths, note.front.id)
+  const tmp = `${target}.tmp-${process.pid}`
+  await writeFile(tmp, serializeNote(note))
+  await rename(tmp, target)
 }
 
 // Recall reinforcement (Engram redesign): stamp last_recalled when a memory is

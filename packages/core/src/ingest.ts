@@ -136,10 +136,24 @@ export async function prepareInboxItem(
   const text = await toMarkdown()
   if (text === null) return { file, converted: false }
 
-  // Original moves to sources/, extracted text becomes the inbox item.
+  // Extracted text lands in the inbox FIRST, then the original moves to
+  // sources/ — in this order each failure is recoverable: a failed write
+  // leaves the original in the inbox for the next sweep, a failed rename
+  // leaves a re-preparable duplicate. The exclusive flag + suffix loop keeps
+  // a same-stem pending capture (report.md next to report.pdf) from being
+  // silently replaced.
   const stem = basename(file, extname(file))
-  const mdFile = `${stem}.md`
+  const body = `${text.trim()}\n\n> source: sources/${file}\n`
+  let mdFile = `${stem}.md`
+  for (let n = 1; ; n++) {
+    try {
+      await writeFile(join(paths.inbox, mdFile), body, { flag: 'wx' })
+      break
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+      mdFile = `${stem}-${n}.md`
+    }
+  }
   await rename(fullPath, join(paths.sources, file))
-  await writeFile(join(paths.inbox, mdFile), `${text.trim()}\n\n> source: sources/${file}\n`)
   return { file: mdFile, converted: true }
 }

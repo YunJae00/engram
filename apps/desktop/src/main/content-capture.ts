@@ -60,14 +60,19 @@ async function handleSave(path: string): Promise<void> {
   if (!text) return // unreadable/locked/scan — the desk journal still has the skeleton
   const snap = snapPath(vault, path)
   const previous = await readFile(snap, 'utf8').catch(() => null)
+  const delta = await contentDelta(previous, text)
+  const name = basename(path)
+  if (delta.trim().length >= 40) {
+    // Capture BEFORE snapshot: once the snapshot holds the new text, a
+    // failed capture's delta can never be re-derived. In this order a failed
+    // capture leaves the old snapshot and the next save re-captures the
+    // accumulated delta.
+    const capture = `[document] ${name}\n${delta}`
+    await writeCapture(vault.paths.inbox, capture, 'session', `file:${name}`)
+    flog('content-capture', `${name}: +${delta.length} chars`)
+  }
   await mkdir(snapDir(vault), { recursive: true }).catch(() => undefined)
   await writeFile(snap, text).catch(() => undefined)
-  const delta = await contentDelta(previous, text)
-  if (delta.trim().length < 40) return // trivial touch — not a memory
-  const name = basename(path)
-  const capture = `[document] ${name}\n${delta}`
-  await writeCapture(vault.paths.inbox, capture, 'session', `file:${name}`)
-  flog('content-capture', `${name}: +${delta.length} chars`)
 }
 
 function schedule(path: string): void {

@@ -36,7 +36,7 @@ import { buildJ10, digestInput } from './digest.js'
 import { loadAliasGroups , loadUmbrellaTerms } from '../aliases.js'
 import { findMergeClusters } from './cluster.js'
 import { readAgentsMd } from './prompts.js'
-import { JobRunner, type RunReport, type RunnerOptions, type JobSpec } from './runner.js'
+import { JobRunner, type JobFailure, type RunReport, type RunnerOptions, type JobSpec } from './runner.js'
 
 // Sweep state under .engram/ — cache, never synced.
 export interface SweepState {
@@ -389,13 +389,26 @@ export async function processCapture(
 
   const before = new Set((await loadNotes(paths)).map((n) => n.front.id))
   const j1Jobs: JobSpec[] = []
+  const prepFailures: JobFailure[] = []
   const ingest = withVision(paths, engines, options.ingest)
   for (const original of await listInbox(paths)) {
-    const { file } = await prepareInboxItem(paths, original, ingest).catch(() => ({ file: original }))
+    // A failed preparation (OCR crash, disk full mid-extract) must reach the
+    // report — for a non-md original the extension test below skips J1, so a
+    // swallowed error leaves the capture in the inbox with nothing saying
+    // why. Reported as J1: preparation is the front half of absorption.
+    const { file } = await prepareInboxItem(paths, original, ingest).catch((err) => {
+      prepFailures.push({
+        kind: 'J1',
+        inputKey: `inbox/${original}`,
+        error: `prepare failed: ${err instanceof Error ? err.message : String(err)}`,
+      })
+      return { file: original }
+    })
     if (!/\.(md|txt)$/i.test(file)) continue
     j1Jobs.push(buildJ1(paths, agentsMd, file, await readInboxFile(paths, file), now, options.autonomy))
   }
   const report = await runner.runAll(j1Jobs)
+  report.failed.push(...prepFailures)
 
   const after = await loadNotes(paths)
   const fresh: Note[] = []

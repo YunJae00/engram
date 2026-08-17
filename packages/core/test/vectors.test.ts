@@ -116,4 +116,21 @@ describe('hybridMerge (RRF)', () => {
     const merged = hybridMerge([], [{ id: 'meaning', score: 0.6 }], 10)
     expect(merged.map((h) => h.id)).toEqual(['meaning'])
   })
+
+  // The golden-set regression (scripts/eval-retrieval.mts): CJK bigram
+  // overlap puts junk at lexical rank 1 while the true answer sits at
+  // semantic rank 1 with a strong cosine. Rank-only fusion buried it.
+  it('a strong semantic rank-1 outvotes a junk lexical rank-1 the semantic channel never saw', () => {
+    const merged = hybridMerge(
+      [lex('bigram-junk', 0), lex('other-junk', 1)],
+      [{ id: 'true-answer', score: 0.68 }],
+      10,
+    )
+    expect(merged[0]!.id).toBe('true-answer')
+  })
+
+  it('a barely-above-floor semantic hit stays below a lexical rank-1', () => {
+    const merged = hybridMerge([lex('exact-term', 0)], [{ id: 'weak-hint', score: 0.36 }], 10)
+    expect(merged[0]!.id).toBe('exact-term')
+  })
 })

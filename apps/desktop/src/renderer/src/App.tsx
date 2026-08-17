@@ -1,5 +1,5 @@
 import { Download, PlugZap } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from './api.js'
 import { AbsorbWidget } from './components/AbsorbWidget.js'
 import { DigestSheet } from './components/DigestSheet.js'
@@ -102,7 +102,10 @@ function Shell() {
     }
   }, [vaultReady])
 
-  useEffect(() => {
+  // useLayoutEffect, not useEffect: the shell paints (and advertises Cmd+L on
+  // a button title) before passive effects commit, so a keypress in that gap
+  // would be silently dropped. Layout effects attach before the first paint.
+  useLayoutEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
@@ -193,22 +196,36 @@ function Shell() {
     e.preventDefault()
     dragDepth.current = 0
     setDropping(false)
+    // Per-file try/catch: one unreadable file must not abort the rest of the
+    // batch. Partial failure counts what landed and says what did not.
     let captured = 0
+    let failed = 0
     for (const file of Array.from(e.dataTransfer.files)) {
       const path = api.pathForFile(file)
-      if (path) {
+      if (!path) continue
+      try {
         await api.captureFile(path)
         captured++
+      } catch {
+        failed++
       }
     }
     const text = e.dataTransfer.getData('text/plain')
     if (text.trim()) {
-      await api.capture(text.trim())
-      captured++
+      try {
+        await api.capture(text.trim())
+        captured++
+      } catch {
+        failed++
+      }
     }
-    if (captured > 0) {
-      showToast(`Captured ${captured} item${captured > 1 ? 's' : ''}`)
-      await refresh()
+    if (captured > 0 || failed > 0) {
+      showToast(
+        failed > 0
+          ? `Captured ${captured} item${captured === 1 ? '' : 's'} — ${failed} failed to save`
+          : `Captured ${captured} item${captured > 1 ? 's' : ''}`,
+      )
+      if (captured > 0) await refresh()
     }
   }
 

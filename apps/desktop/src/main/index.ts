@@ -16,11 +16,11 @@ import { syncSessionContext } from './session-context.js'
 import { flog } from './flog.js'
 import { isBubbleVisible, setBubbleVisible, startBubble, stopBubble } from './bubble.js'
 import { isActivityWatchEnabled, registerActivityIpc, setActivityWatchEnabled, startActivityWatch, stopActivityWatch } from './activity-watch.js'
-import { localComplete, localConfigured, registerLocalLlmIpc, stopLocalServer, warmLocalModel } from './local-llm.js'
+import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHook, stopLocalServer, warmLocalModel } from './local-llm.js'
 import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
-import { startSessionWatch, stopSessionWatch } from './session-watch.js'
+import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './session-watch.js'
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
 import { installUpdateNow, startUpdater } from './updater.js'
@@ -499,6 +499,9 @@ async function bootVault(root: string): Promise<VaultContext> {
       broadcast({ type: 'engines:detected' })
       if (app.isPackaged || process.env['ENGRAM_HEALTH_PING'] === '1') void pingEngines(ctx)
     })
+    // A brain downloaded or switched in Settings becomes usable the moment it
+    // lands — not at the next refocus or the 30-minute watch tick.
+    setModelsChangedHook(() => void revalidateEngines(ctx))
     startEngineWatch(ctx)
     // Write the session block once at boot, so a Claude session started before
     // the first tidy still gets today's picture rather than yesterday's.
@@ -583,6 +586,7 @@ app.whenReady().then(async () => {
 
   registerBaseIpc()
   registerActivityIpc()
+  registerSessionWatchIpc()
   registerLocalLlmIpc()
   registerContentCaptureIpc()
   registerMemoryFabricIpc()

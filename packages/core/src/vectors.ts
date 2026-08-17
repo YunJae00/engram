@@ -125,15 +125,27 @@ export function cosineTopK(index: VectorIndex, query: Float32Array, k: number): 
 }
 
 // Reciprocal-rank fusion: lexical and cosine scores live on incompatible
-// scales, so ranks are fused instead. Lexical keeps a slight edge (exact
-// wording is strong evidence); a note found by BOTH channels rises above
-// either alone. Returned as SearchHit so downstream (spreading activation
-// seeds, context assembly) is agnostic about where a hit came from.
+// scales, so ranks are fused — but the semantic vote scales with the cosine.
+// A rank is only "first among what this channel saw": CJK bigram overlap can
+// put a junk note at lexical rank 1 while the true answer sits at semantic
+// rank 1 with a strong cosine, and pure rank fusion buries it. So
+// near-paraphrase evidence (≥ SEMANTIC_STRONG) outvotes any single lexical
+// rank, a barely-above-floor match stays a hint below lexical, and a note
+// found by BOTH channels still rises above either alone. Calibrated against
+// scripts/eval-retrieval.mts (apps/desktop).
 const RRF_K = 60
 const LEXICAL_WEIGHT = 1.0
-const SEMANTIC_WEIGHT = 0.9
+const SEMANTIC_WEIGHT_MIN = 0.6
+const SEMANTIC_WEIGHT_MAX = 1.5
+// Above this cosine a hit reads as "same subject, other words" for bge-m3.
+const SEMANTIC_STRONG = 0.65
 // Cosine floor: below this the "match" is noise, not meaning.
 export const SEMANTIC_MIN_SCORE = 0.35
+
+function semanticWeight(score: number): number {
+  const t = Math.min(1, Math.max(0, (score - SEMANTIC_MIN_SCORE) / (SEMANTIC_STRONG - SEMANTIC_MIN_SCORE)))
+  return SEMANTIC_WEIGHT_MIN + (SEMANTIC_WEIGHT_MAX - SEMANTIC_WEIGHT_MIN) * t
+}
 
 export function hybridMerge(lexical: SearchHit[], semantic: SemanticHit[], cap: number): SearchHit[] {
   const fused = new Map<string, { score: number; hit: SearchHit }>()
@@ -143,7 +155,7 @@ export function hybridMerge(lexical: SearchHit[], semantic: SemanticHit[], cap: 
   semantic
     .filter((s) => s.score >= SEMANTIC_MIN_SCORE)
     .forEach((s, rank) => {
-      const add = SEMANTIC_WEIGHT / (RRF_K + rank + 1)
+      const add = semanticWeight(s.score) / (RRF_K + rank + 1)
       const prior = fused.get(s.id)
       if (prior) prior.score += add
       else fused.set(s.id, { score: add, hit: { id: s.id, title: '', status: '', score: 0 } })

@@ -16,7 +16,7 @@ import { app, ipcMain, net, powerMonitor } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SemanticStatusDto } from '../shared/types.js'
-import { isLibrarianBusy } from './ipc.js'
+import { broadcast, isLibrarianBusy } from './ipc.js'
 import { fabricAfterIndex } from './memory-fabric.js'
 import { loadSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
@@ -195,8 +195,10 @@ async function reindex(): Promise<void> {
     if (stale.length > 0) await autoAssociate(ctx, index, stale.map((n) => n.front.id))
     await fabricAfterIndex(index, stale.map((n) => n.front.id), liveIds)
   } catch (err) {
+    const wasError = state.status === 'error'
     state.status = 'error'
     state.detail = String((err as Error).message ?? err).slice(0, 160)
+    if (!wasError) broadcast({ type: 'semantic:error', detail: state.detail })
   } finally {
     state.busy = false
   }
@@ -247,8 +249,12 @@ async function bringUp(): Promise<void> {
     if (state.ctx) await reindex()
     else if (state.status === 'loading') state.detail = 'model ready'
   } catch (err) {
+    const wasError = state.status === 'error'
     state.status = 'error'
     state.detail = String((err as Error).message ?? err).slice(0, 160)
+    // Search degrading to lexical-only must not be fully silent — one toast
+    // per transition (not per retry), the details stay in Settings.
+    if (!wasError) broadcast({ type: 'semantic:error', detail: state.detail })
     // Boot raced a flaky network (laptop waking, VPN connecting) — the
     // layer quietly tries again instead of staying dead until restart.
     setTimeout(() => {
@@ -340,14 +346,20 @@ export function semanticNotesChanged(): void {
 
 // Meaning-level hits for a query — [] whenever the layer is not ready, so
 // callers can always merge the result without caring about status. A resting
-// (idle-unloaded) model is NOT worth stalling a chat answer for: this one
-// question falls back to lexical+association while the model reloads in the
-// background, and the next question is semantic again.
+// (idle-unloaded) model gets a bounded wait, not a skip: the first question
+// after a break is the most common question, and a warm-from-disk load is a
+// few seconds against an engine call that takes tens. Past the budget this
+// question falls back to lexical+association and the load keeps going.
+const RESTING_MODEL_WAIT_MS = 6_000
+
 export async function semanticQuery(query: string, k: number): Promise<SemanticHit[]> {
   if (state.status !== 'ready' || !state.index) return []
   if (!state.extractor) {
-    void ensureExtractor().catch(() => {})
-    return []
+    await Promise.race([
+      ensureExtractor().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, RESTING_MODEL_WAIT_MS)),
+    ])
+    if (!state.extractor) return []
   }
   try {
     const [vec] = await embedBatch([query])

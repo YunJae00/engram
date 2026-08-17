@@ -996,6 +996,7 @@ body.bubble-host { background: transparent; }
 /* ── Note editor ──────────────────────────────────────────────── */
 .note-editor { display: flex; flex-direction: column; height: 100%; }
 .editor-save { align-self: flex-end; font-size: 11px; color: var(--fg-faint); padding: 2px 4px; }
+.editor-save-failed { color: var(--danger); }
 .meta-bar {
   display: flex; align-items: center; gap: 4px;
   padding: 4px 16px; min-height: 30px;
@@ -1541,6 +1542,7 @@ body.bubble-host { background: transparent; }
 .lock-toggle.locked { color: var(--fg-strong); border-color: var(--accent-line); background: var(--accent-soft); }
 .quick-capture textarea { flex: 1; resize: none; font-size: 14px; }
 .quick-hint { font-size: 11px; color: var(--fg-faint); }
+.quick-error { color: var(--danger); }
 
 /* ── Onboarding ───────────────────────────────────────────────── */
 .onboarding {

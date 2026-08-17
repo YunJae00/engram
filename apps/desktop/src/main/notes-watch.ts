@@ -68,7 +68,11 @@ export function watchNotes(
       return
     }
 
+    // Stamp mutations are STAGED and folded in only after onBatch resolves —
+    // committed up front, a throwing batch loses its events for good: the
+    // next tick sees the stamps as current and never re-emits.
     const events: Array<{ event: NotesFileEvent; path: string }> = []
+    const commits: Array<{ name: string; mtimeMs: number | null }> = []
     for (const [name, s] of cur) {
       const known = committed.get(name)
       if (known !== undefined && known === s.mtimeMs) {
@@ -78,7 +82,7 @@ export function watchNotes(
       const held = pending.get(name)
       if (held && held.mtimeMs === s.mtimeMs && held.size === s.size) {
         events.push({ event: known === undefined ? 'add' : 'change', path: join(notesDir, name) })
-        committed.set(name, s.mtimeMs)
+        commits.push({ name, mtimeMs: s.mtimeMs })
         pending.delete(name)
       } else {
         pending.set(name, s) // stage; require one stable interval before reading
@@ -87,12 +91,23 @@ export function watchNotes(
     for (const name of [...committed.keys()]) {
       if (!cur.has(name)) {
         events.push({ event: 'unlink', path: join(notesDir, name) })
-        committed.delete(name)
+        commits.push({ name, mtimeMs: null })
         pending.delete(name)
       }
     }
 
-    if (events.length > 0) await onBatch(events)
+    if (events.length > 0) {
+      try {
+        await onBatch(events)
+      } catch (err) {
+        console.error('notes-watch batch failed — events retry next tick:', err)
+        return
+      }
+      for (const { name, mtimeMs } of commits) {
+        if (mtimeMs === null) committed.delete(name)
+        else committed.set(name, mtimeMs)
+      }
+    }
   }
 
   const loop = (): void => {

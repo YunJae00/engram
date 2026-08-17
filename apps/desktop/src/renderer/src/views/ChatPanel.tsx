@@ -186,7 +186,20 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
   }, [entries])
 
   const sendMessage = async (message: string) => {
-    if (!message || busy || engines.length === 0) return
+    if (!message || busy) return
+    // No engine ≠ nowhere to go: the empty state promises thoughts are kept,
+    // so with engines=[] the message becomes a plain capture — same path as
+    // promoting an answer.
+    if (engines.length === 0) {
+      try {
+        const result = await api.capture(message)
+        setEntries((prev) => [...prev, { kept: true, text: message, pinned: !result.processed }])
+        await refresh()
+      } catch {
+        setEntries((prev) => [...prev, { role: 'assistant', text: t('chat.offlineSaveFailed'), error: true }])
+      }
+      return
+    }
     busyRef.current = true
     setBusy(true)
     askedAtRef.current = Date.now()
@@ -353,7 +366,7 @@ export function ChatPanel({ onClose, intent, onIntentConsumed }: ChatPanelProps)
             className="chat-send-btn armed"
             data-testid="chat-send"
             aria-label={t('chat.send')}
-            disabled={noEngine || !text.trim()}
+            disabled={!text.trim()}
           >
             <ArrowUp size={15} />
           </button>

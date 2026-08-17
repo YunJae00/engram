@@ -45,7 +45,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
   onToggleChat(): void
   onOpenPalette(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, showToast, vaultReady, t } = useApp()
+  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, openInbox, showToast, vaultReady, t } = useApp()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   const unswept = pendingWork.inbox + pendingWork.notes
@@ -219,7 +219,13 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
         className="topbar-action zap"
         data-testid="sweep-button"
         disabled={sweepStatus.running}
-        onClick={() => void runSweep()}
+        onClick={() => {
+          // The tour says "click to review" about this badge. With no engine
+          // a sweep can only throw a toast — show the waiting captures
+          // instead; the inbox overlay carries its own connect-engine banner.
+          if (engines.length === 0) openInbox()
+          else void runSweep()
+        }}
         title={unswept > 0 ? t('topbar.tidyPending', { n: unswept }) : t('topbar.tidyTitle')}
       >
         <Icon name="zap" size={14} /> {t('topbar.tidy')}

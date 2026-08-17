@@ -244,6 +244,9 @@ export type EngramEvent =
   | { type: 'filing:done' }
   // zero-click MCP hookup refreshed a client's registration on boot
   | { type: 'mcp:autoconnected'; targets: string[] }
+  // the semantic layer fell over (model download/load failed) — said once per
+  // transition, so search quietly degrading to lexical is not fully silent
+  | { type: 'semantic:error'; detail: string }
   // the first engine detection after boot has finished — until this lands the
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
@@ -361,6 +364,8 @@ export interface EngramApi {
   // Desk journal switch (settings ⑨ + tray share the same state).
   activityGet(): Promise<boolean>
   activitySet(enabled: boolean): Promise<boolean>
+  sessionWatchGet(): Promise<boolean>
+  sessionWatchSet(enabled: boolean): Promise<boolean>
   // promote a chat answer into an artifact note; returns the new note id
   buildPack(query?: string): Promise<{ file: string; content: string }>
   // team sync & bulk import

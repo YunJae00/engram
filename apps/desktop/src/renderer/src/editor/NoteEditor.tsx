@@ -25,6 +25,7 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
   const [previewHtml, setPreviewHtml] = useState('')
   const [showPreview, setShowPreview] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -57,8 +58,21 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
             setSaving(true)
             window.clearTimeout(saveTimer.current)
             saveTimer.current = window.setTimeout(() => {
-              unsaved.current = null
-              void api.saveNoteBody(noteId, text).finally(() => setSaving(false))
+              // The badge must not read "Saved" on a rejected write. Keep
+              // the text as unsaved so the unmount flush retries it, and
+              // show the failure.
+              void api.saveNoteBody(noteId, text).then(
+                () => {
+                  if (unsaved.current?.text === text) unsaved.current = null
+                  setSaving(false)
+                  setSaveFailed(false)
+                },
+                () => {
+                  if (!unsaved.current) unsaved.current = { id: noteId, text }
+                  setSaving(false)
+                  setSaveFailed(true)
+                },
+              )
             }, 600)
           }),
         ],
@@ -78,7 +92,9 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
 
   return (
     <div className="note-editor" data-testid="note-editor">
-      <div className="editor-save" data-testid="editor-save">{saving ? t('editor.saving') : t('editor.saved')}</div>
+      <div className={`editor-save${saveFailed && !saving ? ' editor-save-failed' : ''}`} data-testid="editor-save">
+        {saving ? t('editor.saving') : saveFailed ? t('editor.saveFailed') : t('editor.saved')}
+      </div>
       {note && <MetaBar note={note} onChange={setNote} />}
       {note && <LineageStrip noteId={noteId} onDiff={onDiff} />}
       {note && <LinksPanel noteId={noteId} />}

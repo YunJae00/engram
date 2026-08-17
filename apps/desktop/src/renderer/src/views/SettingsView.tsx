@@ -9,6 +9,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
+  const [sessionWatch, setSessionWatch] = useState<boolean | null>(null)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [mcpStatus, setMcpStatus] = useState<string | null>(null)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
@@ -24,6 +25,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     void api.localModelsState().then(setLocalModels).catch(() => {})
     void api.contentFolders().then(setFolders).catch(() => {})
     void api.activityGet().then(setDeskJournal).catch(() => {})
+    void api.sessionWatchGet().then(setSessionWatch).catch(() => {})
     return api.onEvent((event) => {
       if (event.type === 'localmodels:changed') setLocalModels(event.state)
       else if (event.type === 'localmodel:progress') {
@@ -114,6 +116,16 @@ export function SettingsView({ onClose }: { onClose(): void }) {
               data-testid="setting-desk-journal"
               checked={deskJournal ?? false}
               onChange={(e) => void api.activitySet(e.target.checked).then(setDeskJournal)}
+            />
+          </label>
+          <label className="setting-row">
+            <span>{t('settings.sessionWatch')}</span>
+            <input
+              type="checkbox"
+              className="switch"
+              data-testid="setting-session-watch"
+              checked={sessionWatch ?? false}
+              onChange={(e) => void api.sessionWatchSet(e.target.checked).then(setSessionWatch)}
             />
           </label>
         </div>

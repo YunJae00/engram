@@ -8,22 +8,30 @@ export function QuickCapture() {
   const [text, setText] = useState('')
   const [locked, setLocked] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [error, setError] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const finish = () => {
     setText('')
+    setError(false)
     api.hideQuickCapture()
   }
 
-  const submit = () => {
+  // The window closing IS the success signal, so it must not close until the
+  // write settled. On failure the text stays in the box and one line explains.
+  const submit = async () => {
     const trimmed = text.trim()
     if (!trimmed) {
       finish()
       return
     }
-    if (locked) void api.capturePrivate(trimmed)
-    else void api.capture(trimmed)
-    finish()
+    try {
+      if (locked) await api.capturePrivate(trimmed)
+      else await api.capture(trimmed)
+      finish()
+    } catch {
+      setError(true)
+    }
   }
 
   // Screenshot paste behaves like a file drop: capture and dismiss.
@@ -33,21 +41,40 @@ export function QuickCapture() {
     e.preventDefault()
     if (blob.size > PASTE_IMAGE_MAX_BYTES) return // silently refuse; window stays open
     void (async () => {
-      await api.captureImage(await blobBytes(blob), locked)
-      finish()
+      try {
+        await api.captureImage(await blobBytes(blob), locked)
+        finish()
+      } catch {
+        setError(true)
+      }
     })()
   }
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
-    for (const file of Array.from(e.dataTransfer.files)) {
-      const path = api.pathForFile(file)
-      if (path) void api.captureFile(path)
-    }
-    const dropped = e.dataTransfer.getData('text/plain')
-    if (dropped) void (locked ? api.capturePrivate(dropped) : api.capture(dropped))
-    if (e.dataTransfer.files.length > 0 || dropped) finish()
+    void (async () => {
+      let failed = false
+      for (const file of Array.from(e.dataTransfer.files)) {
+        const path = api.pathForFile(file)
+        if (!path) continue
+        try {
+          await api.captureFile(path)
+        } catch {
+          failed = true
+        }
+      }
+      const dropped = e.dataTransfer.getData('text/plain')
+      if (dropped) {
+        try {
+          await (locked ? api.capturePrivate(dropped) : api.capture(dropped))
+        } catch {
+          failed = true
+        }
+      }
+      if (failed) setError(true)
+      else if (e.dataTransfer.files.length > 0 || dropped) finish()
+    })()
   }
 
   return (
@@ -87,12 +114,12 @@ export function QuickCapture() {
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
-            submit()
+            void submit()
           }
           if (e.key === 'Escape') finish()
         }}
       />
-      <div className="quick-hint">{t('quick.hint')}</div>
+      {error ? <div className="quick-hint quick-error" role="alert">{t('quick.saveFailed')}</div> : <div className="quick-hint">{t('quick.hint')}</div>}
     </div>
   )
 }

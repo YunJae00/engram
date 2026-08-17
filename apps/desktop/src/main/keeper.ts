@@ -106,6 +106,7 @@ async function tick(ctx: VaultContext): Promise<void> {
   if (state.worklogDay !== yesterday) {
     const spans = await readDaySpans(ctx, now - 86_400_000).catch(() => [])
     let log = composeWorklog(yesterday, spans)
+    let logged = true
     if (log) {
       // The web trail and recent documents join the day's note (PLAN-LOCAL-
       // FIRST §3.5): in the webmail era the browser's page titles are often
@@ -115,9 +116,18 @@ async function tick(ctx: VaultContext): Promise<void> {
       const files = await recentFileNames(dayStart).catch(() => [])
       if (trail.length > 0) log += `\n\n## Web\n${trail.join('\n')}`
       if (files.length > 0) log += `\n\n## Files touched\n${files.slice(0, 12).map((n) => `- ${n}`).join('\n')}`
-      await writeCapture(ctx.paths.inbox, log).catch(() => undefined)
+      // The day stamp only advances when the write landed — advancing on a
+      // failed write discards that day's worklog permanently, since no later
+      // tick retries a stamped day.
+      logged = await writeCapture(ctx.paths.inbox, log).then(
+        () => true,
+        (err) => {
+          flog('worklog-write-failed', err)
+          return false
+        },
+      )
     }
-    await writeState({ worklogDay: yesterday })
+    if (logged) await writeState({ worklogDay: yesterday })
   }
   if (now - (state.gardenedAt ?? 0) >= WEEK_MS) {
     const events = await sweepGarden(ctx.paths, ctx.store.getAll()).catch(() => [])

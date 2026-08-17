@@ -284,8 +284,16 @@ export function buildJ1(
         )
         return [`note created: ${note.front.id} (${note.front.type}/${note.front.decay})`, `original moved: inbox/${file} → ${sourceRel}`]
       } catch (err) {
-        // Give the claim back so the scrap stays retryable in inbox.
-        await rename(join(paths.sources, file), join(paths.inbox, file)).catch(() => undefined)
+        // Give the claim back so the scrap stays retryable in inbox. When the
+        // restore ALSO fails the capture is stranded in sources/ where no
+        // retry path looks — the surfaced failure must say where the content is.
+        try {
+          await rename(join(paths.sources, file), join(paths.inbox, file))
+        } catch {
+          throw new Error(
+            `${err instanceof Error ? err.message : String(err)} (inbox restore also failed — capture preserved at ${sourceRel})`,
+          )
+        }
         throw err
       }
     },

@@ -12,13 +12,25 @@ export function Onboarding() {
   const [firstCapture, setFirstCapture] = useState('')
   const [finishing, setFinishing] = useState(false)
   const [models, setModels] = useState<LocalModelsStateDto | null>(null)
+  const [modelsFailed, setModelsFailed] = useState(false)
   const [modelPct, setModelPct] = useState<number | null>(null)
   const [modelError, setModelError] = useState('')
   const [imported, setImported] = useState<{ done: number; total: number } | null>(null)
 
+  // A failed state fetch must not leave step 2 as a title over an empty
+  // list — without the retry the user proceeds brainless, never having seen
+  // a download button.
+  const loadModels = () => {
+    setModelsFailed(false)
+    void api
+      .localModelsState()
+      .then(setModels)
+      .catch(() => setModelsFailed(true))
+  }
+
   useEffect(() => {
     void api.onboardDefaults().then((d) => setRoot(d.defaultRoot))
-    void api.localModelsState().then(setModels).catch(() => {})
+    loadModels()
     return api.onEvent((event) => {
       if (event.type === 'localmodels:changed') setModels(event.state)
       else if (event.type === 'localmodel:progress') {
@@ -120,6 +132,14 @@ export function Onboarding() {
                 </li>
               ))}
             </ul>
+            {modelsFailed && (
+              <p className="onboard-fail">
+                {t('onboard.modelsUnavailable')}{' '}
+                <button className="secondary" data-testid="onboard-models-retry" onClick={loadModels}>
+                  {t('onboard.modelsRetry')}
+                </button>
+              </p>
+            )}
             {modelError && <p className="onboard-fail">{t('settings.localFailed', { reason: modelError })}</p>}
             <p className="onboard-note">{t('onboard.modelNote', { ram: models?.ramGB ?? 0 })}</p>
             <div className="onboard-actions">

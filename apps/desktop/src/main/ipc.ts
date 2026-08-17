@@ -246,6 +246,16 @@ export function runPipelineAsync(ctx: VaultContext, message: string): void {
       if (!ctx.git) return
       await ctx.git.autoCommit(message).catch(() => undefined)
     })
+    // A rejecting processCapture (an inbox file deleted between list and
+    // read, an unreadable AGENTS.md) must not become an unhandled rejection:
+    // the inbox files survive, and the scrap pile (which renders
+    // lastFailures) has to say why they wait.
+    .catch((err) => {
+      flog('capture-pipeline', err)
+      lastFailures = [
+        { kind: 'J1', inputKey: 'capture pipeline', error: err instanceof Error ? err.message : String(err) },
+      ]
+    })
     .finally(() => {
       pipelineRunning = false
       broadcast({ type: 'filing:done' })
@@ -931,21 +941,38 @@ export function registerIpc(ctx: VaultContext): void {
     return { ok: true }
   })
 
+  // Exclusive create with a suffix loop — writeCapture's collision guard,
+  // shared by every handler that names its own file. A plain write would
+  // replace whatever already holds the name (a same-millisecond double
+  // paste, a re-dropped file) while both callers report success.
+  const writeUnique = async (dir: string, name: string, data: string | Uint8Array): Promise<string> => {
+    const { writeFile } = await import('node:fs/promises')
+    const dot = name.lastIndexOf('.')
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+    for (let n = 0; ; n++) {
+      const file = n === 0 ? name : `${stem}-${n}${ext}`
+      try {
+        await writeFile(join(dir, file), data, { flag: 'wx' })
+        return file
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+      }
+    }
+  }
+
   ipcMain.handle('capture:private', async (_e, text: string) => {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const file = `${stamp}-capture.md`
-    const { writeFile, mkdir } = await import('node:fs/promises')
+    const { mkdir } = await import('node:fs/promises')
     await mkdir(paths.privateDir, { recursive: true })
-    await writeFile(join(paths.privateDir, file), normalizeCapture(text) + '\n')
+    const file = await writeUnique(paths.privateDir, `${stamp}-capture.md`, normalizeCapture(text) + '\n')
     return { file }
   })
 
   // Drop zone / quick-capture file drops: copy into the inbox untouched.
   ipcMain.handle('capture:file', async (_e, sourcePath: string) => {
-    const { copyFile } = await import('node:fs/promises')
+    const { readFile } = await import('node:fs/promises')
     const { basename } = await import('node:path')
-    const file = basename(sourcePath)
-    await copyFile(sourcePath, join(paths.inbox, file))
+    const file = await writeUnique(paths.inbox, basename(sourcePath), await readFile(sourcePath))
     broadcast({ type: 'vault:changed' })
     runPipelineAsync(ctx, 'librarian: capture file')
     return { file }
@@ -955,14 +982,14 @@ export function registerIpc(ctx: VaultContext): void {
   // disk yet. Locked pastes land under private/; otherwise the inbox, where ingest OCRs images like any drop.
   ipcMain.handle('capture:image', async (_e, data: Uint8Array, locked: boolean) => {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const file = `${stamp}-capture.png`
-    const { writeFile, mkdir } = await import('node:fs/promises')
+    const { mkdir } = await import('node:fs/promises')
     if (locked) {
       await mkdir(paths.privateDir, { recursive: true })
-      await writeFile(join(paths.privateDir, file), data)
+      const file = await writeUnique(paths.privateDir, `${stamp}-capture.png`, data)
       return { file }
     }
-    await writeFile(join(paths.inbox, file), data)
+    await mkdir(paths.inbox, { recursive: true })
+    const file = await writeUnique(paths.inbox, `${stamp}-capture.png`, data)
     broadcast({ type: 'vault:changed' })
     runPipelineAsync(ctx, 'librarian: capture image')
     return { file }
@@ -1239,15 +1266,29 @@ export function registerIpc(ctx: VaultContext): void {
       // report itself as done — the user already saw it stop.
       if (signal.aborted) return
       const { text: cleaned, captures } = extractChatCaptures(finalText ?? streamed)
-      for (const item of captures) await writeCapture(paths.inbox, item).catch(() => undefined)
-      if (captures.length > 0) {
+      // The receipt must never claim more than the disk holds — a failed
+      // inbox write is exactly when "remember this" must say it did not land.
+      let saved = 0
+      let saveError: unknown = null
+      for (const item of captures) {
+        try {
+          await writeCapture(paths.inbox, item)
+          saved++
+        } catch (err) {
+          saveError = err
+          flog('chat-capture-write', err)
+        }
+      }
+      if (saved > 0) {
         broadcast({ type: 'vault:changed' })
         runPipelineSoon(ctx, 'librarian: chat capture')
       }
       const receipt =
-        captures.length > 0
-          ? `\n\n✓ Remembered${captures.length > 1 ? ` ${captures.length} items` : ''} — the librarian is filing ${captures.length > 1 ? 'them' : 'it'}`
-          : ''
+        captures.length === 0
+          ? ''
+          : saved === captures.length
+            ? `\n\n✓ Remembered${saved > 1 ? ` ${saved} items` : ''} — the librarian is filing ${saved > 1 ? 'them' : 'it'}`
+            : `\n\n⚠ Could not save ${saved > 0 ? `${captures.length - saved} of ${captures.length} items` : 'this'} — ${saveError instanceof Error ? saveError.message : 'the vault folder rejected the write'}. Please try again.`
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}` })
       markEngineOk(engine.id)
     }
