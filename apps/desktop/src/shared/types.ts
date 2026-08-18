@@ -279,6 +279,10 @@ export type EngramEvent =
   // usable, and `reason` says which sentence (and which button) the user gets
   | { type: 'engine:health'; id: string; healthy: boolean; reason?: EngineHealthReason }
   | { type: 'window:fullscreen'; value: boolean }
+  // A delegated errand (core's runErrand) moving through its fixed phases — the
+  // top bar narrates it and the toast fires on done/failed. `error` rides only
+  // on 'failed'; `goal` labels the run so a late subscriber knows what it is.
+  | { type: 'errand:phase'; phase: 'plan' | 'gather' | 'distill' | 'compose' | 'done' | 'failed'; goal: string; error?: string }
   | { type: 'vault:ready' }
   // The floating question asked the shell to open Review instead.
   // Opening the vault failed outright. Without this the shell has no way to
@@ -328,6 +332,11 @@ export interface EngramApi {
   brainFabric(): Promise<BrainFabricDto>
   // Stop a running answer on one surface (or every surface when omitted).
   chatAbort(channel?: 'panel' | 'bubble'): Promise<void>
+  // Delegate one goal to the on-device librarian (core's runErrand). Runs
+  // detached in main — this resolves once it has STARTED (or refused, e.g. no
+  // engine); progress and the eventual outcome arrive as errand:phase events.
+  errandStart(goal: string): Promise<{ ok: boolean; error?: string }>
+  errandAbort(): Promise<void>
   fadingMemories(): Promise<FadingMemoryDto[]>
   openLoops(): Promise<OpenLoopDto[]>
   latestBrief(): Promise<string | null>

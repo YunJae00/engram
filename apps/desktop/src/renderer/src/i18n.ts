@@ -288,6 +288,18 @@ const en = {
   'palette.teamCreate': 'Team: create a shared vault…',
   'palette.teamJoin': 'Team: join via invite URL…',
   'palette.import': 'Import a folder of notes…',
+  'palette.errand': 'Delegate an errand…',
+
+  // errand dialog + top-bar progress (a delegated goal run on-device)
+  'errand.title': 'Delegate an errand',
+  'errand.placeholder': 'What should the librarian do? e.g. 지난달 배포 관련 결정 정리해줘',
+  'errand.start': 'Delegate',
+  // One parameterized line for the whole run — {phase} is one of the labels below.
+  'topbar.errand': 'Errand: {phase}',
+  'topbar.errandPlan': 'planning…',
+  'topbar.errandGather': 'gathering…',
+  'topbar.errandDistill': 'distilling…',
+  'topbar.errandCompose': 'writing…',
 
   // transient toasts
   'toast.synced': 'Synced',
@@ -295,6 +307,8 @@ const en = {
   'toast.noTeam': 'No team connected — “Team: create” in the command palette (Ctrl+Shift+P)',
   'toast.contextPack': 'Context pack copied ({file})',
   'toast.absorbed': 'All imported notes absorbed',
+  'toast.errandDone': 'Errand finished — the result is waiting in review',
+  'toast.errandFailed': 'Errand failed — {reason}',
 
   // feature-action toasts (phase 2)
   'toast.approved': 'Approved [{type}]',

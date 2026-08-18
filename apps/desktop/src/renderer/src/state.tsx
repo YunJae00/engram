@@ -76,6 +76,10 @@ interface AppState {
   sweepJob: { job: string; index: number; total: number } | null
   sweepStartedAt: number | null
   runSweep(): Promise<void>
+  // A delegated errand in flight — the top bar narrates its phase; the toast
+  // fires on done/failed. `running` gates a second delegation and the progress line.
+  errand: { running: boolean; phase?: string; goal?: string }
+  startErrand(goal: string): Promise<void>
   toast: string | null
   showToast(message: string): void
   t: Translate
@@ -147,6 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pendingWork, setPendingWork] = useState<PendingWorkDto>({ inbox: 0, notes: 0, filing: false })
   const [sweepJob, setSweepJob] = useState<{ job: string; index: number; total: number } | null>(null)
   const [sweepStartedAt, setSweepStartedAt] = useState<number | null>(null)
+  const [errand, setErrand] = useState<{ running: boolean; phase?: string; goal?: string }>({ running: false })
   const [toast, setToast] = useState<string | null>(null)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
@@ -352,6 +357,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }, 2000)
         }
       }
+      // A delegated errand moving through its phases. 'done'/'failed' end the
+      // run and speak once; the middle phases just relabel the top-bar line.
+      if (event.type === 'errand:phase') {
+        if (event.phase === 'done') {
+          setErrand({ running: false })
+          latest.current.showToast(latest.current.t('toast.errandDone'))
+        } else if (event.phase === 'failed') {
+          setErrand({ running: false })
+          latest.current.showToast(latest.current.t('toast.errandFailed', { reason: event.error ?? '' }))
+        } else {
+          setErrand({ running: true, phase: event.phase, goal: event.goal })
+        }
+      }
       if (event.type === 'engines:detected') setEnginesDetected(true)
       if (event.type === 'engines:changed') setEngines(event.engines)
       // Health is folded into the engine list rather than kept in a second
@@ -398,6 +416,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [refresh, showToast])
 
+  // Kick off a delegated errand. main runs it detached and reports back over
+  // errand:phase — so this only surfaces the refusal (no engine, already busy).
+  const startErrand = useCallback(
+    async (goal: string) => {
+      if (!goal.trim()) return
+      setErrand({ running: true, goal: goal.trim() })
+      const result = await api.errandStart(goal.trim())
+      if (!result.ok) {
+        setErrand({ running: false })
+        showToast(result.error ?? t('toast.errandFailed', { reason: '' }))
+      }
+    },
+    [showToast],
+  )
+
   const value = useMemo<AppState>(
     () => ({
       activity,
@@ -438,11 +471,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sweepJob,
       sweepStartedAt,
       runSweep,
+      errand,
+      startErrand,
       toast,
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, loops, refresh, sheetNoteId, reviewOpen, inboxOpen, todayOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, loops, refresh, sheetNoteId, reviewOpen, inboxOpen, todayOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, startErrand, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

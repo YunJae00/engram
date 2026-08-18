@@ -76,6 +76,12 @@ export interface EngineJobInput {
   // model for a tier ignore the hint and keep their default — so a hint can
   // never break an engine. Unset = the engine's own default model (chat).
   modelHint?: 'fast' | 'smart'
+  // Hard output contract for structured steps. An adapter that can constrain
+  // decoding (local, via llama.cpp grammars) forces the answer to match this
+  // JSON schema at sampling time — a small model's format drift breaks the
+  // parser otherwise. Adapters that cannot (CLI engines) ignore it and rely
+  // on the prompt's own instructions.
+  jsonSchema?: object
 }
 
 export type EngineEvent =

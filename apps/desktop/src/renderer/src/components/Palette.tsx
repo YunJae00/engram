@@ -121,6 +121,9 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
             <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-github')))}>{t('palette.teamCreate')}</Command.Item>
             <Command.Item onSelect={() => pick(() => onAction('team-join'))}>{t('palette.teamJoin')}</Command.Item>
             <Command.Item onSelect={() => pick(() => onAction('import'))}>{t('palette.import')}</Command.Item>
+            {/* Delegate a goal to the on-device librarian — same window-intent
+                idiom as the digest/GitHub items above. */}
+            <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-errand')))}>{t('palette.errand')}</Command.Item>
           </>
         )}
       </Command.List>

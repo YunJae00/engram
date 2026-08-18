@@ -4,8 +4,12 @@ export interface LocalTransport {
   // One prompt in, the final text out. Reject → error event (classified by
   // message below); respect the signal for cancellation. `onToken` receives
   // the answer in pieces as it is generated — optional, because the CLI's
-  // default transport has nothing to stream.
-  complete(prompt: string, opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void }): Promise<string>
+  // default transport has nothing to stream. `jsonSchema` constrains decoding
+  // to that schema when the runtime supports grammars.
+  complete(
+    prompt: string,
+    opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void; jsonSchema?: object },
+  ): Promise<string>
   // Cheap presence check for detection: a model is chosen, on disk, and the
   // runtime can be had. MUST NOT load gigabytes — detection polls this on
   // focus and every few minutes.
@@ -53,6 +57,7 @@ export class LocalAdapter implements Engine {
     const work = this.transport
       .complete(job.prompt, {
         signal: controller.signal,
+        ...(job.jsonSchema ? { jsonSchema: job.jsonSchema } : {}),
         onToken: (text) => {
           if (text) queue.push(text)
           ring()

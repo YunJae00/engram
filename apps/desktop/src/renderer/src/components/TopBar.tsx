@@ -45,7 +45,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
   onToggleChat(): void
   onOpenPalette(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, openInbox, showToast, vaultReady, t } = useApp()
+  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, errand, openInbox, showToast, vaultReady, t } = useApp()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   const unswept = pendingWork.inbox + pendingWork.notes
@@ -136,6 +136,17 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
     : absorbing
       ? ''
       : sweepLabel(t, sweepStatus) + (sweepStatus.running ? jobSuffix : '')
+  // A delegated errand narrates in this same slot — one parameterized line
+  // ("Errand: gathering…"). It takes the slot while running because it is the
+  // user's own foreground request; only the four working phases have a label.
+  const errandPhaseKey: Record<string, StringKey> = {
+    plan: 'topbar.errandPlan',
+    gather: 'topbar.errandGather',
+    distill: 'topbar.errandDistill',
+    compose: 'topbar.errandCompose',
+  }
+  const errandKey = errand.phase ? errandPhaseKey[errand.phase] : undefined
+  const errandText = errand.running && errandKey ? t('topbar.errand', { phase: t(errandKey) }) : ''
   // No engine = nothing is absorbing — say what the queue is actually
   // waiting for instead of a frozen "absorbing 0/N".
   const absorbText =
@@ -174,9 +185,9 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
 
       <div className="topbar-spacer" />
 
-      <span className="topbar-status live" data-testid="sweep-status" title={sweepText || undefined}>
-        {(sweepStatus.running || filingOnly) && <Loader2 className="spin" size={12} aria-hidden />}
-        <span className="status-label">{sweepText}</span>
+      <span className="topbar-status live" data-testid="sweep-status" title={(errandText || sweepText) || undefined}>
+        {(errand.running || sweepStatus.running || filingOnly) && <Loader2 className="spin" size={12} aria-hidden />}
+        <span className="status-label">{errandText || sweepText}</span>
       </span>
       {absorb.pending > 0 && (
         <span className="topbar-status live" data-testid="absorb-status" title={absorbText}>

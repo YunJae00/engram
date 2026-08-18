@@ -13,6 +13,7 @@ interface CompleteRequest {
   id: number
   prompt: string
   maxTokens: number
+  jsonSchema?: object
 }
 
 type WorkerRequest = LoadRequest | CompleteRequest | { type: 'abort'; id: number } | { type: 'unload' }
@@ -22,11 +23,16 @@ interface LlamaContext {
   getSequence(): unknown
 }
 
+// Opaque grammar handle — a LlamaJsonSchemaGrammar (which extends LlamaGrammar,
+// the type prompt() expects for its `grammar` option). Never constructed here.
+type LlamaGrammar = { __grammar: never }
+
 interface PromptOptions {
   maxTokens?: number
   signal?: AbortSignal
   stopOnAbortSignal?: boolean
   onTextChunk?: (text: string) => void
+  grammar?: LlamaGrammar
 }
 
 interface ChatSession {
@@ -35,7 +41,10 @@ interface ChatSession {
 }
 
 interface Engine {
-  llama: { dispose(): Promise<void> }
+  llama: {
+    dispose(): Promise<void>
+    createGrammarForJsonSchema(schema: object): Promise<LlamaGrammar>
+  }
   model: {
     dispose(): Promise<void>
     createContext(opts: { contextSize: number }): Promise<LlamaContext>
@@ -112,6 +121,25 @@ async function prepareSession(ready: Engine, contextSize: number): Promise<ChatS
 // hiding the answer they are still paying for.
 const running = new Map<number, AbortController>()
 
+// Compiling a grammar walks the whole schema; the errand phases reuse a handful
+// of schemas over and over, so keyed by the schema text they compile once.
+const grammars = new Map<string, LlamaGrammar>()
+
+async function grammarFor(ready: Engine, schema: object): Promise<LlamaGrammar | null> {
+  const key = JSON.stringify(schema)
+  const cached = grammars.get(key)
+  if (cached) return cached
+  try {
+    const grammar = await ready.llama.createGrammarForJsonSchema(schema)
+    grammars.set(key, grammar)
+    return grammar
+  } catch {
+    // Fall back to unconstrained prompting: the prompt already asks for JSON and
+    // the caller validates the result, so a bad schema costs a retry, not a crash.
+    return null
+  }
+}
+
 async function complete(req: CompleteRequest, path: string, contextSize: number): Promise<void> {
   const canceller = new AbortController()
   running.set(req.id, canceller)
@@ -121,6 +149,7 @@ async function complete(req: CompleteRequest, path: string, contextSize: number)
     const warm = session !== null
     const chat = await prepareSession(ready, contextSize)
     if (warm) chat.resetChatHistory?.()
+    const grammar = req.jsonSchema ? await grammarFor(ready, req.jsonSchema) : null
     // Streamed, not batched: the answer takes tens of seconds locally, and
     // watching it arrive is the difference between slow and broken.
     const text = await chat.prompt(req.prompt, {
@@ -128,6 +157,7 @@ async function complete(req: CompleteRequest, path: string, contextSize: number)
       signal: canceller.signal,
       stopOnAbortSignal: true,
       onTextChunk: (chunk) => send({ type: 'chunk', id: req.id, text: chunk }),
+      ...(grammar ? { grammar } : {}),
     })
     send({ type: 'done', id: req.id, text })
   } catch (err) {

@@ -344,7 +344,7 @@ let inFlight: Promise<string> | null = null
 
 export async function localComplete(
   prompt: string,
-  opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void },
+  opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void; jsonSchema?: object },
 ): Promise<string> {
   // Serialize: local inference saturates the machine; overlapping jobs would
   // page-thrash. The librarian is serial anyway (concurrency 1).
@@ -387,7 +387,7 @@ export async function localComplete(
         return
       }
       opts.signal?.addEventListener('abort', onAbort, { once: true })
-      proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 1024 })
+      proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 1024, ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}) })
     })
     lastUsed = Date.now()
     return answer

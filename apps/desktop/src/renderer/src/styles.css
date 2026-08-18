@@ -1679,6 +1679,9 @@ body.bubble-host { background: transparent; }
    so the buttons keep their right-aligned order. */
 .brief-box input:not([type='checkbox']) { width: 100%; }
 .brief-box code { font-family: var(--mono); font-size: 12px; }
+/* Errand dialog: a multi-line goal box. Inherits the shared input/textarea
+   chrome (background, border, focus ring); this only sizes it. */
+.errand-input { width: 100%; min-height: 84px; resize: vertical; font-size: 14px; padding: 9px 11px; }
 
 /* ── GitHub backup dialog (two numbered steps) ───────────────── */
 .github-connect .brief-title { display: flex; align-items: center; gap: 8px; }

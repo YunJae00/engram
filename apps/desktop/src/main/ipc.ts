@@ -38,9 +38,11 @@ import {
   recordRecall,
   recordRecallReceipt,
   rejectCard,
+  runErrand,
   safeInboxName,
   spreadActivation,
   sweep,
+  toRetrievedNote,
   topicComponents,
   triggeredNotes,
   unionHits,
@@ -494,6 +496,12 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
   }
 }
 
+// One errand at a time, process-wide. `errandRunning` is the single-flight
+// guard (cleared in a finally so a crashed run never wedges the door shut);
+// `errandAbort` is the live run's controller, so errand:abort can cancel it.
+let errandRunning = false
+let errandAbort: AbortController | null = null
+
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
@@ -806,6 +814,58 @@ export function registerIpc(ctx: VaultContext): void {
   // Stopping a running answer is the difference between waiting and being
   // stuck; the plumbing existed, nothing ever called it from the UI.
   ipcMain.handle('chat:abort', (_e, channel?: 'panel' | 'bubble') => abortAllChat(channel))
+
+  // Delegate one goal to the on-device librarian. The invoke returns the moment
+  // the run is accepted (or refused) — the errand itself is detached and takes
+  // minutes, so blocking here would hang the palette. Progress and the final
+  // verdict travel as errand:phase events; a 'failed' phase carries the reason.
+  ipcMain.handle('errand:start', (_e, goal: string): { ok: boolean; error?: string } => {
+    if (errandRunning) return { ok: false, error: 'An errand is already running.' }
+    if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
+    errandRunning = true
+    errandAbort = new AbortController()
+    const signal = errandAbort.signal
+    void runErrand(
+      paths,
+      {
+        engine: ctx.engines[0]!,
+        workdir: engineCwd(paths),
+        // The errand searches the vault exactly as chat does — the same hybrid
+        // merge (lexical + semantic + activation), living notes only.
+        retrieve: async (query, limit) => {
+          const hits = activationRerank(
+            hybridMerge(ctx.store.search(query), await semanticQuery(query, limit), limit),
+            (id) => ctx.store.get(id),
+          )
+          return hits
+            .map((h) => ctx.store.get(h.id))
+            .filter((n): n is Note => n !== null && n.front.status === 'current')
+            .slice(0, limit)
+            .map(toRetrievedNote)
+        },
+      },
+      goal,
+      {
+        signal,
+        onPhase: (s) =>
+          broadcast({ type: 'errand:phase', phase: s.phase, goal: s.goal, ...(s.error ? { error: s.error } : {}) }),
+      },
+    )
+      .then((result) => {
+        // The result lands as a review card; nudge the badge to pick it up.
+        if (result.ok) broadcast({ type: 'vault:changed' })
+      })
+      .catch((err) => flog('errand', err))
+      .finally(() => {
+        errandRunning = false
+        errandAbort = null
+      })
+    return { ok: true }
+  })
+
+  ipcMain.handle('errand:abort', () => {
+    errandAbort?.abort()
+  })
 
   ipcMain.handle('notes:list', () => ctx.store.getAll().map(toDto))
 

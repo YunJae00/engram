@@ -11,6 +11,7 @@ import { TodaySheet } from './components/TodaySheet.js'
 import { TopBar } from './components/TopBar.js'
 import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
 import { ActionDialog } from './components/ActionDialog.js'
+import { ErrandDialog } from './components/ErrandDialog.js'
 import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
 import { BrainView } from './views/BrainView.js'
@@ -50,6 +51,8 @@ function Shell() {
   // The weekly digest reads on demand from the command palette — it is not
   // part of the morning, so it is not mounted with Today.
   const [digestOpen, setDigestOpen] = useState(false)
+  // "Delegate an errand…" from the command palette raises this one window intent.
+  const [errandOpen, setErrandOpen] = useState(false)
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
@@ -134,6 +137,7 @@ function Shell() {
     const openImport = () => setAction('import')
     const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
+    const openErrand = () => setErrandOpen(true)
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = (event: Event) => {
@@ -152,6 +156,7 @@ function Shell() {
     window.addEventListener('engram:open-import', openImport)
     window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:open-digest', openDigest)
+    window.addEventListener('engram:open-errand', openErrand)
     window.addEventListener('engram:focus-capture', focusCapture)
     window.addEventListener('engram:sky-focus', focusSky)
     return () => {
@@ -162,6 +167,7 @@ function Shell() {
       window.removeEventListener('engram:open-import', openImport)
       window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:open-digest', openDigest)
+      window.removeEventListener('engram:open-errand', openErrand)
       window.removeEventListener('engram:focus-capture', focusCapture)
       window.removeEventListener('engram:sky-focus', focusSky)
     }
@@ -329,6 +335,7 @@ function Shell() {
       <NoteSheet />
       <TodaySheet />
       {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
+      {errandOpen && <ErrandDialog onClose={() => setErrandOpen(false)} />}
       <ReviewOverlay />
       <InboxOverlay />
       <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />
