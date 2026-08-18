@@ -55,13 +55,15 @@ Grab the installer from [Releases](../../releases). On first run you pick a loca
 
 Windows is the tested platform. macOS builds are produced by CI and the code paths are in place, but they have had far less real use — bug reports welcome. Linux target configuration exists but CI does not publish Linux artifacts yet.
 
-The installers are unsigned. On Windows, SmartScreen warns — More info → Run anyway. On macOS the refusal is harder ("Engram is damaged and can't be opened"), because an unsigned app cannot launch at all on Apple Silicon: drag Engram to Applications and clear the quarantine flag once, which also gives it a local ad-hoc signature.
+Neither installer is signed by an identified developer, so both platforms stop the first launch. On Windows SmartScreen warns — More info → Run anyway. On macOS, open Engram once, let it be blocked, then go to **System Settings → Privacy & Security** and press **Open Anyway** next to the message about Engram. (Right-click → Open used to be the shortcut; recent macOS releases no longer accept it for un-notarized apps.)
+
+macOS builds carry an ad-hoc signature. It identifies nobody, but it makes the bundle's seal match its contents, which is the difference between being *blocked* and being called **damaged** — and a build macOS calls damaged cannot be let through from the Finder at all. Builds before v0.2.6 have that broken seal; this repairs one in place:
 
 ```bash
 xattr -cr /Applications/Engram.app && codesign --force --deep --sign - /Applications/Engram.app
 ```
 
-Signing this properly needs a paid Apple Developer ID; until there is one, that line is the price of an unsigned build.
+A first launch with no questions asked, and real self-updates, both need a paid Apple Developer ID to sign and notarize with.
 
 Updates follow from that. Windows updates itself in the background and installs on the next quit. macOS cannot: the swap is handed to Squirrel, which refuses any build whose code signature it cannot validate against the running app's, so an unsigned build downloads the update and then rejects it. There, Engram only *tells* you a version is out — Settings → Updates → Check now, and the button opens the download page.
 

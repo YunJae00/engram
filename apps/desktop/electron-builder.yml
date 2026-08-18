@@ -23,6 +23,10 @@ extraResources:
     to: bin
     filter: ["**/*"]
 asar: true
+# Seals the macOS bundle with an ad-hoc signature — see scripts/adhoc-sign.mjs
+# for why a missing signature is safer than the stale one electron-builder
+# would otherwise leave behind.
+afterPack: scripts/adhoc-sign.mjs
 # Native inference (node-llama-cpp) cannot run from inside the asar — its
 # .node addons and runtime libraries load from real paths.
 asarUnpack:
@@ -81,6 +85,13 @@ mac:
   # in the margin, so the full-bleed tile Windows wants renders oversized in
   # the Dock. gen-icon.mjs writes this one on Apple's 824-of-1024 grid.
   icon: build/icon-mac.png
+  # Never electron-builder's own signing. On CI it finds no certificate and
+  # skips, leaving Electron's stale seal on a bundle we repacked; on a
+  # developer's Mac it finds whatever Xcode left in the keychain and signs a
+  # PUBLIC build with a personal development certificate, which is both a
+  # keychain prompt mid-build and an app that runs nowhere else. Null makes
+  # both machines take one path, and afterPack seals it ad-hoc.
+  identity: null
   category: public.app-category.productivity
   darkModeSupport: true
   files:
