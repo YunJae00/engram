@@ -209,6 +209,40 @@ async function downloadModel(id: string): Promise<{ ok: boolean; log?: string }>
   }
 }
 
+// Reclaiming the disk: these files are gigabytes, so a machine that switched
+// models has no other way to get the space back.
+async function deleteModel(id: string): Promise<{ ok: boolean; reason?: string }> {
+  const spec = MODELS.find((m) => m.id === id)
+  if (!spec) return { ok: false, reason: 'unknown model' }
+  // A running download owns both the .part file and the write stream. Cancel is
+  // the action for that state; deleting underneath it would race the writer.
+  if (downloads.has(id)) return { ok: false, reason: 'downloading' }
+  const state = await readState()
+  const active = state.activeModelId === id
+  if (active || loadedModelId === id) {
+    // The worker has the file mmap'd. Unlinking it there leaves the space
+    // claimed until the process dies (and on Windows fails outright), so the
+    // worker goes first and the next question reloads whatever is left.
+    stopLocalServer()
+  }
+  if (active) {
+    state.activeModelId = undefined
+    await writeFile(stateFile(), JSON.stringify(state)).catch(() => undefined)
+  }
+  const finalPath = join(modelsDir(), spec.file)
+  try {
+    // The .part sibling is an aborted download's leftover — invisible in the
+    // list and just as large, so it goes with the model it belongs to.
+    await rm(finalPath, { force: true })
+    await rm(`${finalPath}.part`, { force: true })
+  } catch (err) {
+    flog('localmodel-delete-failed', err)
+    return { ok: false, reason: String(err).slice(0, 200) }
+  }
+  flog('local-llm', `deleted model ${id}`)
+  return { ok: true }
+}
+
 // ── Inference host ──────────────────────────────────────────────────────
 // Inference runs in a child process: loading a multi-GB model takes 20-40s of
 // mmap and GPU init, and doing that in the main process froze every window.
@@ -218,6 +252,11 @@ async function downloadModel(id: string): Promise<{ ok: boolean; log?: string }>
 // loaded the model and then sat at 0% CPU forever).
 let child: ChildProcess | null = null
 let childReady: Promise<ChildProcess | null> | null = null
+// Which model the worker was last told to load. Deleting a file the worker
+// still holds open leaves a phantom on Windows and a live mmap elsewhere, and
+// the active id alone does not answer it — an adopted model loads with no id
+// ever written to the state file.
+let loadedModelId: string | null = null
 let lastUsed = 0
 let nextCallId = 1
 const pending = new Map<number, { resolve: (text: string) => void; reject: (err: Error) => void; onToken?: (text: string) => void }>()
@@ -294,6 +333,7 @@ function spawnChild(): Promise<ChildProcess | null> {
       flog('local-llm', `inference worker exited (code ${code ?? '-'}, signal ${signal ?? '-'})`)
       child = null
       childReady = null
+      loadedModelId = null
       setWarmState('cold')
       failAllPending('the inference process exited')
       if (!settled) {
@@ -337,6 +377,7 @@ export async function warmLocalModel(): Promise<void> {
     return
   }
   if (warmState === 'cold') setWarmState('loading')
+  loadedModelId = spec.id
   proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
 }
 
@@ -355,6 +396,7 @@ export async function localComplete(
     const proc = await spawnChild()
     if (!proc) throw new Error('the inference process could not start')
     if (warmState === 'cold') setWarmState('loading')
+    loadedModelId = spec.id
     proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
     lastUsed = Date.now()
     const id = nextCallId++
@@ -409,6 +451,7 @@ function armIdleUnload(): void {
     if (Date.now() - lastUsed < IDLE_UNLOAD_MS) return
     flog('local-llm', 'idle — unloading the model')
     child.send({ type: 'unload' })
+    loadedModelId = null
     setWarmState('cold')
     lastUsed = 0
   }, 60_000)
@@ -446,6 +489,7 @@ export function stopLocalServer(): void {
   const proc = child
   child = null
   childReady = null
+  loadedModelId = null
   setWarmState('cold')
   failAllPending('shutting down')
   proc?.kill('SIGKILL')
@@ -508,6 +552,15 @@ export function registerLocalLlmIpc(): void {
   })
   ipcMain.handle('localmodels:download', (_e, id: string) =>
     downloadModel(id).then((r) => {
+      announce()
+      if (r.ok) modelsChangedHook?.()
+      return r
+    }),
+  )
+  // Same pair as download, for the opposite reason: with the last brain gone
+  // engine detection must re-run or the connect banner keeps claiming local AI.
+  ipcMain.handle('localmodels:delete', (_e, id: string) =>
+    deleteModel(id).then((r) => {
       announce()
       if (r.ok) modelsChangedHook?.()
       return r

@@ -30,6 +30,7 @@ const api: EngramApi = {
   localModelsState: () => ipcRenderer.invoke('localmodels:state'),
   localModelDownload: (id: string) => ipcRenderer.invoke('localmodels:download', id),
   localModelCancel: (id: string) => ipcRenderer.invoke('localmodels:cancel', id),
+  localModelDelete: (id: string) => ipcRenderer.invoke('localmodels:delete', id),
   localModelSetActive: (id: string | null) => ipcRenderer.invoke('localmodels:setActive', id),
   activityGet: () => ipcRenderer.invoke('activity:get'),
   activitySet: (enabled: boolean) => ipcRenderer.invoke('activity:set', enabled),

@@ -16,6 +16,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [version, setVersion] = useState<string | null>(null)
   const [localModels, setLocalModels] = useState<LocalModelsStateDto | null>(null)
   const [downloadFail, setDownloadFail] = useState<Record<string, string>>({})
+  const [deleteFail, setDeleteFail] = useState<Record<string, string>>({})
+  // Delete is two-step and irreversible: the id whose button is armed, and the
+  // id whose deletion is in flight. Per-model, so arming one row cannot spill
+  // onto the next.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
@@ -36,6 +42,28 @@ export function SettingsView({ onClose }: { onClose(): void }) {
       }
     })
   }, [])
+
+  // An armed Delete button that stays armed is a mis-click away from a
+  // multi-gigabyte re-download, so it disarms itself shortly after the first
+  // click. (Clicking elsewhere blurs the button, which disarms it too.)
+  useEffect(() => {
+    if (!confirmingId) return
+    const timer = setTimeout(() => setConfirmingId(null), 4000)
+    return () => clearTimeout(timer)
+  }, [confirmingId])
+
+  const deleteModel = (id: string) => {
+    setConfirmingId(null)
+    setDeletingId(id)
+    setDeleteFail((prior) => ({ ...prior, [id]: '' }))
+    void api
+      .localModelDelete(id)
+      .then((r) => {
+        if (!r.ok) setDeleteFail((prior) => ({ ...prior, [id]: r.reason ?? '' }))
+      })
+      .catch((err: unknown) => setDeleteFail((prior) => ({ ...prior, [id]: String(err) })))
+      .finally(() => setDeletingId((prior) => (prior === id ? null : prior)))
+  }
 
   // One action for both clients, reporting per-client in place (no toast — the
   // sheet stays open). A client that is not installed is not a failure worth
@@ -177,15 +205,32 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                       </button>
                     </>
                   ) : m.downloaded ? (
-                    <label className="model-active">
-                      <input
-                        type="radio"
-                        name="active-model"
-                        checked={m.active}
-                        onChange={() => void api.localModelSetActive(m.id)}
-                      />
-                      {t('settings.localUse')}
-                    </label>
+                    <>
+                      <label className="model-active">
+                        <input
+                          type="radio"
+                          name="active-model"
+                          checked={m.active}
+                          onChange={() => void api.localModelSetActive(m.id)}
+                        />
+                        {t('settings.localUse')}
+                      </label>
+                      {/* First click arms, second click deletes. Never offered
+                          while the model downloads — Cancel is that action. */}
+                      <button
+                        className={confirmingId === m.id ? 'secondary model-delete-armed' : 'secondary'}
+                        data-testid={`model-delete-${m.id}`}
+                        disabled={deletingId === m.id}
+                        onBlur={() => setConfirmingId((prior) => (prior === m.id ? null : prior))}
+                        onClick={() => (confirmingId === m.id ? deleteModel(m.id) : setConfirmingId(m.id))}
+                      >
+                        {deletingId === m.id
+                          ? t('settings.localDeleting')
+                          : confirmingId === m.id
+                            ? t('settings.localDeleteConfirm')
+                            : t('settings.localDelete')}
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="secondary"
@@ -203,6 +248,11 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                 </span>
                 {downloadFail[m.id] && (
                   <span className="model-fail">{t('settings.localFailed', { reason: downloadFail[m.id]! })}</span>
+                )}
+                {deleteFail[m.id] && (
+                  <span className="model-fail" data-testid={`model-delete-fail-${m.id}`}>
+                    {t('settings.localDeleteFailed', { reason: deleteFail[m.id]! })}
+                  </span>
                 )}
               </div>
             )

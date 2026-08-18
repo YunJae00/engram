@@ -215,13 +215,35 @@ function encodeIco(entries) {
   return Buffer.concat([header, ...dirs, ...blobs])
 }
 
+// macOS sizes every app icon to the same grid and draws the system shadow in
+// the space around it, so a full-bleed tile — correct on Windows — renders
+// visibly larger than its neighbours in the Dock. Apple's grid: the rounded
+// square covers 824 of a 1024 canvas (80.47%), centred, the rest transparent.
+const MAC_CANVAS = 1024
+const MAC_BODY = 824
+
+// Centre a square RGBA bitmap on a larger transparent canvas.
+function padCanvas(rgba, srcPx, dstPx) {
+  const out = Buffer.alloc(dstPx * dstPx * 4)
+  const offset = Math.round((dstPx - srcPx) / 2)
+  for (let y = 0; y < srcPx; y++) {
+    rgba.copy(out, ((y + offset) * dstPx + offset) * 4, y * srcPx * 4, (y + 1) * srcPx * 4)
+  }
+  return out
+}
+
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'build')
 mkdirSync(dir, { recursive: true })
 
 const master = encodePng(512, renderIcon(512, GLYPH))
 writeFileSync(join(dir, 'icon.png'), master)
 
+const mac = encodePng(MAC_CANVAS, padCanvas(renderIcon(MAC_BODY, GLYPH), MAC_BODY, MAC_CANVAS))
+writeFileSync(join(dir, 'icon-mac.png'), mac)
+
 const icoSizes = [256, 128, 64, 48, 32, 24, 16]
 const ico = encodeIco(icoSizes.map((px) => ({ px, png: encodePng(px, renderIcon(px, GLYPH)) })))
 writeFileSync(join(dir, 'icon.ico'), ico)
-console.log(`icons written: icon.png (${master.length} bytes) + icon.ico (${ico.length} bytes, ${icoSizes.join('/')}px)`)
+console.log(
+  `icons written: icon.png (${master.length} bytes) + icon-mac.png (${mac.length} bytes, ${MAC_BODY}/${MAC_CANVAS} grid) + icon.ico (${ico.length} bytes, ${icoSizes.join('/')}px)`,
+)

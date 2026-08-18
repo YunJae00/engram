@@ -26,6 +26,12 @@ const en = {
   'onboard.importing': 'Importing {done} / {total} notes…',
   'settings.localCancel': 'Cancel',
   'settings.localUse': 'Use',
+  'settings.localDelete': 'Delete',
+  // Second click confirms. The file is gigabytes and getting it back is a
+  // fresh download, so the button asks once before it goes.
+  'settings.localDeleteConfirm': 'Delete?',
+  'settings.localDeleting': 'Deleting…',
+  'settings.localDeleteFailed': 'Could not delete — {reason}',
   'topbar.tabBrain': 'Brain',
   'topbar.tabSky': 'Cosmos',
   'sky.empty': 'Your cosmos is empty',

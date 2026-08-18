@@ -77,6 +77,10 @@ mac:
       arch: [arm64, x64]
     - target: zip
       arch: [arm64, x64]
+  # Its own icon: macOS draws every app on one grid and puts the system shadow
+  # in the margin, so the full-bleed tile Windows wants renders oversized in
+  # the Dock. gen-icon.mjs writes this one on Apple's 824-of-1024 grid.
+  icon: build/icon-mac.png
   category: public.app-category.productivity
   darkModeSupport: true
   files:

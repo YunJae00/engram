@@ -186,6 +186,14 @@ input:focus, textarea:focus { border-color: var(--focus-ring); }
 .model-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .model-progress { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-dim); min-width: 38px; text-align: right; }
 .model-active { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg); cursor: pointer; }
+/* The armed half of the two-step delete: the button must not look like the
+   quiet secondary it was a click ago, or the second click is a surprise. */
+button.secondary.model-delete-armed {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+button.secondary.model-delete-armed:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
 
 .setting-select {
   padding: 5px 9px; border-radius: var(--radius-s); border: 1px solid var(--input-border);

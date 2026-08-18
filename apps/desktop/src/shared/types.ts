@@ -372,6 +372,9 @@ export interface EngramApi {
   localModelsState(): Promise<LocalModelsStateDto>
   localModelDownload(id: string): Promise<{ ok: boolean; log?: string }>
   localModelCancel(id: string): Promise<void>
+  // Frees the multi-gigabyte file. Refused while that model downloads —
+  // cancel is the action there.
+  localModelDelete(id: string): Promise<{ ok: boolean; reason?: string }>
   localModelSetActive(id: string | null): Promise<void>
   // Desk journal switch (settings ⑨ + tray share the same state).
   activityGet(): Promise<boolean>
