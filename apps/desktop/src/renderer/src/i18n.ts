@@ -410,7 +410,7 @@ const en = {
   'settings.groupConnections': 'Connections',
   'settings.autoStart': 'Start at login',
   'settings.deskJournal': 'Desk journal — record foreground app + window titles',
-  'settings.sessionWatch': 'AI CLI sessions — harvest memories from Claude Code / Codex transcripts on this machine',
+  'settings.sessionWatch': 'AI CLI sessions — harvest from Claude Code / Codex',
   'settings.feedback': 'Send feedback',
   'settings.mcpTitle': 'AI tools connection (MCP)',
   'settings.mcpHint': 'Claude, Codex or any MCP-capable tool can capture into and recall from this brain. Claude clients connect automatically on launch; use Copy JSON to wire up anything else.',

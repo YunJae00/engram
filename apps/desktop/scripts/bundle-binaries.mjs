@@ -102,12 +102,24 @@ if (process.platform === 'win32') {
   }
   console.log(`bundle: MinGit signature ok (${MINGIT_SIGNER})`)
   console.log(`bundle: MinGit ready (${gitExe})`)
+} else if (process.platform === 'darwin') {
+  // No git in the macOS bundle, deliberately. `which git` on a build runner
+  // resolves to Homebrew's git, which is a symlink into Cellar AND links
+  // against Homebrew dylibs: copying the link ships a path that dangles on
+  // every other machine, and copying the target ships a binary that cannot
+  // start without Homebrew. The second is the worse of the two — a bundled
+  // file that exists passes the provider's executable check and only fails
+  // when it runs. Every Mac carrying the command line tools has a
+  // self-contained /usr/bin/git, which the provider falls through to.
+  console.log('bundle: macOS uses the system git (/usr/bin/git) — nothing bundled')
 } else {
   const gitBin = which('git')
   if (!gitBin) {
     console.error('bundle: no git on the build machine — bundle will fall back to system git')
   } else {
-    cpSync(gitBin, join(bundleDir, 'git', 'bin', 'git'))
+    // dereference: `which` can answer with a symlink into a package manager's
+    // store, and the bundle must hold the binary itself.
+    cpSync(gitBin, join(bundleDir, 'git', 'bin', 'git'), { dereference: true })
     const execPath = execFileSync(gitBin, ['--exec-path'], { encoding: 'utf8' }).trim()
     if (existsSync(execPath)) {
       // git-core holds the subcommands git shells out to (init, commit, ...).

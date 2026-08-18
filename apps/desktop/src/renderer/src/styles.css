@@ -1604,8 +1604,14 @@ body.bubble-host { background: transparent; }
 .setting-row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .setting-row > span:first-child { flex: 1 1 auto; min-width: 0; color: var(--fg-dim); }
 /* A one-line label never breaks mid-phrase: "Start at login" split across two
-   lines beside a floating tick read as a rendering fault, not a setting. */
-.setting-row:not(.column) > span:first-child { white-space: nowrap; }
+   lines beside a floating tick read as a rendering fault, not a setting. A
+   label longer than the row then has to end in an ellipsis rather than paint
+   over the control it belongs to. */
+.setting-row:not(.column) > span:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* A single on/off reads better as a switch than as a lone tick box: it shows
    its state by position and colour instead of by a 13px glyph, and it gives
