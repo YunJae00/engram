@@ -53,9 +53,15 @@ Everything lands as markdown in a folder you choose. `private/` is never passed 
 
 Grab the installer from [Releases](../../releases). On first run you pick a local model (curated Gemma builds, sized to your RAM — from an 8 GB-friendly 2B to a 26B MoE); it downloads once and everything runs offline from then on.
 
-Windows is the tested platform. macOS builds are produced by CI and the code paths are in place, but they have had far less real use — bug reports welcome. Linux builds exist and are the least exercised of the three.
+Windows is the tested platform. macOS builds are produced by CI and the code paths are in place, but they have had far less real use — bug reports welcome. Linux target configuration exists but CI does not publish Linux artifacts yet.
 
-The installers are unsigned, so Windows SmartScreen and macOS Gatekeeper will warn on first launch.
+The installers are unsigned. On Windows, SmartScreen warns — More info → Run anyway. On macOS the refusal is harder ("Engram is damaged and can't be opened"), because an unsigned app cannot launch at all on Apple Silicon: drag Engram to Applications and clear the quarantine flag once, which also gives it a local ad-hoc signature.
+
+```bash
+xattr -cr /Applications/Engram.app && codesign --force --deep --sign - /Applications/Engram.app
+```
+
+Signing this properly needs a paid Apple Developer ID; until there is one, that line is the price of an unsigned build.
 
 ## Build from source
 
