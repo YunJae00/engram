@@ -1668,6 +1668,8 @@ body.bubble-host { background: transparent; }
 .settings-fact { display: flex; align-items: baseline; gap: 12px; font-size: 11.5px; }
 .settings-fact-key { flex: 0 0 auto; color: var(--fg-faint); }
 .settings-fact-value { flex: 1 1 auto; min-width: 0; color: var(--fg-dim); text-align: right; }
+/* A fact that can be acted on carries its button on the same line. */
+.settings-fact-btn { margin-left: 8px; vertical-align: middle; }
 
 /* Onboarding login terminal: a centred modal, not a raw panel jammed in the
    corner. The dialog is a flex column so the terminal fills the space it's

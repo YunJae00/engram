@@ -323,6 +323,18 @@ const en = {
   'toast.engineReady': '{id} connected — auto-organizing is on',
   'banner.updateReady': 'Engram {version} is downloaded and ready to install',
   'banner.updateRestart': 'Restart now',
+  // Unsigned macOS builds cannot swap themselves — the same banner has to ask
+  // for a download instead of promising a restart that would fail.
+  'banner.updateAvailable': 'Engram {version} is out — this build updates by hand',
+  'banner.updateDownload': 'Download',
+  'settings.updateKey': 'Updates',
+  'settings.updateCheck': 'Check now',
+  'settings.updateChecking': 'Checking…',
+  'settings.updateCurrent': 'Up to date',
+  'settings.updateAvailable': '{version} available',
+  'settings.updateGet': 'Get it',
+  'settings.updateError': 'Check failed — {reason}',
+  'settings.updateDev': 'Not available in a dev build',
   'toast.logsExported': 'Logs exported to {path}',
   'toast.settingsSaved': 'Settings saved — some changes apply on next launch',
   'toast.teamJoined': 'Joined the team vault',

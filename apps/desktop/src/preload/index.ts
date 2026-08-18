@@ -61,6 +61,7 @@ const api: EngramApi = {
   revealVaultRoot: (root: string) => ipcRenderer.invoke('vault:revealRoot', root),
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings: AppSettingsDto) => ipcRenderer.invoke('settings:set', settings),
   mcpInfo: () => ipcRenderer.invoke('mcp:info'),

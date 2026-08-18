@@ -23,7 +23,7 @@ import { startKeeper, stopKeeper } from './keeper.js'
 import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './session-watch.js'
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
-import { installUpdateNow, startUpdater } from './updater.js'
+import { checkForUpdatesNow, installUpdateNow, startUpdater } from './updater.js'
 import { configuredVaultRoot, engineStates, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
 import { registerWorkspaceIpc } from './workspaces.js'
 
@@ -368,9 +368,13 @@ function registerBaseIpc(): void {
   // window's close handler hides to the tray instead of quitting, which would
   // otherwise cancel the updater's own quit and leave the update pending.
   ipcMain.handle('update:install', () => {
-    quitting = true
+    // Only a self-installing platform is really quitting; on macOS this opens
+    // the download page and the app must stay where it is.
+    if (process.platform !== 'darwin') quitting = true
     installUpdateNow()
   })
+
+  ipcMain.handle('update:check', () => checkForUpdatesNow())
 
   // Lets the renderer know whether the vault IPC surface exists yet — with
   // window-first boot the shell loads while a big vault is still reading, and
@@ -605,13 +609,14 @@ app.whenReady().then(async () => {
   registerMemoryFabricIpc()
   // The core adapter learns where the local brain lives (started on demand).
   setLocalTransport({ complete: localComplete, configured: localConfigured })
-  // Auto-update: check the public release feed and self-update in the
-  // background (packaged only; installs on next quit). One toast when ready.
-  startUpdater((version) => {
+  // Auto-update: check the public release feed (packaged only). Where the
+  // platform can install for itself it does so on the next quit; where it
+  // cannot, the same surfaces offer the download instead.
+  startUpdater((version, selfInstalls) => {
     // Both surfaces at once: the window banner (visible if it's open) and the
     // tray menu item (visible even when it never is).
     updateReadyVersion = version
-    broadcast({ type: 'update:ready', version })
+    broadcast({ type: 'update:ready', version, selfInstalls })
     tray?.setUpdateReady(version)
   })
   // Semantic model warm-up: needs no vault, so the ~600MB first-run download

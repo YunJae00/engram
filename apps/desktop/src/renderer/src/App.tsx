@@ -58,12 +58,16 @@ function Shell() {
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
   // Version of a downloaded update waiting to be applied.
   const [updateReady, setUpdateReady] = useState<string | null>(null)
+  const [updateSelfInstalls, setUpdateSelfInstalls] = useState(true)
   useEffect(() => {
     return api.onEvent((e) => {
       // A toast was not enough: closing the window only hides to the tray, so
       // "installs on next quit" never happened and the update sat downloaded
       // forever. This stays on screen with a button that actually applies it.
-      if (e.type === 'update:ready') setUpdateReady(e.version)
+      if (e.type === 'update:ready') {
+        setUpdateReady(e.version)
+        setUpdateSelfInstalls(e.selfInstalls)
+      }
       // A citation clicked in the floating bubble: the main process already
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
@@ -318,9 +322,13 @@ function Shell() {
             data-testid="update-banner"
           >
             <Download size={14} strokeWidth={1.8} aria-hidden />
-            <span>{t('banner.updateReady', { version: updateReady })}</span>
+            <span>
+              {updateSelfInstalls
+                ? t('banner.updateReady', { version: updateReady })
+                : t('banner.updateAvailable', { version: updateReady })}
+            </span>
             <button className="connect-banner-btn" onClick={() => void api.updateInstall()}>
-              {t('banner.updateRestart')}
+              {updateSelfInstalls ? t('banner.updateRestart') : t('banner.updateDownload')}
             </button>
           </div>
         )}

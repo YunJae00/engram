@@ -115,6 +115,16 @@ export interface LocalModelsStateDto {
   serverReady: boolean
 }
 
+// Answer to the Settings "check for updates" button. `selfInstalls` false
+// means the platform cannot swap the app itself (an unsigned macOS build), so
+// an available version leads to a download page instead of an install.
+export interface UpdateCheckDto {
+  state: 'current' | 'available' | 'checking-unavailable' | 'error'
+  version?: string
+  selfInstalls: boolean
+  message?: string
+}
+
 export interface EngineStatusDto {
   id: string
   installed: boolean
@@ -274,7 +284,9 @@ export type EngramEvent =
   | { type: 'import:progress'; done: number; total: number }
   | { type: 'engines:changed'; engines: EngineStatusDto[] }
   // a newer app version was downloaded and will install on next quit
-  | { type: 'update:ready'; version: string }
+  // selfInstalls false = the platform cannot swap the app itself (an unsigned
+  // macOS build), so the action is a download rather than an install
+  | { type: 'update:ready'; version: string; selfInstalls: boolean }
   // live health verdict for one engine — false means it is present but not
   // usable, and `reason` says which sentence (and which button) the user gets
   | { type: 'engine:health'; id: string; healthy: boolean; reason?: EngineHealthReason }
@@ -421,6 +433,7 @@ export interface EngramApi {
   // is a separate BrowserWindow and gets a targeted send, not a broadcast.
   // apply a downloaded update now — the app quits, installs and reopens
   updateInstall(): Promise<void>
+  updateCheck(): Promise<UpdateCheckDto>
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: AppSettingsDto): Promise<void>
   mcpInfo(): Promise<McpInfoDto>

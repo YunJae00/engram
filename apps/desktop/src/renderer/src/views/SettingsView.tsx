@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AppSettingsDto, LocalModelsStateDto, SemanticStatusDto } from '../../../shared/types.js'
+import type { AppSettingsDto, LocalModelsStateDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
@@ -14,6 +14,8 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [mcpStatus, setMcpStatus] = useState<string | null>(null)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
+  const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [localModels, setLocalModels] = useState<LocalModelsStateDto | null>(null)
   const [downloadFail, setDownloadFail] = useState<Record<string, string>>({})
   const [deleteFail, setDeleteFail] = useState<Record<string, string>>({})
@@ -332,6 +334,49 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             <span className="settings-fact-key">{t('settings.versionKey')}</span>
             <span className="settings-fact-value" data-testid="settings-version">
               {version ?? '—'}
+            </span>
+          </div>
+          {/* The automatic check runs on a timer the user cannot see, and on an
+              unsigned macOS build it can only ever report — so the answer has
+              to be askable on demand. */}
+          <div className="settings-fact">
+            <span className="settings-fact-key">{t('settings.updateKey')}</span>
+            <span className="settings-fact-value" data-testid="settings-update">
+              {update?.state === 'available' ? (
+                <>
+                  {t('settings.updateAvailable', { version: update.version ?? '' })}
+                  <button className="secondary settings-fact-btn" onClick={() => void api.updateInstall()}>
+                    {update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {checkingUpdate
+                    ? t('settings.updateChecking')
+                    : update?.state === 'current'
+                      ? t('settings.updateCurrent')
+                      : update?.state === 'error'
+                        ? t('settings.updateError', { reason: update.message ?? '' })
+                        : update?.state === 'checking-unavailable'
+                          ? t('settings.updateDev')
+                          : ''}
+                  <button
+                    className="secondary settings-fact-btn"
+                    data-testid="settings-update-check"
+                    disabled={checkingUpdate}
+                    onClick={() => {
+                      setCheckingUpdate(true)
+                      void api
+                        .updateCheck()
+                        .then(setUpdate)
+                        .catch(() => {})
+                        .finally(() => setCheckingUpdate(false))
+                    }}
+                  >
+                    {t('settings.updateCheck')}
+                  </button>
+                </>
+              )}
             </span>
           </div>
         </div>

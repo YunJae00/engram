@@ -63,6 +63,8 @@ xattr -cr /Applications/Engram.app && codesign --force --deep --sign - /Applicat
 
 Signing this properly needs a paid Apple Developer ID; until there is one, that line is the price of an unsigned build.
 
+Updates follow from that. Windows updates itself in the background and installs on the next quit. macOS cannot: the swap is handed to Squirrel, which refuses any build whose code signature it cannot validate against the running app's, so an unsigned build downloads the update and then rejects it. There, Engram only *tells* you a version is out — Settings → Updates → Check now, and the button opens the download page.
+
 ## Build from source
 
 Prerequisites: Node 22+, pnpm 9+.
