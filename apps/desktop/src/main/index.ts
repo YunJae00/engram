@@ -13,6 +13,7 @@ import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
+import { closeAgentBrowser } from './agent-browser.js'
 import { flog } from './flog.js'
 import { isBubbleVisible, setBubbleVisible, startBubble, stopBubble } from './bubble.js'
 import { isActivityWatchEnabled, registerActivityIpc, setActivityWatchEnabled, startActivityWatch, stopActivityWatch } from './activity-watch.js'
@@ -658,6 +659,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  void closeAgentBrowser()
   globalShortcut.unregisterAll()
   // Closing the app is the user saying "stop remembering from here".
   stopSessionWatch()

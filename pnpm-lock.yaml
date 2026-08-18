@@ -54,6 +54,9 @@ importers:
       npm:
         specifier: ^10.9.8
         version: 10.9.8
+      playwright-core:
+        specifier: ^1.61.1
+        version: 1.61.1
       sql.js:
         specifier: ^1.14.1
         version: 1.14.1

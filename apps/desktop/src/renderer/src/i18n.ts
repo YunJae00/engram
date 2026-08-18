@@ -304,6 +304,7 @@ const en = {
   'topbar.errand': 'Errand: {phase}',
   'topbar.errandPlan': 'planning…',
   'topbar.errandGather': 'gathering…',
+  'topbar.errandWeb': 'browsing the web…',
   'topbar.errandDistill': 'distilling…',
   'topbar.errandCompose': 'writing…',
 
@@ -313,6 +314,10 @@ const en = {
   'toast.noTeam': 'No team connected — “Team: create” in the command palette (Ctrl+Shift+P)',
   'toast.contextPack': 'Context pack copied ({file})',
   'toast.absorbed': 'All imported notes absorbed',
+  'errand.wallLogin': 'A page wants a login — sign in once in the agent window, then continue.',
+  'errand.wallCaptcha': 'A page wants a human check — clear it in the agent window, then continue.',
+  'errand.wallDone': 'Done — continue',
+  'errand.wallSkip': 'Skip that page',
   'toast.errandDone': 'Errand finished — the result is waiting in review',
   'toast.errandFailed': 'Errand failed — {reason}',
 

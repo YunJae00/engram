@@ -62,6 +62,7 @@ import {
 } from 'core'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
+import { agentBrowserAvailable, agentCourier } from './agent-browser.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { ipcMain } from 'electron'
 import { open, readdir, readFile } from 'node:fs/promises'
@@ -83,7 +84,7 @@ import {
   refreshHealthFromDetection,
   revalidateEngines,
 } from './engine-health.js'
-import { semanticQuery } from './semantic.js'
+import { semanticQuery, semanticQueryIfLive } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import type { VaultContext } from './vault.js'
 
@@ -501,6 +502,9 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
 // `errandAbort` is the live run's controller, so errand:abort can cancel it.
 let errandRunning = false
 let errandAbort: AbortController | null = null
+// Set while the errand waits at a human wall (login/captcha); errand:wallDone
+// answers it, errand:abort answers it with skip so the abort can proceed.
+let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
@@ -830,11 +834,13 @@ export function registerIpc(ctx: VaultContext): void {
       {
         engine: ctx.engines[0]!,
         workdir: engineCwd(paths),
-        // The errand searches the vault exactly as chat does — the same hybrid
-        // merge (lexical + semantic + activation), living notes only.
+        // The errand searches the vault as chat does — the same hybrid merge,
+        // living notes only — except the embedder is used only when it is
+        // already resident: an errand shares the machine with the language
+        // model and a Chrome, and waking 800MB more is how 8GB starts paging.
         retrieve: async (query, limit) => {
           const hits = activationRerank(
-            hybridMerge(ctx.store.search(query), await semanticQuery(query, limit), limit),
+            hybridMerge(ctx.store.search(query), await semanticQueryIfLive(query, limit), limit),
             (id) => ctx.store.get(id),
           )
           return hits
@@ -843,12 +849,25 @@ export function registerIpc(ctx: VaultContext): void {
             .slice(0, limit)
             .map(toRetrievedNote)
         },
+        // The agent's own Chrome; absent when no Chrome-family browser is
+        // installed, and the errand quietly stays vault-only.
+        courier: agentBrowserAvailable() ? agentCourier() : null,
       },
       goal,
       {
         signal,
         onPhase: (s) =>
           broadcast({ type: 'errand:phase', phase: s.phase, goal: s.goal, ...(s.error ? { error: s.error } : {}) }),
+        // A page only a human can pass: park the run on a promise, tell every
+        // window, and continue with whatever the user answers.
+        onWall: (page) =>
+          new Promise((resolve) => {
+            errandWallWaiter = (verdict) => {
+              errandWallWaiter = null
+              resolve(verdict)
+            }
+            broadcast({ type: 'errand:wall', url: page.url, wall: page.wall })
+          }),
       },
     )
       .then((result) => {
@@ -859,12 +878,18 @@ export function registerIpc(ctx: VaultContext): void {
       .finally(() => {
         errandRunning = false
         errandAbort = null
+        errandWallWaiter = null
       })
     return { ok: true }
   })
 
   ipcMain.handle('errand:abort', () => {
+    errandWallWaiter?.('skip')
     errandAbort?.abort()
+  })
+
+  ipcMain.handle('errand:wallDone', (_e, verdict: 'resolved' | 'skip') => {
+    errandWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
   })
 
   ipcMain.handle('notes:list', () => ctx.store.getAll().map(toDto))

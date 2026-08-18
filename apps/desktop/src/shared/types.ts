@@ -294,7 +294,11 @@ export type EngramEvent =
   // A delegated errand (core's runErrand) moving through its fixed phases — the
   // top bar narrates it and the toast fires on done/failed. `error` rides only
   // on 'failed'; `goal` labels the run so a late subscriber knows what it is.
-  | { type: 'errand:phase'; phase: 'plan' | 'gather' | 'distill' | 'compose' | 'done' | 'failed'; goal: string; error?: string }
+  | { type: 'errand:phase'; phase: 'plan' | 'gather' | 'web' | 'distill' | 'compose' | 'done' | 'failed'; goal: string; error?: string }
+  // The errand met a page only a human can pass (login screen, human check).
+  // The run is parked until errandWallDone answers — clear it in the agent's
+  // Chrome window and continue, or skip that page.
+  | { type: 'errand:wall'; url: string; wall: 'login' | 'captcha' }
   | { type: 'vault:ready' }
   // The floating question asked the shell to open Review instead.
   // Opening the vault failed outright. Without this the shell has no way to
@@ -349,6 +353,9 @@ export interface EngramApi {
   // engine); progress and the eventual outcome arrive as errand:phase events.
   errandStart(goal: string): Promise<{ ok: boolean; error?: string }>
   errandAbort(): Promise<void>
+  // The user's verdict on a walled page ('resolved' after clearing it in the
+  // agent window, 'skip' to move on without it).
+  errandWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   fadingMemories(): Promise<FadingMemoryDto[]>
   openLoops(): Promise<OpenLoopDto[]>
   latestBrief(): Promise<string | null>

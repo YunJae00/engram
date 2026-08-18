@@ -297,6 +297,14 @@ function spawnChild(): Promise<ChildProcess | null> {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     })
+    // Below-normal priority: a generation burst saturates every performance
+    // core, and the user's foreground work — not the background brain — should
+    // win those cycles. Answers arrive a beat later; typing never stutters.
+    try {
+      if (proc.pid) os.setPriority(proc.pid, 10)
+    } catch {
+      /* not permitted on some platforms — the worker just runs at normal */
+    }
     proc.on('message', (message: { type: string; id?: number; text?: string; ms?: number; gpu?: string; message?: string }) => {
       if (message.type === 'ready') {
         if (!settled) {

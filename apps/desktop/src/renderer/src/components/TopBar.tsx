@@ -1,4 +1,4 @@
-import { List, Loader2, Network, Orbit } from 'lucide-react'
+import { Globe, List, Loader2, Network, Orbit } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import type { SweepStatus } from '../state.js'
@@ -45,7 +45,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
   onToggleChat(): void
   onOpenPalette(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, errand, openInbox, showToast, vaultReady, t } = useApp()
+  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, errand, errandWall, answerErrandWall, openInbox, showToast, vaultReady, t } = useApp()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   const unswept = pendingWork.inbox + pendingWork.notes
@@ -142,6 +142,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
   const errandPhaseKey: Record<string, StringKey> = {
     plan: 'topbar.errandPlan',
     gather: 'topbar.errandGather',
+    web: 'topbar.errandWeb',
     distill: 'topbar.errandDistill',
     compose: 'topbar.errandCompose',
   }
@@ -189,6 +190,20 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
         {(errand.running || sweepStatus.running || filingOnly) && <Loader2 className="spin" size={12} aria-hidden />}
         <span className="status-label">{errandText || sweepText}</span>
       </span>
+      {errandWall && (
+        <span className="topbar-status live errand-wall" data-testid="errand-wall" title={errandWall.url}>
+          <Globe size={12} strokeWidth={1.8} aria-hidden />
+          <span className="status-label">
+            {t(errandWall.wall === 'captcha' ? 'errand.wallCaptcha' : 'errand.wallLogin')}
+          </span>
+          <button className="errand-wall-done" data-testid="errand-wall-done" onClick={() => answerErrandWall('resolved')}>
+            {t('errand.wallDone')}
+          </button>
+          <button className="errand-wall-skip" data-testid="errand-wall-skip" onClick={() => answerErrandWall('skip')}>
+            {t('errand.wallSkip')}
+          </button>
+        </span>
+      )}
       {absorb.pending > 0 && (
         <span className="topbar-status live" data-testid="absorb-status" title={absorbText}>
           <span className="status-label">{absorbText}</span>

@@ -1,7 +1,7 @@
 {
   "name": "desktop",
   "private": true,
-  "version": "0.2.8",
+  "version": "0.3.0",
   "license": "MIT",
   "description": "Engram — a self-organizing knowledge vault with an AI librarian",
   "author": "YunJae Kwon",
@@ -23,6 +23,7 @@
     "electron-updater": "^6.8.9",
     "node-llama-cpp": "^3.20.0",
     "npm": "^10.9.8",
+    "playwright-core": "^1.61.1",
     "sql.js": "^1.14.1"
   },
   "devDependencies": {

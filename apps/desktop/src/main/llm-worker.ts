@@ -159,7 +159,9 @@ async function complete(req: CompleteRequest, path: string, contextSize: number)
       onTextChunk: (chunk) => send({ type: 'chunk', id: req.id, text: chunk }),
       ...(grammar ? { grammar } : {}),
     })
-    send({ type: 'done', id: req.id, text })
+    // Template tokens sometimes survive generation on this family and leak
+    // into answers as "</start_of_turn>" — strip them where the model lives.
+    send({ type: 'done', id: req.id, text: text.replace(/<\/?(?:start|end)_of_turn>/g, '') })
   } catch (err) {
     // A context that failed mid-answer may be poisoned; drop it so the next
     // question starts clean.

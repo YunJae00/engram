@@ -1879,3 +1879,14 @@ body.bubble-host { background: transparent; }
   background: var(--hover-bg); color: var(--fg); border: 1px solid var(--border);
 }
 .help-plus { color: var(--fg-faint); margin: 0 3px; font-size: 10px; }
+
+/* ── Web errand: the human-wall strip in the top bar ────────────────────── */
+/* The errand is parked in main until one of these buttons answers. */
+.topbar-status.errand-wall { gap: 7px; }
+.errand-wall-done, .errand-wall-skip {
+  flex-shrink: 0; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--border);
+  background: transparent; color: var(--fg-dim); font-size: 11.5px; font-weight: 600; cursor: pointer;
+}
+.errand-wall-done { background: var(--accent); border-color: transparent; color: var(--button-fg); }
+.errand-wall-done:hover { background: var(--accent-hover); }
+.errand-wall-skip:hover { background: var(--hover-bg); color: var(--fg); }

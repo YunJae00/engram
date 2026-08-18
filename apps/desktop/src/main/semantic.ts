@@ -369,6 +369,20 @@ export async function semanticQuery(query: string, k: number): Promise<SemanticH
   }
 }
 
+// The errand lane: meaning-level hits only when the embedder is ALREADY
+// resident. A web errand shares 8GB with the language model and a Chrome —
+// waking the ~800MB embedder for it is how machines start paging, so this
+// never loads or waits, unlike semanticQuery above.
+export async function semanticQueryIfLive(query: string, k: number): Promise<SemanticHit[]> {
+  if (state.status !== 'ready' || !state.index || !state.extractor) return []
+  try {
+    const [vec] = await embedBatch([query])
+    return cosineTopK(state.index, vec!, k)
+  } catch {
+    return []
+  }
+}
+
 export function registerSemanticIpc(): void {
   ipcMain.handle(
     'semantic:status',

@@ -79,6 +79,10 @@ interface AppState {
   // A delegated errand in flight — the top bar narrates its phase; the toast
   // fires on done/failed. `running` gates a second delegation and the progress line.
   errand: { running: boolean; phase?: string; goal?: string }
+  // A page the errand cannot pass without its human (login/captcha) — the run
+  // is parked until errandWall answers.
+  errandWall: { url: string; wall: 'login' | 'captcha' } | null
+  answerErrandWall: (verdict: 'resolved' | 'skip') => void
   startErrand(goal: string): Promise<void>
   toast: string | null
   showToast(message: string): void
@@ -152,6 +156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sweepJob, setSweepJob] = useState<{ job: string; index: number; total: number } | null>(null)
   const [sweepStartedAt, setSweepStartedAt] = useState<number | null>(null)
   const [errand, setErrand] = useState<{ running: boolean; phase?: string; goal?: string }>({ running: false })
+  const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
@@ -359,7 +364,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       // A delegated errand moving through its phases. 'done'/'failed' end the
       // run and speak once; the middle phases just relabel the top-bar line.
+      if (event.type === 'errand:wall') setErrandWall({ url: event.url, wall: event.wall })
       if (event.type === 'errand:phase') {
+        setErrandWall(null)
         if (event.phase === 'done') {
           setErrand({ running: false })
           latest.current.showToast(latest.current.t('toast.errandDone'))
@@ -415,6 +422,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast(err instanceof Error ? err.message.replace(/^.*Error: /, '') : String(err))
     }
   }, [refresh, showToast])
+
+  const answerErrandWall = useCallback((verdict: 'resolved' | 'skip') => {
+    setErrandWall(null)
+    void api.errandWallDone(verdict).catch(() => undefined)
+  }, [])
 
   // Kick off a delegated errand. main runs it detached and reports back over
   // errand:phase — so this only surfaces the refusal (no engine, already busy).
@@ -472,12 +484,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sweepStartedAt,
       runSweep,
       errand,
+      errandWall,
+      answerErrandWall,
       startErrand,
       toast,
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, loops, refresh, sheetNoteId, reviewOpen, inboxOpen, todayOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, startErrand, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, loops, refresh, sheetNoteId, reviewOpen, inboxOpen, todayOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
