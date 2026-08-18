@@ -204,6 +204,14 @@ process.on('message', (raw: unknown) => {
   if (req.type === 'complete') void complete(req, modelPath, ctxTokens)
 })
 
+// This process exists only to answer the app. When the app goes without
+// stopping it — a crash, a force quit, an update that replaces the binary —
+// the IPC channel closes and nothing will ever arrive again, but nothing ends
+// the process either: it stays resident, spinning on the dead channel, and a
+// machine can collect one of these per crash until it is rebooted. Tying the
+// worker's life to the channel is what makes the app's exit final.
+process.on('disconnect', () => process.exit(0))
+
 process.on('uncaughtException', (err: Error) => {
   send({ type: 'load-failed', message: `worker crashed: ${err.message}` })
 })
