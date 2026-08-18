@@ -8,6 +8,10 @@ const COLLAPSED = { width: 56, height: 56 }
 const EXPANDED = { width: 440, height: 640 }
 const MIN = { width: 340, height: 380 }
 const MARGIN = 16
+// macOS is the only platform where setBounds' second argument does anything —
+// there it is [NSWindow setFrame:display:animate:], one system-driven tween
+// instead of a jump. Elsewhere it is ignored, so the flag can be passed flat.
+const ANIMATE = process.platform === 'darwin'
 
 interface BubbleState {
   x?: number
@@ -100,6 +104,10 @@ export async function startBubble(deps: {
   let saveTimer: NodeJS.Timeout | null = null
   win.on('moved', () => {
     if (!win || expanded) return
+    // The collapse animation moves the window through every frame between the
+    // chat and the dot, and each frame is a 'moved'. Only a window already at
+    // dot size is somewhere the user chose; the rest are the tween talking.
+    if (win.getBounds().width !== COLLAPSED.width) return
     const [x, y] = win.getPosition()
     state.x = x
     state.y = y
@@ -118,7 +126,10 @@ export async function startBubble(deps: {
     void warmLocalModel()
     win.setResizable(true)
     win.setMinimumSize(MIN.width, MIN.height)
-    win.setBounds({ x, y, ...size })
+    win.setBounds({ x, y, ...size }, ANIMATE)
+    // The mirror of collapse: focus() here is right — the user just clicked the
+    // dot, so the app is already frontmost and this only makes the chat key so
+    // the caret lands in the input. It raises this window, not its siblings.
     win.focus()
   })
 
@@ -137,11 +148,16 @@ export async function startBubble(deps: {
     state.h = bounds.height
     win.setMinimumSize(1, 1)
     win.setResizable(false)
-    win.setBounds({ x, y, ...COLLAPSED })
+    win.setBounds({ x, y, ...COLLAPSED }, ANIMATE)
     state.x = x
     state.y = y
     saveState()
-    win.blur()
+    // NOT blur(). On macOS that drops this window out of the app's ordered
+    // list, and with the shell hidden to the tray the app is left showing
+    // nothing — the state AppKit answers with a reopen, which arrives as
+    // 'activate' and pulls the main window onto the screen. Folding the
+    // bubble away must not summon the app it was standing in for; the dot
+    // keeping focus is invisible and costs nothing.
   })
 
   ipcMain.handle('bubble:openNote', (_e, id: string) => {
