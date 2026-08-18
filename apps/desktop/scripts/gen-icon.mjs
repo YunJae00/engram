@@ -238,12 +238,43 @@ mkdirSync(dir, { recursive: true })
 const master = encodePng(512, renderIcon(512, GLYPH))
 writeFileSync(join(dir, 'icon.png'), master)
 
+// The same artwork, delivered the way macOS has expected since Big Sur: an
+// asset catalog named by CFBundleIconName. A bundle carrying only the legacy
+// CFBundleIconFile + .icns is treated as an app that never adopted the modern
+// icon pipeline, and recent macOS composites it onto a default light tile —
+// which is the white frame around Engram's icon that no amount of redrawing
+// the PNG could remove. actool compiles this set at package time
+// (scripts/adhoc-sign.mjs); these are the sources it reads.
+//
+// Each size is RENDERED, never downscaled: at 16px the constellation has to
+// be redrawn to stay legible, not resampled into mush.
+const APPICON_SIZES = [16, 32, 128, 256, 512]
+
+function writeAppIconSet(root) {
+  const set = join(root, 'AppIcon.appiconset')
+  mkdirSync(set, { recursive: true })
+  const images = []
+  for (const size of APPICON_SIZES) {
+    for (const scale of [1, 2]) {
+      const px = size * scale
+      const file = `icon_${size}x${size}${scale === 2 ? '@2x' : ''}.png`
+      // Same 824-of-1024 grid at every size — the margin is proportional.
+      const body = Math.round((px * MAC_BODY) / MAC_CANVAS)
+      writeFileSync(join(set, file), encodePng(px, padCanvas(renderIcon(body, GLYPH), body, px)))
+      images.push({ size: `${size}x${size}`, idiom: 'mac', filename: file, scale: `${scale}x` })
+    }
+  }
+  writeFileSync(join(set, 'Contents.json'), JSON.stringify({ images, info: { version: 1, author: 'engram' } }, null, 2))
+  return set
+}
+
 const mac = encodePng(MAC_CANVAS, padCanvas(renderIcon(MAC_BODY, GLYPH), MAC_BODY, MAC_CANVAS))
 writeFileSync(join(dir, 'icon-mac.png'), mac)
 
 const icoSizes = [256, 128, 64, 48, 32, 24, 16]
 const ico = encodeIco(icoSizes.map((px) => ({ px, png: encodePng(px, renderIcon(px, GLYPH)) })))
 writeFileSync(join(dir, 'icon.ico'), ico)
+const appIconSet = writeAppIconSet(join(dir, 'Engram.xcassets'))
 console.log(
-  `icons written: icon.png (${master.length} bytes) + icon-mac.png (${mac.length} bytes, ${MAC_BODY}/${MAC_CANVAS} grid) + icon.ico (${ico.length} bytes, ${icoSizes.join('/')}px)`,
+  `icons written: icon.png (${master.length} bytes) + icon-mac.png (${mac.length} bytes, ${MAC_BODY}/${MAC_CANVAS} grid) + icon.ico (${ico.length} bytes, ${icoSizes.join('/')}px) + ${appIconSet}`,
 )
