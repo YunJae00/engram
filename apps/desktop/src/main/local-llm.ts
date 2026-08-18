@@ -288,6 +288,7 @@ function spawnChild(): Promise<ChildProcess | null> {
   if (childReady) return childReady
   childReady = new Promise<ChildProcess | null>((resolve) => {
     let settled = false
+    let abandoned = false
     // Every exit from this function used to be silent, so a worker that never
     // started looked exactly like a model that was simply slow.
     flog('local-llm', `starting the inference worker (${workerPath()})`)
@@ -331,6 +332,9 @@ function spawnChild(): Promise<ChildProcess | null> {
     })
     proc.on('exit', (code, signal) => {
       flog('local-llm', `inference worker exited (code ${code ?? '-'}, signal ${signal ?? '-'})`)
+      // The ready timeout already cleared the slot for a retry; a late exit from
+      // the fork it abandoned must not null out the worker that replaced it.
+      if (abandoned) return
       child = null
       childReady = null
       loadedModelId = null
@@ -351,13 +355,22 @@ function spawnChild(): Promise<ChildProcess | null> {
         resolve(null)
       }
     })
-    // A worker that never says hello is a broken install, not a hang.
+    // A worker that never says hello is a broken install — or a cold start slow
+    // enough (first launch after an update, an antivirus sweep, a machine waking
+    // from sleep) that it says hello after we stopped listening. Either way the
+    // fork is a fork: it is outside core's spawn ledger, so nothing else will
+    // ever reap it — kill it here or it lives as long as the app does. Dropping
+    // childReady is what makes this recoverable: memoizing the failed promise
+    // would leave local inference dead until a restart.
     setTimeout(() => {
       if (settled) return
       settled = true
       flog('local-llm-load-failed', 'the inference worker never reported ready')
       markEngineUnhealthy('local', 'crash')
-      resolve(child)
+      abandoned = true
+      proc.kill('SIGKILL')
+      childReady = null
+      resolve(null)
     }, 20_000)
   })
   return childReady

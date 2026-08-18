@@ -1,7 +1,7 @@
 import { simpleGit, type SimpleGit } from 'simple-git'
 import type { BinaryProvider } from './binary.js'
 import { defaultBinaryProvider } from './binary.js'
-import { bundledGitEnv, bundledGitExecPath } from './git.js'
+import { bundledGitEnv, bundledGitExecPath, gitEnv } from './git.js'
 import { initVault, vaultPaths, type VaultPaths } from './vault.js'
 
 // Team sync: workspace/ is the repo; the UI never says "git".
@@ -29,9 +29,20 @@ export class TeamSync {
     this.git = simpleGit({
       baseDir: paths.workspace,
       binary: provider.git(),
+      // Generous, because this is the one git that talks to a network: a first
+      // push of a large vault is legitimately silent for minutes (git reports
+      // no progress when stderr is a pipe), so a short budget would kill real
+      // backups. It exists to end the failures that never resolve on their own
+      // — an unreachable host, a stalled TLS handshake — rather than to hurry
+      // a slow transfer. simple-git spawns git outside this package's process
+      // ledger, so a hang here is a child nothing reaps.
+      timeout: { block: 10 * 60_000 },
       ...(execPath ? { unsafe: { allowUnsafeConfigPaths: true, allowUnsafeTemplateDir: true } } : {}),
     })
-    if (execPath) this.git = this.git.env(bundledGitEnv(execPath))
+    // Unconditionally, not only for the bundled git: GIT_TERMINAL_PROMPT=0 is
+    // what turns a credential prompt into a fast failure instead of a child
+    // waiting forever on a terminal that no desktop app has.
+    this.git = this.git.env(execPath ? bundledGitEnv(execPath) : gitEnv())
   }
 
   async hasRemote(): Promise<boolean> {

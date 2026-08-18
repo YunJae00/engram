@@ -56,6 +56,15 @@ export function watchNotes(
   let closed = false
   let seeded = false
   let timer: ReturnType<typeof setTimeout> | null = null
+  // Consecutive quiet ticks. A scan is a readdir plus a stat per note, and on a
+  // large vault — or one on OneDrive or a network mount, where every stat can
+  // reach a sync provider — polling that at the base rate around the clock is
+  // the app's idle CPU floor for no benefit: a vault nobody is editing produces
+  // the same empty diff every time. Two watchers run (notes/, inbox/), so the
+  // cost doubles. Any tick with something to report drops straight back to the
+  // base interval, so the first change after a quiet stretch costs one long
+  // wait and everything after it is as responsive as before.
+  let quiet = 0
 
   async function tick(): Promise<void> {
     if (closed) return
@@ -96,6 +105,11 @@ export function watchNotes(
       }
     }
 
+    // A staged file counts as activity even before it emits: it is one interval
+    // away from an event, and backing off there would stretch awaitWriteFinish
+    // into the slow schedule.
+    quiet = events.length > 0 || pending.size > 0 ? 0 : quiet + 1
+
     if (events.length > 0) {
       try {
         await onBatch(events)
@@ -110,9 +124,18 @@ export function watchNotes(
     }
   }
 
+  // Multiples of the base interval, so a caller that polls faster keeps its own
+  // scale: at the 2s default that is 2s while anything is happening, 10s after
+  // half a minute of quiet, and a 30s ceiling five minutes after that.
+  const delay = (): number => {
+    if (quiet < 15) return intervalMs
+    if (quiet < 45) return intervalMs * 5
+    return intervalMs * 15
+  }
+
   const loop = (): void => {
     if (closed) return
-    timer = setTimeout(() => void tick().finally(loop), intervalMs)
+    timer = setTimeout(() => void tick().finally(loop), delay())
   }
   void tick().finally(loop)
 

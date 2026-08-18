@@ -62,7 +62,7 @@ public class FG {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 }
 '@
-while ($true) {
+while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) {
   try {
     $h = [FG]::GetForegroundWindow()
     $sb = New-Object System.Text.StringBuilder 512
@@ -137,7 +137,13 @@ export async function setActivityWatchEnabled(enabled: boolean): Promise<void> {
 // same 15s cadence, same "app|title" line protocol. Window TITLES need the
 // Accessibility permission; without it the probe still reports the app name
 // and the title arrives empty, which the fold handles like any other sample.
-const MAC_SCRIPT = `while true; do osascript -l JavaScript -e '
+// The loop condition is the app's own liveness, not `true`. This shell does
+// not write to the pipe it was given — only its osascript grandchild does —
+// so a dead parent never reaches it as EPIPE, and `while true` would keep
+// waking System Events every 15 seconds forever, one surviving loop per
+// unclean exit, across app restarts and unreachable by any reaper. Asking
+// after the pid that started us is what ends it.
+const MAC_SCRIPT = `while kill -0 ${process.pid} 2>/dev/null; do osascript -l JavaScript -e '
 const se = Application("System Events");
 const p = se.processes.whose({ frontmost: true })[0];
 let t = "";
