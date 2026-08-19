@@ -1,4 +1,4 @@
-import { Globe, List, Loader2, Network, Orbit, Send } from 'lucide-react'
+import { Ghost, Globe, List, Loader2, Network, Orbit } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import type { SweepStatus } from '../state.js'
@@ -270,7 +270,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
         onClick={() => window.dispatchEvent(new Event('engram:open-errand'))}
         title={t('topbar.errandsTitle')}
       >
-        <Send size={15} strokeWidth={1.8} />
+        <Ghost size={15} strokeWidth={1.8} />
         {errand.running && <span className="errand-live-dot" aria-hidden />}
       </button>
       <button className="topbar-action" data-testid="activity-settings" onClick={onOpenSettings} title={t('topbar.settingsTitle')}>

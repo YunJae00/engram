@@ -1,4 +1,4 @@
-import { Send, Square } from 'lucide-react'
+import { Ghost, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ErrandRunDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -74,7 +74,7 @@ export function ErrandsSheet({ onClose }: { onClose(): void }) {
     <div className="brief-overlay" onClick={onClose}>
       <div className="brief-box errands-box" onClick={(e) => e.stopPropagation()} data-testid="errands-sheet">
         <div className="brief-title errands-title">
-          <Send size={16} strokeWidth={1.8} aria-hidden /> {t('errands.title')}
+          <Ghost size={16} strokeWidth={1.8} aria-hidden /> {t('errands.title')}
         </div>
         <div className="errands-hint">{t('errands.hint')}</div>
 
