@@ -59,11 +59,39 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      # Which file a visitor should click, named per platform. Written here
+      # rather than by hand each release: the asset list alone makes someone
+      # on an Intel Mac guess between two .dmg files. A list, not a table —
+      # a markdown table needs a header row, and an empty one renders as a
+      # blank band above the links.
+      - name: Compose the download section
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            echo '## ⬇ Download'
+            echo
+            echo "- **macOS** (Apple Silicon) — [Engram-${version}-arm64.dmg](${base}/Engram-${version}-arm64.dmg)"
+            echo "- **macOS** (Intel) — [Engram-${version}.dmg](${base}/Engram-${version}.dmg)"
+            echo "- **Windows** — [Engram Setup ${version}.exe](${base}/Engram.Setup.${version}.exe)"
+            echo
+            echo '**macOS first run:** open Engram, let it be blocked, then **System Settings → Privacy & Security → Open Anyway**.'
+            echo
+            echo '---'
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           # Published, not drafted: a draft is invisible on the repo page and
           # the auto-updater's /releases/latest returns 406 while one is pending.
           draft: false
+          # The generated "What's Changed" list lands under this block.
+          body: ${{ steps.notes.outputs.body }}
           generate_release_notes: true
           files: artifacts/**/*
