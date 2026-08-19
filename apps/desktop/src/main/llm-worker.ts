@@ -6,6 +6,10 @@ interface LoadRequest {
   type: 'load'
   modelPath: string
   contextSize: number
+  // Where the weights may live, decided by the parent from real free memory.
+  // 'auto' offloads what fits inside vramPadding; 0 keeps everything on the
+  // CPU side, where mmap leaves the pages evictable instead of pinned.
+  plan?: { gpuLayers: 'auto' | 0; vramPadding: number; mode: string }
 }
 
 interface CompleteRequest {
@@ -60,7 +64,38 @@ const send = (message: unknown): void => {
   process.send?.(message)
 }
 
-async function ensure(path: string, contextSize: number): Promise<Engine | null> {
+interface LoadPlan {
+  gpuLayers: 'auto' | 0
+  vramPadding: number
+  mode: string
+}
+
+const CPU_ONLY: LoadPlan = { gpuLayers: 0, vramPadding: 0, mode: 'cpu' }
+
+async function loadWith(path: string, contextSize: number, plan: LoadPlan): Promise<Engine> {
+  const nlc = (await import('node-llama-cpp')) as unknown as {
+    getLlama(o?: { vramPadding?: number; ramPadding?: number }): Promise<
+      Engine['llama'] & {
+        loadModel(o: {
+          modelPath: string
+          gpuLayers: 'auto' | number
+          useMmap: boolean
+          useMlock: boolean
+        }): Promise<Engine['model']>
+      }
+    >
+  }
+  const llama = await nlc.getLlama({
+    ...(plan.vramPadding > 0 ? { vramPadding: plan.vramPadding } : {}),
+    ramPadding: 2e9,
+  })
+  // mmap always, mlock never: weights the OS can evict under pressure are the
+  // difference between a slow answer and a frozen machine.
+  const model = await llama.loadModel({ modelPath: path, gpuLayers: plan.gpuLayers, useMmap: true, useMlock: false })
+  return { llama, model, path, contextSize }
+}
+
+async function ensure(path: string, contextSize: number, plan: LoadPlan): Promise<Engine | null> {
   if (engine && engine.path === path) return engine
   if (loading) return loading
   loading = (async () => {
@@ -71,16 +106,26 @@ async function ensure(path: string, contextSize: number): Promise<Engine | null>
         engine = null
       }
       const t0 = Date.now()
-      const nlc = (await import('node-llama-cpp')) as unknown as {
-        getLlama(): Promise<Engine['llama'] & { loadModel(o: { modelPath: string }): Promise<Engine['model']> }>
+      let used = plan
+      try {
+        engine = await loadWith(path, contextSize, plan)
+      } catch (err) {
+        // The GPU plan can still lose a race with other allocations. CPU-only
+        // cannot pin anything, so it is always worth one retry before failing.
+        if (plan.gpuLayers === 0) throw err
+        used = CPU_ONLY
+        engine = await loadWith(path, contextSize, used)
       }
-      const llama = await nlc.getLlama()
-      const model = await llama.loadModel({ modelPath: path })
-      engine = { llama, model, path, contextSize }
       // Allocate the context here too: it costs seconds, and paying that during
       // the background warm-up means the first question does not.
       await prepareSession(engine, contextSize).catch(() => undefined)
-      send({ type: 'loaded', ms: Date.now() - t0, gpu: String((llama as { gpu?: unknown }).gpu ?? 'unknown') })
+      send({
+        type: 'loaded',
+        ms: Date.now() - t0,
+        gpu: String((engine.llama as { gpu?: unknown }).gpu ?? 'unknown'),
+        mode: used.mode,
+        layers: (engine.model as { gpuLayers?: number }).gpuLayers ?? -1,
+      })
       return engine
     } catch (err) {
       send({ type: 'load-failed', message: String((err as Error).message ?? err) })
@@ -144,7 +189,7 @@ async function complete(req: CompleteRequest, path: string, contextSize: number)
   const canceller = new AbortController()
   running.set(req.id, canceller)
   try {
-    const ready = await ensure(path, contextSize)
+    const ready = await ensure(path, contextSize, loadPlan)
     if (!ready) throw new Error('no local model is active')
     const warm = session !== null
     const chat = await prepareSession(ready, contextSize)
@@ -177,13 +222,15 @@ async function complete(req: CompleteRequest, path: string, contextSize: number)
 
 let modelPath = ''
 let ctxTokens = 4_096
+let loadPlan: LoadPlan = CPU_ONLY
 
 process.on('message', (raw: unknown) => {
   const req = raw as WorkerRequest
   if (req.type === 'load') {
     modelPath = req.modelPath
     ctxTokens = req.contextSize
-    void ensure(modelPath, ctxTokens)
+    loadPlan = req.plan ?? CPU_ONLY
+    void ensure(modelPath, ctxTokens, loadPlan)
     return
   }
   if (req.type === 'abort') {

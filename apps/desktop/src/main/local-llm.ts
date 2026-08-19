@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LocalModelDto, LocalModelsStateDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
+import { planModelLoad, PRESSURE_FLOOR } from './memory-plan.js'
 import { markEngineOk, markEngineUnhealthy } from './engine-health.js'
 import { flog } from './flog.js'
 
@@ -307,7 +308,7 @@ function spawnChild(): Promise<ChildProcess | null> {
     } catch {
       /* not permitted on some platforms — the worker just runs at normal */
     }
-    proc.on('message', (message: { type: string; id?: number; text?: string; ms?: number; gpu?: string; message?: string }) => {
+    proc.on('message', (message: { type: string; id?: number; text?: string; ms?: number; gpu?: string; mode?: string; layers?: number; message?: string }) => {
       if (message.type === 'ready') {
         if (!settled) {
           settled = true
@@ -317,7 +318,10 @@ function spawnChild(): Promise<ChildProcess | null> {
         return
       }
       if (message.type === 'loaded') {
-        flog('local-llm', `model loaded in ${message.ms}ms (worker, gpu: ${message.gpu ?? '?'})`)
+        flog(
+          'local-llm',
+          `model loaded in ${message.ms}ms (worker, gpu: ${message.gpu ?? '?'}, mode: ${message.mode ?? '?'}, layers: ${message.layers ?? '?'})`,
+        )
         markEngineOk('local') // clears a red dot from an earlier failed load
         setWarmState('ready')
         return
@@ -394,6 +398,13 @@ export async function warmLocalModel(): Promise<void> {
     flog('local-llm', 'warm-up skipped — no model is downloaded')
     return
   }
+  // Background warm-up is optional by definition — it only happens when the
+  // machine will not feel it. A question still loads on demand either way.
+  const plan = planModelLoad(spec.approxGB * 1e9)
+  if (plan.mode !== 'gpu') {
+    flog('local-llm', `warm-up skipped — ${plan.reason}`)
+    return
+  }
   const proc = await spawnChild()
   if (!proc) {
     flog('local-llm-load-failed', 'warm-up could not start the inference worker')
@@ -401,7 +412,12 @@ export async function warmLocalModel(): Promise<void> {
   }
   if (warmState === 'cold') setWarmState('loading')
   loadedModelId = spec.id
-  proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
+  proc.send({
+    type: 'load',
+    modelPath: join(modelsDir(), spec.file),
+    contextSize: CTX_TOKENS,
+    plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode },
+  })
 }
 
 let inFlight: Promise<string> | null = null
@@ -416,11 +432,22 @@ export async function localComplete(
   const work = (async () => {
     const spec = await adoptDownloadedModel()
     if (!spec) throw new Error('no local model is active')
+    // Refusing at the floor is the guard between "slow answer" and "frozen
+    // machine" — below it even evictable weights would tip the system over.
+    const plan = planModelLoad(spec.approxGB * 1e9)
+    if (plan.mode === 'none')
+      throw new Error(`not enough free memory for the local model right now (${plan.reason}) — close something and retry`)
+    if (plan.mode !== 'gpu') flog('local-llm', `loading ${plan.mode}: ${plan.reason}`)
     const proc = await spawnChild()
     if (!proc) throw new Error('the inference process could not start')
     if (warmState === 'cold') setWarmState('loading')
     loadedModelId = spec.id
-    proc.send({ type: 'load', modelPath: join(modelsDir(), spec.file), contextSize: CTX_TOKENS })
+    proc.send({
+      type: 'load',
+      modelPath: join(modelsDir(), spec.file),
+      contextSize: CTX_TOKENS,
+      plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode },
+    })
     lastUsed = Date.now()
     const id = nextCallId++
     const answer = await new Promise<string>((resolve, reject) => {
@@ -468,18 +495,31 @@ export async function localComplete(
 // The model rests after a long quiet spell. Longer than the old ten minutes:
 // every unload buys back RAM at the price of the next question paying the
 // reload, and the reload is the expensive thing.
-function armIdleUnload(): void {
+function armMemoryWatch(): void {
   setInterval(() => {
-    if (!child || inFlight || lastUsed === 0) return
-    if (Date.now() - lastUsed < IDLE_UNLOAD_MS) return
+    if (!child || inFlight) return
+    const free = os.freemem()
+    // The machine's needs keep changing while the model sits idle. When free
+    // memory sinks to where the resident model is what would tip the system
+    // into thrash, it leaves NOW — the next question pays a reload, which is
+    // minutes cheaper than a frozen machine.
+    if (free < PRESSURE_FLOOR) {
+      flog('local-llm', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — unloading the model`)
+      child.send({ type: 'unload' })
+      loadedModelId = null
+      setWarmState('cold')
+      lastUsed = 0
+      return
+    }
+    if (lastUsed === 0 || Date.now() - lastUsed < IDLE_UNLOAD_MS) return
     flog('local-llm', 'idle — unloading the model')
     child.send({ type: 'unload' })
     loadedModelId = null
     setWarmState('cold')
     lastUsed = 0
-  }, 60_000)
+  }, 30_000)
 }
-armIdleUnload()
+armMemoryWatch()
 
 async function adoptDownloadedModel(): Promise<ModelSpec | null> {
   const state = await readState()
