@@ -1,7 +1,7 @@
 {
   "name": "engram-monorepo",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A second brain that runs entirely on your machine",
   "author": "YunJae Kwon",
   "license": "MIT",
@@ -34,7 +34,8 @@
     "lint": "eslint .",
     "test": "vitest run --project unit && vitest run --project timing",
     "todo-scan": "node scripts/todo-scan.mjs",
-    "css-scan": "node scripts/css-orphan-scan.mjs"
+    "css-scan": "node scripts/css-orphan-scan.mjs",
+    "verify-models": "node apps/desktop/scripts/verify-models.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
