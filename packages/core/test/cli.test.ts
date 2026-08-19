@@ -58,7 +58,7 @@ describe('engram CLI', () => {
   it('search finds seeded notes with badges', async () => {
     const { paths } = await generateSampleVault(await tmpVaultRoot('cli-search'))
     const { io, lines } = collectIO()
-    expect(await runCli(['search', '배포', '--vault', paths.root], io)).toBe(0)
+    expect(await runCli(['search', 'deploy', '--vault', paths.root], io)).toBe(0)
     expect(lines.join('\n')).toContain('n-deploy-0003')
   })
 

@@ -162,6 +162,13 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
 
       <nav className="canvas-tabs" aria-label={t('topbar.canvas')}>
         <button
+          className={`canvas-tab${activity === 'bots' ? ' active' : ''}`}
+          data-testid="activity-bots"
+          onClick={() => setActivity('bots')}
+        >
+          <Ghost size={14} strokeWidth={1.8} aria-hidden /> {t('topbar.tabBots')}
+        </button>
+        <button
           className={`canvas-tab${activity === 'sky' ? ' active' : ''}`}
           data-testid="activity-sky"
           onClick={() => setActivity('sky')}

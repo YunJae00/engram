@@ -119,9 +119,29 @@ export interface LocalModelsStateDto {
 // means the platform cannot swap the app itself (an unsigned macOS build), so
 // an available version leads to a download page instead of an install.
 // One finished delegation, as the journal remembers it.
+export interface BotDto {
+  id: string
+  name: string
+  purpose: string
+  createdAt: string
+}
+
+export interface BotTurnDto {
+  role: 'user' | 'assistant'
+  text: string
+  at: string
+}
+
+export interface BotSuggestionDto {
+  name: string
+  purpose: string
+  reason: string
+}
+
 export interface ErrandRunDto {
   id: string
   goal: string
+  botId?: string
   startedAt: string
   endedAt: string
   outcome: 'done' | 'failed' | 'aborted'
@@ -167,7 +187,10 @@ export interface ChatRequestDto {
   // Which surface is asking. Chat events broadcast to every window, so the
   // in-app panel and the floating bubble must be able to ignore each other's
   // streams. Absent = 'panel' (older callers).
-  channel?: 'panel' | 'bubble'
+  // 'panel', 'bubble', or a per-bot channel like 'bot-<id>'.
+  channel?: string
+  // Answer as this bot: its charter rides ahead of the chat rules.
+  botId?: string
 }
 
 export interface SweepReportDto {
@@ -286,9 +309,9 @@ export type EngramEvent =
   | { type: 'sweep:error'; message: string }
   // Chat events broadcast to every window; `channel` says which surface asked
   // (in-app panel or the floating bubble) so the other one can ignore them.
-  | { type: 'chat:token'; channel: 'panel' | 'bubble'; text: string }
-  | { type: 'chat:done'; channel: 'panel' | 'bubble'; text: string }
-  | { type: 'chat:error'; channel: 'panel' | 'bubble'; message: string }
+  | { type: 'chat:token'; channel: string; text: string }
+  | { type: 'chat:done'; channel: string; text: string }
+  | { type: 'chat:error'; channel: string; message: string }
   // The floating bubble asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
   | { type: 'brain:setup' }
@@ -375,11 +398,16 @@ export interface EngramApi {
   // meaning-level edges (close-enough-to-link pairs) for the Brain grouping
   brainFabric(): Promise<BrainFabricDto>
   // Stop a running answer on one surface (or every surface when omitted).
-  chatAbort(channel?: 'panel' | 'bubble'): Promise<void>
+  chatAbort(channel?: string): Promise<void>
   // Delegate one goal to the on-device librarian (core's runErrand). Runs
   // detached in main — this resolves once it has STARTED (or refused, e.g. no
   // engine); progress and the eventual outcome arrive as errand:phase events.
-  errandStart(goal: string): Promise<{ ok: boolean; error?: string }>
+  errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
+  botsList(): Promise<BotDto[]>
+  botCreate(input: { name: string; purpose: string }): Promise<BotDto>
+  botDelete(id: string): Promise<void>
+  botTranscript(id: string): Promise<BotTurnDto[]>
+  botsRecommend(): Promise<BotSuggestionDto[]>
   // Past runs, newest first — the errand sheet's history.
   errandJournal(): Promise<ErrandRunDto[]>
   errandAbort(): Promise<void>

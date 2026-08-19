@@ -3,6 +3,7 @@ import {
   fadingMemories,
   fitPrompt,
   noteActivation,
+  appendBotTurn,
   appendCounterexample,
   appendErrandRecord,
   approveCard,
@@ -21,6 +22,9 @@ import {
   hybridMerge,
   listCards,
   loadAliasGroups,
+  loadBots,
+  createBot,
+  deleteBot,
   loadUmbrellaTerms,
   loadAbsorbState,
   loadState,
@@ -34,8 +38,10 @@ import {
   processCapture,
   readCard,
   refreshBrief,
+  readBotTranscript,
   readErrandJournal,
   readNote,
+  recommendBots,
   recordCoRecall,
   recordRecall,
   recordRecallReceipt,
@@ -514,7 +520,7 @@ const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer the floating bubble is mid-sentence on. No argument aborts all.
-export function abortAllChat(channel?: 'panel' | 'bubble'): void {
+export function abortAllChat(channel?: string): void {
   for (const entry of chatAborts) {
     if (channel !== undefined && entry.channel !== channel) continue
     entry.controller.abort()
@@ -821,7 +827,7 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Stopping a running answer is the difference between waiting and being
   // stuck; the plumbing existed, nothing ever called it from the UI.
-  ipcMain.handle('chat:abort', (_e, channel?: 'panel' | 'bubble') => abortAllChat(channel))
+  ipcMain.handle('chat:abort', (_e, channel?: string) => abortAllChat(channel))
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
   // the run is accepted (or refused) — the errand itself is detached and takes
@@ -834,7 +840,7 @@ export function registerIpc(ctx: VaultContext): void {
   const ERRAND_MIN_FREE = 8e9
   const ERRAND_WEB_MIN_FREE = 10e9
 
-  ipcMain.handle('errand:start', (_e, goal: string): { ok: boolean; error?: string } => {
+  ipcMain.handle('errand:start', (_e, goal: string, botId?: string): { ok: boolean; error?: string } => {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
     if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
     const freeAtStart = os.freemem()
@@ -911,6 +917,7 @@ export function registerIpc(ctx: VaultContext): void {
         return appendErrandRecord(paths, {
           id: runId,
           goal,
+          ...(botId ? { botId } : {}),
           startedAt: runStartedAt,
           endedAt: new Date().toISOString(),
           outcome: result.ok ? 'done' : signal.aborted ? 'aborted' : 'failed',
@@ -919,7 +926,15 @@ export function registerIpc(ctx: VaultContext): void {
           noteSources: result.sources.length,
           pages: result.pages,
           ...(result.error ? { error: result.error } : {}),
-        }).then(() => broadcast({ type: 'errand:logged' }))
+        })
+          .then(() => {
+            if (!botId) return
+            const line = result.ok
+              ? `Errand finished: "${result.title ?? goal.slice(0, 80)}" — the proposal is waiting in review.`
+              : `Errand ${signal.aborted ? 'stopped' : 'failed'}: ${result.error ?? 'unknown reason'}`
+            return appendBotTurn(paths, botId, { role: 'assistant', text: line, at: new Date().toISOString() })
+          })
+          .then(() => broadcast({ type: 'errand:logged' }))
       })
       .catch((err) => flog('errand', err))
       .finally(() => {
@@ -931,6 +946,21 @@ export function registerIpc(ctx: VaultContext): void {
   })
 
   ipcMain.handle('errand:journal', () => readErrandJournal(paths, 50))
+
+  // Bots: named colleagues. The charter (purpose) is the whole configuration —
+  // answering borrows the same retrieval and engine every chat uses.
+  ipcMain.handle('bots:list', () => loadBots(paths))
+  ipcMain.handle('bots:create', (_e, input: { name: string; purpose: string }) => createBot(paths, input))
+  ipcMain.handle('bots:delete', (_e, id: string) => deleteBot(paths, id))
+  ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
+  ipcMain.handle('bots:recommend', async () => {
+    const existing = (await loadBots(paths)).map((b) => b.name)
+    const notes = ctx.store
+      .getAll()
+      .filter((n) => n.front.status === 'current')
+      .map((n) => ({ ...(n.front.context ? { context: n.front.context } : {}), title: noteTitle(n) }))
+    return recommendBots(notes, existing)
+  })
 
   ipcMain.handle('errand:abort', () => {
     errandWallWaiter?.('skip')
@@ -1320,7 +1350,15 @@ export function registerIpc(ctx: VaultContext): void {
     // Short on purpose. These ride on EVERY local turn (the warm-session lane
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
+    const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
     const rules: string[] = [
+      // A bot is the librarian wearing a charter: same grounding, same
+      // honesty rules, narrowed to one concern the user named.
+      ...(bot
+        ? [
+            `You are "${bot.name}", one of the user's personal bots inside their second brain. Your charter: ${bot.purpose} Stay within that charter; when a question falls outside it, say so briefly and answer anyway.`,
+          ]
+        : []),
       "You are the librarian of this vault — you know this person's notes. Answer in the SAME LANGUAGE the user wrote in, whatever language the notes or these rules are in. Output only the answer, in markdown: no greetings, no narration, and never wrap the whole answer in a code fence.",
       'Answer the question, do not list note titles. Say what the notes mean together — what was decided, what changed, what is still open — in two to six short sentences or bullets carrying real content (names, numbers, decisions).',
       'The VAULT MAP is the catalogue of every topic that exists; the retrieved notes are a keyhole into a few of them. Never say something is absent because it was not retrieved — say you did not pull it up. When the vault truly holds nothing on the topic, say so briefly and answer from your own knowledge.',
@@ -1424,6 +1462,11 @@ export function registerIpc(ctx: VaultContext): void {
             ? `\n\n✓ Remembered${saved > 1 ? ` ${saved} items` : ''} — the librarian is filing ${saved > 1 ? 'them' : 'it'}`
             : `\n\n⚠ Could not save ${saved > 0 ? `${captures.length - saved} of ${captures.length} items` : 'this'} — ${saveError instanceof Error ? saveError.message : 'the vault folder rejected the write'}. Please try again.`
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}` })
+      if (bot) {
+        const at = new Date().toISOString()
+        await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at }).catch(() => undefined)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
+      }
       markEngineOk(engine.id)
     }
 

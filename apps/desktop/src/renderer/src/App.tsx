@@ -12,6 +12,7 @@ import { TopBar } from './components/TopBar.js'
 import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
 import { ActionDialog } from './components/ActionDialog.js'
 import { ErrandsSheet } from './components/ErrandsSheet.js'
+import { BotsView } from './views/BotsView.js'
 import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
 import { BrainView } from './views/BrainView.js'
@@ -285,6 +286,8 @@ function Shell() {
           </div>
         ) : !vaultReady ? (
           <div className="empty-view vault-opening" data-testid="vault-opening">{t('shell.opening')}</div>
+        ) : activity === 'bots' ? (
+          <BotsView />
         ) : activity === 'sky' ? (
           <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
         ) : activity === 'brain' ? <BrainView /> : <ListView />}

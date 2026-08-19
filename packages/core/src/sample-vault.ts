@@ -17,7 +17,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-deploy-0001',
-        body: '# 배포 절차 v1\n\n수동 FTP 업로드로 배포한다.',
+        body: '# Deploy process v1\n\nDeploys go out by manual FTP upload.',
         type: 'reference',
         status: 'superseded',
         happened_at: '2026-01-10',
@@ -28,7 +28,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-deploy-0002',
-        body: '# 배포 절차 v2\n\nCI 파이프라인이 스테이징까지 자동 배포한다.',
+        body: '# Deploy process v2\n\nThe CI pipeline deploys automatically up to staging.',
         type: 'reference',
         status: 'superseded',
         supersedes: ['n-deploy-0001'],
@@ -40,7 +40,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-deploy-0003',
-        body: '# 배포 절차 v3\n\n프로덕션까지 완전 자동 배포, 승인 버튼 1회.',
+        body: '# Deploy process v3\n\nFully automatic to production, one approval button.',
         type: 'reference',
         status: 'current',
         supersedes: ['n-deploy-0002'],
@@ -56,7 +56,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-price-0001',
-        body: '# 요금제\n\n프로 요금제는 월 5만원이다.',
+        body: '# Pricing\n\nThe pro plan is 50,000 won a month.',
         type: 'fact',
         status: 'disputed',
         happened_at: '2026-04-01',
@@ -67,7 +67,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-price-0002',
-        body: '# 요금제\n\n프로 요금제는 월 7만원이다.',
+        body: '# Pricing\n\nThe pro plan is 70,000 won a month.',
         type: 'fact',
         status: 'disputed',
         happened_at: '2026-05-15',
@@ -82,7 +82,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-sprint-0001',
-        body: '# 5월 스프린트 회의\n\n로그인 개편은 6월 첫 주에 나간다.',
+        body: '# May sprint meeting\n\nThe login revamp ships in the first week of June.',
         type: 'meeting',
         decay: 'fast',
         happened_at: '2026-05-02',
@@ -96,7 +96,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-idea-0001',
-        body: '# 아이디어\n\n온보딩에 샘플 볼트 자동 생성 옵션을 넣자.',
+        body: '# Idea\n\nAdd a sample-vault option to onboarding.',
         type: 'idea',
         decay: 'ephemeral',
       },
@@ -110,7 +110,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-kick-0001',
-        body: '# 프로젝트 킥오프\n\n킥오프 미팅.',
+        body: '# Project kickoff\n\nThe kickoff meeting.',
         type: 'meeting',
         happened_at: '2026-02-01',
         timeline: 'pinned',
@@ -121,7 +121,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-mid-0001',
-        body: '# 중간 점검\n\n킥오프와 출시 사이 어딘가의 중간 점검.',
+        body: '# Midpoint check\n\nA checkpoint somewhere between kickoff and launch.',
         type: 'meeting',
         happened_at: '2026-02-20',
       },
@@ -131,7 +131,7 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
       paths,
       {
         id: 'n-ship-0001',
-        body: '# v0 출시\n\n첫 배포.',
+        body: '# v0 launch\n\nThe first deploy.',
         type: 'meeting',
         happened_at: '2026-03-01',
         timeline: 'pinned',

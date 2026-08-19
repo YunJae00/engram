@@ -3,7 +3,7 @@ import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, Open
 import { api } from './api.js'
 import { t, type Translate } from './i18n.js'
 
-type Activity = 'sky' | 'brain' | 'list'
+type Activity = 'bots' | 'sky' | 'brain' | 'list'
 
 // Sweep status is stored as data (not a pre-translated string) so the label can
 // re-render in the active language; the error message comes verbatim from main.
@@ -92,7 +92,7 @@ interface AppState {
   // is parked until errandWall answers.
   errandWall: { url: string; wall: 'login' | 'captcha' } | null
   answerErrandWall: (verdict: 'resolved' | 'skip') => void
-  startErrand(goal: string): Promise<void>
+  startErrand(goal: string, botId?: string): Promise<void>
   toast: string | null
   showToast(message: string): void
   t: Translate
@@ -453,10 +453,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Kick off a delegated errand. main runs it detached and reports back over
   // errand:phase — so this only surfaces the refusal (no engine, already busy).
   const startErrand = useCallback(
-    async (goal: string) => {
+    async (goal: string, botId?: string) => {
       if (!goal.trim()) return
       setErrand({ running: true, goal: goal.trim(), timeline: [] })
-      const result = await api.errandStart(goal.trim())
+      const result = await api.errandStart(goal.trim(), botId)
       if (!result.ok) {
         setErrand({ running: false, timeline: [] })
         showToast(result.error ?? t('toast.errandFailed', { reason: '' }))

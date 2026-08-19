@@ -16,10 +16,11 @@ const { paths } = await generateSampleVault(root)
 const notes = await loadNotes(paths)
 const graph = buildLineage(notes)
 
-console.log(`샘플 볼트 생성: ${root}`)
-console.log(`노트 ${notes.length}개\n`)
+console.log(`sample vault created: ${root}`)
+console.log(`${notes.length} notes
+`)
 
-const header = ['배지', 'id', 'status', 'timeline', 'happened_at', '제목', '체인']
+const header = ['badge', 'id', 'status', 'timeline', 'happened_at', 'title', 'chain']
 const rows = notes.map((n) => {
   const chain = chainOf(graph, n.front.id)
   const chainLabel =
@@ -29,7 +30,7 @@ const rows = notes.map((n) => {
     n.front.id,
     n.front.status,
     n.front.timeline,
-    n.front.happened_at ?? '(미정)',
+    n.front.happened_at ?? '(unset)',
     noteTitle(n),
     chainLabel,
   ]
@@ -41,6 +42,6 @@ console.log('|' + widths.map((w) => '-'.repeat(w + 2)).join('|') + '|')
 for (const row of rows) console.log(line(row))
 
 const tray = undeterminedNotes(notes)
-console.log(`\n연대 미정 트레이: ${tray.map((n) => n.front.id).join(', ') || '(없음)'}`)
+console.log(`\nundated tray: ${tray.map((n) => n.front.id).join(', ') || '(none)'}`)
 const inversions = detectInversions(notes)
-console.log(`supersede-연대 역전: ${inversions.length === 0 ? '(없음)' : JSON.stringify(inversions)}`)
+console.log(`supersede chronology inversions: ${inversions.length === 0 ? '(none)' : JSON.stringify(inversions)}`)
