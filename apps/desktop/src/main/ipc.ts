@@ -69,6 +69,7 @@ import {
   type RunReport,
 } from 'core'
 import { randomUUID } from 'node:crypto'
+import { backgroundInferenceOk } from './local-llm.js'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
@@ -239,8 +240,36 @@ function runPipelineSoon(ctx: VaultContext, message: string): void {
   }, CAPTURE_GRACE_MS)
 }
 
+let pipelineDeferTimer: NodeJS.Timeout | null = null
+
 export function runPipelineAsync(ctx: VaultContext, message: string): void {
   if (ctx.engines.length === 0) return
+  if (pipelineRunning) {
+    pipelineQueued = true
+    return
+  }
+  // Background filing on the LOCAL brain waits for a machine that can spare
+  // it — the captures sit safely in the inbox and the pending badge counts
+  // them. Cloud engines cost no local memory and run regardless.
+  if (ctx.engines[0]?.id === 'local') {
+    void backgroundInferenceOk().then((verdict) => {
+      if (verdict.ok) {
+        startPipeline(ctx, message)
+        return
+      }
+      flog('sweep', `deferred — ${verdict.reason}`)
+      if (pipelineDeferTimer) clearTimeout(pipelineDeferTimer)
+      pipelineDeferTimer = setTimeout(() => {
+        pipelineDeferTimer = null
+        runPipelineAsync(ctx, message)
+      }, 10 * 60_000)
+    })
+    return
+  }
+  startPipeline(ctx, message)
+}
+
+function startPipeline(ctx: VaultContext, message: string): void {
   if (pipelineRunning) {
     pipelineQueued = true
     return
@@ -317,6 +346,16 @@ export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
   stopRequested = false
   try {
     for (;;) {
+      if (ctx.engines[0]?.id === 'local') {
+        // A reboot queues a backlog, and draining it at boot was exactly the
+        // freeze loop: force-off, autostart, drain, freeze again. It waits.
+        const verdict = await backgroundInferenceOk()
+        if (!verdict.ok) {
+          flog('sweep', `absorb drain deferred — ${verdict.reason}`)
+          setTimeout(() => void drainAbsorbQueue(ctx), 10 * 60_000)
+          return
+        }
+      }
       const state = await loadAbsorbState(ctx.paths)
       if (state.pending.length === 0) {
         // Queue clear — a final progress event so the UI dismisses the bar.
@@ -437,6 +476,16 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
   if (ctx.engines.length === 0) {
     scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
     return
+  }
+  // Same bar as capture filing: the auto-tidy is optional by definition, and
+  // an optional job must not be what pushes a busy machine into thrash.
+  if (ctx.engines[0]?.id === 'local') {
+    const verdict = await backgroundInferenceOk()
+    if (!verdict.ok) {
+      flog('sweep', `auto-tidy deferred — ${verdict.reason}`)
+      scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
+      return
+    }
   }
   if (draining || manualSweepInFlight || stopRequested) {
     scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)

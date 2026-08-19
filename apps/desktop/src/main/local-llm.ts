@@ -55,21 +55,12 @@ const MODELS: ModelSpec[] = [
     tag: 'balanced',
     desc: 'Noticeably better writing — for 16GB machines.',
   },
-  {
-    id: 'gemma4-26b-a4b',
-    label: 'Gemma 4 26B-A4B',
-    // This repo publishes no plain Q4_K_M — the K_M build is the dynamic one,
-    // and asking for the name the other three use returns 404.
-    file: 'gemma-4-26B-A4B-it-UD-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf',
-    approxGB: 16.9,
-    ramGB: 32,
-    tag: 'power',
-    desc: 'Big-model quality at small-model speed (MoE) — for 32GB machines.',
-  },
 ]
 
-const IDLE_UNLOAD_MS = 45 * 60_000
+// Short on purpose: an idle model is pinned memory the user's next task
+// will need, and the reload it saves is cheaper than a frozen machine
+// (three hard freezes in one day traced to exactly this residency).
+const IDLE_UNLOAD_MS = 5 * 60_000
 const CTX_TOKENS = 4_096
 // Generous: a cold context on a big model is slow, but silence forever is worse.
 const INFERENCE_TIMEOUT_MS = 4 * 60_000
@@ -556,6 +547,22 @@ export async function activeModelLabel(): Promise<string | null> {
   return (await adoptDownloadedModel())?.label ?? null
 }
 
+// The librarian's own work — sweeps, absorb batches, auto-tidy — must never
+// be the reason the machine dies. Background inference runs only when the
+// machine can comfortably spare the model AND its own working room; anything
+// less defers the tidy, which the absorb queue already survives.
+export async function backgroundInferenceOk(): Promise<{ ok: boolean; reason?: string }> {
+  const spec = await adoptDownloadedModel()
+  if (!spec) return { ok: true }
+  const free = os.freemem()
+  const need = spec.approxGB * 1e9 + 8e9
+  if (free >= need) return { ok: true }
+  return {
+    ok: false,
+    reason: `${(free / 1e9).toFixed(1)}GB free, background tidy wants ~${Math.ceil(need / 1e9)}GB`,
+  }
+}
+
 // Kept name from the server era — now it stops the inference process.
 export function stopLocalServer(): void {
   const proc = child
@@ -569,8 +576,12 @@ export function stopLocalServer(): void {
 
 // ── Hardware probe for the recommendation badge ─────────────────────────
 function recommendId(): string {
+  // Total RAM lied on shared-iGPU machines: a 32GB box "qualified" for a 17GB
+  // model that could never actually coexist with the user's day. Recommend
+  // from what is FREE right now, with the model's working headroom on top.
   const ramGB = Math.round(os.totalmem() / 1e9)
-  const fit = [...MODELS].reverse().find((m) => ramGB >= m.ramGB)
+  const free = os.freemem()
+  const fit = [...MODELS].reverse().find((m) => ramGB >= m.ramGB && m.approxGB * 1e9 + 6e9 <= free)
   return (fit ?? MODELS[0]!).id
 }
 

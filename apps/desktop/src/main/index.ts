@@ -17,7 +17,7 @@ import { closeAgentBrowser } from './agent-browser.js'
 import { flog } from './flog.js'
 import { isBubbleVisible, setBubbleVisible, startBubble, stopBubble } from './bubble.js'
 import { isActivityWatchEnabled, registerActivityIpc, setActivityWatchEnabled, startActivityWatch, stopActivityWatch } from './activity-watch.js'
-import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHook, stopLocalServer, warmLocalModel } from './local-llm.js'
+import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHook, stopLocalServer } from './local-llm.js'
 import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
@@ -565,9 +565,10 @@ async function bootVault(root: string): Promise<VaultContext> {
     // lexical search silently).
     startMemoryFabric(ctx)
     startSemantic(ctx)
-    // Load the model while nobody is waiting, in the worker where it cannot
-    // freeze a window — the first question then answers straight away.
-    setTimeout(() => void warmLocalModel(), 8_000)
+    // Deliberately NO boot warm-up: it pinned the model into memory on every
+    // start whether anyone would ask anything or not, and on a shared-iGPU
+    // machine that residency was the first domino of a machine-wide freeze.
+    // The model now loads on intent — opening a chat surface warms it.
   }
   return ctx
 }

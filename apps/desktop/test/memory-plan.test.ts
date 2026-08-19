@@ -3,7 +3,7 @@ import { planModelLoad } from '../src/main/memory-plan.js'
 
 const GB = 1e9
 const E4B = 5 * GB
-const MOE_26B = 16.9 * GB
+const HUGE = 16.9 * GB
 
 // The plan is what stands between "load the model" and "freeze the machine":
 // the tiers must degrade before the system does.
@@ -33,9 +33,9 @@ describe('planModelLoad', () => {
     expect(plan.reason).toMatch(/needs ~4\.0GB/)
   })
 
-  it('the 26B MoE on a 32GB machine lands in cpu mode, never pinned', () => {
+  it('a 17GB model on a 32GB machine lands in cpu mode, never pinned', () => {
     // Typical working free memory on the measured machine.
-    const plan = planModelLoad(MOE_26B, 12 * GB)
+    const plan = planModelLoad(HUGE, 12 * GB)
     expect(plan.mode).toBe('cpu')
   })
 
