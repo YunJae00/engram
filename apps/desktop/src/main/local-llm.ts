@@ -57,9 +57,11 @@ const MODELS: ModelSpec[] = [
   {
     id: 'gemma4-26b-a4b',
     label: 'Gemma 4 26B-A4B',
-    file: 'gemma-4-26B-A4B-it-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-Q4_K_M.gguf',
-    approxGB: 15.5,
+    // This repo publishes no plain Q4_K_M — the K_M build is the dynamic one,
+    // and asking for the name the other three use returns 404.
+    file: 'gemma-4-26B-A4B-it-UD-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf',
+    approxGB: 16.9,
     ramGB: 32,
     tag: 'power',
     desc: 'Big-model quality at small-model speed (MoE) — for 32GB machines.',
