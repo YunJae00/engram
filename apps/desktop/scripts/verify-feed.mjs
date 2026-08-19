@@ -1,79 +1,64 @@
+// The update feed names the file the app will download. If that name does not
+// match the file actually published, every self-update 404s — silently, on
+// every machine, forever. That is exactly what shipped: the default installer
+// name carried spaces, electron-builder wrote them into latest.yml as hyphens,
+// and GitHub served the asset with dots. Nobody noticed because a failed
+// update looks identical to no update.
+//
+// So the build refuses to finish unless the feed, the file on disk, and the
+// name GitHub will serve all agree.
 
-import { createHash } from 'node:crypto'
-import { readFileSync, statSync } from 'node:fs'
+import { readdirSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
-const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
-const version = pkg.version
-const repo = 'YunJae00/engram-releases'
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
-const exePath = fileURLToPath(new URL(`../dist/Engram Setup ${version}.exe`, import.meta.url))
+const dist = fileURLToPath(new URL('../dist', import.meta.url))
 
-const fail = (message) => {
-  console.error(message)
-  process.exitCode = 1
+let present
+try {
+  present = new Set(readdirSync(dist))
+} catch {
+  console.error('verify-feed: no dist directory — run the build first')
+  process.exit(1)
 }
 
-const exe = readFileSync(exePath)
-const sha512 = createHash('sha512').update(exe).digest('base64')
-const size = statSync(exePath).size
+const feeds = [...present].filter((name) => /^latest.*\.yml$/.test(name))
+if (feeds.length === 0) {
+  console.error('verify-feed: the build produced no latest*.yml — nothing could ever self-update')
+  process.exit(1)
+}
 
-const served = await fetch(`https://github.com/${repo}/releases/latest/download/latest.yml`, { redirect: 'follow' })
-const yml = await served.text()
-if (!served.ok) {
-  fail(`verify-feed: could not fetch served latest.yml (${served.status})`)
-} else {
-  const okVersion = yml.includes(`version: ${version}`)
-  const okSha = yml.includes(sha512)
-  const okSize = yml.includes(`size: ${size}`)
-  if (okVersion && okSha && okSize) {
-    console.log(`verify-feed: OK — served latest.yml matches the ${version} installer exactly`)
-  } else if (!token) {
-    fail(`verify-feed: MISMATCH (version:${okVersion} sha:${okSha} size:${okSize}) and GH_TOKEN not set — cannot repair`)
-  } else {
-    console.warn(`verify-feed: MISMATCH (version:${okVersion} sha:${okSha} size:${okSize}) — repairing`)
-    const gh = (path, init = {}) =>
-      fetch(`https://api.github.com${path}`, {
-        ...init,
-        headers: {
-          authorization: `Bearer ${token}`,
-          accept: 'application/vnd.github+json',
-          ...(init.headers ?? {}),
-        },
-      })
+let bad = 0
 
-    const releaseRes = await gh(`/repos/${repo}/releases/tags/v${version}`)
-    const release = await releaseRes.json()
-    if (!releaseRes.ok || !release.id) {
-      fail('verify-feed: release not found for repair')
-    } else {
-      const stale = (release.assets ?? []).find((a) => a.name === 'latest.yml')
-      if (stale) {
-        const del = await gh(`/repos/${repo}/releases/assets/${stale.id}`, { method: 'DELETE' })
-        await del.text()
-      }
-      const corrected = [
-        `version: ${version}`,
-        'files:',
-        `  - url: Engram-Setup-${version}.exe`,
-        `    sha512: ${sha512}`,
-        `    size: ${size}`,
-        `path: Engram-Setup-${version}.exe`,
-        `sha512: ${sha512}`,
-        `releaseDate: '${new Date().toISOString()}'`,
-        '',
-      ].join('\n')
-      const upload = await fetch(
-        `https://uploads.github.com/repos/${repo}/releases/${release.id}/assets?name=latest.yml`,
-        {
-          method: 'POST',
-          headers: { authorization: `Bearer ${token}`, 'content-type': 'text/yaml' },
-          body: corrected,
-        },
-      )
-      await upload.text()
-      if (!upload.ok) fail(`verify-feed: repair upload failed (${upload.status})`)
-      else console.log('verify-feed: repaired — corrected latest.yml uploaded')
+for (const feed of feeds) {
+  const text = readFileSync(join(dist, feed), 'utf8')
+  const urls = [...text.matchAll(/^\s*(?:-\s*)?(?:url|path):\s*(.+)$/gm)].map(([, v]) => v.trim())
+  if (urls.length === 0) {
+    console.error(`verify-feed: ${feed} names no file`)
+    bad++
+    continue
+  }
+  for (const url of new Set(urls)) {
+    // GitHub rewrites spaces in an asset name; the feed spells them another
+    // way, and the two never meet again.
+    if (/\s/.test(url)) {
+      console.error(`verify-feed: ${feed} → "${url}" contains a space, which GitHub will rewrite on upload`)
+      bad++
+      continue
     }
+    if (!present.has(url)) {
+      console.error(`verify-feed: ${feed} → "${url}" is not among the built files`)
+      bad++
+      continue
+    }
+    const size = statSync(join(dist, url)).size
+    console.log(`verify-feed: ${feed} → ${url} (${(size / 1e9).toFixed(2)} GB) ok`)
   }
 }
+
+if (bad > 0) {
+  console.error(`verify-feed: ${bad} problem${bad === 1 ? '' : 's'} — this build could not update anyone`)
+  process.exit(1)
+}
+console.log('verify-feed: clean')

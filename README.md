@@ -66,7 +66,7 @@ Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' | Select She
 `Block` means an administrator set that policy and only they can change it. SmartScreen only inspects files carrying the mark the browser puts on a download, so removing that mark from a file you already trust lets it install — it changes one property of your own copy, not any policy:
 
 ```powershell
-Unblock-File "$env:USERPROFILE\Downloads\Engram.Setup.<version>.exe"
+Unblock-File "$env:USERPROFILE\Downloads\Engram-Setup-<version>.exe"
 ```
 
 macOS builds carry an ad-hoc signature. It identifies nobody, but it makes the bundle's seal match its contents, which is the difference between being *blocked* and being called **damaged** — and a build macOS calls damaged cannot be let through from the Finder at all. Builds before v0.2.6 have that broken seal; this repairs one in place:

@@ -78,7 +78,7 @@ jobs:
             echo
             echo "- **macOS** (Apple Silicon) — [Engram-${version}-arm64.dmg](${base}/Engram-${version}-arm64.dmg)"
             echo "- **macOS** (Intel) — [Engram-${version}.dmg](${base}/Engram-${version}.dmg)"
-            echo "- **Windows** — [Engram Setup ${version}.exe](${base}/Engram.Setup.${version}.exe)"
+            echo "- **Windows** — [Engram-Setup-${version}.exe](${base}/Engram-Setup-${version}.exe)"
             echo
             echo 'Neither installer is signed by an identified developer, so both platforms stop the first launch.'
             echo

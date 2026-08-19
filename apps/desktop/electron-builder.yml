@@ -34,6 +34,12 @@ asarUnpack:
   - "node_modules/@node-llama-cpp/**"
 npmRebuild: false
 nsis:
+  # No spaces. The default name carries them, and then the two sides of the
+  # update disagree forever: electron-builder writes the url into latest.yml
+  # with the spaces turned into hyphens, while GitHub turns them into dots when
+  # it serves the asset — so every self-update 404s. Naming the file without
+  # spaces makes the built file, the published asset and the feed agree.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: true
   perMachine: false
   createDesktopShortcut: always

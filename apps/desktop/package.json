@@ -1,7 +1,7 @@
 {
   "name": "desktop",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "license": "MIT",
   "description": "Engram — a self-organizing knowledge vault with an AI librarian",
   "author": "YunJae Kwon",
@@ -12,8 +12,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "bundle:binaries": "node scripts/bundle-binaries.mjs",
-    "dist": "electron-vite build && node scripts/bundle-binaries.mjs && electron-builder --publish never",
-    "release": "electron-vite build && node scripts/bundle-binaries.mjs && node scripts/prepare-release.mjs && electron-builder --publish always && node scripts/verify-feed.mjs",
+    "dist": "electron-vite build && node scripts/bundle-binaries.mjs && electron-builder --publish never && node scripts/verify-feed.mjs",
     "smoke:clean-env": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-clean-env.ps1",
     "test:e2e": "electron-vite build && playwright test"
   },
