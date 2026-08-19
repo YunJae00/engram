@@ -337,9 +337,9 @@ function Shell() {
         )}
         {chatOpen && <ChatPanel intent={intent} onIntentConsumed={() => setIntent(null)} onClose={() => setChatOpen(false)} />}
         {/* The launcher IS the panel at rest — never both on screen at once. */}
-        {!chatOpen && <RememberDock onOpen={() => setChatOpen(true)} />}
-        <TodayDock />
-        <HelpPanel />
+        {activity !== 'bots' && !chatOpen && <RememberDock onOpen={() => setChatOpen(true)} />}
+        {activity !== 'bots' && <TodayDock />}
+        {activity !== 'bots' && <HelpPanel />}
       </div>
       <AbsorbWidget />
 

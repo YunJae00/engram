@@ -35,6 +35,8 @@ const en = {
   'settings.localDeleteFailed': 'Could not delete — {reason}',
   'topbar.tabBots': 'Bots',
   'bots.railTitle': 'Your bots',
+  'bots.errandBtn': 'Errand',
+  'bots.errandRunning': 'Errand {phase}',
   'bots.new': 'New bot',
   'bots.suggestedTitle': 'Suggested from your memory',
   'bots.accept': 'Create',

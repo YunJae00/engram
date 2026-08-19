@@ -1747,6 +1747,14 @@ body.bubble-host { background: transparent; }
 .bots-delete.armed { border-color: var(--clay); color: var(--clay); }
 .bots-thread { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .bots-hint { color: var(--fg-faint); font-size: 13px; line-height: 1.55; max-width: 460px; }
+.bots-errand-strip {
+  display: flex; align-items: center; gap: 9px;
+  margin: 0 14px 8px; padding: 8px 12px;
+  border: 1px solid var(--border-soft); border-radius: 10px;
+  background: var(--accent-soft); font-size: 12.5px; color: var(--fg-dim);
+}
+.bots-errand-pulse { color: var(--accent); animation: errand-pulse 1.2s ease-in-out infinite; }
+.bots-errand-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bots-write { display: flex; gap: 7px; align-items: flex-end; padding: 10px 14px; border-top: 1px solid var(--border-soft); }
 .bots-write textarea {
   flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
@@ -1791,10 +1799,8 @@ body.bubble-host { background: transparent; }
 .errand-run-goal { font-size: 13px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .errand-run-meta { font-size: 11.5px; color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .errand-run-review { flex: none; }
-.errands-action { position: relative; }
-.errand-live-dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: errand-pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .errand-step.current::before, .errand-live-dot { animation: none; }
+  .errand-step.current::before, .bots-errand-pulse { animation: none; }
 }
 
 /* ── GitHub backup dialog (two numbered steps) ───────────────── */

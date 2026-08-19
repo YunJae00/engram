@@ -2,6 +2,7 @@ import { ArrowUp, Ghost, Plus, Square, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import type { StringKey } from '../i18n.js'
 import { answerHtml } from '../markdown.js'
 import { useApp } from '../state.js'
 
@@ -14,6 +15,14 @@ import { useApp } from '../state.js'
 interface Message extends ChatTurnDto {
   streaming?: boolean
   error?: boolean
+}
+
+const PHASE_LABEL: Record<string, StringKey> = {
+  plan: 'topbar.errandPlan',
+  gather: 'topbar.errandGather',
+  web: 'topbar.errandWeb',
+  distill: 'topbar.errandDistill',
+  compose: 'topbar.errandCompose',
 }
 
 function streamingAt(list: Message[]): number {
@@ -265,6 +274,20 @@ export function BotsView() {
                 </div>
               ))}
             </div>
+            {errand.running && (
+              <div className="bots-errand-strip" data-testid="bots-errand-strip">
+                <Ghost size={13} strokeWidth={1.8} aria-hidden className="bots-errand-pulse" />
+                <span className="bots-errand-text">
+                  {t('bots.errandRunning', {
+                    phase: errand.phase && PHASE_LABEL[errand.phase] ? t(PHASE_LABEL[errand.phase]!) : '…',
+                  })}{' '}
+                  · {errand.goal}
+                </span>
+                <button className="secondary" onClick={() => void api.errandAbort()}>
+                  {t('errands.stop')}
+                </button>
+              </div>
+            )}
             <div className="bots-write">
               <textarea
                 value={text}
@@ -281,11 +304,11 @@ export function BotsView() {
               />
               <button
                 className="secondary bots-errand-btn"
-                title={t('bots.sendErrand')}
+                title={errand.running ? t('errands.busy') : t('bots.sendErrand')}
                 disabled={!text.trim() || errand.running}
                 onClick={sendAsErrand}
               >
-                <Ghost size={13} strokeWidth={1.8} aria-hidden />
+                <Ghost size={13} strokeWidth={1.8} aria-hidden /> {t('bots.errandBtn')}
               </button>
               {busy ? (
                 <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>
