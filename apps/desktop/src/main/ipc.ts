@@ -63,9 +63,10 @@ import {
   type RunReport,
 } from 'core'
 import { randomUUID } from 'node:crypto'
+import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
-import { agentBrowserAvailable, agentCourier } from './agent-browser.js'
+import { agentBrowserAvailable, agentCourier, closeAgentBrowser } from './agent-browser.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { ipcMain } from 'electron'
 import { open, readdir, readFile } from 'node:fs/promises'
@@ -826,9 +827,22 @@ export function registerIpc(ctx: VaultContext): void {
   // the run is accepted (or refused) — the errand itself is detached and takes
   // minutes, so blocking here would hang the palette. Progress and the final
   // verdict travel as errand:phase events; a 'failed' phase carries the reason.
+  // Minutes of continuous inference plus a Chrome: the heaviest thing this
+  // app can do. Measured on a 32GB shared-iGPU machine, starting one with
+  // less free than this ends in a machine-wide freeze, so it is refused with
+  // a number instead. Web needs the browser's own slice on top.
+  const ERRAND_MIN_FREE = 8e9
+  const ERRAND_WEB_MIN_FREE = 10e9
+
   ipcMain.handle('errand:start', (_e, goal: string): { ok: boolean; error?: string } => {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
     if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
+    const freeAtStart = os.freemem()
+    if (freeAtStart < ERRAND_MIN_FREE)
+      return {
+        ok: false,
+        error: `Not enough free memory for an errand right now (${(freeAtStart / 1e9).toFixed(1)}GB free, needs ~8GB) — close some apps and try again.`,
+      }
     errandRunning = true
     errandAbort = new AbortController()
     const signal = errandAbort.signal
@@ -855,13 +869,17 @@ export function registerIpc(ctx: VaultContext): void {
             .map(toRetrievedNote)
         },
         // The agent's own Chrome; absent when no Chrome-family browser is
-        // installed, and the errand quietly stays vault-only.
-        courier: agentBrowserAvailable() ? agentCourier() : null,
+        // installed — or when memory has room for the model or the browser
+        // but not both — and the errand quietly stays vault-only.
+        courier: agentBrowserAvailable() && freeAtStart >= ERRAND_WEB_MIN_FREE ? agentCourier() : null,
       },
       goal,
       {
         signal,
-        onPhase: (s) =>
+        onPhase: (s) => {
+          // Browsing is over once distilling starts; a Chrome idling next to
+          // minutes of inference is the memory the inference needed.
+          if (s.phase === 'distill') void closeAgentBrowser()
           broadcast({
             type: 'errand:phase',
             phase: s.phase,
@@ -871,7 +889,8 @@ export function registerIpc(ctx: VaultContext): void {
             ...(s.web ? { pages: s.web.map((p) => ({ url: p.url, title: p.title })) } : {}),
             ...(s.points ? { points: s.points.length } : {}),
             ...(s.error ? { error: s.error } : {}),
-          }),
+          })
+        },
         // A page only a human can pass: park the run on a promise, tell every
         // window, and continue with whatever the user answers.
         onWall: (page) =>

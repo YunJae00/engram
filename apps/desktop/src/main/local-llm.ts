@@ -497,8 +497,17 @@ export async function localComplete(
 // reload, and the reload is the expensive thing.
 function armMemoryWatch(): void {
   setInterval(() => {
-    if (!child || inFlight) return
+    if (!child) return
     const free = os.freemem()
+    // Mid-inference the model cannot be unloaded politely, but below the
+    // critical floor the machine is minutes from a hard freeze — killing the
+    // worker fails one answer and saves the computer.
+    if (inFlight && free < 1.2e9) {
+      flog('local-llm', `memory critical (${(free / 1e9).toFixed(1)}GB free) — stopping inference to keep the machine alive`)
+      stopLocalServer()
+      return
+    }
+    if (inFlight) return
     // The machine's needs keep changing while the model sits idle. When free
     // memory sinks to where the resident model is what would tip the system
     // into thrash, it leaves NOW — the next question pays a reload, which is

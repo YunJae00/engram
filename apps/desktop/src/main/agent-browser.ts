@@ -1,6 +1,7 @@
 import type { WebCourier, WebFinding, WebPage } from 'core'
 import { app } from 'electron'
 import { existsSync } from 'node:fs'
+import os from 'node:os'
 import { join } from 'node:path'
 import { flog } from './flog.js'
 
@@ -17,6 +18,9 @@ const RESULTS_PER_SEARCH = 8
 // The browser is heavyweight company for an 8GB machine — it leaves when the
 // errand stops using it rather than idling next to the model.
 const IDLE_CLOSE_MS = 3 * 60_000
+// Below this the browser is the memory somebody else needs — it leaves.
+const PRESSURE_CLOSE_FLOOR = 2e9
+const LAUNCH_MIN_FREE = 2.5e9
 
 // Text pages only: the page weight is mostly pixels the reader never reads.
 const BLOCKED_RESOURCES = new Set(['image', 'media', 'font'])
@@ -94,6 +98,19 @@ let context: Ctx | null = null
 let opening: Promise<Ctx> | null = null
 let workPage: Page | null = null
 let idleTimer: NodeJS.Timeout | null = null
+let pressureTimer: NodeJS.Timeout | null = null
+
+function armPressureWatch(): void {
+  if (pressureTimer) return
+  pressureTimer = setInterval(() => {
+    if (!context) return
+    const free = os.freemem()
+    if (free < PRESSURE_CLOSE_FLOOR) {
+      flog('agent-browser', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — closing`)
+      void closeAgentBrowser()
+    }
+  }, 15_000)
+}
 
 function armIdleClose(): void {
   if (idleTimer) clearTimeout(idleTimer)
@@ -106,6 +123,8 @@ async function ensureContext(): Promise<Ctx> {
   opening = (async () => {
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
+    if (os.freemem() < LAUNCH_MIN_FREE)
+      throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
     const { chromium } = await import('playwright-core')
     const profileDir = join(app.getPath('userData'), 'agent-browser-profile')
     flog('agent-browser', `launching ${executablePath}`)
@@ -129,6 +148,7 @@ async function ensureContext(): Promise<Ctx> {
       flog('agent-browser', 'closed')
     })
     context = ctx
+    armPressureWatch()
     return ctx
   })().finally(() => {
     opening = null
@@ -180,6 +200,32 @@ export function agentCourier(): WebCourier {
     async search(query, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
+      try {
+        await withAbort(
+          page.goto(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`, {
+            waitUntil: 'domcontentloaded',
+            timeout: NAV_TIMEOUT_MS,
+          }),
+          signal,
+        )
+        await withAbort(page.waitForSelector('a[data-testid="result-title-a"]', { timeout: 8_000 }), signal)
+        const found = await withAbort(
+          page.evaluate((cap: number) => {
+            return Array.from(document.querySelectorAll('a[data-testid="result-title-a"]'))
+              .slice(0, cap)
+              .map((a) => ({
+                url: (a as HTMLAnchorElement).href,
+                title: (a.textContent ?? '').trim(),
+                snippet: '',
+              }))
+          }, RESULTS_PER_SEARCH),
+          signal,
+        )
+        armIdleClose()
+        if (found.length > 0) return found
+      } catch {
+        // fall through to the HTML twin
+      }
       await withAbort(
         page.goto(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
           waitUntil: 'domcontentloaded',
@@ -215,6 +261,10 @@ export async function closeAgentBrowser(): Promise<void> {
   if (idleTimer) {
     clearTimeout(idleTimer)
     idleTimer = null
+  }
+  if (pressureTimer) {
+    clearInterval(pressureTimer)
+    pressureTimer = null
   }
   const held = context ?? (await opening?.catch(() => null)) ?? null
   context = null
