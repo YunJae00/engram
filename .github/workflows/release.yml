@@ -80,7 +80,10 @@ jobs:
             echo "- **macOS** (Intel) — [Engram-${version}.dmg](${base}/Engram-${version}.dmg)"
             echo "- **Windows** — [Engram Setup ${version}.exe](${base}/Engram.Setup.${version}.exe)"
             echo
-            echo '**macOS first run:** open Engram, let it be blocked, then **System Settings → Privacy & Security → Open Anyway**.'
+            echo 'Neither installer is signed by an identified developer, so both platforms stop the first launch.'
+            echo
+            echo '- **Windows:** SmartScreen says it blocked an unrecognized app. The **Run anyway** button is hidden until you click **More info** first.'
+            echo '- **macOS:** open Engram, let it be blocked, then **System Settings → Privacy & Security → Open Anyway**.'
             echo
             echo '---'
             echo 'RELEASE_NOTES_EOF'
