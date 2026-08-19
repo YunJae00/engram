@@ -78,7 +78,16 @@ interface AppState {
   runSweep(): Promise<void>
   // A delegated errand in flight — the top bar narrates its phase; the toast
   // fires on done/failed. `running` gates a second delegation and the progress line.
-  errand: { running: boolean; phase?: string; goal?: string }
+  errand: {
+    running: boolean
+    phase?: string
+    goal?: string
+    queries?: string[]
+    notes?: number
+    pages?: { url: string; title: string }[]
+    points?: number
+    timeline: { phase: string; at: number }[]
+  }
   // A page the errand cannot pass without its human (login/captcha) — the run
   // is parked until errandWall answers.
   errandWall: { url: string; wall: 'login' | 'captcha' } | null
@@ -155,7 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pendingWork, setPendingWork] = useState<PendingWorkDto>({ inbox: 0, notes: 0, filing: false })
   const [sweepJob, setSweepJob] = useState<{ job: string; index: number; total: number } | null>(null)
   const [sweepStartedAt, setSweepStartedAt] = useState<number | null>(null)
-  const [errand, setErrand] = useState<{ running: boolean; phase?: string; goal?: string }>({ running: false })
+  const [errand, setErrand] = useState<AppState['errand']>({ running: false, timeline: [] })
   const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
@@ -367,15 +376,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (event.type === 'errand:wall') setErrandWall({ url: event.url, wall: event.wall })
       if (event.type === 'errand:phase') {
         setErrandWall(null)
-        if (event.phase === 'done') {
-          setErrand({ running: false })
-          latest.current.showToast(latest.current.t('toast.errandDone'))
-        } else if (event.phase === 'failed') {
-          setErrand({ running: false })
+        setErrand((prev) => {
+          // A new run wipes the last one's timeline; within a run each phase
+          // stamps itself once, so the sheet can show how far it got.
+          const fresh = event.phase === 'plan' && (!prev.running || prev.goal !== event.goal)
+          const timeline = fresh ? [] : prev.timeline
+          const stamped = timeline.some((step) => step.phase === event.phase)
+            ? timeline
+            : [...timeline, { phase: event.phase, at: Date.now() }]
+          return {
+            running: event.phase !== 'done' && event.phase !== 'failed',
+            phase: event.phase,
+            goal: event.goal,
+            queries: event.queries ?? (fresh ? undefined : prev.queries),
+            notes: event.notes ?? (fresh ? undefined : prev.notes),
+            pages: event.pages ?? (fresh ? undefined : prev.pages),
+            points: event.points ?? (fresh ? undefined : prev.points),
+            timeline: stamped,
+          }
+        })
+        if (event.phase === 'done') latest.current.showToast(latest.current.t('toast.errandDone'))
+        else if (event.phase === 'failed')
           latest.current.showToast(latest.current.t('toast.errandFailed', { reason: event.error ?? '' }))
-        } else {
-          setErrand({ running: true, phase: event.phase, goal: event.goal })
-        }
       }
       if (event.type === 'engines:detected') setEnginesDetected(true)
       if (event.type === 'engines:changed') setEngines(event.engines)
@@ -433,10 +455,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startErrand = useCallback(
     async (goal: string) => {
       if (!goal.trim()) return
-      setErrand({ running: true, goal: goal.trim() })
+      setErrand({ running: true, goal: goal.trim(), timeline: [] })
       const result = await api.errandStart(goal.trim())
       if (!result.ok) {
-        setErrand({ running: false })
+        setErrand({ running: false, timeline: [] })
         showToast(result.error ?? t('toast.errandFailed', { reason: '' }))
       }
     },

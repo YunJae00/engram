@@ -4,6 +4,7 @@ import {
   fitPrompt,
   noteActivation,
   appendCounterexample,
+  appendErrandRecord,
   approveCard,
   badgeOf,
   buildContextPack,
@@ -33,6 +34,7 @@ import {
   processCapture,
   readCard,
   refreshBrief,
+  readErrandJournal,
   readNote,
   recordCoRecall,
   recordRecall,
@@ -60,6 +62,7 @@ import {
   type Note,
   type RunReport,
 } from 'core'
+import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { agentBrowserAvailable, agentCourier } from './agent-browser.js'
@@ -829,6 +832,8 @@ export function registerIpc(ctx: VaultContext): void {
     errandRunning = true
     errandAbort = new AbortController()
     const signal = errandAbort.signal
+    const runId = randomUUID()
+    const runStartedAt = new Date().toISOString()
     void runErrand(
       paths,
       {
@@ -857,7 +862,16 @@ export function registerIpc(ctx: VaultContext): void {
       {
         signal,
         onPhase: (s) =>
-          broadcast({ type: 'errand:phase', phase: s.phase, goal: s.goal, ...(s.error ? { error: s.error } : {}) }),
+          broadcast({
+            type: 'errand:phase',
+            phase: s.phase,
+            goal: s.goal,
+            ...(s.plan ? { queries: s.plan.queries } : {}),
+            ...(s.gathered ? { notes: s.gathered.length } : {}),
+            ...(s.web ? { pages: s.web.map((p) => ({ url: p.url, title: p.title })) } : {}),
+            ...(s.points ? { points: s.points.length } : {}),
+            ...(s.error ? { error: s.error } : {}),
+          }),
         // A page only a human can pass: park the run on a promise, tell every
         // window, and continue with whatever the user answers.
         onWall: (page) =>
@@ -873,6 +887,20 @@ export function registerIpc(ctx: VaultContext): void {
       .then((result) => {
         // The result lands as a review card; nudge the badge to pick it up.
         if (result.ok) broadcast({ type: 'vault:changed' })
+        // …and the run itself lands in the journal, whatever happened —
+        // history is what makes a delegation auditable afterwards.
+        return appendErrandRecord(paths, {
+          id: runId,
+          goal,
+          startedAt: runStartedAt,
+          endedAt: new Date().toISOString(),
+          outcome: result.ok ? 'done' : signal.aborted ? 'aborted' : 'failed',
+          ...(result.title ? { title: result.title } : {}),
+          ...(result.card ? { cardId: result.card.id } : {}),
+          noteSources: result.sources.length,
+          pages: result.pages,
+          ...(result.error ? { error: result.error } : {}),
+        }).then(() => broadcast({ type: 'errand:logged' }))
       })
       .catch((err) => flog('errand', err))
       .finally(() => {
@@ -882,6 +910,8 @@ export function registerIpc(ctx: VaultContext): void {
       })
     return { ok: true }
   })
+
+  ipcMain.handle('errand:journal', () => readErrandJournal(paths, 50))
 
   ipcMain.handle('errand:abort', () => {
     errandWallWaiter?.('skip')

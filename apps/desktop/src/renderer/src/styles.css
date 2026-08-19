@@ -1699,6 +1699,42 @@ body.bubble-host { background: transparent; }
    chrome (background, border, focus ring); this only sizes it. */
 .errand-input { width: 100%; min-height: 84px; resize: vertical; font-size: 14px; padding: 9px 11px; }
 
+/* ── Errands: the delegation's home ────────────────────────────── */
+.errands-box { width: min(560px, 92vw); max-height: 82vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.errands-title { display: flex; align-items: center; gap: 7px; }
+.errands-hint { font-size: 12.5px; color: var(--fg-dim); line-height: 1.5; }
+.errand-live { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.errand-live-goal { font-size: 13px; font-weight: 600; color: var(--fg); }
+.errand-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.errand-step { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--fg-faint); }
+.errand-step::before { content: '○'; }
+.errand-step.passed { color: var(--fg-dim); }
+.errand-step.passed::before { content: '●'; color: var(--accent); }
+.errand-step.current { color: var(--fg); font-weight: 600; }
+.errand-step.current::before { content: '●'; color: var(--accent); animation: errand-pulse 1.2s ease-in-out infinite; }
+@keyframes errand-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.errand-step-detail { font-weight: 400; font-size: 11.5px; color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.errand-wall-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: 12px; color: var(--fg-dim); }
+.errand-stop { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
+.errands-history-title { font-size: 12px; font-weight: 700; color: var(--fg-dim); margin-top: 2px; }
+.errands-empty { font-size: 12.5px; color: var(--fg-faint); }
+.errands-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.errand-run { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; }
+.errand-run:hover { background: var(--hover-bg); }
+.errand-outcome { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--border); }
+.errand-outcome.done { background: var(--accent); }
+.errand-outcome.failed { background: var(--clay); }
+.errand-outcome.aborted { background: var(--fg-faint); }
+.errand-run-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.errand-run-goal { font-size: 13px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.errand-run-meta { font-size: 11.5px; color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.errand-run-review { flex: none; }
+.errands-action { position: relative; }
+.errand-live-dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: errand-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .errand-step.current::before, .errand-live-dot { animation: none; }
+}
+
 /* ── GitHub backup dialog (two numbered steps) ───────────────── */
 .github-connect .brief-title { display: flex; align-items: center; gap: 8px; }
 .github-intro { font-size: 13px; font-family: var(--font); color: var(--fg-dim); line-height: 1.5; margin: 0; }

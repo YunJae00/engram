@@ -97,6 +97,7 @@ const api: EngramApi = {
   chatAbort: (channel?: 'panel' | 'bubble') => ipcRenderer.invoke('chat:abort', channel),
   errandStart: (goal: string) => ipcRenderer.invoke('errand:start', goal),
   errandAbort: () => ipcRenderer.invoke('errand:abort'),
+  errandJournal: () => ipcRenderer.invoke('errand:journal'),
   errandWallDone: (verdict: 'resolved' | 'skip') => ipcRenderer.invoke('errand:wallDone', verdict),
   fadingMemories: () => ipcRenderer.invoke('memory:fading'),
   openLoops: () => ipcRenderer.invoke('loops:list'),

@@ -1,4 +1,4 @@
-import { Globe, List, Loader2, Network, Orbit } from 'lucide-react'
+import { Bot, Globe, List, Loader2, Network, Orbit } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import type { SweepStatus } from '../state.js'
@@ -263,6 +263,15 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
       </button>
       <button className="topbar-action" onClick={onOpenPalette} title={t('topbar.searchTitle')}>
         <Icon name="search" size={15} />
+      </button>
+      <button
+        className="topbar-action errands-action"
+        data-testid="topbar-errands"
+        onClick={() => window.dispatchEvent(new Event('engram:open-errand'))}
+        title={t('topbar.errandsTitle')}
+      >
+        <Bot size={15} strokeWidth={1.8} />
+        {errand.running && <span className="errand-live-dot" aria-hidden />}
       </button>
       <button className="topbar-action" data-testid="activity-settings" onClick={onOpenSettings} title={t('topbar.settingsTitle')}>
         <Icon name="settings" size={15} />

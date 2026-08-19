@@ -11,7 +11,7 @@ import { TodaySheet } from './components/TodaySheet.js'
 import { TopBar } from './components/TopBar.js'
 import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
 import { ActionDialog } from './components/ActionDialog.js'
-import { ErrandDialog } from './components/ErrandDialog.js'
+import { ErrandsSheet } from './components/ErrandsSheet.js'
 import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
 import { BrainView } from './views/BrainView.js'
@@ -343,7 +343,7 @@ function Shell() {
       <NoteSheet />
       <TodaySheet />
       {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
-      {errandOpen && <ErrandDialog onClose={() => setErrandOpen(false)} />}
+      {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
       <ReviewOverlay />
       <InboxOverlay />
       <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />

@@ -118,6 +118,20 @@ export interface LocalModelsStateDto {
 // Answer to the Settings "check for updates" button. `selfInstalls` false
 // means the platform cannot swap the app itself (an unsigned macOS build), so
 // an available version leads to a download page instead of an install.
+// One finished delegation, as the journal remembers it.
+export interface ErrandRunDto {
+  id: string
+  goal: string
+  startedAt: string
+  endedAt: string
+  outcome: 'done' | 'failed' | 'aborted'
+  title?: string
+  cardId?: string
+  noteSources: number
+  pages: { url: string; title: string }[]
+  error?: string
+}
+
 export interface UpdateCheckDto {
   // 'available' = a newer version exists; 'downloading' = it is being fetched
   // and cannot be installed yet; 'ready' = the bytes are on disk.
@@ -297,7 +311,18 @@ export type EngramEvent =
   // A delegated errand (core's runErrand) moving through its fixed phases — the
   // top bar narrates it and the toast fires on done/failed. `error` rides only
   // on 'failed'; `goal` labels the run so a late subscriber knows what it is.
-  | { type: 'errand:phase'; phase: 'plan' | 'gather' | 'web' | 'distill' | 'compose' | 'done' | 'failed'; goal: string; error?: string }
+  | {
+      type: 'errand:phase'
+      phase: 'plan' | 'gather' | 'web' | 'distill' | 'compose' | 'done' | 'failed'
+      goal: string
+      // What the run has in hand so far — the sheet narrates from these.
+      queries?: string[]
+      notes?: number
+      pages?: { url: string; title: string }[]
+      points?: number
+      error?: string
+    }
+  | { type: 'errand:logged' }
   // The errand met a page only a human can pass (login screen, human check).
   // The run is parked until errandWallDone answers — clear it in the agent's
   // Chrome window and continue, or skip that page.
@@ -355,6 +380,8 @@ export interface EngramApi {
   // detached in main — this resolves once it has STARTED (or refused, e.g. no
   // engine); progress and the eventual outcome arrive as errand:phase events.
   errandStart(goal: string): Promise<{ ok: boolean; error?: string }>
+  // Past runs, newest first — the errand sheet's history.
+  errandJournal(): Promise<ErrandRunDto[]>
   errandAbort(): Promise<void>
   // The user's verdict on a walled page ('resolved' after clearing it in the
   // agent window, 'skip' to move on without it).
