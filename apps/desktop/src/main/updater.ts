@@ -15,14 +15,21 @@ const RELEASES_URL = 'https://github.com/YunJae00/engram/releases/latest'
 const SELF_INSTALLS = process.platform !== 'darwin'
 
 export interface UpdateCheck {
-  state: 'current' | 'available' | 'checking-unavailable' | 'error'
+  // 'available' means only that a newer version exists. On a platform that
+  // installs for itself the bytes still have to arrive, and until they do
+  // there is nothing to restart into — that is 'downloading'. Collapsing the
+  // two is why Restart now used to do nothing at all.
+  state: 'current' | 'downloading' | 'ready' | 'available' | 'checking-unavailable' | 'error'
   version?: string
   // Whether the app can install it itself, or the user has to download it.
   selfInstalls: boolean
+  percent?: number
   message?: string
 }
 
 let latestSeen: string | null = null
+let downloadedVersion: string | null = null
+let downloadPercent = 0
 
 export function startUpdater(notify: (version: string, selfInstalls: boolean) => void): void {
   // Packaged only — dev/e2e have no app-update.yml and must never auto-update.
@@ -38,7 +45,12 @@ export function startUpdater(notify: (version: string, selfInstalls: boolean) =>
     if (!SELF_INSTALLS) return
     flog('updater', `downloaded ${info.version}`)
     latestSeen = info.version
+    downloadedVersion = info.version
+    downloadPercent = 100
     notify(info.version, true)
+  })
+  autoUpdater.on('download-progress', (p: { percent?: number }) => {
+    downloadPercent = Math.round(p.percent ?? 0)
   })
   autoUpdater.on('update-available', (info) => {
     if (SELF_INSTALLS) return
@@ -75,7 +87,11 @@ export async function checkForUpdatesNow(): Promise<UpdateCheck> {
       return { state: 'current', version: app.getVersion(), selfInstalls: SELF_INSTALLS }
     }
     latestSeen = version
-    return { state: 'available', version, selfInstalls: SELF_INSTALLS }
+    // A build that cannot install itself is 'available' and nothing more; one
+    // that can is only restartable once the download has landed.
+    if (!SELF_INSTALLS) return { state: 'available', version, selfInstalls: false }
+    if (downloadedVersion === version) return { state: 'ready', version, selfInstalls: true }
+    return { state: 'downloading', version, selfInstalls: true, percent: downloadPercent }
   } catch (err) {
     flog('updater-check-failed', err)
     return {
@@ -86,16 +102,28 @@ export async function checkForUpdatesNow(): Promise<UpdateCheck> {
   }
 }
 
-export function installUpdateNow(): void {
-  if (!app.isPackaged) return
+// Returns whether the install actually started. quitAndInstall on a version
+// that has not finished downloading is a silent no-op, and a button that does
+// nothing is worse than one that explains itself.
+export function installUpdateNow(): { started: boolean; reason?: string } {
+  if (!app.isPackaged) return { started: false, reason: 'not a packaged build' }
   // On macOS quitAndInstall would quit the app and then fail the signature
   // check, so the click has to lead somewhere that actually works.
   if (!SELF_INSTALLS) {
     void shell.openExternal(RELEASES_URL)
-    return
+    return { started: true }
+  }
+  if (!downloadedVersion) {
+    flog('updater', `install requested before the download finished (${downloadPercent}%)`)
+    return { started: false, reason: 'still downloading' }
   }
   // isSilent=false (show the installer), isForceRunAfter=true (reopen after)
   autoUpdater.quitAndInstall(false, true)
+  return { started: true }
+}
+
+export function updateDownloadPercent(): number {
+  return downloadPercent
 }
 
 export function pendingUpdateVersion(): string | null {

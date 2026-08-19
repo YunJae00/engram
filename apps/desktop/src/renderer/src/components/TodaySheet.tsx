@@ -48,7 +48,11 @@ export function TodaySheet() {
       // written against an older vault, which is what made this feel like a
       // fetch rather than an assistant. It costs an engine call only when the
       // brief's own inputs changed — core skips it otherwise.
-      await Promise.all([api.refreshBrief().then(setBrief), refresh(), new Promise((r) => setTimeout(r, 450))])
+      await Promise.all([
+        api.refreshBrief().then(setBrief).catch(() => undefined),
+        refresh(),
+        new Promise((r) => setTimeout(r, 450)),
+      ])
       setCheckedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     } finally {
       setBusy(false)

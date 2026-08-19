@@ -41,7 +41,15 @@ export function InboxOverlay() {
                 {failure.kind} — {failure.error}
               </div>
             ))}
-            <button className="secondary" onClick={() => void api.inboxRetry().then(() => refresh())}>
+            <button
+              className="secondary"
+              onClick={() =>
+                void api
+                  .inboxRetry()
+                  .then(() => refresh())
+                  .catch(() => void refresh())
+              }
+            >
               {t('inbox.retry')}
             </button>
           </div>

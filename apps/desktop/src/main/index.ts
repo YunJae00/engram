@@ -372,7 +372,11 @@ function registerBaseIpc(): void {
     // Only a self-installing platform is really quitting; on macOS this opens
     // the download page and the app must stay where it is.
     if (process.platform !== 'darwin') quitting = true
-    installUpdateNow()
+    const outcome = installUpdateNow()
+    // An install that never started must not leave the app marked as quitting,
+    // or the next window close would kill it.
+    if (!outcome.started) quitting = false
+    return outcome
   })
 
   ipcMain.handle('update:check', () => checkForUpdatesNow())

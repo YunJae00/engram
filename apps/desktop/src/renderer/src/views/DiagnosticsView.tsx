@@ -96,7 +96,17 @@ export function DiagnosticsView({ onClose }: { onClose(): void }) {
               </li>
             </ul>
             <div className="dialog-actions">
-              <button className="secondary" onClick={() => void api.exportLogs().then((p) => p && showToast(t('toast.logsExported', { path: p })))}>
+              <button
+                className="secondary"
+                onClick={() =>
+                  void api
+                    .exportLogs()
+                    .then((p) =>
+                      showToast(p ? t('toast.logsExported', { path: p }) : t('toast.logsEmpty')),
+                    )
+                    .catch((err: unknown) => showToast(t('toast.actionFailed', { reason: String((err as Error).message ?? err).slice(0, 120) })))
+                }
+              >
                 {t('diag.exportLogs')}
               </button>
               <button className="primary" onClick={onClose}>

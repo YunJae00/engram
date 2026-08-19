@@ -22,7 +22,7 @@ export function MetaBar({ note, onChange }: { note: NoteDto; onChange(next: Note
   return (
     <div className="meta-bar" data-testid="meta-bar">
       {/* freshness chip — same flat dot the list/palette use */}
-      <button className="meta-chip meta-fresh" title={t('sheet.verifyTitle')} onClick={() => void api.verifyNote(note.id).then(onChange)}>
+      <button className="meta-chip meta-fresh" title={t('sheet.verifyTitle')} onClick={() => void api.verifyNote(note.id).then(onChange).catch(() => undefined)}>
         {(() => {
           const tone = freshTone(note.badge)
           return tone ? <span className={`fresh-dot fresh-${tone}`} /> : note.badge

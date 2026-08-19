@@ -119,9 +119,12 @@ export interface LocalModelsStateDto {
 // means the platform cannot swap the app itself (an unsigned macOS build), so
 // an available version leads to a download page instead of an install.
 export interface UpdateCheckDto {
-  state: 'current' | 'available' | 'checking-unavailable' | 'error'
+  // 'available' = a newer version exists; 'downloading' = it is being fetched
+  // and cannot be installed yet; 'ready' = the bytes are on disk.
+  state: 'current' | 'downloading' | 'ready' | 'available' | 'checking-unavailable' | 'error'
   version?: string
   selfInstalls: boolean
+  percent?: number
   message?: string
 }
 
@@ -439,7 +442,9 @@ export interface EngramApi {
   // The floating question window (#nudge route) — its own channel, because it
   // is a separate BrowserWindow and gets a targeted send, not a broadcast.
   // apply a downloaded update now — the app quits, installs and reopens
-  updateInstall(): Promise<void>
+  // Reports whether the install actually started — a click that cannot work
+  // has to say so rather than appear to do nothing.
+  updateInstall(): Promise<{ started: boolean; reason?: string }>
   updateCheck(): Promise<UpdateCheckDto>
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: AppSettingsDto): Promise<void>

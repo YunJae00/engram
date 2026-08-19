@@ -111,7 +111,12 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
             <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-digest')))}>{t('palette.openDigest')}</Command.Item>
             <Command.Item
               onSelect={() =>
-                pick(() => void api.buildPack().then((p) => navigator.clipboard.writeText(p.content).then(() => showToast(t('toast.contextPack', { file: p.file })))))
+                pick(() =>
+                  void api
+                    .buildPack()
+                    .then((p) => navigator.clipboard.writeText(p.content).then(() => showToast(t('toast.contextPack', { file: p.file }))))
+                    .catch((err: unknown) => showToast(t('toast.actionFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))),
+                )
               }
             >
               {t('palette.copyPack')}

@@ -72,7 +72,13 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // shouting about: it just does not appear in the connected list.
   const reconnectMcp = async () => {
     setMcpStatus(t('settings.mcpWorking'))
-    const [desktop, code] = await Promise.all([api.mcpConnectDesktop(), api.mcpConnectCode()])
+    let desktop, code
+    try {
+      ;[desktop, code] = await Promise.all([api.mcpConnectDesktop(), api.mcpConnectCode()])
+    } catch (err) {
+      setMcpStatus(t('settings.mcpFailedList', { names: String((err as Error).message ?? err).slice(0, 120) }))
+      return
+    }
     const ok: string[] = []
     const failed: string[] = []
     for (const [name, result] of [
@@ -90,9 +96,13 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   }
 
   const copyMcpConfig = async () => {
-    const info = await api.mcpInfo()
-    await navigator.clipboard.writeText(info.configJson)
-    setMcpStatus(t('settings.mcpCopied'))
+    try {
+      const info = await api.mcpInfo()
+      await navigator.clipboard.writeText(info.configJson)
+      setMcpStatus(t('settings.mcpCopied'))
+    } catch (err) {
+      setMcpStatus(t('settings.mcpCopyFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
+    }
   }
 
   useEffect(() => {
@@ -112,7 +122,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const patch = (p: Partial<AppSettingsDto>) => setSettings({ ...settings, ...p })
 
   const save = async () => {
-    await api.settingsSet(settings)
+    try {
+      await api.settingsSet(settings)
+    } catch (err) {
+      showToast(t('toast.settingsFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
+      return
+    }
     showToast(t('toast.settingsSaved'))
     onClose()
   }
@@ -145,7 +160,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
               className="switch"
               data-testid="setting-desk-journal"
               checked={deskJournal ?? false}
-              onChange={(e) => void api.activitySet(e.target.checked).then(setDeskJournal)}
+              onChange={(e) =>
+                void api
+                  .activitySet(e.target.checked)
+                  .then(setDeskJournal)
+                  .catch(() => void api.activityGet().then(setDeskJournal))
+              }
             />
           </label>
           <label className="setting-row">
@@ -155,7 +175,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
               className="switch"
               data-testid="setting-session-watch"
               checked={sessionWatch ?? false}
-              onChange={(e) => void api.sessionWatchSet(e.target.checked).then(setSessionWatch)}
+              onChange={(e) =>
+                void api
+                  .sessionWatchSet(e.target.checked)
+                  .then(setSessionWatch)
+                  .catch(() => void api.sessionWatchGet().then(setSessionWatch))
+              }
             />
           </label>
         </div>
@@ -170,12 +195,28 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           {folders.map((folder) => (
             <div key={folder} className="model-row">
               <span className="model-desc" style={{ wordBreak: 'break-all' }}>{folder}</span>
-              <button className="secondary" onClick={() => void api.contentRemoveFolder(folder).then(setFolders)}>
+              <button
+                className="secondary"
+                onClick={() =>
+                  void api
+                    .contentRemoveFolder(folder)
+                    .then(setFolders)
+                    .catch(() => void api.contentFolders().then(setFolders))
+                }
+              >
                 {t('settings.contentRemove')}
               </button>
             </div>
           ))}
-          <button className="secondary" onClick={() => void api.contentAddFolder().then(setFolders)}>
+          <button
+            className="secondary"
+            onClick={() =>
+              void api
+                .contentAddFolder()
+                .then(setFolders)
+                .catch(() => void api.contentFolders().then(setFolders))
+            }
+          >
             {t('settings.contentAdd')}
           </button>
         </div>
@@ -213,7 +254,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                           type="radio"
                           name="active-model"
                           checked={m.active}
-                          onChange={() => void api.localModelSetActive(m.id)}
+                          onChange={() =>
+                          void api
+                            .localModelSetActive(m.id)
+                            .catch(() => undefined)
+                            .finally(() => void api.localModelsState().then(setLocalModels))
+                        }
                         />
                         {t('settings.localUse')}
                       </label>
@@ -342,10 +388,43 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           <div className="settings-fact">
             <span className="settings-fact-key">{t('settings.updateKey')}</span>
             <span className="settings-fact-value" data-testid="settings-update">
-              {update?.state === 'available' ? (
+              {update?.state === 'downloading' ? (
+                // The bytes are still arriving: there is nothing to restart
+                // into yet, so the button says what is happening instead.
+                <>
+                  {t('settings.updateDownloading', {
+                    version: update.version ?? '',
+                    percent: update.percent ?? 0,
+                  })}
+                  <button
+                    className="secondary settings-fact-btn"
+                    data-testid="settings-update-refresh"
+                    disabled={checkingUpdate}
+                    onClick={() => {
+                      setCheckingUpdate(true)
+                      void api
+                        .updateCheck()
+                        .then(setUpdate)
+                        .catch(() => {})
+                        .finally(() => setCheckingUpdate(false))
+                    }}
+                  >
+                    {t('settings.updateCheck')}
+                  </button>
+                </>
+              ) : update?.state === 'ready' || update?.state === 'available' ? (
                 <>
                   {t('settings.updateAvailable', { version: update.version ?? '' })}
-                  <button className="secondary settings-fact-btn" onClick={() => void api.updateInstall()}>
+                  <button
+                    className="secondary settings-fact-btn"
+                    onClick={() => {
+                      void api.updateInstall().then((r) => {
+                        // Only reachable if the download finished between the
+                        // check and the click going the other way.
+                        if (!r.started) void api.updateCheck().then(setUpdate)
+                      })
+                    }}
+                  >
                     {update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}
                   </button>
                 </>
