@@ -24,7 +24,7 @@ import { startKeeper, stopKeeper } from './keeper.js'
 import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './session-watch.js'
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
-import { checkForUpdatesNow, installUpdateNow, startUpdater } from './updater.js'
+import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
 import { configuredVaultRoot, engineStates, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
 import { registerWorkspaceIpc } from './workspaces.js'
 
@@ -380,6 +380,8 @@ function registerBaseIpc(): void {
   })
 
   ipcMain.handle('update:check', () => checkForUpdatesNow())
+
+  ipcMain.handle('update:state', () => updateStateNow())
 
   // Lets the renderer know whether the vault IPC surface exists yet — with
   // window-first boot the shell loads while a big vault is still reading, and

@@ -473,6 +473,8 @@ export interface EngramApi {
   // has to say so rather than appear to do nothing.
   updateInstall(): Promise<{ started: boolean; reason?: string }>
   updateCheck(): Promise<UpdateCheckDto>
+  // The updater's cached knowledge — no network; safe to poll while downloading.
+  updateState(): Promise<UpdateCheckDto>
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: AppSettingsDto): Promise<void>
   mcpInfo(): Promise<McpInfoDto>

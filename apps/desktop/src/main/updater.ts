@@ -53,9 +53,12 @@ export function startUpdater(notify: (version: string, selfInstalls: boolean) =>
     downloadPercent = Math.round(p.percent ?? 0)
   })
   autoUpdater.on('update-available', (info) => {
+    // Recorded on every platform: the state snapshot below reads it, and a
+    // self-installing platform used to skip this line — so the Settings row
+    // said "up to date" while a download was already running.
+    latestSeen = info.version
     if (SELF_INSTALLS) return
     flog('updater', `available ${info.version} (manual download — unsigned build)`)
-    latestSeen = info.version
     notify(info.version, false)
   })
   autoUpdater.on('error', (err) => {
@@ -105,6 +108,17 @@ export async function checkForUpdatesNow(): Promise<UpdateCheck> {
 // Returns whether the install actually started. quitAndInstall on a version
 // that has not finished downloading is a silent no-op, and a button that does
 // nothing is worse than one that explains itself.
+// What the updater already knows, with no network round-trip — cheap enough
+// for the Settings row to poll while a download runs.
+export function updateStateNow(): UpdateCheck {
+  if (!app.isPackaged) return { state: 'checking-unavailable', selfInstalls: SELF_INSTALLS, message: 'not a packaged build' }
+  if (!latestSeen || latestSeen === app.getVersion())
+    return { state: 'current', version: app.getVersion(), selfInstalls: SELF_INSTALLS }
+  if (!SELF_INSTALLS) return { state: 'available', version: latestSeen, selfInstalls: false }
+  if (downloadedVersion === latestSeen) return { state: 'ready', version: latestSeen, selfInstalls: true }
+  return { state: 'downloading', version: latestSeen, selfInstalls: true, percent: downloadPercent }
+}
+
 export function installUpdateNow(): { started: boolean; reason?: string } {
   if (!app.isPackaged) return { started: false, reason: 'not a packaged build' }
   // On macOS quitAndInstall would quit the app and then fail the signature

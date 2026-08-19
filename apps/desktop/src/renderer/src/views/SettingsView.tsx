@@ -34,6 +34,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     void api.contentFolders().then(setFolders).catch(() => {})
     void api.activityGet().then(setDeskJournal).catch(() => {})
     void api.sessionWatchGet().then(setSessionWatch).catch(() => {})
+    // What the updater already knows, shown without a click — a downloaded
+    // update used to hide behind Check now.
+    void api.updateState().then(setUpdate).catch(() => {})
     return api.onEvent((event) => {
       if (event.type === 'localmodels:changed') setLocalModels(event.state)
       else if (event.type === 'localmodel:progress') {
@@ -41,9 +44,19 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           ...prior,
           [event.id]: event.total > 0 ? Math.min(100, Math.round((event.received / event.total) * 100)) : 0,
         }))
+      } else if (event.type === 'update:ready') {
+        setUpdate({ state: 'ready', version: event.version, selfInstalls: event.selfInstalls })
       }
     })
   }, [])
+
+  // While the download runs, the percent moves — follow it, and catch the
+  // flip to ready even if the broadcast landed before this sheet opened.
+  useEffect(() => {
+    if (update?.state !== 'downloading') return
+    const timer = setInterval(() => void api.updateState().then(setUpdate).catch(() => {}), 2000)
+    return () => clearInterval(timer)
+  }, [update?.state])
 
   // An armed Delete button that stays armed is a mis-click away from a
   // multi-gigabyte re-download, so it disarms itself shortly after the first
@@ -227,7 +240,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           {(localModels?.models ?? []).map((m) => {
             const pct = progress[m.id]
             return (
-              <div key={m.id} className="model-row" data-testid={`model-${m.id}`}>
+              <div key={m.id} className={`model-row model-card${m.active ? ' active' : ''}`} data-testid={`model-${m.id}`}>
                 <div className="model-info">
                   <span className="model-name">
                     {m.label}
@@ -235,8 +248,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                       <span className="model-badge">{t('settings.localRecommended')}</span>
                     )}
                   </span>
-                  <span className="model-desc">
-                    {m.desc} · {m.approxGB}GB · RAM {m.ramGB}GB+
+                  <span className="model-desc">{m.desc}</span>
+                  <span className="model-meta">
+                    {m.approxGB}GB · RAM {m.ramGB}GB+
                   </span>
                 </div>
                 <span className="model-actions">
@@ -249,20 +263,22 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                     </>
                   ) : m.downloaded ? (
                     <>
-                      <label className="model-active">
-                        <input
-                          type="radio"
-                          name="active-model"
-                          checked={m.active}
-                          onChange={() =>
-                          void api
-                            .localModelSetActive(m.id)
-                            .catch(() => undefined)
-                            .finally(() => void api.localModelsState().then(setLocalModels))
-                        }
-                        />
-                        {t('settings.localUse')}
-                      </label>
+                      {m.active ? (
+                        <span className="model-chip-inuse">{t('settings.localInUse')}</span>
+                      ) : (
+                        <button
+                          className="secondary"
+                          data-testid={`model-use-${m.id}`}
+                          onClick={() =>
+                            void api
+                              .localModelSetActive(m.id)
+                              .catch(() => undefined)
+                              .finally(() => void api.localModelsState().then(setLocalModels))
+                          }
+                        >
+                          {t('settings.localUse')}
+                        </button>
+                      )}
                       {/* First click arms, second click deletes. Never offered
                           while the model downloads — Cancel is that action. */}
                       <button

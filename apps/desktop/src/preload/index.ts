@@ -62,6 +62,7 @@ const api: EngramApi = {
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateState: () => ipcRenderer.invoke('update:state'),
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings: AppSettingsDto) => ipcRenderer.invoke('settings:set', settings),
   mcpInfo: () => ipcRenderer.invoke('mcp:info'),

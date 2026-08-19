@@ -26,6 +26,7 @@ const en = {
   'onboard.importing': 'Importing {done} / {total} notes…',
   'settings.localCancel': 'Cancel',
   'settings.localUse': 'Use',
+  'settings.localInUse': 'In use',
   'settings.localDelete': 'Delete',
   // Second click confirms. The file is gigabytes and getting it back is a
   // fresh download, so the button asks once before it goes.

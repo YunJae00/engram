@@ -47,3 +47,22 @@ export function Logomark({ size = 20 }: { size?: number }) {
     </svg>
   )
 }
+
+// The errand's face. Deliberately not a robot: a small round helper with an
+// antenna, drawn on the same 1.8-stroke grid as the Lucide set around it.
+export function ErrandFace({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      {/* antenna with a little bobble */}
+      <line x1="12" y1="7.4" x2="12" y2="5.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="3.9" r="1.2" fill="currentColor" />
+      {/* soft round head */}
+      <rect x="4.6" y="7.4" width="14.8" height="12.2" rx="6.1" stroke="currentColor" strokeWidth="1.8" />
+      {/* eyes */}
+      <circle cx="9.3" cy="12.6" r="1.25" fill="currentColor" />
+      <circle cx="14.7" cy="12.6" r="1.25" fill="currentColor" />
+      {/* smile */}
+      <path d="M9.6 15.4 Q12 17.2 14.4 15.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+    </svg>
+  )
+}
