@@ -48,18 +48,37 @@ export function Logomark({ size = 20 }: { size?: number }) {
   )
 }
 
-// A comet with a face: the helpers that sweep between the memory-stars and
-// come back carrying things. Drawn on the same 1.8-stroke grid as the Lucide
-// set around it; the two dot-eyes are what make it a colleague, not a rock.
+// A comet with a face. Big round head, two wide eyes, a soft smile and a
+// short double tail — cute at 14px, still legible at 30px. Filled head so the
+// eyes read as eyes instead of two stray dots on a ring.
 export function Comet({ size = 15 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="15.4" cy="8.6" r="3.8" stroke="currentColor" strokeWidth="1.8" />
-      <circle cx="14.2" cy="8.3" r="0.95" fill="currentColor" />
-      <circle cx="17" cy="8.3" r="0.95" fill="currentColor" />
-      <path d="M11.6 11.9 Q8.6 15.4 4.6 17.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-      <path d="M13.4 13.9 Q11.6 17 8.9 19.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.75" />
-      <path d="M10.8 9.4 Q7.4 10.4 4.9 12.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.55" />
+      <path
+        d="M9.8 7.2 Q6.2 8.4 3.6 10.6"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        opacity="0.45"
+      />
+      <path
+        d="M10.4 15.6 Q7 17.2 4.4 19.4"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        opacity="0.45"
+      />
+      <path d="M9.6 11.4 Q5.6 12.6 2.6 15" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" opacity="0.7" />
+      <circle cx="15.2" cy="11.4" r="5.6" fill="currentColor" />
+      <circle cx="13.3" cy="10.3" r="1.15" fill="var(--panel-bg, #fff)" />
+      <circle cx="17.1" cy="10.3" r="1.15" fill="var(--panel-bg, #fff)" />
+      <path
+        d="M13.4 13.5 Q15.2 15 17 13.5"
+        stroke="var(--panel-bg, #fff)"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        fill="none"
+      />
     </svg>
   )
 }

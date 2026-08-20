@@ -1,4 +1,4 @@
-import { ArrowUp, PanelLeftClose, PanelLeftOpen, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, PanelLeftClose, PanelLeftOpen, Play, Plus, Square, Trash2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState } from 'react'
 import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/types.js'
@@ -48,6 +48,9 @@ export function BotsView() {
   const [draftPurpose, setDraftPurpose] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.comets.rail') !== '0')
+  const [addingTask, setAddingTask] = useState(false)
+  const [taskName, setTaskName] = useState('')
+  const [taskGoal, setTaskGoal] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
   const selected = bots.find((b) => b.id === selectedId) ?? null
 
@@ -121,7 +124,7 @@ export function BotsView() {
 
   const send = async () => {
     const message = text.trim()
-    if (!message || busy || !selected) return
+    if (!message || busy || errand.running || !selected) return
     setText('')
     setBusy(true)
     busyChannel.current = `bot-${selected.id}`
@@ -149,12 +152,22 @@ export function BotsView() {
     )
   }
 
-  const sendAsErrand = () => {
-    const goal = text.trim()
-    if (!goal || errand.running || !selected) return
-    setText('')
-    setMessages((prev) => [...prev, { role: 'user', text: goal }])
-    void startErrand(goal, selected.id)
+  // A task is the repeated work itself: saved on the comet, one click to run.
+  // The errand pipeline is only the engine underneath.
+  const runTask = (task: { id: string; name: string; goal: string }) => {
+    if (!selected || errand.running) return
+    setMessages((prev) => [...prev, { role: 'user', text: task.goal }])
+    void api.botTaskRan(selected.id, task.id).catch(() => undefined)
+    void startErrand(task.goal, selected.id)
+  }
+
+  const addTask = async () => {
+    if (!selected || !taskName.trim() || !taskGoal.trim()) return
+    await api.botTaskAdd(selected.id, { name: taskName, goal: taskGoal }).catch(() => undefined)
+    setTaskName('')
+    setTaskGoal('')
+    setAddingTask(false)
+    await reload()
   }
 
   const create = async (name: string, purpose: string) => {
@@ -286,6 +299,64 @@ export function BotsView() {
                 {confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
               </button>
             </header>
+            <div className="bots-tasks">
+              {(selected.tasks ?? []).map((task) => (
+                <button
+                  key={task.id}
+                  className="bots-task"
+                  data-testid={`bot-task-${task.id}`}
+                  disabled={errand.running}
+                  title={task.goal}
+                  onClick={() => runTask(task)}
+                >
+                  <Play size={11} strokeWidth={2.2} aria-hidden />
+                  {task.name}
+                  <span
+                    className="bots-task-x"
+                    role="button"
+                    aria-label={t('bots.taskRemove')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void api.botTaskRemove(selected.id, task.id).then(() => reload())
+                    }}
+                  >
+                    <X size={10} strokeWidth={2.4} aria-hidden />
+                  </span>
+                </button>
+              ))}
+              {addingTask ? (
+                <span className="bots-task-new">
+                  <input
+                    autoFocus
+                    data-testid="bot-task-name"
+                    placeholder={t('bots.taskName')}
+                    value={taskName}
+                    maxLength={60}
+                    onChange={(e) => setTaskName(e.target.value)}
+                  />
+                  <input
+                    data-testid="bot-task-goal"
+                    placeholder={t('bots.taskGoal')}
+                    value={taskGoal}
+                    maxLength={500}
+                    onChange={(e) => setTaskGoal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void addTask()
+                    }}
+                  />
+                  <button className="primary" data-testid="bot-task-save" disabled={!taskName.trim() || !taskGoal.trim()} onClick={() => void addTask()}>
+                    {t('bots.taskSave')}
+                  </button>
+                  <button className="secondary" onClick={() => setAddingTask(false)}>
+                    {t('palette.cancel')}
+                  </button>
+                </span>
+              ) : (
+                <button className="bots-task-add" data-testid="bot-task-add" onClick={() => setAddingTask(true)}>
+                  <Plus size={11} strokeWidth={2.2} aria-hidden /> {t('bots.taskAdd')}
+                </button>
+              )}
+            </div>
             <div className="bots-thread" ref={listRef}>
               {messages.length === 0 && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               {messages.map((m, i) => (
@@ -301,26 +372,34 @@ export function BotsView() {
                   )}
                 </div>
               ))}
+              {errand.running && (
+                <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
+                  <span className="bots-errand-pulse">
+                    <Comet size={14} />
+                  </span>
+                  <span className="bots-working-body">
+                    <span className="bots-working-line">
+                      {t('bots.errandRunning', {
+                        phase: errand.phase && PHASE_LABEL[errand.phase] ? t(PHASE_LABEL[errand.phase]!) : '…',
+                      })}
+                    </span>
+                    {errand.pages && errand.pages.length > 0 ? (
+                      <span className="bots-working-detail">{errand.pages.map((x) => x.title || x.url).join(' · ')}</span>
+                    ) : errand.queries ? (
+                      <span className="bots-working-detail">{errand.queries.join(' · ')}</span>
+                    ) : null}
+                  </span>
+                  <button className="secondary bots-working-stop" onClick={() => void api.errandAbort()}>
+                    {t('errands.stop')}
+                  </button>
+                </div>
+              )}
             </div>
-            {errand.running && (
-              <div className="bots-errand-strip" data-testid="bots-errand-strip">
-                <span className="bots-errand-pulse"><Comet size={13} /></span>
-                <span className="bots-errand-text">
-                  {t('bots.errandRunning', {
-                    phase: errand.phase && PHASE_LABEL[errand.phase] ? t(PHASE_LABEL[errand.phase]!) : '…',
-                  })}{' '}
-                  · {errand.goal}
-                </span>
-                <button className="secondary" onClick={() => void api.errandAbort()}>
-                  {t('errands.stop')}
-                </button>
-              </div>
-            )}
             <div className="bots-write">
               <textarea
                 value={text}
                 rows={1}
-                placeholder={t('bots.placeholder', { name: selected.name })}
+                placeholder={errand.running ? t('errands.busy') : t('bots.placeholder', { name: selected.name })}
                 maxLength={2000}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -330,14 +409,6 @@ export function BotsView() {
                   }
                 }}
               />
-              <button
-                className="secondary bots-errand-btn"
-                title={errand.running ? t('errands.busy') : t('bots.sendErrand')}
-                disabled={!text.trim() || errand.running}
-                onClick={sendAsErrand}
-              >
-                <Comet size={13} /> {t('bots.errandBtn')}
-              </button>
               {busy ? (
                 <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>
                   <Square size={11} strokeWidth={2.5} aria-hidden />

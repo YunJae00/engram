@@ -8,11 +8,22 @@ import type { VaultPaths } from './vault.js'
 // browsing) is borrowed from the host at answer time, which is why a bot is
 // cheap enough to make one per concern.
 
+// A task is the work a person repeats: "gather last week's decisions",
+// "draft the deploy notice". Saved on the comet that owns it, run with one
+// click — an errand is the engine, this is the thing you actually keep.
+export interface BotTask {
+  id: string
+  name: string
+  goal: string
+  lastRunAt?: string
+}
+
 export interface Bot {
   id: string
   name: string
   purpose: string
   createdAt: string
+  tasks?: BotTask[]
 }
 
 export interface BotTurn {
@@ -83,6 +94,45 @@ export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
   // The transcript file stays on disk (cheap, and deleting user words should
   // never ride silently on another action); recreating the bot id is
   // impossible, so it is unreachable garbage a vault reset clears.
+}
+
+export async function addBotTask(
+  paths: VaultPaths,
+  botId: string,
+  input: { name: string; goal: string },
+  now: Date = new Date(),
+): Promise<BotTask> {
+  const name = input.name.trim().slice(0, 60)
+  const goal = input.goal.trim().slice(0, 500)
+  if (!name) throw new Error('a task needs a name')
+  if (!goal) throw new Error('a task needs a goal — what should it do?')
+  const bots = await loadBots(paths)
+  const bot = bots.find((b) => b.id === botId)
+  if (!bot) throw new Error('no such comet')
+  const task: BotTask = {
+    id: `task-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
+    name,
+    goal,
+  }
+  bot.tasks = [...(bot.tasks ?? []), task]
+  await saveBots(paths, bots)
+  return task
+}
+
+export async function removeBotTask(paths: VaultPaths, botId: string, taskId: string): Promise<void> {
+  const bots = await loadBots(paths)
+  const bot = bots.find((b) => b.id === botId)
+  if (!bot) return
+  bot.tasks = (bot.tasks ?? []).filter((x) => x.id !== taskId)
+  await saveBots(paths, bots)
+}
+
+export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: string, now: Date = new Date()): Promise<void> {
+  const bots = await loadBots(paths)
+  const task = bots.find((b) => b.id === botId)?.tasks?.find((x) => x.id === taskId)
+  if (!task) return
+  task.lastRunAt = now.toISOString()
+  await saveBots(paths, bots)
 }
 
 export async function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): Promise<void> {

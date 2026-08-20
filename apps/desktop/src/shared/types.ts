@@ -119,11 +119,20 @@ export interface LocalModelsStateDto {
 // means the platform cannot swap the app itself (an unsigned macOS build), so
 // an available version leads to a download page instead of an install.
 // One finished delegation, as the journal remembers it.
+export interface BotTaskDto {
+  id: string
+  name: string
+  goal: string
+  lastRunAt?: string
+}
+
 export interface BotDto {
   id: string
   name: string
   purpose: string
   createdAt: string
+  // The work this comet repeats — saved once, run with one click.
+  tasks?: BotTaskDto[]
 }
 
 export interface BotTurnDto {
@@ -399,6 +408,9 @@ export interface EngramApi {
   brainFabric(): Promise<BrainFabricDto>
   // Stop a running answer on one surface (or every surface when omitted).
   chatAbort(channel?: string): Promise<void>
+  // Would the vault answer this, or does it need the web? Retrieval decides;
+  // no inference runs, so it is safe to call before every send.
+  chatRoute(message: string): Promise<{ kind: 'chat' | 'errand'; notes: number }>
   // Delegate one goal to the on-device librarian (core's runErrand). Runs
   // detached in main — this resolves once it has STARTED (or refused, e.g. no
   // engine); progress and the eventual outcome arrive as errand:phase events.
@@ -407,6 +419,9 @@ export interface EngramApi {
   botCreate(input: { name: string; purpose: string }): Promise<BotDto>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
+  botTaskAdd(botId: string, input: { name: string; goal: string }): Promise<BotTaskDto>
+  botTaskRemove(botId: string, taskId: string): Promise<void>
+  botTaskRan(botId: string, taskId: string): Promise<void>
   botsRecommend(): Promise<BotSuggestionDto[]>
   // Past runs, newest first — the errand sheet's history.
   errandJournal(): Promise<ErrandRunDto[]>

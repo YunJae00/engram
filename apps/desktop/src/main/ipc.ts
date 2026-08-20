@@ -22,7 +22,9 @@ import {
   hybridMerge,
   listCards,
   loadAliasGroups,
+  addBotTask,
   loadBots,
+  markBotTaskRun,
   createBot,
   deleteBot,
   loadUmbrellaTerms,
@@ -39,6 +41,7 @@ import {
   readCard,
   refreshBrief,
   readBotTranscript,
+  removeBotTask,
   readErrandJournal,
   readNote,
   recommendBots,
@@ -958,6 +961,11 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:create', (_e, input: { name: string; purpose: string }) => createBot(paths, input))
   ipcMain.handle('bots:delete', (_e, id: string) => deleteBot(paths, id))
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
+  ipcMain.handle('bots:taskAdd', (_e, botId: string, input: { name: string; goal: string }) =>
+    addBotTask(paths, botId, input),
+  )
+  ipcMain.handle('bots:taskRemove', (_e, botId: string, taskId: string) => removeBotTask(paths, botId, taskId))
+  ipcMain.handle('bots:taskRan', (_e, botId: string, taskId: string) => markBotTaskRun(paths, botId, taskId))
   ipcMain.handle('bots:recommend', async () => {
     const existing = (await loadBots(paths)).map((b) => b.name)
     const notes = ctx.store
@@ -1334,6 +1342,24 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Chat panel: streams engine tokens to the renderer. The
   // prompt carries only current-note context — never superseded text.
+  // How much retrieved material counts as "the vault can answer this". Below
+  // it a question is about something the vault does not hold, and answering
+  // from an empty context is how the librarian ends up saying "I could not
+  // find anything" — the answer nobody wants. Those escalate to an errand.
+  const THIN_CONTEXT_NOTES = 2
+
+  ipcMain.handle('chat:route', async (_e, message: string): Promise<{ kind: 'chat' | 'errand'; notes: number }> => {
+    // Retrieval only — no inference, so this is cheap enough to run before
+    // every send.
+    if (ctx.engines[0]?.id !== 'local') return { kind: 'chat', notes: THIN_CONTEXT_NOTES }
+    const hits = activationRerank(
+      hybridMerge(ctx.store.search(message), await semanticQueryIfLive(message, 8), 8),
+      (id) => ctx.store.get(id),
+    )
+    const live = hits.map((h) => ctx.store.get(h.id)).filter((n) => n !== null && n.front.status === 'current')
+    return { kind: live.length >= THIN_CONTEXT_NOTES ? 'chat' : 'errand', notes: live.length }
+  })
+
   ipcMain.handle('chat:send', async (_e, request: ChatRequestDto) => {
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
