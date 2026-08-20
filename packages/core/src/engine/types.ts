@@ -2,7 +2,7 @@ import { classifyEngineError, type EngineErrorKind } from './classify.js'
 
 export { classifyEngineError, type EngineErrorKind } from './classify.js'
 
-export type EngineId = 'claude' | 'local' | 'mock'
+export type EngineId = 'local' | 'mock'
 
 export interface EngineDetection {
   installed: boolean
@@ -104,13 +104,10 @@ export interface Engine {
   // matters: `null` means the CLI could not be asked (old version without the
   // subcommand, spawn failure). Callers must treat null as "unknown" and leave
   // the last known state alone — "cannot ask" is never "logged out".
-  // Optional: an adapter with no login concept (mock) simply omits it.
-  verifyAuth?(): Promise<boolean | null>
   run(job: EngineJobInput): AsyncIterable<EngineEvent>
   // Optional warm chat lane (chat-session.ts): one long-lived process, many
   // turns — the per-question cold boot paid once. Adapters without it simply
   // omit it and chat rides run() as always; callers MUST keep that fallback.
-  openChat?(opts: { workdir: EngineCwd; turnTimeoutMs?: number }): import('./chat-session.js').EngineChatSession
 }
 
 // Base for every classified engine failure, so a caller that only wants to

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { EngineBackoff } from '../src/engine/backoff.js'
-import { parseRetryAfterMs } from '../src/engine/claude.js'
+import { parseRetryAfterMs } from '../src/engine/classify.js'
 import type { Engine, EngineEvent } from '../src/engine/types.js'
 import { JobRunner, type JobSpec } from '../src/jobs/runner.js'
 import { initVault, type VaultPaths } from '../src/vault.js'

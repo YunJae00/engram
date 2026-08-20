@@ -37,8 +37,6 @@ export * from './standup.js'
 export * from './skills.js'
 export * from './gardener.js'
 export { MockEngine } from './engine/mock.js'
-export { ClaudeAdapter, resetClaudeAuthCache } from './engine/claude.js'
-export { ClaudeChatSession, type ChatSessionOptions, type EngineChatSession } from './engine/chat-session.js'
 export {
   createEngine,
   detectAvailableEngines,
@@ -71,3 +69,4 @@ export * from './capture/doc-extract.js'
 export { appendBotTurn, createBot, deleteBot, loadBots, readBotTranscript, recommendBots, type Bot, type BotSuggestion, type BotTurn } from './bots.js'
 export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './errand-journal.js'
 export { fitPrompt } from './prompt-budget.js'
+export { parseRetryAfterMs } from './engine/classify.js'

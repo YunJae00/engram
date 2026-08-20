@@ -8,7 +8,7 @@ import { tmpVaultRoot } from './helpers.js'
 
 function engineOf(events: () => EngineEvent[]): Engine {
   return {
-    id: 'claude',
+    id: 'mock',
     detect: async () => ({ installed: true, loggedIn: true }),
     async *run() {
       yield* events()

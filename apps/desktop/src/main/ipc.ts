@@ -61,8 +61,6 @@ import {
   writeContextPack,
   writeNote,
   type Engine,
-  type EngineChatSession,
-  type EngineCwd,
   type EngineEvent,
   type JobFailure,
   type Note,
@@ -192,10 +190,8 @@ let stopRequested = false
 export {
   broadcast,
   noteRunOutcome,
-  pingEngines,
   revalidateEngines,
   startEngineWatch,
-  verifyEngineAuth,
 } from './engine-health.js'
 
 export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
@@ -593,37 +589,7 @@ export function extractChatCaptures(text: string): { text: string; captures: str
   return { text: cleaned, captures }
 }
 
-const chatSessions = new Map<string, EngineChatSession>()
-let chatSessionSweeper: NodeJS.Timeout | null = null
-const CHAT_SESSION_IDLE_MS = 10 * 60_000
 // Server-side conversation memory grows with every turn — recycle before the
-// context window (and the bill) does it for us.
-const CHAT_SESSION_MAX_TURNS = 30
-
-function disposeChatSession(channel?: string): void {
-  for (const [key, session] of chatSessions) {
-    if (channel !== undefined && key !== channel) continue
-    session.close()
-    chatSessions.delete(key)
-  }
-}
-
-function chatSessionFor(engine: Engine, channel: string, workdir: EngineCwd): EngineChatSession | null {
-  if (!engine.openChat) return null
-  const existing = chatSessions.get(channel)
-  if (existing?.isAlive() && existing.turns < CHAT_SESSION_MAX_TURNS) return existing
-  if (existing) {
-    existing.close()
-    chatSessions.delete(channel)
-  }
-  try {
-    const session = engine.openChat({ workdir })
-    chatSessions.set(channel, session)
-    return session
-  } catch {
-    return null
-  }
-}
 
 const CHAT_RETRIEVE_LIMIT = 8
 const CHAT_FALLBACK_LIMIT = 5
@@ -849,21 +815,6 @@ export function registerIpc(ctx: VaultContext): void {
   // Boot check: a vault carrying old backlog (unswept edits, unlinked notes)
   // starts healing shortly after launch — no button required.
   scheduleAutoTidy(ctx, 120_000)
-
-  // Warm chat sessions age out: an idle process holds memory (and a stale
-  // server-side conversation) for nothing. Guarded against re-registration —
-  // a workspace switch must not stack sweepers.
-  if (chatSessionSweeper) clearInterval(chatSessionSweeper)
-  disposeChatSession()
-  chatSessionSweeper = setInterval(() => {
-    const now = Date.now()
-    for (const [key, session] of chatSessions) {
-      if (!session.isAlive() || now - session.lastUsedAt > CHAT_SESSION_IDLE_MS) {
-        session.close()
-        chatSessions.delete(key)
-      }
-    }
-  }, 60_000)
 
   const { paths } = ctx
 
@@ -1524,27 +1475,6 @@ export function registerIpc(ctx: VaultContext): void {
       markEngineOk(engine.id)
     }
 
-    // Warm lane first: the per-question CLI boot paid once per session. A
-    // failed warm turn falls back to the one-shot path in the SAME request —
-    // the user never sees an error a cold retry could have answered.
-    const session = chatSessionFor(engine, channel, engineCwd(paths))
-    if (session) {
-      try {
-        // A warm CLI session already holds the rules and the conversation;
-        // later turns carry only what moved.
-        const prompt =
-          session.turns === 0 ? coldPrompt : fitPrompt([], [clock, ...background], evidence, ask, engine.id)
-        await pump(session.send(prompt, signal))
-        return
-      } catch (err) {
-        disposeChatSession(channel)
-        if (signal.aborted) {
-          broadcast({ type: 'chat:done', channel, text: '' })
-          return
-        }
-        flog('chat-warm-fallback', err)
-      }
-    }
     try {
       await pump(
         engine.run({

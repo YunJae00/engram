@@ -1,10 +1,5 @@
 import {
-  collectResult,
-  ENGINE_BUDGETS,
   engineBackoff,
-  engineCwd,
-  EngineCallError,
-  resetClaudeAuthCache,
   type Engine,
   type EngineErrorKind,
   type RunReport,
@@ -50,7 +45,6 @@ function setHealth(id: string, next: EngineHealthDto): void {
   // cache. Otherwise the very next re-detect (the Diagnostics 4s poll, window
   // focus) would answer from that stale positive and CLEAR the banner we just
   // raised — the app would go back to claiming everything is fine.
-  if (!next.healthy && next.reason === 'auth') resetClaudeAuthCache()
   const prev = engineHealth.get(id)
   if (prev && prev.healthy === next.healthy && prev.reason === next.reason) return
   engineHealth.set(id, next)
@@ -83,7 +77,7 @@ export function scheduleQuotaResume(ctx: VaultContext, delayMs: number): void {
   quotaResumeAt = at
   quotaResumeTimer = setTimeout(() => {
     quotaResumeTimer = null
-    void pingEngines(ctx)
+    void revalidateEngines(ctx)
   }, wait)
 }
 
@@ -116,13 +110,6 @@ export function noteRunOutcome(ctx: VaultContext, report: RunReport): void {
 // Ask the CLI itself. `verifyAuth` returns null when it could not be asked
 // (older CLI, spawn failure) — that is NOT a logout, so the last known state
 // stands rather than a failure being invented.
-async function askAuth(engine: Engine): Promise<boolean | null> {
-  try {
-    return (await engine.verifyAuth?.()) ?? null
-  } catch {
-    return null
-  }
-}
 
 // A call failed. Decide whether that deserves a banner.
 //   quota → yes, immediately: the message is specific and the remedy is "wait".
@@ -138,10 +125,6 @@ export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, c
     if (ctx) scheduleQuotaResume(ctx, engineBackoff.blockedMs() || QUOTA_RESUME_DEFAULT_MS)
     return
   }
-  if ((await askAuth(engine)) === false) {
-    setHealth(engine.id, { healthy: false, reason: 'auth' })
-    return
-  }
   if (kind === 'auth') {
     // The CLI says the login is fine (or could not be asked) but the call came
     // back with an auth error — believe the call, it is the more recent fact.
@@ -153,30 +136,6 @@ export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, c
   if (streak >= CONFIRM_AFTER) setHealth(engine.id, { healthy: false, reason: toReason(kind) })
 }
 
-export async function pingEngines(ctx: VaultContext): Promise<void> {
-  await Promise.all(
-    ctx.engines.map(async (engine) => {
-      // The local brain is exempt: a ping would LOAD the whole model (tens of
-      // seconds, gigabytes of RAM) to prove what detect() already proved with
-      // a file stat. Presence of the model file IS its health.
-      if (engine.id === 'local') return
-      try {
-        const reply = await collectResult(engine, {
-          prompt: 'Reply with exactly: ok',
-          workdir: engineCwd(ctx.paths),
-          disallowTools: true,
-          timeoutMs: ENGINE_BUDGETS.ping,
-          modelHint: 'fast',
-        })
-        if (reply.trim().length > 0) markEngineOk(engine.id)
-        else await noteEngineFailure(engine, 'crash', ctx)
-      } catch (err) {
-        await noteEngineFailure(engine, err instanceof EngineCallError ? err.kind : 'unknown', ctx)
-      }
-      broadcast({ type: 'vault:changed' })
-    }),
-  )
-}
 
 const AUTH_RECHECK_MS = 30 * 60_000
 let watchTimer: NodeJS.Timeout | null = null
@@ -184,20 +143,12 @@ let watchTimer: NodeJS.Timeout | null = null
 export function startEngineWatch(ctx: VaultContext): void {
   if (watchTimer) clearInterval(watchTimer)
   watchTimer = setInterval(() => {
-    void verifyEngineAuth(ctx).then(() => revalidateEngines(ctx))
+    // Nothing to log into anymore — the periodic pass just re-detects, which
+    // catches a model file deleted or restored outside the app.
+    void revalidateEngines(ctx)
   }, AUTH_RECHECK_MS)
 }
 
-export async function verifyEngineAuth(ctx: VaultContext): Promise<void> {
-  for (const engine of ctx.engines) {
-    const verdict = await askAuth(engine)
-    if (verdict === false) setHealth(engine.id, { healthy: false, reason: 'auth' })
-    // A good login does not clear a quota — that one lifts when the limit
-    // resets, which the next successful run reports (noteRunOutcome).
-    else if (verdict === true && engineHealth.get(engine.id)?.reason !== 'quota') markEngineOk(engine.id)
-    // null = could not ask. Leave the last known state exactly as it was.
-  }
-}
 
 // After a re-detection: membership in ctx.engines now MEANS the CLI itself said
 // it is logged in (at most 60s stale — see ClaudeAdapter's auth cache), so an

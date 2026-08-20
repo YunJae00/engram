@@ -6,7 +6,7 @@ import type { NoteDto, OnboardPayload } from '../shared/types.js'
 import { registerConfigIpc, registerSettingsIpc } from './config-ipc.js'
 import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from './security.js'
 import { detectApiKeyEnv } from './installer.js'
-import { abortAllChat, broadcast, drainAbsorbQueue, LIBRARIAN_RUN_OPTS, noteRunOutcome, pingEngines, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto, verifyEngineAuth } from './ipc.js'
+import { abortAllChat, broadcast, drainAbsorbQueue, LIBRARIAN_RUN_OPTS, noteRunOutcome, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
 import { fixMacPath } from './macos-path.js'
 import { autoConnectMcp, registerMcpIpc } from './mcp-connect.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
@@ -521,7 +521,6 @@ async function bootVault(root: string): Promise<VaultContext> {
     void revalidateEngines(ctx).then(() => {
       enginesDetected = true
       broadcast({ type: 'engines:detected' })
-      if (app.isPackaged || process.env['ENGRAM_HEALTH_PING'] === '1') void pingEngines(ctx)
     })
     // A brain downloaded or switched in Settings becomes usable the moment it
     // lands — not at the next refocus or the 30-minute watch tick.
@@ -551,7 +550,7 @@ async function bootVault(root: string): Promise<VaultContext> {
       }).catch((err) => console.error('bubble unavailable (non-fatal):', err))
     }
     powerMonitor.on('resume', () => {
-      void verifyEngineAuth(ctx).then(() => revalidateEngines(ctx))
+      void revalidateEngines(ctx)
     })
     // One-time migration: reclassify pre-inference 'imported' notes by their
     // source folder (marker-guarded so it never re-runs).

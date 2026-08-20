@@ -42,3 +42,16 @@ export function classifyEngineError(message: string, exitCode?: number | null): 
   if (exitCode !== undefined && exitCode !== null && exitCode !== 0) return 'crash'
   return 'unknown'
 }
+
+// "retry after 3600 seconds" / "retry-after: 120" / "resets at <epoch>" —
+// how a rate-limited CLI names its cooldown. Engine-agnostic text parsing.
+export function parseRetryAfterMs(text: string, now: number = Date.now()): number | undefined {
+  const seconds = /retry[- ]?after[:\s]+(\d+)/i.exec(text)?.[1]
+  if (seconds) return Number(seconds) * 1000
+  const epoch = /resets? at\D{0,10}(\d{10})\b/i.exec(text)?.[1]
+  if (epoch) {
+    const ms = Number(epoch) * 1000 - now
+    if (ms > 0) return ms
+  }
+  return undefined
+}

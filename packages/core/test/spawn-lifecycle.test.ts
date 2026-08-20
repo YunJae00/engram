@@ -4,10 +4,11 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   killAllEngineChildrenSync,
+  killTree,
   liveEnginePids,
   probeCli,
   setSpawnObserver,
-  spawnLines,
+  spawnServerChild,
   type SpawnedEngineProcess,
 } from '../src/engine/spawn.js'
 
@@ -59,12 +60,9 @@ describe('engine child registry', () => {
       },
       onExit: (pid: number) => events.push(`exit:${pid}`),
     })
-    const run = (async () => {
-      const gen = spawnLines('node', [file], { cwd: process.cwd(), timeoutMs: 600 })
-      for await (const line of gen) void line
-    })()
+    const child = spawnServerChild('node', [file], process.cwd())
     expect(await until(() => liveEnginePids().length > 0)).toBe(true)
-    await run
+    killTree(child)
     expect(await until(() => liveEnginePids().length === 0)).toBe(true)
     expect(events.some((e) => e.startsWith('spawn:'))).toBe(true)
     expect(events.some((e) => e.startsWith('exit:'))).toBe(true)
@@ -80,29 +78,22 @@ describe('engine child registry', () => {
         throw new Error('observer bug')
       },
     })
-    const gen = spawnLines('node', [file], { cwd: process.cwd(), timeoutMs: 400 })
-    const outcome = await (async () => {
-      for await (const line of gen) void line
-      return 'completed'
-    })().catch(() => 'threw')
-    // The run completed as a timeout, not as an observer explosion.
-    expect(outcome).toBe('completed')
+    // The spawn itself survives an exploding observer; so does the teardown.
+    const child = spawnServerChild('node', [file], process.cwd())
+    expect(child.pid).toBeGreaterThan(0)
+    killTree(child)
+    expect(await until(() => liveEnginePids().length === 0)).toBe(true)
   })
 
   it('killAllEngineChildrenSync ends every live child before returning', async () => {
     const file = await sleeperScript()
-    const runs = [1, 2].map(() =>
-      (async () => {
-        const gen = spawnLines('node', [file], { cwd: process.cwd(), timeoutMs: 30_000 })
-        for await (const line of gen) void line
-      })(),
-    )
+    spawnServerChild('node', [file], process.cwd())
+    spawnServerChild('node', [file], process.cwd())
     expect(await until(() => liveEnginePids().length >= 2)).toBe(true)
     const pids = liveEnginePids()
     const killed = killAllEngineChildrenSync()
     expect(killed).toBeGreaterThanOrEqual(2)
     expect(await until(() => pids.every(dead), 2_000)).toBe(true)
-    await Promise.all(runs)
   })
 
   it('a timed-out probe answers null and leaves no live child behind', async () => {
@@ -110,7 +101,7 @@ describe('engine child registry', () => {
     const verdict = await probeCli('node', [file], 500)
     expect(verdict).toBeNull()
     // The probe's own child (the shim on win32) must be gone from the
-    // registry — the grandchild's death rides taskkill /T, same as spawnLines.
+    // registry — the grandchild's death rides taskkill /T.
     expect(await until(() => liveEnginePids().length === 0, 2_000)).toBe(true)
   })
 })

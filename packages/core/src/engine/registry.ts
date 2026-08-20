@@ -1,9 +1,11 @@
-import { ClaudeAdapter } from './claude.js'
 import { LocalAdapter, type LocalTransport } from './local.js'
 import { MockEngine } from './mock.js'
 import type { Engine, EngineDetection, EngineId } from './types.js'
 
-export const ENGINE_ORDER: EngineId[] = ['local', 'claude']
+// One engine: the brain on this disk. The app's whole premise is that
+// nothing the librarian does leaves the machine — a cloud adapter here was
+// the one contradiction, and it billed a user's plan before it was caught.
+export const ENGINE_ORDER: EngineId[] = ['local']
 
 // The local adapter needs to know where its server lives, and only the host
 // app knows that (it owns the process). Injected once at boot — same pattern
@@ -22,9 +24,8 @@ export function setLocalTransport(transport: LocalTransport): void {
 export type EngineBinaries = Partial<Record<EngineId, string>>
 
 export function createEngine(id: EngineId, binary?: string): Engine {
+  void binary
   switch (id) {
-    case 'claude':
-      return new ClaudeAdapter(undefined, binary)
     case 'local':
       return new LocalAdapter(localTransport)
     case 'mock':
@@ -76,7 +77,7 @@ export function keepsEngine(detection: EngineDetection, wasKnown: boolean): bool
 }
 
 export async function detectAvailableEngines(
-  defaultEngine: EngineId = 'claude',
+  defaultEngine: EngineId = 'local',
   binaries: EngineBinaries = {},
   keep: Iterable<EngineId> = [],
 ): Promise<Engine[]> {
@@ -92,9 +93,5 @@ export async function detectAvailableEngines(
       if (known.has(id)) available.push(engine)
     }
   }
-  // The product promise is on-device: when a local brain is installed it
-  // LEADS, whatever an older settings file prefers — a user who downloaded
-  // gigabytes of model chose where their work runs. Cloud engines answer
-  // only when no brain is on disk.
-  return available.sort((x, y) => Number(y.id === 'local') - Number(x.id === 'local'))
+  return available
 }

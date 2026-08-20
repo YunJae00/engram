@@ -246,7 +246,7 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
     case 'help': {
       io.out('engram — a local knowledge librarian')
       io.out('commands: init [path] · capture <text|file> · sweep [--full] · cards list|approve|reject <id> · search <query> · trace <id|query> · mcp')
-      io.out('options: --vault <path> · --engine claude|mock|auto · --private · --full · --registry <vaults.json> (mcp)')
+      io.out('options: --vault <path> · --engine local|mock|auto · --private · --full · --registry <vaults.json> (mcp)')
       return command === undefined ? 1 : 0
     }
 

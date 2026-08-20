@@ -14,14 +14,10 @@ import { defineConfig } from 'vitest/config'
 // Every one of these passes in seconds alone; they only fail when 80 parallel
 // files are fighting them for the same disk and cores.
 const TIMING_SENSITIVE = [
-  'packages/core/test/engine.test.ts',
   'packages/core/test/engine-timeout.test.ts',
-  'packages/core/test/engine-detection-hysteresis.test.ts',
   'packages/core/test/reaper.test.ts',
   'packages/core/test/spawn-argv-guard.test.ts',
   'packages/core/test/spawn-lifecycle.test.ts',
-  'packages/core/test/detect-single-flight.test.ts',
-  'packages/core/test/chat-session.test.ts',
 ]
 
 export default defineConfig({

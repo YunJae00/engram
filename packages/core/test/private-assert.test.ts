@@ -2,7 +2,6 @@ import { readdir, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { ClaudeAdapter } from '../src/engine/claude.js'
 import { collectResult, engineCwd, PrivatePathError, type Engine, type EngineCwd } from '../src/engine/types.js'
 import { GitLayer } from '../src/git.js'
 import { startMcpServer } from '../src/mcp.js'
@@ -14,25 +13,7 @@ import { tmpVaultRoot } from './helpers.js'
 
 // M7 acceptance: any private/ path reaching an engine argument must FAIL.
 
-async function firstEventThrows(engine: Engine, workdir: string): Promise<unknown> {
-  try {
-    for await (const event of engine.run({ prompt: 'x', workdir: workdir as EngineCwd })) {
-      void event
-      break
-    }
-    return null
-  } catch (err) {
-    return err
-  }
-}
-
 describe('private physical separation', () => {
-  it('the CLI adapter rejects a private/ cwd before spawning', async () => {
-    const paths = await initVault(await tmpVaultRoot('private'), { git: false })
-    const err = await firstEventThrows(new ClaudeAdapter(), paths.privateDir)
-    expect(err, 'claude').toBeInstanceOf(PrivatePathError)
-  })
-
   it('collectResult refuses private paths regardless of engine', async () => {
     const paths = await initVault(await tmpVaultRoot('private-collect'), { git: false })
     const fake: Engine = {
