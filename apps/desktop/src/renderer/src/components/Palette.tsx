@@ -129,6 +129,7 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
             {/* Delegate a goal to the on-device librarian — same window-intent
                 idiom as the digest/GitHub items above. */}
             <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-errand')))}>{t('palette.errand')}</Command.Item>
+            <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-routines')))}>{t('palette.routines')}</Command.Item>
           </>
         )}
       </Command.List>

@@ -147,6 +147,33 @@ export interface BotSuggestionDto {
   reason: string
 }
 
+// A saved browser sequence, replayed verbatim — no model involved.
+export interface RoutineTargetDto {
+  css?: string[]
+  text?: string
+}
+
+export type RoutineStepDto =
+  | { kind: 'open'; url: string }
+  | { kind: 'click'; target: RoutineTargetDto }
+  | { kind: 'type'; target: RoutineTargetDto; text: string }
+  | { kind: 'read' }
+
+// Why a rerun was refused. Not a failure — a question for the person.
+export type RoutineBlockDto = 'already-ran-today' | 'unfinished-write'
+
+export interface RoutineDto {
+  id: string
+  name: string
+  steps: RoutineStepDto[]
+  createdAt: string
+  lastRunAt?: string
+  lastOutcome?: 'done' | 'failed' | 'aborted'
+  lastSuccessAt?: string
+  // Present when a run died between "about to submit" and the outcome.
+  pendingWrite?: { at: string; step: number; label: string }
+}
+
 export interface ErrandRunDto {
   id: string
   goal: string
@@ -359,6 +386,11 @@ export type EngramEvent =
   // The run is parked until errandWallDone answers — clear it in the agent's
   // Chrome window and continue, or skip that page.
   | { type: 'errand:wall'; url: string; wall: 'login' | 'captcha' }
+  // Routine replay progress: one event per step, then one logged event with
+  // the outcome. A wall parks the run until routineWallDone answers.
+  | { type: 'routine:step'; routineId: string; index: number; total: number; label: string }
+  | { type: 'routine:wall'; routineId: string; wall: 'login' | 'captcha' }
+  | { type: 'routine:logged'; routineId: string; name: string; outcome: 'done' | 'failed' | 'aborted'; cardId?: string; error?: string }
   | { type: 'vault:ready' }
   // The floating question asked the shell to open Review instead.
   // Opening the vault failed outright. Without this the shell has no way to
@@ -429,6 +461,14 @@ export interface EngramApi {
   // The user's verdict on a walled page ('resolved' after clearing it in the
   // agent window, 'skip' to move on without it).
   errandWallDone(verdict: 'resolved' | 'skip'): Promise<void>
+  routinesList(): Promise<RoutineDto[]>
+  routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
+  routineRemove(id: string): Promise<void>
+  // Detached like errandStart: resolves once the replay has started (or was
+  // refused); steps and the outcome arrive as routine:* events.
+  routineRun(id: string, force?: boolean): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
+  routineAbort(): Promise<void>
+  routineWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   fadingMemories(): Promise<FadingMemoryDto[]>
   openLoops(): Promise<OpenLoopDto[]>
   latestBrief(): Promise<string | null>

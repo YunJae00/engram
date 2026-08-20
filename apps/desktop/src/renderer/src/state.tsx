@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto, SubjectKnowledgeDto, EngramEvent } from '../../shared/types.js'
+import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto, RoutineBlockDto, SubjectKnowledgeDto, EngramEvent } from '../../shared/types.js'
 import { api } from './api.js'
 import { t, type Translate } from './i18n.js'
 
@@ -88,6 +88,19 @@ interface AppState {
   errandWall: { url: string; wall: 'login' | 'captcha' } | null
   answerErrandWall: (verdict: 'resolved' | 'skip') => void
   startErrand(goal: string, botId?: string): Promise<void>
+  // A routine replay in flight — deterministic saved steps, no model. Held
+  // here so the sheet can close and reopen mid-run without losing the story.
+  routine: {
+    running: boolean
+    routineId?: string
+    name?: string
+    step?: { index: number; total: number; label: string }
+    steps: { label: string; at: number }[]
+  }
+  routineWall: { wall: 'login' | 'captcha' } | null
+  answerRoutineWall(verdict: 'resolved' | 'skip'): void
+  // Resolves with the refusal so a caller can ask the rerun question itself.
+  startRoutine(id: string, name: string, force?: boolean): Promise<{ ok: boolean; blocked?: RoutineBlockDto }>
   toast: string | null
   showToast(message: string): void
   t: Translate
@@ -158,6 +171,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sweepStartedAt, setSweepStartedAt] = useState<number | null>(null)
   const [errand, setErrand] = useState<AppState['errand']>({ running: false, timeline: [] })
   const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
+  const [routine, setRoutine] = useState<AppState['routine']>({ running: false, steps: [] })
+  const [routineWall, setRoutineWall] = useState<{ wall: 'login' | 'captcha' } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
@@ -385,6 +400,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         else if (event.phase === 'failed')
           latest.current.showToast(latest.current.t('toast.errandFailed', { reason: event.error ?? '' }))
       }
+      // A routine replay narrating its steps. The logged event ends the run
+      // and speaks once — with a door to review when a reading landed.
+      if (event.type === 'routine:wall') setRoutineWall({ wall: event.wall })
+      if (event.type === 'routine:step') {
+        setRoutineWall(null)
+        setRoutine((prev) => {
+          const fresh = event.index === 0 || prev.routineId !== event.routineId
+          return {
+            running: true,
+            routineId: event.routineId,
+            name: prev.routineId === event.routineId ? prev.name : undefined,
+            step: { index: event.index, total: event.total, label: event.label },
+            steps: [...(fresh ? [] : prev.steps), { label: event.label, at: Date.now() }],
+          }
+        })
+      }
+      if (event.type === 'routine:logged') {
+        setRoutineWall(null)
+        setRoutine({ running: false, steps: [] })
+        if (event.outcome === 'done')
+          latest.current.showToast(
+            latest.current.t(event.cardId ? 'toast.routineDoneReview' : 'toast.routineDone', { name: event.name }),
+          )
+        else if (event.outcome === 'failed')
+          latest.current.showToast(latest.current.t('toast.routineFailed', { reason: event.error ?? '' }))
+      }
       if (event.type === 'engines:detected') setEnginesDetected(true)
       if (event.type === 'engines:changed') setEngines(event.engines)
       // Health is folded into the engine list rather than kept in a second
@@ -435,6 +476,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setErrandWall(null)
     void api.errandWallDone(verdict).catch(() => undefined)
   }, [])
+
+  const answerRoutineWall = useCallback((verdict: 'resolved' | 'skip') => {
+    setRoutineWall(null)
+    void api.routineWallDone(verdict).catch(() => undefined)
+  }, [])
+
+  // Kick off a routine replay. main runs it detached and reports back over
+  // routine:* events — so this only surfaces the refusal (browser busy, tight).
+  const startRoutine = useCallback(
+    async (id: string, name: string, force?: boolean) => {
+      setRoutine({ running: true, routineId: id, name, steps: [] })
+      const result = await api.routineRun(id, force)
+      if (!result.ok) {
+        setRoutine({ running: false, steps: [] })
+        // A refusal that is really a question stays quiet here: a toast would
+        // scroll away, and the answer belongs next to the Run button.
+        if (!result.blocked) showToast(result.error ?? t('toast.routineFailed', { reason: '' }))
+      }
+      return result
+    },
+    [showToast],
+  )
 
   // Kick off a delegated errand. main runs it detached and reports back over
   // errand:phase — so this only surfaces the refusal (no engine, already busy).
@@ -488,11 +551,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       errandWall,
       answerErrandWall,
       startErrand,
+      routine,
+      routineWall,
+      answerRoutineWall,
+      startRoutine,
       toast,
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, startRoutine, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

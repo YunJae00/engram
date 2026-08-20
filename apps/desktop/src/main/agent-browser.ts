@@ -112,7 +112,29 @@ function armPressureWatch(): void {
   }, 15_000)
 }
 
+// A run parked at a login wall does nothing for minutes while the person
+// types their password INTO THIS WINDOW. The idle timer cannot be allowed to
+// close Chrome under them, so a hold suspends it until the wall is answered.
+// Memory pressure still closes the browser: that rule outranks convenience.
+let idleHolds = 0
+
+export function holdAgentBrowser(): () => void {
+  idleHolds++
+  if (idleTimer) {
+    clearTimeout(idleTimer)
+    idleTimer = null
+  }
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    idleHolds = Math.max(0, idleHolds - 1)
+    if (idleHolds === 0) armIdleClose()
+  }
+}
+
 function armIdleClose(): void {
+  if (idleHolds > 0) return
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => void closeAgentBrowser(), IDLE_CLOSE_MS)
 }
@@ -254,6 +276,21 @@ export function agentCourier(): WebCourier {
 export function agentBrowserAvailable(): boolean {
   return findChrome() !== null
 }
+
+// Low-level access for the routine driver: same browser, same reused tab,
+// same idle and pressure lifecycle the courier lives under.
+export async function agentPage(signal?: AbortSignal): Promise<Page> {
+  const page = await withAbort(ensurePage(), signal)
+  armIdleClose()
+  return page
+}
+
+export function readAgentPage(page: Page, signal?: AbortSignal): Promise<WebPage> {
+  armIdleClose()
+  return withAbort(readPage(page), signal)
+}
+
+export { withAbort as agentAbortable }
 
 // Close is idempotent and never throws: it runs from errand teardown, the
 // idle timer and app quit, in any order.

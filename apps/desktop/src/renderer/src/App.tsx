@@ -10,6 +10,7 @@ import { TopBar } from './components/TopBar.js'
 import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
 import { ActionDialog } from './components/ActionDialog.js'
 import { ErrandsSheet } from './components/ErrandsSheet.js'
+import { RoutinesSheet } from './components/RoutinesSheet.js'
 import { BotsView } from './views/BotsView.js'
 import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
@@ -49,6 +50,7 @@ function Shell() {
   const [digestOpen, setDigestOpen] = useState(false)
   // "Delegate an errand…" from the command palette raises this one window intent.
   const [errandOpen, setErrandOpen] = useState(false)
+  const [routinesOpen, setRoutinesOpen] = useState(false)
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
@@ -138,6 +140,7 @@ function Shell() {
     const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
+    const openRoutines = () => setRoutinesOpen(true)
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
@@ -158,6 +161,7 @@ function Shell() {
     window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:open-digest', openDigest)
     window.addEventListener('engram:open-errand', openErrand)
+    window.addEventListener('engram:open-routines', openRoutines)
     window.addEventListener('engram:focus-capture', focusCapture)
     window.addEventListener('engram:sky-focus', focusSky)
     return () => {
@@ -169,6 +173,7 @@ function Shell() {
       window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:open-digest', openDigest)
       window.removeEventListener('engram:open-errand', openErrand)
+      window.removeEventListener('engram:open-routines', openRoutines)
       window.removeEventListener('engram:focus-capture', focusCapture)
       window.removeEventListener('engram:sky-focus', focusSky)
     }
@@ -339,6 +344,7 @@ function Shell() {
       <NoteSheet />
       {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
       {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
+      {routinesOpen && <RoutinesSheet onClose={() => setRoutinesOpen(false)} />}
       <ReviewOverlay />
       <InboxOverlay />
       <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />

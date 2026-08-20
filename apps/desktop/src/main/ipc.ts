@@ -50,6 +50,11 @@ import {
   recordRecallReceipt,
   rejectCard,
   runErrand,
+  addRoutine,
+  listRoutines,
+  removeRoutine,
+  routineBlock,
+  runRoutine,
   safeInboxName,
   spreadActivation,
   sweep,
@@ -67,6 +72,8 @@ import {
   type EngineEvent,
   type JobFailure,
   type Note,
+  type RoutineBlock,
+  type RoutineStep,
   type RunReport,
 } from 'core'
 import { randomUUID } from 'node:crypto'
@@ -74,7 +81,8 @@ import { backgroundInferenceOk, errandFloors } from './local-llm.js'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
-import { agentBrowserAvailable, agentCourier, closeAgentBrowser } from './agent-browser.js'
+import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser } from './agent-browser.js'
+import { routineDriver } from './routine-driver.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { ipcMain } from 'electron'
 import { open, readdir, readFile } from 'node:fs/promises'
@@ -564,6 +572,12 @@ let errandAbort: AbortController | null = null
 // answers it, errand:abort answers it with skip so the abort can proceed.
 let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 
+// Routines share the agent browser with errands, so the two runs exclude
+// each other; same single-flight/abort/wall trio as the errand's.
+let routineRunning = false
+let routineAbort: AbortController | null = null
+let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
+
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
@@ -845,19 +859,30 @@ export function registerIpc(ctx: VaultContext): void {
 
   ipcMain.handle('errand:start', async (_e, goal: string, botId?: string): Promise<{ ok: boolean; error?: string }> => {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
+    // Both drive the same Chrome tab, so the exclusion has to run both ways:
+    // an errand landing on top of a routine would type the routine's saved
+    // text into whatever page the errand had navigated to.
+    if (routineRunning) return { ok: false, error: 'A routine is using the browser right now — try again when it finishes.' }
     if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
+    // Claimed before the first await: two clicks a millisecond apart both
+    // passed the check above while the floors were still being measured.
+    errandRunning = true
+    const release = (): void => {
+      errandRunning = false
+    }
     // Sized by the smallest downloaded brain — errand calls step down to it —
     // so a machine that cannot host the flagship still runs its errands.
     const floors = ctx.engines[0]?.id === 'local' ? await errandFloors() : null
     const minFree = floors?.min ?? ERRAND_MIN_FREE
     const webMinFree = floors?.webMin ?? ERRAND_WEB_MIN_FREE
     const freeAtStart = os.freemem()
-    if (freeAtStart < minFree)
+    if (freeAtStart < minFree) {
+      release()
       return {
         ok: false,
         error: `Not enough free memory for an errand right now (${(freeAtStart / 1e9).toFixed(1)}GB free, needs ~${Math.ceil(minFree / 1e9)}GB) — close some apps and try again.`,
       }
-    errandRunning = true
+    }
     errandAbort = new AbortController()
     const signal = errandAbort.signal
     const runId = randomUUID()
@@ -909,8 +934,10 @@ export function registerIpc(ctx: VaultContext): void {
         // window, and continue with whatever the user answers.
         onWall: (page) =>
           new Promise((resolve) => {
+            const keepOpen = holdAgentBrowser()
             errandWallWaiter = (verdict) => {
               errandWallWaiter = null
+              keepOpen()
               resolve(verdict)
             }
             broadcast({ type: 'errand:wall', url: page.url, wall: page.wall })
@@ -982,6 +1009,101 @@ export function registerIpc(ctx: VaultContext): void {
 
   ipcMain.handle('errand:wallDone', (_e, verdict: 'resolved' | 'skip') => {
     errandWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
+  })
+
+  // Routines: saved browser sequences replayed verbatim. No model runs, so
+  // the memory gate is only the browser's own slice — a routine still works
+  // on a machine too tight for any inference.
+  const ROUTINE_MIN_FREE = 4e9
+  type RoutineRunReply = { ok: boolean; error?: string; blocked?: RoutineBlock }
+
+  ipcMain.handle('routines:list', () => listRoutines(paths))
+  ipcMain.handle('routines:add', (_e, input: { name: string; steps: RoutineStep[] }) => addRoutine(paths, input))
+  ipcMain.handle('routines:remove', (_e, id: string) => removeRoutine(paths, id))
+
+  ipcMain.handle('routines:run', async (_e, id: string, force?: boolean): Promise<RoutineRunReply> => {
+    if (routineRunning) return { ok: false, error: 'A routine is already running.' }
+    if (errandRunning) return { ok: false, error: 'An errand is using the browser right now — try again when it finishes.' }
+    // Claimed before the first await, or two fast clicks both get past this.
+    routineRunning = true
+    const release = (): void => {
+      routineRunning = false
+    }
+    if (!agentBrowserAvailable()) {
+      release()
+      return { ok: false, error: 'No Chrome-family browser found — install Google Chrome to run routines.' }
+    }
+    const free = os.freemem()
+    if (free < ROUTINE_MIN_FREE) {
+      release()
+      return {
+        ok: false,
+        error: `Not enough free memory for a routine right now (${(free / 1e9).toFixed(1)}GB free, needs ~${Math.ceil(ROUTINE_MIN_FREE / 1e9)}GB) — close some apps and try again.`,
+      }
+    }
+    const routine = (await listRoutines(paths)).find((r) => r.id === id)
+    if (!routine) {
+      release()
+      return { ok: false, error: 'That routine no longer exists.' }
+    }
+    // A routine that types into pages can post something. Whether a same-day
+    // rerun — or one after a run that died mid-submit — should happen is a
+    // person's call, so it comes back as a question, not an error.
+    const blocked = force === true ? null : routineBlock(routine, new Date())
+    if (blocked) {
+      release()
+      return { ok: false, blocked }
+    }
+    routineAbort = new AbortController()
+    const signal = routineAbort.signal
+    void runRoutine(paths, routineDriver(), routine, {
+      signal,
+      force: force === true,
+      onStep: (index, total, label) => broadcast({ type: 'routine:step', routineId: routine.id, index, total, label }),
+      // Same parking spot as the errand's wall: the run waits on the user's
+      // verdict, and abort answers with skip so it can never deadlock here.
+      onWall: (wall) =>
+        new Promise((resolve) => {
+          const keepOpen = holdAgentBrowser()
+          routineWallWaiter = (verdict) => {
+            routineWallWaiter = null
+            keepOpen()
+            resolve(verdict)
+          }
+          broadcast({ type: 'routine:wall', routineId: routine.id, wall: wall.wall })
+        }),
+    })
+      .then((result) => {
+        // The readings land as a review card; nudge the badge to pick it up.
+        if (result.cardId) broadcast({ type: 'vault:changed' })
+        broadcast({
+          type: 'routine:logged',
+          routineId: routine.id,
+          name: routine.name,
+          outcome: result.ok ? 'done' : signal.aborted || result.blocked ? 'aborted' : 'failed',
+          ...(result.cardId ? { cardId: result.cardId } : {}),
+          ...(result.error ? { error: result.error } : {}),
+        })
+      })
+      .catch((err) => flog('routine', err))
+      .finally(() => {
+        release()
+        routineAbort = null
+        routineWallWaiter = null
+        // The browser's gigabyte goes back to the machine as soon as the
+        // replay is over — the next run pays a relaunch, which is cheap.
+        void closeAgentBrowser()
+      })
+    return { ok: true }
+  })
+
+  ipcMain.handle('routines:abort', () => {
+    routineWallWaiter?.('skip')
+    routineAbort?.abort()
+  })
+
+  ipcMain.handle('routines:wallDone', (_e, verdict: 'resolved' | 'skip') => {
+    routineWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
   })
 
   ipcMain.handle('notes:list', () => ctx.store.getAll().map(toDto))

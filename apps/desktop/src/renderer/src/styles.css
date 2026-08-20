@@ -1603,6 +1603,43 @@ body.bubble-host { background: transparent; }
   .errand-step.current::before, .bots-errand-pulse { animation: none; }
 }
 
+/* ── Routines sheet (saved replays; borrows the errand live chrome) ── */
+.routines-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.routine-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; }
+.routine-row:hover { background: var(--hover-bg); }
+.routine-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.routine-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+/* The X arms on the first press and turns danger-red for the second — the
+   same two-beat delete the comet header uses, without a modal. */
+.routine-delete {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; color: var(--fg-faint);
+}
+.routine-delete:hover { background: var(--hover-bg); color: var(--fg); }
+.routine-delete.armed { color: var(--danger); background: var(--hover-bg); }
+.routine-builder { display: flex; flex-direction: column; gap: 8px; }
+.routine-name { font-size: var(--fs-body); padding: 8px 10px; }
+.routine-step-row { display: flex; align-items: center; gap: 6px; }
+.routine-step-kind { flex: none; width: 108px; font-size: var(--fs-small); padding: 6px 8px; }
+.routine-step-input { flex: 1; min-width: 0; font-size: var(--fs-small); padding: 6px 8px; }
+.routine-step-note { flex: 1; font-size: var(--fs-small); color: var(--fg-faint); }
+.routine-step-remove {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; color: var(--fg-faint);
+}
+.routine-step-remove:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
+.routine-step-remove:disabled { opacity: 0.4; }
+.routine-add-step { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
+
+/* The rerun question: a routine that types into pages asks before repeating. */
+.routine-ask {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 11px; border-radius: 9px;
+  background: var(--hover-bg); border: 1px solid var(--border-soft); color: var(--fg-dim);
+}
+.routine-ask-text { flex: 1; min-width: 0; font-size: var(--fs-small); line-height: 1.45; }
+.routine-warn { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; color: var(--danger); }
+
 /* ── GitHub backup dialog (two numbered steps) ───────────────── */
 .github-connect .brief-title { display: flex; align-items: center; gap: 8px; }
 .github-intro { font-size: var(--fs-body); font-family: var(--font); color: var(--fg-dim); line-height: 1.5; margin: 0; }

@@ -27,11 +27,11 @@ No cloud. No account. No subscription.
 
 ## Surfaces
 
-- **Cosmos** — every memory a star; brightness is memory strength, constellations are topics, gold halos mark recent recall.
+- **Comets** — small helpers, each with a charter and its own conversation over the same memory. Work you repeat is saved on a comet as a task and run with one press.
+- **Cosmos** — every memory a star; brightness is memory strength, constellations are topics, gold halos mark recent recall. Chat is docked on its right edge: ask your memory, with hybrid retrieval (lexical + semantic + spreading activation) and instant source cards.
 - **Brain** — topics as readable pages, warm topics first, with the librarian's synthesis on top.
 - **List / Timeline** — the raw memories, filterable.
-- **Today** — the measured day (hours per app), the morning brief, open loops, and fading memories.
-- **Chat** — ask your memory; retrieval is hybrid (lexical + semantic + spreading activation) with instant source cards.
+- **Routines** — the pages and clicks you walk every day, saved once and replayed verbatim in a dedicated browser profile. No model runs, so a routine works on a machine too busy for inference; what it reads comes back as a review card, and one that types into a page asks before it repeats itself.
 - **MCP server** — connect AI tools to your memory: context injection, search, capture, and graph traversal over the Model Context Protocol.
 
 ## What it reads, and what never leaves
