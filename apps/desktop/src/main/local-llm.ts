@@ -2,7 +2,7 @@ import { app, ipcMain, net } from 'electron'
 import { fork, type ChildProcess } from 'node:child_process'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { once } from 'node:events'
-import { mkdir, readFile, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +24,11 @@ interface ModelSpec {
   desc: string
 }
 
+// One brain only: on shared-iGPU machines every offloaded layer is pinned
+// system RAM, and the larger variants pinned more than a working day could
+// spare — measured as hard freezes, not slowdowns. A spec stays on this list
+// only if it loads safely beside the user's normal workload, and today that
+// is the smallest one.
 const MODELS: ModelSpec[] = [
   {
     id: 'gemma4-e2b',
@@ -33,27 +38,7 @@ const MODELS: ModelSpec[] = [
     approxGB: 3.1,
     ramGB: 8,
     tag: 'light',
-    desc: 'Small and quick — for laptops with little free memory.',
-  },
-  {
-    id: 'gemma4-e4b',
-    label: 'Gemma 4 E4B',
-    file: 'gemma-4-E4B-it-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
-    approxGB: 5.0,
-    ramGB: 12,
-    tag: 'korean',
-    desc: 'The default — best Korean per gigabyte.',
-  },
-  {
-    id: 'gemma4-12b',
-    label: 'Gemma 4 12B',
-    file: 'gemma-4-12b-it-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12b-it-Q4_K_M.gguf',
-    approxGB: 7.1,
-    ramGB: 16,
-    tag: 'balanced',
-    desc: 'Noticeably better writing — for 16GB machines.',
+    desc: 'Small and quick — runs comfortably beside your other work.',
   },
 ]
 
@@ -235,6 +220,20 @@ async function deleteModel(id: string): Promise<{ ok: boolean; reason?: string }
   }
   flog('local-llm', `deleted model ${id}`)
   return { ok: true }
+}
+
+// A model dropped from the list has no card, so no delete button — without
+// this sweep its gigabytes would sit on disk invisibly forever. Runs before
+// any worker exists, so nothing holds the files open.
+async function sweepRetiredModels(): Promise<void> {
+  const keep = new Set(MODELS.flatMap((m) => [m.file, `${m.file}.part`]))
+  const entries = await readdir(modelsDir()).catch(() => [] as string[])
+  for (const name of entries) {
+    if (keep.has(name)) continue
+    if (!name.endsWith('.gguf') && !name.endsWith('.gguf.part')) continue
+    await rm(join(modelsDir(), name), { force: true }).catch(() => undefined)
+    flog('local-llm', `swept retired model file ${name}`)
+  }
 }
 
 // ── Inference host ──────────────────────────────────────────────────────
@@ -671,6 +670,7 @@ export function setModelsChangedHook(hook: () => void): void {
 }
 
 export function registerLocalLlmIpc(): void {
+  void sweepRetiredModels()
   ipcMain.handle('localmodels:state', () => toDto())
   // The chat panel calls this on open: 'none' = no downloaded model (nothing
   // to warm), otherwise kick a warm-up and report where it stands. Progress

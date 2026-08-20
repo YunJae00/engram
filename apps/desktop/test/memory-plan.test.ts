@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { planModelLoad } from '../src/main/memory-plan.js'
 
 const GB = 1e9
-const E4B = 5 * GB
+const MODEL = 5 * GB
 const HUGE = 16.9 * GB
 
 // The plan is what stands between "load the model" and "freeze the machine":
@@ -10,25 +10,25 @@ const HUGE = 16.9 * GB
 
 describe('planModelLoad', () => {
   it('a comfortable machine gets full GPU offload', () => {
-    expect(planModelLoad(E4B, 20 * GB).mode).toBe('gpu')
+    expect(planModelLoad(MODEL, 20 * GB).mode).toBe('gpu')
   })
 
   it('a busy machine offloads partially, behind a larger reserve', () => {
-    const plan = planModelLoad(E4B, 10 * GB)
+    const plan = planModelLoad(MODEL, 10 * GB)
     expect(plan.mode).toBe('lean')
     expect(plan.gpuLayers).toBe('auto')
-    expect(plan.vramPadding).toBeGreaterThan(planModelLoad(E4B, 20 * GB).vramPadding)
+    expect(plan.vramPadding).toBeGreaterThan(planModelLoad(MODEL, 20 * GB).vramPadding)
   })
 
   it('a tight machine keeps every weight evictable — zero pinned memory', () => {
-    const plan = planModelLoad(E4B, 6.5 * GB)
+    const plan = planModelLoad(MODEL, 6.5 * GB)
     expect(plan.mode).toBe('cpu')
     expect(plan.gpuLayers).toBe(0)
     expect(plan.vramPadding).toBe(0)
   })
 
   it('an exhausted machine is refused, with the number it would need', () => {
-    const plan = planModelLoad(E4B, 3 * GB)
+    const plan = planModelLoad(MODEL, 3 * GB)
     expect(plan.mode).toBe('none')
     expect(plan.reason).toMatch(/needs ~6\.0GB/)
   })
@@ -43,7 +43,7 @@ describe('planModelLoad', () => {
     const order = ['none', 'cpu', 'lean', 'gpu']
     let last = -1
     for (let free = 1 * GB; free <= 24 * GB; free += GB) {
-      const at = order.indexOf(planModelLoad(E4B, free).mode)
+      const at = order.indexOf(planModelLoad(MODEL, free).mode)
       expect(at).toBeGreaterThanOrEqual(last)
       last = at
     }

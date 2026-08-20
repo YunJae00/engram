@@ -22,7 +22,7 @@ export interface LocalTransport {
   // runtime can be had. MUST NOT load gigabytes — detection polls this on
   // focus and every few minutes.
   configured(): Promise<boolean>
-  // Human-readable model label for diagnostics ("Gemma 4 E4B").
+  // Human-readable model label for diagnostics ("Gemma 4 E2B").
   label?: string
 }
 

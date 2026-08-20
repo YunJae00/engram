@@ -26,7 +26,7 @@ if (mk.status !== 0) {
   console.error('junction failed — cannot reach the real model')
   process.exit(1)
 }
-await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e4b' }))
+await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
 
 const app = await electron.launch({
   args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],

@@ -555,7 +555,7 @@ export interface SemanticStatusDto {
 export interface DiagnosticsDto {
   engines: {
     id: string
-    // display name of the brain behind this light ("Gemma 4 E4B"), not the engine id
+    // display name of the brain behind this light ("Gemma 4 E2B"), not the engine id
     label?: string
     installed: boolean
     loggedIn: boolean
