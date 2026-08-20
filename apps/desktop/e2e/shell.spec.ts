@@ -92,8 +92,8 @@ test('boots into the minimal shell on a temp vault', async () => {
   await expect(page.getByTestId('sky-view')).toBeVisible() // the sky is home (Engram redesign)
   // The seeded memories render as stars.
   await expect(page.getByTestId('brain-graph')).toBeVisible()
-  // Capture is a fixed dock on the cosmos's right edge — no panel behind it.
-  await expect(page.getByTestId('capture-dock')).toBeVisible()
+  // Asking (and keeping) is a docked panel on the cosmos's right edge.
+  await expect(page.getByTestId('cosmos-chat')).toBeVisible()
 })
 
 test('no engine → connect banner shows and the Tidy badge counts unswept work', async () => {
@@ -125,22 +125,29 @@ test('help panel opens with quick actions and legend', async () => {
   await expect(panel).toBeVisible()
   await expect(panel).toContainText('How Engram works')
   await expect(panel).toContainText('Legend')
-  // the Remember quick action focuses the capture dock on the cosmos
+  // the Remember quick action focuses the cosmos chat box
   await panel.getByRole('button', { name: 'Remember' }).click()
-  await expect(page.getByTestId('capture-input')).toBeFocused()
+  await expect(page.getByTestId('cosmos-chat-input')).toBeFocused()
   await expect(page.getByTestId('help-panel')).toHaveCount(0)
 })
 
 
-test('the capture dock files a thought straight from the cosmos', async () => {
+test('the cosmos chat collapses and comes back', async () => {
   await page.getByTestId('activity-sky').click()
-  const box = page.getByTestId('capture-input')
-  await expect(box).toBeVisible()
-  await box.fill('Decided today: the capture dock lives on the cosmos')
-  await page.getByTestId('capture-submit').click()
-  // A successful capture empties the box — the text is now in the inbox
-  // (no engine is connected here, so it waits there as pending work).
-  await expect(box).toHaveValue('')
+  await expect(page.getByTestId('cosmos-chat')).toBeVisible()
+  await page.getByTitle('Hide').click()
+  await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
+  await page.getByTestId('cosmos-chat-open').click()
+  await expect(page.getByTestId('cosmos-chat-input')).toBeVisible()
+})
+
+test('the comets rail folds away and returns', async () => {
+  await page.getByTestId('activity-bots').click()
+  await page.getByTestId('comets-rail-close').click()
+  await expect(page.getByTestId('comets-rail-open')).toBeVisible()
+  await page.getByTestId('comets-rail-open').click()
+  await expect(page.getByTestId('bots-new')).toBeVisible()
+  await page.getByTestId('activity-sky').click()
 })
 
 test('the weekly digest reads on demand from the command palette', async () => {
@@ -159,9 +166,9 @@ test('Ctrl+L is the door to the comets tab', async () => {
   await page.keyboard.press('ControlOrMeta+l')
   await expect(page.getByTestId('bots-view')).toBeVisible()
   // and the cosmos furniture stays off this tab
-  await expect(page.getByTestId('capture-dock')).toHaveCount(0)
+  await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
   await page.getByTestId('activity-sky').click()
-  await expect(page.getByTestId('capture-dock')).toBeVisible()
+  await expect(page.getByTestId('cosmos-chat')).toBeVisible()
 })
 
 test('clicking a star in the cosmos opens the note sheet with editor and meta bar', async () => {

@@ -1,4 +1,4 @@
-import { ArrowUp, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, PanelLeftClose, PanelLeftOpen, Plus, Square, Trash2 } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState } from 'react'
 import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/types.js'
@@ -47,6 +47,7 @@ export function BotsView() {
   const [draftName, setDraftName] = useState('')
   const [draftPurpose, setDraftPurpose] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.comets.rail') !== '0')
   const listRef = useRef<HTMLDivElement | null>(null)
   const selected = bots.find((b) => b.id === selectedId) ?? null
 
@@ -172,10 +173,25 @@ export function BotsView() {
     await reload(false)
   }
 
+  useEffect(() => {
+    localStorage.setItem('engram.comets.rail', railOpen ? '1' : '0')
+  }, [railOpen])
+
   return (
     <div className="bots-view" data-testid="bots-view">
+      {!railOpen && (
+        <button className="rail-reopen" data-testid="comets-rail-open" title={t('rail.show')} onClick={() => setRailOpen(true)}>
+          <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
+        </button>
+      )}
+      {railOpen && (
       <aside className="bots-rail">
-        <div className="bots-rail-head">{t('bots.railTitle')}</div>
+        <div className="bots-rail-head">
+          <span>{t('bots.railTitle')}</span>
+          <button className="rail-collapse" data-testid="comets-rail-close" title={t('rail.hide')} onClick={() => setRailOpen(false)}>
+            <PanelLeftClose size={14} strokeWidth={1.8} aria-hidden />
+          </button>
+        </div>
         <ul className="bots-list">
           {bots.map((bot) => (
             <li key={bot.id}>
@@ -208,6 +224,13 @@ export function BotsView() {
               rows={3}
               onChange={(e) => setDraftPurpose(e.target.value)}
             />
+            {(!draftName.trim() || !draftPurpose.trim()) && (
+              // A disabled button with no reason reads as a broken button —
+              // this says which of the two fields is still empty.
+              <div className="bots-create-need">
+                {t(!draftName.trim() ? 'bots.needName' : 'bots.needPurpose')}
+              </div>
+            )}
             <div className="bots-create-actions">
               <button
                 className="primary"
@@ -242,6 +265,7 @@ export function BotsView() {
           </div>
         )}
       </aside>
+      )}
 
       <section className="bots-main">
         {selected ? (

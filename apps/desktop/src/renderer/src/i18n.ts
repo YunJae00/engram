@@ -6,7 +6,6 @@ const en = {
   // non-native speakers do not know. Everything says REMEMBER now — including
   // the floating launcher that opens the composer.
   'capture.submit': 'Remember',
-  'capture.dockPlaceholder': 'A thought, a decision, a thing to keep\u2026 Enter files it.',
   'capture.dropTitle': 'Drop to capture',
   'capture.dropSub': 'md · txt · pdf · png/jpg · mp3/wav/m4a · .url — anything else waits in the inbox',
   // Which verb Enter is loaded with, in the hint slot, live as the text
@@ -34,6 +33,15 @@ const en = {
   'settings.localDeleting': 'Deleting…',
   'settings.localDeleteFailed': 'Could not delete — {reason}',
   'topbar.tabBots': 'Comets',
+  'rail.hide': 'Hide the sidebar',
+  'rail.show': 'Show the sidebar',
+  'bots.needName': 'Give it a name first.',
+  'bots.needPurpose': 'Say what it is for \u2014 that charter is how it answers.',
+  'cosmos.chatTitle': 'Ask your memory',
+  'cosmos.chatCollapse': 'Hide',
+  'cosmos.chatOpen': 'Ask your memory',
+  'cosmos.chatPlaceholder': 'Ask, or say \u201ckeep this\u2026\u201d',
+  'cosmos.chatHint': 'Ask what you decided, or tell it something to keep \u2014 anything worth remembering is filed as a memory.',
   'bots.railTitle': 'Your comets',
   'bots.errandBtn': 'Errand',
   'bots.errandRunning': 'Errand {phase}',

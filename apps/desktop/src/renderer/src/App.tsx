@@ -4,7 +4,7 @@ import { api } from './api.js'
 import { AbsorbWidget } from './components/AbsorbWidget.js'
 import { DigestSheet } from './components/DigestSheet.js'
 import { HelpPanel } from './components/HelpPanel.js'
-import { CaptureDock } from './components/CaptureDock.js'
+import { CosmosChat } from './components/CosmosChat.js'
 import { Palette, type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
 import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
@@ -331,7 +331,7 @@ function Shell() {
           </div>
         )}
         {/* The launcher IS the panel at rest — never both on screen at once. */}
-        {activity === 'sky' && <CaptureDock />}
+        {activity === 'sky' && <CosmosChat />}
         {activity !== 'bots' && <HelpPanel />}
       </div>
       <AbsorbWidget />

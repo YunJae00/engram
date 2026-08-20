@@ -1437,22 +1437,41 @@ body.bubble-host { background: transparent; }
 .errand-input { width: 100%; min-height: 84px; resize: vertical; font-size: 14px; padding: 9px 11px; }
 
 
-/* ── Capture dock: Remember, pinned to the cosmos's right edge ────────── */
-.capture-dock {
-  position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
-  width: 250px; z-index: 4;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 12px; border-radius: 12px;
-  background: var(--card-top); border: 1px solid var(--border-soft);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.10);
+
+
+/* ── Cosmos chat: docked at the right edge, not floating over the sky ─── */
+.cosmos-chat {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 4;
+  display: flex; flex-direction: column;
+  background: var(--card-top); border-left: 1px solid var(--border);
 }
-.capture-dock-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--fg-dim); }
-.capture-dock textarea {
-  width: 100%; box-sizing: border-box; resize: none;
-  padding: 8px 10px; border-radius: 9px; font-size: 13px; line-height: 1.5; font-family: inherit;
+.cosmos-chat-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border-soft);
+}
+.cosmos-chat-title { font-size: 12.5px; font-weight: 700; color: var(--fg-dim); }
+.cosmos-chat-collapse, .cosmos-chat-open, .rail-collapse, .rail-reopen {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px; border-radius: 7px; color: var(--fg-faint); flex: none;
+}
+.cosmos-chat-collapse:hover, .cosmos-chat-open:hover, .rail-collapse:hover, .rail-reopen:hover {
+  background: var(--hover-bg); color: var(--fg);
+}
+.cosmos-chat-open {
+  position: absolute; top: 12px; right: 12px; z-index: 4;
+  background: var(--card-top); border: 1px solid var(--border-soft); padding: 7px;
+}
+.cosmos-chat-thread { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cosmos-chat-hint { font-size: 12.5px; line-height: 1.55; color: var(--fg-faint); }
+.cosmos-chat-write { display: flex; gap: 7px; align-items: flex-end; padding: 10px 12px; border-top: 1px solid var(--border-soft); }
+.cosmos-chat-write textarea {
+  flex: 1; min-width: 0; box-sizing: border-box; resize: none; max-height: 120px; overflow-y: auto;
+  padding: 8px 10px; border-radius: 9px; font-size: 12.5px; line-height: 1.5; font-family: inherit;
   border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
 }
-.capture-dock button { align-self: flex-end; }
+.rail-reopen { position: absolute; top: 12px; left: 12px; z-index: 4; background: var(--card-top); border: 1px solid var(--border-soft); padding: 7px; }
+.brain-view, .bots-view { position: relative; }
+.brain-rail-head, .bots-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 /* ── Bots: the first tab — colleagues over the same brain ──────────── */
 .bots-view { flex: 1; min-height: 0; display: flex; }
@@ -1476,7 +1495,13 @@ body.bubble-host { background: transparent; }
 }
 .bots-new:hover { background: var(--hover-bg); color: var(--fg); }
 .bots-create { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
-.bots-create input, .bots-create textarea { font-size: 12.5px; padding: 7px 9px; resize: none; }
+.bots-create input, .bots-create textarea {
+  width: 100%; box-sizing: border-box; font-size: 12.5px; padding: 7px 9px; resize: none;
+  font-family: inherit; line-height: 1.5;
+  border: 1px solid var(--input-border); border-radius: 8px;
+  background: var(--input-bg); color: var(--fg);
+}
+.bots-create-need { font-size: 11.5px; color: var(--fg-faint); line-height: 1.45; }
 .bots-create-actions { display: flex; gap: 6px; }
 .bots-suggested { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
 .bots-suggestion { border: 1px solid var(--border-soft); border-radius: 9px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }

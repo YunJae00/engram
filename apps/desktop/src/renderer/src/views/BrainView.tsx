@@ -1,5 +1,5 @@
-import { Network, Unlink } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Network, PanelLeftClose, PanelLeftOpen, Unlink } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../components/EmptyState.js'
 import { MemoryRow, TopicPage } from '../components/TopicPage.js'
 import { stripEmoji } from '../lib/grouping.js'
@@ -19,6 +19,7 @@ const RAIL_CAP = 150
 export function BrainView() {
   const { notes, openNote, setActivity, t , subjectKnowledge, fabric } = useApp()
   const [showAllUnconnected, setShowAllUnconnected] = useState(false)
+  const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.brain.rail') !== '0')
   const live = useMemo(
     () => notes.filter((n) => n.status === 'current' || n.status === 'disputed'),
     [notes],
@@ -51,10 +52,25 @@ export function BrainView() {
     return <EmptyState icon={Network} title={t('brain.empty')} hint={t('brain.emptyHint')} />
   }
 
+  useEffect(() => {
+    localStorage.setItem('engram.brain.rail', railOpen ? '1' : '0')
+  }, [railOpen])
+
   return (
     <div className="brain-view" data-testid="brain-view">
+      {!railOpen && (
+        <button className="rail-reopen" data-testid="brain-rail-open" title={t('rail.show')} onClick={() => setRailOpen(true)}>
+          <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
+        </button>
+      )}
+      {railOpen && (
       <aside className="brain-rail">
-        <div className="section-label">{t('brain.railTitle', { count: brain.topics.length })}</div>
+        <div className="section-label brain-rail-head">
+          <span>{t('brain.railTitle', { count: brain.topics.length })}</span>
+          <button className="rail-collapse" data-testid="brain-rail-close" title={t('rail.hide')} onClick={() => setRailOpen(false)}>
+            <PanelLeftClose size={14} strokeWidth={1.8} aria-hidden />
+          </button>
+        </div>
         {brain.topics.length > 8 && (
           <input
             className="brain-rail-filter"
@@ -98,6 +114,7 @@ export function BrainView() {
           </button>
         )}
       </aside>
+      )}
 
       <div className="brain-scroll">
         {showUnconnected ? (
