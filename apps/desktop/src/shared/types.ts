@@ -524,7 +524,7 @@ export interface OnboardPayload {
 
 export interface AppSettingsDto {
   // stored and used for engine detection, but no longer shown — one option
-  defaultEngine: 'claude'
+  defaultEngine: 'claude' | 'local'
   autoStart: boolean
   teamSync: 'auto' | 'manual'
   semanticModel?: string

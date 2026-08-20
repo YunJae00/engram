@@ -19,7 +19,7 @@ const en = {
   'settings.contentAdd': 'Add folder…',
   'settings.contentRemove': 'Remove',
   'settings.localTitle': 'Local AI (no subscription needed)',
-  'settings.localHint': 'Runs entirely on this machine ({ram}GB RAM detected). Download a brain, pick it, done — the librarian uses Claude when connected and this otherwise.',
+  'settings.localHint': 'Runs entirely on this machine ({ram}GB RAM detected). Download a brain, pick it, done — everything the librarian does runs on it.',
   'settings.localRecommended': 'Recommended for this PC',
   'settings.localDownload': 'Download',
   'settings.localFailed': 'Download failed — {reason}. Press Download again to pick up where it stopped.',
@@ -473,7 +473,7 @@ const en = {
   'settings.mcpNoClients': 'No Claude client found on this machine yet. Install Claude Desktop or Claude Code, then reconnect.',
   'settings.watchTitle': 'Learning from your Claude sessions',
   'settings.watchHint':
-    'While Engram is open, conversations you have in Claude Code are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Each summary is one small Claude request, so it uses your own plan. Close Engram and it stops. Anything in your private folder is never read.',
+    'While Engram is open, conversations you have in Claude Code are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Summaries run on your local brain. Close Engram and it stops. Anything in your private folder is never read.',
   'settings.semanticTitle': 'Semantic search',
   'settings.semanticIdle': 'Starts with the app',
   'settings.versionKey': 'Version',

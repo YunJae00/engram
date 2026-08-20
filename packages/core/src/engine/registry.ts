@@ -3,7 +3,7 @@ import { LocalAdapter, type LocalTransport } from './local.js'
 import { MockEngine } from './mock.js'
 import type { Engine, EngineDetection, EngineId } from './types.js'
 
-export const ENGINE_ORDER: EngineId[] = ['claude', 'local']
+export const ENGINE_ORDER: EngineId[] = ['local', 'claude']
 
 // The local adapter needs to know where its server lives, and only the host
 // app knows that (it owns the process). Injected once at boot — same pattern
@@ -92,5 +92,9 @@ export async function detectAvailableEngines(
       if (known.has(id)) available.push(engine)
     }
   }
-  return available
+  // The product promise is on-device: when a local brain is installed it
+  // LEADS, whatever an older settings file prefers — a user who downloaded
+  // gigabytes of model chose where their work runs. Cloud engines answer
+  // only when no brain is on disk.
+  return available.sort((x, y) => Number(y.id === 'local') - Number(x.id === 'local'))
 }

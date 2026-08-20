@@ -498,7 +498,7 @@ export async function localComplete(
         return
       }
       opts.signal?.addEventListener('abort', onAbort, { once: true })
-      proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 1024, ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}) })
+      proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 512, ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}) })
     })
     lastUsed = Date.now()
     // Served — and if the room is already gone, leave now instead of squatting

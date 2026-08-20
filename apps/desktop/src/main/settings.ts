@@ -3,13 +3,13 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 interface AppSettings {
-  defaultEngine: 'claude'
+  defaultEngine: 'claude' | 'local'
   autoStart: boolean // ⑦
   teamSync: 'auto' | 'manual' // ⑧ — surfaced in the GitHub backup dialog
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  defaultEngine: 'claude',
+  defaultEngine: 'local',
   autoStart: false,
   teamSync: 'auto',
 }
@@ -22,9 +22,10 @@ export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = JSON.parse(await readFile(settingsPath(), 'utf8')) as Partial<AppSettings>
     const merged = { ...DEFAULT_SETTINGS, ...raw }
-    // A settings.json written before the Claude-only decision may still say
-    // codex/antigravity — coerce once instead of breaking detection.
-    if ((merged.defaultEngine as string) !== 'claude') merged.defaultEngine = 'claude'
+    // Old files may carry engines that no longer exist (codex/antigravity) —
+    // coerce the unknown to the on-device default instead of breaking detection.
+    if ((merged.defaultEngine as string) !== 'claude' && (merged.defaultEngine as string) !== 'local')
+      merged.defaultEngine = 'local'
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }
