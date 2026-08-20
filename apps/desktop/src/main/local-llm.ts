@@ -413,19 +413,47 @@ export async function warmLocalModel(): Promise<void> {
 
 let inFlight: Promise<string> | null = null
 
+// The active model is the QUALITY choice; a 'fast' call (errand slot-filling)
+// takes the largest downloaded brain that fits the memory the machine has
+// right now — measured here, that is the difference between "refused" and
+// "done in a minute".
+async function chooseSpec(hint?: 'fast'): Promise<{ spec: ModelSpec; plan: ReturnType<typeof planModelLoad> } | null> {
+  const active = await adoptDownloadedModel()
+  if (!active) return null
+  if (hint !== 'fast') return { spec: active, plan: planModelLoad(active.approxGB * 1e9) }
+  const downloaded: ModelSpec[] = []
+  for (const spec of MODELS) if (await modelPresent(spec)) downloaded.push(spec)
+  const candidates = downloaded.sort((x, y) => y.approxGB - x.approxGB)
+  let fallback: { spec: ModelSpec; plan: ReturnType<typeof planModelLoad> } | null = null
+  for (const spec of candidates) {
+    const plan = planModelLoad(spec.approxGB * 1e9)
+    if (plan.mode === 'gpu' || plan.mode === 'lean') return { spec, plan }
+    if (plan.mode === 'cpu' && !fallback) fallback = { spec, plan }
+  }
+  if (fallback) return fallback
+  const last = candidates.at(-1)
+  return last ? { spec: last, plan: planModelLoad(last.approxGB * 1e9) } : null
+}
+
 export async function localComplete(
   prompt: string,
-  opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void; jsonSchema?: object },
+  opts: {
+    maxTokens?: number
+    signal?: AbortSignal
+    onToken?: (text: string) => void
+    jsonSchema?: object
+    modelHint?: 'fast'
+  },
 ): Promise<string> {
   // Serialize: local inference saturates the machine; overlapping jobs would
   // page-thrash. The librarian is serial anyway (concurrency 1).
   while (inFlight) await inFlight.catch(() => undefined)
   const work = (async () => {
-    const spec = await adoptDownloadedModel()
-    if (!spec) throw new Error('no local model is active')
+    const chosen = await chooseSpec(opts.modelHint)
+    if (!chosen) throw new Error('no local model is active')
+    const { spec, plan } = chosen
     // Refusing at the floor is the guard between "slow answer" and "frozen
     // machine" — below it even evictable weights would tip the system over.
-    const plan = planModelLoad(spec.approxGB * 1e9)
     if (plan.mode === 'none')
       throw new Error(`not enough free memory for the local model right now (${plan.reason}) — close something and retry`)
     if (plan.mode !== 'gpu') flog('local-llm', `loading ${plan.mode}: ${plan.reason}`)
@@ -473,6 +501,15 @@ export async function localComplete(
       proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 1024, ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}) })
     })
     lastUsed = Date.now()
+    // Served — and if the room is already gone, leave now instead of squatting
+    // for the idle window while the user's own work fights for pages.
+    if (os.freemem() < 6e9 && child) {
+      flog('local-llm', `answered into a tight machine (${(os.freemem() / 1e9).toFixed(1)}GB free) — unloading`)
+      child.send({ type: 'unload' })
+      loadedModelId = null
+      setWarmState('cold')
+      lastUsed = 0
+    }
     return answer
   })()
   inFlight = work
@@ -493,7 +530,7 @@ function armMemoryWatch(): void {
     // Mid-inference the model cannot be unloaded politely, but below the
     // critical floor the machine is minutes from a hard freeze — killing the
     // worker fails one answer and saves the computer.
-    if (inFlight && free < 1.2e9) {
+    if (inFlight && free < 2.5e9) {
       flog('local-llm', `memory critical (${(free / 1e9).toFixed(1)}GB free) — stopping inference to keep the machine alive`)
       stopLocalServer()
       return
@@ -517,7 +554,7 @@ function armMemoryWatch(): void {
     loadedModelId = null
     setWarmState('cold')
     lastUsed = 0
-  }, 30_000)
+  }, 8_000)
 }
 armMemoryWatch()
 
@@ -545,6 +582,18 @@ export async function localConfigured(): Promise<boolean> {
 // the engine id ("Gemma 4 E4B", not "local").
 export async function activeModelLabel(): Promise<string | null> {
   return (await adoptDownloadedModel())?.label ?? null
+}
+
+// What an errand actually needs to start here, sized by the smallest brain a
+// 'fast' call can step down to — not by the flagship model nobody would load
+// on a tight machine.
+export async function errandFloors(): Promise<{ min: number; webMin: number } | null> {
+  const downloaded: ModelSpec[] = []
+  for (const spec of MODELS) if (await modelPresent(spec)) downloaded.push(spec)
+  if (downloaded.length === 0) return null
+  const smallest = downloaded.sort((x, y) => x.approxGB - y.approxGB)[0]!
+  const base = smallest.approxGB * 1e9
+  return { min: base + 2.5e9, webMin: base + 4e9 }
 }
 
 // The librarian's own work — sweeps, absorb batches, auto-tidy — must never

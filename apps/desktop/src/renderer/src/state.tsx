@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, OpenLoopDto, PendingWorkDto, BrainFabricDto, SubjectKnowledgeDto, EngramEvent } from '../../shared/types.js'
+import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto, SubjectKnowledgeDto, EngramEvent } from '../../shared/types.js'
 import { api } from './api.js'
 import { t, type Translate } from './i18n.js'
 
@@ -42,10 +42,8 @@ interface AppState {
   cards: CardDto[]
   inbox: InboxDto
   engines: EngineStatusDto[]
-  // Open loops, most urgent first — the Today sheet lists them and the top-bar
+  // Open most urgent first — the Today sheet lists them and the top-bar
   // Today button counts the ones that want something now. Shared because both
-  // must agree; a second fetcher would let the badge and the list disagree.
-  loops: OpenLoopDto[]
   refresh(): Promise<void>
   // overlays
   sheetNoteId: string | null
@@ -58,9 +56,6 @@ interface AppState {
   openInbox(): void
   closeInbox(): void
   // Today sheet: right-side slide-over holding the latest brief + activity feed.
-  todayOpen: boolean
-  openToday(): void
-  closeToday(): void
   selectedCardId: string | null
   selectCard(id: string | null): void
   sweepStatus: SweepStatus
@@ -112,7 +107,6 @@ function systemTheme(): 'light' | 'dark' {
 
 // Set once the Today sheet has been shown (auto-revealed after the first brief
 // or opened by hand) — the one-time reveal must never fire twice.
-const TODAY_SEEN_KEY = 'engram.today.seen'
 // One-time disclosure that the desk journal records by default — the privacy
 // promise is that the user knows what is being read.
 const DESK_NOTICE_KEY = 'engram.deskJournal.noticed'
@@ -152,11 +146,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [enginesDetected, setEnginesDetected] = useState(false)
   const [subjectKnowledge, setSubjectKnowledge] = useState<SubjectKnowledgeDto>({ aliases: [], umbrella: [] })
   const [fabric, setFabric] = useState<BrainFabricDto>({ edges: [] })
-  const [loops, setLoops] = useState<OpenLoopDto[]>([])
   const [sheetNoteId, setSheetNoteId] = useState<string | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
-  const [todayOpen, setTodayOpen] = useState(false)
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [sweepStatus, setSweepStatus] = useState<SweepStatus>({ running: false, kind: 'idle' })
   const [filing, setFiling] = useState(false)
@@ -190,18 +182,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // vault:changed, so this catches them on the already-coalesced path instead
   // of re-scanning the store on every delta of a long sweep.
   const refreshCardsInbox = useCallback(async () => {
-    const [nextCards, nextInbox, nextAbsorb, nextPending, nextLoops] = await Promise.all([
+    const [nextCards, nextInbox, nextAbsorb, nextPending] = await Promise.all([
       api.listCards(),
       api.inboxList(),
       api.absorbStatus(),
       api.librarianPending(),
-      api.openLoops(),
     ])
     setCards(nextCards)
     setInbox(nextInbox)
     setAbsorb(nextAbsorb)
     setPendingWork(nextPending)
-    setLoops(nextLoops)
     // Boot/resync snapshot of the in-flight pipeline: the onboarding first
     // capture starts filing before this window exists, so the live events
     // alone would leave the state stuck at false.
@@ -338,10 +328,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...(event.report.haltReason ? { haltReason: event.report.haltReason } : {}),
         })
         setSweepJob(null)
-        if (event.report.briefWritten && !document.hidden && localStorage.getItem(TODAY_SEEN_KEY) === null) {
-          localStorage.setItem(TODAY_SEEN_KEY, '1')
-          setTodayOpen(true)
-        }
       }
       if (event.type === 'sweep:error') {
         setSweepStatus({ running: false, kind: 'error', message: event.message })
@@ -479,7 +465,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cards,
       inbox,
       engines,
-      loops,
       refresh,
       sheetNoteId,
       openNote: (id: string) => setSheetNoteId(id),
@@ -490,12 +475,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       inboxOpen,
       openInbox: () => setInboxOpen(true),
       closeInbox: () => setInboxOpen(false),
-      todayOpen,
-      openToday: () => {
-        localStorage.setItem(TODAY_SEEN_KEY, '1')
-        setTodayOpen(true)
-      },
-      closeToday: () => setTodayOpen(false),
       selectedCardId,
       selectCard: setSelectedCardId,
       sweepStatus,
@@ -513,7 +492,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, loops, refresh, sheetNoteId, reviewOpen, inboxOpen, todayOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

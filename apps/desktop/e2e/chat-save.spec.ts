@@ -4,10 +4,10 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// The product promise, end to end: "remember this" said in chat → the answer
-// carries a ✓ Remembered receipt (never the <engram:capture> plumbing) → the
-// capture lands as a file in workspace/inbox/ → the librarian pipeline absorbs
-// it into workspace/notes/.
+// The product promise, end to end: "remember this" said to a comet → the
+// answer carries a ✓ Remembered receipt (never the <engram:capture> plumbing)
+// → the capture lands as a file in workspace/inbox/ → the librarian pipeline
+// absorbs it into workspace/notes/.
 //
 // Chat prompts carry no "JOB: <kind>" marker, so MockEngine replays default.md.
 // The shared fixtures/mock-responses/default.md has no capture block (chat.spec
@@ -63,19 +63,23 @@ test.afterAll(async () => {
   await app?.close()
 })
 
-test('remember in chat → ✓ Remembered receipt, plumbing never shown', async () => {
+test('remember said to a comet → ✓ Remembered receipt, plumbing never shown', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
-  // On a fresh vault the shell shows the empty-cosmos screen and the global
-  // keyboard listener can attach a beat after the shell testid renders — a
-  // single early Ctrl+L is silently lost. Re-press until the panel opens.
+  // The keyboard listener attaches on mount — a single early Ctrl+L can be
+  // silently lost on a fresh vault. Re-press until the comets tab is up.
   await expect(async () => {
     await page.keyboard.press('ControlOrMeta+l')
-    await expect(page.getByTestId('chat-panel')).toBeVisible({ timeout: 2_000 })
+    await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByTestId('chat-input').fill('Please keep this decision for me')
-  await page.getByTestId('chat-send').click()
+  await page.getByTestId('bots-new').click()
+  await page.getByTestId('bots-name').fill('Keeper')
+  await page.getByTestId('bots-purpose').fill('Keeps whatever the user asks it to keep.')
+  await page.getByTestId('bots-create-submit').click()
+  const composer = page.locator('.bots-write textarea')
+  await composer.fill('Please keep this decision for me')
+  await composer.press('Enter')
 
-  const answer = page.locator('.chat-message.assistant').last()
+  const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
   // The receipt is appended by main in chat:done AFTER writeCapture succeeded —
   // seeing it proves the success path of the receipt logic (ipc.ts), not just
   // the canned prose.

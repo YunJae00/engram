@@ -1,4 +1,5 @@
-import { ArrowUp, Ghost, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, Plus, Square, Trash2 } from 'lucide-react'
+import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState } from 'react'
 import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -183,7 +184,7 @@ export function BotsView() {
                 data-testid={`bot-${bot.id}`}
                 onClick={() => setSelectedId(bot.id)}
               >
-                <Ghost size={14} strokeWidth={1.8} aria-hidden />
+                <Comet size={14} />
                 <span className="bots-row-name">{bot.name}</span>
               </button>
             </li>
@@ -193,12 +194,14 @@ export function BotsView() {
           <div className="bots-create" data-testid="bots-create">
             <input
               autoFocus
+              data-testid="bots-name"
               placeholder={t('bots.nameLabel')}
               value={draftName}
               maxLength={60}
               onChange={(e) => setDraftName(e.target.value)}
             />
             <textarea
+              data-testid="bots-purpose"
               placeholder={t('bots.purposeLabel')}
               value={draftPurpose}
               maxLength={500}
@@ -208,6 +211,7 @@ export function BotsView() {
             <div className="bots-create-actions">
               <button
                 className="primary"
+                data-testid="bots-create-submit"
                 disabled={!draftName.trim() || !draftPurpose.trim()}
                 onClick={() => void create(draftName, draftPurpose)}
               >
@@ -276,7 +280,7 @@ export function BotsView() {
             </div>
             {errand.running && (
               <div className="bots-errand-strip" data-testid="bots-errand-strip">
-                <Ghost size={13} strokeWidth={1.8} aria-hidden className="bots-errand-pulse" />
+                <span className="bots-errand-pulse"><Comet size={13} /></span>
                 <span className="bots-errand-text">
                   {t('bots.errandRunning', {
                     phase: errand.phase && PHASE_LABEL[errand.phase] ? t(PHASE_LABEL[errand.phase]!) : '…',
@@ -308,7 +312,7 @@ export function BotsView() {
                 disabled={!text.trim() || errand.running}
                 onClick={sendAsErrand}
               >
-                <Ghost size={13} strokeWidth={1.8} aria-hidden /> {t('bots.errandBtn')}
+                <Comet size={13} /> {t('bots.errandBtn')}
               </button>
               {busy ? (
                 <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>
@@ -323,7 +327,7 @@ export function BotsView() {
           </>
         ) : (
           <div className="bots-empty">
-            <Ghost size={30} strokeWidth={1.5} aria-hidden />
+            <Comet size={30} />
             <div className="bots-empty-title">{t('bots.emptyTitle')}</div>
             <div className="bots-empty-hint">{t('bots.emptyHint')}</div>
           </div>

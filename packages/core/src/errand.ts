@@ -259,6 +259,7 @@ async function call(deps: ErrandDeps, prompt: string, schema: object | undefined
     prompt,
     workdir: deps.workdir,
     disallowTools: true,
+    modelHint: 'fast',
     timeoutMs: CALL_TIMEOUT_MS,
     ...(schema ? { jsonSchema: schema } : {}),
     ...(signal ? { signal } : {}),

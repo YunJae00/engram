@@ -14,29 +14,29 @@ describe('planModelLoad', () => {
   })
 
   it('a busy machine offloads partially, behind a larger reserve', () => {
-    const plan = planModelLoad(E4B, 9 * GB)
+    const plan = planModelLoad(E4B, 10 * GB)
     expect(plan.mode).toBe('lean')
     expect(plan.gpuLayers).toBe('auto')
     expect(plan.vramPadding).toBeGreaterThan(planModelLoad(E4B, 20 * GB).vramPadding)
   })
 
   it('a tight machine keeps every weight evictable — zero pinned memory', () => {
-    const plan = planModelLoad(E4B, 5 * GB)
+    const plan = planModelLoad(E4B, 6.5 * GB)
     expect(plan.mode).toBe('cpu')
     expect(plan.gpuLayers).toBe(0)
     expect(plan.vramPadding).toBe(0)
   })
 
   it('an exhausted machine is refused, with the number it would need', () => {
-    const plan = planModelLoad(E4B, 2 * GB)
+    const plan = planModelLoad(E4B, 3 * GB)
     expect(plan.mode).toBe('none')
-    expect(plan.reason).toMatch(/needs ~4\.0GB/)
+    expect(plan.reason).toMatch(/needs ~6\.0GB/)
   })
 
-  it('a 17GB model on a 32GB machine lands in cpu mode, never pinned', () => {
-    // Typical working free memory on the measured machine.
-    const plan = planModelLoad(HUGE, 12 * GB)
-    expect(plan.mode).toBe('cpu')
+  it('a 17GB model on a 32GB machine never pins — cpu at best, refused when tight', () => {
+    expect(planModelLoad(HUGE, 14 * GB).mode).toBe('cpu')
+    // Typical working free memory on the measured machine: refused outright.
+    expect(planModelLoad(HUGE, 12 * GB).mode).toBe('none')
   })
 
   it('tiers are monotonic in free memory — more room never downgrades', () => {

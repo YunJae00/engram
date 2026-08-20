@@ -47,3 +47,19 @@ export function Logomark({ size = 20 }: { size?: number }) {
     </svg>
   )
 }
+
+// A comet with a face: the helpers that sweep between the memory-stars and
+// come back carrying things. Drawn on the same 1.8-stroke grid as the Lucide
+// set around it; the two dot-eyes are what make it a colleague, not a rock.
+export function Comet({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="15.4" cy="8.6" r="3.8" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="14.2" cy="8.3" r="0.95" fill="currentColor" />
+      <circle cx="17" cy="8.3" r="0.95" fill="currentColor" />
+      <path d="M11.6 11.9 Q8.6 15.4 4.6 17.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      <path d="M13.4 13.9 Q11.6 17 8.9 19.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.75" />
+      <path d="M10.8 9.4 Q7.4 10.4 4.9 12.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.55" />
+    </svg>
+  )
+}

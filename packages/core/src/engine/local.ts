@@ -8,7 +8,15 @@ export interface LocalTransport {
   // to that schema when the runtime supports grammars.
   complete(
     prompt: string,
-    opts: { maxTokens?: number; signal?: AbortSignal; onToken?: (text: string) => void; jsonSchema?: object },
+    opts: {
+      maxTokens?: number
+      signal?: AbortSignal
+      onToken?: (text: string) => void
+      jsonSchema?: object
+      // 'fast' lets the host answer with a smaller downloaded brain when the
+      // machine cannot spare the flagship — errands ride this.
+      modelHint?: 'fast'
+    },
   ): Promise<string>
   // Cheap presence check for detection: a model is chosen, on disk, and the
   // runtime can be had. MUST NOT load gigabytes — detection polls this on
@@ -58,6 +66,7 @@ export class LocalAdapter implements Engine {
       .complete(job.prompt, {
         signal: controller.signal,
         ...(job.jsonSchema ? { jsonSchema: job.jsonSchema } : {}),
+        ...(job.modelHint === 'fast' ? { modelHint: 'fast' as const } : {}),
         onToken: (text) => {
           if (text) queue.push(text)
           ring()

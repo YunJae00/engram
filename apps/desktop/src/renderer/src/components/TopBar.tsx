@@ -1,4 +1,5 @@
-import { Ghost, Globe, List, Loader2, Network, Orbit } from 'lucide-react'
+import { Globe, List, Loader2, Network, Orbit } from 'lucide-react'
+import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import type { SweepStatus } from '../state.js'
@@ -40,9 +41,8 @@ function sweepLabel(t: Translate, status: SweepStatus): string {
 
 // The one chrome strip: canvas tabs on the left, actions + quiet status on
 // the right. Everything else lives on the canvas or in overlays.
-export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
+export function TopBar({ onOpenSettings, onOpenPalette }: {
   onOpenSettings(): void
-  onToggleChat(): void
   onOpenPalette(): void
 }) {
   const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, errand, errandWall, answerErrandWall, openInbox, showToast, vaultReady, t } = useApp()
@@ -166,7 +166,7 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
           data-testid="activity-bots"
           onClick={() => setActivity('bots')}
         >
-          <Ghost size={14} strokeWidth={1.8} aria-hidden /> {t('topbar.tabBots')}
+          <Comet size={14} /> {t('topbar.tabBots')}
         </button>
         <button
           className={`canvas-tab${activity === 'sky' ? ' active' : ''}`}
@@ -265,9 +265,6 @@ export function TopBar({ onOpenSettings, onToggleChat, onOpenPalette }: {
         {unswept > 0 && !sweepStatus.running && <span className="badge">{unswept > 99 ? '99+' : unswept}</span>}
       </button>
 
-      <button className="topbar-action" data-testid="chat-toggle" onClick={onToggleChat} title={t('topbar.chatTitle')}>
-        <Icon name="chat" size={15} />
-      </button>
       <button className="topbar-action" onClick={onOpenPalette} title={t('topbar.searchTitle')}>
         <Icon name="search" size={15} />
       </button>

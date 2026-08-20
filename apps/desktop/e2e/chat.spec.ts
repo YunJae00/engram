@@ -1,11 +1,12 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { createNote, initVault, type VaultPaths } from 'core'
-import { mkdir, mkdtemp, readdir } from 'node:fs/promises'
+import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// M6 acceptance: MockEngine streaming — ask → tokens render progressively →
-// 📌 promotes the answer → a note is created by the capture pipeline.
+// The comets tab is the app's conversation surface now: create a comet, ask
+// it a question, watch the MockEngine's canned answer stream in, and confirm
+// the conversation survives leaving the tab (transcripts persist in main).
 
 test.describe.configure({ mode: 'serial' })
 
@@ -19,7 +20,7 @@ let paths: VaultPaths
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
-  const root = await mkdtemp(join(REPO_TMP, 'e2e-chat-'))
+  const root = await mkdtemp(join(REPO_TMP, 'e2e-comet-'))
   paths = await initVault(root, { git: false })
   await createNote(paths, { id: 'n-deploy-0001', body: '# Deploy procedure\n\nFully automated to production.' })
 
@@ -43,30 +44,37 @@ test.afterAll(async () => {
   await app?.close()
 })
 
-test('ask → streamed tokens render → answer arrives', async () => {
-  // wait for React to mount (keyboard listeners attach on mount)
+test('create a comet, ask it, and watch the answer stream in', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
-  await page.keyboard.press('ControlOrMeta+l')
-  await expect(page.getByTestId('chat-panel')).toBeVisible()
-  await page.getByTestId('chat-input').fill('What is our deploy procedure?')
-  await page.getByTestId('chat-send').click()
+  // Ctrl+L is the door to the comets tab; the listener attaches on mount, so
+  // an early press can be lost — re-press until the view is up.
+  await expect(async () => {
+    await page.keyboard.press('ControlOrMeta+l')
+    await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
 
-  const answer = page.locator('.chat-message.assistant').last()
-  // Wait for the END of the canned answer, not its start: the small-vault chat
-  // path streams the first token immediately, so a 'Mock answer' match can win
-  // a race with token #1 still alone in the bubble. Only after the tail text
-  // has rendered is the token count meaningful.
+  await page.getByTestId('bots-new').click()
+  await page.getByTestId('bots-name').fill('Deploy keeper')
+  await page.getByTestId('bots-purpose').fill('Answers questions about how we deploy.')
+  await page.getByTestId('bots-create-submit').click()
+
+  const composer = page.locator('.bots-write textarea')
+  await expect(composer).toBeVisible()
+  await composer.fill('What is our deploy procedure?')
+  await composer.press('Enter')
+
+  const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
+  // Wait for the END of the canned answer, not its start — only then has the
+  // stream fully rendered.
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 30_000 })
-  // streaming: the bubble accumulated multiple token events
-  const tokens = Number(await answer.getAttribute('data-tokens'))
-  expect(tokens).toBeGreaterThanOrEqual(2)
 })
 
-test('📌 record promotes the answer into a note via the pipeline', async () => {
-  const notesBefore = (await readdir(paths.notes)).length
-  await page.locator('.chat-message.assistant .pin-button').last().click()
-  await expect
-    .poll(async () => (await readdir(paths.notes)).length, { timeout: 30_000 })
-    .toBeGreaterThan(notesBefore)
+test('the conversation survives leaving and re-entering the tab', async () => {
+  await page.getByTestId('activity-sky').click()
+  await expect(page.getByTestId('bots-view')).toHaveCount(0)
+  await page.getByTestId('activity-bots').click()
+  const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
+  // The transcript is persisted by main and reloaded on mount, not held in
+  // renderer state — this is what makes a comet a colleague, not a popup.
+  await expect(answer).toContainText('Record this if you want it kept', { timeout: 15_000 })
 })
-

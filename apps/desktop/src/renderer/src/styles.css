@@ -361,15 +361,6 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
 }
 .topbar-action.zap:hover { filter: brightness(1.04); }
 .topbar-action .badge { position: absolute; top: -2px; right: -2px; }
-
-/* Today: the morning surface's front door. It was a grey glyph lost in the
-   icon row and nobody opened it, so it now owns the top-right corner the way
-   the help button owns the bottom-right — labelled, lifted off the strip, and
-   carrying the number of loops that want an answer today. Last child of
-   .topbar, whose env(titlebar-area-width) clamp + 14px right padding keep it
-   off the native window-control overlay on Windows. */
-.today-dock { position: absolute; right: 16px; top: 16px; z-index: 29; }
-
 .connect-banner {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
   z-index: 25; display: flex; align-items: center; gap: 8px;
@@ -392,41 +383,7 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
    connect/health banner already holds the top slot. */
 .update-banner { color: var(--fg); }
 .update-banner svg { color: var(--gild, var(--accent)); }
-.update-banner.stacked { top: 62px; }
-.today-button {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: 36px; padding: 0 14px; border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--input-border); box-shadow: var(--shadow-float);
-  color: var(--fg-strong); font-size: 12.5px; font-weight: 600;
-  transition: color 120ms ease, transform 120ms ease, border-color 120ms ease;
-}
-.today-button:hover { transform: translateY(-1px); }
-.today-button svg { color: var(--fg-dim); flex-shrink: 0; }
-.today-button.due { border-color: var(--clay); }
-.today-button.due svg { color: var(--clay); }
-.today-count {
-  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--clay); color: #fff; font-size: 10.5px; font-weight: 700;
-}
-
-/* ── Remember launcher (the composer at rest) ────────────────── */
-.remember-dock { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 29; }
-.remember-button {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: 36px; padding: 0 16px; border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--input-border); box-shadow: var(--shadow-float);
-  color: var(--fg-strong); font-size: 12.5px; font-weight: 600;
-  transition: color 120ms ease, transform 120ms ease, border-color 120ms ease;
-}
-.remember-button:hover { transform: translateY(-1px); border-color: var(--accent-line); }
-.remember-button svg { color: var(--fg-dim); flex-shrink: 0; }
-
-/* ── Sheets (note / review overlays) ─────────────────────────── */
+.update-banner.stacked { top: 62px; }/* ── Sheets (note / review overlays) ─────────────────────────── */
 .sheet-overlay {
   position: fixed; inset: 0; z-index: 120;
   background: rgba(28, 29, 38, 0.45);
@@ -473,43 +430,26 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
 /* Today sheet — right-side slide-over: the note sheet's scrim + Escape/✕, but
    the panel is docked to the right (never centered) and slides in from the edge.
    The weekly digest sheet is the same slide-over, so it shares the geometry. */
-.today-refresh {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 26px; padding: 0 10px; border-radius: 999px;
-  border: 1px solid var(--input-border); background: var(--widget-bg);
-  color: var(--fg-dim); font-size: 11.5px; font-weight: 600;
-  transition: color 120ms ease, border-color 120ms ease;
-}
-.today-refresh:hover { color: var(--fg-strong); border-color: var(--fg-faint); }
-.today-refresh:disabled { cursor: default; color: var(--fg-faint); }
 /* Reuses engram-spin so the existing prefers-reduced-motion rule covers it —
    a private keyframe here would have spun for users who asked it not to. */
-.today-refresh.busy svg { animation: engram-spin 700ms linear infinite; }
-@media (prefers-reduced-motion: reduce) { .today-refresh.busy svg { animation: none; } }
 
-.today-overlay, .digest-overlay { align-items: stretch; justify-content: flex-end; }
-.today-sheet, .digest-sheet {
+.digest-sheet {
   width: min(460px, calc(100vw - 48px)); height: 100vh;
   background: var(--editor-bg); border-left: 1px solid var(--border);
   box-shadow: var(--shadow-sheet);
   display: flex; flex-direction: column;
   animation: slide-left 180ms ease-out;
 }
-.today-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.today-title, .digest-title { font-family: var(--font); font-size: 18px; font-weight: 600; color: var(--fg-strong); }
-.today-date { font-family: var(--font); font-size: 11px; color: var(--fg-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.today-sheet .sheet-header,
 .digest-sheet .sheet-header {
   padding-right: calc(16px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px));
 }
-
-.today-body, .digest-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 22px 24px; }
+.digest-overlay { align-items: stretch; justify-content: flex-end; }.digest-title { font-family: var(--font); font-size: 18px; font-weight: 600; color: var(--fg-strong); }
+.digest-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 22px 24px; }
 /* Open loops sit above the brief and are separated by a rule, so the live
    half of the sheet never blurs into the markdown the librarian wrote. */
 /* Placeholders, not dimmed text: 0.45 opacity over real content read as a
    broken render rather than a wait. Grey bars are unambiguous — nothing is
    pretending to be readable. */
-.today-skeleton { display: flex; flex-direction: column; gap: 9px; padding-bottom: 8px; }
 .skeleton-bar {
   height: 11px; border-radius: 5px; background: var(--hover-bg);
   animation: skeleton-pulse 1.4s ease-in-out infinite;
@@ -521,76 +461,9 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
    the OS to stop moving things. */
 @media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
 
-.today-refreshing {
-  display: flex; align-items: center; gap: 7px;
-  padding: 10px 0 2px; font-size: 12px; color: var(--fg-dim);
-}
-.today-refreshing svg { color: var(--fg-faint); }
 
-/* The measured day: hours per app + the titles actually held, above the brief. */
-.today-desk { padding: 14px 0 16px; border-bottom: 1px solid var(--border-soft); }
-.today-desk-total {
-  font-family: var(--font); font-size: 10px; font-weight: 600;
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-faint);
-}
-.today-desk-row {
-  display: flex; align-items: baseline; gap: 10px; margin-top: 8px;
-  font-size: 12.5px; line-height: 1.5;
-}
-.today-desk-app { flex: none; min-width: 88px; font-weight: 600; color: var(--fg-dim); }
-.today-desk-hours { flex: none; font-variant-numeric: tabular-nums; color: var(--fg-faint); }
-.today-desk-titles {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--fg-faint);
-}
-
-.today-loops { padding: 16px 0 18px; border-bottom: 1px solid var(--border-soft); }
-.today-section-head {
-  font-family: var(--font); font-size: 10px; font-weight: 600;
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-faint);
-}
-.today-quiet, .digest-empty { margin-top: 9px; font-size: 12.5px; line-height: 1.6; color: var(--fg-faint); }
-.today-no-brief, .digest-empty { margin-top: 18px; }
-.today-loop-group { margin-top: 14px; }
-.today-loop-group-head {
-  display: flex; align-items: center; gap: 7px; margin: 0 0 3px 10px;
-  font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--fg-dim);
-}
-/* Urgency reads as colour before it reads as words — clay for late, gild for
-   today, teal for the week ahead, faint for everything not yet pressing. */
-.today-loop-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
-.today-loop-group[data-urgency='overdue'] .today-loop-dot { background: var(--clay); }
-.today-loop-group[data-urgency='today'] .today-loop-dot { background: var(--gild); }
-.today-loop-group[data-urgency='this-week'] .today-loop-dot { background: var(--teal); }
-.today-loop-count { font-weight: 500; color: var(--fg-faint); }
-.today-loop-row {
-  display: flex; align-items: center; width: 100%;
-  border-radius: var(--radius-s); transition: background 100ms ease;
-}
-.today-loop-row:hover { background: var(--hover-bg); }
-.today-loop-open {
-  display: flex; align-items: baseline; gap: 12px; flex: 1; min-width: 0;
-  padding: 7px 4px 7px 10px; text-align: left; background: none; border: 0;
-}
-/* Closing a loop is destructive-ish and permanent-looking, so it stays out of
-   the way until the row is hovered — the list reads as titles, not as a column
-   of checkboxes demanding to be ticked. Keyboard focus reveals it too. */
-.today-loop-done {
-  flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 26px;
-  margin-right: 6px; border-radius: var(--radius-s); border: 0; background: none;
-  color: var(--fg-faint); opacity: 0; transition: opacity 100ms ease, color 100ms ease;
-}
-.today-loop-row:hover .today-loop-done, .today-loop-done:focus-visible { opacity: 1; }
-.today-loop-done:hover { color: var(--teal); background: var(--hover-bg); }
-.today-loop-title {
-  flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.4; color: var(--fg);
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
-}
-.today-loop-due { flex-shrink: 0; font-family: var(--font); font-size: 11px; color: var(--fg-faint); white-space: nowrap; }
-.today-loop-group[data-urgency='overdue'] .today-loop-due { color: var(--clay); }
-
-/* chat as a right slide-over inside the canvas */
-.canvas .chat-panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 30; box-shadow: -12px 0 32px -12px rgba(25, 28, 40, 0.35); animation: slide-left 160ms ease-out; }
+.digest-empty { margin-top: 9px; font-size: 12.5px; line-height: 1.6; color: var(--fg-faint); }
+.digest-empty { margin-top: 18px; }
 @keyframes slide-left { from { transform: translateX(24px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
 
 .badge {
@@ -722,10 +595,7 @@ body.bubble-host { background: transparent; }
   padding: 0 7px; margin: 0 1px; font-size: 12px; opacity: 0.85;
 }
 .bubble-msg-body a[href^="note://"]:hover { opacity: 1; background: var(--hover-bg); }
-.bubble-send { flex: none; border: 0; cursor: pointer; }
-/* The panel's input — the bubble's, at panel width. */
-.chat-write { display: flex; gap: 7px; align-items: center; padding: 9px; border-top: 1px solid var(--border-soft); }
-/* Warming line above the composer while the local model loads. */
+.bubble-send { flex: none; border: 0; cursor: pointer; }/* Warming line above the composer while the local model loads. */
 .chat-warming {
   display: flex; align-items: center; gap: 7px; padding: 6px 12px;
   font-size: 12px; color: var(--fg-dim); border-top: 1px solid var(--border-soft);
@@ -736,10 +606,7 @@ body.bubble-host { background: transparent; }
   animation: chat-warming-spin 0.9s linear infinite;
 }
 @keyframes chat-warming-spin { to { transform: rotate(360deg); } }
-.chat-write input {
-  flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
-  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 13px;
-}
+
 /* The librarian's spoken morning — prose, not a list. */
 .nudge-spoken { display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.55; color: var(--fg-dim); }
 .nudge-spoken p { margin: 0; }
@@ -959,16 +826,6 @@ body.bubble-host { background: transparent; }
 }
 /* The resurfacing queue (Today sheet): fading-but-stored memories, one quiet
    list — a glance re-lights them. */
-.today-fading { padding: 16px 0 4px; border-top: 1px solid var(--border-soft); margin-top: 16px; }
-.today-fading-row {
-  display: flex; align-items: baseline; gap: 10px; width: 100%;
-  margin-top: 8px; padding: 0; border: 0; background: none; cursor: pointer;
-  font-family: var(--font); font-size: 12.5px; line-height: 1.5; text-align: left;
-  color: var(--fg-dim); opacity: 0.75;
-}
-.today-fading-row:hover, .today-fading-row:focus-visible { opacity: 1; color: var(--fg); }
-.today-fading-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.today-fading-days { flex: none; font-variant-numeric: tabular-nums; color: var(--fg-faint); font-size: 11px; }
 
 /* Dim memories (activation below the luminance floor): readable, visibly
    cooler, never hidden — stale is not gone. */
@@ -1307,134 +1164,6 @@ body.bubble-host { background: transparent; }
 }
 .tour-next:hover { filter: brightness(1.15); }
 
-/* ── Chat panel ───────────────────────────────────────────────── */
-.chat-panel {
-  width: 340px; flex-shrink: 0; position: relative;
-  border-left: 1px solid var(--border); background: var(--sidebar-bg);
-  display: flex; flex-direction: column;
-}
-.chat-resize {
-  position: absolute; left: -3px; top: 0; bottom: 0; width: 7px;
-  cursor: col-resize; z-index: 5;
-}
-.chat-resize:hover { background: color-mix(in srgb, var(--fg-faint) 25%, transparent); }
-/* Pre-first-token bubble: dots + a running clock, so a slow engine start
-   reads as thinking rather than a hang. */
-.chat-pending { display: inline-flex; align-items: baseline; gap: 7px; color: var(--fg-dim); }
-/* This is the "is it hung?" moment — the seconds before the first token, where
-   a cold engine start can run 3-4s. A STATIC ellipsis beside a ticking clock
-   reads as frozen, which is the opposite of what the markup was for. Motion is
-   the whole point, so it breathes; reduced-motion users keep the clock. */
-.chat-pending-dots { animation: skeleton-pulse 1.4s ease-in-out infinite; letter-spacing: 0.1em; }
-@media (prefers-reduced-motion: reduce) { .chat-pending-dots { animation: none; } }
-.chat-pending-clock { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); }
-.chat-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.chat-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--fg-strong); }
-.chat-close {
-  display: flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: var(--radius-s);
-  color: var(--fg-dim);
-}
-.chat-close:hover { background: var(--hover-bg); color: var(--fg); }
-
-.chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.chat-empty {
-  margin: auto; max-width: 240px; padding: 20px;
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  text-align: center; color: var(--fg-dim); font-size: 12.5px; line-height: 1.6;
-}
-.chat-empty svg { color: var(--fg-faint); }
-.chat-message { display: flex; flex-direction: column; max-width: 100%; }
-.chat-message.user { align-items: flex-end; }
-.chat-message.assistant { align-items: flex-start; }
-.chat-bubble {
-  padding: 7px 13px; border-radius: 12px; font-size: 13px; line-height: 1.55;
-  max-width: 92%; overflow-wrap: break-word;
-}
-.chat-message.user .chat-bubble { background: var(--selected-bg); color: var(--selected-fg); border-bottom-right-radius: 4px; }
-.chat-message.assistant .chat-bubble { background: var(--editor-bg); box-shadow: 0 0 0 1px var(--border-soft); border-bottom-left-radius: 4px; }
-.chat-bubble p { margin: 4px 0; }
-.chat-bubble code { font-family: var(--mono); font-size: 0.9em; }
-/* Lists: the global reset zeroes ul padding, so default outside markers were
-   painting past the bubble edge (field report). Keep them inside. */
-.chat-bubble ul, .chat-bubble ol { margin: 4px 0; padding-left: 18px; }
-.chat-bubble li { margin: 3px 0; }
-.chat-bubble li::marker { color: var(--fg-faint); }
-/* Nothing the model emits may push the panel sideways — wrap code, scroll a
-   table inside its own box, hold images to the bubble width. */
-.chat-bubble pre { margin: 4px 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-.chat-bubble img { max-width: 100%; }
-.chat-bubble table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 12px; }
-.chat-bubble :is(th, td) { border: 1px solid var(--border-soft); padding: 3px 7px; text-align: left; }
-/* The librarian's citations (note:// links) read as quiet chips, not raw
-   underlined titles mid-sentence. Truncated; click opens the note. */
-.chat-bubble a[href^='note://'] {
-  display: inline-block; max-width: 200px; vertical-align: -3px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 0 8px; border-radius: 999px; line-height: 17px; font-size: 10.5px;
-  font-family: var(--font);
-  background: var(--hover-bg); color: var(--fg-dim);
-  box-shadow: 0 0 0 1px var(--border-soft);
-  text-decoration: none; cursor: pointer;
-}
-.chat-bubble a[href^='note://']:hover { color: var(--fg); background: var(--accent-soft); }
-.pin-button { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-dim); margin-top: 2px; padding: 1px 9px; border-radius: 999px; }
-.pin-button:hover { color: var(--fg); background: var(--hover-bg); }
-.chat-bubble.chat-error { display: flex; flex-direction: column; gap: 6px; }
-.chat-error-row { display: flex; align-items: flex-start; gap: 6px; }
-.chat-error-icon { color: var(--gild); flex-shrink: 0; margin-top: 2px; }
-.chat-reconnect {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; color: var(--fg-dim); padding: 2px 9px; border-radius: 999px;
-  box-shadow: 0 0 0 1px var(--border-soft);
-}
-.chat-reconnect:hover { color: var(--fg); background: var(--hover-bg); }
-.chat-connect-cta {
-  display: inline-flex; align-items: center; gap: 5px; margin-top: 2px;
-  font-size: 12px; color: var(--selected-fg); background: var(--selected-bg);
-  padding: 6px 13px; border-radius: 999px;
-}
-.chat-connect-cta:hover { filter: brightness(1.06); }
-
-/* A remembered item's receipt. It is not a turn in the conversation, so it
-   reads as a quiet full-width slip rather than a bubble — before this, a
-   thought typed into the panel answered with a toast and left no trace, which
-   in a surface full of answers read as "nothing happened". */
-.chat-kept {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 3px 6px;
-  padding: 6px 10px; border-radius: var(--radius-s);
-  background: var(--accent-soft); box-shadow: 0 0 0 1px var(--border-soft);
-}
-.chat-kept svg { color: var(--fg-faint); flex-shrink: 0; }
-.chat-kept.locked svg { color: var(--gild); }
-.chat-kept-label { flex: 1; min-width: 0; font-size: 11px; color: var(--fg-faint); }
-.chat-kept-undo {
-  flex-shrink: 0; padding: 1px 8px; border-radius: 999px;
-  border: 1px solid var(--input-border); background: transparent;
-  font-size: 10.5px; font-weight: 600; color: var(--fg-dim);
-}
-.chat-kept-undo:hover { color: var(--fg-strong); border-color: var(--fg-faint); }
-.chat-kept-undone { flex-shrink: 0; font-size: 10.5px; color: var(--fg-faint); }
-.chat-kept-text { flex: 1 1 100%; font-size: 12.5px; line-height: 1.5; color: var(--fg); }
-
-.chat-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
-.chat-chip {
-  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
-  padding: 3px 5px 3px 8px; border-radius: 999px;
-  background: var(--hover-bg); color: var(--fg-dim); font-size: 11.5px;
-}
-.chat-chip svg { flex-shrink: 0; color: var(--fg-faint); }
-.chat-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
-.chat-chip-x {
-  display: flex; align-items: center; justify-content: center;
-  padding: 1px; border-radius: 999px; color: var(--fg-faint);
-}
-.chat-chip-x:hover { color: var(--fg); background: var(--border); }
-
 /* Private mode caption + the echo strip: both used to float above the capture
    card and now sit directly above the composer they belong to. */
 .private-caption {
@@ -1706,6 +1435,24 @@ body.bubble-host { background: transparent; }
 /* Errand dialog: a multi-line goal box. Inherits the shared input/textarea
    chrome (background, border, focus ring); this only sizes it. */
 .errand-input { width: 100%; min-height: 84px; resize: vertical; font-size: 14px; padding: 9px 11px; }
+
+
+/* ── Capture dock: Remember, pinned to the cosmos's right edge ────────── */
+.capture-dock {
+  position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+  width: 250px; z-index: 4;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border-radius: 12px;
+  background: var(--card-top); border: 1px solid var(--border-soft);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.10);
+}
+.capture-dock-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--fg-dim); }
+.capture-dock textarea {
+  width: 100%; box-sizing: border-box; resize: none;
+  padding: 8px 10px; border-radius: 9px; font-size: 13px; line-height: 1.5; font-family: inherit;
+  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
+}
+.capture-dock button { align-self: flex-end; }
 
 /* ── Bots: the first tab — colleagues over the same brain ──────────── */
 .bots-view { flex: 1; min-height: 0; display: flex; }

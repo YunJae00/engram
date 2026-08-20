@@ -4,10 +4,8 @@ import { api } from './api.js'
 import { AbsorbWidget } from './components/AbsorbWidget.js'
 import { DigestSheet } from './components/DigestSheet.js'
 import { HelpPanel } from './components/HelpPanel.js'
-import { RememberDock } from './components/RememberDock.js'
-import { TodayDock } from './components/TodayDock.js'
+import { CaptureDock } from './components/CaptureDock.js'
 import { Palette, type PaletteAction, type PaletteMode } from './components/Palette.js'
-import { TodaySheet } from './components/TodaySheet.js'
 import { TopBar } from './components/TopBar.js'
 import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
 import { ActionDialog } from './components/ActionDialog.js'
@@ -17,7 +15,6 @@ import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
 import { BrainView } from './views/BrainView.js'
 import { BubbleView } from './views/BubbleView.js'
-import { ChatPanel, type PanelIntent } from './views/ChatPanel.js'
 import { DiagnosticsView } from './views/DiagnosticsView.js'
 import { InboxOverlay } from './views/InboxOverlay.js'
 import { ListView } from './views/ListView.js'
@@ -29,7 +26,7 @@ import { SettingsView } from './views/SettingsView.js'
 import { SkyView } from './views/SkyView.js'
 
 function Shell() {
-  const { activity, engines, pendingWork, toast, showToast, refresh, vaultReady, vaultError, t, enginesDetected, openNote } = useApp()
+  const { activity, setActivity, engines, pendingWork, toast, showToast, refresh, vaultReady, vaultError, t, enginesDetected, openNote } = useApp()
   const [palette, setPalette] = useState<PaletteMode>(null)
   const [dropping, setDropping] = useState(false)
   // Drag tracking: a dragenter/dragleave depth counter (enter and leave fire per
@@ -38,11 +35,9 @@ function Shell() {
   // outside the window can never leave the scrim stuck over the app.
   const dragDepth = useRef(0)
   const lastOverRef = useRef(0)
-  const [chatOpen, setChatOpen] = useState(false)
   // What the panel should open with — a question to send outright, or a
   // scaffold to write into. Held here because the panel is unmounted while it
   // rests: a window event fired at a closed panel has nobody listening.
-  const [intent, setIntent] = useState<PanelIntent | null>(null)
   const [action, setAction] = useState<PaletteAction | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [diagOpen, setDiagOpen] = useState(false)
@@ -126,7 +121,7 @@ function Shell() {
         setPalette('search')
       } else if (key === 'l') {
         e.preventDefault()
-        setChatOpen((v) => !v)
+        setActivity('bots')
       }
     }
     window.addEventListener('keydown', handler)
@@ -136,7 +131,7 @@ function Shell() {
   // Cross-component intents from the help panel (and future affordances) arrive
   // as window events so leaf components can drive the shell without prop drilling.
   useEffect(() => {
-    const toggleChat = () => setChatOpen((v) => !v)
+    const toggleChat = () => setActivity('bots')
     const openPalette = () => setPalette('search')
     const openDiag = () => setDiagOpen(true)
     const openImport = () => setAction('import')
@@ -145,9 +140,10 @@ function Shell() {
     const openErrand = () => setErrandOpen(true)
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
-    const focusCapture = (event: Event) => {
-      setIntent({ text: (event as CustomEvent<{ seed?: string }>).detail?.seed ?? '', ask: false })
-      setChatOpen(true)
+    const focusCapture = () => {
+      // The dock itself reads the seed off this same event; the shell only
+      // makes sure the cosmos (where the dock lives) is on screen.
+      setActivity('sky')
     }
     const focusSky = (event: Event) => {
       const ids = (event as CustomEvent<{ ids?: string[] }>).detail?.ids
@@ -262,7 +258,6 @@ function Shell() {
     >
       <TopBar
         onOpenSettings={() => setSettingsOpen(true)}
-        onToggleChat={() => setChatOpen((v) => !v)}
         onOpenPalette={() => setPalette('search')}
       />
       <div className="canvas">
@@ -335,16 +330,13 @@ function Shell() {
             </button>
           </div>
         )}
-        {chatOpen && <ChatPanel intent={intent} onIntentConsumed={() => setIntent(null)} onClose={() => setChatOpen(false)} />}
         {/* The launcher IS the panel at rest — never both on screen at once. */}
-        {activity !== 'bots' && !chatOpen && <RememberDock onOpen={() => setChatOpen(true)} />}
-        {activity !== 'bots' && <TodayDock />}
+        {activity === 'sky' && <CaptureDock />}
         {activity !== 'bots' && <HelpPanel />}
       </div>
       <AbsorbWidget />
 
       <NoteSheet />
-      <TodaySheet />
       {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
       {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
       <ReviewOverlay />

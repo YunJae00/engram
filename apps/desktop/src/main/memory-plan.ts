@@ -22,13 +22,13 @@ export interface LoadPlan {
 
 const GB = 1e9
 // Full offload only when the machine stays comfortable afterwards.
-const FULL_HEADROOM = 6 * GB
+const FULL_HEADROOM = 7 * GB
 // Partial offload: the model fits, the rest of the day does not — a larger
 // reserved padding makes llama.cpp keep more weights on the evictable side.
-const LEAN_HEADROOM = 3 * GB
+const LEAN_HEADROOM = 4.5 * GB
 // Even an mmap'd model needs real RAM for KV cache, compute buffers and page
 // cache to be usable at all.
-const CPU_FLOOR = 1.5 * GB
+const CPU_FLOOR = 3 * GB
 
 export function planModelLoad(modelBytes: number, freeBytes = os.freemem()): LoadPlan {
   const freeGB = (freeBytes / GB).toFixed(1)
@@ -36,16 +36,16 @@ export function planModelLoad(modelBytes: number, freeBytes = os.freemem()): Loa
     return { mode: 'gpu', gpuLayers: 'auto', vramPadding: 2.5 * GB, reason: `${freeGB}GB free — full offload` }
   if (freeBytes >= modelBytes + LEAN_HEADROOM)
     return { mode: 'lean', gpuLayers: 'auto', vramPadding: 5 * GB, reason: `${freeGB}GB free — partial offload` }
-  if (freeBytes >= modelBytes * 0.5 + CPU_FLOOR)
+  if (freeBytes >= modelBytes * 0.6 + CPU_FLOOR)
     return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, reason: `${freeGB}GB free — CPU only, weights stay evictable` }
   return {
     mode: 'none',
     gpuLayers: 0,
     vramPadding: 0,
-    reason: `only ${freeGB}GB free — needs ~${((modelBytes * 0.5 + CPU_FLOOR) / GB).toFixed(1)}GB`,
+    reason: `only ${freeGB}GB free — needs ~${((modelBytes * 0.6 + CPU_FLOOR) / GB).toFixed(1)}GB`,
   }
 }
 
 // While the model sits idle, the machine's needs keep changing. Below this
 // the resident model is what pushes the system into thrash, so it leaves.
-export const PRESSURE_FLOOR = 2.2 * GB
+export const PRESSURE_FLOOR = 4 * GB

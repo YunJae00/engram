@@ -92,9 +92,8 @@ test('boots into the minimal shell on a temp vault', async () => {
   await expect(page.getByTestId('sky-view')).toBeVisible() // the sky is home (Engram redesign)
   // The seeded memories render as stars.
   await expect(page.getByTestId('brain-graph')).toBeVisible()
-  // Capture rests as a small floating button; the composer lives behind it.
-  await expect(page.getByTestId('remember-button')).toBeVisible()
-  await expect(page.getByTestId('chat-input')).toHaveCount(0)
+  // Capture is a fixed dock on the cosmos's right edge — no panel behind it.
+  await expect(page.getByTestId('capture-dock')).toBeVisible()
 })
 
 test('no engine → connect banner shows and the Tidy badge counts unswept work', async () => {
@@ -126,30 +125,22 @@ test('help panel opens with quick actions and legend', async () => {
   await expect(panel).toBeVisible()
   await expect(panel).toContainText('How Engram works')
   await expect(panel).toContainText('Legend')
-  // the Remember quick action opens the merged panel focused for writing
+  // the Remember quick action focuses the capture dock on the cosmos
   await panel.getByRole('button', { name: 'Remember' }).click()
-  await expect(page.getByTestId('chat-input')).toBeFocused()
+  await expect(page.getByTestId('capture-input')).toBeFocused()
   await expect(page.getByTestId('help-panel')).toHaveCount(0)
-  // back to rest, so the canvas tests below get the whole canvas
-  await page.getByTestId('chat-close').click()
-  await expect(page.getByTestId('remember-button')).toBeVisible()
 })
 
 
-test('Today owns the top-right and opens the morning sheet', async () => {
-  // It is a labelled pill now, not a bare glyph among the other actions.
-  const button = page.getByTestId('today-button')
-  await expect(button).toBeVisible()
-  await expect(button).toContainText('Today')
-  await button.click()
-  await expect(page.getByTestId('today-sheet')).toBeVisible()
-  // The live open-loop section renders above the brief. None of the seeds
-  // carry open_loop, so this is the quiet "nothing is marked" line.
-  await expect(page.getByTestId('today-loops')).toContainText('Still open')
-  await expect(page.getByTestId('today-loop-row')).toHaveCount(0)
-  await expect(page.getByTestId('weekly-digest')).toHaveCount(0)
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('today-sheet')).toHaveCount(0)
+test('the capture dock files a thought straight from the cosmos', async () => {
+  await page.getByTestId('activity-sky').click()
+  const box = page.getByTestId('capture-input')
+  await expect(box).toBeVisible()
+  await box.fill('Decided today: the capture dock lives on the cosmos')
+  await page.getByTestId('capture-submit').click()
+  // A successful capture empties the box — the text is now in the inbox
+  // (no engine is connected here, so it waits there as pending work).
+  await expect(box).toHaveValue('')
 })
 
 test('the weekly digest reads on demand from the command palette', async () => {
@@ -164,16 +155,13 @@ test('the weekly digest reads on demand from the command palette', async () => {
   await expect(page.getByTestId('digest-sheet')).toHaveCount(0)
 })
 
-test('the Remember button opens the chat — one box, one send (2026-08-06 bubble parity)', async () => {
-  await page.getByTestId('remember-button').click()
-  await expect(page.getByTestId('chat-panel')).toBeVisible()
-  await expect(page.getByTestId('chat-input')).toBeVisible()
-  await expect(page.getByTestId('chat-send')).toBeVisible()
-})
-
-test('the chat panel closes back to the resting dock', async () => {
-  await page.getByTestId('chat-close').click()
-  await expect(page.getByTestId('remember-button')).toBeVisible()
+test('Ctrl+L is the door to the comets tab', async () => {
+  await page.keyboard.press('ControlOrMeta+l')
+  await expect(page.getByTestId('bots-view')).toBeVisible()
+  // and the cosmos furniture stays off this tab
+  await expect(page.getByTestId('capture-dock')).toHaveCount(0)
+  await page.getByTestId('activity-sky').click()
+  await expect(page.getByTestId('capture-dock')).toBeVisible()
 })
 
 test('clicking a star in the cosmos opens the note sheet with editor and meta bar', async () => {

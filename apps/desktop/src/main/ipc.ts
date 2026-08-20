@@ -69,7 +69,7 @@ import {
   type RunReport,
 } from 'core'
 import { randomUUID } from 'node:crypto'
-import { backgroundInferenceOk } from './local-llm.js'
+import { backgroundInferenceOk, errandFloors } from './local-llm.js'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
@@ -889,14 +889,19 @@ export function registerIpc(ctx: VaultContext): void {
   const ERRAND_MIN_FREE = 8e9
   const ERRAND_WEB_MIN_FREE = 10e9
 
-  ipcMain.handle('errand:start', (_e, goal: string, botId?: string): { ok: boolean; error?: string } => {
+  ipcMain.handle('errand:start', async (_e, goal: string, botId?: string): Promise<{ ok: boolean; error?: string }> => {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
     if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
+    // Sized by the smallest downloaded brain — errand calls step down to it —
+    // so a machine that cannot host the flagship still runs its errands.
+    const floors = ctx.engines[0]?.id === 'local' ? await errandFloors() : null
+    const minFree = floors?.min ?? ERRAND_MIN_FREE
+    const webMinFree = floors?.webMin ?? ERRAND_WEB_MIN_FREE
     const freeAtStart = os.freemem()
-    if (freeAtStart < ERRAND_MIN_FREE)
+    if (freeAtStart < minFree)
       return {
         ok: false,
-        error: `Not enough free memory for an errand right now (${(freeAtStart / 1e9).toFixed(1)}GB free, needs ~8GB) — close some apps and try again.`,
+        error: `Not enough free memory for an errand right now (${(freeAtStart / 1e9).toFixed(1)}GB free, needs ~${Math.ceil(minFree / 1e9)}GB) — close some apps and try again.`,
       }
     errandRunning = true
     errandAbort = new AbortController()
@@ -926,7 +931,7 @@ export function registerIpc(ctx: VaultContext): void {
         // The agent's own Chrome; absent when no Chrome-family browser is
         // installed — or when memory has room for the model or the browser
         // but not both — and the errand quietly stays vault-only.
-        courier: agentBrowserAvailable() && freeAtStart >= ERRAND_WEB_MIN_FREE ? agentCourier() : null,
+        courier: agentBrowserAvailable() && freeAtStart >= webMinFree ? agentCourier() : null,
       },
       goal,
       {
@@ -1405,7 +1410,7 @@ export function registerIpc(ctx: VaultContext): void {
       // honesty rules, narrowed to one concern the user named.
       ...(bot
         ? [
-            `You are "${bot.name}", one of the user's personal bots inside their second brain. Your charter: ${bot.purpose} Stay within that charter; when a question falls outside it, say so briefly and answer anyway.`,
+            `You are "${bot.name}", one of the user's comets — small personal helpers inside their second brain. Your charter: ${bot.purpose} Stay within that charter; when a question falls outside it, say so briefly and answer anyway.`,
           ]
         : []),
       "You are the librarian of this vault — you know this person's notes. Answer in the SAME LANGUAGE the user wrote in, whatever language the notes or these rules are in. Output only the answer, in markdown: no greetings, no narration, and never wrap the whole answer in a code fence.",
