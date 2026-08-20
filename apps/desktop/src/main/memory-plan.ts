@@ -26,15 +26,21 @@ const FULL_HEADROOM = 7 * GB
 // Partial offload: the model fits, the rest of the day does not — a larger
 // reserved padding makes llama.cpp keep more weights on the evictable side.
 const LEAN_HEADROOM = 4.5 * GB
+// An offloaded load costs more than the file: KV cache, compute buffers and
+// the driver's working set ride along, all pinned right beside the weights —
+// measured 1.8GB over the file's size at ctx 4096. Planning from the file
+// alone approved a load that left the machine 2GB short and frozen.
+const OFFLOAD_OVERHEAD = 2 * GB
 // Even an mmap'd model needs real RAM for KV cache, compute buffers and page
 // cache to be usable at all.
 const CPU_FLOOR = 3 * GB
 
 export function planModelLoad(modelBytes: number, freeBytes = os.freemem()): LoadPlan {
   const freeGB = (freeBytes / GB).toFixed(1)
-  if (freeBytes >= modelBytes + FULL_HEADROOM)
+  const offloadBytes = modelBytes + OFFLOAD_OVERHEAD
+  if (freeBytes >= offloadBytes + FULL_HEADROOM)
     return { mode: 'gpu', gpuLayers: 'auto', vramPadding: 2.5 * GB, reason: `${freeGB}GB free — full offload` }
-  if (freeBytes >= modelBytes + LEAN_HEADROOM)
+  if (freeBytes >= offloadBytes + LEAN_HEADROOM)
     return { mode: 'lean', gpuLayers: 'auto', vramPadding: 5 * GB, reason: `${freeGB}GB free — partial offload` }
   if (freeBytes >= modelBytes * 0.6 + CPU_FLOOR)
     return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, reason: `${freeGB}GB free — CPU only, weights stay evictable` }

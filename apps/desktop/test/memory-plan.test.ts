@@ -14,10 +14,18 @@ describe('planModelLoad', () => {
   })
 
   it('a busy machine offloads partially, behind a larger reserve', () => {
-    const plan = planModelLoad(MODEL, 10 * GB)
+    const plan = planModelLoad(MODEL, 12 * GB)
     expect(plan.mode).toBe('lean')
     expect(plan.gpuLayers).toBe('auto')
     expect(plan.vramPadding).toBeGreaterThan(planModelLoad(MODEL, 20 * GB).vramPadding)
+  })
+
+  it('the load is planned from its full cost, not the file size', () => {
+    // Measured: a 5GB file consumed 6.8GB pinned once KV cache and buffers
+    // arrived, so 9.9GB free must never approve an offload again.
+    const plan = planModelLoad(MODEL, 9.9 * GB)
+    expect(plan.mode).toBe('cpu')
+    expect(plan.gpuLayers).toBe(0)
   })
 
   it('a tight machine keeps every weight evictable — zero pinned memory', () => {
