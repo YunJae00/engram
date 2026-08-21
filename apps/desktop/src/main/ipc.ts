@@ -52,6 +52,7 @@ import {
   runAgentLoop,
   cometTools,
   fillSlots,
+  parsePendingCall,
   runErrand,
   addRoutine,
   buildRoutineFromTeach,
@@ -1167,11 +1168,14 @@ export function registerIpc(ctx: VaultContext): void {
     return { ok: true, done }
   }
 
-  ipcMain.handle('routines:run', async (_e, id: string, force?: boolean): Promise<RoutineRunReply> => {
-    const { done, ...reply } = await beginRoutine(id, { force: force === true })
-    void done
-    return reply
-  })
+  ipcMain.handle(
+    'routines:run',
+    async (_e, id: string, force?: boolean, slots?: Record<string, string>): Promise<RoutineRunReply> => {
+      const { done, ...reply } = await beginRoutine(id, { force: force === true, ...(slots ? { slots } : {}) })
+      void done
+      return reply
+    },
+  )
 
   // The comet's hands. It waits for the outcome and reports it in words the
   // loop can act on — including the two refusals only a person can settle.
@@ -1730,7 +1734,10 @@ export function registerIpc(ctx: VaultContext): void {
     // The tail every answer shares, however it was produced (one streamed
     // completion, or the comet loop's final text): captures filed, receipt
     // appended, the turn persisted on the bot, done broadcast exactly once.
-    const deliverAnswer = async (rawText: string): Promise<void> => {
+    const deliverAnswer = async (
+      rawText: string,
+      offer?: { routineId: string; name: string; slots: Record<string, string> },
+    ): Promise<void> => {
       const { text: cleaned, captures } = extractChatCaptures(rawText)
       // The receipt must never claim more than the disk holds — a failed
       // inbox write is exactly when "remember this" must say it did not land.
@@ -1755,7 +1762,7 @@ export function registerIpc(ctx: VaultContext): void {
           : saved === captures.length
             ? `\n\n✓ Remembered${saved > 1 ? ` ${saved} items` : ''} — the librarian is filing ${saved > 1 ? 'them' : 'it'}`
             : `\n\n⚠ Could not save ${saved > 0 ? `${captures.length - saved} of ${captures.length} items` : 'this'} — ${saveError instanceof Error ? saveError.message : 'the vault folder rejected the write'}. Please try again.`
-      broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}` })
+      broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
       if (bot) {
         const at = new Date().toISOString()
         await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at }).catch(() => undefined)
@@ -1806,11 +1813,26 @@ export function registerIpc(ctx: VaultContext): void {
         if (signal.aborted) return
         // A model that was pushed to act may announce that it acted. The
         // record is corrected here, in the same breath as the answer, so the
-        // person is never told a chore was done when it was not.
-        const note = result.pending
+        // person is never told a chore was done when it was not — and when the
+        // unmade call was a procedure, the thread offers to make it.
+        const call = parsePendingCall(result.pending)
+        const wanted = call?.tool === 'run_procedure' && typeof call.args['id'] === 'string' ? String(call.args['id']) : null
+        const routine = wanted ? (await listRoutines(paths)).find((r) => r.id === wanted) : undefined
+        const slots =
+          call && typeof call.args['slots'] === 'object' && call.args['slots'] !== null
+            ? Object.fromEntries(
+                Object.entries(call.args['slots'] as Record<string, unknown>).filter(
+                  (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '...',
+                ),
+              )
+            : {}
+        const note = result.pending && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        await deliverAnswer(`${result.answer}${note}`)
+        await deliverAnswer(
+          `${result.answer}${note}`,
+          routine ? { routineId: routine.id, name: routine.name, slots } : undefined,
+        )
       } catch (err) {
         if (signal.aborted) {
           broadcast({ type: 'chat:done', channel, text: '' })

@@ -113,7 +113,8 @@ const api: EngramApi = {
   routinesList: () => ipcRenderer.invoke('routines:list'),
   routineAdd: (input: { name: string; steps: RoutineStepDto[] }) => ipcRenderer.invoke('routines:add', input),
   routineRemove: (id: string) => ipcRenderer.invoke('routines:remove', id),
-  routineRun: (id: string, force?: boolean) => ipcRenderer.invoke('routines:run', id, force),
+  routineRun: (id: string, force?: boolean, slots?: Record<string, string>) =>
+    ipcRenderer.invoke('routines:run', id, force, slots),
   routineAbort: () => ipcRenderer.invoke('routines:abort'),
   routineWallDone: (verdict: 'resolved' | 'skip') => ipcRenderer.invoke('routines:wallDone', verdict),
   routineSubmitDone: (verdict: 'approve' | 'cancel') => ipcRenderer.invoke('routines:submitDone', verdict),

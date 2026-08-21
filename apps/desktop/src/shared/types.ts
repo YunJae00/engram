@@ -346,7 +346,15 @@ export type EngramEvent =
   // Chat events broadcast to every window; `channel` says which surface asked
   // (in-app panel or the floating bubble) so the other one can ignore them.
   | { type: 'chat:token'; channel: string; text: string }
-  | { type: 'chat:done'; channel: string; text: string }
+  // `offer` rides along when the comet identified a saved procedure for this
+  // request but did not run it: the thread shows a one-tap Run instead of
+  // leaving the person to go find it.
+  | {
+      type: 'chat:done'
+      channel: string
+      text: string
+      offer?: { routineId: string; name: string; slots?: Record<string, string> }
+    }
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.
   | { type: 'comet:step'; channel: string; line: string }
@@ -471,7 +479,11 @@ export interface EngramApi {
   routineRemove(id: string): Promise<void>
   // Detached like errandStart: resolves once the replay has started (or was
   // refused); steps and the outcome arrive as routine:* events.
-  routineRun(id: string, force?: boolean): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
+  routineRun(
+    id: string,
+    force?: boolean,
+    slots?: Record<string, string>,
+  ): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
   routineAbort(): Promise<void>
   routineWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   // The person's answer to "may this be posted?" — nothing is submitted

@@ -44,6 +44,7 @@ const en = {
   'cosmos.chatHint': 'Ask what you decided, or tell it something to keep \u2014 anything worth remembering is filed as a memory.',
   'bots.searchWeb': 'Search the web for this',
   'bots.keepAsTask': 'Keep this as a task',
+  'bots.offerRun': 'I know this one — “{name}” does it. Run it?',
   'bots.taskAdd': 'Save a task',
   'bots.taskName': 'Task name',
   'bots.taskGoal': 'What should it do, in full?',

@@ -70,7 +70,7 @@ export { addBotTask, appendBotTurn, createBot, deleteBot, loadBots, markBotTaskR
 export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './errand-journal.js'
 export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRoutineRun, removeRoutine, routineBlock, routineSlots, routineStepLabel, routineWrites, runRoutine, validateRoutineSteps, type Routine, type RoutineBlock, type RoutineDriver, type RoutineReading, type RoutineRunOptions, type RoutineRunResult, type RoutineStep, type RoutineStepResult, type RoutineTarget } from './routine.js'
 export { buildRoutineFromTeach, type TeachEvent } from './teach.js'
-export { detectLoop, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
+export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
 export { fitPrompt } from './prompt-budget.js'
 export { parseRetryAfterMs } from './engine/classify.js'

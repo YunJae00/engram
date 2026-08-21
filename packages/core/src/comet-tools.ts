@@ -86,12 +86,15 @@ export function cometTools(deps: CometToolDeps): AgentTool[] {
       async run(args) {
         const id = str(args, 'id')
         if (!id) return 'read_note needs an id'
-        try {
-          const note = await readNote(deps.paths, id)
-          return `# ${noteTitle(note)}\n${note.body.slice(0, 2_000)}`
-        } catch {
-          return `no note with id "${id.slice(0, 40)}"`
+        // Observed: the model prefixes "n-" onto ids that already carry their
+        // own prefix. Spending a whole call on a typo anyone can see is not
+        // worth the purity of refusing it.
+        const candidates = [id, ...(/^n-(rt|n)-/.test(id) ? [id.slice(2)] : [])]
+        for (const candidate of candidates) {
+          const note = await readNote(deps.paths, candidate).catch(() => null)
+          if (note) return `# ${noteTitle(note)}\n${note.body.slice(0, 2_000)}`
         }
+        return `no note with id "${id.slice(0, 40)}"`
       },
     },
     {

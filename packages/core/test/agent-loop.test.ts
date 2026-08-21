@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { detectLoop, runAgentLoop, type AgentTool } from '../src/agent-loop.js'
+import { detectLoop, parsePendingCall, runAgentLoop, type AgentTool } from '../src/agent-loop.js'
 import { cometTools, insideAllowedFolder } from '../src/comet-tools.js'
 import { listCards } from '../src/cards.js'
 import { createNote } from '../src/notes.js'
@@ -185,6 +185,30 @@ describe('a tool that names the next call gets it acted on', () => {
     const { deps: d } = await deps('loop-suggest', [finder, runner], engine)
     await runAgentLoop(d, 'post the log')
     expect(prompts[1]).toContain('Suggested next move: call run_procedure with {"id": "rt-1", "slots": {}}')
+  })
+})
+
+describe('read_note', () => {
+  it('forgives a doubled id prefix rather than spending a call on a typo', async () => {
+    const paths = await initVault(await tmpVaultRoot('tools-readnote'), { git: false })
+    const routine = await addRoutine(paths, {
+      name: 'Portal notices',
+      steps: [{ kind: 'open', url: 'https://portal.example/' }, { kind: 'read' }],
+    })
+    const read = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'read_note')!
+    // Measured: the model asks for "n-rt-…" when the id is already "rt-…".
+    expect(await read.run({ id: `n-${routine.id}` }, CTX)).toContain('Portal notices')
+    expect(await read.run({ id: 'n-nope-1' }, CTX)).toContain('no note with id')
+  })
+})
+
+describe('parsePendingCall', () => {
+  it('reads the unmade call as data, so the app can offer it as a button', () => {
+    const call = parsePendingCall('call run_procedure with {"id": "rt-1", "slots": {"entry": "shipped it"}}')
+    expect(call).toEqual({ tool: 'run_procedure', args: { id: 'rt-1', slots: { entry: 'shipped it' } } })
+    expect(parsePendingCall(undefined)).toBeNull()
+    expect(parsePendingCall('nothing to do here')).toBeNull()
+    expect(parsePendingCall('call run_procedure with {broken')).toBeNull()
   })
 })
 

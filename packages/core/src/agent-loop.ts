@@ -178,6 +178,22 @@ function callKey(step: ParsedStep): string {
   return `${step.tool} ${JSON.stringify(step.args)}`
 }
 
+// The pending call, parsed. A small model reliably FINDS the procedure and
+// then describes running it instead of running it; the host turns this into a
+// one-tap offer rather than demanding the model be cleverer than it is.
+export function parsePendingCall(pending: string | undefined): { tool: string; args: Record<string, unknown> } | null {
+  if (!pending) return null
+  const match = /call ([a-z_]+) with (\{.*\})/i.exec(pending)
+  if (!match) return null
+  try {
+    const args = JSON.parse(match[2]!) as unknown
+    if (typeof args !== 'object' || args === null || Array.isArray(args)) return null
+    return { tool: match[1]!, args: args as Record<string, unknown> }
+  } catch {
+    return null
+  }
+}
+
 // The two ways a small model gets stuck: hammering one call, and bouncing
 // between two. Both read as progress from inside the loop, so the guard
 // compares the recent call hashes instead.

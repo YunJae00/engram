@@ -104,7 +104,12 @@ interface AppState {
   routineSubmit: { name: string; filled: { label: string; text: string }[] } | null
   answerRoutineSubmit(verdict: 'approve' | 'cancel'): void
   // Resolves with the refusal so a caller can ask the rerun question itself.
-  startRoutine(id: string, name: string, force?: boolean): Promise<{ ok: boolean; blocked?: RoutineBlockDto }>
+  startRoutine(
+    id: string,
+    name: string,
+    force?: boolean,
+    slots?: Record<string, string>,
+  ): Promise<{ ok: boolean; blocked?: RoutineBlockDto }>
   toast: string | null
   showToast(message: string): void
   t: Translate
@@ -497,9 +502,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Kick off a routine replay. main runs it detached and reports back over
   // routine:* events — so this only surfaces the refusal (browser busy, tight).
   const startRoutine = useCallback(
-    async (id: string, name: string, force?: boolean) => {
+    async (id: string, name: string, force?: boolean, slots?: Record<string, string>) => {
       setRoutine({ running: true, routineId: id, name, steps: [] })
-      const result = await api.routineRun(id, force)
+      const result = await api.routineRun(id, force, slots)
       if (!result.ok) {
         setRoutine({ running: false, steps: [] })
         // A refusal that is really a question stays quiet here: a toast would

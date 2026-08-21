@@ -36,7 +36,7 @@ function streamingAt(list: Message[]): number {
 }
 
 export function BotsView() {
-  const { errand, startErrand, t } = useApp()
+  const { errand, startErrand, routine, startRoutine, t } = useApp()
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -46,6 +46,10 @@ export function BotsView() {
   // The loop's narration: one line per tool step, shown under the thinking
   // bubble while the comet works, cleared when the answer lands.
   const [workLines, setWorkLines] = useState<string[]>([])
+  // The comet found the procedure for this request but stopped short of
+  // running it. Rather than send the person hunting for it, the thread offers
+  // the run — one press, with whatever blanks the comet worked out.
+  const [offer, setOffer] = useState<{ routineId: string; name: string; slots?: Record<string, string> } | null>(null)
   const busyChannel = useRef<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [draftName, setDraftName] = useState('')
@@ -101,6 +105,7 @@ export function BotsView() {
         busyChannel.current = null
         setBusy(false)
         setWorkLines([])
+        setOffer(event.offer ?? null)
         setMessages((prev) => {
           const at = streamingAt(prev)
           if (at < 0) return prev
@@ -136,6 +141,7 @@ export function BotsView() {
     setText('')
     setBusy(true)
     setWorkLines([])
+    setOffer(null)
     busyChannel.current = `bot-${selected.id}`
     const history = messages.filter((m) => !m.streaming && !m.error)
     setMessages((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }])
@@ -422,6 +428,22 @@ export function BotsView() {
                   </button>
                   <button className="bots-followup" data-testid="bots-keep-task" onClick={keepAsTask}>
                     <Bookmark size={12} strokeWidth={2} aria-hidden /> {t('bots.keepAsTask')}
+                  </button>
+                </div>
+              )}
+              {offer && !routine.running && (
+                <div className="bots-offer" data-testid="bots-offer">
+                  <span className="bots-offer-text">{t('bots.offerRun', { name: offer.name })}</span>
+                  <button
+                    className="primary bots-offer-run"
+                    data-testid="bots-offer-run"
+                    onClick={() => {
+                      const wanted = offer
+                      setOffer(null)
+                      void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
+                    }}
+                  >
+                    <Play size={11} strokeWidth={2.5} aria-hidden /> {t('routines.run')}
                   </button>
                 </div>
               )}
