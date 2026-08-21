@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyWall, parseDuckResults } from '../src/main/agent-browser.js'
+import { classifyWall, parseDuckResults, parseGoogleResults } from '../src/main/agent-browser.js'
 
 // Pure heuristics only — the browser itself is exercised by the errand
 // battery script, not by unit tests.
@@ -48,5 +48,44 @@ describe('parseDuckResults', () => {
   it('caps the result count', () => {
     const html = Array.from({ length: 20 }, (_, i) => row(`https://s${i}.com/a`, `S${i}`)).join('')
     expect(parseDuckResults(html).length).toBeLessThanOrEqual(8)
+  })
+})
+
+// A person means Google when they say "search", and it answers a browser that
+// is not advertising itself as a robot. These pin the shape the parser reads
+// and the furniture it must never call a result.
+describe('parseGoogleResults', () => {
+  const page = (body: string): string => `<html><body>${body}</body></html>`
+
+  it('reads title and link out of an ordinary result', () => {
+    const html = page(
+      '<div><a href="https://www.deloitte.com/kr/ko/ai-trend-2025.html"><br><h3 class="LC20lb">2025 AI 10대 트렌드</h3></a></div>' +
+        '<div><a href="https://example.com/two"><h3>Second result</h3></a></div>',
+    )
+    expect(parseGoogleResults(html)).toEqual([
+      { url: 'https://www.deloitte.com/kr/ko/ai-trend-2025.html', title: '2025 AI 10대 트렌드', snippet: '' },
+      { url: 'https://example.com/two', title: 'Second result', snippet: '' },
+    ])
+  })
+
+  it('refuses the search engine own furniture — consent, account, the /url hops', () => {
+    const html = page(
+      '<a href="https://consent.google.com/ml?continue=x"><h3>Before you continue</h3></a>' +
+        '<a href="https://accounts.google.com/signin"><h3>Sign in</h3></a>' +
+        '<a href="https://www.google.com/url?q=https://real.example"><h3>Redirect</h3></a>' +
+        '<a href="https://real.example/article"><h3>A real page</h3></a>',
+    )
+    expect(parseGoogleResults(html).map((r) => r.url)).toEqual(['https://real.example/article'])
+  })
+
+  it('keeps one row per link and unescapes the query string', () => {
+    const html = page(
+      '<a href="https://example.com/a?x=1&amp;y=2"><h3>Once</h3></a><a href="https://example.com/a?x=1&amp;y=2"><h3>Again</h3></a>',
+    )
+    expect(parseGoogleResults(html)).toEqual([{ url: 'https://example.com/a?x=1&y=2', title: 'Once', snippet: '' }])
+  })
+
+  it('a robot check has no results in it, so the caller can fall back', () => {
+    expect(parseGoogleResults(page('<h3>Before you continue to Google</h3>'))).toEqual([])
   })
 })

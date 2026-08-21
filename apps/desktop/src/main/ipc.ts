@@ -1831,7 +1831,10 @@ export function registerIpc(ctx: VaultContext): void {
                 ),
               )
             : {}
-        const note = result.pending && !routine
+        // Only an unrun PROCEDURE deserves the alarm. Any other unmade call —
+        // a page the model chose not to read — is an ordinary decision, and
+        // warning about it on a plain web question is a false alarm.
+        const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
         await deliverAnswer(

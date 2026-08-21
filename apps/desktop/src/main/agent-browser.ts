@@ -94,6 +94,25 @@ export function parseDuckResults(html: string): WebFinding[] {
   return out
 }
 
+// Google's results are anchors wrapping an <h3>; its own furniture (consent,
+// account, the /url hops) is not a result. Pure, for its test.
+export function parseGoogleResults(html: string): WebFinding[] {
+  const out: WebFinding[] = []
+  const seen = new Set<string>()
+  const anchor = /<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>[\s\S]{0,400}?<h3[^>]*>([\s\S]*?)<\/h3>/g
+  for (const match of html.matchAll(anchor)) {
+    const url = match[1]!.replace(/&amp;/g, '&')
+    const title = match[2]!.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+    if (!title || seen.has(url)) continue
+    if (/^https?:\/\/(www\.)?google\.[a-z.]+\/(url|search|preferences|advanced_search)/.test(url)) continue
+    if (/accounts\.google\.|policies\.google\.|support\.google\.|consent\.google\./.test(url)) continue
+    seen.add(url)
+    out.push({ url, title, snippet: '' })
+    if (out.length >= RESULTS_PER_SEARCH) break
+  }
+  return out
+}
+
 let context: Ctx | null = null
 let opening: Promise<Ctx> | null = null
 let workPage: Page | null = null
@@ -167,10 +186,19 @@ async function ensureContext(): Promise<Ctx> {
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',
+        // The driver's own banner. Left on, a search engine answers its robot
+        // check instead of the page — measured: the same query returns nothing
+        // with the flag and a full page of results without it.
+        '--disable-blink-features=AutomationControlled',
         // Test harness hook: exposes a CDP endpoint so an e2e run can stand in
         // for the person's hands in the agent window. Never set in production.
         ...(process.env['ENGRAM_AGENT_CDP'] ? [`--remote-debugging-port=${process.env['ENGRAM_AGENT_CDP']}`] : []),
       ],
+      ignoreDefaultArgs: ['--enable-automation'],
+    })
+    // The flag has a twin in the DOM; both have to go or neither matters.
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false })
     })
     await ctx.route('**/*', (route) => {
       if (BLOCKED_RESOURCES.has(route.request().resourceType())) return route.abort()
@@ -238,6 +266,23 @@ export function agentCourier(): WebCourier {
     async search(query, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
+      // What a person means by "search". It answers a browser that is not
+      // advertising itself as a robot; when it does not, the errand carries on
+      // with the engine that always does rather than parking on a wall.
+      try {
+        await withAbort(
+          page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`, {
+            waitUntil: 'domcontentloaded',
+            timeout: NAV_TIMEOUT_MS,
+          }),
+          signal,
+        )
+        const googled = parseGoogleResults(await withAbort(page.content(), signal))
+        armIdleClose()
+        if (googled.length > 0) return googled
+      } catch {
+        // fall through to the engine that always answers
+      }
       try {
         await withAbort(
           page.goto(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`, {

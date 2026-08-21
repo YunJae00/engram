@@ -498,7 +498,8 @@ describe('cometTools — the web, the deep dive, and the hands', () => {
     async fetchPage(url: string) {
       if (url === 'https://walled.example/')
         return { url, title: 'Sign in', text: 'please log in', wall: 'login' as const }
-      return { url, title: 'One', text: 'the page said something useful' }
+      // Long enough to be an article rather than a section front.
+      return { url, title: 'One', text: `the page said something useful. ${'detail '.repeat(80)}` }
     },
   }
 
@@ -510,6 +511,14 @@ describe('cometTools — the web, the deep dive, and the hands', () => {
     const online = cometTools({ paths, retrieve: async () => [], courier }).map((t) => t.name)
     expect(online).toContain('web_search')
     expect(online).toContain('read_page')
+  })
+
+  it('web_search hands back titles AND the call that reads one', async () => {
+    const paths = await initVault(await tmpVaultRoot('tools-websearch-read'), { git: false })
+    const search = cometTools({ paths, retrieve: async () => [], courier }).find((t) => t.name === 'web_search')!
+    const observation = await search.run({ query: 'anything' }, CTX)
+    expect(observation).toContain('These are only titles')
+    expect(observation).toContain('call read_page with {"url": "https://a.example/one"}')
   })
 
   it('web_search lists what it found, and says so when it found nothing', async () => {
@@ -527,6 +536,22 @@ describe('cometTools — the web, the deep dive, and the hands', () => {
     expect(answer).toContain('the page said something useful')
     expect(await read.run({ url: 'file:///etc/passwd' }, CTX)).toContain('full http(s) address')
     expect(await read.run({ url: 'https://walled.example/' }, CTX)).toContain('sign in')
+  })
+
+  it('a page with nothing on it sends the loop to the next result', async () => {
+    const paths = await initVault(await tmpVaultRoot('tools-thin'), { git: false })
+    const thin = {
+      async search() {
+        return []
+      },
+      async fetchPage(url: string) {
+        return { url, title: 'AI Times', text: '홈 뉴스 오피니언 로그인' }
+      },
+    }
+    const read = cometTools({ paths, retrieve: async () => [], courier: thin }).find((t) => t.name === 'read_page')!
+    const observation = await read.run({ url: 'https://www.aitimes.com/' }, CTX)
+    expect(observation).toContain('almost no readable text')
+    expect(observation).toContain('try the next result')
   })
 
   it('research is the errand pipeline behind one call', async () => {
