@@ -1788,7 +1788,11 @@ export function registerIpc(ctx: VaultContext): void {
               // the same gate the errand uses.
               courier: agentBrowserAvailable() && os.freemem() >= ROUTINE_MIN_FREE ? agentCourier() : null,
               allowedFolders: consentedFolders,
-              research: (goal) => runResearch(goal, bot.id),
+              // The errand is a whole pipeline with its own browser and model
+              // calls; run from inside the loop on a tight machine it simply
+              // times the turn out (measured at 6.6GB free). It is offered
+              // only when the machine could host an errand on its own.
+              ...(os.freemem() >= ERRAND_WEB_MIN_FREE ? { research: (goal: string) => runResearch(goal, bot.id) } : {}),
               runProcedure: (id, slots) => runProcedureForComet(id, slots),
               retrieve: async (query, limit) => {
                 const hits = activationRerank(
@@ -1807,6 +1811,7 @@ export function registerIpc(ctx: VaultContext): void {
           {
             signal,
             persona: `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`,
+            history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
           },
         )

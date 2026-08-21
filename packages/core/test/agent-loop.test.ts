@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { detectLoop, parsePendingCall, runAgentLoop, type AgentTool } from '../src/agent-loop.js'
+import { detectLoop, parsePendingCall, pickTools, runAgentLoop, type AgentTool } from '../src/agent-loop.js'
 import { cometTools, insideAllowedFolder } from '../src/comet-tools.js'
 import { listCards } from '../src/cards.js'
 import { createNote } from '../src/notes.js'
@@ -202,6 +202,72 @@ describe('read_note', () => {
   })
 })
 
+// The bug this exists to prevent: the menu was cut by array order, so the web
+// tools and the procedure runner were never shown to the model at all, and a
+// question about this week's news could only search a private vault.
+describe('pickTools — which five the model is shown', () => {
+  const all = (): AgentTool[] =>
+    ['search_memory', 'read_note', 'find_procedure', 'propose_note', 'propose_edit', 'propose_file', 'web_search', 'read_page', 'research', 'run_procedure'].map(
+      (name) => tool(name),
+    )
+
+  it('puts the web on the menu when the vault cannot possibly hold the answer', () => {
+    const names = pickTools(all(), 'ai 관련 최신 동향좀 찾아줘', []).map((t) => t.name)
+    expect(names).toContain('web_search')
+    expect(names).toContain('read_page')
+    expect(names.length).toBeLessThanOrEqual(5)
+  })
+
+  it('an empty vault search earns the web its place, whatever the question looked like', () => {
+    const cold = pickTools(all(), 'helm values 어디에 뒀더라', []).map((t) => t.name)
+    expect(cold).not.toContain('web_search')
+    const after = pickTools(all(), 'helm values 어디에 뒀더라', [
+      { tool: 'search_memory', args: {}, observation: 'nothing in the vault about "helm values"' },
+    ]).map((t) => t.name)
+    expect(after).toContain('web_search')
+  })
+
+  it('a chore gets the procedure tools, and the runner appears once one is found', () => {
+    const asked = pickTools(all(), '포털 공지 확인해줘', []).map((t) => t.name)
+    expect(asked).toContain('find_procedure')
+    const found = pickTools(all(), '포털 공지 확인해줘', [
+      { tool: 'find_procedure', args: {}, observation: 'found "포털 공지 확인" (id: rt-1): 1. Open x. Nothing to fill — call run_procedure with {"id": "rt-1", "slots": {}}' },
+    ]).map((t) => t.name)
+    expect(found).toContain('run_procedure')
+  })
+
+  it('a request to keep something gets the proposing tools', () => {
+    expect(pickTools(all(), '이거 노트로 저장해줘', []).map((t) => t.name)).toContain('propose_note')
+  })
+
+  it('always leaves the vault reachable, and never exceeds the menu cap', () => {
+    for (const ask of ['최신 동향', '포털 공지 확인해줘', '저장해줘', 'anything at all'])
+      expect(pickTools(all(), ask, []).map((t) => t.name)).toContain('search_memory')
+    expect(pickTools(all(), '최신 동향 저장해서 올려줘 확인해', []).length).toBe(5)
+  })
+})
+
+describe('the loop remembers the conversation', () => {
+  it('carries recent turns into the prompt, so a follow-up has a subject', async () => {
+    const prompts: string[] = []
+    const engine = new MockEngine({
+      'COMET-STEP': (prompt) => {
+        prompts.push(prompt)
+        return '{"tool": "answer", "args": {"text": "yes, it is done"}}'
+      },
+    })
+    const { deps: d } = await deps('loop-history', [tool('search_memory')], engine)
+    await runAgentLoop(d, '다 한거야?', {
+      history: [
+        { role: 'user', text: 'ai 최신 동향 찾아줘' },
+        { role: 'assistant', text: '웹에서 찾아왔습니다' },
+      ],
+    })
+    expect(prompts[0]).toContain('ai 최신 동향 찾아줘')
+    expect(prompts[0]).toContain('context for what is being asked')
+  })
+})
+
 describe('parsePendingCall', () => {
   it('reads the unmade call as data, so the app can offer it as a button', () => {
     const call = parsePendingCall('call run_procedure with {"id": "rt-1", "slots": {"entry": "shipped it"}}')
@@ -209,6 +275,35 @@ describe('parsePendingCall', () => {
     expect(parsePendingCall(undefined)).toBeNull()
     expect(parsePendingCall('nothing to do here')).toBeNull()
     expect(parsePendingCall('call run_procedure with {broken')).toBeNull()
+  })
+})
+
+describe('a hung call', () => {
+  it('keeps the work already gathered instead of losing the whole turn', async () => {
+    const search = tool('search_memory')
+    let call = 0
+    const engine = new MockEngine({
+      'COMET-STEP': () => {
+        call++
+        if (call === 1) return '{"tool": "search_memory", "args": {"query": "deploys"}}'
+        throw new Error('[engram] timed out after 180000ms')
+      },
+      'COMET-ANSWER': 'here is what I found before it stalled',
+    })
+    const { deps: d } = await deps('loop-hung', [search], engine)
+    const result = await runAgentLoop(d, 'what did we decide')
+    expect(result.answer).toBe('here is what I found before it stalled')
+    expect(result.steps).toHaveLength(1)
+  })
+
+  it('with nothing gathered, the real error reaches the caller', async () => {
+    const engine = new MockEngine({
+      'COMET-STEP': () => {
+        throw new Error('[engram] timed out after 180000ms')
+      },
+    })
+    const { deps: d } = await deps('loop-hung-empty', [tool('search_memory')], engine)
+    await expect(runAgentLoop(d, 'anything')).rejects.toThrow('timed out')
   })
 })
 

@@ -1,7 +1,7 @@
 {
   "name": "engram-monorepo",
   "private": true,
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "A second brain that runs entirely on your machine",
   "author": "YunJae Kwon",
   "license": "MIT",
