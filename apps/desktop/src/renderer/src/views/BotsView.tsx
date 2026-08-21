@@ -1,4 +1,4 @@
-import { ArrowUp, PanelLeftClose, PanelLeftOpen, Play, Plus, Square, Trash2, X } from 'lucide-react'
+import { ArrowUp, Bookmark, Globe, PanelLeftClose, PanelLeftOpen, Play, Plus, Square, Trash2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState } from 'react'
 import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/types.js'
@@ -42,6 +42,9 @@ export function BotsView() {
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  // The loop's narration: one line per tool step, shown under the thinking
+  // bubble while the comet works, cleared when the answer lands.
+  const [workLines, setWorkLines] = useState<string[]>([])
   const busyChannel = useRef<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [draftName, setDraftName] = useState('')
@@ -83,7 +86,9 @@ export function BotsView() {
   useEffect(() => {
     return api.onEvent((event) => {
       // Streams for the run THIS view started; anything else is another surface.
-      if (event.type === 'chat:token' && event.channel === busyChannel.current) {
+      if (event.type === 'comet:step' && event.channel === busyChannel.current) {
+        setWorkLines((prev) => [...prev.slice(-5), event.line])
+      } else if (event.type === 'chat:token' && event.channel === busyChannel.current) {
         setMessages((prev) => {
           const at = streamingAt(prev)
           if (at < 0) return prev
@@ -94,6 +99,7 @@ export function BotsView() {
       } else if (event.type === 'chat:done' && event.channel === busyChannel.current) {
         busyChannel.current = null
         setBusy(false)
+        setWorkLines([])
         setMessages((prev) => {
           const at = streamingAt(prev)
           if (at < 0) return prev
@@ -104,6 +110,7 @@ export function BotsView() {
       } else if (event.type === 'chat:error' && event.channel === busyChannel.current) {
         busyChannel.current = null
         setBusy(false)
+        setWorkLines([])
         setMessages((prev) => [
           ...prev.filter((m) => !(m.role === 'assistant' && m.streaming)),
           { role: 'assistant', text: event.message, error: true },
@@ -127,6 +134,7 @@ export function BotsView() {
     if (!message || busy || errand.running || !selected) return
     setText('')
     setBusy(true)
+    setWorkLines([])
     busyChannel.current = `bot-${selected.id}`
     const history = messages.filter((m) => !m.streaming && !m.error)
     setMessages((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }])
@@ -159,6 +167,29 @@ export function BotsView() {
     setMessages((prev) => [...prev, { role: 'user', text: task.goal }])
     void api.botTaskRan(selected.id, task.id).catch(() => undefined)
     void startErrand(task.goal, selected.id)
+  }
+
+  // What a chat answer leaves you wanting: the web, when the vault did not
+  // have it, and a way to keep the ask if it is one you will make again. Both
+  // are one press, and both are the person's call — the model never decides to
+  // go browsing on its own.
+  const lastAsk = (): string => {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === 'user') return messages[i]!.text
+    return ''
+  }
+
+  const searchWeb = () => {
+    const goal = lastAsk()
+    if (!goal || !selected || errand.running || busy) return
+    void startErrand(goal, selected.id)
+  }
+
+  const keepAsTask = () => {
+    const goal = lastAsk()
+    if (!goal) return
+    setTaskGoal(goal)
+    setTaskName(goal.slice(0, 40))
+    setAddingTask(true)
   }
 
   const addTask = async () => {
@@ -363,7 +394,18 @@ export function BotsView() {
                 <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
                   {m.role === 'assistant' ? (
                     m.streaming && !m.text ? (
-                      <span className="bubble-thinking">…</span>
+                      <span className="bubble-thinking">
+                        …
+                        {workLines.length > 0 && (
+                          <span className="bots-work-lines" data-testid="bots-work-lines">
+                            {workLines.map((line, x) => (
+                              <span key={`${x}-${line}`} className="bots-work-line">
+                                {line}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     ) : (
                       <div className="bubble-msg-body" dangerouslySetInnerHTML={{ __html: answerHtml(m.text) }} />
                     )
@@ -372,6 +414,16 @@ export function BotsView() {
                   )}
                 </div>
               ))}
+              {!busy && !errand.running && messages.length > 0 && messages[messages.length - 1]!.role === 'assistant' && (
+                <div className="bots-followups" data-testid="bots-followups">
+                  <button className="bots-followup" data-testid="bots-search-web" onClick={searchWeb}>
+                    <Globe size={12} strokeWidth={2} aria-hidden /> {t('bots.searchWeb')}
+                  </button>
+                  <button className="bots-followup" data-testid="bots-keep-task" onClick={keepAsTask}>
+                    <Bookmark size={12} strokeWidth={2} aria-hidden /> {t('bots.keepAsTask')}
+                  </button>
+                </div>
+              )}
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <span className="bots-errand-pulse">

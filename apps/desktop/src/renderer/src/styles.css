@@ -1548,6 +1548,19 @@ body.bubble-host { background: transparent; }
 }
 .bots-task-new input:first-of-type { width: 140px; }
 .bots-task-new input:last-of-type { width: 260px; }
+/* Under the last answer: the web, and keeping the ask. Offered after the
+   answer rather than beside the composer — a second send button was the thing
+   nobody could tell apart from the first. */
+.bots-followups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 2px 2px; }
+.bots-followup {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px; font-size: var(--fs-small);
+  border: 1px solid var(--border); color: var(--fg-dim); background: transparent;
+}
+.bots-followup:hover { background: var(--hover-bg); color: var(--fg); }
+/* The loop narrating its work: quiet mono lines under the thinking dots. */
+.bots-work-lines { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.bots-work-line { font-family: var(--mono); font-size: var(--fs-micro); color: var(--fg-faint); }
 .bots-working { display: flex; align-items: flex-start; gap: 9px; max-width: 94%; }
 .bots-working-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bots-working-line { font-size: var(--fs-body); color: var(--fg); }
@@ -1630,6 +1643,14 @@ body.bubble-host { background: transparent; }
 .routine-step-remove:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
 .routine-step-remove:disabled { opacity: 0.4; }
 .routine-add-step { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
+/* Teach mode: the sheet steps back and narrates while the person shows the
+   work in the agent window; afterwards the captured steps wait under a name. */
+.routine-teach {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px dashed var(--accent-line); border-radius: 10px; padding: 10px 12px;
+}
+.routine-teach-line { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
+.routine-teach-hint { font-size: var(--fs-small); color: var(--fg-dim); }
 
 /* The rerun question: a routine that types into pages asks before repeating. */
 .routine-ask {

@@ -665,7 +665,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
-  void closeAgentBrowser()
+  void closeAgentBrowser({ force: true })
   globalShortcut.unregisterAll()
   // Closing the app is the user saying "stop remembering from here".
   stopSessionWatch()

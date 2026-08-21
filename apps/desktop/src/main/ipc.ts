@@ -49,8 +49,11 @@ import {
   recordRecall,
   recordRecallReceipt,
   rejectCard,
+  runAgentLoop,
+  cometTools,
   runErrand,
   addRoutine,
+  buildRoutineFromTeach,
   listRoutines,
   removeRoutine,
   routineBlock,
@@ -82,12 +85,14 @@ import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser } from './agent-browser.js'
+import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { routineDriver } from './routine-driver.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { ipcMain } from 'electron'
 import { open, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
+  EngramEvent,
   ApproveOptionsDto,
   ChatRequestDto,
   MetaPatch,
@@ -577,6 +582,8 @@ let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 let routineRunning = false
 let routineAbort: AbortController | null = null
 let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
+// Teach mode shares the agent browser, so it excludes routine runs and errands.
+let teachingSession = false
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
@@ -1056,6 +1063,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     routineAbort = new AbortController()
     const signal = routineAbort.signal
+    let finished: Extract<EngramEvent, { type: 'routine:logged' }> | null = null
     void runRoutine(paths, routineDriver(), routine, {
       signal,
       force: force === true,
@@ -1076,20 +1084,24 @@ export function registerIpc(ctx: VaultContext): void {
       .then((result) => {
         // The readings land as a review card; nudge the badge to pick it up.
         if (result.cardId) broadcast({ type: 'vault:changed' })
-        broadcast({
+        // The outcome is announced only after the door is unlocked below: a
+        // person who presses Run the instant the run ends must not be told a
+        // routine is already running.
+        finished = {
           type: 'routine:logged',
           routineId: routine.id,
           name: routine.name,
           outcome: result.ok ? 'done' : signal.aborted || result.blocked ? 'aborted' : 'failed',
           ...(result.cardId ? { cardId: result.cardId } : {}),
           ...(result.error ? { error: result.error } : {}),
-        })
+        }
       })
       .catch((err) => flog('routine', err))
       .finally(() => {
         release()
         routineAbort = null
         routineWallWaiter = null
+        if (finished) broadcast(finished)
         // The browser's gigabyte goes back to the machine as soon as the
         // replay is over — the next run pays a relaunch, which is cheap.
         void closeAgentBrowser()
@@ -1104,6 +1116,42 @@ export function registerIpc(ctx: VaultContext): void {
 
   ipcMain.handle('routines:wallDone', (_e, verdict: 'resolved' | 'skip') => {
     routineWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
+  })
+
+  // Teach mode: open the agent Chrome and record what the person does, then
+  // hand the moves back as routine steps for them to name and save. No model,
+  // no writing anywhere — recording only.
+  ipcMain.handle('routines:teachStart', async (): Promise<RoutineRunReply> => {
+    if (teachingSession || routineRunning || errandRunning)
+      return { ok: false, error: 'Something is already using the browser — try again in a moment.' }
+    if (!agentBrowserAvailable())
+      return { ok: false, error: 'No Chrome-family browser found — install Google Chrome to teach a routine.' }
+    const free = os.freemem()
+    if (free < ROUTINE_MIN_FREE)
+      return {
+        ok: false,
+        error: `Not enough free memory to open the browser right now (${(free / 1e9).toFixed(1)}GB free) — close some apps and try again.`,
+      }
+    teachingSession = true
+    try {
+      await startTeach()
+      return { ok: true }
+    } catch (err) {
+      teachingSession = false
+      await stopTeach().catch(() => [])
+      return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    }
+  })
+
+  ipcMain.handle('routines:teachRead', () => {
+    if (teachingSession) markTeachRead()
+  })
+
+  ipcMain.handle('routines:teachStop', async (): Promise<RoutineStep[]> => {
+    if (!teachingSession) return []
+    teachingSession = false
+    const events = await stopTeach().catch(() => [])
+    return buildRoutineFromTeach(events)
   })
 
   ipcMain.handle('notes:list', () => ctx.store.getAll().map(toDto))
@@ -1590,7 +1638,14 @@ export function registerIpc(ctx: VaultContext): void {
       // A cancelled answer must not file notes into the vault, and must not
       // report itself as done — the user already saw it stop.
       if (signal.aborted) return
-      const { text: cleaned, captures } = extractChatCaptures(finalText ?? streamed)
+      await deliverAnswer(finalText ?? streamed)
+    }
+
+    // The tail every answer shares, however it was produced (one streamed
+    // completion, or the comet loop's final text): captures filed, receipt
+    // appended, the turn persisted on the bot, done broadcast exactly once.
+    const deliverAnswer = async (rawText: string): Promise<void> => {
+      const { text: cleaned, captures } = extractChatCaptures(rawText)
       // The receipt must never claim more than the disk holds — a failed
       // inbox write is exactly when "remember this" must say it did not land.
       let saved = 0
@@ -1621,6 +1676,54 @@ export function registerIpc(ctx: VaultContext): void {
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
       }
       markEngineOk(engine.id)
+    }
+
+    // A comet is a working colleague, not a retrieval prompt: its message
+    // runs the tool loop — find a procedure, search the vault, read, propose
+    // — and only the loop's tools may touch anything, always through cards.
+    // Every failure path inside degrades to a plain answer, so the worst a
+    // broken model can do here is behave like the old chat.
+    if (bot) {
+      try {
+        const result = await runAgentLoop(
+          {
+            engine,
+            workdir: engineCwd(paths),
+            tools: cometTools({
+              paths,
+              retrieve: async (query, limit) => {
+                const hits = activationRerank(
+                  hybridMerge(ctx.store.search(query), await semanticQueryIfLive(query, limit), limit),
+                  (id) => ctx.store.get(id),
+                )
+                return hits
+                  .map((h) => ctx.store.get(h.id))
+                  .filter((n): n is Note => n !== null && n.front.status === 'current')
+                  .slice(0, limit)
+                  .map(toRetrievedNote)
+              },
+            }),
+          },
+          request.message,
+          {
+            signal,
+            persona: `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`,
+            onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
+          },
+        )
+        if (signal.aborted) return
+        await deliverAnswer(result.answer)
+      } catch (err) {
+        if (signal.aborted) {
+          broadcast({ type: 'chat:done', channel, text: '' })
+          return
+        }
+        broadcast({ type: 'chat:error', channel, message: err instanceof Error ? err.message : String(err) })
+        void noteEngineFailure(engine, err instanceof EngineCallError ? err.kind : 'unknown', ctx).then(() =>
+          revalidateEngines(ctx),
+        )
+      }
+      return
     }
 
     try {

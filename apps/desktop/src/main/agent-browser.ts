@@ -107,9 +107,18 @@ function armPressureWatch(): void {
     const free = os.freemem()
     if (free < PRESSURE_CLOSE_FLOOR) {
       flog('agent-browser', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — closing`)
-      void closeAgentBrowser()
+      void closeAgentBrowser({ force: true })
     }
   }, 15_000)
+}
+
+// While something owns the window outright — a teach recording, where the
+// person is being watched working — an unforced close steps aside. Memory
+// pressure and app quit pass force and still take the browser away.
+let claimed = false
+
+export function claimAgentBrowser(on: boolean): void {
+  claimed = on
 }
 
 // A run parked at a login wall does nothing for minutes while the person
@@ -154,7 +163,14 @@ async function ensureContext(): Promise<Ctx> {
       executablePath,
       headless: false,
       viewport: null,
-      args: ['--no-first-run', '--no-default-browser-check', '--disable-background-networking'],
+      args: [
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-background-networking',
+        // Test harness hook: exposes a CDP endpoint so an e2e run can stand in
+        // for the person's hands in the agent window. Never set in production.
+        ...(process.env['ENGRAM_AGENT_CDP'] ? [`--remote-debugging-port=${process.env['ENGRAM_AGENT_CDP']}`] : []),
+      ],
     })
     await ctx.route('**/*', (route) => {
       if (BLOCKED_RESOURCES.has(route.request().resourceType())) return route.abort()
@@ -273,6 +289,20 @@ export function agentCourier(): WebCourier {
   }
 }
 
+// The recorder drives the same window: it needs the context itself, and the
+// tabs open in it, which nothing else outside this module does.
+export async function agentContext(): Promise<Ctx> {
+  return ensureContext()
+}
+
+export function agentPages(): Page[] {
+  return context?.pages().filter((one) => !one.isClosed()) ?? []
+}
+
+export function agentWorkPage(): Page | null {
+  return workPage && !workPage.isClosed() ? workPage : null
+}
+
 export function agentBrowserAvailable(): boolean {
   return findChrome() !== null
 }
@@ -293,8 +323,12 @@ export function readAgentPage(page: Page, signal?: AbortSignal): Promise<WebPage
 export { withAbort as agentAbortable }
 
 // Close is idempotent and never throws: it runs from errand teardown, the
-// idle timer and app quit, in any order.
-export async function closeAgentBrowser(): Promise<void> {
+// idle timer and app quit, in any order — including, thanks to those
+// fire-and-forget calls, moments AFTER a teach session has opened the window
+// the person is being recorded in. A recording session owns the browser, so
+// an unforced close steps aside; memory pressure and quit pass force.
+export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
+  if (claimed && !options.force) return
   if (idleTimer) {
     clearTimeout(idleTimer)
     idleTimer = null

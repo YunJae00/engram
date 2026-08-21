@@ -1,25 +1,29 @@
-import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { initVault, listCards, listRoutines, type VaultPaths } from 'core'
+import { expect, test, _electron as electron, chromium, type Browser, type ElectronApplication, type Page } from '@playwright/test'
+import { addRoutine, initVault, listCards, listRoutines, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// The routine replayer end to end: build a routine in the sheet (open a page,
-// click a link, read what it says), run it against a local site, and find the
-// reading waiting as a review card. This drives a REAL Chrome through the
-// agent-browser — the whole point of the replayer is that no model runs.
+// The routine replayer end to end: build a routine in the sheet, TEACH one by
+// doing the work in a real Chrome, and replay through a login wall that a
+// person clears mid-run. The agent browser is a real Chrome the main process
+// drives; the test reaches into that window over CDP to stand in for the
+// person's hands.
 
 test.describe.configure({ mode: 'serial' })
 
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
+const CDP_PORT = 19222 + Math.floor(Math.random() * 400)
 
 let app: ElectronApplication
 let page: Page
 let paths: VaultPaths
 let server: Server
 let siteUrl: string
+// The /gate page shows a login form until the "person" (the test) signs in.
+let gateUnlocked = false
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -27,12 +31,17 @@ test.beforeAll(async () => {
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-routine-userdata-'))
   paths = await initVault(root, { git: false })
 
-  // A local portal stand-in: a home page whose "Notices" link leads to the
-  // text the routine is supposed to bring home.
+  // A local portal stand-in: home → Notices, plus a gated page for the wall.
   server = createServer((req, res) => {
     res.setHeader('content-type', 'text/html')
     if (req.url === '/notices')
       res.end('<html><head><title>Notices</title></head><body><main><h1>Notices</h1><p>Holiday notice: the office closes early on Friday.</p></main></body></html>')
+    else if (req.url === '/gate')
+      res.end(
+        gateUnlocked
+          ? '<html><head><title>Reports</title></head><body><main><h1>Reports</h1><p>The quarterly numbers landed safely.</p></main></body></html>'
+          : '<html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><form><input name="u"/><input type="password" name="p"/></form></main></body></html>',
+      )
     else res.end('<html><head><title>Portal</title></head><body><main><h1>Portal</h1><a href="/notices">Notices</a></main></body></html>')
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -50,6 +59,7 @@ test.beforeAll(async () => {
       ENGRAM_NO_AUTOTIDY: '1',
       ENGRAM_ENGINE: 'none',
       ENGRAM_HIDDEN: '1',
+      ENGRAM_AGENT_CDP: String(CDP_PORT),
     },
   })
   page = await app.firstWindow()
@@ -61,14 +71,35 @@ test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 
-test('the builder saves a routine a non-developer could author', async () => {
-  await expect(page.getByTestId('shell')).toBeVisible()
-  // The sheet's door is a window intent (palette and future buttons fire the
-  // same event); dispatch it directly once the shell listener is up.
+async function openSheet(): Promise<void> {
+  // Close whatever overlay an earlier test left, so the sheet mounts fresh
+  // and reads the routine list of THIS moment.
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
   await expect(async () => {
     await page.evaluate(() => window.dispatchEvent(new Event('engram:open-routines')))
     await expect(page.getByTestId('routines-sheet')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
+}
+
+// The agent Chrome takes a few seconds to come up; keep knocking on its CDP
+// door until it answers.
+async function connectAgent(): Promise<Browser> {
+  let last: unknown
+  for (let i = 0; i < 60; i++) {
+    try {
+      return await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
+    } catch (err) {
+      last = err
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+    }
+  }
+  throw last
+}
+
+test('the builder saves a routine a non-developer could author', async () => {
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await openSheet()
 
   await page.getByTestId('routines-new').click()
   await page.getByTestId('routine-name').fill('Portal notices')
@@ -80,21 +111,79 @@ test('the builder saves a routine a non-developer could author', async () => {
   await page.getByTestId('routine-step-kind-2').selectOption('read')
   await page.getByTestId('routine-save').click()
 
-  // The saved routine appears as a runnable row, and is really on disk.
   await expect(page.locator('[data-testid^="routine-row-"]')).toHaveCount(1)
   await expect.poll(async () => (await listRoutines(paths)).map((r) => r.name)).toEqual(['Portal notices'])
 })
 
 test('running the routine drives a real Chrome and lands the reading in review', async () => {
   await page.locator('[data-testid^="routine-run-"]').click()
-  // Live progress narrates the replay while Chrome does the walking.
   await expect(page.getByTestId('routine-live')).toBeVisible({ timeout: 15_000 })
-  // Chrome cold-launch plus three steps: generous, then assert the product.
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
 
   await expect
     .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
     .toContain('the office closes early on Friday')
-  const routine = (await listRoutines(paths))[0]!
+  const routine = (await listRoutines(paths)).find((r) => r.name === 'Portal notices')!
   expect(routine.lastOutcome).toBe('done')
+})
+
+test('teach mode records the work as done in the agent window — and replays it', async () => {
+  await openSheet()
+  await page.getByTestId('routines-teach').click()
+  // A cold Chrome launch on a busy runner can take a while.
+  await expect(page.getByTestId('routine-teach')).toBeVisible({ timeout: 60_000 })
+
+  // The person's hands: walk the portal in the agent Chrome itself.
+  const agent = await connectAgent()
+  try {
+    const agentPage = agent.contexts()[0]!.pages()[0]!
+    await agentPage.goto(siteUrl, { waitUntil: 'domcontentloaded' })
+    await agentPage.click('a', { timeout: 10_000 })
+    await agentPage.waitForURL('**/notices', { timeout: 10_000 })
+  } finally {
+    await agent.close().catch(() => undefined)
+  }
+
+  await page.getByTestId('routine-teach-read').click()
+  await page.getByTestId('routine-teach-done').click()
+
+  // The captured steps wait under a name box: open → click → read.
+  await expect(page.getByTestId('routine-taught')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('routine-taught').locator('.errand-step')).toHaveCount(3)
+  await page.getByTestId('routine-taught-name').fill('Taught notices')
+  await page.getByTestId('routine-taught-save').click()
+  await expect(page.locator('[data-testid^="routine-row-"]')).toHaveCount(2)
+
+  // The taught routine replays like any other and brings the reading home.
+  const taught = (await listRoutines(paths)).find((r) => r.name === 'Taught notices')!
+  await page.getByTestId(`routine-run-${taught.id}`).click()
+  await expect(page.getByTestId('routine-live')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
+  await expect
+    .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
+    .toContain('Taught notices')
+  expect((await listRoutines(paths)).find((r) => r.id === taught.id)!.lastOutcome).toBe('done')
+})
+
+test('a login wall pauses the replay, and the run resumes from that step once the person clears it', async () => {
+  gateUnlocked = false
+  const gated = await addRoutine(paths, {
+    name: 'Quarterly reports',
+    steps: [{ kind: 'open', url: `${siteUrl}gate` }, { kind: 'read' }],
+  })
+
+  await openSheet()
+  await page.getByTestId(`routine-run-${gated.id}`).click()
+  // The wall surfaces as a question in the live block, not as a failure.
+  await expect(page.getByTestId('routine-wall-done')).toBeVisible({ timeout: 90_000 })
+
+  // The person signs in (the gate opens), then tells the run to continue.
+  gateUnlocked = true
+  await page.getByTestId('routine-wall-done').click()
+
+  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
+  await expect
+    .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
+    .toContain('The quarterly numbers landed safely')
+  expect((await listRoutines(paths)).find((r) => r.id === gated.id)!.lastOutcome).toBe('done')
 })

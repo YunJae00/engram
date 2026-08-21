@@ -47,6 +47,21 @@ export const frontmatterSchema = z.object({
   // side to be wrong on. Only J11's session summaries carry 'session', and
   // only those may be merged or superseded without asking (see resolve.ts).
   origin: z.enum(['user', 'session']).optional(),
+  // A routine note: the replayable steps live in frontmatter (structured,
+  // hand-editable, synced like any note); the body stays human prose. The
+  // steps' inner shape is the routine engine's contract, validated there at
+  // load time — the schema only guarantees a faithful round-trip.
+  routine: z
+    .object({
+      steps: z.array(z.unknown()),
+      lastRunAt: isoDateTime.optional(),
+      lastOutcome: z.enum(['done', 'failed', 'aborted']).optional(),
+      lastSuccessAt: isoDateTime.optional(),
+      pendingWrite: z
+        .object({ at: isoDateTime, step: z.number().int().nonnegative(), label: z.string() })
+        .optional(),
+    })
+    .optional(),
   // WHERE the memory came from — the folder name of the session it was
   // harvested in ("strata", "novel", "q3-report"). Generic on purpose: a note
   // titled "Team" is unreadable without the one word saying which world's
@@ -91,6 +106,7 @@ const KEY_ORDER: (keyof NoteFrontmatter)[] = [
   'recall_links',
   'open_loop',
   'due_at',
+  'routine',
   'origin',
   'context',
 ]

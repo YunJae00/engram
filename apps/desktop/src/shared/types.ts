@@ -348,6 +348,8 @@ export type EngramEvent =
   | { type: 'chat:token'; channel: string; text: string }
   | { type: 'chat:done'; channel: string; text: string }
   | { type: 'chat:error'; channel: string; message: string }
+  // The comet's tool loop narrating one step of its work on this channel.
+  | { type: 'comet:step'; channel: string; line: string }
   // The floating bubble asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
   | { type: 'brain:setup' }
@@ -469,6 +471,12 @@ export interface EngramApi {
   routineRun(id: string, force?: boolean): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
   routineAbort(): Promise<void>
   routineWallDone(verdict: 'resolved' | 'skip'): Promise<void>
+  // Teach mode: open the agent Chrome and record the person's moves, then hand
+  // them back as steps to name and save. teachStart resolves once the window
+  // is up (or refused); teachStop returns the recorded steps.
+  routineTeachStart(): Promise<{ ok: boolean; error?: string }>
+  routineTeachRead(): Promise<void>
+  routineTeachStop(): Promise<RoutineStepDto[]>
   fadingMemories(): Promise<FadingMemoryDto[]>
   openLoops(): Promise<OpenLoopDto[]>
   latestBrief(): Promise<string | null>

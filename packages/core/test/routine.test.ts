@@ -2,6 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { listCards } from '../src/cards.js'
+import { readNote } from '../src/notes.js'
+import { buildRoutineFromTeach } from '../src/teach.js'
 import {
   addRoutine,
   listRoutines,
@@ -75,7 +77,7 @@ describe('routine CRUD', () => {
     ).rejects.toThrow('element text or a selector')
   })
 
-  it('a corrupt routines file reads as empty, not a crash', async () => {
+  it('a corrupt legacy cache file reads as empty, not a crash', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-corrupt'), { git: false })
     await writeFile(join(paths.cache, 'routines.json'), '{ not json')
     expect(await listRoutines(paths)).toEqual([])
@@ -242,16 +244,14 @@ describe('runRoutine — replay', () => {
     expect(await listCards(paths)).toHaveLength(1)
   })
 
-  it('routines.json keeps only the touched routine changed', async () => {
+  it('a run stamps only the routine it touched', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-siblings'), { git: false })
     const a = await addRoutine(paths, { name: 'A', steps: [OPEN] })
     await addRoutine(paths, { name: 'B', steps: [OPEN] })
     await runRoutine(paths, fakeDriver({}), a)
-    const raw = JSON.parse(await readFile(join(paths.cache, 'routines.json'), 'utf8')) as {
-      routines: { name: string; lastOutcome?: string }[]
-    }
-    expect(raw.routines.find((r) => r.name === 'A')?.lastOutcome).toBe('done')
-    expect(raw.routines.find((r) => r.name === 'B')?.lastOutcome).toBeUndefined()
+    const all = await listRoutines(paths)
+    expect(all.find((r) => r.name === 'A')?.lastOutcome).toBe('done')
+    expect(all.find((r) => r.name === 'B')?.lastOutcome).toBeUndefined()
   })
 })
 
@@ -321,7 +321,7 @@ describe('what a page is allowed to say in the card', () => {
   })
 })
 
-describe('what reaches routines.json', () => {
+describe('what reaches the stored routine', () => {
   it('stores a step as its known fields only', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-normalize'), { git: false })
     // The renderer is not trusted to send exactly the shape: whatever else
@@ -336,5 +336,81 @@ describe('what reaches routines.json', () => {
     const paths = await initVault(await tmpVaultRoot('routine-longurl'), { git: false })
     const url = 'https://example.com/' + 'a'.repeat(2_100)
     await expect(addRoutine(paths, { name: 'Long', steps: [{ kind: 'open', url }] })).rejects.toThrow(/too long/)
+  })
+})
+
+// A procedure is knowledge: the routine lives as a vault note — searchable,
+// synced, hand-editable — with the steps in frontmatter and prose in the body.
+describe('routines are vault notes', () => {
+  it('saving a routine writes a note of type routine, evergreen and off the timeline', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-note'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Portal notices', steps: [OPEN, READ] })
+    const note = await readNote(paths, saved.id)
+    expect(note.front.type).toBe('routine')
+    expect(note.front.decay).toBe('evergreen')
+    expect(note.front.timeline).toBe('ignore')
+    expect(note.front.routine?.steps).toEqual([OPEN, READ])
+    expect(note.body).toContain('# Portal notices')
+    expect(note.body).toContain('1. Open example.com')
+  })
+
+  it('teach → save → load → replay walks the exact same steps (full round trip)', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-roundtrip'), { git: false })
+    const steps = buildRoutineFromTeach([
+      { kind: 'nav', url: 'https://portal.example/home' },
+      { kind: 'click', css: 'a#notices', text: 'Notices' },
+      { kind: 'nav', url: 'https://portal.example/notices' },
+      { kind: 'read', url: 'https://portal.example/notices' },
+    ])
+    const saved = await addRoutine(paths, { name: 'Taught', steps })
+    const loaded = (await listRoutines(paths)).find((r) => r.id === saved.id)!
+    expect(loaded.steps).toEqual(steps)
+    const driver = fakeDriver({})
+    await runRoutine(paths, driver, loaded)
+    expect(driver.calls).toEqual(['open https://portal.example/home', 'click Notices', 'read'])
+  })
+
+  it('a run stamps its outcome without touching updated — a replay is not an edit', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-noedit'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Quiet', steps: [OPEN] })
+    const before = (await readNote(paths, saved.id)).front.updated
+    await runRoutine(paths, fakeDriver({}), saved)
+    const after = await readNote(paths, saved.id)
+    expect(after.front.routine?.lastOutcome).toBe('done')
+    expect(after.front.updated).toBe(before)
+  })
+
+  it('removing a routine archives the note instead of deleting knowledge', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-archive'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Old ways', steps: [OPEN] })
+    await removeRoutine(paths, saved.id)
+    expect(await listRoutines(paths)).toEqual([])
+    expect((await readNote(paths, saved.id)).front.status).toBe('archived')
+  })
+
+  it('routines saved by an older version migrate from the cache file on first read', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-migrate'), { git: false })
+    const legacy = {
+      routines: [
+        {
+          id: 'rt-legacy-1',
+          name: 'Portal notices',
+          steps: [OPEN, READ],
+          createdAt: '2026-08-01T09:00:00.000Z',
+          lastRunAt: '2026-08-19T09:00:00.000Z',
+          lastOutcome: 'done',
+          lastSuccessAt: '2026-08-19T09:00:00.000Z',
+        },
+      ],
+    }
+    await writeFile(join(paths.cache, 'routines.json'), JSON.stringify(legacy))
+    const listed = await listRoutines(paths)
+    expect(listed.map((r) => r.id)).toEqual(['rt-legacy-1'])
+    expect(listed[0]!.name).toBe('Portal notices')
+    expect(listed[0]!.steps).toEqual([OPEN, READ])
+    expect(listed[0]!.lastSuccessAt).toBe('2026-08-19T09:00:00.000Z')
+    // migrated once: the cache file has stepped aside, the note is the truth
+    await expect(readFile(join(paths.cache, 'routines.json'), 'utf8')).rejects.toThrow()
+    expect((await readNote(paths, 'rt-legacy-1')).front.type).toBe('routine')
   })
 })

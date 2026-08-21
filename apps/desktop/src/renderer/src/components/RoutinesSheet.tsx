@@ -1,6 +1,7 @@
-import { AlertTriangle, Play, Plus, Repeat, Square, X } from 'lucide-react'
+import { AlertTriangle, Eye, Play, Plus, Repeat, Square, Wand2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { RoutineBlockDto, RoutineDto, RoutineStepDto } from '../../../shared/types.js'
+import { stepLine } from '../lib/routineSteps.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
@@ -49,6 +50,11 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
   const [armedDelete, setArmedDelete] = useState<string | null>(null)
   // A refused rerun is a question, asked right where it was answered.
   const [ask, setAsk] = useState<{ id: string; name: string; blocked: RoutineBlockDto } | null>(null)
+  // Teach mode: the agent window is open and recording; when it ends, the
+  // captured steps wait here under a name box until the person keeps them.
+  const [teaching, setTeaching] = useState(false)
+  const [taught, setTaught] = useState<RoutineStepDto[] | null>(null)
+  const [taughtName, setTaughtName] = useState('')
 
   useEscape(onClose, true)
 
@@ -57,7 +63,9 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
   useEffect(() => {
     reload()
     return api.onEvent((event) => {
-      if (event.type === 'routine:logged') reload()
+      // vault:changed too: a routine is a note now, so one appearing (sync,
+      // another window, a fresh save) must show up without reopening.
+      if (event.type === 'routine:logged' || event.type === 'vault:changed') reload()
     })
   }, [])
 
@@ -80,6 +88,40 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
     setAsk(null)
     const result = await startRoutine(id, name, force)
     if (result.blocked) setAsk({ id, name, blocked: result.blocked })
+  }
+
+  const teachStart = async () => {
+    const started = await api.routineTeachStart()
+    if (!started.ok) {
+      showToast(started.error ?? t('routines.teachFailed'))
+      return
+    }
+    setTaught(null)
+    setTeaching(true)
+  }
+
+  const teachStop = async (keep: boolean) => {
+    const steps = await api.routineTeachStop().catch(() => [] as RoutineStepDto[])
+    setTeaching(false)
+    if (!keep) return
+    if (steps.length === 0) {
+      showToast(t('routines.teachEmpty'))
+      return
+    }
+    setTaught(steps)
+    setTaughtName('')
+  }
+
+  const keepTaught = async () => {
+    if (!taught || taught.length === 0 || !taughtName.trim()) return
+    try {
+      await api.routineAdd({ name: taughtName, steps: taught })
+      setTaught(null)
+      setTaughtName('')
+      reload()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message.replace(/^.*Error: /, '') : String(err))
+    }
   }
 
   const remove = (id: string) => {
@@ -157,7 +199,64 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
           </div>
         )}
 
-        {routines.length === 0 && !building ? (
+        {teaching && (
+          <div className="routine-teach" data-testid="routine-teach">
+            <div className="routine-teach-line">
+              <Eye size={14} aria-hidden /> {t('routines.teachWatching')}
+            </div>
+            <div className="routine-teach-hint">{t('routines.teachPrivacy')}</div>
+            <div className="dialog-actions">
+              <button className="secondary" data-testid="routine-teach-cancel" onClick={() => void teachStop(false)}>
+                {t('routines.cancel')}
+              </button>
+              <button className="secondary" data-testid="routine-teach-read" onClick={() => void api.routineTeachRead()}>
+                {t('routines.teachRead')}
+              </button>
+              <button className="primary" data-testid="routine-teach-done" onClick={() => void teachStop(true)}>
+                {t('routines.teachDone')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {taught && (
+          <div className="routine-teach" data-testid="routine-taught">
+            <div className="routine-teach-line">{t('routines.taughtTitle', { n: taught.length })}</div>
+            <ul className="errand-steps">
+              {taught.map((step, i) => (
+                <li key={i} className="errand-step passed">
+                  {stepLine(step)}
+                  <button
+                    className="routine-step-remove"
+                    aria-label={t('routines.removeStep')}
+                    disabled={taught.length === 1}
+                    onClick={() => setTaught((prev) => (prev ? prev.filter((_, x) => x !== i) : prev))}
+                  >
+                    <X size={11} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <input
+              className="routine-name"
+              data-testid="routine-taught-name"
+              placeholder={t('routines.namePlaceholder')}
+              maxLength={60}
+              value={taughtName}
+              onChange={(e) => setTaughtName(e.target.value)}
+            />
+            <div className="dialog-actions">
+              <button className="secondary" onClick={() => setTaught(null)}>
+                {t('routines.cancel')}
+              </button>
+              <button className="primary" data-testid="routine-taught-save" disabled={!taughtName.trim()} onClick={() => void keepTaught()}>
+                {t('routines.save')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {routines.length === 0 && !building && !teaching && !taught ? (
           <div className="errands-empty">{t('routines.empty')}</div>
         ) : (
           <ul className="routines-list">
@@ -280,8 +379,11 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
           </div>
         ) : (
           <div className="dialog-actions">
-            <button className="secondary" data-testid="routines-new" onClick={() => setBuilding(true)}>
+            <button className="secondary" data-testid="routines-new" disabled={teaching} onClick={() => setBuilding(true)}>
               <Plus size={12} aria-hidden /> {t('routines.new')}
+            </button>
+            <button className="primary" data-testid="routines-teach" disabled={teaching || busy} onClick={() => void teachStart()}>
+              <Wand2 size={12} aria-hidden /> {t('routines.teach')}
             </button>
           </div>
         )}
