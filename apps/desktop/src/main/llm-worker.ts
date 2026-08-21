@@ -105,6 +105,7 @@ async function ensure(path: string, contextSize: number, plan: LoadPlan): Promis
         await engine.llama.dispose().catch(() => undefined)
         engine = null
       }
+      forgetGrammars()
       const t0 = Date.now()
       let used = plan
       try {
@@ -166,9 +167,17 @@ async function prepareSession(ready: Engine, contextSize: number): Promise<ChatS
 // hiding the answer they are still paying for.
 const running = new Map<number, AbortController>()
 
-// Compiling a grammar walks the whole schema; the errand phases reuse a handful
-// of schemas over and over, so keyed by the schema text they compile once.
+// Compiling a grammar walks the whole schema; the errand phases and the tool
+// loop reuse a handful of schemas over and over, so keyed by the schema text
+// they compile once. A grammar belongs to the runtime that made it, so the
+// cache is emptied whenever the model is unloaded or reloaded — reusing one
+// across instances throws mid-answer, which is how a tool loop that spans an
+// idle unload died.
 const grammars = new Map<string, LlamaGrammar>()
+
+function forgetGrammars(): void {
+  grammars.clear()
+}
 
 async function grammarFor(ready: Engine, schema: object): Promise<LlamaGrammar | null> {
   const key = JSON.stringify(schema)
@@ -244,6 +253,7 @@ process.on('message', (raw: unknown) => {
     void heldCtx?.dispose().catch(() => undefined)
     const held = engine
     engine = null
+    forgetGrammars()
     if (held) {
       void held.model.dispose().catch(() => undefined)
       void held.llama.dispose().catch(() => undefined)

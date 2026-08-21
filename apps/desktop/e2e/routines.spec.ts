@@ -24,6 +24,9 @@ let server: Server
 let siteUrl: string
 // The /gate page shows a login form until the "person" (the test) signs in.
 let gateUnlocked = false
+// What the site has actually been told — the only honest way to assert that
+// nothing was posted without approval.
+let posted: string[] = []
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -41,6 +44,23 @@ test.beforeAll(async () => {
         gateUnlocked
           ? '<html><head><title>Reports</title></head><body><main><h1>Reports</h1><p>The quarterly numbers landed safely.</p></main></body></html>'
           : '<html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><form><input name="u"/><input type="password" name="p"/></form></main></body></html>',
+      )
+    else if (req.url?.startsWith('/post')) {
+      // POST, not GET: a browser may prefetch a GET form's target on its own,
+      // which would look exactly like a post nobody approved.
+      let body = ''
+      req.on('data', (chunk) => {
+        body += String(chunk)
+      })
+      req.on('end', () => {
+        posted.push(new URLSearchParams(body).get('entry') ?? '')
+        res.end('<html><head><title>Posted</title></head><body><main><h1>Posted</h1></main></body></html>')
+      })
+    } else if (req.url === '/log')
+      res.end(
+        '<html><head><title>Log</title></head><body><main><h1>Log</h1>' +
+          '<form action="/post" method="post"><input name="entry" aria-label="Entry"/><button type="submit">Submit</button></form>' +
+          '</main></body></html>',
       )
     else res.end('<html><head><title>Portal</title></head><body><main><h1>Portal</h1><a href="/notices">Notices</a></main></body></html>')
   })
@@ -83,18 +103,25 @@ async function openSheet(): Promise<void> {
 }
 
 // The agent Chrome takes a few seconds to come up; keep knocking on its CDP
-// door until it answers.
+// door until it answers. A previous run's window may still be shutting down
+// and still holding the port, so only the freshly opened teach window — the
+// one sitting on about:blank — counts as an answer.
 async function connectAgent(): Promise<Browser> {
   let last: unknown
   for (let i = 0; i < 60; i++) {
+    let browser: Browser | null = null
     try {
-      return await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
+      const open = browser.contexts()[0]?.pages() ?? []
+      if (open.length > 0 && open.every((one) => one.url() === 'about:blank')) return browser
+      await browser.close()
     } catch (err) {
       last = err
-      await new Promise((resolve) => setTimeout(resolve, 1_000))
+      await browser?.close().catch(() => undefined)
     }
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
   }
-  throw last
+  throw last ?? new Error('the teach window never appeared on the debug port')
 }
 
 test('the builder saves a routine a non-developer could author', async () => {
@@ -186,4 +213,37 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
     .toContain('The quarterly numbers landed safely')
   expect((await listRoutines(paths)).find((r) => r.id === gated.id)!.lastOutcome).toBe('done')
+})
+
+// The one place a wrong click costs something the person cannot take back.
+test('a procedure that posts asks first — refusing posts nothing, approving posts once', async () => {
+  posted = []
+  const writer = await addRoutine(paths, {
+    name: 'Daily log',
+    steps: [
+      { kind: 'open', url: `${siteUrl}log` },
+      { kind: 'type', target: { text: 'Entry' }, text: 'shipped the replayer' },
+      { kind: 'click', target: { text: 'Submit' } },
+    ],
+  })
+
+  await openSheet()
+  await page.getByTestId(`routine-run-${writer.id}`).click()
+
+  // The gate shows the actual words that would be posted.
+  await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByTestId('routine-submit')).toContainText('shipped the replayer')
+
+  // "Not yet" stops the run with the site untouched.
+  await page.getByTestId('routine-submit-cancel').click()
+  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 60_000 })
+  expect(posted).toEqual([])
+
+  // Asked again (the refused run left no success stamp), approving posts once.
+  await openSheet()
+  await page.getByTestId(`routine-run-${writer.id}`).click()
+  await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
+  await page.getByTestId('routine-submit-approve').click()
+  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
+  await expect.poll(() => posted, { timeout: 20_000 }).toEqual(['shipped the replayer'])
 })

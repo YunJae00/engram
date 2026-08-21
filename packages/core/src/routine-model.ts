@@ -61,6 +61,11 @@ export interface RoutineRunOptions {
   now?: () => Date
   // The person answered the rerun question with "yes, again".
   force?: boolean
+  // Asked once, before the click that could post: the person sees exactly
+  // what was typed into the page and says whether it may go. Anything but
+  // 'approve' stops the run with nothing submitted. No handler means no
+  // approval was possible, so the run stops rather than posting unasked.
+  onSubmit?(preview: { routine: string; filled: { label: string; text: string }[] }): Promise<'approve' | 'cancel'>
 }
 
 // Why a rerun was refused. Not an error: the answer may well be "run it
@@ -176,6 +181,34 @@ export function writeStepIndexes(steps: RoutineStep[]): Set<number> {
     } else if (step.kind === 'click' && typed) marked.add(i)
   })
   return marked
+}
+
+// The blanks a procedure leaves for the day it runs: "{{today}}" in a typed
+// value is a slot, filled fresh each time rather than replayed verbatim.
+const SLOT = /\{\{\s*([\w-]{1,40})\s*\}\}/g
+
+export function routineSlots(steps: RoutineStep[]): string[] {
+  const names = new Set<string>()
+  for (const step of steps) {
+    if (step.kind !== 'type') continue
+    for (const match of step.text.matchAll(SLOT)) names.add(match[1]!)
+  }
+  return [...names]
+}
+
+// Unfilled slots stay as they are rather than becoming an empty string: a
+// half-filled form the person can see beats a silently blanked one.
+export function fillSlots(steps: RoutineStep[], slots: Record<string, string>): RoutineStep[] {
+  return steps.map((step) =>
+    step.kind === 'type'
+      ? {
+          ...step,
+          text: step.text.replace(SLOT, (whole, name: string) =>
+            typeof slots[name] === 'string' ? slots[name]! : whole,
+          ),
+        }
+      : step,
+  )
 }
 
 // The one-line description a progress row shows for a step.

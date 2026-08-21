@@ -2,6 +2,7 @@ import { AlertTriangle, Eye, Play, Plus, Repeat, Square, Wand2, X } from 'lucide
 import { useEffect, useState } from 'react'
 import type { RoutineBlockDto, RoutineDto, RoutineStepDto } from '../../../shared/types.js'
 import { stepLine } from '../lib/routineSteps.js'
+import { SubmitGate } from './SubmitGate.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
@@ -176,6 +177,7 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
                 </button>
               </div>
             )}
+            <SubmitGate />
             <button className="secondary errand-stop" onClick={() => void api.routineAbort()}>
               <Square size={11} strokeWidth={2.5} aria-hidden /> {t('routines.stop')}
             </button>

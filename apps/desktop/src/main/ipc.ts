@@ -51,6 +51,7 @@ import {
   rejectCard,
   runAgentLoop,
   cometTools,
+  fillSlots,
   runErrand,
   addRoutine,
   buildRoutineFromTeach,
@@ -77,7 +78,9 @@ import {
   type Note,
   type RoutineBlock,
   type RoutineStep,
+  type RoutineRunResult,
   type RunReport,
+  type ErrandResult,
 } from 'core'
 import { randomUUID } from 'node:crypto'
 import { backgroundInferenceOk, errandFloors } from './local-llm.js'
@@ -86,6 +89,7 @@ import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
+import { consentedFolders } from './content-capture.js'
 import { routineDriver } from './routine-driver.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { ipcMain } from 'electron'
@@ -582,6 +586,9 @@ let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 let routineRunning = false
 let routineAbort: AbortController | null = null
 let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
+// Set while a replay waits for permission to post; answered by
+// routines:submitDone, and by an abort with 'cancel' so it cannot wedge.
+let routineSubmitWaiter: ((verdict: 'approve' | 'cancel') => void) | null = null
 // Teach mode shares the agent browser, so it excludes routine runs and errands.
 let teachingSession = false
 
@@ -864,7 +871,13 @@ export function registerIpc(ctx: VaultContext): void {
   const ERRAND_MIN_FREE = 8e9
   const ERRAND_WEB_MIN_FREE = 10e9
 
-  ipcMain.handle('errand:start', async (_e, goal: string, botId?: string): Promise<{ ok: boolean; error?: string }> => {
+  // One guarded way to start an errand: the Delegate button returns as soon
+  // as the run is accepted, while the comet's research tool waits for what
+  // it produced. Every floor, guard and journal entry is shared.
+  async function beginErrand(
+    goal: string,
+    botId?: string,
+  ): Promise<{ ok: boolean; error?: string; done?: Promise<ErrandResult> }> {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
     // Both drive the same Chrome tab, so the exclusion has to run both ways:
     // an errand landing on top of a routine would type the routine's saved
@@ -894,7 +907,7 @@ export function registerIpc(ctx: VaultContext): void {
     const signal = errandAbort.signal
     const runId = randomUUID()
     const runStartedAt = new Date().toISOString()
-    void runErrand(
+    const done = runErrand(
       paths,
       {
         engine: ctx.engines[0]!,
@@ -977,15 +990,36 @@ export function registerIpc(ctx: VaultContext): void {
             return appendBotTurn(paths, botId, { role: 'assistant', text: line, at: new Date().toISOString() })
           })
           .then(() => broadcast({ type: 'errand:logged' }))
+          // The result rides through the journal work: a caller waiting on
+          // this run (the comet's research tool) needs what it produced.
+          .then(() => result)
       })
-      .catch((err) => flog('errand', err))
+      .catch((err) => {
+        flog('errand', err)
+        return { ok: false, sources: [], pages: [], skipped: [], error: err instanceof Error ? err.message : String(err) } as ErrandResult
+      })
       .finally(() => {
         errandRunning = false
         errandAbort = null
         errandWallWaiter = null
       })
-    return { ok: true }
+    return { ok: true, done }
+  }
+
+  ipcMain.handle('errand:start', async (_e, goal: string, botId?: string): Promise<{ ok: boolean; error?: string }> => {
+    const { done, ...reply } = await beginErrand(goal, botId)
+    void done
+    return reply
   })
+
+  // The comet's deep dive: the same pipeline, reported back in one line.
+  async function runResearch(goal: string, botId: string): Promise<string> {
+    const started = await beginErrand(goal, botId)
+    if (!started.ok || !started.done) return started.error ?? 'research could not start'
+    const result = await started.done
+    if (result.ok) return `researched "${result.title ?? goal}" — the cited write-up is waiting in review`
+    return `the research stopped: ${result.error ?? 'unknown reason'}`
+  }
 
   ipcMain.handle('errand:journal', () => readErrandJournal(paths, 50))
 
@@ -1028,7 +1062,14 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('routines:add', (_e, input: { name: string; steps: RoutineStep[] }) => addRoutine(paths, input))
   ipcMain.handle('routines:remove', (_e, id: string) => removeRoutine(paths, id))
 
-  ipcMain.handle('routines:run', async (_e, id: string, force?: boolean): Promise<RoutineRunReply> => {
+  // Starting a replay, guarded once for every caller: the Run button, which
+  // wants the answer immediately, and the comet's hands, which wait for the
+  // outcome. `done` resolves when the replay is over and the door is open
+  // again, so a caller can act on the result without racing the guard.
+  async function beginRoutine(
+    id: string,
+    opts: { force?: boolean; slots?: Record<string, string> } = {},
+  ): Promise<RoutineRunReply & { done?: Promise<RoutineRunResult> }> {
     if (routineRunning) return { ok: false, error: 'A routine is already running.' }
     if (errandRunning) return { ok: false, error: 'An errand is using the browser right now — try again when it finishes.' }
     // Claimed before the first await, or two fast clicks both get past this.
@@ -1048,25 +1089,28 @@ export function registerIpc(ctx: VaultContext): void {
         error: `Not enough free memory for a routine right now (${(free / 1e9).toFixed(1)}GB free, needs ~${Math.ceil(ROUTINE_MIN_FREE / 1e9)}GB) — close some apps and try again.`,
       }
     }
-    const routine = (await listRoutines(paths)).find((r) => r.id === id)
-    if (!routine) {
+    const saved = (await listRoutines(paths)).find((r) => r.id === id)
+    if (!saved) {
       release()
       return { ok: false, error: 'That routine no longer exists.' }
     }
     // A routine that types into pages can post something. Whether a same-day
     // rerun — or one after a run that died mid-submit — should happen is a
     // person's call, so it comes back as a question, not an error.
-    const blocked = force === true ? null : routineBlock(routine, new Date())
+    const blocked = opts.force === true ? null : routineBlock(saved, new Date())
     if (blocked) {
       release()
       return { ok: false, blocked }
     }
+    // The blanks are filled for this run only; the saved procedure keeps its
+    // placeholders for tomorrow.
+    const routine = opts.slots ? { ...saved, steps: fillSlots(saved.steps, opts.slots) } : saved
     routineAbort = new AbortController()
     const signal = routineAbort.signal
     let finished: Extract<EngramEvent, { type: 'routine:logged' }> | null = null
-    void runRoutine(paths, routineDriver(), routine, {
+    const done = runRoutine(paths, routineDriver(), routine, {
       signal,
-      force: force === true,
+      force: opts.force === true,
       onStep: (index, total, label) => broadcast({ type: 'routine:step', routineId: routine.id, index, total, label }),
       // Same parking spot as the errand's wall: the run waits on the user's
       // verdict, and abort answers with skip so it can never deadlock here.
@@ -1080,7 +1124,22 @@ export function registerIpc(ctx: VaultContext): void {
           }
           broadcast({ type: 'routine:wall', routineId: routine.id, wall: wall.wall })
         }),
+      // Nothing is posted until the person has read what would be posted.
+      onSubmit: (preview) =>
+        new Promise((resolve) => {
+          const keepOpen = holdAgentBrowser()
+          routineSubmitWaiter = (verdict) => {
+            routineSubmitWaiter = null
+            keepOpen()
+            resolve(verdict)
+          }
+          broadcast({ type: 'routine:submit', routineId: routine.id, name: preview.routine, filled: preview.filled })
+        }),
     })
+      .catch((err) => {
+        flog('routine', err)
+        return { ok: false, readings: [], error: err instanceof Error ? err.message : String(err) } as RoutineRunResult
+      })
       .then((result) => {
         // The readings land as a review card; nudge the badge to pick it up.
         if (result.cardId) broadcast({ type: 'vault:changed' })
@@ -1095,23 +1154,50 @@ export function registerIpc(ctx: VaultContext): void {
           ...(result.cardId ? { cardId: result.cardId } : {}),
           ...(result.error ? { error: result.error } : {}),
         }
-      })
-      .catch((err) => flog('routine', err))
-      .finally(() => {
         release()
         routineAbort = null
         routineWallWaiter = null
+        routineSubmitWaiter = null
         if (finished) broadcast(finished)
         // The browser's gigabyte goes back to the machine as soon as the
         // replay is over — the next run pays a relaunch, which is cheap.
         void closeAgentBrowser()
+        return result
       })
-    return { ok: true }
+    return { ok: true, done }
+  }
+
+  ipcMain.handle('routines:run', async (_e, id: string, force?: boolean): Promise<RoutineRunReply> => {
+    const { done, ...reply } = await beginRoutine(id, { force: force === true })
+    void done
+    return reply
   })
+
+  // The comet's hands. It waits for the outcome and reports it in words the
+  // loop can act on — including the two refusals only a person can settle.
+  async function runProcedureForComet(
+    id: string,
+    slots: Record<string, string>,
+  ): Promise<string> {
+    const started = await beginRoutine(id, { slots })
+    if (started.blocked === 'already-ran-today')
+      return 'that procedure already ran today and it posts to a page — ask the person whether to run it again'
+    if (started.blocked === 'unfinished-write')
+      return 'the last run of that procedure stopped mid-submit — ask the person to check the site before retrying'
+    if (!started.ok || !started.done) return started.error ?? 'the procedure could not start'
+    const result = await started.done
+    if (result.ok) return `the procedure "${id}" finished${result.cardId ? ' — what it read is waiting in review' : ''}`
+    return `the procedure stopped: ${result.error ?? 'unknown reason'}`
+  }
 
   ipcMain.handle('routines:abort', () => {
     routineWallWaiter?.('skip')
+    routineSubmitWaiter?.('cancel')
     routineAbort?.abort()
+  })
+
+  ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'cancel') => {
+    routineSubmitWaiter?.(verdict === 'approve' ? 'approve' : 'cancel')
   })
 
   ipcMain.handle('routines:wallDone', (_e, verdict: 'resolved' | 'skip') => {
@@ -1691,6 +1777,12 @@ export function registerIpc(ctx: VaultContext): void {
             workdir: engineCwd(paths),
             tools: cometTools({
               paths,
+              // The browser rides along only when the machine can afford it —
+              // the same gate the errand uses.
+              courier: agentBrowserAvailable() && os.freemem() >= ROUTINE_MIN_FREE ? agentCourier() : null,
+              allowedFolders: consentedFolders,
+              research: (goal) => runResearch(goal, bot.id),
+              runProcedure: (id, slots) => runProcedureForComet(id, slots),
               retrieve: async (query, limit) => {
                 const hits = activationRerank(
                   hybridMerge(ctx.store.search(query), await semanticQueryIfLive(query, limit), limit),
@@ -1712,7 +1804,13 @@ export function registerIpc(ctx: VaultContext): void {
           },
         )
         if (signal.aborted) return
-        await deliverAnswer(result.answer)
+        // A model that was pushed to act may announce that it acted. The
+        // record is corrected here, in the same breath as the answer, so the
+        // person is never told a chore was done when it was not.
+        const note = result.pending
+          ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
+          : ''
+        await deliverAnswer(`${result.answer}${note}`)
       } catch (err) {
         if (signal.aborted) {
           broadcast({ type: 'chat:done', channel, text: '' })

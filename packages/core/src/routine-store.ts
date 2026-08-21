@@ -157,6 +157,14 @@ export async function markRoutineRun(
   })
 }
 
+// A run that stopped BEFORE the click — the person said "not yet" — leaves no
+// doubt about whether anything was posted, so it must leave no warning either.
+export async function clearRoutinePendingWrite(paths: VaultPaths, id: string): Promise<void> {
+  await patchRun(paths, id, (meta) => {
+    delete meta.pendingWrite
+  })
+}
+
 export async function markRoutinePendingWrite(
   paths: VaultPaths,
   id: string,

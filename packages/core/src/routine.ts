@@ -1,6 +1,6 @@
 import { createCard } from './cards.js'
 import type { VaultPaths } from './vault.js'
-import { markRoutinePendingWrite, markRoutineRun } from './routine-store.js'
+import { clearRoutinePendingWrite, markRoutinePendingWrite, markRoutineRun } from './routine-store.js'
 import {
   routineBlock,
   routineStepLabel,
@@ -22,7 +22,7 @@ import {
 // keeps a 99-in-100 success rate reachable at all.
 
 export * from './routine-model.js'
-export { addRoutine, listRoutines, markRoutineRun, removeRoutine } from './routine-store.js'
+export { addRoutine, clearRoutinePendingWrite, listRoutines, markRoutineRun, removeRoutine } from './routine-store.js'
 
 // One card body: generous enough for a few portal pages, small enough that
 // review stays readable.
@@ -96,6 +96,8 @@ export async function runRoutine(
   const blocked = options.force ? null : routineBlock(routine, now())
   if (blocked) return { ok: false, readings, blocked }
   const writeSteps = writeStepIndexes(routine.steps)
+  // The submit gate is asked once per run, not once per click.
+  let approved = false
   try {
     const total = routine.steps.length
     for (let i = 0; i < total; i++) {
@@ -107,6 +109,25 @@ export async function runRoutine(
       // machine dies right here, the next run knows to ask.
       if (writeSteps.has(i))
         await markRoutinePendingWrite(paths, routine.id, { at: now().toISOString(), step: i, label })
+      // The last moment before something can be posted. The person sees the
+      // filled-in values and decides; a run with nothing to show for itself
+      // never reaches here, because only a click after typing is a submit.
+      if (!approved && writeSteps.has(i) && step.kind === 'click') {
+        const filled = routine.steps
+          .filter((one): one is Extract<RoutineStep, { kind: 'type' }> => one.kind === 'type')
+          .map((one) => ({ label: one.target.text ?? 'field', text: one.text }))
+        const verdict = options.onSubmit
+          ? await options.onSubmit({ routine: routine.name, filled })
+          : 'cancel'
+        checkAbort(options.signal)
+        if (verdict !== 'approve') {
+          // Nothing was posted and we know it: clear the doubt marker so the
+          // next run is not warned about a submit that never happened.
+          await clearRoutinePendingWrite(paths, routine.id)
+          return finish({ ok: false, readings, error: 'stopped before submitting — nothing was posted' })
+        }
+        approved = true
+      }
       let result = await runStep(driver, step, readings, options.signal)
       if (result.wall) {
         const verdict = (await options.onWall?.({ wall: result.wall })) ?? 'skip'

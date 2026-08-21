@@ -1651,6 +1651,17 @@ body.bubble-host { background: transparent; }
 }
 .routine-teach-line { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
 .routine-teach-hint { font-size: var(--fs-small); color: var(--fg-dim); }
+/* The submit gate: the words that are about to be posted, and two answers.
+   Warm-bordered because this is the one place a wrong click is expensive. */
+.routine-submit {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--clay); border-radius: 10px; padding: 10px 12px;
+}
+.routine-submit-head { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
+.routine-submit-fields { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.routine-submit-fields li { display: flex; gap: 8px; font-size: var(--fs-small); }
+.routine-submit-label { flex: none; min-width: 90px; color: var(--fg-faint); }
+.routine-submit-value { color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 
 /* The rerun question: a routine that types into pages asks before repeating. */
 .routine-ask {

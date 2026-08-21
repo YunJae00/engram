@@ -5,6 +5,7 @@ import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/type
 import { api } from '../api.js'
 import type { StringKey } from '../i18n.js'
 import { answerHtml } from '../markdown.js'
+import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
@@ -424,6 +425,7 @@ export function BotsView() {
                   </button>
                 </div>
               )}
+              <SubmitGate />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <span className="bots-errand-pulse">

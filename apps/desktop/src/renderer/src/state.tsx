@@ -99,6 +99,10 @@ interface AppState {
   }
   routineWall: { wall: 'login' | 'captcha' } | null
   answerRoutineWall(verdict: 'resolved' | 'skip'): void
+  // What a procedure is about to post, waiting for a yes. Nothing is
+  // submitted while this stands.
+  routineSubmit: { name: string; filled: { label: string; text: string }[] } | null
+  answerRoutineSubmit(verdict: 'approve' | 'cancel'): void
   // Resolves with the refusal so a caller can ask the rerun question itself.
   startRoutine(id: string, name: string, force?: boolean): Promise<{ ok: boolean; blocked?: RoutineBlockDto }>
   toast: string | null
@@ -173,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
   const [routine, setRoutine] = useState<AppState['routine']>({ running: false, steps: [] })
   const [routineWall, setRoutineWall] = useState<{ wall: 'login' | 'captcha' } | null>(null)
+  const [routineSubmit, setRoutineSubmit] = useState<AppState['routineSubmit']>(null)
   const [toast, setToast] = useState<string | null>(null)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
@@ -403,6 +408,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // A routine replay narrating its steps. The logged event ends the run
       // and speaks once — with a door to review when a reading landed.
       if (event.type === 'routine:wall') setRoutineWall({ wall: event.wall })
+      if (event.type === 'routine:submit') setRoutineSubmit({ name: event.name, filled: event.filled })
       if (event.type === 'routine:step') {
         setRoutineWall(null)
         setRoutine((prev) => {
@@ -418,6 +424,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (event.type === 'routine:logged') {
         setRoutineWall(null)
+        setRoutineSubmit(null)
         setRoutine({ running: false, steps: [] })
         if (event.outcome === 'done')
           latest.current.showToast(
@@ -480,6 +487,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const answerRoutineWall = useCallback((verdict: 'resolved' | 'skip') => {
     setRoutineWall(null)
     void api.routineWallDone(verdict).catch(() => undefined)
+  }, [])
+
+  const answerRoutineSubmit = useCallback((verdict: 'approve' | 'cancel') => {
+    setRoutineSubmit(null)
+    void api.routineSubmitDone(verdict).catch(() => undefined)
   }, [])
 
   // Kick off a routine replay. main runs it detached and reports back over
@@ -554,12 +566,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       routine,
       routineWall,
       answerRoutineWall,
+      routineSubmit,
+      answerRoutineSubmit,
       startRoutine,
       toast,
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, startRoutine, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, startRoutine, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

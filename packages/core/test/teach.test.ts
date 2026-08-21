@@ -74,6 +74,24 @@ describe('buildRoutineFromTeach', () => {
     expect(steps).toEqual([{ kind: 'open', url: 'https://a.example/' }, { kind: 'read' }])
   })
 
+  it('one navigation, however many sources report it', () => {
+    // The browser reports the page, and the document reports itself: both are
+    // true, and the person still only went there once.
+    const steps = buildRoutineFromTeach([
+      { kind: 'nav', url: 'https://a.example/' },
+      { kind: 'nav', url: 'https://a.example/' },
+      { kind: 'click', text: 'Next' },
+      { kind: 'nav', url: 'https://a.example/two' },
+      { kind: 'nav', url: 'https://a.example/two' },
+      { kind: 'read', url: 'https://a.example/two' },
+    ])
+    expect(steps).toEqual([
+      { kind: 'open', url: 'https://a.example/' },
+      { kind: 'click', target: { text: 'Next' } },
+      { kind: 'read' },
+    ])
+  })
+
   it('ignores about:blank and other non-http navigations', () => {
     const steps = buildRoutineFromTeach([
       { kind: 'nav', url: 'about:blank' },

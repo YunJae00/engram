@@ -350,6 +350,9 @@ export type EngramEvent =
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.
   | { type: 'comet:step'; channel: string; line: string }
+  // A procedure is about to post something. The run waits until
+  // routineSubmitDone answers with the person's verdict.
+  | { type: 'routine:submit'; routineId: string; name: string; filled: { label: string; text: string }[] }
   // The floating bubble asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
   | { type: 'brain:setup' }
@@ -471,6 +474,9 @@ export interface EngramApi {
   routineRun(id: string, force?: boolean): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
   routineAbort(): Promise<void>
   routineWallDone(verdict: 'resolved' | 'skip'): Promise<void>
+  // The person's answer to "may this be posted?" — nothing is submitted
+  // until this says approve.
+  routineSubmitDone(verdict: 'approve' | 'cancel'): Promise<void>
   // Teach mode: open the agent Chrome and record the person's moves, then hand
   // them back as steps to name and save. teachStart resolves once the window
   // is up (or refused); teachStop returns the recorded steps.

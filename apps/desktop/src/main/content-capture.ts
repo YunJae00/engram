@@ -35,6 +35,11 @@ function stateFile(): string {
   return join(app.getPath('userData'), 'content-capture.json')
 }
 
+// The folders the person allowed, for anything that must stay inside them.
+export async function consentedFolders(): Promise<string[]> {
+  return readState().then((state) => state.folders)
+}
+
 async function readState(): Promise<ContentState> {
   try {
     const parsed = JSON.parse(await readFile(stateFile(), 'utf8')) as ContentState
@@ -117,7 +122,7 @@ export async function stopContentCapture(): Promise<void> {
 }
 
 export function registerContentCaptureIpc(): void {
-  ipcMain.handle('content:folders', () => readState().then((s) => s.folders))
+  ipcMain.handle('content:folders', () => consentedFolders())
   ipcMain.handle('content:addFolder', async () => {
     const result = await dialog.showOpenDialog({ title: 'Watch a folder', properties: ['openDirectory'] })
     if (result.canceled || !result.filePaths[0]) return readState().then((s) => s.folders)

@@ -338,8 +338,13 @@ export async function closeAgentBrowser(options: { force?: boolean } = {}): Prom
     pressureTimer = null
   }
   const held = context ?? (await opening?.catch(() => null)) ?? null
-  context = null
-  workPage = null
+  // Only forget the window this call is actually closing. A teardown that
+  // started before a newer session opened its own window would otherwise
+  // erase the live one's handle and leave the session driving a ghost.
+  if (held === context) {
+    context = null
+    workPage = null
+  }
   if (!held) return
   try {
     await held.close()

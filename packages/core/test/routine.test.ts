@@ -8,6 +8,8 @@ import {
   addRoutine,
   listRoutines,
   removeRoutine,
+  fillSlots,
+  routineSlots,
   routineStepLabel,
   runRoutine,
   validateRoutineSteps,
@@ -21,6 +23,9 @@ import { tmpVaultRoot } from './helpers.js'
 const OPEN: RoutineStep = { kind: 'open', url: 'https://example.com/notices' }
 const READ: RoutineStep = { kind: 'read' }
 const TYPE: RoutineStep = { kind: 'type', target: { text: 'Entry' }, text: 'shipped the replayer' }
+// Posting needs a person's yes; these tests are about other things, so they
+// grant it. The gate itself is tested in its own block below.
+const APPROVE = async (): Promise<'approve'> => 'approve'
 const CLICK: RoutineStep = { kind: 'click', target: { text: 'Submit' } }
 
 // A scripted driver: each call shifts the next canned answer and records what
@@ -264,15 +269,15 @@ describe('rerunning a routine that writes', () => {
   it('refuses a blind same-day rerun, and runs when the person insists', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-rerun'), { git: false })
     const routine = await addRoutine(paths, { name: 'Daily log', steps: [OPEN, TYPE, CLICK] })
-    expect((await runRoutine(paths, fakeDriver({}), routine, { now: NINE_AM })).ok).toBe(true)
+    expect((await runRoutine(paths, fakeDriver({}), routine, { now: NINE_AM, onSubmit: APPROVE })).ok).toBe(true)
 
     const saved = (await listRoutines(paths))[0]!
     expect(saved.lastSuccessAt).toBe(NINE_AM().toISOString())
-    const second = await runRoutine(paths, fakeDriver({}), saved, { now: NINE_AM })
+    const second = await runRoutine(paths, fakeDriver({}), saved, { now: NINE_AM, onSubmit: APPROVE })
     expect(second.blocked).toBe('already-ran-today')
     expect(second.ok).toBe(false)
 
-    const forced = await runRoutine(paths, fakeDriver({}), saved, { now: NINE_AM, force: true })
+    const forced = await runRoutine(paths, fakeDriver({}), saved, { now: NINE_AM, force: true, onSubmit: APPROVE })
     expect(forced.ok).toBe(true)
   })
 
@@ -289,7 +294,9 @@ describe('rerunning a routine that writes', () => {
   it('a run that dies mid-submit leaves the marker, and the next one asks about it', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-midsubmit'), { git: false })
     const routine = await addRoutine(paths, { name: 'Post it', steps: [OPEN, TYPE, CLICK] })
-    const failed = await runRoutine(paths, fakeDriver({ click: [{ ok: false, error: 'the button vanished' }] }), routine)
+    const failed = await runRoutine(paths, fakeDriver({ click: [{ ok: false, error: 'the button vanished' }] }), routine, {
+      onSubmit: APPROVE,
+    })
     expect(failed.ok).toBe(false)
 
     // The click that would have posted was recorded BEFORE it ran, and a
@@ -299,9 +306,9 @@ describe('rerunning a routine that writes', () => {
     expect(saved.pendingWrite?.label).toBe('Click "Submit"')
     expect(saved.lastSuccessAt).toBeUndefined()
 
-    expect((await runRoutine(paths, fakeDriver({}), saved)).blocked).toBe('unfinished-write')
+    expect((await runRoutine(paths, fakeDriver({}), saved, { onSubmit: APPROVE })).blocked).toBe('unfinished-write')
     // Insisting clears it by finishing cleanly.
-    expect((await runRoutine(paths, fakeDriver({}), saved, { force: true })).ok).toBe(true)
+    expect((await runRoutine(paths, fakeDriver({}), saved, { force: true, onSubmit: APPROVE })).ok).toBe(true)
     expect((await listRoutines(paths))[0]!.pendingWrite).toBeUndefined()
   })
 })
@@ -412,5 +419,132 @@ describe('routines are vault notes', () => {
     // migrated once: the cache file has stepped aside, the note is the truth
     await expect(readFile(join(paths.cache, 'routines.json'), 'utf8')).rejects.toThrow()
     expect((await readNote(paths, 'rt-legacy-1')).front.type).toBe('routine')
+  })
+})
+
+// Nothing a person cannot undo happens without them seeing it first. This is
+// the last gate before a routine posts, and it is deliberately unskippable.
+describe('the submit gate', () => {
+  const WRITER: RoutineStep[] = [OPEN, TYPE, CLICK]
+
+  it('shows what was typed and posts only after the person approves', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-ok'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Daily log', steps: WRITER })
+    const driver = fakeDriver({})
+    const seen: { routine: string; filled: { label: string; text: string }[] }[] = []
+    const result = await runRoutine(paths, driver, routine, {
+      onSubmit: async (preview) => {
+        seen.push(preview)
+        return 'approve'
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(seen).toEqual([
+      { routine: 'Daily log', filled: [{ label: 'Entry', text: 'shipped the replayer' }] },
+    ])
+    expect(driver.calls).toContain('click Submit')
+  })
+
+  it('a refusal stops the run before the click — nothing is posted', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-no'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Daily log', steps: WRITER })
+    const driver = fakeDriver({})
+    const result = await runRoutine(paths, driver, routine, { onSubmit: async () => 'cancel' })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/nothing was posted/)
+    expect(driver.calls).not.toContain('click Submit')
+  })
+
+  it('no way to ask means no posting — a silent host never submits', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-none'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Daily log', steps: WRITER })
+    const driver = fakeDriver({})
+    const result = await runRoutine(paths, driver, routine)
+    expect(result.ok).toBe(false)
+    expect(driver.calls).not.toContain('click Submit')
+  })
+
+  it('is asked once per run, not once per click', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-once'), { git: false })
+    const routine = await addRoutine(paths, {
+      name: 'Two clicks',
+      steps: [OPEN, TYPE, CLICK, { kind: 'click', target: { text: 'Confirm' } }],
+    })
+    let asked = 0
+    const result = await runRoutine(paths, fakeDriver({}), routine, {
+      onSubmit: async () => {
+        asked++
+        return 'approve'
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(asked).toBe(1)
+  })
+
+  it('a refusal leaves no doubt behind — the next run is not warned about it', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-clean'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Daily log', steps: WRITER })
+    await runRoutine(paths, fakeDriver({}), routine, { onSubmit: async () => 'cancel' })
+    // Nothing was posted and the app knows it, so no "stopped mid-submit"
+    // warning is left standing to block or frighten the next run.
+    const saved = (await listRoutines(paths))[0]!
+    expect(saved.pendingWrite).toBeUndefined()
+    expect(await runRoutine(paths, fakeDriver({}), saved, { onSubmit: APPROVE })).toMatchObject({ ok: true })
+  })
+
+  it('a read-only routine never asks — it has nothing to post', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-read'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Notices', steps: [OPEN, READ] })
+    let asked = 0
+    const result = await runRoutine(paths, fakeDriver({}), routine, {
+      onSubmit: async () => {
+        asked++
+        return 'approve'
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(asked).toBe(0)
+  })
+})
+
+// A procedure that types the same sentence every day is a worse procedure
+// than one that leaves the sentence blank for the day it runs.
+describe('slots — the blanks a procedure fills fresh', () => {
+  const TEMPLATE: RoutineStep[] = [
+    OPEN,
+    { kind: 'type', target: { text: 'Title' }, text: 'Weekly report {{week}}' },
+    { kind: 'type', target: { text: 'Body' }, text: '{{summary}}' },
+    CLICK,
+  ]
+
+  it('names the blanks a procedure needs', () => {
+    expect(routineSlots(TEMPLATE)).toEqual(['week', 'summary'])
+    expect(routineSlots([OPEN, READ])).toEqual([])
+  })
+
+  it('fills them, and leaves an unanswered blank visible rather than empty', () => {
+    const filled = fillSlots(TEMPLATE, { week: '34' })
+    expect(filled[1]).toEqual({ kind: 'type', target: { text: 'Title' }, text: 'Weekly report 34' })
+    expect(filled[2]).toEqual({ kind: 'type', target: { text: 'Body' }, text: '{{summary}}' })
+  })
+
+  it('a filled procedure types the filled values, and the gate shows them', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-slots-run'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Weekly', steps: TEMPLATE })
+    const filled = { ...saved, steps: fillSlots(saved.steps, { week: '34', summary: 'shipped the replayer' }) }
+    const driver = fakeDriver({})
+    let preview: { label: string; text: string }[] = []
+    const result = await runRoutine(paths, driver, filled, {
+      onSubmit: async (p) => {
+        preview = p.filled
+        return 'approve'
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(driver.calls).toContain('type Title Weekly report 34')
+    expect(preview).toEqual([
+      { label: 'Title', text: 'Weekly report 34' },
+      { label: 'Body', text: 'shipped the replayer' },
+    ])
   })
 })

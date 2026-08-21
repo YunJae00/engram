@@ -65,6 +65,10 @@ const RECORDER = (): void => {
     if (wrap?.textContent) return wrap.textContent
     return el.getAttribute('placeholder') ?? el.getAttribute('name') ?? ''
   }
+  // The document reports its own address. Watching page objects from outside
+  // misses whatever the person opens in another tab, and depends on which
+  // handle the main process happens to hold.
+  send({ kind: 'nav', url: location.href })
   document.addEventListener(
     'click',
     (ev) => {

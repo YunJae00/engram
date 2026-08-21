@@ -116,6 +116,7 @@ const api: EngramApi = {
   routineRun: (id: string, force?: boolean) => ipcRenderer.invoke('routines:run', id, force),
   routineAbort: () => ipcRenderer.invoke('routines:abort'),
   routineWallDone: (verdict: 'resolved' | 'skip') => ipcRenderer.invoke('routines:wallDone', verdict),
+  routineSubmitDone: (verdict: 'approve' | 'cancel') => ipcRenderer.invoke('routines:submitDone', verdict),
   routineTeachStart: () => ipcRenderer.invoke('routines:teachStart'),
   routineTeachRead: () => ipcRenderer.invoke('routines:teachRead'),
   routineTeachStop: () => ipcRenderer.invoke('routines:teachStop'),

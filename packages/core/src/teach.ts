@@ -39,14 +39,20 @@ function sameTarget(a: RoutineTarget, b: RoutineTarget): boolean {
 export function buildRoutineFromTeach(events: TeachEvent[]): RoutineStep[] {
   const steps: RoutineStep[] = []
   let lastKind = ''
+  // A page can be reported by the browser AND by the document itself; the
+  // person navigated once, so the routine gets one step.
+  let lastNavUrl = ''
   for (const ev of events) {
     if (ev.kind === 'nav') {
       if (lastKind === 'click') {
         lastKind = 'nav-after-click'
+        lastNavUrl = ev.url.trim()
         continue
       }
       const url = ev.url.trim()
       if (!/^https?:/i.test(url)) continue
+      if (url === lastNavUrl) continue
+      lastNavUrl = url
       const prev = steps[steps.length - 1]
       if (prev && prev.kind === 'open' && prev.url === url) continue
       steps.push({ kind: 'open', url })
