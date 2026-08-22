@@ -1466,10 +1466,17 @@ body.bubble-host { background: transparent; }
 .cosmos-chat-collapse:hover, .cosmos-chat-open:hover, .rail-collapse:hover, .rail-reopen:hover {
   background: var(--hover-bg); color: var(--fg);
 }
-.cosmos-chat-open {
-  position: absolute; top: 12px; right: 12px; z-index: 4;
-  background: var(--card-top); border: 1px solid var(--border-soft); padding: 7px;
+/* Folded, a rail keeps a narrow strip of its own instead of floating a
+   button over the work: the pane beside it widens, and nothing is hidden
+   under a control. Both edges use it, so folding feels the same either way. */
+.side-rail.folded {
+  flex: none; width: 34px; display: flex; justify-content: center; padding-top: 12px;
+  background: var(--sidebar-bg); border-right: 1px solid var(--border-soft);
 }
+.cosmos-chat + .side-rail.folded, .sky-view .side-rail.folded {
+  border-right: none; border-left: 1px solid var(--border-soft);
+}
+.cosmos-chat-open { background: transparent; border: none; padding: 7px; }
 .cosmos-chat-thread { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cosmos-chat-hint { font-size: var(--fs-small); line-height: 1.55; color: var(--fg-faint); }
 .cosmos-chat-write { display: flex; gap: 7px; align-items: flex-end; padding: 10px 12px; border-top: 1px solid var(--border-soft); }
@@ -1478,7 +1485,7 @@ body.bubble-host { background: transparent; }
   padding: 8px 10px; border-radius: 9px; font-size: var(--fs-small); line-height: 1.5; font-family: inherit;
   border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
 }
-.rail-reopen { position: absolute; top: 12px; left: 12px; z-index: 4; background: var(--card-top); border: 1px solid var(--border-soft); padding: 7px; }
+.rail-reopen { background: transparent; border: none; padding: 7px; }
 .brain-view, .bots-view { position: relative; }
 .brain-rail-head, .bots-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
@@ -1488,8 +1495,17 @@ body.bubble-host { background: transparent; }
   width: 240px; flex: none; border-right: 1px solid var(--border-soft);
   background: var(--sidebar-bg); padding: 12px 10px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 8px;
+  animation: rail-unfold 160ms ease;
+}
+@keyframes rail-unfold {
+  from { width: 34px; opacity: 0.4; }
+  to { width: 240px; opacity: 1; }
 }
 .bots-rail-head { font-size: var(--fs-small); font-weight: 700; color: var(--fg-dim); padding: 0 4px; }
+/* The routines door sits under New comet, quieter: it is the other kind of
+   repeated work, not the primary act of this rail. */
+.bots-routines { color: var(--fg-dim); }
+.bots-routines:hover { color: var(--fg); }
 .bots-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .bots-row {
   width: 100%; display: flex; align-items: center; gap: 8px;
@@ -1621,7 +1637,7 @@ body.bubble-host { background: transparent; }
 .errand-run-meta { font-size: var(--fs-small); color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .errand-run-review { flex: none; }
 @media (prefers-reduced-motion: reduce) {
-  .errand-step.current::before, .bots-errand-pulse { animation: none; }
+  .errand-step.current::before, .bots-errand-pulse, .bots-rail, .cosmos-chat { animation: none; }
 }
 
 /* ── Routines sheet (saved replays; borrows the errand live chrome) ── */
@@ -1791,38 +1807,19 @@ body.bubble-host { background: transparent; }
 /* Below the chat slide-over (z 30) so the composer's send button is never
    intercepted when the button rests in its default bottom-right corner; still
    above canvas content. */
-.help-dock { position: absolute; right: 16px; bottom: 16px; z-index: 29; }
+/* The panel positions itself; the dock is only its anchor for outside-click. */
+.help-dock { position: relative; }
 /* Help button + panel share the unified floating-chrome treatment. */
-.help-button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--input-border); color: var(--fg-dim);
-  box-shadow: var(--shadow-float);
-  transition: color 120ms ease, transform 120ms ease;
-}
-.help-button:hover { color: var(--fg); transform: translateY(-1px); }
 /* First-run discoverability: an accent dot until the panel is opened once.
    Deliberately static — an infinite animation stalls hidden-window rendering
    (e2e runs under ENGRAM_HIDDEN) and would be noise anyway. */
-.help-button.pulse::after {
-  content: ''; position: absolute; top: -3px; right: -3px;
-  width: 10px; height: 10px; border-radius: 999px;
-  background: var(--accent);
-  border: 2px solid var(--editor-bg);
-}
 .help-panel {
-  position: absolute; right: 0; bottom: calc(100% + 10px);
-  width: 340px; max-height: 72vh; overflow-y: auto;
-  padding: 15px 16px;
-  background: color-mix(in srgb, var(--widget-bg) 82%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--input-border); border-radius: var(--radius-card);
-  box-shadow: var(--shadow-float);
-  display: flex; flex-direction: column; gap: 15px;
-  font-size: var(--fs-small); color: var(--fg);
-  animation: fade-in 120ms ease-out;
+  position: fixed; top: 46px; right: 12px; z-index: 190; width: 340px;
+  max-height: calc(100vh - 64px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px; padding: 14px;
+  background: var(--widget-bg); border: 1px solid var(--border);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-float);
+  animation: slide-in 140ms ease;
 }
 .help-section { display: flex; flex-direction: column; gap: 8px; }
 .help-heading {

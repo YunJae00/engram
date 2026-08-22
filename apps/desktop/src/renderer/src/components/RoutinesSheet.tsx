@@ -1,5 +1,5 @@
 import { AlertTriangle, Eye, Play, Plus, Repeat, Square, Wand2, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RoutineBlockDto, RoutineDto, RoutineStepDto } from '../../../shared/types.js'
 import { stepLine } from '../lib/routineSteps.js'
 import { SubmitGate } from './SubmitGate.js'
@@ -42,7 +42,7 @@ function draftReady(draft: DraftStep): boolean {
   return true
 }
 
-export function RoutinesSheet({ onClose }: { onClose(): void }) {
+export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: boolean; onClose(): void }) {
   const { routine, routineWall, answerRoutineWall, startRoutine, errand, showToast, t } = useApp()
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [building, setBuilding] = useState(false)
@@ -61,6 +61,8 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
 
   const reload = () => void api.routinesList().then(setRoutines).catch(() => {})
 
+  // Opened by "show me how": begin watching immediately, so the person is
+  // in the browser doing the job rather than hunting for the button.
   useEffect(() => {
     reload()
     return api.onEvent((event) => {
@@ -91,7 +93,7 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
     if (result.blocked) setAsk({ id, name, blocked: result.blocked })
   }
 
-  const teachStart = async () => {
+  const teachStart = useCallback(async () => {
     const started = await api.routineTeachStart()
     if (!started.ok) {
       showToast(started.error ?? t('routines.teachFailed'))
@@ -99,7 +101,14 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
     }
     setTaught(null)
     setTeaching(true)
-  }
+  }, [showToast, t])
+
+  const askedToTeach = useRef(false)
+  useEffect(() => {
+    if (!startTeaching || askedToTeach.current) return
+    askedToTeach.current = true
+    void teachStart()
+  }, [startTeaching, teachStart])
 
   const teachStop = async (keep: boolean) => {
     const steps = await api.routineTeachStop().catch(() => [] as RoutineStepDto[])

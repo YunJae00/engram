@@ -120,14 +120,16 @@ export function CosmosChat() {
 
   if (collapsed) {
     return (
-      <button
-        className="cosmos-chat-open"
-        data-testid="cosmos-chat-open"
-        title={t('cosmos.chatOpen')}
-        onClick={() => setCollapsed(false)}
-      >
-        <PanelRightOpen size={15} strokeWidth={1.8} aria-hidden />
-      </button>
+      <aside className="side-rail folded" data-testid="cosmos-chat-folded">
+        <button
+          className="cosmos-chat-open"
+          data-testid="cosmos-chat-open"
+          title={t('cosmos.chatOpen')}
+          onClick={() => setCollapsed(false)}
+        >
+          <PanelRightOpen size={15} strokeWidth={1.8} aria-hidden />
+        </button>
+      </aside>
     )
   }
 

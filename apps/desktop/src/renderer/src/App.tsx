@@ -50,7 +50,9 @@ function Shell() {
   const [digestOpen, setDigestOpen] = useState(false)
   // "Delegate an errand…" from the command palette raises this one window intent.
   const [errandOpen, setErrandOpen] = useState(false)
-  const [routinesOpen, setRoutinesOpen] = useState(false)
+  // `teach` means the sheet should open already recording — the answer to
+  // "show me how" is the agent window, not another button to find.
+  const [routinesOpen, setRoutinesOpen] = useState<{ teach: boolean } | null>(null)
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
@@ -140,7 +142,8 @@ function Shell() {
     const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
-    const openRoutines = () => setRoutinesOpen(true)
+    const openRoutines = (event: Event) =>
+      setRoutinesOpen({ teach: (event as CustomEvent<{ teach?: boolean }>).detail?.teach === true })
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
@@ -337,14 +340,15 @@ function Shell() {
         )}
         {/* The launcher IS the panel at rest — never both on screen at once. */}
         {activity === 'sky' && <CosmosChat />}
-        {activity !== 'bots' && <HelpPanel />}
+        {/* Hung from the top bar now, so it is available wherever the bar is. */}
+        <HelpPanel />
       </div>
       <AbsorbWidget />
 
       <NoteSheet />
       {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
       {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
-      {routinesOpen && <RoutinesSheet onClose={() => setRoutinesOpen(false)} />}
+      {routinesOpen && <RoutinesSheet startTeaching={routinesOpen.teach} onClose={() => setRoutinesOpen(null)} />}
       <ReviewOverlay />
       <InboxOverlay />
       <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />

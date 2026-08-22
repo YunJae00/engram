@@ -106,8 +106,10 @@ export function cometTools(deps: CometToolDeps): AgentTool[] {
       async run(args, context) {
         const task = str(args, 'task') || context.task
         const routines = await listRoutines(deps.paths)
+        // Nothing has been shown to it yet. Saying so — and asking to be
+        // shown — is the honest move, and the host turns it into a button.
         if (routines.length === 0)
-          return 'no procedures are saved yet — the person can teach one in Routines ("Teach it by doing")'
+          return 'NOTHING-TAUGHT: no procedure has been saved yet. Tell the person you have not been shown this job, and offer to watch them do it once (Routines → Teach it by doing).'
         // A procedure is a note, so the vault's own search finds it — which is
         // what makes a Korean request reach a procedure named in English.
         // Word overlap is only the fallback for when retrieval is cold.

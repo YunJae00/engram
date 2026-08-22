@@ -1,4 +1,4 @@
-import { Globe, List, Loader2, Network, Orbit } from 'lucide-react'
+import { CircleHelp, Globe, List, Loader2, Network, Orbit } from 'lucide-react'
 import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
@@ -267,6 +267,14 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
 
       <button className="topbar-action" onClick={onOpenPalette} title={t('topbar.searchTitle')}>
         <Icon name="search" size={15} />
+      </button>
+      <button
+        className="topbar-action"
+        data-testid="help-button"
+        onClick={() => window.dispatchEvent(new Event('engram:open-help'))}
+        title={t('help.open')}
+      >
+        <CircleHelp size={15} strokeWidth={1.8} aria-hidden />
       </button>
       <button className="topbar-action" data-testid="activity-settings" onClick={onOpenSettings} title={t('topbar.settingsTitle')}>
         <Icon name="settings" size={15} />

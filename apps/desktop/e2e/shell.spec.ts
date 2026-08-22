@@ -144,9 +144,37 @@ test('the cosmos chat collapses and comes back', async () => {
 test('the comets rail folds away and returns', async () => {
   await page.getByTestId('activity-bots').click()
   await page.getByTestId('comets-rail-close').click()
+  // Folded, the rail keeps a strip of its own: the reopen control lives INSIDE
+  // the layout, so the thread beside it widens instead of hiding underneath a
+  // floating button.
+  await expect(page.getByTestId('comets-rail-folded')).toBeVisible()
   await expect(page.getByTestId('comets-rail-open')).toBeVisible()
   await page.getByTestId('comets-rail-open').click()
+  await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)
   await expect(page.getByTestId('bots-new')).toBeVisible()
+  await page.getByTestId('activity-sky').click()
+})
+
+test('help hangs from the top bar, beside settings', async () => {
+  await expect(page.getByTestId('help-panel')).toHaveCount(0)
+  await page.getByTestId('help-button').click()
+  await expect(page.getByTestId('help-panel')).toBeVisible()
+  // Escape closes it, and it is reachable from any tab because the bar is.
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('help-panel')).toHaveCount(0)
+  await page.getByTestId('activity-bots').click()
+  await page.getByTestId('help-button').click()
+  await expect(page.getByTestId('help-panel')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByTestId('activity-sky').click()
+})
+
+test('the comets tab has a door to routines', async () => {
+  await page.getByTestId('activity-bots').click()
+  await page.getByTestId('bots-open-routines').click()
+  await expect(page.getByTestId('routines-sheet')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
   await page.getByTestId('activity-sky').click()
 })
 

@@ -353,7 +353,11 @@ export type EngramEvent =
       type: 'chat:done'
       channel: string
       text: string
-      offer?: { routineId: string; name: string; slots?: Record<string, string> }
+      // 'run' — a saved procedure matches this request, one press away.
+      // 'teach' — nothing has been shown to it yet, so the offer is to watch.
+      offer?:
+        | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string> }
+        | { kind: 'teach' }
     }
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.

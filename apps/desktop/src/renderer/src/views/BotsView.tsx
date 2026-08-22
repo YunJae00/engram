@@ -1,7 +1,7 @@
-import { ArrowUp, Bookmark, Globe, PanelLeftClose, PanelLeftOpen, Play, Plus, Square, Trash2, X } from 'lucide-react'
+import { ArrowUp, Bookmark, Globe, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Square, Trash2, Wand2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState } from 'react'
-import type { BotDto, BotSuggestionDto, ChatTurnDto } from '../../../shared/types.js'
+import type { BotDto, BotSuggestionDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
 import { api } from '../api.js'
 import type { StringKey } from '../i18n.js'
 import { answerHtml } from '../markdown.js'
@@ -49,7 +49,7 @@ export function BotsView() {
   // The comet found the procedure for this request but stopped short of
   // running it. Rather than send the person hunting for it, the thread offers
   // the run — one press, with whatever blanks the comet worked out.
-  const [offer, setOffer] = useState<{ routineId: string; name: string; slots?: Record<string, string> } | null>(null)
+  const [offer, setOffer] = useState<Extract<EngramEvent, { type: 'chat:done' }>['offer'] | null>(null)
   const busyChannel = useRef<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [draftName, setDraftName] = useState('')
@@ -231,9 +231,11 @@ export function BotsView() {
   return (
     <div className="bots-view" data-testid="bots-view">
       {!railOpen && (
+        <aside className="side-rail folded" data-testid="comets-rail-folded">
         <button className="rail-reopen" data-testid="comets-rail-open" title={t('rail.show')} onClick={() => setRailOpen(true)}>
           <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
         </button>
+        </aside>
       )}
       {railOpen && (
       <aside className="bots-rail">
@@ -301,6 +303,17 @@ export function BotsView() {
             <Plus size={13} strokeWidth={2} aria-hidden /> {t('bots.new')}
           </button>
         )}
+        {/* The other half of "work you repeat": the browser jobs. It lives in
+            the rail because it must be reachable before any comet exists — a
+            keyboard chord was the only way in, so nobody found it. */}
+        <button
+          className="bots-new bots-routines"
+          data-testid="bots-open-routines"
+          title={t('bots.routinesHint')}
+          onClick={() => window.dispatchEvent(new Event('engram:open-routines'))}
+        >
+          <Repeat size={13} strokeWidth={2} aria-hidden /> {t('bots.routines')}
+        </button>
         {suggestions.length > 0 && (
           <div className="bots-suggested">
             <div className="bots-rail-head">{t('bots.suggestedTitle')}</div>
@@ -390,7 +403,12 @@ export function BotsView() {
                   </button>
                 </span>
               ) : (
-                <button className="bots-task-add" data-testid="bot-task-add" onClick={() => setAddingTask(true)}>
+                <button
+                  className="bots-task-add"
+                  data-testid="bot-task-add"
+                  title={t('bots.taskHint')}
+                  onClick={() => setAddingTask(true)}
+                >
                   <Plus size={11} strokeWidth={2.2} aria-hidden /> {t('bots.taskAdd')}
                 </button>
               )}
@@ -433,18 +451,33 @@ export function BotsView() {
               )}
               {offer && !routine.running && (
                 <div className="bots-offer" data-testid="bots-offer">
-                  <span className="bots-offer-text">{t('bots.offerRun', { name: offer.name })}</span>
-                  <button
-                    className="primary bots-offer-run"
-                    data-testid="bots-offer-run"
-                    onClick={() => {
-                      const wanted = offer
-                      setOffer(null)
-                      void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
-                    }}
-                  >
-                    <Play size={11} strokeWidth={2.5} aria-hidden /> {t('routines.run')}
-                  </button>
+                  <span className="bots-offer-text">
+                    {offer.kind === 'run' ? t('bots.offerRun', { name: offer.name }) : t('bots.offerTeach')}
+                  </span>
+                  {offer.kind === 'run' ? (
+                    <button
+                      className="primary bots-offer-run"
+                      data-testid="bots-offer-run"
+                      onClick={() => {
+                        const wanted = offer
+                        setOffer(null)
+                        void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
+                      }}
+                    >
+                      <Play size={11} strokeWidth={2.5} aria-hidden /> {t('routines.run')}
+                    </button>
+                  ) : (
+                    <button
+                      className="primary bots-offer-run"
+                      data-testid="bots-offer-teach"
+                      onClick={() => {
+                        setOffer(null)
+                        window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))
+                      }}
+                    >
+                      <Wand2 size={11} strokeWidth={2.5} aria-hidden /> {t('bots.offerTeachGo')}
+                    </button>
+                  )}
                 </div>
               )}
               <SubmitGate />

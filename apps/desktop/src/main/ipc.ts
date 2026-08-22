@@ -1736,7 +1736,7 @@ export function registerIpc(ctx: VaultContext): void {
     // appended, the turn persisted on the bot, done broadcast exactly once.
     const deliverAnswer = async (
       rawText: string,
-      offer?: { routineId: string; name: string; slots: Record<string, string> },
+      offer?: Extract<EngramEvent, { type: 'chat:done' }>['offer'],
     ): Promise<void> => {
       const { text: cleaned, captures } = extractChatCaptures(rawText)
       // The receipt must never claim more than the disk holds — a failed
@@ -1837,9 +1837,16 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
+        // Never been shown this job: the loop says so in its observation, and
+        // the thread turns that into an offer to watch the person do it once.
+        const untaught = result.steps.some((step) => step.observation.startsWith('NOTHING-TAUGHT:'))
         await deliverAnswer(
           `${result.answer}${note}`,
-          routine ? { routineId: routine.id, name: routine.name, slots } : undefined,
+          routine
+            ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
+            : untaught
+              ? { kind: 'teach' }
+              : undefined,
         )
       } catch (err) {
         if (signal.aborted) {
