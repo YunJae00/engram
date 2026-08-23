@@ -1,5 +1,6 @@
 import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setLocalTransport, setSpawnObserver, sweep, sweepStaleEnginePids } from 'core'
 import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeTheme, powerMonitor, session, shell, type WebContents } from 'electron'
+import { rmSync, statSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { NoteDto, OnboardPayload } from '../shared/types.js'
@@ -153,8 +154,41 @@ function titleBarColors(): { color: string; symbolColor: string } {
     : { color: '#f9fafc', symbolColor: '#585a66' }
 }
 
+// A window with its own title bar is drawn by the desktop compositor, and on a
+// machine whose compositor is wedged that constructor never returns — no
+// window, no error, nothing to time out (the call is synchronous native code).
+// A launch that starts one leaves a note behind and tears it up once the window
+// exists; finding a fresh note means the last try never came back, so this one
+// takes the ordinary framed window instead. The custom bar is worth one hung
+// launch, never every launch.
+const FRAME_ATTEMPT = () => join(app.getPath('userData'), 'window-frame-attempt')
+const FRAME_RETRY_MS = 12 * 60 * 60 * 1000
+
+function ownTitleBarIsSafe(): boolean {
+  // A machine already known to be unable to draw one says so up front.
+  if (process.env['ENGRAM_SYSTEM_FRAME'] === '1') return false
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return false
+  try {
+    const left = statSync(FRAME_ATTEMPT())
+    if (Date.now() - left.mtimeMs < FRAME_RETRY_MS) {
+      console.warn('[engram] last launch hung drawing its own title bar — using the system frame')
+      return false
+    }
+  } catch {
+    /* no note: nothing hung */
+  }
+  return true
+}
+
 async function createMainWindow(hash?: string): Promise<void> {
-  const framelessOk = process.platform === 'win32' || process.platform === 'darwin'
+  const framelessOk = ownTitleBarIsSafe()
+  if (framelessOk) {
+    try {
+      writeFileSync(FRAME_ATTEMPT(), '')
+    } catch {
+      /* a note we cannot leave only costs us the fallback */
+    }
+  }
   mainWin = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -175,6 +209,12 @@ async function createMainWindow(hash?: string): Promise<void> {
       : {}),
     webPreferences,
   })
+  // The window exists: the compositor came back, so the note comes down.
+  try {
+    rmSync(FRAME_ATTEMPT(), { force: true })
+  } catch {
+    /* nothing to tear up */
+  }
   hardenWebContents(mainWin.webContents)
   // keep the overlay controls in step with the OS theme
   nativeTheme.on('updated', () => {
@@ -230,7 +270,7 @@ async function toggleQuickCapture(): Promise<void> {
   quickWin = new BrowserWindow({
     width: 560,
     height: 220,
-    frame: false,
+    frame: ownTitleBarIsSafe() ? false : true,
     resizable: false,
     alwaysOnTop: true,
     skipTaskbar: true,

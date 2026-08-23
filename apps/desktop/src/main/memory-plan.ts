@@ -55,3 +55,23 @@ export function planModelLoad(modelBytes: number, freeBytes = os.freemem()): Loa
 // While the model sits idle, the machine's needs keep changing. Below this
 // the resident model is what pushes the system into thrash, so it leaves.
 export const PRESSURE_FLOOR = 4 * GB
+
+// Below this the machine is already failing: pinned offload pages cannot be
+// swapped out, so the system has nothing left to reclaim and stops responding
+// entirely rather than slowing down. Reaching it means killing the worker
+// outright — mid-load or mid-answer — because a lost answer costs a minute
+// and a hard power-off costs the session (measured twice, both while the
+// model was resident and something large started beside it).
+export const CRITICAL_FLOOR = 3.5 * GB
+
+// A browser and a model are the two heavyweights, and starting one next to
+// the other is what actually tips a machine over — the model's footprint was
+// measured against a machine that no longer exists by the time the browser
+// finishes opening. Under this, the model steps aside first.
+export const ROOM_FOR_BROWSER = 8 * GB
+
+// The embedder is the small one - a few hundred megabytes - and it is what
+// tells one subject from another. Judging it by the room a browser needs left
+// it asleep exactly when the language model was resident, which is every time
+// it was actually wanted.
+export const ROOM_FOR_EMBEDDER = 5 * GB

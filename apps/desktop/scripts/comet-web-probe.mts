@@ -30,6 +30,12 @@ if (mk.status !== 0) {
   process.exit(1)
 }
 await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
+// The person has already pasted a results address once, as they would in
+// Settings — the app itself still knows no engines.
+await writeFile(
+  join(USERDATA, 'settings.json'),
+  JSON.stringify({ defaultEngine: 'local', autoStart: false, teamSync: 'auto', searchTemplate: process.env['PROBE_SEARCH'] ?? '' }),
+)
 
 // A vault about this person's own product — the notes that were wrongly
 // served as an answer about the AI industry.
@@ -70,7 +76,7 @@ const bot = (await page.evaluate(() =>
 )) as { id: string }
 
 const history: { role: 'user' | 'assistant'; text: string }[] = []
-const asks = ['ai 관련 최신 동향좀 찾아줘.', '다 한거야?']
+const asks = ['네이버에서 ai 관련 리서치좀 부탁해', '다 한거야?']
 for (const ask of asks) {
   trace = []
   console.log(`\ncomet-web-probe: "${ask}"`)
@@ -86,7 +92,7 @@ for (const ask of asks) {
   }
   const answer = trace.find((l) => l.startsWith('ANSWER'))?.slice(7) ?? '(none)'
   history.push({ role: 'user', text: ask }, { role: 'assistant', text: answer })
-  const usedWeb = trace.some((l) => /web_search|read_page|research/.test(l))
+  const usedWeb = trace.some((l) => /search_web|open_page|read_open_page/.test(l))
   console.log(
     `comet-web-probe: ${Math.round((Date.now() - t0) / 1000)}s · ${usedWeb ? 'WENT TO THE WEB' : 'vault only'}`,
   )

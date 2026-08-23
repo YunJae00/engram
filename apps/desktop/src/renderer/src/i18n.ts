@@ -13,6 +13,23 @@ const en = {
   // which one it is about to fire.
 
   // top chrome strip
+  'settings.searchTitle': 'Where your comet searches',
+  'settings.searchHint':
+    'Search for anything in your own browser, then paste the address of the results page here. Your comet will search the same way you do — whichever search that is.',
+  'settings.searchPlaceholder': 'Paste a results address',
+  'settings.searchSave': 'Learn it',
+  'settings.searchLearned': 'Your comet will search there from now on.',
+  'settings.searchNotLearned': 'That address has no search words in it — try a results page.',
+  'settings.browserTitle': 'Sign-ins for the agent window',
+  'settings.browserHint':
+    'Your work account signs in by itself. For anything else — a portal, a personal account — hand the agent the sign-ins you already have, once. Close the browser first; nothing is copied while it is open, and passwords are never copied at all.',
+  'settings.browserImport': 'Hand over sign-ins',
+  'settings.browserClose': 'close it first',
+  'settings.browserImported': 'Handed over {when}',
+  'settings.browserImportOk': 'The agent window now uses your sign-ins.',
+  'settings.browserImportFailed': 'Could not read that browser — is it fully closed?',
+  'settings.browserForget': 'Forget them',
+  'settings.browserForgotten': 'The agent window forgot those sign-ins.',
   'settings.contentTitle': 'Documents the librarian may read',
   'settings.contentHint': 'Pick the folders you work in. When a document there is saved, what changed becomes a memory — read locally, never uploaded.',
   'settings.contentAdd': 'Add folder…',

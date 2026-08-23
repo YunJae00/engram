@@ -3,6 +3,7 @@ import type { VaultPaths } from './vault.js'
 import { clearRoutinePendingWrite, markRoutinePendingWrite, markRoutineRun } from './routine-store.js'
 import {
   routineBlock,
+  routineSlots,
   routineStepLabel,
   validateRoutineSteps,
   writeStepIndexes,
@@ -95,6 +96,19 @@ export async function runRoutine(
   // that never started is not a run.
   const blocked = options.force ? null : routineBlock(routine, now())
   if (blocked) return { ok: false, readings, blocked }
+  // A blank that was never filled is not content: typing "{{entry}}" into a
+  // form and posting it is worse than not running at all (measured — it
+  // reached the site verbatim).
+  const unfilled = routineSlots(routine.steps)
+  if (unfilled.length > 0)
+    return finish({
+      ok: false,
+      readings,
+      // Where the blank belongs to something the person has written down,
+      // looking is the colleague's job. Being told to ask taught it to ask
+      // for what was sitting in the notebook (measured).
+      error: `nothing was filled in for ${unfilled.join(', ')} — look for what belongs there (search_memory), and ask the person only if it is not there`,
+    })
   const writeSteps = writeStepIndexes(routine.steps)
   // The submit gate is asked once per run, not once per click.
   let approved = false

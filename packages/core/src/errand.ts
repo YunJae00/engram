@@ -26,6 +26,11 @@ export interface ErrandRetrievedNote {
   title: string
   body: string
   created: string
+  // How close the embedder put this note to the question, 0 when it said
+  // nothing about it. Presence alone means nothing - the embedder returns its
+  // top few for any question at all - so it is the height that decides whether
+  // "집안일" and "집에서 할 일" are one subject or two.
+  meaning?: number
 }
 
 // One web search result, as the courier saw it.
@@ -41,14 +46,24 @@ export interface WebPage {
   url: string
   title: string
   text: string
+  // Where this page can take you. A results page is a list of links whatever
+  // engine produced it, so reading the links is how the comet follows one
+  // without this codebase knowing a single search engine.
+  links?: { text: string; url: string }[]
   wall?: 'login' | 'captcha'
 }
 
 // Injected by the host (the desktop drives a real browser); core stays pure
 // Node and tests hand in a fake. No courier = vault-only errand.
 export interface WebCourier {
-  search(query: string, signal?: AbortSignal): Promise<WebFinding[]>
+  // Where to look is never decided here: the caller names an address. Which
+  // site, which engine, which language is the model's judgement, so it can be
+  // sent somewhere nobody wrote into this codebase.
   fetchPage(url: string, signal?: AbortSignal): Promise<WebPage>
+  // The page as it stands after typing or clicking changed it.
+  readOpen?(signal?: AbortSignal): Promise<WebPage>
+  typeInto?(field: string, text: string, signal?: AbortSignal): Promise<{ ok: boolean }>
+  clickOn?(target: string, signal?: AbortSignal): Promise<{ ok: boolean }>
 }
 
 export interface ErrandDeps {
@@ -66,7 +81,7 @@ export interface ErrandState {
   goal: string
   startedAt: string
   phase: ErrandPhase
-  plan?: { queries: string[]; noteTitle: string }
+  plan?: { queries: string[]; startUrls: string[]; noteTitle: string }
   gathered?: ErrandRetrievedNote[]
   web?: { url: string; title: string; text: string }[]
   skipped?: { url: string; reason: string }[]
@@ -116,9 +131,13 @@ const PLAN_SCHEMA = {
   type: 'object',
   properties: {
     queries: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: MAX_QUERIES },
+    // Where to look, as addresses. Nothing here names an engine: whichever
+    // site actually holds the answer is a judgement, and one baked into code
+    // can never be told about the place this particular answer lives.
+    start_urls: { type: 'array', items: { type: 'string' }, maxItems: MAX_QUERIES },
     note_title: { type: 'string' },
   },
-  required: ['queries', 'note_title'],
+  required: ['queries', 'start_urls', 'note_title'],
 } as const
 
 const DISTILL_SCHEMA = {
@@ -188,6 +207,18 @@ export function stripNoteIds(text: string): string {
 
 // Unique by URL, breadth-first by host: three pages from three sites beat
 // three pages from one.
+// Addresses the model proposed, kept only if they are really addresses.
+export function cleanUrls(raw: string[] | undefined): string[] {
+  const out: string[] = []
+  for (const one of raw ?? []) {
+    const url = String(one).trim()
+    if (!/^https?:\/\//i.test(url) || out.includes(url)) continue
+    out.push(url)
+    if (out.length >= MAX_QUERIES) break
+  }
+  return out
+}
+
 export function pickFindings(findings: WebFinding[], cap: number): WebFinding[] {
   const seen = new Set<string>()
   const byHost = new Map<string, WebFinding[]>()
@@ -317,12 +348,17 @@ export async function runErrand(
       await step('plan')
       const raw = extractJson(await call(deps, planPrompt(goal), PLAN_SCHEMA, options.signal)) as {
         queries?: unknown
+        start_urls?: unknown
         note_title?: unknown
       }
       const queries = cleanQueries(raw?.queries)
       if (queries.length === 0) return fail('the plan produced no usable queries')
       const noteTitleRaw = typeof raw?.note_title === 'string' ? raw.note_title.trim() : ''
-      state.plan = { queries, noteTitle: noteTitleRaw || goal.slice(0, 80) }
+      state.plan = {
+        queries,
+        startUrls: cleanUrls(raw?.start_urls as string[] | undefined),
+        noteTitle: noteTitleRaw || goal.slice(0, 80),
+      }
     }
 
     if (!state.gathered) {
@@ -346,17 +382,11 @@ export async function runErrand(
       if (state.gathered.length === 0 && !deps.courier) return fail('nothing in the vault matched the errand')
     }
 
-    if (!state.web && deps.courier) {
+    const plan = state.plan
+    if (!state.web && deps.courier && plan) {
       await step('web')
       const courier = deps.courier
-      let findings: WebFinding[] = []
-      for (const query of state.plan.queries.slice(0, 3)) {
-        if (options.signal?.aborted) return fail('canceled')
-        findings.push(...(await courier.search(query, options.signal).catch(() => [] as WebFinding[])))
-      }
-      if (findings.length === 0) {
-        findings = await courier.search(goal, options.signal).catch(() => [] as WebFinding[])
-      }
+      const findings: WebFinding[] = cleanUrls(plan.startUrls).map((url) => ({ url, title: url, snippet: '' }))
       const pages: { url: string; title: string; text: string }[] = []
       const skipped: { url: string; reason: string }[] = []
       for (const finding of pickFindings(findings, PAGE_MAX)) {

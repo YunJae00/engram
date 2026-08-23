@@ -1,31 +1,41 @@
-// Semantic layer probe: boots the app on a tiny seeded vault with
-// ENGRAM_SEMANTIC=1 and polls semantic:status through the preload bridge —
-// surfaces the real load/download error that production swallows by design.
-import { _electron as electron } from '@playwright/test'
-import { createNote, initVault } from 'core'
-import { rm } from 'node:fs/promises'
+// Can the embedder get here at all? On a network that inspects TLS the model
+// download is the thing most likely to be refused, and the comet's ability to
+// tell one subject from another rests on it.
+import { launchApp } from './launch-app.mts'
+import { initVault } from 'core'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-const VAULT = fileURLToPath(new URL('../../../tmp/semantic-probe-vault/', import.meta.url))
-const USERDATA = fileURLToPath(new URL('../../../tmp/semantic-probe-userdata/', import.meta.url))
-
-await rm(VAULT, { recursive: true, force: true })
-const paths = await initVault(VAULT, { git: false })
-await createNote(paths, { body: '# 청킹 전략\n\n512 토큰 문단 분할이 가장 안정적.' })
-
-const app = await electron.launch({
-  args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
-  env: { ...process.env, ENGRAM_VAULT: VAULT, ENGRAM_USERDATA: USERDATA, ENGRAM_NO_GIT: '1', ENGRAM_SEMANTIC: '1' },
+const RUN = Date.now().toString(36)
+const VAULT = fileURLToPath(new URL(`../../../tmp/sem-${RUN}-vault/`, import.meta.url))
+const USERDATA = fileURLToPath(new URL(`../../../tmp/sem-${RUN}-userdata/`, import.meta.url))
+await initVault(VAULT, { git: false })
+await mkdir(USERDATA, { recursive: true })
+spawnSync('cmd.exe', ['/c', 'mklink', '/J', join(USERDATA, 'models'), join(process.env['APPDATA']!, 'desktop', 'models')], {
+  windowsHide: true,
 })
-app.process().stdout?.on('data', (d: Buffer) => process.stdout.write(`[main] ${d}`))
-app.process().stderr?.on('data', (d: Buffer) => process.stdout.write(`[main:err] ${d}`))
-const page = await app.firstWindow()
-for (let i = 0; i < 180; i++) {
-  await page.waitForTimeout(5000)
-  const status = await page.evaluate(() => (window as unknown as { engram: { semanticStatus(): Promise<unknown> } }).engram.semanticStatus())
-  if (i % 6 === 0 || (status as { status: string }).status !== 'loading')
-    console.log(`t+${(i + 1) * 5}s`, JSON.stringify(status))
-  const s = status as { status: string }
-  if (s.status === 'ready' || s.status === 'error') break
+
+const app = await launchApp({
+  ENGRAM_VAULT: VAULT,
+  ENGRAM_USERDATA: USERDATA,
+  ENGRAM_NO_GIT: '1',
+  ENGRAM_NO_AUTOTIDY: '1',
+  ENGRAM_INDEX_NOW: '1',
+  // Packaged builds search by meaning; a probe has to be the same app.
+  ENGRAM_SEMANTIC: '1',
+})
+await app.page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })
+for (let i = 0; i < 60; i++) {
+  const seen = (await app.page.evaluate(() => window.engram.semanticStatus())) as {
+    status: string
+    detail: string
+    model: string
+  }
+  console.log(`${i * 10}s  ${seen.status} — ${seen.detail} (${seen.model})`)
+  if (seen.status === 'ready' || seen.status === 'error') break
+  await new Promise((r) => setTimeout(r, 10_000))
 }
 await app.close()
+process.exit(0)

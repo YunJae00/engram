@@ -358,6 +358,7 @@ export type EngramEvent =
       offer?:
         | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string> }
         | { kind: 'teach' }
+        | { kind: 'asked' }
     }
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.
@@ -499,6 +500,11 @@ export interface EngramApi {
   routineTeachStart(): Promise<{ ok: boolean; error?: string }>
   routineTeachRead(): Promise<void>
   routineTeachStop(): Promise<RoutineStepDto[]>
+  // Browsers whose sessions can be inherited, and the one-press inherit.
+  browsersList(): Promise<{ id: string; name: string; userData: string; running: boolean }[]>
+  browserImport(id: string): Promise<{ ok: boolean; copied?: number; error?: string }>
+  browserForget(): Promise<void>
+  browserImportedAt(): Promise<string | null>
   fadingMemories(): Promise<FadingMemoryDto[]>
   openLoops(): Promise<OpenLoopDto[]>
   latestBrief(): Promise<string | null>
@@ -588,6 +594,8 @@ export interface EngramApi {
   updateCheck(): Promise<UpdateCheckDto>
   // The updater's cached knowledge — no network; safe to poll while downloading.
   updateState(): Promise<UpdateCheckDto>
+  // What the person pasted becomes the search shape; the app never picks.
+  searchTemplateLearn(pasted: string): Promise<{ ok: boolean; template?: string }>
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: AppSettingsDto): Promise<void>
   mcpInfo(): Promise<McpInfoDto>
@@ -613,6 +621,9 @@ export interface AppSettingsDto {
   autoStart: boolean
   teamSync: 'auto' | 'manual'
   semanticModel?: string
+  // Where the person searches, with {q} standing in for the words. Learned
+  // from one address they paste; empty means the comet asks first.
+  searchTemplate?: string
 }
 
 // Local semantic layer status for the settings screen.

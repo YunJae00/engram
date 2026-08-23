@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LocalModelDto, LocalModelsStateDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
-import { planModelLoad, PRESSURE_FLOOR } from './memory-plan.js'
+import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR } from './memory-plan.js'
 import { markEngineOk, markEngineUnhealthy } from './engine-health.js'
 import { flog } from './flog.js'
 
@@ -523,13 +523,15 @@ export async function localComplete(
 // every unload buys back RAM at the price of the next question paying the
 // reload, and the reload is the expensive thing.
 function armMemoryWatch(): void {
+  // Two seconds, not eight: a load commits its gigabytes in one breath, and a
+  // watch that looks away for eight of them is watching the wrong machine.
   setInterval(() => {
     if (!child) return
     const free = os.freemem()
     // Mid-inference the model cannot be unloaded politely, but below the
     // critical floor the machine is minutes from a hard freeze — killing the
     // worker fails one answer and saves the computer.
-    if (inFlight && free < 2.5e9) {
+    if (inFlight && free < CRITICAL_FLOOR) {
       flog('local-llm', `memory critical (${(free / 1e9).toFixed(1)}GB free) — stopping inference to keep the machine alive`)
       stopLocalServer()
       return
@@ -553,7 +555,7 @@ function armMemoryWatch(): void {
     loadedModelId = null
     setWarmState('cold')
     lastUsed = 0
-  }, 8_000)
+  }, 2_000)
 }
 armMemoryWatch()
 
@@ -612,6 +614,19 @@ export async function backgroundInferenceOk(): Promise<{ ok: boolean; reason?: s
 }
 
 // Kept name from the server era — now it stops the inference process.
+// Somebody else needs the room. The model gives it up while it can still do
+// so politely — mid-answer it cannot, and the caller is told so rather than
+// being left to believe space was made.
+export function releaseModelForRoom(reason: string): boolean {
+  if (!child || inFlight) return false
+  flog('local-llm', `${reason} — unloading the model to make room`)
+  child.send({ type: 'unload' })
+  loadedModelId = null
+  setWarmState('cold')
+  lastUsed = 0
+  return true
+}
+
 export function stopLocalServer(): void {
   const proc = child
   child = null

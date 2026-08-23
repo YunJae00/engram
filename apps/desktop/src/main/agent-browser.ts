@@ -1,9 +1,12 @@
-import type { WebCourier, WebFinding, WebPage } from 'core'
+import type { WebCourier, WebPage } from 'core'
 import { app } from 'electron'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 import { flog } from './flog.js'
+import { releaseModelForRoom } from './local-llm.js'
+import { ROOM_FOR_BROWSER } from './memory-plan.js'
+import { routineDriver } from './routine-driver.js'
 
 // The errand's hands: the user's own Chrome, driven over CDP by
 // playwright-core. Its window is an ordinary window — park it on another
@@ -14,7 +17,6 @@ import { flog } from './flog.js'
 
 const NAV_TIMEOUT_MS = 25_000
 const PAGE_TEXT_CAP = 12_000
-const RESULTS_PER_SEARCH = 8
 // The browser is heavyweight company for an 8GB machine — it leaves when the
 // errand stops using it rather than idling next to the model.
 const IDLE_CLOSE_MS = 3 * 60_000
@@ -73,44 +75,6 @@ export function classifyWall(
   if (hasPasswordField) return 'login'
   if (/\/(login|signin|sign-in|sign_in|sso|auth)\b/i.test(new URL(url).pathname)) return 'login'
   return null
-}
-
-// DuckDuckGo's HTML endpoint answers plain markup — results are anchors whose
-// href tunnels the real url through the uddg param. Pure for its test.
-export function parseDuckResults(html: string): WebFinding[] {
-  const out: WebFinding[] = []
-  const anchor = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
-  for (const match of html.matchAll(anchor)) {
-    const href = match[1]!
-    const title = match[2]!.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
-    const uddg = /[?&]uddg=([^&]+)/.exec(href)?.[1]
-    const url = uddg ? decodeURIComponent(uddg) : href.startsWith('http') ? href : null
-    if (!url || !/^https?:/.test(url)) continue
-    // The ad slots ride the same class with an adurl tunnel — not evidence.
-    if (/duckduckgo\.com\/y\.js|ad_domain=/.test(href)) continue
-    out.push({ url, title, snippet: '' })
-    if (out.length >= RESULTS_PER_SEARCH) break
-  }
-  return out
-}
-
-// Google's results are anchors wrapping an <h3>; its own furniture (consent,
-// account, the /url hops) is not a result. Pure, for its test.
-export function parseGoogleResults(html: string): WebFinding[] {
-  const out: WebFinding[] = []
-  const seen = new Set<string>()
-  const anchor = /<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>[\s\S]{0,400}?<h3[^>]*>([\s\S]*?)<\/h3>/g
-  for (const match of html.matchAll(anchor)) {
-    const url = match[1]!.replace(/&amp;/g, '&')
-    const title = match[2]!.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
-    if (!title || seen.has(url)) continue
-    if (/^https?:\/\/(www\.)?google\.[a-z.]+\/(url|search|preferences|advanced_search)/.test(url)) continue
-    if (/accounts\.google\.|policies\.google\.|support\.google\.|consent\.google\./.test(url)) continue
-    seen.add(url)
-    out.push({ url, title, snippet: '' })
-    if (out.length >= RESULTS_PER_SEARCH) break
-  }
-  return out
 }
 
 let context: Ctx | null = null
@@ -173,6 +137,14 @@ async function ensureContext(): Promise<Ctx> {
   opening = (async () => {
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
+    // A browser opening beside a resident model is the pairing that freezes
+    // machines: the model was admitted against a measurement Chrome then
+    // spends. Ask for the room before taking it.
+    if (os.freemem() < ROOM_FOR_BROWSER && releaseModelForRoom(`opening the browser with ${(os.freemem() / 1e9).toFixed(1)}GB free`))
+      // Freeing is a message to another process; give the pages a moment to
+      // come back before measuring what is left.
+      for (let waited = 0; waited < 4_000 && os.freemem() < ROOM_FOR_BROWSER; waited += 250)
+        await new Promise((resolve) => setTimeout(resolve, 250))
     if (os.freemem() < LAUNCH_MIN_FREE)
       throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
     const { chromium } = await import('playwright-core')
@@ -232,17 +204,42 @@ async function ensurePage(): Promise<Page> {
 async function readPage(page: Page): Promise<WebPage> {
   const url = page.url()
   const title = await page.title().catch(() => '')
-  const { text, hasPasswordField } = await page
+  const { text, hasPasswordField, links } = await page
     .evaluate(() => {
       const root = document.querySelector('article, main') ?? document.body
+      // Every anchor that leaves this host, with the words on it. No selector
+      // here belongs to any particular site: a results page, a wiki index and
+      // a portal menu are all just lists of links, which is how a page can be
+      // followed without this app knowing a single search engine.
+      const here = location.hostname
+      const seen = new Set<string>()
+      const found: { text: string; url: string }[] = []
+      for (const anchor of Array.from(document.querySelectorAll('a[href]'))) {
+        const href = (anchor as HTMLAnchorElement).href
+        const label = ((anchor as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim()
+        if (!/^https?:/.test(href) || label.length < 4 || seen.has(href)) continue
+        // Same-host links are kept: a company's own search links to its own
+        // pages, and dropping them left an intranet search with no results.
+        // Only the page itself is uninteresting.
+        try {
+          if (new URL(href).href.split('#')[0] === location.href.split('#')[0]) continue
+        } catch {
+          continue
+        }
+        void here
+        seen.add(href)
+        found.push({ text: label.slice(0, 120), url: href })
+        if (found.length >= 25) break
+      }
       return {
         text: ((root as HTMLElement | null)?.innerText ?? '').replace(/\n{3,}/g, '\n\n'),
         hasPasswordField: document.querySelector('input[type="password"]') !== null,
+        links: found,
       }
     })
-    .catch(() => ({ text: '', hasPasswordField: false }))
+    .catch(() => ({ text: '', hasPasswordField: false, links: [] as { text: string; url: string }[] }))
   const wall = classifyWall(url, title, text, hasPasswordField)
-  return { url, title, text: text.slice(0, PAGE_TEXT_CAP), ...(wall ? { wall } : {}) }
+  return { url, title, text: text.slice(0, PAGE_TEXT_CAP), links, ...(wall ? { wall } : {}) }
 }
 
 async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -260,65 +257,29 @@ async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> 
   }
 }
 
-// The courier core's runErrand drives. One browser, one reused tab.
+// One browser, one reused tab. It knows how to open, read, type and click —
+// and nothing at all about search engines: where to go is the caller's
+// judgement, which is what lets it be sent somewhere new.
 export function agentCourier(): WebCourier {
   return {
-    async search(query, signal) {
+    async readOpen(signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      // What a person means by "search". It answers a browser that is not
-      // advertising itself as a robot; when it does not, the errand carries on
-      // with the engine that always does rather than parking on a wall.
-      try {
-        await withAbort(
-          page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`, {
-            waitUntil: 'domcontentloaded',
-            timeout: NAV_TIMEOUT_MS,
-          }),
-          signal,
-        )
-        const googled = parseGoogleResults(await withAbort(page.content(), signal))
-        armIdleClose()
-        if (googled.length > 0) return googled
-      } catch {
-        // fall through to the engine that always answers
-      }
-      try {
-        await withAbort(
-          page.goto(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`, {
-            waitUntil: 'domcontentloaded',
-            timeout: NAV_TIMEOUT_MS,
-          }),
-          signal,
-        )
-        await withAbort(page.waitForSelector('a[data-testid="result-title-a"]', { timeout: 8_000 }), signal)
-        const found = await withAbort(
-          page.evaluate((cap: number) => {
-            return Array.from(document.querySelectorAll('a[data-testid="result-title-a"]'))
-              .slice(0, cap)
-              .map((a) => ({
-                url: (a as HTMLAnchorElement).href,
-                title: (a.textContent ?? '').trim(),
-                snippet: '',
-              }))
-          }, RESULTS_PER_SEARCH),
-          signal,
-        )
-        armIdleClose()
-        if (found.length > 0) return found
-      } catch {
-        // fall through to the HTML twin
-      }
-      await withAbort(
-        page.goto(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-          waitUntil: 'domcontentloaded',
-          timeout: NAV_TIMEOUT_MS,
-        }),
-        signal,
-      )
-      const html = await withAbort(page.content(), signal)
+      return withAbort(readPage(page), signal)
+    },
+    async typeInto(field, text, signal) {
+      const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return parseDuckResults(html)
+      const done = await routineDriver().type({ text: field }, text, signal)
+      void page
+      return { ok: done.ok }
+    },
+    async clickOn(target, signal) {
+      const page = await withAbort(ensurePage(), signal)
+      armIdleClose()
+      const done = await routineDriver().click({ text: target }, signal)
+      void page
+      return { ok: done.ok }
     },
     async fetchPage(url, signal) {
       const page = await withAbort(ensurePage(), signal)
@@ -373,7 +334,10 @@ export { withAbort as agentAbortable }
 // the person is being recorded in. A recording session owns the browser, so
 // an unforced close steps aside; memory pressure and quit pass force.
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
-  if (claimed && !options.force) return
+  // Somebody is standing at the window - a recording, or a person typing their
+  // password into a login wall. An unforced close waits for them; memory
+  // pressure and app quit pass force and take it anyway.
+  if ((claimed || idleHolds > 0) && !options.force) return
   if (idleTimer) {
     clearTimeout(idleTimer)
     idleTimer = null

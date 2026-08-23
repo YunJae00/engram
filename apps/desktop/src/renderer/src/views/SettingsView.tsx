@@ -27,11 +27,19 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
+  const [browsers, setBrowsers] = useState<{ id: string; name: string; running: boolean }[]>([])
+  const [importedAt, setImportedAt] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [searchPaste, setSearchPaste] = useState('')
+  const [searchTemplate, setSearchTemplate] = useState('')
 
   useEffect(() => {
     void api.appVersion().then(setVersion).catch(() => {})
     void api.localModelsState().then(setLocalModels).catch(() => {})
     void api.contentFolders().then(setFolders).catch(() => {})
+    void api.browsersList().then(setBrowsers).catch(() => {})
+    void api.browserImportedAt().then(setImportedAt).catch(() => {})
+    void api.settingsGet().then((current) => setSearchTemplate(current.searchTemplate ?? '')).catch(() => {})
     void api.activityGet().then(setDeskJournal).catch(() => {})
     void api.sessionWatchGet().then(setSessionWatch).catch(() => {})
     // What the updater already knows, shown without a click — a downloaded
@@ -202,6 +210,91 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             from a real hardware probe, not a guess. */}
         {/* Consent gate for content capture: nothing
             is read until the user names the folders. */}
+        {/* The agent window starts as a stranger to every site the person
+            uses. This hands it their own sessions, once, on purpose. */}
+        {/* Where the person searches. They paste one results address; the
+            shape is read out of it. No engine is named anywhere in the app. */}
+        <div className="settings-group-head">{t('settings.searchTitle')}</div>
+        <div className="settings-group">
+          <div className="setting-note">{t('settings.searchHint')}</div>
+          <div className="model-row">
+            <input
+              className="routine-step-input"
+              data-testid="search-template"
+              placeholder={t('settings.searchPlaceholder')}
+              value={searchPaste}
+              onChange={(e) => setSearchPaste(e.target.value)}
+            />
+            <button
+              className="secondary"
+              data-testid="search-template-save"
+              disabled={searchPaste.trim().length === 0}
+              onClick={() =>
+                void api.searchTemplateLearn(searchPaste).then((result) => {
+                  if (result.ok && result.template) {
+                    setSearchTemplate(result.template)
+                    setSearchPaste('')
+                    showToast(t('settings.searchLearned'))
+                  } else showToast(t('settings.searchNotLearned'))
+                })
+              }
+            >
+              {t('settings.searchSave')}
+            </button>
+          </div>
+          {searchTemplate !== '' && <div className="setting-note">{searchTemplate}</div>}
+        </div>
+
+        <div className="settings-group-head">{t('settings.browserTitle')}</div>
+        <div className="settings-group">
+          <div className="setting-note">{t('settings.browserHint')}</div>
+          {importedAt !== null && (
+            <div className="setting-note">{t('settings.browserImported', { when: new Date(importedAt).toLocaleString() })}</div>
+          )}
+          {browsers.map((browser) => (
+            <div key={browser.id} className="model-row">
+              <span className="model-desc">
+                {browser.name}
+                {browser.running ? ` — ${t('settings.browserClose')}` : ''}
+              </span>
+              <button
+                className="secondary"
+                disabled={browser.running || importing}
+                data-testid={`browser-import-${browser.id}`}
+                onClick={() => {
+                  setImporting(true)
+                  void api
+                    .browserImport(browser.id)
+                    .then((result) => {
+                      showToast(result.ok ? t('settings.browserImportOk') : (result.error ?? t('settings.browserImportFailed')))
+                      return api.browserImportedAt().then(setImportedAt)
+                    })
+                    .catch(() => showToast(t('settings.browserImportFailed')))
+                    .finally(() => {
+                      setImporting(false)
+                      void api.browsersList().then(setBrowsers)
+                    })
+                }}
+              >
+                {t('settings.browserImport')}
+              </button>
+            </div>
+          ))}
+          {importedAt !== null && (
+            <button
+              className="secondary"
+              onClick={() =>
+                void api.browserForget().then(() => {
+                  setImportedAt(null)
+                  showToast(t('settings.browserForgotten'))
+                })
+              }
+            >
+              {t('settings.browserForget')}
+            </button>
+          )}
+        </div>
+
         <div className="settings-group-head">{t('settings.contentTitle')}</div>
         <div className="settings-group">
           <div className="setting-note">{t('settings.contentHint')}</div>

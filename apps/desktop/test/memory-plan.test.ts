@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planModelLoad } from '../src/main/memory-plan.js'
+import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR, ROOM_FOR_BROWSER } from '../src/main/memory-plan.js'
 
 const GB = 1e9
 const MODEL = 5 * GB
@@ -54,6 +54,25 @@ describe('planModelLoad', () => {
       const at = order.indexOf(planModelLoad(MODEL, free).mode)
       expect(at).toBeGreaterThanOrEqual(last)
       last = at
+    }
+  })
+})
+
+// The freeze happens where pages cannot be reclaimed, so the floors have to
+// fire in order: give the room back first, kill the worker only at the end.
+describe('the floors', () => {
+  it('ask before killing, and clear the room before a browser opens', () => {
+    expect(CRITICAL_FLOOR).toBeLessThan(PRESSURE_FLOOR)
+    expect(PRESSURE_FLOOR).toBeLessThan(ROOM_FOR_BROWSER)
+  })
+
+  it('an approved offload always leaves the machine above the critical floor', () => {
+    for (let free = 1 * GB; free <= 32 * GB; free += 0.5 * GB) {
+      const plan = planModelLoad(MODEL, free)
+      if (plan.mode !== 'gpu' && plan.mode !== 'lean') continue
+      // What the load itself costs is the file plus the buffers riding with
+      // it; whatever is left has to stay clear of the floor.
+      expect(free - (MODEL + 2 * GB)).toBeGreaterThanOrEqual(CRITICAL_FLOOR)
     }
   })
 })

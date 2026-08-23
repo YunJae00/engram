@@ -291,6 +291,13 @@ const BOOT_IDLE_SECONDS = 60
 const BOOT_CEILING_MS = 30 * 60_000
 
 function scheduleBootIndex(): void {
+  // A probe runs against a vault that was made a second ago and has to search
+  // it by meaning the way a lived-in vault is searched. Waiting out the quiet
+  // moment would only be waiting.
+  if (process.env['ENGRAM_INDEX_NOW'] === '1') {
+    void bringUp()
+    return
+  }
   const bootAt = Date.now()
   state.detail = 'waiting for a quiet moment to index'
   const tick = (): void => {

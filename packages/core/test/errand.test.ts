@@ -43,7 +43,7 @@ const depsWith = (engine: MockEngine, retrieve: ErrandDeps['retrieve']): ErrandD
   retrieve,
 })
 
-const PLAN = '{"queries":["배포 정책","deploy policy"],"note_title":"배포 정책 정리"}'
+const PLAN = '{"queries":["배포 정책","deploy policy"],"start_urls":[],"note_title":"배포 정책 정리"}'
 
 describe('runErrand — happy path', () => {
   it('plans, gathers, distills, composes, and lands a new-note proposal card', async () => {
@@ -138,7 +138,7 @@ describe('runErrand — empty vault', () => {
 describe('runErrand — unusable plan', () => {
   it('fails with no usable queries and never calls retrieve', async () => {
     const engine = new MockEngine({
-      'ERRAND-PLAN': '{"queries":[],"note_title":"x"}',
+      'ERRAND-PLAN': '{"queries":[],"start_urls":[],"note_title":"x"}',
       'ERRAND-DISTILL': 'unused',
       'ERRAND-COMPOSE': 'unused',
     })
@@ -163,7 +163,7 @@ describe('runErrand — resume', () => {
       goal: GOAL,
       startedAt: NOW.toISOString(),
       phase: 'compose',
-      plan: { queries: ['배포 정책', 'deploy policy'], noteTitle: '배포 정책 정리' },
+      plan: { queries: ['배포 정책', 'deploy policy'], startUrls: [], noteTitle: '배포 정책 정리' },
       gathered: [note('n-a', '배포 회의', '스테이징 먼저 배포한다.')],
       points: [{ text: '스테이징 먼저 배포', sources: ['n-a'] }],
     }
@@ -230,8 +230,7 @@ import { pickFindings, stripNoteIds, type WebCourier, type WebFinding, type WebP
 const finding = (url: string, title = url): WebFinding => ({ url, title, snippet: '' })
 const longText = 'Electron apps can trim memory by lazy-loading windows. '.repeat(20)
 
-const courierOf = (results: Record<string, WebFinding[]>, pages: Record<string, WebPage>): WebCourier => ({
-  search: async (query) => results[query] ?? [],
+const courierOf = (pages: Record<string, WebPage>): WebCourier => ({
   fetchPage: async (url) => {
     const page = pages[url]
     if (!page) throw new Error('unreachable')
@@ -261,12 +260,12 @@ describe('pickFindings', () => {
 })
 
 describe('runErrand — web courier', () => {
-  const WEB_PLAN = '{"queries":["deploy policy","배포 정책"],"note_title":"조사 결과"}'
+  // The plan says WHERE to look now — no engine sits between the two.
+  const WEB_PLAN =
+    '{"queries":["deploy policy","배포 정책"],"start_urls":["https://a.com/1","https://b.com/1"],"note_title":"조사 결과"}'
 
   it('walks the web phase, distills pages, appends a code-built source list', async () => {
-    const courier = courierOf(
-      { 'deploy policy': [finding('https://a.com/1', 'A')] },
-      { 'https://a.com/1': { url: 'https://a.com/1', title: 'A', text: longText } },
+    const courier = courierOf({ 'https://a.com/1': { url: 'https://a.com/1', title: 'A', text: longText } },
     )
     const engine = new MockEngine({
       'ERRAND-PLAN': WEB_PLAN,
@@ -290,9 +289,7 @@ describe('runErrand — web courier', () => {
   })
 
   it('an empty vault no longer ends a web errand', async () => {
-    const courier = courierOf(
-      { 'deploy policy': [finding('https://a.com/1', 'A')] },
-      { 'https://a.com/1': { url: 'https://a.com/1', title: 'A', text: longText } },
+    const courier = courierOf({ 'https://a.com/1': { url: 'https://a.com/1', title: 'A', text: longText } },
     )
     const engine = new MockEngine({
       'ERRAND-PLAN': WEB_PLAN,
@@ -304,29 +301,20 @@ describe('runErrand — web courier', () => {
     expect(result.sources).toEqual([])
   })
 
-  it('retries the raw goal when every planned query finds nothing', async () => {
-    const searched: string[] = []
-    const courier: WebCourier = {
-      search: async (query) => {
-        searched.push(query)
-        return query === GOAL ? [finding('https://a.com/1', 'A')] : []
-      },
-      fetchPage: async (url) => ({ url, title: 'A', text: longText }),
-    }
+  it('a plan that names nowhere to look still ends honestly', async () => {
+    const courier: WebCourier = { fetchPage: async (url) => ({ url, title: 'A', text: longText }) }
     const engine = new MockEngine({
-      'ERRAND-PLAN': WEB_PLAN,
-      'ERRAND-DISTILL': '{"points":[{"text":"a fact","source_ids":["https://a.com/1"]}]}',
-      'ERRAND-COMPOSE': '# 조사 결과\n\n목표 자체로 재검색해 찾아낸 사실을 정리한 본문이다. 길이도 충분하다.',
+      'ERRAND-PLAN': '{"queries":["deploy policy"],"start_urls":[],"note_title":"조사 결과"}',
+      'ERRAND-DISTILL': '{"points":[{"text":"a fact","source_ids":[]}]}',
+      'ERRAND-COMPOSE': '# 조사 결과\n\n볼트에서만 찾은 사실을 정리한 본문이다. 길이도 충분하다.',
     })
     const result = await runErrand(paths, { ...depsWith(engine, retrieverFrom([])), courier }, GOAL, { now: () => NOW })
-    expect(result.ok).toBe(true)
-    expect(searched).toEqual(['deploy policy', '배포 정책', GOAL])
+    expect(result.pages).toEqual([])
   })
 
   it('pauses at a wall, refetches once when resolved, records a skip otherwise', async () => {
     let fetches = 0
     const courier: WebCourier = {
-      search: async () => [finding('https://a.com/1', 'A'), finding('https://b.com/1', 'B')],
       fetchPage: async (url) => {
         if (url === 'https://b.com/1') return { url, title: 'B', text: '', wall: 'captcha' as const }
         fetches += 1
@@ -356,9 +344,7 @@ describe('runErrand — web courier', () => {
     const pool = Array.from({ length: 12 }, (_, i) =>
       note(`n-lz3k9${i}-abcd0${i}`, `t${i}`, '배포 정책 관련 메모'),
     )
-    const courier = courierOf(
-      { 'deploy policy': [finding('https://a.com/1', 'A')] },
-      { 'https://a.com/1': { url: 'https://a.com/1', title: 'A', text: longText } },
+    const courier = courierOf({ 'https://a.com/1': { url: 'https://a.com/1', title: 'A', text: longText } },
     )
     const engine = new MockEngine({
       'ERRAND-PLAN': WEB_PLAN,

@@ -6,12 +6,17 @@ interface AppSettings {
   defaultEngine: 'claude' | 'local'
   autoStart: boolean // ⑦
   teamSync: 'auto' | 'manual' // ⑧ — surfaced in the GitHub backup dialog
+  // The address the person searches with, with {q} where the words go. Empty
+  // until they say: naming engines in code fixes the answer for everyone and
+  // can never learn a company's own search.
+  searchTemplate: string
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   defaultEngine: 'local',
   autoStart: false,
   teamSync: 'auto',
+  searchTemplate: '',
 }
 
 function settingsPath(): string {
