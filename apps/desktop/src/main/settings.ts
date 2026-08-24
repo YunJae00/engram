@@ -10,6 +10,10 @@ interface AppSettings {
   // until they say: naming engines in code fixes the answer for everyone and
   // can never learn a company's own search.
   searchTemplate: string
+  // Which installed browser the agent drives. Empty until the person says:
+  // where several are installed, picking one for them is picking their
+  // working day for them.
+  agentBrowser: string
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -17,6 +21,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoStart: false,
   teamSync: 'auto',
   searchTemplate: '',
+  agentBrowser: '',
 }
 
 function settingsPath(): string {

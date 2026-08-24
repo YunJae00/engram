@@ -596,6 +596,9 @@ export interface EngramApi {
   updateState(): Promise<UpdateCheckDto>
   // What the person pasted becomes the search shape; the app never picks.
   searchTemplateLearn(pasted: string): Promise<{ ok: boolean; template?: string }>
+  // The browsers on this machine, and which one drives the work.
+  browsersInstalled(): Promise<InstalledBrowserDto[]>
+  browserChoose(path: string): Promise<void>
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: AppSettingsDto): Promise<void>
   mcpInfo(): Promise<McpInfoDto>
@@ -624,6 +627,17 @@ export interface AppSettingsDto {
   // Where the person searches, with {q} standing in for the words. Learned
   // from one address they paste; empty means the comet asks first.
   searchTemplate?: string
+  // Which installed browser the agent drives, by executable path. Empty means
+  // the person has not picked and, where several are installed, is asked.
+  agentBrowser?: string
+}
+
+// One browser found on this machine, offered rather than assumed.
+export interface InstalledBrowserDto {
+  id: string
+  name: string
+  path: string
+  chosen: boolean
 }
 
 // Local semantic layer status for the settings screen.

@@ -21,7 +21,12 @@ export function registerSettingsIpc(): void {
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()
-    await saveSettings({ ...held, ...settings, searchTemplate: settings.searchTemplate ?? held.searchTemplate })
+    await saveSettings({
+      ...held,
+      ...settings,
+      searchTemplate: settings.searchTemplate ?? held.searchTemplate,
+      agentBrowser: settings.agentBrowser ?? held.agentBrowser,
+    })
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
     // Live surfaces (the agent terminal's colours) restyle immediately.

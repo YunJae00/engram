@@ -89,7 +89,7 @@ import { backgroundInferenceOk, errandFloors } from './local-llm.js'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
-import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser } from './agent-browser.js'
+import { agentBrowserAvailable, agentCourier, browserChoicePending, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -1256,6 +1256,20 @@ export function registerIpc(ctx: VaultContext): void {
     return { ok: true, template }
   })
 
+  // What is installed, and which of them drives the work. Nothing here picks:
+  // a machine with one browser has no choice to make, and a machine with
+  // several has a choice that belongs to the person.
+  ipcMain.handle('browsers:installed', async () => {
+    const chosen = (await loadSettings()).agentBrowser
+    return installedBrowsers().map((one) => ({ ...one, chosen: one.path === chosen }))
+  })
+
+  ipcMain.handle('browsers:choose', async (_e, path: string) => {
+    const settings = await loadSettings()
+    await saveSettings({ ...settings, agentBrowser: String(path ?? '') })
+    setAgentBrowser(String(path ?? '') || null)
+  })
+
   ipcMain.handle('browsers:list', () => listBrowserSources())
   ipcMain.handle('browsers:import', async (_e, id: string) => {
     const result = await importBrowserSession(id)
@@ -1273,7 +1287,16 @@ export function registerIpc(ctx: VaultContext): void {
     if (teachingSession || routineRunning || errandRunning)
       return { ok: false, error: 'Something is already using the browser — try again in a moment.' }
     if (!agentBrowserAvailable())
-      return { ok: false, error: 'No Chrome-family browser found — install Google Chrome to teach a routine.' }
+      return { ok: false, error: 'No Chrome-family browser found — install Chrome, Edge or Brave to teach a routine.' }
+    // Several browsers installed and none picked: the person is about to work
+    // through one of them, and which one is not ours to decide.
+    if (browserChoicePending())
+      return {
+        ok: false,
+        error: `You have more than one browser installed (${installedBrowsers()
+          .map((one) => one.name)
+          .join(', ')}) — pick the one to work in under Settings, and this will open that one.`,
+      }
     const free = os.freemem()
     if (free < ROUTINE_MIN_FREE)
       return {

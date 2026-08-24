@@ -28,6 +28,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
   const [browsers, setBrowsers] = useState<{ id: string; name: string; running: boolean }[]>([])
+  const [installed, setInstalled] = useState<{ id: string; name: string; path: string; chosen: boolean }[]>([])
   const [importedAt, setImportedAt] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [searchPaste, setSearchPaste] = useState('')
@@ -38,6 +39,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     void api.localModelsState().then(setLocalModels).catch(() => {})
     void api.contentFolders().then(setFolders).catch(() => {})
     void api.browsersList().then(setBrowsers).catch(() => {})
+    void api.browsersInstalled().then(setInstalled).catch(() => {})
     void api.browserImportedAt().then(setImportedAt).catch(() => {})
     void api.settingsGet().then((current) => setSearchTemplate(current.searchTemplate ?? '')).catch(() => {})
     void api.activityGet().then(setDeskJournal).catch(() => {})
@@ -243,6 +245,33 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             </button>
           </div>
           {searchTemplate !== '' && <div className="setting-note">{searchTemplate}</div>}
+        </div>
+
+        <div className="settings-group-head">{t('settings.whichBrowserTitle')}</div>
+        <div className="settings-group">
+          <div className="setting-note">{t('settings.whichBrowserHint')}</div>
+          {installed.length === 0 && <div className="setting-note">{t('settings.whichBrowserNone')}</div>}
+          {installed.length > 1 && !installed.some((one) => one.chosen) && (
+            <div className="setting-note">{t('settings.whichBrowserPick')}</div>
+          )}
+          {installed.map((browser) => (
+            <div key={browser.id} className="model-row">
+              <span className="model-desc">{browser.name}</span>
+              <button
+                className="secondary"
+                disabled={browser.chosen}
+                data-testid={`browser-use-${browser.name.replace(/\s+/g, '-').toLowerCase()}`}
+                onClick={() =>
+                  void api
+                    .browserChoose(browser.path)
+                    .then(() => api.browsersInstalled().then(setInstalled))
+                    .catch(() => {})
+                }
+              >
+                {browser.chosen ? t('settings.whichBrowserChosen') : t('settings.whichBrowserUse')}
+              </button>
+            </div>
+          ))}
         </div>
 
         <div className="settings-group-head">{t('settings.browserTitle')}</div>

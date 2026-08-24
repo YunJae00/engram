@@ -58,8 +58,54 @@ function chromeCandidates(): string[] {
   ]
 }
 
+export interface InstalledBrowser {
+  id: string
+  name: string
+  path: string
+}
+
+// Which browsers are actually on this machine. Named from the executable so
+// nothing here decides that a person "uses Chrome" - what they have is what
+// they are offered, and which of them drives the work is theirs to say.
+export function installedBrowsers(): InstalledBrowser[] {
+  const seen = new Set<string>()
+  const found: InstalledBrowser[] = []
+  for (const path of chromeCandidates()) {
+    if (!existsSync(path) || seen.has(path)) continue
+    seen.add(path)
+    found.push({ id: path, name: browserName(path), path })
+  }
+  return found
+}
+
+function browserName(path: string): string {
+  const file = path.replace(/\\/g, '/').split('/').pop() ?? path
+  if (/msedge/i.test(file)) return 'Microsoft Edge'
+  if (/brave/i.test(file)) return 'Brave'
+  if (/chromium/i.test(file)) return 'Chromium'
+  if (/chrome/i.test(file)) return 'Google Chrome'
+  return file
+}
+
+// The one the person picked, remembered in settings. Until they pick, a single
+// installed browser is not a choice and is simply used; several of them are a
+// choice, and a choice is theirs.
+let chosenPath: string | null = null
+
+export function setAgentBrowser(path: string | null): void {
+  chosenPath = path && existsSync(path) ? path : null
+}
+
 export function findChrome(): string | null {
-  return chromeCandidates().find((path) => existsSync(path)) ?? null
+  if (chosenPath && existsSync(chosenPath)) return chosenPath
+  const installed = installedBrowsers()
+  return installed.length === 1 ? installed[0]!.path : (installed[0]?.path ?? null)
+}
+
+// What to say when the browser cannot simply be opened: nothing installed, or
+// several installed and none chosen.
+export function browserChoicePending(): boolean {
+  return !chosenPath && installedBrowsers().length > 1
 }
 
 // A page a machine cannot pass. Pure so the heuristics have a unit test.

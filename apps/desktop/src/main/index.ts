@@ -14,7 +14,7 @@ import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
-import { closeAgentBrowser } from './agent-browser.js'
+import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { flog } from './flog.js'
 import { isBubbleVisible, setBubbleVisible, startBubble, stopBubble } from './bubble.js'
 import { isActivityWatchEnabled, registerActivityIpc, setActivityWatchEnabled, startActivityWatch, stopActivityWatch } from './activity-watch.js'
@@ -669,6 +669,9 @@ app.whenReady().then(async () => {
   // Semantic model warm-up: needs no vault, so the ~600MB first-run download
   // overlaps the onboarding walk instead of starting after it.
   warmSemantic()
+  // The browser the person picked, remembered from last time, so the first
+  // errand of the day opens the one they actually use.
+  void loadSettings().then((settings) => setAgentBrowser(settings.agentBrowser || null))
   const root = await configuredVaultRoot()
   if (root) {
     await createMainWindow()

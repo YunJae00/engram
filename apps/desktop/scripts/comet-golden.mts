@@ -322,6 +322,16 @@ await mkdir(USERDATA, { recursive: true })
 // resident models is how the machine gets powered off rather than slowed down.
 if (process.platform === 'win32')
   spawnSync('taskkill', ['/F', '/IM', 'electron.exe', '/T'], { stdio: 'ignore' })
+// The installed app is the person's, not this run's to close. If it is open it
+// is holding a model of its own, and starting a second one beside it is the
+// pairing that takes the machine down - so the set stands aside and says so.
+if (process.platform === 'win32') {
+  const theirs = spawnSync('tasklist', ['/FI', 'IMAGENAME eq Engram.exe', '/NH'], { encoding: 'utf8', windowsHide: true })
+  if ((theirs.stdout ?? '').includes('Engram.exe')) {
+    console.log('comet-golden: not starting - Engram is open. Two apps means two models; close it and run this again.')
+    process.exit(1)
+  }
+}
 const FLOOR_GB = 8
 console.log(`comet-golden: free memory ${(os.freemem() / 1e9).toFixed(1)}GB`)
 if (os.freemem() < FLOOR_GB * 1e9) {

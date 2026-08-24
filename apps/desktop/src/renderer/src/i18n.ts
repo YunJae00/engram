@@ -20,6 +20,13 @@ const en = {
   'settings.searchSave': 'Learn it',
   'settings.searchLearned': 'Your comet will search there from now on.',
   'settings.searchNotLearned': 'That address has no search words in it — try a results page.',
+  'settings.whichBrowserTitle': 'The browser your comet opens',
+  'settings.whichBrowserHint':
+    'Work is done in a browser you already have. Pick the one you use — it opens in its own window, on its own profile, and never touches the one you are working in.',
+  'settings.whichBrowserUse': 'Use this one',
+  'settings.whichBrowserChosen': 'Opens this one',
+  'settings.whichBrowserNone': 'No Chrome-family browser found. Install Chrome, Edge or Brave and it will show up here.',
+  'settings.whichBrowserPick': 'Pick one and your comet will stop guessing.',
   'settings.browserTitle': 'Sign-ins for the agent window',
   'settings.browserHint':
     'Your work account signs in by itself. For anything else — a portal, a personal account — hand the agent the sign-ins you already have, once. Close the browser first; nothing is copied while it is open, and passwords are never copied at all.',
