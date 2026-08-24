@@ -110,6 +110,31 @@ export async function importBrowserSession(id: string): Promise<ImportResult> {
   return { ok: true, copied }
 }
 
+// Handing the sign-ins over is not a chore the person should have to know
+// about: whenever their browser happens to be closed, the freshest sessions
+// are simply carried across. The lock IS the consent check on timing - a
+// browser in use is never touched - and what gets copied is the same short
+// list as ever, passwords never on it. Throttled so a day sees one copy.
+const AUTO_IMPORT_EVERY_MS = 24 * 60 * 60 * 1000
+
+export async function autoImportSession(preferredName: string | null): Promise<void> {
+  // A probe or an e2e run lives in a throwaway profile. The person's real
+  // sessions have no business being copied into something built to be
+  // deleted - isolation is the point of ENGRAM_USERDATA, so it opts out.
+  if (process.env['ENGRAM_USERDATA']) return
+  const last = await importedAt()
+  if (last && Date.now() - new Date(last).getTime() < AUTO_IMPORT_EVERY_MS) return
+  const all = sources()
+  // The browser the person picked to work in is the one whose sign-ins they
+  // mean; with no pick and several sources, freshest-cookie-jar wins is a
+  // guess this code refuses to make, so it takes the single obvious one only.
+  const wanted = preferredName ? all.filter((one) => preferredName.toLowerCase().includes(one.id)) : all
+  const source = wanted.length === 1 ? wanted[0] : preferredName ? wanted[0] : all.length === 1 ? all[0] : null
+  if (!source) return
+  const result = await importBrowserSession(source.id)
+  if (result.ok) flog('browser-import', `auto: carried ${source.name} sign-ins across`)
+}
+
 // What the person gets back if they change their mind: the imported profile
 // is ours, so forgetting it is just deleting it.
 export async function forgetImportedSession(): Promise<void> {

@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
+import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { releaseModelForRoom } from './local-llm.js'
 import { ROOM_FOR_BROWSER } from './memory-plan.js'
@@ -194,6 +195,10 @@ async function ensureContext(): Promise<Ctx> {
     if (os.freemem() < LAUNCH_MIN_FREE)
       throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
     const { chromium } = await import('playwright-core')
+    // One more chance for the person's sign-ins to follow them in, right
+    // before the window they would need them in. Costs nothing when their
+    // browser is open or the last copy is fresh.
+    await autoImportSession(executablePath).catch(() => undefined)
     const profileDir = join(app.getPath('userData'), 'agent-browser-profile')
     flog('agent-browser', `launching ${executablePath}`)
     const ctx = await chromium.launchPersistentContext(profileDir, {

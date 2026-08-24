@@ -45,7 +45,7 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
   onOpenSettings(): void
   onOpenPalette(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, runSweep, errand, errandWall, answerErrandWall, openInbox, showToast, vaultReady, t } = useApp()
+  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, errand, errandWall, answerErrandWall, openInbox, showToast, vaultReady, t } = useApp()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   const unswept = pendingWork.inbox + pendingWork.notes
@@ -246,24 +246,20 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
         </button>
       )}
 
-      {/* Tidy carries the "not yet organized" count (inbox + unswept notes) so
-          the user can SEE when there is something for the librarian to do. */}
-      <button
-        className="topbar-action zap"
-        data-testid="sweep-button"
-        disabled={sweepStatus.running}
-        onClick={() => {
-          // The tour says "click to review" about this badge. With no engine
-          // a sweep can only throw a toast — show the waiting captures
-          // instead; the inbox overlay carries its own connect-engine banner.
-          if (engines.length === 0) openInbox()
-          else void runSweep()
-        }}
-        title={unswept > 0 ? t('topbar.tidyPending', { n: unswept }) : t('topbar.tidyTitle')}
-      >
-        <Icon name="zap" size={14} /> {t('topbar.tidy')}
-        {unswept > 0 && !sweepStatus.running && <span className="badge">{unswept > 99 ? '99+' : unswept}</span>}
-      </button>
+      {/* The librarian tidies by itself; there is no button to press for it.
+          What remains is visibility: while something waits to be organized, a
+          quiet count sits here and opens the inbox to show exactly what. */}
+      {unswept > 0 && !sweepStatus.running && (
+        <button
+          className="topbar-action zap"
+          data-testid="sweep-button"
+          onClick={openInbox}
+          title={t('topbar.tidyPending', { n: unswept })}
+        >
+          <Icon name="zap" size={14} />
+          <span className="badge">{unswept > 99 ? '99+' : unswept}</span>
+        </button>
+      )}
 
       <button className="topbar-action" onClick={onOpenPalette} title={t('topbar.searchTitle')}>
         <Icon name="search" size={15} />

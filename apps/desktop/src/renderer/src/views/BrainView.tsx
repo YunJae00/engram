@@ -58,17 +58,20 @@ export function BrainView() {
 
   return (
     <div className="brain-view" data-testid="brain-view">
-      {!railOpen && (
-        <button className="rail-reopen" data-testid="brain-rail-open" title={t('rail.show')} onClick={() => setRailOpen(true)}>
-          <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
-        </button>
-      )}
-      {railOpen && (
-      <aside className="brain-rail">
+      <aside className={`brain-rail${railOpen ? '' : ' folded'}`}>
         <div className="section-label brain-rail-head">
-          <span>{t('brain.railTitle', { count: brain.topics.length })}</span>
-          <button className="rail-collapse" data-testid="brain-rail-close" title={t('rail.hide')} onClick={() => setRailOpen(false)}>
-            <PanelLeftClose size={14} strokeWidth={1.8} aria-hidden />
+          {railOpen && <span>{t('brain.railTitle', { count: brain.topics.length })}</span>}
+          <button
+            className="rail-toggle"
+            data-testid={railOpen ? 'brain-rail-close' : 'brain-rail-open'}
+            title={railOpen ? t('rail.hide') : t('rail.show')}
+            onClick={() => setRailOpen(!railOpen)}
+          >
+            {railOpen ? (
+              <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden />
+            ) : (
+              <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
+            )}
           </button>
         </div>
         {brain.topics.length > 8 && (
@@ -114,7 +117,6 @@ export function BrainView() {
           </button>
         )}
       </aside>
-      )}
 
       <div className="brain-scroll">
         {showUnconnected ? (

@@ -28,13 +28,10 @@ const en = {
   'settings.whichBrowserNone': 'No Chrome-family browser found. Install Chrome, Edge or Brave and it will show up here.',
   'settings.whichBrowserPick': 'Pick one and your comet will stop guessing.',
   'settings.browserTitle': 'Sign-ins for the agent window',
-  'settings.browserHint':
-    'Your work account signs in by itself. For anything else — a portal, a personal account — hand the agent the sign-ins you already have, once. Close the browser first; nothing is copied while it is open, and passwords are never copied at all.',
-  'settings.browserImport': 'Hand over sign-ins',
-  'settings.browserClose': 'close it first',
+  'settings.browserAutoHint':
+    'Your sign-ins follow the agent window by themselves: whenever your browser is fully closed, the freshest sessions are carried across — passwords never among them. Nothing here to press.',
+  'settings.browserNotYet': 'Not carried across yet — it happens on its own the next time your browser is closed.',
   'settings.browserImported': 'Handed over {when}',
-  'settings.browserImportOk': 'The agent window now uses your sign-ins.',
-  'settings.browserImportFailed': 'Could not read that browser — is it fully closed?',
   'settings.browserForget': 'Forget them',
   'settings.browserForgotten': 'The agent window forgot those sign-ins.',
   'settings.contentTitle': 'Documents the librarian may read',
@@ -134,8 +131,6 @@ const en = {
   'topbar.engineConnected': 'AI connected: {ids}',
   'topbar.engineConnect': 'Connect an AI engine',
   'topbar.engineConnectShort': 'Connect AI',
-  'topbar.tidy': 'Tidy',
-  'topbar.tidyTitle': 'Tidy now — run the librarian',
   'topbar.tidyPending': '{n} item(s) the librarian has not organized yet — Tidy now',
 
   // no-engine banner (canvas top): the connect nudge + waiting-capture count
@@ -584,8 +579,8 @@ const en = {
   'tour.cosmosBody': 'Every memory is a star. Bright means fresh, dim means aging, a gold ring means recently recalled. Click a star to open it, scroll to zoom.',
   'tour.captureTitle': 'Remember — and ask, in the same box',
   'tour.captureBody': 'This opens the one place you talk to your brain. Type a thought however it comes out and press Enter to keep it; start with ? to ask instead, and the librarian answers from your memories with clickable receipts.',
-  'tour.tidyTitle': 'Tidy — the librarian at work',
-  'tour.tidyBody': 'The librarian organizes on its own and asks before changing anything it\'s unsure about. The badge counts questions and unfiled captures — click to review.',
+  'tour.tidyTitle': 'The librarian works by itself',
+  'tour.tidyBody': 'Captures and edits are organized automatically a moment after they land — nothing to press. When something is still waiting, a small count appears up here; click it to see exactly what.',
   'tour.brainTitle': 'Brain — your memories, organized',
   'tour.brainBody': 'Connected memories grow into topics; the librarian writes a synthesis for each. This is the "show me what I know about X, cleanly" view.',
   'tour.next': 'Next',

@@ -15,6 +15,7 @@ import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
+import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { isBubbleVisible, setBubbleVisible, startBubble, stopBubble } from './bubble.js'
 import { isActivityWatchEnabled, registerActivityIpc, setActivityWatchEnabled, startActivityWatch, stopActivityWatch } from './activity-watch.js'
@@ -671,7 +672,12 @@ app.whenReady().then(async () => {
   warmSemantic()
   // The browser the person picked, remembered from last time, so the first
   // errand of the day opens the one they actually use.
-  void loadSettings().then((settings) => setAgentBrowser(settings.agentBrowser || null))
+  void loadSettings().then((settings) => {
+    setAgentBrowser(settings.agentBrowser || null)
+    // Their sign-ins follow them in whenever their browser happens to be
+    // closed - at boot it often is, which makes this the best moment.
+    void autoImportSession(settings.agentBrowser || null).catch(() => undefined)
+  })
   const root = await configuredVaultRoot()
   if (root) {
     await createMainWindow()

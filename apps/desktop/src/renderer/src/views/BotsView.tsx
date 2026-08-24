@@ -230,19 +230,25 @@ export function BotsView() {
 
   return (
     <div className="bots-view" data-testid="bots-view">
-      {!railOpen && (
-        <aside className="side-rail folded" data-testid="comets-rail-folded">
-        <button className="rail-reopen" data-testid="comets-rail-open" title={t('rail.show')} onClick={() => setRailOpen(true)}>
-          <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
-        </button>
-        </aside>
-      )}
-      {railOpen && (
-      <aside className="bots-rail">
+      {/* One rail in both states: it narrows instead of being swapped out,
+          and the toggle keeps its corner - only the icon turns around. */}
+      <aside
+        className={`bots-rail${railOpen ? '' : ' folded'}`}
+        data-testid={railOpen ? 'bots-rail' : 'comets-rail-folded'}
+      >
         <div className="bots-rail-head">
-          <span>{t('bots.railTitle')}</span>
-          <button className="rail-collapse" data-testid="comets-rail-close" title={t('rail.hide')} onClick={() => setRailOpen(false)}>
-            <PanelLeftClose size={14} strokeWidth={1.8} aria-hidden />
+          {railOpen && <span>{t('bots.railTitle')}</span>}
+          <button
+            className="rail-toggle"
+            data-testid={railOpen ? 'comets-rail-close' : 'comets-rail-open'}
+            title={railOpen ? t('rail.hide') : t('rail.show')}
+            onClick={() => setRailOpen(!railOpen)}
+          >
+            {railOpen ? (
+              <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden />
+            ) : (
+              <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
+            )}
           </button>
         </div>
         <ul className="bots-list">
@@ -329,7 +335,6 @@ export function BotsView() {
           </div>
         )}
       </aside>
-      )}
 
       <section className="bots-main">
         {selected ? (

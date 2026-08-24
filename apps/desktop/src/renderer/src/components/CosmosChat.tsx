@@ -118,27 +118,28 @@ export function CosmosChat() {
     )
   }
 
-  if (collapsed) {
-    return (
-      <aside className="side-rail folded" data-testid="cosmos-chat-folded">
-        <button
-          className="cosmos-chat-open"
-          data-testid="cosmos-chat-open"
-          title={t('cosmos.chatOpen')}
-          onClick={() => setCollapsed(false)}
-        >
-          <PanelRightOpen size={15} strokeWidth={1.8} aria-hidden />
-        </button>
-      </aside>
-    )
-  }
-
+  // One panel in both states: it narrows to a strip instead of being swapped
+  // for a different element, so the motion is the panel itself giving way -
+  // the way every sidebar the person already knows behaves. The toggle stays
+  // in the same corner throughout; only its icon turns around.
   return (
-    <aside className="cosmos-chat" data-testid="cosmos-chat">
+    <aside
+      className={`cosmos-chat${collapsed ? ' folded' : ''}`}
+      data-testid={collapsed ? 'cosmos-chat-folded' : 'cosmos-chat'}
+    >
       <div className="cosmos-chat-head">
-        <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>
-        <button className="cosmos-chat-collapse" title={t('cosmos.chatCollapse')} onClick={() => setCollapsed(true)}>
-          <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
+        {!collapsed && <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>}
+        <button
+          className="rail-toggle"
+          data-testid={collapsed ? 'cosmos-chat-open' : 'cosmos-chat-collapse'}
+          title={collapsed ? t('cosmos.chatOpen') : t('cosmos.chatCollapse')}
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          {collapsed ? (
+            <PanelRightOpen size={15} strokeWidth={1.8} aria-hidden />
+          ) : (
+            <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
+          )}
         </button>
       </div>
       <div className="cosmos-chat-thread" ref={listRef}>

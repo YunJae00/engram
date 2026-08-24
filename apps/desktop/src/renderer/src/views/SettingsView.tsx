@@ -27,10 +27,8 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
-  const [browsers, setBrowsers] = useState<{ id: string; name: string; running: boolean }[]>([])
   const [installed, setInstalled] = useState<{ id: string; name: string; path: string; chosen: boolean }[]>([])
   const [importedAt, setImportedAt] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
   const [searchPaste, setSearchPaste] = useState('')
   const [searchTemplate, setSearchTemplate] = useState('')
 
@@ -38,7 +36,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     void api.appVersion().then(setVersion).catch(() => {})
     void api.localModelsState().then(setLocalModels).catch(() => {})
     void api.contentFolders().then(setFolders).catch(() => {})
-    void api.browsersList().then(setBrowsers).catch(() => {})
     void api.browsersInstalled().then(setInstalled).catch(() => {})
     void api.browserImportedAt().then(setImportedAt).catch(() => {})
     void api.settingsGet().then((current) => setSearchTemplate(current.searchTemplate ?? '')).catch(() => {})
@@ -276,39 +273,19 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
         <div className="settings-group-head">{t('settings.browserTitle')}</div>
         <div className="settings-group">
-          <div className="setting-note">{t('settings.browserHint')}</div>
-          {importedAt !== null && (
-            <div className="setting-note">{t('settings.browserImported', { when: new Date(importedAt).toLocaleString() })}</div>
-          )}
-          {browsers.map((browser) => (
-            <div key={browser.id} className="model-row">
-              <span className="model-desc">
-                {browser.name}
-                {browser.running ? ` — ${t('settings.browserClose')}` : ''}
-              </span>
-              <button
-                className="secondary"
-                disabled={browser.running || importing}
-                data-testid={`browser-import-${browser.id}`}
-                onClick={() => {
-                  setImporting(true)
-                  void api
-                    .browserImport(browser.id)
-                    .then((result) => {
-                      showToast(result.ok ? t('settings.browserImportOk') : (result.error ?? t('settings.browserImportFailed')))
-                      return api.browserImportedAt().then(setImportedAt)
-                    })
-                    .catch(() => showToast(t('settings.browserImportFailed')))
-                    .finally(() => {
-                      setImporting(false)
-                      void api.browsersList().then(setBrowsers)
-                    })
-                }}
-              >
-                {t('settings.browserImport')}
-              </button>
+          {/* Nothing to press: the sign-ins follow by themselves whenever the
+              person's browser happens to be closed. What this section owns is
+              the truth of when that last happened, and the way out. */}
+          <div className="setting-note">{t('settings.browserAutoHint')}</div>
+          {importedAt !== null ? (
+            <div className="setting-note" data-testid="signins-status">
+              {t('settings.browserImported', { when: new Date(importedAt).toLocaleString() })}
             </div>
-          ))}
+          ) : (
+            <div className="setting-note" data-testid="signins-status">
+              {t('settings.browserNotYet')}
+            </div>
+          )}
           {importedAt !== null && (
             <button
               className="secondary"
