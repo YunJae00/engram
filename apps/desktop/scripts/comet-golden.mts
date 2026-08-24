@@ -326,8 +326,21 @@ if (process.platform === 'win32')
 // is holding a model of its own, and starting a second one beside it is the
 // pairing that takes the machine down - so the set stands aside and says so.
 if (process.platform === 'win32') {
-  const theirs = spawnSync('tasklist', ['/FI', 'IMAGENAME eq Engram.exe', '/NH'], { encoding: 'utf8', windowsHide: true })
-  if ((theirs.stdout ?? '').includes('Engram.exe')) {
+  // Judged by weight, not by name: a killed app leaves helper processes behind
+  // that still answer to Engram.exe at forty megabytes, and standing aside for
+  // those means never running at all. What matters is whether something is
+  // holding a model.
+  const theirs = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-Command',
+      '(Get-Process Engram -ErrorAction SilentlyContinue | Measure-Object WorkingSet64 -Maximum).Maximum',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  )
+  const heaviest = Number((theirs.stdout ?? '0').trim()) || 0
+  if (heaviest > 300e6) {
     console.log('comet-golden: not starting - Engram is open. Two apps means two models; close it and run this again.')
     process.exit(1)
   }
@@ -402,80 +415,108 @@ await addRoutine(paths, {
   ],
 })
 
-const app = await launchApp({
-  ENGRAM_VAULT: VAULT,
-  ENGRAM_USERDATA: USERDATA,
-  ENGRAM_NO_GIT: '1',
-  ENGRAM_NO_AUTOTIDY: '1',
-  // The vault is searched by meaning here, as a lived-in one is.
-  ENGRAM_INDEX_NOW: '1',
-  // Packaged builds search by meaning; a probe has to be the same app.
-  ENGRAM_SEMANTIC: '1',
-  ENGRAM_STEP_DETAIL: '1',
-})
-const page: Page = app.page
-giveWay = async () => {
-  clearInterval(watch)
-await app.close().catch(() => undefined)
-  await new Promise<void>((resolve) => site.close(() => resolve()))
-}
-await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 60_000 })
-for (let i = 0; i < 40; i++) {
-  const engines = (await page.evaluate(() => window.engram.engines())) as { id: string }[]
-  if (engines.some((e) => e.id === 'local')) break
-  await new Promise((r) => setTimeout(r, 2_000))
+// The app is opened for a handful of scenarios at a time and closed again.
+// A single run holds the model, the embedder and a browser at once - about
+// six gigabytes - and on a working machine that is the difference between
+// finishing and standing down at the floor. Between batches the memory goes
+// back, and nothing of the person's has to be closed to make room.
+const BATCH = 5
+
+interface Running {
+  page: Page
+  botId: string
+  close: () => Promise<void>
+  trace: string[]
 }
 
-// The embedder is what tells one subject from another when the words differ.
-// Starting before it is ready would measure a colleague working with one eye
-// shut, so the set waits - and says so if it never arrives.
-let indexed = false
-for (let i = 0; i < 90; i++) {
-  const semantic = (await page.evaluate(() => window.engram.semanticStatus())) as { status: string; detail: string }
-  if (semantic.status === 'ready') {
-    indexed = true
-    break
+async function openApp(): Promise<Running> {
+  const app = await launchApp({
+    ENGRAM_VAULT: VAULT,
+    ENGRAM_USERDATA: USERDATA,
+    ENGRAM_NO_GIT: '1',
+    ENGRAM_NO_AUTOTIDY: '1',
+    // The vault is searched by meaning here, as a lived-in one is.
+    ENGRAM_INDEX_NOW: '1',
+    // Packaged builds search by meaning; a probe has to be the same app.
+    ENGRAM_SEMANTIC: '1',
+    ENGRAM_STEP_DETAIL: '1',
+  })
+  const page: Page = app.page
+  giveWay = async () => {
+    clearInterval(watch)
+    await app.close().catch(() => undefined)
+    await new Promise<void>((resolve) => site.close(() => resolve()))
   }
-  if (semantic.status === 'error') break
-  await new Promise((r) => setTimeout(r, 2_000))
+  await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })
+  for (let i = 0; i < 40; i++) {
+    const engines = (await page.evaluate(() => window.engram.engines())) as { id: string }[]
+    if (engines.some((e) => e.id === 'local')) break
+    await new Promise((r) => setTimeout(r, 2_000))
+  }
+  // The embedder is what tells one subject from another when the words differ.
+  // Starting before it is ready would measure a colleague working with one eye
+  // shut, so the set waits - and says so if it never arrives.
+  let indexed = false
+  for (let i = 0; i < 90; i++) {
+    const semantic = (await page.evaluate(() => window.engram.semanticStatus())) as { status: string }
+    if (semantic.status === 'ready') {
+      indexed = true
+      break
+    }
+    if (semantic.status === 'error') break
+    await new Promise((r) => setTimeout(r, 2_000))
+  }
+  console.log(`comet-golden: the vault is ${indexed ? 'indexed - searched by meaning' : 'NOT indexed - searched by words alone'}`)
+
+  const trace: string[] = []
+  await page.exposeFunction('__probe', (line: string) => {
+    trace.push(line)
+  })
+  await page.evaluate(() => {
+    const w = window as unknown as { __probe(line: string): void }
+    window.engram.onEvent((event) => {
+      if (event.type === 'comet:step') w.__probe(`step ${event.line}`)
+      if (event.type === 'routine:step') w.__probe(`hands ${event.label}`)
+      if (event.type === 'routine:submit') w.__probe('GATE')
+      if (event.type === 'chat:done') w.__probe(`ANSWER ${JSON.stringify({ text: event.text, offer: event.offer ?? null })}`)
+      if (event.type === 'chat:error') w.__probe(`ERROR ${event.message}`)
+    })
+    // The person approves a submit the moment they are shown it.
+    window.engram.onEvent((event) => {
+      if (event.type === 'routine:submit') setTimeout(() => void window.engram.routineSubmitDone('approve'), 400)
+    })
+  })
+  const bot = (await page.evaluate(() =>
+    window.engram.botCreate({ name: '업무 도우미', purpose: '이 사람의 일을 대신 해낸다.' }),
+  )) as { id: string }
+  return { page, botId: bot.id, close: app.close, trace }
 }
-console.log(`comet-golden: the vault is ${indexed ? 'indexed - searched by meaning' : 'NOT indexed - searched by words alone'}`)
-
-let trace: string[] = []
-await page.exposeFunction('__probe', (line: string) => {
-  trace.push(line)
-})
-await page.evaluate(() => {
-  const w = window as unknown as { __probe(line: string): void }
-  window.engram.onEvent((event) => {
-    if (event.type === 'comet:step') w.__probe(`step ${event.line}`)
-    if (event.type === 'routine:step') w.__probe(`hands ${event.label}`)
-    if (event.type === 'routine:submit') w.__probe('GATE')
-    if (event.type === 'chat:done') w.__probe(`ANSWER ${JSON.stringify({ text: event.text, offer: event.offer ?? null })}`)
-    if (event.type === 'chat:error') w.__probe(`ERROR ${event.message}`)
-  })
-  // The person approves a submit the moment they are shown it.
-  window.engram.onEvent((event) => {
-    if (event.type === 'routine:submit') setTimeout(() => void window.engram.routineSubmitDone('approve'), 400)
-  })
-})
-
-const bot = (await page.evaluate(() =>
-  window.engram.botCreate({ name: '업무 도우미', purpose: '이 사람의 일을 대신 해낸다.' }),
-)) as { id: string }
 
 const history: { role: 'user' | 'assistant'; text: string }[] = []
 const results: { scenario: Scenario; seen: Outcome; ok: boolean }[] = []
 
+let running: Running | null = null
+let inBatch = 0
+
 for (const scenario of SCENARIOS) {
-  trace = []
+  // A fresh app every few scenarios: the model and the browser go back to the
+  // machine in between, which is what lets this finish on a working day.
+  if (!running || inBatch >= BATCH) {
+    if (running) await running.close().catch(() => undefined)
+    running = await openApp()
+    inBatch = 0
+  }
+  inBatch++
+  const { page, botId, trace: batchTrace } = running
+  batchTrace.length = 0
+  const trace = batchTrace
   const cardsBefore = (await listCards(paths)).length
   const postedBefore = posted.length
   const started = Date.now()
   await page.evaluate(
     ({ botId, message, turns }) =>
       window.engram.chatSend({ engineId: '', message, history: turns, channel: `bot-${botId}`, botId }),
-    { botId: bot.id, message: scenario.ask, turns: scenario.continues ? history : [] },
+    { botId, message: scenario.ask, turns: scenario.continues ? history : [] },
   )
   for (let i = 0; i < 150; i++) {
     if (trace.some((l) => l.startsWith('ANSWER') || l.startsWith('ERROR'))) break
@@ -532,5 +573,5 @@ await writeFile(
   ),
 )
 console.log(`\ncomet-golden: ${results.filter((r) => r.ok).length}/${results.length} passed · posted=${JSON.stringify(posted)}`)
-await app.close()
+await running?.close().catch(() => undefined)
 await new Promise<void>((resolve) => site.close(() => resolve()))

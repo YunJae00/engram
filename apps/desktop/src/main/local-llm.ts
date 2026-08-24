@@ -451,21 +451,28 @@ export async function localComplete(
     const chosen = await chooseSpec(opts.modelHint)
     if (!chosen) throw new Error('no local model is active')
     const { spec, plan } = chosen
-    // Refusing at the floor is the guard between "slow answer" and "frozen
-    // machine" — below it even evictable weights would tip the system over.
-    if (plan.mode === 'none')
+    // The gate is about LOADING, not about answering. A model already resident
+    // needs no new room, and asking for room to load it again refused every
+    // question on a machine that had just answered one - which is the whole of
+    // "not enough free memory" as people actually met it (measured: loaded at
+    // 8GB free, refused at 4.7GB while sitting in memory the entire time).
+    const resident = child !== null && loadedModelId === spec.id && warmState === 'ready'
+    if (!resident && plan.mode === 'none')
       throw new Error(`not enough free memory for the local model right now (${plan.reason}) — close something and retry`)
-    if (plan.mode !== 'gpu') flog('local-llm', `loading ${plan.mode}: ${plan.reason}`)
+    if (!resident && plan.mode !== 'gpu') flog('local-llm', `loading ${plan.mode}: ${plan.reason}`)
     const proc = await spawnChild()
     if (!proc) throw new Error('the inference process could not start')
-    if (warmState === 'cold') setWarmState('loading')
-    loadedModelId = spec.id
-    proc.send({
-      type: 'load',
-      modelPath: join(modelsDir(), spec.file),
-      contextSize: CTX_TOKENS,
-      plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode },
-    })
+    // Already holding it: ask the question rather than asking for it again.
+    if (!resident) {
+      if (warmState === 'cold') setWarmState('loading')
+      loadedModelId = spec.id
+      proc.send({
+        type: 'load',
+        modelPath: join(modelsDir(), spec.file),
+        contextSize: CTX_TOKENS,
+        plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode },
+      })
+    }
     lastUsed = Date.now()
     const id = nextCallId++
     const answer = await new Promise<string>((resolve, reject) => {
@@ -500,9 +507,13 @@ export async function localComplete(
       proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 512, ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}) })
     })
     lastUsed = Date.now()
-    // Served — and if the room is already gone, leave now instead of squatting
-    // for the idle window while the user's own work fights for pages.
-    if (os.freemem() < 6e9 && child) {
+    // Served. Leaving after every answer sounds tidy and is not: on a machine
+    // that sits around 5GB free - an ordinary working day with a browser and a
+    // few apps open - this unloaded every single time and the next question
+    // paid a 57 second reload, then timed out. Measured. The model only leaves
+    // when the room is genuinely gone; above that its weights are evictable
+    // pages the system can reclaim by itself, which is what they are for.
+    if (os.freemem() < PRESSURE_FLOOR && child) {
       flog('local-llm', `answered into a tight machine (${(os.freemem() / 1e9).toFixed(1)}GB free) — unloading`)
       child.send({ type: 'unload' })
       loadedModelId = null
