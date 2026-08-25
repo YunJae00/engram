@@ -155,6 +155,13 @@ test('running the routine drives a real Chrome and lands the reading in review',
 })
 
 test('teach mode records the work as done in the agent window — and replays it', async () => {
+  // A machine with several browsers installed is asked which one to work in
+  // before anything is recorded; a CI runner is such a machine. The person
+  // picks in Settings - here the pick is made the same way, through the API.
+  await page.evaluate(async () => {
+    const installed = (await window.engram.browsersInstalled()) as { path: string }[]
+    if (installed[0]) await window.engram.browserChoose(installed[0].path)
+  })
   await openSheet()
   await page.getByTestId('routines-teach').click()
   // A cold Chrome launch on a busy runner can take a while.

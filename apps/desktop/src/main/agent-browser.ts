@@ -69,12 +69,17 @@ export interface InstalledBrowser {
 // nothing here decides that a person "uses Chrome" - what they have is what
 // they are offered, and which of them drives the work is theirs to say.
 export function installedBrowsers(): InstalledBrowser[] {
+  // One entry per browser, not per path: a Linux install answers to several
+  // names for the same binary (google-chrome, google-chrome-stable) and a
+  // person offered "Google Chrome" twice has been handed a bug, not a choice.
   const seen = new Set<string>()
   const found: InstalledBrowser[] = []
   for (const path of chromeCandidates()) {
-    if (!existsSync(path) || seen.has(path)) continue
-    seen.add(path)
-    found.push({ id: path, name: browserName(path), path })
+    if (!existsSync(path)) continue
+    const name = browserName(path)
+    if (seen.has(name)) continue
+    seen.add(name)
+    found.push({ id: path, name, path })
   }
   return found
 }
