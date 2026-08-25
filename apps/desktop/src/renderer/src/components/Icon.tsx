@@ -48,37 +48,31 @@ export function Logomark({ size = 20 }: { size?: number }) {
   )
 }
 
-// A comet with a face. Big round head, two wide eyes, a soft smile and a
-// short double tail — cute at 14px, still legible at 30px. Filled head so the
-// eyes read as eyes instead of two stray dots on a ring.
+// Faces only earn their pixels above this size; below it the comet is a bright
+// head with a tail, which is all a 14px row can show anyway.
+const FACE_DETAIL_MIN = 20
+
+// A small friendly comet: big round head, two wide-set eyes, one plump tapered
+// tail and a faint second streak. Eyes and smile are holes in the head
+// (even-odd fill) so the surface underneath shows through — no guessed
+// background token, so it sits on rows, tabs and bubbles alike.
 export function Comet({ size = 15 }: { size?: number }) {
+  const detailed = size >= FACE_DETAIL_MIN
+  const head =
+    // A head that fills the box, eyes set wide and a touch below centre - the
+    // proportions that read as a face rather than a skull at 14px.
+    'M8.3 14.6a6.7 6.7 0 1 0 13.4 0a6.7 6.7 0 1 0-13.4 0Z' +
+    'M11.2 14a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z' +
+    'M16.2 14a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z' +
+    (detailed ? 'M13.3 16.9Q15 18.6 16.7 16.9Q15 20.4 13.3 16.9Z' : '')
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9.8 7.2 Q6.2 8.4 3.6 10.6"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        opacity="0.45"
-      />
-      <path
-        d="M10.4 15.6 Q7 17.2 4.4 19.4"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        opacity="0.45"
-      />
-      <path d="M9.6 11.4 Q5.6 12.6 2.6 15" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" opacity="0.7" />
-      <circle cx="15.2" cy="11.4" r="5.6" fill="currentColor" />
-      <circle cx="13.3" cy="10.3" r="1.15" fill="var(--panel-bg, #fff)" />
-      <circle cx="17.1" cy="10.3" r="1.15" fill="var(--panel-bg, #fff)" />
-      <path
-        d="M13.4 13.5 Q15.2 15 17 13.5"
-        stroke="var(--panel-bg, #fff)"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        fill="none"
-      />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M10.2 10.6Q5.2 8.6 2.6 2.6Q8.4 4.8 12.4 8.6Z" opacity="0.55" />
+      <path d="M8.4 17.4 5.6 15.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.4" />
+      <path d={head} fillRule="evenodd" />
+      {detailed && (
+        <path d="M20.6 3 21.2 4.6 22.8 5.2 21.2 5.8 20.6 7.4 20 5.8 18.4 5.2 20 4.6Z" opacity="0.7" />
+      )}
     </svg>
   )
 }

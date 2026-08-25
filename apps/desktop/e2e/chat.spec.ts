@@ -74,7 +74,44 @@ test('the conversation survives leaving and re-entering the tab', async () => {
   await expect(page.getByTestId('bots-view')).toHaveCount(0)
   await page.getByTestId('activity-bots').click()
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
-  // The transcript is persisted by main and reloaded on mount, not held in
-  // renderer state — this is what makes a comet a colleague, not a popup.
+  // The thread is held outside the view and refreshed from the transcript
+  // main persists — this is what makes a comet a colleague, not a popup.
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 15_000 })
+})
+
+test('the selected comet is remembered across tabs', async () => {
+  await page.getByTestId('bots-new').click()
+  await page.getByTestId('bots-name').fill('Second keeper')
+  await page.getByTestId('bots-purpose').fill('Answers about the second thing.')
+  await page.getByTestId('bots-create-submit').click()
+  await expect(page.locator('.bots-row.active')).toContainText('Second keeper')
+  // Pick the comet that is NOT first in the rail, then leave and come back.
+  await page.locator('.bots-row', { hasText: 'Deploy keeper' }).click()
+  await expect(page.locator('.bots-row.active')).toContainText('Deploy keeper')
+  await page.getByTestId('activity-brain').click()
+  await expect(page.getByTestId('bots-view')).toHaveCount(0)
+  await page.getByTestId('activity-bots').click()
+  await expect(page.locator('.bots-row.active')).toContainText('Deploy keeper')
+  await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
+    'Record this if you want it kept',
+  )
+})
+
+test('a question just sent and a draft not yet sent both survive a tab switch', async () => {
+  const composer = page.locator('.bots-write textarea')
+  await composer.fill('Where do we deploy from?')
+  await composer.press('Enter')
+  // Leave at once - before main has written anything to disk.
+  await page.getByTestId('activity-list').click()
+  await expect(page.getByTestId('bots-view')).toHaveCount(0)
+  await page.getByTestId('activity-bots').click()
+  await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').last()).toContainText('Where do we deploy from?')
+  await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
+    'Record this if you want it kept',
+    { timeout: 30_000 },
+  )
+  await composer.fill('unsent thought')
+  await page.getByTestId('activity-sky').click()
+  await page.getByTestId('activity-bots').click()
+  await expect(page.locator('.bots-write textarea')).toHaveValue('unsent thought')
 })

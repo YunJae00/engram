@@ -1543,6 +1543,12 @@ body.bubble-host { background: transparent; }
 .bots-suggested { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
 .bots-suggestion { border: 1px solid var(--border-soft); border-radius: 9px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
 .bots-suggestion-name { font-size: var(--fs-small); font-weight: 650; color: var(--fg); }
+.bots-suggestion-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.bots-suggestion-x {
+  flex: none; display: inline-flex; padding: 2px; border-radius: 6px;
+  color: var(--fg-faint); opacity: 0.6; background: transparent; border: 0;
+}
+.bots-suggestion-x:hover { opacity: 1; color: var(--clay); background: var(--hover-bg); }
 .bots-suggestion-reason { font-size: var(--fs-micro); color: var(--fg-faint); }
 .bots-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .bots-head {
@@ -1586,7 +1592,9 @@ body.bubble-host { background: transparent; }
   border: 1px solid var(--border); color: var(--fg-dim); background: transparent;
 }
 .bots-followup:hover { background: var(--hover-bg); color: var(--fg); }
-/* The loop narrating its work: quiet mono lines under the thinking dots. */
+/* The loop narrating its work: the status line over its earlier steps. */
+.bots-pending { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.bots-pending .bubble-thinking { flex-wrap: wrap; }
 .bots-work-lines { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .bots-work-line { font-family: var(--mono); font-size: var(--fs-micro); color: var(--fg-faint); }
 /* The offer: the comet knows which saved procedure does this, and asks for
@@ -1604,7 +1612,13 @@ body.bubble-host { background: transparent; }
 .bots-working-stop { flex: none; margin-left: auto; }
 .bots-thread { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .bots-hint { color: var(--fg-faint); font-size: var(--fs-body); line-height: 1.55; max-width: 460px; }
-.bots-errand-pulse { color: var(--accent); animation: errand-pulse 1.2s ease-in-out infinite; }
+/* The working comet flies in place: a breath of opacity plus a nudge along its
+   own tail line, so the motion reads as travel rather than blinking. */
+.bots-errand-pulse { display: inline-flex; color: var(--accent); animation: comet-fly 1.2s ease-in-out infinite; }
+@keyframes comet-fly {
+  0%, 100% { opacity: 0.45; transform: translate(-1px, 1px); }
+  50% { opacity: 1; transform: translate(1px, -1px); }
+}
 .bots-write { display: flex; gap: 7px; align-items: flex-end; padding: 10px 14px; border-top: 1px solid var(--border-soft); }
 .bots-write textarea {
   flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;

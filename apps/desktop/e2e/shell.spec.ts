@@ -151,6 +151,16 @@ test('the comets rail folds away and returns', async () => {
   await page.getByTestId('comets-rail-open').click()
   await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)
   await expect(page.getByTestId('bots-new')).toBeVisible()
+  // A turned-down suggestion leaves the rail and does not return after a reload.
+  const scout = page.getByTestId('bots-suggestion').filter({ hasText: 'Research scout' })
+  await expect(scout).toBeVisible()
+  await scout.getByTestId('bots-suggestion-dismiss').click()
+  await expect(scout).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId('activity-bots').click()
+  await expect(page.getByTestId('bots-view')).toBeVisible()
+  await expect(page.getByTestId('bots-suggestion').filter({ hasText: 'Research scout' })).toHaveCount(0)
   await page.getByTestId('activity-sky').click()
 })
 

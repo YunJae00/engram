@@ -54,18 +54,76 @@ function chatPath(paths: VaultPaths, botId: string): string {
   return join(paths.cache, CHAT_DIR, `${botId}.jsonl`)
 }
 
-export async function loadBots(paths: VaultPaths): Promise<Bot[]> {
+interface BotsFile {
+  bots: Bot[]
+  // Suggestions the person turned down, by lowercased name. Kept beside the
+  // bots because a refusal is a decision about this vault, not this machine —
+  // it must outlive a reinstall and must not follow the person to another vault.
+  dismissed: string[]
+}
+
+async function readBotsFile(paths: VaultPaths): Promise<BotsFile> {
   try {
-    const raw = JSON.parse(await readFile(botsPath(paths), 'utf8')) as { bots?: Bot[] }
-    return Array.isArray(raw.bots) ? raw.bots.filter((b) => typeof b?.id === 'string' && typeof b?.name === 'string') : []
+    const raw = JSON.parse(await readFile(botsPath(paths), 'utf8')) as Partial<BotsFile>
+    return {
+      bots: Array.isArray(raw.bots)
+        ? raw.bots.filter((b) => typeof b?.id === 'string' && typeof b?.name === 'string')
+        : [],
+      dismissed: Array.isArray(raw.dismissed) ? raw.dismissed.filter((n): n is string => typeof n === 'string') : [],
+    }
   } catch {
-    return []
+    return { bots: [], dismissed: [] }
   }
 }
 
-async function saveBots(paths: VaultPaths, bots: Bot[]): Promise<void> {
+async function writeBotsFile(paths: VaultPaths, file: BotsFile): Promise<void> {
   await mkdir(paths.cache, { recursive: true })
-  await writeFile(botsPath(paths), JSON.stringify({ bots }, null, 2))
+  await writeFile(botsPath(paths), JSON.stringify(file, null, 2))
+}
+
+// Every change to the file is a read followed by a write, and two of those
+// interleaved lose one side. One chain per file keeps them in order.
+const queues = new Map<string, Promise<unknown>>()
+
+function serialized<T>(paths: VaultPaths, work: () => Promise<T>): Promise<T> {
+  const key = botsPath(paths)
+  const next = (queues.get(key) ?? Promise.resolve()).then(work, work)
+  queues.set(key, next.catch(() => undefined))
+  return next
+}
+
+export async function loadBots(paths: VaultPaths): Promise<Bot[]> {
+  return (await readBotsFile(paths)).bots
+}
+
+function saveBots(paths: VaultPaths, bots: Bot[]): Promise<void> {
+  return serialized(paths, async () => {
+    const { dismissed } = await readBotsFile(paths)
+    await writeBotsFile(paths, { bots, dismissed })
+  })
+}
+
+// A refused name is stored as shown, and shown names are short.
+const SUGGESTION_NAME_CAP = 80
+
+// Suggestions carry no id; the name is what the person saw and refused, so it
+// is the key — compared the same way "already have this bot" is.
+function suggestionKey(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+export async function loadDismissedSuggestions(paths: VaultPaths): Promise<string[]> {
+  return (await readBotsFile(paths)).dismissed
+}
+
+export function dismissBotSuggestion(paths: VaultPaths, name: string): Promise<void> {
+  const key = suggestionKey(name).slice(0, SUGGESTION_NAME_CAP)
+  if (!key) return Promise.resolve()
+  return serialized(paths, async () => {
+    const file = await readBotsFile(paths)
+    if (file.dismissed.includes(key)) return
+    await writeBotsFile(paths, { ...file, dismissed: [...file.dismissed, key] })
+  })
 }
 
 export async function createBot(
@@ -168,8 +226,10 @@ export async function readBotTranscript(paths: VaultPaths, botId: string, limit 
 export function recommendBots(
   notes: { context?: string; title: string }[],
   existingNames: string[],
+  dismissedNames: string[] = [],
 ): BotSuggestion[] {
-  const taken = new Set(existingNames.map((n) => n.trim().toLowerCase()))
+  // A refused suggestion counts as taken: it must not be offered again.
+  const taken = new Set([...existingNames, ...dismissedNames].map(suggestionKey))
   const byContext = new Map<string, number>()
   for (const note of notes) {
     const ctx = note.context?.trim()

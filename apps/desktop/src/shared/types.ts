@@ -461,6 +461,9 @@ export interface EngramApi {
   brainFabric(): Promise<BrainFabricDto>
   // Stop a running answer on one surface (or every surface when omitted).
   chatAbort(channel?: string): Promise<void>
+  // Channels with an answer still running, for a surface that mounted after
+  // the send and needs to know a done is on its way.
+  chatActive(): Promise<string[]>
   // Would the vault answer this, or does it need the web? Retrieval decides;
   // no inference runs, so it is safe to call before every send.
   chatRoute(message: string): Promise<{ kind: 'chat' | 'errand'; notes: number }>
@@ -476,6 +479,8 @@ export interface EngramApi {
   botTaskRemove(botId: string, taskId: string): Promise<void>
   botTaskRan(botId: string, taskId: string): Promise<void>
   botsRecommend(): Promise<BotSuggestionDto[]>
+  // A refused suggestion, remembered in the vault so it is never offered again.
+  botSuggestionDismiss(name: string): Promise<void>
   // Past runs, newest first — the errand sheet's history.
   errandJournal(): Promise<ErrandRunDto[]>
   errandAbort(): Promise<void>

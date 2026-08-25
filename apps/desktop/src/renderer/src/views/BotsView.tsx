@@ -1,9 +1,13 @@
-import { ArrowUp, Bookmark, PanelLeftClose, PanelLeftOpen, Play, Plus, Square, Trash2, Wand2, X } from 'lucide-react'
+import { ArrowUp, Bookmark, Play, Square, Trash2, Wand2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
-import { useEffect, useRef, useState } from 'react'
-import type { BotDto, BotSuggestionDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { BotDto, BotSuggestionDto, EngramEvent } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { CometRail } from '../components/CometRail.js'
+import { Thinking } from '../components/Thinking.js'
 import type { StringKey } from '../i18n.js'
+import { cometChannel } from '../lib/cometThreads.js'
+import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { answerHtml } from '../markdown.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
@@ -12,12 +16,8 @@ import { useApp } from '../state.js'
 // is a charter over the same brain — its own conversation, the vault behind
 // every answer, and the errand pipeline as hands. The rail's suggestions grow
 // from the folders the user actually works in, so the empty state is an offer,
-// not a lecture.
-
-interface Message extends ChatTurnDto {
-  streaming?: boolean
-  error?: boolean
-}
+// not a lecture. The conversations themselves live in cometThreads, outside
+// this component: the tab unmounts on every switch and they must not.
 
 const PHASE_LABEL: Record<string, StringKey> = {
   plan: 'topbar.errandPlan',
@@ -27,103 +27,55 @@ const PHASE_LABEL: Record<string, StringKey> = {
   compose: 'topbar.errandCompose',
 }
 
-function streamingAt(list: Message[]): number {
-  for (let i = list.length - 1; i >= 0; i--) {
-    const m = list[i]
-    if (m && m.role === 'assistant' && m.streaming) return i
-  }
-  return -1
-}
+type WarmState = Extract<EngramEvent, { type: 'localllm:warm' }>['state']
 
 export function BotsView() {
   const { errand, startErrand, routine, startRoutine, t } = useApp()
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [text, setText] = useState('')
-  const [busy, setBusy] = useState(false)
-  // The loop's narration: one line per tool step, shown under the thinking
-  // bubble while the comet works, cleared when the answer lands.
-  const [workLines, setWorkLines] = useState<string[]>([])
-  // The comet found the procedure for this request but stopped short of
-  // running it. Rather than send the person hunting for it, the thread offers
-  // the run — one press, with whatever blanks the comet worked out.
-  const [offer, setOffer] = useState<Extract<EngramEvent, { type: 'chat:done' }>['offer'] | null>(null)
-  const busyChannel = useRef<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [draftName, setDraftName] = useState('')
-  const [draftPurpose, setDraftPurpose] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.comets.rail') !== '0')
+  // What the model is doing, from main's own word. Only 'loading' changes
+  // what the thread says, and 'loading' is only ever learned from a live
+  // broadcast — a missed one degrades to the plain line, never to a claim.
+  const [warm, setWarm] = useState<WarmState>('cold')
   const listRef = useRef<HTMLDivElement | null>(null)
+  const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
   const selected = bots.find((b) => b.id === selectedId) ?? null
+  const { messages, busy, workLines, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
+  // One local model answers one comet at a time: while another comet holds
+  // it, the box says so instead of swallowing a send in silence.
+  const busyElsewhere = !busy && cometThreads.anyBusy()
+  const locked = busyElsewhere || errand.running
+
+  // The wait, said from evidence: the model loading outranks a stale step
+  // line (an unload between calls reloads mid-run); a step line outranks
+  // the generic word; the generic word is what is left when nothing is known.
+  const latestStep = workLines[workLines.length - 1]
+  const pendingStatus = warm === 'loading' ? t('bots.warming') : (latestStep ?? t('bots.thinking'))
 
   const reload = async (keepSelection = true) => {
     const [list, recs] = await Promise.all([api.botsList(), api.botsRecommend().catch(() => [])])
     setBots(list)
     setSuggestions(recs)
-    if (!keepSelection || !list.some((b) => b.id === selectedId)) setSelectedId(list[0]?.id ?? null)
+    const current = cometThreads.getSnapshot().selectedId
+    if (!keepSelection || !list.some((b) => b.id === current)) selectComet(list[0]?.id ?? null)
   }
 
   useEffect(() => {
-    void reload(false)
+    void reload()
   }, [])
-
-  // Selecting a bot swaps in its persisted conversation.
-  useEffect(() => {
-    if (!selectedId) {
-      setMessages([])
-      return
-    }
-    let alive = true
-    void api.botTranscript(selectedId).then((turns) => {
-      if (alive) setMessages(turns.map((turn) => ({ role: turn.role, text: turn.text })))
-    })
-    return () => {
-      alive = false
-    }
-  }, [selectedId])
 
   useEffect(() => {
     return api.onEvent((event) => {
-      // Streams for the run THIS view started; anything else is another surface.
-      if (event.type === 'comet:step' && event.channel === busyChannel.current) {
-        setWorkLines((prev) => [...prev.slice(-5), event.line])
-      } else if (event.type === 'chat:token' && event.channel === busyChannel.current) {
-        setMessages((prev) => {
-          const at = streamingAt(prev)
-          if (at < 0) return prev
-          const next = [...prev]
-          next[at] = { ...next[at]!, text: next[at]!.text + event.text }
-          return next
-        })
-      } else if (event.type === 'chat:done' && event.channel === busyChannel.current) {
-        busyChannel.current = null
-        setBusy(false)
-        setWorkLines([])
-        setOffer(event.offer ?? null)
-        setMessages((prev) => {
-          const at = streamingAt(prev)
-          if (at < 0) return prev
-          const next = [...prev]
-          next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false }
-          return next
-        })
-      } else if (event.type === 'chat:error' && event.channel === busyChannel.current) {
-        busyChannel.current = null
-        setBusy(false)
-        setWorkLines([])
-        setMessages((prev) => [
-          ...prev.filter((m) => !(m.role === 'assistant' && m.streaming)),
-          { role: 'assistant', text: event.message, error: true },
-        ])
-      } else if (event.type === 'errand:logged') {
-        // A finished errand appends its outcome to the delegating bot's thread.
-        const id = selectedId
-        if (id) void api.botTranscript(id).then((turns) => setMessages(turns.map((x) => ({ role: x.role, text: x.text }))))
-      }
+      if (event.type === 'localllm:warm') setWarm(event.state)
     })
+  }, [])
+
+  // Selecting a comet shows what the store already holds and refreshes it
+  // from disk underneath; a turn still streaming stays on top of the reload.
+  useEffect(() => {
+    if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
   useEffect(() => {
@@ -132,43 +84,31 @@ export function BotsView() {
     if (list.scrollHeight - list.scrollTop - list.clientHeight < 140) list.scrollTo({ top: list.scrollHeight })
   }, [messages])
 
+  // One answer at a time across every comet: the local model does not share.
   const send = async () => {
-    const message = text.trim()
-    if (!message || busy || errand.running || !selected) return
-    setText('')
-    setBusy(true)
-    setWorkLines([])
-    setOffer(null)
-    busyChannel.current = `bot-${selected.id}`
-    const history = messages.filter((m) => !m.streaming && !m.error)
-    setMessages((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }])
+    const message = draft.trim()
+    if (!message || cometThreads.anyBusy() || errand.running || !selected) return
+    const id = selected.id
+    const history = cometThreads.begin(id, message)
     try {
-      await api.chatSend({ engineId: '', message, history, channel: `bot-${selected.id}`, botId: selected.id })
+      await api.chatSend({ engineId: '', message, history, channel: cometChannel(id), botId: id })
     } catch (err) {
-      busyChannel.current = null
-      setBusy(false)
-      setMessages((prev) => [
-        ...prev.filter((m) => !(m.role === 'assistant' && m.streaming)),
-        { role: 'assistant', text: String((err as Error).message ?? err), error: true },
-      ])
+      // main may already have said so over chat:error; do not say it twice.
+      if (cometThreads.thread(id).busy) cometThreads.fail(id, String((err as Error).message ?? err))
     }
   }
 
   const stop = async () => {
-    const channel = busyChannel.current
-    busyChannel.current = null
-    if (channel) await api.chatAbort(channel).catch(() => undefined)
-    setBusy(false)
-    setMessages((prev) =>
-      prev.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || t('bubble.stopped') } : m)),
-    )
+    if (!selected) return
+    cometThreads.stop(selected.id, t('bubble.stopped'))
+    await api.chatAbort(cometChannel(selected.id)).catch(() => undefined)
   }
 
   // A task is the repeated work itself: saved on the comet, one click to run.
   // The errand pipeline is only the engine underneath.
   const runTask = (task: { id: string; name: string; goal: string }) => {
     if (!selected || errand.running) return
-    setMessages((prev) => [...prev, { role: 'user', text: task.goal }])
+    cometThreads.append(selected.id, { role: 'user', text: task.goal })
     void api.botTaskRan(selected.id, task.id).catch(() => undefined)
     void startErrand(task.goal, selected.id)
   }
@@ -184,20 +124,26 @@ export function BotsView() {
     await reload()
   }
 
-  const create = async (name: string, purpose: string) => {
+  const create = async (name: string, purpose: string): Promise<boolean> => {
     const bot = await api.botCreate({ name, purpose }).catch(() => null)
-    if (!bot) return
-    setCreating(false)
-    setDraftName('')
-    setDraftPurpose('')
+    if (!bot) return false
     await reload()
-    setSelectedId(bot.id)
+    selectComet(bot.id)
+    return true
   }
 
   const remove = async (id: string) => {
     await api.botDelete(id).catch(() => undefined)
     setConfirmingDelete(null)
+    cometThreads.forget(id)
     await reload(false)
+  }
+
+  // The card leaves at once; the vault remembers the refusal so the next
+  // reload does not bring it back.
+  const dismiss = async (name: string) => {
+    setSuggestions((prev) => prev.filter((s) => s.name !== name))
+    await api.botSuggestionDismiss(name).catch(() => undefined)
   }
 
   useEffect(() => {
@@ -206,100 +152,16 @@ export function BotsView() {
 
   return (
     <div className="bots-view" data-testid="bots-view">
-      {/* One rail in both states: it narrows instead of being swapped out,
-          and the toggle keeps its corner - only the icon turns around. */}
-      <aside
-        className={`bots-rail${railOpen ? '' : ' folded'}`}
-        data-testid={railOpen ? 'bots-rail' : 'comets-rail-folded'}
-      >
-        <div className="bots-rail-head">
-          {railOpen && <span>{t('bots.railTitle')}</span>}
-          <button
-            className="rail-toggle"
-            data-testid={railOpen ? 'comets-rail-close' : 'comets-rail-open'}
-            title={railOpen ? t('rail.hide') : t('rail.show')}
-            onClick={() => setRailOpen(!railOpen)}
-          >
-            {railOpen ? (
-              <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden />
-            ) : (
-              <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
-            )}
-          </button>
-        </div>
-        <ul className="bots-list">
-          {bots.map((bot) => (
-            <li key={bot.id}>
-              <button
-                className={`bots-row${bot.id === selectedId ? ' active' : ''}`}
-                data-testid={`bot-${bot.id}`}
-                onClick={() => setSelectedId(bot.id)}
-              >
-                <Comet size={14} />
-                <span className="bots-row-name">{bot.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        {creating ? (
-          <div className="bots-create" data-testid="bots-create">
-            <input
-              autoFocus
-              data-testid="bots-name"
-              placeholder={t('bots.nameLabel')}
-              value={draftName}
-              maxLength={60}
-              onChange={(e) => setDraftName(e.target.value)}
-            />
-            <textarea
-              data-testid="bots-purpose"
-              placeholder={t('bots.purposeLabel')}
-              value={draftPurpose}
-              maxLength={500}
-              rows={3}
-              onChange={(e) => setDraftPurpose(e.target.value)}
-            />
-            {(!draftName.trim() || !draftPurpose.trim()) && (
-              // A disabled button with no reason reads as a broken button —
-              // this says which of the two fields is still empty.
-              <div className="bots-create-need">
-                {t(!draftName.trim() ? 'bots.needName' : 'bots.needPurpose')}
-              </div>
-            )}
-            <div className="bots-create-actions">
-              <button
-                className="primary"
-                data-testid="bots-create-submit"
-                disabled={!draftName.trim() || !draftPurpose.trim()}
-                onClick={() => void create(draftName, draftPurpose)}
-              >
-                {t('bots.create')}
-              </button>
-              <button className="secondary" onClick={() => setCreating(false)}>
-                {t('palette.cancel')}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button className="bots-new" data-testid="bots-new" onClick={() => setCreating(true)}>
-            <Plus size={13} strokeWidth={2} aria-hidden /> {t('bots.new')}
-          </button>
-        )}
-        {suggestions.length > 0 && (
-          <div className="bots-suggested">
-            <div className="bots-rail-head">{t('bots.suggestedTitle')}</div>
-            {suggestions.map((rec) => (
-              <div key={rec.name} className="bots-suggestion">
-                <div className="bots-suggestion-name">{rec.name}</div>
-                <div className="bots-suggestion-reason">{rec.reason}</div>
-                <button className="secondary" onClick={() => void create(rec.name, rec.purpose)}>
-                  {t('bots.accept')}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </aside>
+      <CometRail
+        bots={bots}
+        suggestions={suggestions}
+        selectedId={selectedId}
+        open={railOpen}
+        onToggle={() => setRailOpen(!railOpen)}
+        onSelect={selectComet}
+        onCreate={create}
+        onDismiss={(name) => void dismiss(name)}
+      />
 
       <section className="bots-main">
         {selected ? (
@@ -352,11 +214,11 @@ export function BotsView() {
                 <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
                   {m.role === 'assistant' ? (
                     m.streaming && !m.text ? (
-                      <span className="bubble-thinking">
-                        …
-                        {workLines.length > 0 && (
+                      <span className="bots-pending" data-testid="bots-pending">
+                        <Thinking label={pendingStatus} since={startedAt ?? undefined} testId="bots-thinking" />
+                        {workLines.length > 1 && (
                           <span className="bots-work-lines" data-testid="bots-work-lines">
-                            {workLines.map((line, x) => (
+                            {workLines.slice(0, -1).map((line, x) => (
                               <span key={`${x}-${line}`} className="bots-work-line">
                                 {line}
                               </span>
@@ -387,7 +249,7 @@ export function BotsView() {
                       data-testid="bots-offer-keep"
                       onClick={() => {
                         const wanted = offer
-                        setOffer(null)
+                        cometThreads.clearOffer(selected.id)
                         void keep(wanted.name, wanted.goal)
                       }}
                     >
@@ -399,7 +261,7 @@ export function BotsView() {
                       data-testid="bots-offer-run"
                       onClick={() => {
                         const wanted = offer
-                        setOffer(null)
+                        cometThreads.clearOffer(selected.id)
                         void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
                       }}
                     >
@@ -410,7 +272,7 @@ export function BotsView() {
                       className="primary bots-offer-run"
                       data-testid="bots-offer-teach"
                       onClick={() => {
-                        setOffer(null)
+                        cometThreads.clearOffer(selected.id)
                         window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))
                       }}
                     >
@@ -445,11 +307,13 @@ export function BotsView() {
             </div>
             <div className="bots-write">
               <textarea
-                value={text}
+                value={draft}
                 rows={1}
-                placeholder={errand.running ? t('errands.busy') : t('bots.placeholder', { name: selected.name })}
+                placeholder={
+                  errand.running ? t('errands.busy') : busyElsewhere ? t('bots.busyElsewhere') : t('bots.placeholder', { name: selected.name })
+                }
                 maxLength={2000}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => cometThreads.setDraft(selected.id, e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault()
@@ -462,7 +326,7 @@ export function BotsView() {
                   <Square size={11} strokeWidth={2.5} aria-hidden />
                 </button>
               ) : (
-                <button className="chat-send-btn armed" aria-label={t('chat.send')} disabled={!text.trim()} onClick={() => void send()}>
+                <button className="chat-send-btn armed" aria-label={t('chat.send')} disabled={locked || !draft.trim()} onClick={() => void send()}>
                   <ArrowUp size={15} />
                 </button>
               )}

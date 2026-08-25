@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendBotTurn, createBot, deleteBot, loadBots, readBotTranscript, recommendBots } from '../src/bots.js'
+import { appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots } from '../src/bots.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
@@ -51,5 +51,16 @@ describe('bots — named colleagues with charters and their own conversations', 
     const notes = Array.from({ length: 6 }, (_, i) => ({ context: 'deploys', title: `d${i}` }))
     const recs = recommendBots(notes, ['Deploys assistant', 'Research scout'])
     expect(recs).toEqual([])
+  })
+
+  it('a turned-down suggestion stays down — through later bot edits and regardless of case', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-dismiss'), { git: false })
+    await dismissBotSuggestion(paths, 'Research Scout')
+    await dismissBotSuggestion(paths, 'research scout')
+    await createBot(paths, { name: 'Release keeper', purpose: 'Tracks release decisions.' })
+    expect(await loadDismissedSuggestions(paths)).toEqual(['research scout'])
+    const notes = Array.from({ length: 6 }, (_, i) => ({ context: 'deploys', title: `d${i}` }))
+    const recs = recommendBots(notes, ['Release keeper'], await loadDismissedSuggestions(paths))
+    expect(recs.map((r) => r.name)).toEqual(['deploys assistant'])
   })
 })

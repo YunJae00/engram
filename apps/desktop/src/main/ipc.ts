@@ -27,6 +27,8 @@ import {
   markBotTaskRun,
   createBot,
   deleteBot,
+  dismissBotSuggestion,
+  loadDismissedSuggestions,
   loadUmbrellaTerms,
   loadAbsorbState,
   loadState,
@@ -864,6 +866,10 @@ export function registerIpc(ctx: VaultContext): void {
   // Stopping a running answer is the difference between waiting and being
   // stuck; the plumbing existed, nothing ever called it from the UI.
   ipcMain.handle('chat:abort', (_e, channel?: string) => abortAllChat(channel))
+  // Which surfaces have an answer running right now. A renderer that comes
+  // up after the send (a reload mid-answer) asks this to take the seat back
+  // before the done event arrives.
+  ipcMain.handle('chat:active', (): string[] => [...chatAborts].map((entry) => entry.channel))
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
   // the run is accepted (or refused) — the errand itself is detached and takes
@@ -1054,13 +1060,24 @@ export function registerIpc(ctx: VaultContext): void {
   )
   ipcMain.handle('bots:taskRemove', (_e, botId: string, taskId: string) => removeBotTask(paths, botId, taskId))
   ipcMain.handle('bots:taskRan', (_e, botId: string, taskId: string) => markBotTaskRun(paths, botId, taskId))
-  ipcMain.handle('bots:recommend', async () => {
-    const existing = (await loadBots(paths)).map((b) => b.name)
+  const suggestionsNow = async () => {
+    const [existing, dismissed] = await Promise.all([
+      loadBots(paths).then((list) => list.map((b) => b.name)),
+      loadDismissedSuggestions(paths),
+    ])
     const notes = ctx.store
       .getAll()
       .filter((n) => n.front.status === 'current')
       .map((n) => ({ ...(n.front.context ? { context: n.front.context } : {}), title: noteTitle(n) }))
-    return recommendBots(notes, existing)
+    return recommendBots(notes, existing, dismissed)
+  }
+  ipcMain.handle('bots:recommend', () => suggestionsNow())
+  // Only a suggestion actually on offer can be refused: the renderer cannot
+  // grow the vault file with names nobody was shown.
+  ipcMain.handle('bots:dismissSuggestion', async (_e, name: unknown) => {
+    if (typeof name !== 'string' || !name.trim()) return
+    const offered = (await suggestionsNow()).some((one) => one.name.trim().toLowerCase() === name.trim().toLowerCase())
+    if (offered) await dismissBotSuggestion(paths, name.slice(0, 80))
   })
 
   ipcMain.handle('errand:abort', () => {
@@ -1846,12 +1863,15 @@ export function registerIpc(ctx: VaultContext): void {
           : saved === captures.length
             ? `\n\n✓ Remembered${saved > 1 ? ` ${saved} items` : ''} — the librarian is filing ${saved > 1 ? 'them' : 'it'}`
             : `\n\n⚠ Could not save ${saved > 0 ? `${captures.length - saved} of ${captures.length} items` : 'this'} — ${saveError instanceof Error ? saveError.message : 'the vault folder rejected the write'}. Please try again.`
-      broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
+      // The transcript must be whole before anyone hears the answer is done:
+      // a surface that reads the thread back from disk on that signal would
+      // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
         await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
       }
+      broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
       markEngineOk(engine.id)
     }
 

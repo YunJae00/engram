@@ -4,6 +4,7 @@ import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { answerHtml } from '../markdown.js'
 import { useApp } from '../state.js'
+import { Thinking } from './Thinking.js'
 
 // The cosmos's right edge: ask the librarian, or just tell it something to
 // keep. There is no separate "Remember" verb — the librarian files whatever
@@ -148,7 +149,7 @@ export function CosmosChat() {
           <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
             {m.role === 'assistant' ? (
               m.streaming && !m.text ? (
-                <span className="bubble-thinking">…</span>
+                <Thinking label={t('bubble.thinking')} />
               ) : (
                 <div className="bubble-msg-body" dangerouslySetInnerHTML={{ __html: answerHtml(m.text) }} />
               )

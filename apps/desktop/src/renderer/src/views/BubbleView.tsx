@@ -3,6 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { answerHtml } from '../markdown.js'
 import { Logomark } from '../components/Icon.js'
+import { Thinking } from '../components/Thinking.js'
 import { t } from '../i18n.js'
 import type { ChatTurnDto } from '../../../shared/types.js'
 
@@ -32,27 +33,6 @@ const Bubble = memo(function Bubble({ text, onOpenNote }: { text: string; onOpen
   }
   return <div className="bubble-msg-body" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
 })
-
-function Thinking() {
-  const [seconds, setSeconds] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => setSeconds((n) => n + 1), 1_000)
-    return () => clearInterval(timer)
-  }, [])
-  // The first answer after a cold start waits on the model itself; say so
-  // rather than letting the silence look like a hang.
-  const key = seconds < 6 ? 'bubble.thinking' : seconds < 20 ? 'bubble.thinkingLong' : 'bubble.thinkingCold'
-  return (
-    <span className="bubble-thinking" data-testid="bubble-thinking">
-      <span className="bubble-dots" aria-hidden>
-        <i />
-        <i />
-        <i />
-      </span>
-      {t(key)} · {seconds}s
-    </span>
-  )
-}
 
 export function BubbleView() {
   const [expanded, setExpanded] = useState(false)
@@ -294,7 +274,9 @@ export function BubbleView() {
                   </button>
                 </span>
               ) : m.streaming && !m.text ? (
-                <Thinking />
+                // The first answer after a cold start waits on the model itself;
+                // the clock is the only evidence here, so the wording follows it.
+                <Thinking label={(s) => t(s < 6 ? 'bubble.thinking' : s < 20 ? 'bubble.thinkingLong' : 'bubble.thinkingCold')} />
               ) : (
                 <Bubble text={m.text} onOpenNote={openNote} />
               )
