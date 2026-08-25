@@ -17,6 +17,13 @@ export interface LoadPlan {
   // Reserved headroom llama.cpp must leave free when it plans its offload —
   // on shared-memory iGPUs this directly reserves system RAM.
   vramPadding: number
+  // Hold the CPU-side weights as the process's own memory rather than as
+  // mapped file cache. Cache was the safe default, and on a machine whose
+  // standby cache is full it is also seven seconds a token: every token
+  // re-reads weights the system just dropped (measured). With real room to
+  // spare, holding them is what makes the model usable; without it, they
+  // stay evictable and slow. Never a hard lock: that can freeze a machine.
+  lock: boolean
   reason: string
 }
 
@@ -34,20 +41,25 @@ const OFFLOAD_OVERHEAD = 2 * GB
 // Even an mmap'd model needs real RAM for KV cache, compute buffers and page
 // cache to be usable at all.
 const CPU_FLOOR = 3 * GB
+// Room the machine keeps for itself once the weights are pinned in RAM.
+const LOCK_MARGIN = 4 * GB
 
 export function planModelLoad(modelBytes: number, freeBytes = os.freemem()): LoadPlan {
   const freeGB = (freeBytes / GB).toFixed(1)
   const offloadBytes = modelBytes + OFFLOAD_OVERHEAD
   if (freeBytes >= offloadBytes + FULL_HEADROOM)
-    return { mode: 'gpu', gpuLayers: 'auto', vramPadding: 2.5 * GB, reason: `${freeGB}GB free — full offload` }
+    return { mode: 'gpu', gpuLayers: 'auto', vramPadding: 2.5 * GB, lock: false, reason: `${freeGB}GB free — full offload` }
   if (freeBytes >= offloadBytes + LEAN_HEADROOM)
-    return { mode: 'lean', gpuLayers: 'auto', vramPadding: 5 * GB, reason: `${freeGB}GB free — partial offload` }
+    return { mode: 'lean', gpuLayers: 'auto', vramPadding: 5 * GB, lock: false, reason: `${freeGB}GB free — partial offload` }
+  if (freeBytes >= modelBytes + LOCK_MARGIN)
+    return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, lock: true, reason: `${freeGB}GB free — CPU only, weights held in memory` }
   if (freeBytes >= modelBytes * 0.6 + CPU_FLOOR)
-    return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, reason: `${freeGB}GB free — CPU only, weights stay evictable` }
+    return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, lock: false, reason: `${freeGB}GB free — CPU only, weights stay evictable` }
   return {
     mode: 'none',
     gpuLayers: 0,
     vramPadding: 0,
+    lock: false,
     reason: `only ${freeGB}GB free — needs ~${((modelBytes * 0.6 + CPU_FLOOR) / GB).toFixed(1)}GB`,
   }
 }

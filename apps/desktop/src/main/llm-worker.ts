@@ -9,7 +9,7 @@ interface LoadRequest {
   // Where the weights may live, decided by the parent from real free memory.
   // 'auto' offloads what fits inside vramPadding; 0 keeps everything on the
   // CPU side, where mmap leaves the pages evictable instead of pinned.
-  plan?: { gpuLayers: 'auto' | 0; vramPadding: number; mode: string }
+  plan?: { gpuLayers: 'auto' | 0; vramPadding: number; mode: string; lock?: boolean }
 }
 
 interface CompleteRequest {
@@ -78,6 +78,7 @@ const send = (message: unknown): void => {
 interface LoadPlan {
   gpuLayers: 'auto' | 0
   vramPadding: number
+  lock?: boolean
   mode: string
 }
 
@@ -102,7 +103,13 @@ async function loadWith(path: string, contextSize: number, plan: LoadPlan): Prom
   })
   // mmap always, mlock never: weights the OS can evict under pressure are the
   // difference between a slow answer and a frozen machine.
-  const model = await llama.loadModel({ modelPath: path, gpuLayers: plan.gpuLayers, useMmap: true, useMlock: false })
+  // Held as the process's own memory when the parent measured room for it.
+  // Mapped file pages are cache to the system, and on a full standby cache
+  // they are dropped and re-read from disk every token (measured: seven
+  // seconds a token). Private pages are only paged out under real pressure,
+  // and unlike a hard lock they never refuse to give way, so the machine
+  // cannot be frozen by them.
+  const model = await llama.loadModel({ modelPath: path, gpuLayers: plan.gpuLayers, useMmap: plan.lock !== true, useMlock: false })
   return { llama, model, path, contextSize }
 }
 

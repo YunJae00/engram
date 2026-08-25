@@ -439,7 +439,7 @@ export async function warmLocalModel(): Promise<void> {
     type: 'load',
     modelPath: join(modelsDir(), spec.file),
     contextSize: CTX_TOKENS,
-    plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode },
+    plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode, lock: plan.lock },
   })
 }
 
@@ -529,7 +529,7 @@ export async function localComplete(
         type: 'load',
         modelPath: join(modelsDir(), spec.file),
         contextSize: CTX_TOKENS,
-        plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode },
+        plan: { gpuLayers: plan.gpuLayers, vramPadding: plan.vramPadding, mode: plan.mode, lock: plan.lock },
       })
     }
     lastUsed = Date.now()

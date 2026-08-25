@@ -76,3 +76,13 @@ describe('the floors', () => {
     }
   })
 })
+
+// Evictable weights are safe and, on a machine whose standby cache is full,
+// seven seconds a token. With real room they are pinned; without it, not.
+describe('pinning on the CPU side', () => {
+  it('pins only with the model plus a margin free, and never on an offload', () => {
+    expect(planModelLoad(MODEL, 10 * GB)).toMatchObject({ mode: 'cpu', lock: true })
+    expect(planModelLoad(MODEL, 7 * GB)).toMatchObject({ mode: 'cpu', lock: false })
+    expect(planModelLoad(MODEL, 20 * GB).lock).toBe(false)
+  })
+})
