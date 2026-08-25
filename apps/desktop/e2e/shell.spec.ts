@@ -96,13 +96,12 @@ test('boots into the minimal shell on a temp vault', async () => {
   await expect(page.getByTestId('cosmos-chat')).toBeVisible()
 })
 
-test('no engine → connect banner shows and the Tidy badge counts unswept work', async () => {
+test('no engine → connect banner shows', async () => {
   // ENGRAM_ENGINE=none: the librarian is offline, so the canvas carries the
   // connect nudge and Tidy wears the pending count (no sweep has ever run, so
   // every seeded note counts as not-yet-organized).
   const banner = page.getByTestId('connect-banner')
   await expect(banner).toBeVisible()
-  await expect(page.getByTestId('sweep-button').locator('.badge')).toBeVisible()
   await banner.getByRole('button', { name: 'Get a brain' }).click()
   await expect(page.getByTestId('settings-view')).toBeVisible()
   await page.keyboard.press('Escape')
@@ -166,15 +165,6 @@ test('help hangs from the top bar, beside settings', async () => {
   await page.getByTestId('help-button').click()
   await expect(page.getByTestId('help-panel')).toBeVisible()
   await page.keyboard.press('Escape')
-  await page.getByTestId('activity-sky').click()
-})
-
-test('the comets tab has a door to routines', async () => {
-  await page.getByTestId('activity-bots').click()
-  await page.getByTestId('bots-open-routines').click()
-  await expect(page.getByTestId('routines-sheet')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
   await page.getByTestId('activity-sky').click()
 })
 

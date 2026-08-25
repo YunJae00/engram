@@ -9,7 +9,7 @@ const STEPS = [
   { anchor: null, key: 'welcome' },
   { anchor: '[data-testid="activity-sky"]', key: 'cosmos' },
   { anchor: '[data-testid="remember-button"]', key: 'capture' },
-  { anchor: '[data-testid="sweep-button"]', key: 'tidy' },
+  { anchor: null, key: 'tidy' },
   { anchor: '[data-testid="activity-brain"]', key: 'brain' },
 ] as const
 

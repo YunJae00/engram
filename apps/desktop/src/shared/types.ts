@@ -358,6 +358,9 @@ export type EngramEvent =
       offer?:
         | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string> }
         | { kind: 'teach' }
+        // A job that took real work is worth keeping: the loop says so, the
+        // person decides. Nothing here is a form to fill.
+        | { kind: 'keep'; name: string; goal: string }
         | { kind: 'asked' }
     }
   | { type: 'chat:error'; channel: string; message: string }

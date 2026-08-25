@@ -45,10 +45,9 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
   onOpenSettings(): void
   onOpenPalette(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, pendingWork, sweepJob, errand, errandWall, answerErrandWall, openInbox, showToast, vaultReady, t } = useApp()
+  const { activity, setActivity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady, t } = useApp()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
-  const unswept = pendingWork.inbox + pendingWork.notes
   // Present but not usable — the dot must not claim otherwise.
   const degradedEngine = engines.find((engine) => engine.healthy === false)
   const degraded = degradedEngine !== undefined
@@ -246,20 +245,6 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
         </button>
       )}
 
-      {/* The librarian tidies by itself; there is no button to press for it.
-          What remains is visibility: while something waits to be organized, a
-          quiet count sits here and opens the inbox to show exactly what. */}
-      {unswept > 0 && !sweepStatus.running && (
-        <button
-          className="topbar-action zap"
-          data-testid="sweep-button"
-          onClick={openInbox}
-          title={t('topbar.tidyPending', { n: unswept })}
-        >
-          <Icon name="zap" size={14} />
-          <span className="badge">{unswept > 99 ? '99+' : unswept}</span>
-        </button>
-      )}
 
       <button className="topbar-action" onClick={onOpenPalette} title={t('topbar.searchTitle')}>
         <Icon name="search" size={15} />

@@ -1,4 +1,4 @@
-import { ArrowUp, Bookmark, Globe, PanelLeftClose, PanelLeftOpen, Play, Plus, Repeat, Square, Trash2, Wand2, X } from 'lucide-react'
+import { ArrowUp, Bookmark, PanelLeftClose, PanelLeftOpen, Play, Plus, Square, Trash2, Wand2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState } from 'react'
 import type { BotDto, BotSuggestionDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
@@ -56,9 +56,6 @@ export function BotsView() {
   const [draftPurpose, setDraftPurpose] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.comets.rail') !== '0')
-  const [addingTask, setAddingTask] = useState(false)
-  const [taskName, setTaskName] = useState('')
-  const [taskGoal, setTaskGoal] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
   const selected = bots.find((b) => b.id === selectedId) ?? null
 
@@ -180,31 +177,10 @@ export function BotsView() {
   // have it, and a way to keep the ask if it is one you will make again. Both
   // are one press, and both are the person's call — the model never decides to
   // go browsing on its own.
-  const lastAsk = (): string => {
-    for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === 'user') return messages[i]!.text
-    return ''
-  }
-
-  const searchWeb = () => {
-    const goal = lastAsk()
-    if (!goal || !selected || errand.running || busy) return
-    void startErrand(goal, selected.id)
-  }
-
-  const keepAsTask = () => {
-    const goal = lastAsk()
-    if (!goal) return
-    setTaskGoal(goal)
-    setTaskName(goal.slice(0, 40))
-    setAddingTask(true)
-  }
-
-  const addTask = async () => {
-    if (!selected || !taskName.trim() || !taskGoal.trim()) return
-    await api.botTaskAdd(selected.id, { name: taskName, goal: taskGoal }).catch(() => undefined)
-    setTaskName('')
-    setTaskGoal('')
-    setAddingTask(false)
+  // Keeping a job is the loop's suggestion and one click - never a form.
+  const keep = async (name: string, goal: string) => {
+    if (!selected) return
+    await api.botTaskAdd(selected.id, { name, goal }).catch(() => undefined)
     await reload()
   }
 
@@ -309,17 +285,6 @@ export function BotsView() {
             <Plus size={13} strokeWidth={2} aria-hidden /> {t('bots.new')}
           </button>
         )}
-        {/* The other half of "work you repeat": the browser jobs. It lives in
-            the rail because it must be reachable before any comet exists — a
-            keyboard chord was the only way in, so nobody found it. */}
-        <button
-          className="bots-new bots-routines"
-          data-testid="bots-open-routines"
-          title={t('bots.routinesHint')}
-          onClick={() => window.dispatchEvent(new Event('engram:open-routines'))}
-        >
-          <Repeat size={13} strokeWidth={2} aria-hidden /> {t('bots.routines')}
-        </button>
         {suggestions.length > 0 && (
           <div className="bots-suggested">
             <div className="bots-rail-head">{t('bots.suggestedTitle')}</div>
@@ -380,43 +345,6 @@ export function BotsView() {
                   </span>
                 </button>
               ))}
-              {addingTask ? (
-                <span className="bots-task-new">
-                  <input
-                    autoFocus
-                    data-testid="bot-task-name"
-                    placeholder={t('bots.taskName')}
-                    value={taskName}
-                    maxLength={60}
-                    onChange={(e) => setTaskName(e.target.value)}
-                  />
-                  <input
-                    data-testid="bot-task-goal"
-                    placeholder={t('bots.taskGoal')}
-                    value={taskGoal}
-                    maxLength={500}
-                    onChange={(e) => setTaskGoal(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void addTask()
-                    }}
-                  />
-                  <button className="primary" data-testid="bot-task-save" disabled={!taskName.trim() || !taskGoal.trim()} onClick={() => void addTask()}>
-                    {t('bots.taskSave')}
-                  </button>
-                  <button className="secondary" onClick={() => setAddingTask(false)}>
-                    {t('palette.cancel')}
-                  </button>
-                </span>
-              ) : (
-                <button
-                  className="bots-task-add"
-                  data-testid="bot-task-add"
-                  title={t('bots.taskHint')}
-                  onClick={() => setAddingTask(true)}
-                >
-                  <Plus size={11} strokeWidth={2.2} aria-hidden /> {t('bots.taskAdd')}
-                </button>
-              )}
             </div>
             <div className="bots-thread" ref={listRef}>
               {messages.length === 0 && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
@@ -444,22 +372,28 @@ export function BotsView() {
                   )}
                 </div>
               ))}
-              {!busy && !errand.running && messages.length > 0 && messages[messages.length - 1]!.role === 'assistant' && (
-                <div className="bots-followups" data-testid="bots-followups">
-                  <button className="bots-followup" data-testid="bots-search-web" onClick={searchWeb}>
-                    <Globe size={12} strokeWidth={2} aria-hidden /> {t('bots.searchWeb')}
-                  </button>
-                  <button className="bots-followup" data-testid="bots-keep-task" onClick={keepAsTask}>
-                    <Bookmark size={12} strokeWidth={2} aria-hidden /> {t('bots.keepAsTask')}
-                  </button>
-                </div>
-              )}
               {offer && !routine.running && (
                 <div className="bots-offer" data-testid="bots-offer">
                   <span className="bots-offer-text">
-                    {offer.kind === 'run' ? t('bots.offerRun', { name: offer.name }) : t('bots.offerTeach')}
+                    {offer.kind === 'run'
+                      ? t('bots.offerRun', { name: offer.name })
+                      : offer.kind === 'keep'
+                        ? t('bots.offerKeep')
+                        : t('bots.offerTeach')}
                   </span>
-                  {offer.kind === 'run' ? (
+                  {offer.kind === 'keep' ? (
+                    <button
+                      className="primary bots-offer-run"
+                      data-testid="bots-offer-keep"
+                      onClick={() => {
+                        const wanted = offer
+                        setOffer(null)
+                        void keep(wanted.name, wanted.goal)
+                      }}
+                    >
+                      <Bookmark size={11} strokeWidth={2.5} aria-hidden /> {t('bots.offerKeepGo')}
+                    </button>
+                  ) : offer.kind === 'run' ? (
                     <button
                       className="primary bots-offer-run"
                       data-testid="bots-offer-run"

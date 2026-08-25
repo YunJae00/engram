@@ -1202,6 +1202,9 @@ export function registerIpc(ctx: VaultContext): void {
   // model's context in one reading.
   const ROUTINE_READING_CAP = 1_200
 
+  // Fewer than this and the answer was cheap enough to just ask again.
+  const KEEP_AFTER_STEPS = 3
+
   async function runProcedureForComet(
     id: string,
     slots: Record<string, string>,
@@ -1949,13 +1952,22 @@ export function registerIpc(ctx: VaultContext): void {
         // Never been shown this job: the loop says so in its observation, and
         // the thread turns that into an offer to watch the person do it once.
         const untaught = result.steps.some((step) => step.observation.startsWith('NOTHING-TAUGHT:'))
+        // What to offer is read off what happened, never off a fixed row of
+        // buttons: a job it was never shown asks to be taught, a procedure
+        // it found asks to be run, and a job that took real work - several
+        // tools, a real answer at the end - asks whether to be kept for one
+        // click next time. A quick answer offers nothing at all.
+        const worked = result.steps.filter((step) => !step.seeded).length
+        const keepable = !untaught && !routine && !result.asked && worked >= KEEP_AFTER_STEPS
         await deliverAnswer(
           `${result.answer}${note}`,
           untaught
             ? { kind: 'teach' }
             : routine
               ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
-              : undefined,
+              : keepable
+                ? { kind: 'keep', name: request.message.slice(0, 40), goal: request.message }
+                : undefined,
         )
       } catch (err) {
         if (signal.aborted) {
