@@ -7,7 +7,7 @@
 // probes working there.
 import { chromium, type Browser, type Page } from '@playwright/test'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -50,6 +50,10 @@ export async function launchApp(env: Record<string, string>): Promise<RunningApp
 async function start(env: Record<string, string>, budgetMs: number): Promise<RunningApp> {
   const userData = env['ENGRAM_USERDATA']
   if (!userData) throw new Error('launchApp needs ENGRAM_USERDATA')
+  // A previous instance on the same profile leaves its port file behind, and
+  // reading that means dialling a port nobody answers until the deadline
+  // (measured: the second batch of a run died exactly here).
+  await rm(join(userData, 'DevToolsActivePort'), { force: true }).catch(() => undefined)
   const child: ChildProcess = spawn(
     ELECTRON,
     [MAIN, '--no-sandbox', '--remote-debugging-port=0', '--remote-allow-origins=*'],
@@ -79,7 +83,15 @@ async function start(env: Record<string, string>, budgetMs: number): Promise<Run
     page,
     close: async () => {
       await browser?.close().catch(() => {})
+      // Gone means gone: the next instance must not race a dying one for the
+      // same profile and port file.
+      const exited = new Promise<void>((resolve) => {
+        if (child.exitCode !== null) return resolve()
+        child.once('exit', () => resolve())
+        setTimeout(resolve, 8_000)
+      })
       child.kill()
+      await exited
     },
   }
 }
