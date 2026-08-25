@@ -336,6 +336,18 @@ export type EngramEvent =
   // local inference warm state: the chat panel shows a warming banner while
   // the model loads and arms the composer when it lands
   | { type: 'localllm:warm'; state: 'cold' | 'loading' | 'ready' }
+  // What the model is doing right now, from the inference worker's own
+  // counters: prompt tokens read so far while it evaluates, then tokens (and
+  // words) written as they land. `kind` tells a grammar-bound call - choosing
+  // between moves - from free prose. 'done' closes the line on every exit.
+  | {
+      type: 'localllm:progress'
+      phase: 'reading' | 'writing' | 'done'
+      kind: 'choice' | 'prose'
+      done: number
+      total?: number
+      words?: number
+    }
   // the first engine detection after boot has finished — until this lands the
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }

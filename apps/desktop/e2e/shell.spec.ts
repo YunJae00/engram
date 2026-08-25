@@ -141,12 +141,26 @@ test('the cosmos chat collapses and comes back', async () => {
 })
 
 test('the comets rail folds away and returns', async () => {
+  // A comet to fold beside: the strip is judged by what it keeps reachable.
+  await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await page.getByTestId('activity-bots').click()
   await page.getByTestId('comets-rail-close').click()
   // Folded, the rail keeps a strip of its own: the reopen control lives INSIDE
   // the layout, so the thread beside it widens instead of hiding underneath a
   // floating button.
   await expect(page.getByTestId('comets-rail-folded')).toBeVisible()
+  await expect(page.getByTestId('comets-rail-open')).toBeVisible()
+  // Folded, every comet is still one click away as a chip, and the plus opens
+  // the rail with the form instead of dead-ending in the strip.
+  const chip = page.locator('[data-testid^="bot-"]').first()
+  await expect(chip).toBeVisible()
+  await chip.click()
+  await expect(chip).toHaveClass(/active/)
+  await page.getByTestId('bots-new').click()
+  await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)
+  await expect(page.getByTestId('bots-create')).toBeVisible()
+  await page.getByText('Cancel').click()
+  await page.getByTestId('comets-rail-close').click()
   await expect(page.getByTestId('comets-rail-open')).toBeVisible()
   await page.getByTestId('comets-rail-open').click()
   await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)

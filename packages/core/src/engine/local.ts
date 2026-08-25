@@ -65,6 +65,7 @@ export class LocalAdapter implements Engine {
     const work = this.transport
       .complete(job.prompt, {
         signal: controller.signal,
+        ...(job.maxTokens ? { maxTokens: job.maxTokens } : {}),
         ...(job.jsonSchema ? { jsonSchema: job.jsonSchema } : {}),
         ...(job.modelHint === 'fast' ? { modelHint: 'fast' as const } : {}),
         onToken: (text) => {

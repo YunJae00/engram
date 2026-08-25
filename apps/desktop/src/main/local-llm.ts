@@ -252,7 +252,26 @@ let childReady: Promise<ChildProcess | null> | null = null
 let loadedModelId: string | null = null
 let lastUsed = 0
 let nextCallId = 1
-const pending = new Map<number, { resolve: (text: string) => void; reject: (err: Error) => void; onToken?: (text: string) => void }>()
+type ProgressKind = 'choice' | 'prose'
+const pending = new Map<
+  number,
+  { resolve: (text: string) => void; reject: (err: Error) => void; onToken?: (text: string) => void; kind: ProgressKind }
+>()
+
+// The worker's counters, said to every window as the model's own progress.
+// `kind` is what the parent knows and the worker does not: a grammar-bound
+// call chooses between moves, a free one writes prose.
+function relayProgress(kind: ProgressKind, m: { phase?: string; done?: number; total?: number; words?: number }): void {
+  if (m.phase !== 'reading' && m.phase !== 'writing') return
+  broadcast({
+    type: 'localllm:progress',
+    phase: m.phase,
+    kind,
+    done: m.done ?? 0,
+    ...(m.total !== undefined ? { total: m.total } : {}),
+    ...(m.words !== undefined ? { words: m.words } : {}),
+  })
+}
 
 function workerPath(): string {
   // The main bundle is ESM — resolve the sibling entry from this module's own
@@ -298,7 +317,7 @@ function spawnChild(): Promise<ChildProcess | null> {
     } catch {
       /* not permitted on some platforms — the worker just runs at normal */
     }
-    proc.on('message', (message: { type: string; id?: number; text?: string; ms?: number; gpu?: string; mode?: string; layers?: number; message?: string }) => {
+    proc.on('message', (message: { type: string; id?: number; text?: string; ms?: number; evaluated?: number; generated?: number; held?: number; gpu?: string; mode?: string; layers?: number; message?: string; phase?: string; done?: number; total?: number; words?: number }) => {
       if (message.type === 'ready') {
         if (!settled) {
           settled = true
@@ -326,12 +345,22 @@ function spawnChild(): Promise<ChildProcess | null> {
       }
       const waiter = message.id === undefined ? undefined : pending.get(message.id)
       if (!waiter || message.id === undefined) return
+      if (message.type === 'progress') {
+        relayProgress(waiter.kind, message)
+        return
+      }
       if (message.type === 'chunk') {
         waiter.onToken?.(message.text ?? '')
         return
       }
       pending.delete(message.id)
-      if (message.type === 'done') waiter.resolve(message.text ?? '')
+      if (message.type === 'done') {
+        flog(
+          'local-llm',
+          `answered in ${message.ms ?? '?'}ms — ${message.evaluated ?? '?'} prompt tokens evaluated (${message.held ?? '?'} held before), ${message.generated ?? '?'} generated`,
+        )
+        waiter.resolve(message.text ?? '')
+      }
       else waiter.reject(new Error(message.message ?? 'inference failed'))
     })
     proc.on('exit', (code, signal) => {
@@ -391,7 +420,10 @@ export async function warmLocalModel(): Promise<void> {
   // Background warm-up is optional by definition — it only happens when the
   // machine will not feel it. A question still loads on demand either way.
   const plan = planModelLoad(spec.approxGB * 1e9)
-  if (plan.mode !== 'gpu') {
+  // A CPU-side load pins nothing - its pages stay evictable - so warming it
+  // costs the machine nothing it cannot take back. Only a machine with no
+  // room at all is left alone.
+  if (plan.mode === 'none') {
     flog('local-llm', `warm-up skipped — ${plan.reason}`)
     return
   }
@@ -402,6 +434,7 @@ export async function warmLocalModel(): Promise<void> {
   }
   if (warmState === 'cold') setWarmState('loading')
   loadedModelId = spec.id
+  loadedMode = plan.mode
   proc.send({
     type: 'load',
     modelPath: join(modelsDir(), spec.file),
@@ -411,6 +444,31 @@ export async function warmLocalModel(): Promise<void> {
 }
 
 let inFlight: Promise<string> | null = null
+
+// Which side the resident weights live on, so the pressure watch can tell
+// evictable pages from pinned ones.
+let loadedMode: string | null = null
+
+// A tool loop is one job with pauses in it - a page loads, a search runs -
+// and the pressure watch reads every pause as idle time. Unloading there made
+// the next step pay a full reload, several times in one turn. While a caller
+// holds the model and its pages are evictable, only the critical floor may
+// take it away.
+let holders = 0
+
+export function holdLocalModel(): () => void {
+  holders++
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    holders--
+  }
+}
+
+function heldEvictable(): boolean {
+  return holders > 0 && loadedMode === 'cpu'
+}
 
 // The active model is the QUALITY choice; a 'fast' call (errand slot-filling)
 // takes the largest downloaded brain that fits the memory the machine has
@@ -466,6 +524,7 @@ export async function localComplete(
     if (!resident) {
       if (warmState === 'cold') setWarmState('loading')
       loadedModelId = spec.id
+      loadedMode = plan.mode
       proc.send({
         type: 'load',
         modelPath: join(modelsDir(), spec.file),
@@ -475,7 +534,10 @@ export async function localComplete(
     }
     lastUsed = Date.now()
     const id = nextCallId++
-    const answer = await new Promise<string>((resolve, reject) => {
+    const kind: ProgressKind = opts.jsonSchema ? 'choice' : 'prose'
+    let answer: string
+    try {
+      answer = await new Promise<string>((resolve, reject) => {
       // A worker that stops answering must surface as an error rather than a
       // spinner that never ends.
       const timer = setTimeout(() => {
@@ -492,7 +554,7 @@ export async function localComplete(
         clearTimeout(timer)
         reject(err)
       }
-      pending.set(id, { resolve: settle(resolve), reject: fail, onToken: opts.onToken })
+      pending.set(id, { resolve: settle(resolve), reject: fail, onToken: opts.onToken, kind })
       const onAbort = (): void => {
         pending.delete(id)
         // Stop the generation itself, not just our interest in it.
@@ -506,6 +568,11 @@ export async function localComplete(
       opts.signal?.addEventListener('abort', onAbort, { once: true })
       proc.send({ type: 'complete', id, prompt, maxTokens: opts.maxTokens ?? 512, ...(opts.jsonSchema ? { jsonSchema: opts.jsonSchema } : {}) })
     })
+    } finally {
+      // Every exit - answered, failed, canceled, timed out - ends the line,
+      // or a stale "writing" would outlive the call it described.
+      broadcast({ type: 'localllm:progress', phase: 'done', kind, done: 0 })
+    }
     lastUsed = Date.now()
     // Served. Leaving after every answer sounds tidy and is not: on a machine
     // that sits around 5GB free - an ordinary working day with a browser and a
@@ -513,7 +580,7 @@ export async function localComplete(
     // paid a 57 second reload, then timed out. Measured. The model only leaves
     // when the room is genuinely gone; above that its weights are evictable
     // pages the system can reclaim by itself, which is what they are for.
-    if (os.freemem() < PRESSURE_FLOOR && child) {
+    if (os.freemem() < PRESSURE_FLOOR && child && !heldEvictable()) {
       flog('local-llm', `answered into a tight machine (${(os.freemem() / 1e9).toFixed(1)}GB free) — unloading`)
       child.send({ type: 'unload' })
       loadedModelId = null
@@ -553,6 +620,7 @@ function armMemoryWatch(): void {
     // into thrash, it leaves NOW — the next question pays a reload, which is
     // minutes cheaper than a frozen machine.
     if (free < PRESSURE_FLOOR) {
+      if (heldEvictable()) return
       flog('local-llm', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — unloading the model`)
       child.send({ type: 'unload' })
       loadedModelId = null

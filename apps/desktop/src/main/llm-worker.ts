@@ -36,10 +36,20 @@ interface PromptOptions {
   signal?: AbortSignal
   stopOnAbortSignal?: boolean
   onTextChunk?: (text: string) => void
+  onToken?: (tokens: unknown[]) => void
   grammar?: LlamaGrammar
 }
 
+interface Meter {
+  getState(): { usedInputTokens: number; usedOutputTokens: number }
+  // Charged one decode batch at a time while the prompt is evaluated, which
+  // makes it the only live measure of how far the reading has got - the
+  // sequence's own token index moves in one jump at the end.
+  usedInputTokens: number
+}
+
 interface ChatSession {
+  sequence?: { tokenMeter: Meter; nextTokenIndex: number }
   prompt(text: string, o?: PromptOptions): Promise<string>
   resetChatHistory?: () => void
 }
@@ -52,6 +62,7 @@ interface Engine {
   model: {
     dispose(): Promise<void>
     createContext(opts: { contextSize: number }): Promise<LlamaContext>
+    tokenize(text: string): unknown[]
   }
   path: string
   contextSize: number
@@ -194,6 +205,62 @@ async function grammarFor(ready: Engine, schema: object): Promise<LlamaGrammar |
   }
 }
 
+// The parent relays every one of these to every window, so they are rationed.
+const PROGRESS_EVERY_MS = 400
+
+function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length
+}
+
+// What the worker can vouch for while an answer is being made. The prompt is
+// read in batches and the sequence's meter is charged per batch, so polling
+// it says how much has been read; the output is counted from the tokens as
+// they land. Both are deltas from the start of this call: the meter is
+// cumulative, and a reused prefix means fewer tokens are read than were sent.
+function watchProgress(id: number, chat: ChatSession, model: Engine['model'], prompt: string) {
+  const total = model.tokenize(prompt).length
+  const meter = chat.sequence?.tokenMeter
+  const readAtStart = meter?.usedInputTokens ?? 0
+  let written = 0
+  let text = ''
+  let lastSent = 0
+  let lastRead = -1
+  const reading = (): void => {
+    if (!meter) return
+    const read = Math.min(total, Math.max(0, meter.usedInputTokens - readAtStart))
+    if (read === lastRead) return
+    lastRead = read
+    send({ type: 'progress', id, phase: 'reading', done: read, total })
+  }
+  const writing = (force: boolean): void => {
+    const now = Date.now()
+    if (!force && now - lastSent < PROGRESS_EVERY_MS) return
+    lastSent = now
+    send({ type: 'progress', id, phase: 'writing', done: written, words: countWords(text) })
+  }
+  reading()
+  const timer = setInterval(() => {
+    if (written === 0 && text === '') reading()
+  }, PROGRESS_EVERY_MS)
+  // Tokens and text arrive on separate callbacks: the count comes from the
+  // tokens, the words from the text, and the first of either ends 'reading'.
+  return {
+    tokens(count: number): void {
+      const first = written === 0 && text === ''
+      written += count
+      writing(first)
+    },
+    text(chunk: string): void {
+      const first = written === 0 && text === ''
+      text += chunk
+      writing(first)
+    },
+    stop(): void {
+      clearInterval(timer)
+    },
+  }
+}
+
 async function complete(req: CompleteRequest, path: string, contextSize: number): Promise<void> {
   const canceller = new AbortController()
   running.set(req.id, canceller)
@@ -206,16 +273,41 @@ async function complete(req: CompleteRequest, path: string, contextSize: number)
     const grammar = req.jsonSchema ? await grammarFor(ready, req.jsonSchema) : null
     // Streamed, not batched: the answer takes tens of seconds locally, and
     // watching it arrive is the difference between slow and broken.
-    const text = await chat.prompt(req.prompt, {
-      maxTokens: req.maxTokens,
-      signal: canceller.signal,
-      stopOnAbortSignal: true,
-      onTextChunk: (chunk) => send({ type: 'chunk', id: req.id, text: chunk }),
-      ...(grammar ? { grammar } : {}),
-    })
+    const before = chat.sequence?.tokenMeter.getState()
+    const held = chat.sequence?.nextTokenIndex ?? 0
+    const t0 = Date.now()
+    const watch = watchProgress(req.id, chat, ready.model, req.prompt)
+    let text: string
+    try {
+      text = await chat.prompt(req.prompt, {
+        maxTokens: req.maxTokens,
+        signal: canceller.signal,
+        stopOnAbortSignal: true,
+        onToken: (tokens) => watch.tokens(tokens.length),
+        onTextChunk: (chunk) => {
+          watch.text(chunk)
+          send({ type: 'chunk', id: req.id, text: chunk })
+        },
+        ...(grammar ? { grammar } : {}),
+      })
+    } finally {
+      watch.stop()
+    }
     // Template tokens sometimes survive generation on this family and leak
     // into answers as "</start_of_turn>" — strip them where the model lives.
-    send({ type: 'done', id: req.id, text: text.replace(/<\/?(?:start|end)_of_turn>/g, '') })
+    const after = chat.sequence?.tokenMeter.getState()
+    send({
+      type: 'done',
+      id: req.id,
+      text: text.replace(/<\/?(?:start|end)_of_turn>/g, ''),
+      // What this answer cost, so a slow step reads as a number of tokens
+      // evaluated rather than a guess. The meter counts only tokens actually
+      // decoded, so `evaluated` is the prompt minus the prefix it kept.
+      evaluated: before && after ? after.usedInputTokens - before.usedInputTokens : -1,
+      generated: before && after ? after.usedOutputTokens - before.usedOutputTokens : -1,
+      held,
+      ms: Date.now() - t0,
+    })
   } catch (err) {
     // A context that failed mid-answer may be poisoned; drop it so the next
     // question starts clean.

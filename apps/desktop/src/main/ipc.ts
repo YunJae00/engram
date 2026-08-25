@@ -87,7 +87,7 @@ import {
   type ErrandResult,
 } from 'core'
 import { randomUUID } from 'node:crypto'
-import { backgroundInferenceOk, errandFloors } from './local-llm.js'
+import { holdLocalModel, backgroundInferenceOk, errandFloors } from './local-llm.js'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
@@ -1881,6 +1881,9 @@ export function registerIpc(ctx: VaultContext): void {
     // Every failure path inside degrades to a plain answer, so the worst a
     // broken model can do here is behave like the old chat.
     if (bot) {
+      // The model stays for the whole turn: a loop pauses for pages and
+      // searches, and every pause read as idle cost the next step a reload.
+      const releaseModel = holdLocalModel()
       try {
         const result = await runAgentLoop(
           {
@@ -1888,9 +1891,12 @@ export function registerIpc(ctx: VaultContext): void {
             workdir: engineCwd(paths),
             tools: cometTools({
               paths,
-              // The browser rides along only when the machine can afford it —
-              // the same gate the errand uses.
-              courier: agentBrowserAvailable() && os.freemem() >= ROUTINE_MIN_FREE ? agentCourier() : null,
+              // The web is on the menu whenever a browser is installed. Whether
+              // the machine can afford to open it is decided at the moment of
+              // opening - where the model can step aside to make room - not
+              // here, where a tight reading meant a comet with no web at all
+              // telling the person it had no such tool (measured).
+              courier: agentBrowserAvailable() ? agentCourier() : null,
               allowedFolders: consentedFolders,
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
               runProcedure: (id, slots) => runProcedureForComet(id, slots),
@@ -1999,6 +2005,7 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
+        releaseModel()
         // The window goes away when the work does. A person shuts the tab they
         // opened rather than leaving it sitting there, and a browser left open
         // is memory held for nothing - it reopens in a second when the next

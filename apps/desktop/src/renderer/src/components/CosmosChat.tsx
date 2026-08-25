@@ -2,6 +2,7 @@ import { ArrowUp, PanelRightClose, PanelRightOpen, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { useAutoGrow } from '../lib/useAutoGrow.js'
 import { answerHtml } from '../markdown.js'
 import { useApp } from '../state.js'
 import { Thinking } from './Thinking.js'
@@ -35,6 +36,7 @@ export function CosmosChat() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const listRef = useRef<HTMLDivElement | null>(null)
   const boxRef = useRef<HTMLTextAreaElement | null>(null)
+  useAutoGrow(boxRef, text)
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
@@ -159,7 +161,7 @@ export function CosmosChat() {
           </div>
         ))}
       </div>
-      <div className="cosmos-chat-write">
+      <div className="cosmos-chat-write chat-write">
         <textarea
           ref={boxRef}
           data-testid="cosmos-chat-input"

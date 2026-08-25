@@ -1,4 +1,5 @@
-import { CircleHelp, Globe, List, Loader2, Network, Orbit } from 'lucide-react'
+import { CircleHelp, Globe, List, Network, Orbit } from 'lucide-react'
+import { ThinkingDots } from './Thinking.js'
 import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
@@ -193,7 +194,7 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
       <div className="topbar-spacer" />
 
       <span className="topbar-status live" data-testid="sweep-status" title={(errandText || sweepText) || undefined}>
-        {(errand.running || sweepStatus.running || filingOnly) && <Loader2 className="spin" size={12} aria-hidden />}
+        {(errand.running || sweepStatus.running || filingOnly) && <ThinkingDots />}
         <span className="status-label">{errandText || sweepText}</span>
       </span>
       {errandWall && (

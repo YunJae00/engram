@@ -82,6 +82,8 @@ export interface EngineJobInput {
   // parser otherwise. Adapters that cannot (CLI engines) ignore it and rely
   // on the prompt's own instructions.
   jsonSchema?: object
+  // Upper bound on generated tokens, for adapters that can enforce one.
+  maxTokens?: number
 }
 
 export type EngineEvent =

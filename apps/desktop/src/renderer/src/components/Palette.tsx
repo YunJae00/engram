@@ -1,4 +1,5 @@
 import { Command } from 'cmdk'
+import { ThinkingDots } from './Thinking.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SearchHitDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -75,7 +76,16 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
         autoFocus
       />
       <Command.List data-testid="palette-list">
-        <Command.Empty>{searching ? t('palette.searching') : t('palette.empty')}</Command.Empty>
+        <Command.Empty>
+          {searching ? (
+            <span className="bubble-thinking">
+              <ThinkingDots />
+              {t('palette.searching')}
+            </span>
+          ) : (
+            t('palette.empty')
+          )}
+        </Command.Empty>
 
         {mode === 'search' && (
           <>

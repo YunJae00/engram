@@ -4,6 +4,17 @@ import { useEffect, useState } from 'react'
 // evidence says is happening, and the seconds since the question left. A
 // slow local answer must never read as a hang. The label may depend on the
 // elapsed time, for surfaces whose only evidence is the clock.
+// The app's one sign that something is working on the person's behalf.
+export function ThinkingDots() {
+  return (
+    <span className="bubble-dots" aria-hidden>
+      <i />
+      <i />
+      <i />
+    </span>
+  )
+}
+
 export function Thinking({
   label,
   since,
@@ -21,14 +32,16 @@ export function Thinking({
     const timer = setInterval(() => setSeconds((n) => (since ? elapsed() : n + 1)), 1_000)
     return () => clearInterval(timer)
   }, [since])
+  const text = typeof label === 'function' ? label(seconds) : label
   return (
     <span className="bubble-thinking" data-testid={testId}>
-      <span className="bubble-dots" aria-hidden>
-        <i />
-        <i />
-        <i />
+      <ThinkingDots />
+      {/* Keyed on the words alone: a new sentence breathes in, a count ticking
+          up inside the same sentence does not restart the motion. */}
+      <span className="bubble-thinking-label" key={text.replace(/\d+/g, '')}>
+        {text}
       </span>
-      {typeof label === 'function' ? label(seconds) : label} · {seconds}s
+      {' '}· {seconds}s
     </span>
   )
 }

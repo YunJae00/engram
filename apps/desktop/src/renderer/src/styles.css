@@ -148,26 +148,24 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
 }
-button.primary {
-  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
-  color: var(--button-fg);
-  padding: 5px 16px;
-  border-radius: 999px;
-  font-size: var(--fs-small); font-weight: 600;
-  line-height: 20px;
-  box-shadow: 0 2px 8px -2px rgba(40, 44, 60, 0.5);
-  transition: filter 120ms ease;
-}
-button.primary:hover { filter: brightness(1.12); }
+/* Buttons are flat: one fill, one hairline, no gradient or shadow to catch
+   the light. Icon and label share a centred 20px line inside a 30px pill, so
+   a button with an icon sits level with one without. */
+button.primary,
 button.secondary {
-  border: 1px solid var(--border);
-  color: var(--fg-dim);
-  padding: 4px 15px; border-radius: 999px;
-  font-size: var(--fs-small); font-weight: 500;
-  transition: background 120ms ease, color 120ms ease;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 14px; border-radius: 999px;
+  font-size: var(--fs-small); line-height: 20px; white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-button.secondary:hover { background: var(--hover-bg); color: var(--fg); }
-input, textarea, select {
+button.primary { background: var(--accent); color: var(--button-fg); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+button.secondary { border: 1px solid var(--border); background: transparent; color: var(--fg-dim); font-weight: 500; }
+button.secondary:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
+button.primary:disabled, button.secondary:disabled { opacity: 0.45; cursor: default; }
+/* The armed half of a two-step delete: it must not look like the quiet
+   secondary it was a click ago, or the second click is a surprise. */
+button.secondary.armed, input, textarea, select {
   font: inherit;
   color: var(--fg);
   background: var(--input-bg);
@@ -195,7 +193,7 @@ input:focus, textarea:focus { border-color: var(--focus-ring); }
 .model-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .model-progress { font-size: var(--fs-small); font-variant-numeric: tabular-nums; color: var(--fg-dim); min-width: 38px; text-align: right; }
 .model-card {
-  border: 1px solid var(--border-soft); border-radius: 10px; padding: 9px 12px;
+  border: 1px solid var(--border-soft); border-radius: var(--radius-card); padding: 9px 12px;
 }
 .model-card.active { border-color: var(--accent); background: var(--accent-soft); }
 .model-meta { font-size: var(--fs-micro); color: var(--fg-faint); font-variant-numeric: tabular-nums; }
@@ -230,13 +228,14 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
 .absorb-widget.folded:hover { color: var(--fg); border-color: var(--fg-faint); }
 .absorb-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--ok); }
 .absorb-dot.paused { background: var(--clay); }
-.absorb-ring {
+/* The one ring in the app, for byte progress; everything that thinks uses
+   the breathing dots instead. */
+.absorb-ring, .chat-warming-dot {
   width: 11px; height: 11px; border-radius: 999px; flex: none;
   border: 1.6px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-top-color: var(--accent);
-  animation: absorb-turn 900ms linear infinite;
+  animation: engram-spin 900ms linear infinite;
 }
-@keyframes absorb-turn { to { transform: rotate(360deg); } }
 /* Header controls: two quiet ghosts in a row, not absolute squares fighting
    for the corner. */
 .absorb-controls { display: flex; gap: 2px; margin-left: auto; }
@@ -347,13 +346,14 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
 /* live status line (sweep / absorb): spinner + label. Long text ellipsizes
    so it can never push the right-side actions out of the bar. */
 .topbar-status.live { display: inline-flex; align-items: center; gap: 5px; min-width: 0; flex-shrink: 1; max-width: 300px; }
-.topbar-status.live > svg { flex-shrink: 0; }
+.topbar-status.live > svg, .topbar-status.live > .bubble-dots { flex-shrink: 0; }
 .topbar-status.live .status-label { overflow: hidden; text-overflow: ellipsis; }
 @keyframes engram-spin { to { transform: rotate(360deg); } }
 .spin { animation: engram-spin 1s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .spin { animation: none; }
-  .cosmos-chat, .bots-rail, .brain-rail { transition: none; }
+  .spin, .absorb-ring, .chat-warming-dot { animation: none; }
+  .cosmos-chat, .bots-rail, .brain-rail,
+  .bots-row, .bots-row-name, .bots-row-mark > *, .bots-new, .bots-new-label, .brain-rail > * { transition: none; }
 }
 /* engine presence dot — a filled circle, ok-tinted halo when connected */
 .engine-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
@@ -362,7 +362,7 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
 .engine-status { display: inline-flex; align-items: center; gap: 5px; }
 .topbar-action {
   position: relative; display: inline-flex; align-items: center; gap: 6px;
-  height: 30px; padding: 0 12px; border-radius: 999px; flex-shrink: 0;
+  height: 28px; padding: 0 12px; border-radius: 999px; flex-shrink: 0;
   color: var(--fg-dim); font-size: var(--fs-small); font-weight: 500;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -403,6 +403,7 @@ button.secondary.model-delete-armed:hover { color: var(--danger); background: co
   animation: fade-in 140ms ease-out;
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.bubble-thinking-label { animation: fade-in 0.35s ease; }
 .note-sheet, .review-sheet {
   width: min(1060px, calc(100vw - 64px)); height: min(720px, calc(100vh - 72px));
   background: var(--editor-bg); border: none;
@@ -565,6 +566,7 @@ body.bubble-host { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bubble-dots i { animation: none; opacity: 0.6; }
+  .bubble-thinking-label { animation: none; }
 }
 .bubble-brand { display: inline-flex; align-items: center; gap: 5px; }
 
@@ -579,7 +581,7 @@ body.bubble-host { background: transparent; }
 
 .bubble-msg {
   max-width: 94%; box-sizing: border-box; min-width: 0;
-  font-size: var(--fs-body); line-height: 1.6; border-radius: 11px; padding: 9px 13px;
+  font-size: var(--fs-body); line-height: 1.6; border-radius: var(--radius-card); padding: 9px 13px;
   overflow-wrap: anywhere;
 }
 .bubble-msg.user { align-self: flex-end; background: var(--selected-bg); color: var(--selected-fg); }
@@ -607,17 +609,11 @@ body.bubble-host { background: transparent; }
   padding: 0 7px; margin: 0 1px; font-size: var(--fs-small); opacity: 0.85;
 }
 .bubble-msg-body a[href^="note://"]:hover { opacity: 1; background: var(--hover-bg); }
-.bubble-send { flex: none; border: 0; cursor: pointer; }/* Warming line above the composer while the local model loads. */
+/* Warming line above the composer while the local model loads. */
 .chat-warming {
   display: flex; align-items: center; gap: 7px; padding: 6px 12px;
   font-size: var(--fs-small); color: var(--fg-dim); border-top: 1px solid var(--border-soft);
 }
-.chat-warming-dot {
-  width: 9px; height: 9px; border-radius: 50%; flex: none;
-  border: 2px solid var(--accent-line); border-top-color: transparent;
-  animation: chat-warming-spin 0.9s linear infinite;
-}
-@keyframes chat-warming-spin { to { transform: rotate(360deg); } }
 
 /* The librarian's spoken morning — prose, not a list. */
 .nudge-spoken { display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-body); line-height: 1.55; color: var(--fg-dim); }
@@ -634,14 +630,7 @@ body.bubble-host { background: transparent; }
 }
 .bubble-confirm-actions button:hover { background: var(--hover-bg); }
 .bubble-confirm-yes { background: var(--clay-soft); border-color: var(--clay); color: var(--clay); }
-.bubble-write { padding: 9px; border-top: 1px solid var(--border-soft); display: flex; gap: 7px; align-items: flex-end; }
-.bubble-write textarea {
-  flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
-  border: 1px solid var(--input-border); background: var(--input-bg);
-  color: var(--fg); font-size: var(--fs-small); font-family: inherit; line-height: 1.5;
-  resize: none; overflow-y: auto; max-height: 120px;
-}
-.bubble-write textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.bubble-write { padding: 9px; font-size: var(--fs-small); }
 /* The panel's twin: retrieval receipts inside the pre-first-token bubble. */
 .nudge-why {
   margin: 0; max-height: 190px; overflow-y: auto;
@@ -731,16 +720,20 @@ body.bubble-host { background: transparent; }
 .brain-rail {
   width: 264px; flex-shrink: 0; overflow: hidden auto;
   border-right: 1px solid var(--border);
-  padding: 10px 0 16px;
+  padding: 0 0 16px;
   display: flex; flex-direction: column;
   transition: width 240ms cubic-bezier(0.25, 1, 0.3, 1);
 }
 .brain-rail.folded { width: 41px; overflow: hidden; }
 .brain-rail > :not(.brain-rail-head) { transition: opacity 160ms ease, visibility 0s linear 160ms; min-width: 240px; }
 .brain-rail.folded > :not(.brain-rail-head) { opacity: 0; visibility: hidden; pointer-events: none; }
-.brain-rail.folded .brain-rail-head { justify-content: center; padding: 10px 0; }
-.brain-rail .section-label { font-size: var(--fs-micro); padding: 10px 20px 10px; }
+.brain-rail.folded .brain-rail-head { justify-content: center; padding: 0; }
+.brain-rail .section-label.brain-rail-head {
+  display: flex; padding: 0 12px 0 20px;
+  font-size: var(--fs-small); font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--fg-dim);
+}
 .brain-item {
+  transition: background 100ms ease, color 100ms ease;
   display: flex; flex-direction: column; gap: 6px;
   width: calc(100% - 16px); margin: 0 8px 2px;
   padding: 12px 12px 13px; text-align: left;
@@ -1079,7 +1072,7 @@ body.bubble-host { background: transparent; }
 
 /* ── List view chrome ────────────────────────────────────────────
    One filter strip, one sticky section-head voice, one row grammar. */
-.view-filter-bar { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.view-filter-bar { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border-soft); flex-shrink: 0; }
 .view-filter {
   width: 100%; max-width: 420px;
   padding: 7px 12px; border-radius: var(--radius-m);
@@ -1273,9 +1266,27 @@ body.bubble-host { background: transparent; }
 }
 .chat-engine-pill:hover { background: var(--hover-bg); }
 .chat-engine-chevron { position: absolute; right: 5px; color: var(--fg-faint); pointer-events: none; }
+/* ── Composer: one look wherever a message is typed ───────────────── */
+/* A one-line textarea and the send button are the same height by
+   construction: 20px line + 4px padding + 1px border is the 30px control the
+   app's buttons already use. flex-end then centres the button on a single
+   line and pins it to the bottom edge once the box has grown; there is no
+   offset to keep in step with the font. */
+.chat-write {
+  --write-control: 30px;
+  display: flex; align-items: flex-end; gap: 7px;
+  border-top: 1px solid var(--border-soft);
+  font-size: var(--fs-body);
+}
+.chat-write textarea {
+  flex: 1; min-width: 0; box-sizing: border-box; min-height: var(--write-control); max-height: 120px;
+  padding: 4px 11px; border-radius: var(--radius-m); line-height: 20px; font-size: inherit; font-family: inherit;
+  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
+  resize: none; overflow-y: auto;
+}
 .chat-send-btn {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 30px; height: 30px; border-radius: 999px;
+  width: var(--write-control, 30px); height: var(--write-control, 30px); border-radius: 999px;
   background: var(--accent); color: var(--button-fg);
 }
 .chat-send-btn:hover:not(:disabled) { background: var(--accent-hover); }
@@ -1431,7 +1442,7 @@ body.bubble-host { background: transparent; }
    given instead of collapsing to a cut-off strip. */
 .brief-overlay {
   position: fixed; inset: 0; z-index: 180;
-  background: rgba(28, 29, 38, 0.35);
+  background: rgba(28, 29, 38, 0.45);
   display: flex; align-items: center; justify-content: center;
 }
 .brief-box {
@@ -1466,82 +1477,104 @@ body.bubble-host { background: transparent; }
      that settles softly, the curve every sidebar the person knows uses. */
   transition: width 240ms cubic-bezier(0.25, 1, 0.3, 1);
 }
-.cosmos-chat.folded { width: 41px; background: var(--sidebar-bg); border-left: 1px solid var(--border-soft); }
+.cosmos-chat.folded { width: 41px; background: var(--sidebar-bg); }
 /* While narrow, the panel's content fades and stops catching clicks; it never
    unmounts, so opening again restores the thread exactly as it was. */
 .cosmos-chat.folded .cosmos-chat-thread,
 .cosmos-chat.folded .cosmos-chat-write { opacity: 0; visibility: hidden; pointer-events: none; }
 .cosmos-chat-thread, .cosmos-chat-write { transition: opacity 160ms ease, visibility 0s linear 160ms; min-width: 296px; }
-.cosmos-chat.folded .cosmos-chat-head { justify-content: center; padding: 10px 0; border-bottom-color: transparent; }
+.cosmos-chat.folded .cosmos-chat-head { justify-content: center; padding: 0; border-bottom-color: transparent; }
+/* The three rail heads share one 44px height, so the fold toggle sits at the
+   same place on every tab and the hairlines under them line up. */
+.cosmos-chat-head, .bots-rail-head, .brain-rail .section-label.brain-rail-head { height: 44px; flex: none; align-items: center; }
 .cosmos-chat-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 10px 12px; border-bottom: 1px solid var(--border-soft);
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 0 12px; border-bottom: 1px solid var(--border-soft);
 }
 .cosmos-chat-title { font-size: var(--fs-small); font-weight: 700; color: var(--fg-dim); }
 /* The one toggle a rail has, in the same corner whether open or folded -
    only the icon turns around. Sized like the top bar's own quiet controls. */
 .rail-toggle {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent;
+  width: 28px; height: 28px; border-radius: var(--radius-s); border: none; background: transparent;
   color: var(--fg-faint); flex: none; cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
 .rail-toggle:hover { background: var(--hover-bg); color: var(--fg); }
 .cosmos-chat-thread { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cosmos-chat-hint { font-size: var(--fs-small); line-height: 1.55; color: var(--fg-faint); }
-.cosmos-chat-write { display: flex; gap: 7px; align-items: flex-end; padding: 10px 12px; border-top: 1px solid var(--border-soft); }
-.cosmos-chat-write textarea {
-  flex: 1; min-width: 0; box-sizing: border-box; resize: none; max-height: 120px; overflow-y: auto;
-  padding: 8px 10px; border-radius: 9px; font-size: var(--fs-small); line-height: 1.5; font-family: inherit;
-  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
-}
-.rail-reopen { background: transparent; border: none; padding: 7px; }
+.cosmos-chat-write { padding: 10px 12px; font-size: var(--fs-small); }
 .brain-view, .bots-view { position: relative; }
 .brain-rail-head, .bots-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 /* ── Bots: the first tab — colleagues over the same brain ──────────── */
 .bots-view { flex: 1; min-height: 0; display: flex; }
 .bots-rail {
-  width: 240px; flex: none; border-right: 1px solid var(--border-soft);
-  background: var(--sidebar-bg); padding: 12px 10px; overflow: hidden;
+  width: 240px; flex: none; border-right: 1px solid var(--border);
+  background: var(--sidebar-bg); padding: 0 10px 12px; overflow: hidden;
   display: flex; flex-direction: column; gap: 8px;
   transition: width 240ms cubic-bezier(0.25, 1, 0.3, 1);
 }
-.bots-rail.folded { width: 41px; padding: 12px 6px; }
-/* Content fades while the rail narrows; nothing unmounts, so reopening finds
-   the list exactly where it was. The head keeps its toggle centred. */
-.bots-rail > :not(.bots-rail-head) { transition: opacity 160ms ease, visibility 0s linear 160ms; min-width: 216px; }
-.bots-rail.folded > :not(.bots-rail-head) { opacity: 0; visibility: hidden; pointer-events: none; }
+.bots-rail.folded { width: 41px; padding: 0 6px 12px; }
+/* Folded, the rail is a strip: the toggle, the plus, then one round chip per
+   comet. Those narrow with the rail; the form and the offers fade out but
+   stay mounted, so reopening finds a half-written draft where it was. */
+.bots-rail > :not(.bots-rail-head, .bots-list, .bots-new) { transition: opacity 160ms ease, visibility 0s linear 160ms; min-width: 216px; }
+.bots-rail.folded > :not(.bots-rail-head, .bots-list, .bots-new) { opacity: 0; visibility: hidden; pointer-events: none; }
 .bots-rail.folded .bots-rail-head { justify-content: center; padding: 0; }
-.bots-rail-head { font-size: var(--fs-small); font-weight: 700; color: var(--fg-dim); padding: 0 4px; }
-/* The routines door sits under New comet, quieter: it is the other kind of
-   repeated work, not the primary act of this rail. */
-.bots-routines { color: var(--fg-dim); }
-.bots-routines:hover { color: var(--fg); }
+.bots-rail-head { display: flex; justify-content: space-between; font-size: var(--fs-small); font-weight: 700; color: var(--fg-dim); padding: 0 4px; }
+/* The strip reads top-down as toggle, plus, comets; the open rail keeps the
+   plus under the list, so the order is a folded-only rule. */
+.bots-rail.folded > * { order: 3; }
+.bots-rail.folded > .bots-rail-head { order: 0; }
+.bots-rail.folded > .bots-new { order: 1; }
+.bots-rail.folded > .bots-list { order: 2; }
 .bots-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.bots-rail.folded .bots-list { gap: 6px; }
 .bots-row {
-  width: 100%; display: flex; align-items: center; gap: 8px;
-  padding: 7px 9px; border-radius: 8px; font-size: var(--fs-body); color: var(--fg-dim); text-align: left;
+  width: 100%; display: flex; align-items: center; gap: 8px; overflow: hidden;
+  padding: 7px 9px; border-radius: var(--radius-s); font-size: var(--fs-body); color: var(--fg-dim); text-align: left;
+  transition: padding 240ms ease, border-radius 240ms ease, background 100ms ease, color 100ms ease;
 }
 .bots-row:hover { background: var(--hover-bg); color: var(--fg); }
 .bots-row.active { background: var(--selected-bg); color: var(--selected-fg); }
-.bots-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bots-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity 120ms ease; }
+/* Icon and initial share one cell; the strip crossfades to the letter. */
+.bots-row-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; }
+.bots-row-mark > * { grid-area: 1 / 1; transition: opacity 160ms ease; }
+.bots-row-initial { opacity: 0; font-size: var(--fs-micro); font-weight: 650; line-height: 1; }
+/* Chips: the row keeps its width (it follows the rail) and rounds off into a
+   28px circle; the name collapses so the mark sits centred. */
+.bots-rail.folded .bots-row {
+  height: 28px; padding: 0; gap: 0; justify-content: center;
+  border-radius: 999px; background: var(--accent-soft);
+}
+.bots-rail.folded .bots-row:hover { background: var(--hover-bg); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.bots-rail.folded .bots-row.active { background: var(--selected-bg); box-shadow: none; }
+.bots-rail.folded .bots-row-name { opacity: 0; width: 0; }
+.bots-rail.folded .bots-row-mark > svg { opacity: 0; }
+.bots-rail.folded .bots-row-initial { opacity: 1; }
 .bots-new {
-  display: flex; align-items: center; gap: 6px; padding: 7px 9px;
-  border-radius: 8px; font-size: var(--fs-small); color: var(--fg-dim); border: 1px dashed var(--border);
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px; overflow: hidden;
+  border-radius: var(--radius-s); font-size: var(--fs-small); color: var(--fg-dim); border: 1px dashed var(--border);
+  transition: padding 240ms ease, border-radius 240ms ease, background 120ms ease;
 }
 .bots-new:hover { background: var(--hover-bg); color: var(--fg); }
+.bots-new > svg { flex: none; }
+.bots-new-label { white-space: nowrap; overflow: hidden; transition: opacity 120ms ease; }
+.bots-rail.folded .bots-new { height: 28px; padding: 0; gap: 0; justify-content: center; border-radius: 999px; }
+.bots-rail.folded .bots-new-label { opacity: 0; width: 0; }
 .bots-create { display: flex; flex-direction: column; gap: 6px; padding: 4px; }
 .bots-create input, .bots-create textarea {
   width: 100%; box-sizing: border-box; font-size: var(--fs-small); padding: 7px 9px; resize: none;
   font-family: inherit; line-height: 1.5;
-  border: 1px solid var(--input-border); border-radius: 8px;
+  border: 1px solid var(--input-border); border-radius: var(--radius-m);
   background: var(--input-bg); color: var(--fg);
 }
 .bots-create-need { font-size: var(--fs-small); color: var(--fg-faint); line-height: 1.45; }
 .bots-create-actions { display: flex; gap: 6px; }
 .bots-suggested { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
-.bots-suggestion { border: 1px solid var(--border-soft); border-radius: 9px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.bots-suggestion { border: 1px solid var(--border-soft); border-radius: var(--radius-card); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
 .bots-suggestion-name { font-size: var(--fs-small); font-weight: 650; color: var(--fg); }
 .bots-suggestion-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .bots-suggestion-x {
@@ -1559,7 +1592,6 @@ body.bubble-host { background: transparent; }
 .bots-head-name { font-size: var(--fs-body); font-weight: 700; color: var(--fg); }
 .bots-head-purpose { font-size: var(--fs-small); color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bots-delete { flex: none; display: inline-flex; align-items: center; gap: 5px; }
-.bots-delete.armed { border-color: var(--clay); color: var(--clay); }
 .bots-tasks {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 9px 16px; border-bottom: 1px solid var(--border-soft);
@@ -1577,7 +1609,7 @@ body.bubble-host { background: transparent; }
 .bots-task-x:hover { opacity: 1; color: var(--clay); }
 .bots-task-new { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .bots-task-new input {
-  box-sizing: border-box; padding: 5px 9px; border-radius: 8px; font-size: var(--fs-small); font-family: inherit;
+  box-sizing: border-box; padding: 5px 9px; border-radius: var(--radius-m); font-size: var(--fs-small); font-family: inherit;
   border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
 }
 .bots-task-new input:first-of-type { width: 140px; }
@@ -1601,7 +1633,7 @@ body.bubble-host { background: transparent; }
    the one press it will not make on its own. */
 .bots-offer {
   display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
-  padding: 8px 10px; border: 1px solid var(--accent-line); border-radius: 10px;
+  padding: 8px 10px; border: 1px solid var(--accent-line); border-radius: var(--radius-card);
 }
 .bots-offer-text { flex: 1; min-width: 180px; font-size: var(--fs-small); color: var(--fg); }
 .bots-offer-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
@@ -1619,24 +1651,19 @@ body.bubble-host { background: transparent; }
   0%, 100% { opacity: 0.45; transform: translate(-1px, 1px); }
   50% { opacity: 1; transform: translate(1px, -1px); }
 }
-.bots-write { display: flex; gap: 7px; align-items: flex-end; padding: 10px 14px; border-top: 1px solid var(--border-soft); }
-.bots-write textarea {
-  flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 11px; border-radius: 9px;
-  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
-  font-size: var(--fs-body); font-family: inherit; line-height: 1.5; resize: none; max-height: 120px; overflow-y: auto;
-}
+.bots-write { padding: 10px 14px; }
 .bots-empty {
-  margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  color: var(--fg-dim); text-align: center; max-width: 380px;
+  margin: auto; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  color: var(--fg-faint); text-align: center; max-width: 420px;
 }
-.bots-empty-title { font-size: var(--fs-lead); font-weight: 700; color: var(--fg); }
-.bots-empty-hint { font-size: var(--fs-small); line-height: 1.55; color: var(--fg-faint); }
+.bots-empty-title { font-size: var(--fs-title); color: var(--fg-faint); }
+.bots-empty-hint { font-size: var(--fs-micro); letter-spacing: 0.02em; line-height: 1.6; color: var(--fg-faint); }
 
 /* ── Errands: the delegation's home ────────────────────────────── */
 .errands-box { width: min(560px, 92vw); max-height: 82vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .errands-title { display: flex; align-items: center; gap: 7px; }
 .errands-hint { font-size: var(--fs-small); color: var(--fg-dim); line-height: 1.5; }
-.errand-live { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.errand-live { border: 1px solid var(--border-soft); border-radius: var(--radius-card); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .errand-live-goal { font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
 .errand-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .errand-step { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-small); color: var(--fg-faint); }
@@ -1652,7 +1679,7 @@ body.bubble-host { background: transparent; }
 .errands-history-title { font-size: var(--fs-small); font-weight: 700; color: var(--fg-dim); margin-top: 2px; }
 .errands-empty { font-size: var(--fs-small); color: var(--fg-faint); }
 .errands-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.errand-run { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; }
+.errand-run { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius-s); transition: background 100ms ease; }
 .errand-run:hover { background: var(--hover-bg); }
 .errand-outcome { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--border); }
 .errand-outcome.done { background: var(--accent); }
@@ -1668,7 +1695,7 @@ body.bubble-host { background: transparent; }
 
 /* ── Routines sheet (saved replays; borrows the errand live chrome) ── */
 .routines-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.routine-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; }
+.routine-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius-s); transition: background 100ms ease; }
 .routine-row:hover { background: var(--hover-bg); }
 .routine-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
 .routine-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
@@ -1679,7 +1706,7 @@ body.bubble-host { background: transparent; }
   width: 22px; height: 22px; border-radius: 50%; color: var(--fg-faint);
 }
 .routine-delete:hover { background: var(--hover-bg); color: var(--fg); }
-.routine-delete.armed { color: var(--danger); background: var(--hover-bg); }
+.routine-delete.armed { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .routine-builder { display: flex; flex-direction: column; gap: 8px; }
 .routine-name { font-size: var(--fs-body); padding: 8px 10px; }
 .routine-step-row { display: flex; align-items: center; gap: 6px; }
@@ -1697,7 +1724,7 @@ body.bubble-host { background: transparent; }
    work in the agent window; afterwards the captured steps wait under a name. */
 .routine-teach {
   display: flex; flex-direction: column; gap: 8px;
-  border: 1px dashed var(--accent-line); border-radius: 10px; padding: 10px 12px;
+  border: 1px dashed var(--accent-line); border-radius: var(--radius-card); padding: 10px 12px;
 }
 .routine-teach-line { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
 .routine-teach-hint { font-size: var(--fs-small); color: var(--fg-dim); }
@@ -1705,7 +1732,7 @@ body.bubble-host { background: transparent; }
    Warm-bordered because this is the one place a wrong click is expensive. */
 .routine-submit {
   display: flex; flex-direction: column; gap: 8px;
-  border: 1px solid var(--clay); border-radius: 10px; padding: 10px 12px;
+  border: 1px solid var(--clay); border-radius: var(--radius-card); padding: 10px 12px;
 }
 .routine-submit-head { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
 .routine-submit-fields { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -1716,7 +1743,7 @@ body.bubble-host { background: transparent; }
 /* The rerun question: a routine that types into pages asks before repeating. */
 .routine-ask {
   display: flex; align-items: center; gap: 9px;
-  padding: 9px 11px; border-radius: 9px;
+  padding: 9px 11px; border-radius: var(--radius-card);
   background: var(--hover-bg); border: 1px solid var(--border-soft); color: var(--fg-dim);
 }
 .routine-ask-text { flex: 1; min-width: 0; font-size: var(--fs-small); line-height: 1.45; }
@@ -1888,7 +1915,7 @@ body.bubble-host { background: transparent; }
 /* The errand is parked in main until one of these buttons answers. */
 .topbar-status.errand-wall { gap: 7px; }
 .errand-wall-done, .errand-wall-skip {
-  flex-shrink: 0; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--border);
+  flex-shrink: 0; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--border);
   background: transparent; color: var(--fg-dim); font-size: var(--fs-small); font-weight: 600; cursor: pointer;
 }
 .errand-wall-done { background: var(--accent); border-color: transparent; color: var(--button-fg); }

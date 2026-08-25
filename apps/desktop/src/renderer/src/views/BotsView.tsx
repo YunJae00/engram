@@ -1,10 +1,13 @@
 import { ArrowUp, Bookmark, Play, Square, Trash2, Wand2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { BotDto, BotSuggestionDto, EngramEvent } from '../../../shared/types.js'
+import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { CometRail } from '../components/CometRail.js'
 import { Thinking } from '../components/Thinking.js'
+import { modelActivity } from '../lib/modelActivityLive.js'
+import { pendingStatus, stepLabel } from '../lib/pendingStatus.js'
+import { useAutoGrow } from '../lib/useAutoGrow.js'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
@@ -27,7 +30,6 @@ const PHASE_LABEL: Record<string, StringKey> = {
   compose: 'topbar.errandCompose',
 }
 
-type WarmState = Extract<EngramEvent, { type: 'localllm:warm' }>['state']
 
 export function BotsView() {
   const { errand, startErrand, routine, startRoutine, t } = useApp()
@@ -38,13 +40,14 @@ export function BotsView() {
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
-  const [warm, setWarm] = useState<WarmState>('cold')
   const listRef = useRef<HTMLDivElement | null>(null)
+  const boxRef = useRef<HTMLTextAreaElement | null>(null)
   const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
   const selected = bots.find((b) => b.id === selectedId) ?? null
   const { messages, busy, workLines, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
+  useAutoGrow(boxRef, draft)
   const busyElsewhere = !busy && cometThreads.anyBusy()
   const locked = busyElsewhere || errand.running
 
@@ -52,7 +55,9 @@ export function BotsView() {
   // line (an unload between calls reloads mid-run); a step line outranks
   // the generic word; the generic word is what is left when nothing is known.
   const latestStep = workLines[workLines.length - 1]
-  const pendingStatus = warm === 'loading' ? t('bots.warming') : (latestStep ?? t('bots.thinking'))
+  const activity = useSyncExternalStore(modelActivity.subscribe, modelActivity.getSnapshot)
+  // The wait, said from evidence - see pendingStatus for the order it trusts.
+  const status = pendingStatus(t, activity, latestStep)
 
   const reload = async (keepSelection = true) => {
     const [list, recs] = await Promise.all([api.botsList(), api.botsRecommend().catch(() => [])])
@@ -64,12 +69,6 @@ export function BotsView() {
 
   useEffect(() => {
     void reload()
-  }, [])
-
-  useEffect(() => {
-    return api.onEvent((event) => {
-      if (event.type === 'localllm:warm') setWarm(event.state)
-    })
   }, [])
 
   // Selecting a comet shows what the store already holds and refreshes it
@@ -215,12 +214,12 @@ export function BotsView() {
                   {m.role === 'assistant' ? (
                     m.streaming && !m.text ? (
                       <span className="bots-pending" data-testid="bots-pending">
-                        <Thinking label={pendingStatus} since={startedAt ?? undefined} testId="bots-thinking" />
+                        <Thinking label={status} since={startedAt ?? undefined} testId="bots-thinking" />
                         {workLines.length > 1 && (
                           <span className="bots-work-lines" data-testid="bots-work-lines">
                             {workLines.slice(0, -1).map((line, x) => (
                               <span key={`${x}-${line}`} className="bots-work-line">
-                                {line}
+                                {stepLabel(t, line)}
                               </span>
                             ))}
                           </span>
@@ -305,8 +304,9 @@ export function BotsView() {
                 </div>
               )}
             </div>
-            <div className="bots-write">
+            <div className="bots-write chat-write">
               <textarea
+                ref={boxRef}
                 value={draft}
                 rows={1}
                 placeholder={

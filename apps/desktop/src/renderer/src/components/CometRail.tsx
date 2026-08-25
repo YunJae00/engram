@@ -18,7 +18,15 @@ interface Props {
 }
 
 // One rail in both states: it narrows instead of being swapped out, and the
-// toggle keeps its corner - only the icon turns around.
+// toggle keeps its corner - only the icon turns around. Folded, the list and
+// the plus narrow into a column of chips; the form and the offers fade out.
+
+// A column of identical icons says nothing about which comet is which; the
+// chip shows the first letter instead.
+function initialOf(name: string): string {
+  return (Array.from(name.trim())[0] ?? '?').toUpperCase()
+}
+
 export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSelect, onCreate, onDismiss }: Props) {
   const { t } = useApp()
   const [creating, setCreating] = useState(false)
@@ -30,6 +38,12 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
     setCreating(false)
     setDraftName('')
     setDraftPurpose('')
+  }
+
+  // The form needs the open rail; from the strip the plus opens it first.
+  const startCreating = () => {
+    if (!open) onToggle()
+    setCreating(true)
   }
 
   return (
@@ -55,15 +69,19 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
             <button
               className={`bots-row${bot.id === selectedId ? ' active' : ''}`}
               data-testid={`bot-${bot.id}`}
+              title={open ? undefined : bot.name}
               onClick={() => onSelect(bot.id)}
             >
-              <Comet size={14} />
+              <span className="bots-row-mark" aria-hidden>
+                <Comet size={14} />
+                <span className="bots-row-initial">{initialOf(bot.name)}</span>
+              </span>
               <span className="bots-row-name">{bot.name}</span>
             </button>
           </li>
         ))}
       </ul>
-      {creating ? (
+      {creating && (
         <div className="bots-create" data-testid="bots-create">
           <input
             autoFocus
@@ -100,9 +118,11 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
             </button>
           </div>
         </div>
-      ) : (
-        <button className="bots-new" data-testid="bots-new" onClick={() => setCreating(true)}>
-          <Plus size={13} strokeWidth={2} aria-hidden /> {t('bots.new')}
+      )}
+      {(!creating || !open) && (
+        <button className="bots-new" data-testid="bots-new" title={open ? undefined : t('bots.new')} onClick={startCreating}>
+          <Plus size={13} strokeWidth={2} aria-hidden />
+          <span className="bots-new-label">{t('bots.new')}</span>
         </button>
       )}
       <BotSuggestions

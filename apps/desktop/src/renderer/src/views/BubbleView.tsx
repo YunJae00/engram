@@ -1,6 +1,7 @@
 import { ArrowUp, Download, RotateCcw, Square } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { useAutoGrow } from '../lib/useAutoGrow.js'
 import { answerHtml } from '../markdown.js'
 import { Logomark } from '../components/Icon.js'
 import { Thinking } from '../components/Thinking.js'
@@ -113,12 +114,7 @@ export function BubbleView() {
     return () => window.removeEventListener('keydown', onKey)
   }, [expanded, confirmQuit])
 
-  useEffect(() => {
-    const box = inputRef.current
-    if (!box) return
-    box.style.height = 'auto'
-    box.style.height = `${Math.min(box.scrollHeight, 120)}px`
-  }, [text])
+  useAutoGrow(inputRef, text)
 
   const expand = async () => {
     await api.bubbleExpand()
@@ -286,7 +282,7 @@ export function BubbleView() {
           </div>
         ))}
       </div>
-      <form className="bubble-write" onSubmit={send}>
+      <form className="bubble-write chat-write" onSubmit={send}>
         <textarea
           ref={inputRef}
           value={text}
@@ -300,11 +296,11 @@ export function BubbleView() {
           disabled={!hasBrain}
         />
         {busy ? (
-          <button type="button" className="chat-send-btn armed bubble-send bubble-stop" aria-label={t('bubble.stop')} title={t('bubble.stop')} onClick={() => void stop()}>
+          <button type="button" className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} title={t('bubble.stop')} onClick={() => void stop()}>
             <Square size={11} strokeWidth={2.5} aria-hidden />
           </button>
         ) : (
-          <button type="submit" className="chat-send-btn armed bubble-send" aria-label={t('bubble.send')} disabled={!text.trim()}>
+          <button type="submit" className="chat-send-btn armed" aria-label={t('bubble.send')} disabled={!text.trim()}>
             <ArrowUp size={15} />
           </button>
         )}
