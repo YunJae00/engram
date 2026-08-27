@@ -1,4 +1,5 @@
 import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, suggestedMove, wrapUpPrompt } from './agent-prompt.js'
+import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
 import { collectResult, extractJson, type Engine, type EngineCwd } from './engine/types.js'
 
@@ -191,13 +192,35 @@ export { carriedSteps, pickTools }
 // letting either run to the transport's default ceiling is a minute of a
 // CPU-bound machine's time for nothing.
 const STEP_TOKENS = 320
+// A step that writes - a filled form, a note - carries a paragraph in its
+// arguments, and a paragraph of Korean is most of 320 tokens by itself: the
+// JSON was cut short and the form was run with the blank still empty.
+const WRITING_TOOLS = new Set(['run_procedure', 'propose_note', 'propose_edit', 'propose_file'])
+const WRITING_TOKENS = 640
 const ANSWER_TOKENS = 400
+function stepBudget(tools: AgentTool[]): number {
+  return tools.some((t) => WRITING_TOOLS.has(t.name)) ? WRITING_TOKENS : STEP_TOKENS
+}
 // A read a tool asked for is made without asking the model - reading costs
 // nothing and needs nobody's permission, and a step spent confirming a call
 // the tool already named is a whole prompt evaluation on a CPU-bound machine.
 // Capped per turn and never repeated with the same arguments, so a front page
 // that keeps pointing at itself cannot spin.
 const AUTO_READS = 3
+// Below this an answer is a shrug, not something worth a card.
+const NOTE_MIN = 80
+
+async function writeDown(deps: AgentLoopDeps, task: string, text: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<void> {
+  const tool = deps.tools.find((t) => t.name === 'propose_note')
+  if (!tool) return
+  const args = { title: noteTitleFor(task), body: text.trim() }
+  options.onStep?.(`${tool.name}: ${summarizeArgs(args)}`)
+  const observation = await tool
+    .run(args, { task, read: readSoFar(steps), ...(options.signal ? { signal: options.signal } : {}) })
+    .catch((err: unknown) => `that did not work: ${err instanceof Error ? err.message : String(err)}`)
+  options.onObservation?.(tool.name, observation)
+  steps.push({ tool: tool.name, args, observation: observation.slice(0, OBSERVATION_CAP) })
+}
 
 async function followRead(
   deps: AgentLoopDeps,
@@ -229,7 +252,8 @@ export async function runAgentLoop(
 ): Promise<AgentLoopResult> {
   // Chosen per step, not once: an empty vault search is what earns the web
   // tools their place on the menu.
-  let tools = pickTools(deps.tools, task, [])
+  const conversed = (options.history?.length ?? 0) > 0
+  let tools = pickTools(deps.tools, task, [], conversed)
   const maxCalls = options.maxCalls ?? MAX_CALLS
   const steps: AgentLoopStep[] = []
   const keys: string[] = []
@@ -265,7 +289,7 @@ export async function runAgentLoop(
 
   for (let call = 0; call < maxCalls; call++) {
     if (options.signal?.aborted) throw new Error('canceled')
-    tools = pickTools(deps.tools, task, steps)
+    tools = pickTools(deps.tools, task, steps, conversed)
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
@@ -274,7 +298,7 @@ export async function runAgentLoop(
         disallowTools: true,
         timeoutMs: CALL_TIMEOUT_MS,
         modelHint: 'fast',
-        maxTokens: STEP_TOKENS,
+        maxTokens: stepBudget(tools),
         jsonSchema: stepSchema(tools),
         ...(options.signal ? { signal: options.signal } : {}),
       })
@@ -303,19 +327,31 @@ export async function runAgentLoop(
       // person still approves at the submit gate.
       const pending = suggestedMove(steps)
       if (await followRead(deps, task, steps, options, followed)) continue
-      if (pending && !nudged) {
+      // Asked for a note and about to end in prose: the same one nudge.
+      const unwritten =
+        asksForNote(task) && !steps.some((s) => WRITING_TOOLS.has(s.tool)) && deps.tools.some((t) => t.name === 'propose_note')
+      if ((pending || unwritten) && !nudged) {
         nudged = true
         steps.push({
           tool: 'note-to-self',
           args: {},
-          observation: `The work is not done yet — ${pending}. Fill any blanks from what you gathered above, and make that call now.`,
+          observation: pending
+            ? `The work is not done yet — ${pending}. Fill any blanks from what you gathered above, and make that call now.`
+            : 'The person asked for this written down, and nothing has been yet — call propose_note with {"title": "...", "body": "..."} carrying what you gathered above.',
         })
         continue
       }
       const text = parsed.args['text']
       const unfinished = pending ? { pending } : {}
-      if (typeof text === 'string' && text.trim())
+      if (typeof text === 'string' && text.trim()) {
+        // Asked for a note, nudged once, and still answering in prose: the
+        // prose is the note. Writing it down is the mechanical part, and the
+        // loop does it - the person still approves the card (measured: two
+        // notes merged into a good answer twice running, and no note either
+        // time).
+        if (unwritten && text.trim().length >= NOTE_MIN) await writeDown(deps, task, text, steps, options)
         return { answer: withoutSecrets(text, task), steps, fellBack: false, ...unfinished }
+      }
       return wrapUp()
     }
     keys.push(callKey(parsed))

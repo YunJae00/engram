@@ -9,7 +9,7 @@ interface LoadRequest {
   // Where the weights may live, decided by the parent from real free memory.
   // 'auto' offloads what fits inside vramPadding; 0 keeps everything on the
   // CPU side, where mmap leaves the pages evictable instead of pinned.
-  plan?: { gpuLayers: 'auto' | 0; vramPadding: number; mode: string; lock?: boolean }
+  plan?: { gpuLayers: 'auto' | 0; vramPadding: number; mode: string; lock?: boolean; threads?: number }
 }
 
 interface CompleteRequest {
@@ -61,7 +61,7 @@ interface Engine {
   }
   model: {
     dispose(): Promise<void>
-    createContext(opts: { contextSize: number }): Promise<LlamaContext>
+    createContext(opts: { contextSize: number; threads?: number }): Promise<LlamaContext>
     tokenize(text: string): unknown[]
   }
   path: string
@@ -79,6 +79,7 @@ interface LoadPlan {
   gpuLayers: 'auto' | 0
   vramPadding: number
   lock?: boolean
+  threads?: number
   mode: string
 }
 
@@ -86,7 +87,7 @@ const CPU_ONLY: LoadPlan = { gpuLayers: 0, vramPadding: 0, mode: 'cpu' }
 
 async function loadWith(path: string, contextSize: number, plan: LoadPlan): Promise<Engine> {
   const nlc = (await import('node-llama-cpp')) as unknown as {
-    getLlama(o?: { vramPadding?: number; ramPadding?: number }): Promise<
+    getLlama(o?: { gpu?: 'auto' | false; vramPadding?: number; ramPadding?: number }): Promise<
       Engine['llama'] & {
         loadModel(o: {
           modelPath: string
@@ -97,7 +98,10 @@ async function loadWith(path: string, contextSize: number, plan: LoadPlan): Prom
       }
     >
   }
+  // A CPU-only plan does not wake the GPU driver: on a shared-memory iGPU
+  // the backend's own working set is system RAM too, spent on nothing.
   const llama = await nlc.getLlama({
+    gpu: plan.gpuLayers === 0 ? false : 'auto',
     ...(plan.vramPadding > 0 ? { vramPadding: plan.vramPadding } : {}),
     ramPadding: 2e9,
   })
@@ -142,6 +146,7 @@ async function ensure(path: string, contextSize: number, plan: LoadPlan): Promis
         type: 'loaded',
         ms: Date.now() - t0,
         gpu: String((engine.llama as { gpu?: unknown }).gpu ?? 'unknown'),
+        gpuWanted: plan.gpuLayers !== 0,
         mode: used.mode,
         layers: (engine.model as { gpuLayers?: number }).gpuLayers ?? -1,
       })
@@ -171,7 +176,7 @@ async function prepareSession(ready: Engine, contextSize: number): Promise<ChatS
     // family yet and silently yields empty answers.
     GemmaChatWrapper: new () => unknown
   }
-  if (!context) context = await ready.model.createContext({ contextSize })
+  if (!context) context = await ready.model.createContext({ contextSize, ...(loadPlan.threads ? { threads: loadPlan.threads } : {}) })
   if (!session) {
     session = new nlc.LlamaChatSession({
       contextSequence: context.getSequence(),

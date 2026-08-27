@@ -1,4 +1,5 @@
 import type { AgentLoopOptions, AgentLoopStep, AgentTool } from './agent-loop.js'
+import { namesSubject } from './search-template.js'
 
 // What the loop says to the model, and in what order. The prompt is two
 // parts. The first reads the same from one step to the next, in a fixed
@@ -159,9 +160,11 @@ export function stepPrompt(
           // one cheap call to find out. Sent to the web first, it read a
           // release page and reported that as the cause of an outage the
           // notebook had written up (measured).
-          opening(steps)
-          ? [`Suggested next move: the notebook first — call search_memory with {"query": "${task.slice(0, 60)}"}`]
-          : []),
+          opening(steps) && !namesSubject(task)
+            ? ['Suggested next move: the request names nothing to work on — ask what it refers to: call ask_person with {"question": "..."}']
+            : opening(steps)
+              ? [`Suggested next move: the notebook first — call search_memory with {"query": "${task.slice(0, 60)}"}`]
+              : []),
   ].join('\n')
 }
 
@@ -194,12 +197,17 @@ const MENU_CAP = 5
 // somebody remembered — and it was why "리서치 부탁해" could not reach the web.
 // The shape here is a working order instead: look in the notebook, go to a
 // page, act on the page you opened, and put the result somewhere.
-export function pickTools(all: AgentTool[], _task: string, steps: AgentLoopStep[]): AgentTool[] {
+export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[], conversed = false): AgentTool[] {
   const by = (name: string): AgentTool | undefined => all.find((t) => t.name === name)
   const used = (name: string): boolean => steps.some((s) => s.tool === name)
   const observed = (test: RegExp): boolean => steps.some((s) => test.test(s.observation))
 
   const wanted: (AgentTool | undefined)[] = []
+  // "Handle that", with no "that" anywhere: nothing named, nothing in the
+  // conversation to name it. Looking first found the nearest notes and a web
+  // page about something else, and wrote those up (measured). The one move
+  // that can supply the subject is asking for it.
+  if (steps.length === 0 && !conversed && !namesSubject(task)) wanted.push(by('ask_person'))
   // What came back had nothing to do with what was asked: the request itself
   // is what is missing, and no further looking will supply it.
   if (observed(/has anything to do with/)) wanted.push(by('ask_person'))
@@ -214,7 +222,13 @@ export function pickTools(all: AgentTool[], _task: string, steps: AgentLoopStep[
     // again without looking and typed the word "none" into the form; with
     // looking at the head it goes and finds what belongs there, and running
     // leads only once there is something to put in.
-    wanted.push(...(used('search_memory') ? [by('run_procedure'), by('search_memory')] : [by('search_memory'), by('run_procedure')]))
+    wanted.push(
+      ...(used('search_memory')
+        ? // A note came up: what belongs in the blank is inside it, not in
+          // its excerpt, so opening it comes before running again.
+          [observed(/\(id: n-/) && !used('read_note') ? by('read_note') : undefined, by('run_procedure'), by('search_memory')]
+        : [by('search_memory'), by('run_procedure')]),
+    )
   // A procedure was found: the next move is running it.
   if (observed(/^found .*call run_procedure/)) wanted.push(by('run_procedure'))
   // The notebook, unless it has already been asked and had nothing: going

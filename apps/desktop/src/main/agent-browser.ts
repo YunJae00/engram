@@ -5,8 +5,8 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
-import { releaseModelForRoom } from './local-llm.js'
-import { ROOM_FOR_BROWSER } from './memory-plan.js'
+import { releaseModelForRoom, setRoomMaker } from './local-llm.js'
+import { reserveRoom, ROOM_FOR_BROWSER } from './memory-plan.js'
 import { routineDriver } from './routine-driver.js'
 
 // The errand's hands: the user's own Chrome, driven over CDP by
@@ -183,9 +183,15 @@ function armIdleClose(): void {
   idleTimer = setTimeout(() => void closeAgentBrowser(), IDLE_CLOSE_MS)
 }
 
+// What a browser weighs by the time its window is up. Spoken for while it is
+// on its way, so a model planned in that gap plans around it; once the window
+// is open its real use is visible to every plan and the word is given back.
+const LAUNCH_FOOTPRINT = 1e9
+
 async function ensureContext(): Promise<Ctx> {
   if (context) return context
   if (opening) return opening
+  const spokenFor = reserveRoom(LAUNCH_FOOTPRINT)
   opening = (async () => {
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
@@ -245,6 +251,7 @@ async function ensureContext(): Promise<Ctx> {
     armPressureWatch()
     return ctx
   })().finally(() => {
+    spokenFor()
     opening = null
   })
   return opening
@@ -389,6 +396,16 @@ export { withAbort as agentAbortable }
 // fire-and-forget calls, moments AFTER a teach session has opened the window
 // the person is being recorded in. A recording session owns the browser, so
 // an unforced close steps aside; memory pressure and quit pass force.
+// The browser's half of taking turns: when the model would otherwise load
+// CPU-bound beside it, an idle window - nobody at it, no recording holding it -
+// closes and gives its room back. The next page opens a fresh one.
+setRoomMaker(async () => {
+  if (!context || claimed || idleHolds > 0) return false
+  flog('agent-browser', 'stepping aside so the model has room')
+  await closeAgentBrowser()
+  return context === null
+})
+
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
   // Somebody is standing at the window - a recording, or a person typing their
   // password into a login wall. An unforced close waits for them; memory

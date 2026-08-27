@@ -6,7 +6,7 @@
 // binary the way a person does and connecting over the DevTools port keeps the
 // probes working there.
 import { chromium, type Browser, type Page } from '@playwright/test'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -90,7 +90,11 @@ async function start(env: Record<string, string>, budgetMs: number): Promise<Run
         child.once('exit', () => resolve())
         setTimeout(resolve, 8_000)
       })
-      child.kill()
+      // The whole tree: the inference worker and the agent browser are the
+      // app's children, and a bare kill leaves them holding gigabytes between
+      // batches.
+      if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+      else child.kill()
       await exited
     },
   }

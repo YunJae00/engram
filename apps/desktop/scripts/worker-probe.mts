@@ -17,7 +17,7 @@ proc.on('message', (m: Record<string, unknown>) => {
   if (m['type'] === 'progress') { progress++; if (progress % 5 === 1) console.log(at(), 'progress', JSON.stringify(m)); return }
   if (m['type'] === 'chunk') return
   console.log(at(), JSON.stringify(m).slice(0, 300))
-  if (m['type'] === 'ready') proc.send({ type: 'load', modelPath: model, contextSize: 4096, plan: { gpuLayers: 0, vramPadding: 0, mode: 'cpu', lock: true } })
+  if (m['type'] === 'ready') proc.send({ type: 'load', modelPath: model, contextSize: 4096, plan: { gpuLayers: 0, vramPadding: 0, mode: 'cpu', lock: process.env['LOCK'] !== '0', ...(process.env['THREADS'] ? { threads: Number(process.env['THREADS']) } : {}) } })
   if (m['type'] === 'loaded') {
     const schema = {
       oneOf: [

@@ -1,5 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { answersTheQuestion, deriveSearchTemplate, rankLinks, searchUrlFor } from '../src/search-template.js'
+import { answersTheQuestion, asksForNote, deriveSearchTemplate, namesSubject, noteTitleFor, rankLinks, searchUrlFor } from '../src/search-template.js'
+
+// "Handle that" names nothing to handle. Looked up, it lands on whatever is
+// nearest; the only move that supplies the subject is asking for it.
+describe('noteTitleFor', () => {
+  it('takes the asking off the request', () => {
+    expect(noteTitleFor('이사 준비랑 집안일 합쳐서 할 일 목록 노트로 만들어줘')).toBe('이사 준비랑 집안일 합쳐서 할 일 목록')
+    expect(noteTitleFor('write down the VPN change date')).toBe('the VPN change date')
+    expect(noteTitleFor('write down the status of the release')).toBe('the status of the release')
+    expect(noteTitleFor('다음 스프린트 방향을 노트로 정리해서 저장해줘')).toBe('다음 스프린트 방향')
+  })
+})
+
+describe('asksForNote', () => {
+  it('hears a request to write something down', () => {
+    expect(asksForNote('이사 준비랑 집안일 합쳐서 할 일 목록 노트로 만들어줘')).toBe(true)
+    expect(asksForNote('write that down for me')).toBe(true)
+  })
+  it('does not hear one in a question that merely mentions notes', () => {
+    expect(asksForNote('지난번 색인 장애 원인이 뭔지 알려줘')).toBe(false)
+    expect(asksForNote('what did we decide about deploys?')).toBe(false)
+  })
+})
+
+describe('namesSubject', () => {
+  it('sees a pointer and a verb as naming nothing', () => {
+    expect(namesSubject('그거 처리해줘')).toBe(false)
+    expect(namesSubject('그거 다시 해줘')).toBe(false)
+    expect(namesSubject('handle that')).toBe(false)
+    expect(namesSubject('just do it')).toBe(false)
+  })
+  it('sees a subject when one is named', () => {
+    expect(namesSubject('포털 공지 확인해줘')).toBe(true)
+    expect(namesSubject('오늘 업무일지 올려줘')).toBe(true)
+    expect(namesSubject('what did we decide about deploys?')).toBe(true)
+  })
+})
 
 // Naming search engines in code fixes the answer for everyone and can never
 // learn a company's own search. The shape is learned from one address the

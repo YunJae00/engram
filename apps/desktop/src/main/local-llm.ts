@@ -8,7 +8,44 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LocalModelDto, LocalModelsStateDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
-import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR } from './memory-plan.js'
+import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR, roomNow } from './memory-plan.js'
+
+// Whether this machine has a GPU backend at all. Learned from the worker: a
+// load that asked for offload and came back on the CPU says there is none,
+// and from then on the CPU-side plans - including holding the weights in
+// memory, which only pays off where there is no GPU - are the ones made.
+// How long after boot the machine is still filling up with everything that
+// starts with the session.
+const SETTLE_AFTER_BOOT_S = 15 * 60
+let gpuAbsent = false
+// Nothing is pinned while the machine is still filling up after boot: an
+// offload admitted against the free memory of a fresh session sat under
+// everything that starts with it until the machine went down (measured).
+// Evictable pages are slow, and give way.
+function planFor(modelBytes: number): ReturnType<typeof planModelLoad> {
+  return planModelLoad(modelBytes, roomNow(), !gpuAbsent && os.uptime() >= SETTLE_AFTER_BOOT_S)
+}
+
+// On a machine with room for one of them, the model and the browser take
+// turns: the browser steps aside for the model when the plan comes back
+// CPU-bound, and the model steps aside for the browser (see the browser
+// module). Measured: loaded beside an open browser at 10.5GB free, the
+// CPU-side map was at the critical floor two minutes later - and a hundred
+// seconds a step for the whole of those two minutes.
+let roomMaker: (() => Promise<boolean>) | null = null
+export function setRoomMaker(make: () => Promise<boolean>): void {
+  roomMaker = make
+}
+async function withRoomMade(modelBytes: number, plan: ReturnType<typeof planModelLoad>): Promise<ReturnType<typeof planModelLoad>> {
+  // Only a full offload has been measured to live beside a browser; anything
+  // less asks the browser to step aside first.
+  if (plan.mode === 'gpu' || !roomMaker || !(await roomMaker())) return plan
+  for (let waited = 0; waited < 4_000 && planFor(modelBytes).mode === plan.mode; waited += 250)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  const made = planFor(modelBytes)
+  flog('local-llm', `the browser stepped aside for the model — ${made.reason}`)
+  return made
+}
 import { markEngineOk, markEngineUnhealthy } from './engine-health.js'
 import { flog } from './flog.js'
 
@@ -332,6 +369,10 @@ function spawnChild(): Promise<ChildProcess | null> {
           `model loaded in ${message.ms}ms (worker, gpu: ${message.gpu ?? '?'}, mode: ${message.mode ?? '?'}, layers: ${message.layers ?? '?'})`,
         )
         markEngineOk('local') // clears a red dot from an earlier failed load
+        if ((message as { gpuWanted?: boolean }).gpuWanted && message.gpu === 'false' && !gpuAbsent) {
+          gpuAbsent = true
+          flog('local-llm', 'no GPU backend on this machine — planning CPU loads from here on')
+        }
         setWarmState('ready')
         return
       }
@@ -419,11 +460,20 @@ export async function warmLocalModel(): Promise<void> {
   }
   // Background warm-up is optional by definition — it only happens when the
   // machine will not feel it. A question still loads on demand either way.
-  const plan = planModelLoad(spec.approxGB * 1e9)
+  // Just after boot it always would: the app starts with the session, and a
+  // model pinned two minutes into the morning sat under everything else
+  // starting up - agents, mail, a VM - until the machine went down (measured
+  // from the log of the last power-off: loaded at 09:32, dead at 09:34).
+  if (os.uptime() < SETTLE_AFTER_BOOT_S) {
+    flog('local-llm', `warm-up skipped — the machine booted ${Math.round(os.uptime() / 60)} minutes ago`)
+    return
+  }
+  const plan = planFor(spec.approxGB * 1e9)
   // A CPU-side load pins nothing - its pages stay evictable - so warming it
-  // costs the machine nothing it cannot take back. Only a machine with no
-  // room at all is left alone.
-  if (plan.mode === 'none') {
+  // costs the machine nothing it cannot take back. A partial offload pins
+  // half a model to sit idle at the edge of the room, which is the shape of
+  // every freeze so far; only a full offload has the headroom to idle in.
+  if (plan.mode === 'none' || plan.mode === 'lean') {
     flog('local-llm', `warm-up skipped — ${plan.reason}`)
     return
   }
@@ -435,6 +485,7 @@ export async function warmLocalModel(): Promise<void> {
   if (warmState === 'cold') setWarmState('loading')
   loadedModelId = spec.id
   loadedMode = plan.mode
+  loadedLock = plan.lock
   proc.send({
     type: 'load',
     modelPath: join(modelsDir(), spec.file),
@@ -445,9 +496,11 @@ export async function warmLocalModel(): Promise<void> {
 
 let inFlight: Promise<string> | null = null
 
-// Which side the resident weights live on, so the pressure watch can tell
-// evictable pages from pinned ones.
+// Which side the resident weights live on, and whether they are the process's
+// own memory, so the pressure watch can tell evictable pages from ones only
+// the pagefile could take.
 let loadedMode: string | null = null
+let loadedLock = false
 
 // A tool loop is one job with pauses in it - a page loads, a search runs -
 // and the pressure watch reads every pause as idle time. Unloading there made
@@ -467,7 +520,7 @@ export function holdLocalModel(): () => void {
 }
 
 function heldEvictable(): boolean {
-  return holders > 0 && loadedMode === 'cpu'
+  return holders > 0 && loadedMode === 'cpu' && !loadedLock
 }
 
 // The active model is the QUALITY choice; a 'fast' call (errand slot-filling)
@@ -477,19 +530,19 @@ function heldEvictable(): boolean {
 async function chooseSpec(hint?: 'fast'): Promise<{ spec: ModelSpec; plan: ReturnType<typeof planModelLoad> } | null> {
   const active = await adoptDownloadedModel()
   if (!active) return null
-  if (hint !== 'fast') return { spec: active, plan: planModelLoad(active.approxGB * 1e9) }
+  if (hint !== 'fast') return { spec: active, plan: planFor(active.approxGB * 1e9) }
   const downloaded: ModelSpec[] = []
   for (const spec of MODELS) if (await modelPresent(spec)) downloaded.push(spec)
   const candidates = downloaded.sort((x, y) => y.approxGB - x.approxGB)
   let fallback: { spec: ModelSpec; plan: ReturnType<typeof planModelLoad> } | null = null
   for (const spec of candidates) {
-    const plan = planModelLoad(spec.approxGB * 1e9)
+    const plan = planFor(spec.approxGB * 1e9)
     if (plan.mode === 'gpu' || plan.mode === 'lean') return { spec, plan }
     if (plan.mode === 'cpu' && !fallback) fallback = { spec, plan }
   }
   if (fallback) return fallback
   const last = candidates.at(-1)
-  return last ? { spec: last, plan: planModelLoad(last.approxGB * 1e9) } : null
+  return last ? { spec: last, plan: planFor(last.approxGB * 1e9) } : null
 }
 
 export async function localComplete(
@@ -508,7 +561,9 @@ export async function localComplete(
   const work = (async () => {
     const chosen = await chooseSpec(opts.modelHint)
     if (!chosen) throw new Error('no local model is active')
-    const { spec, plan } = chosen
+    const { spec } = chosen
+    const residentNow = child !== null && loadedModelId === spec.id && warmState === 'ready'
+    const plan = residentNow ? chosen.plan : await withRoomMade(spec.approxGB * 1e9, chosen.plan)
     // The gate is about LOADING, not about answering. A model already resident
     // needs no new room, and asking for room to load it again refused every
     // question on a machine that had just answered one - which is the whole of
@@ -525,6 +580,7 @@ export async function localComplete(
       if (warmState === 'cold') setWarmState('loading')
       loadedModelId = spec.id
       loadedMode = plan.mode
+      loadedLock = plan.lock
       proc.send({
         type: 'load',
         modelPath: join(modelsDir(), spec.file),
@@ -600,6 +656,8 @@ export async function localComplete(
 // The model rests after a long quiet spell. Longer than the old ten minutes:
 // every unload buys back RAM at the price of the next question paying the
 // reload, and the reload is the expensive thing.
+const IDLE_PINNED_MARGIN = 2e9
+
 function armMemoryWatch(): void {
   // Two seconds, not eight: a load commits its gigabytes in one breath, and a
   // watch that looks away for eight of them is watching the wrong machine.
@@ -619,7 +677,11 @@ function armMemoryWatch(): void {
     // memory sinks to where the resident model is what would tip the system
     // into thrash, it leaves NOW — the next question pays a reload, which is
     // minutes cheaper than a frozen machine.
-    if (free < PRESSURE_FLOOR) {
+    // An idle model that is pinned leaves earlier than one that is not: the
+    // pinned pages are the ones the system cannot take back on its own, and
+    // idle is when nobody would miss them.
+    const floor = loadedMode === 'gpu' || loadedMode === 'lean' ? PRESSURE_FLOOR + IDLE_PINNED_MARGIN : PRESSURE_FLOOR
+    if (free < floor) {
       if (heldEvictable()) return
       flog('local-llm', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — unloading the model`)
       child.send({ type: 'unload' })

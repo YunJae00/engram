@@ -28,10 +28,35 @@ export interface LoadPlan {
 }
 
 const GB = 1e9
+
+// Room somebody else has spoken for. A browser is admitted against the
+// memory it is about to spend, not the memory it has spent: the model left to
+// make room for it and was back before the first page had loaded, and the two
+// then sat side by side (measured). Spoken-for room is planned around until
+// it is handed back.
+let spokenFor = 0
+export function reserveRoom(bytes: number): () => void {
+  spokenFor += bytes
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    spokenFor -= bytes
+  }
+}
+export function roomNow(): number {
+  return Math.max(0, os.freemem() - spokenFor)
+}
 // Full offload only when the machine stays comfortable afterwards.
 const FULL_HEADROOM = 7 * GB
 // Partial offload: the model fits, the rest of the day does not — a larger
 // reserved padding makes llama.cpp keep more weights on the evictable side.
+// Sized for the offload's own growth, not for a browser beside it: admitted
+// at 9.6GB free next to an open browser, one heavy page took the machine to
+// the critical floor in eight seconds (measured). So the two take turns
+// instead - the model leaves before a browser launches, and an idle browser
+// closes before any load that is not a full offload - and this headroom only
+// has to cover the pressure floor under the model itself.
 const LEAN_HEADROOM = 4.5 * GB
 // An offloaded load costs more than the file: KV cache, compute buffers and
 // the driver's working set ride along, all pinned right beside the weights —
@@ -41,17 +66,24 @@ const OFFLOAD_OVERHEAD = 2 * GB
 // Even an mmap'd model needs real RAM for KV cache, compute buffers and page
 // cache to be usable at all.
 const CPU_FLOOR = 3 * GB
-// Room the machine keeps for itself once the weights are pinned in RAM.
-const LOCK_MARGIN = 4 * GB
+// Held weights are the process's own memory, and none of it can be dropped,
+// only paged: measured 4.4GB private for a 3.1GB file once the context had
+// arrived, and a machine that admitted it at 9.4GB free was at the critical
+// floor minutes later with the browser and the embedder beside it. So holding
+// is planned from the full cost, plus the companions that work next to the
+// model, plus the pressure floor under all of it - and only where no GPU
+// offers the lighter, faster path.
+const HELD_OVERHEAD = 1.5 * GB
+const COMPANIONS = 3 * GB
 
-export function planModelLoad(modelBytes: number, freeBytes = os.freemem()): LoadPlan {
+export function planModelLoad(modelBytes: number, freeBytes = roomNow(), gpu = true): LoadPlan {
   const freeGB = (freeBytes / GB).toFixed(1)
   const offloadBytes = modelBytes + OFFLOAD_OVERHEAD
-  if (freeBytes >= offloadBytes + FULL_HEADROOM)
+  if (gpu && freeBytes >= offloadBytes + FULL_HEADROOM)
     return { mode: 'gpu', gpuLayers: 'auto', vramPadding: 2.5 * GB, lock: false, reason: `${freeGB}GB free — full offload` }
-  if (freeBytes >= offloadBytes + LEAN_HEADROOM)
+  if (gpu && freeBytes >= offloadBytes + LEAN_HEADROOM)
     return { mode: 'lean', gpuLayers: 'auto', vramPadding: 5 * GB, lock: false, reason: `${freeGB}GB free — partial offload` }
-  if (freeBytes >= modelBytes + LOCK_MARGIN)
+  if (!gpu && freeBytes >= modelBytes + HELD_OVERHEAD + PRESSURE_FLOOR + COMPANIONS)
     return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, lock: true, reason: `${freeGB}GB free — CPU only, weights held in memory` }
   if (freeBytes >= modelBytes * 0.6 + CPU_FLOOR)
     return { mode: 'cpu', gpuLayers: 0, vramPadding: 0, lock: false, reason: `${freeGB}GB free — CPU only, weights stay evictable` }

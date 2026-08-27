@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR, ROOM_FOR_BROWSER } from '../src/main/memory-plan.js'
+import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR, reserveRoom, ROOM_FOR_BROWSER, roomNow } from '../src/main/memory-plan.js'
+
+// A browser is admitted against the memory it is about to spend; until it is
+// handed back, that room is not there for a model to be planned into.
+describe('reserveRoom', () => {
+  it('takes spoken-for room out of the plan until it is released', () => {
+    const release = reserveRoom(1e15)
+    expect(roomNow()).toBe(0)
+    expect(planModelLoad(3e9).mode).toBe('none')
+    release()
+    release()
+    expect(roomNow()).toBeGreaterThan(0)
+  })
+})
 
 const GB = 1e9
 const MODEL = 5 * GB
@@ -14,7 +27,7 @@ describe('planModelLoad', () => {
   })
 
   it('a busy machine offloads partially, behind a larger reserve', () => {
-    const plan = planModelLoad(MODEL, 12 * GB)
+    const plan = planModelLoad(MODEL, 13 * GB)
     expect(plan.mode).toBe('lean')
     expect(plan.gpuLayers).toBe('auto')
     expect(plan.vramPadding).toBeGreaterThan(planModelLoad(MODEL, 20 * GB).vramPadding)
@@ -78,11 +91,23 @@ describe('the floors', () => {
 })
 
 // Evictable weights are safe and, on a machine whose standby cache is full,
-// seven seconds a token. With real room they are pinned; without it, not.
-describe('pinning on the CPU side', () => {
-  it('pins only with the model plus a margin free, and never on an offload', () => {
-    expect(planModelLoad(MODEL, 10 * GB)).toMatchObject({ mode: 'cpu', lock: true })
-    expect(planModelLoad(MODEL, 7 * GB)).toMatchObject({ mode: 'cpu', lock: false })
-    expect(planModelLoad(MODEL, 20 * GB).lock).toBe(false)
+// seven seconds a token. Held ones cost the file plus a measured overhead and
+// cannot be dropped, so they are planned from that full cost with the
+// companions and the floor on top - and only where no GPU offers the lighter
+// path.
+describe('holding weights on the CPU side', () => {
+  it('holds only without a GPU, and only with the full cost plus companions free', () => {
+    expect(planModelLoad(MODEL, 14 * GB, false)).toMatchObject({ mode: 'cpu', lock: true })
+    expect(planModelLoad(MODEL, 12 * GB, false)).toMatchObject({ mode: 'cpu', lock: false })
+  })
+  it('never holds where a GPU is there to offload to', () => {
+    expect(planModelLoad(MODEL, 14 * GB).lock).toBe(false)
+    expect(planModelLoad(MODEL, 10 * GB)).toMatchObject({ mode: 'cpu', lock: false })
+  })
+  it('a held load leaves the floor and the companions untouched', () => {
+    for (let free = 5 * GB; free <= 24 * GB; free += 0.5 * GB) {
+      const plan = planModelLoad(MODEL, free, false)
+      if (plan.lock) expect(free - (MODEL + 1.5 * GB)).toBeGreaterThanOrEqual(PRESSURE_FLOOR + 3 * GB)
+    }
   })
 })

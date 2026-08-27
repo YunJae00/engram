@@ -429,8 +429,11 @@ interface Running {
   trace: string[]
 }
 
-async function openApp(): Promise<Running> {
+async function openAppOnce(): Promise<Running> {
   const app = await launchApp({
+    // The compositor here cannot draw the app's own title bar and hangs the
+    // window constructor; the set is about the comet, not the frame.
+    ENGRAM_SYSTEM_FRAME: '1',
     ENGRAM_VAULT: VAULT,
     ENGRAM_USERDATA: USERDATA,
     ENGRAM_NO_GIT: '1',
@@ -490,6 +493,18 @@ async function openApp(): Promise<Running> {
     window.engram.botCreate({ name: '업무 도우미', purpose: '이 사람의 일을 대신 해낸다.' }),
   )) as { id: string }
   return { page, botId: bot.id, close: app.close, trace }
+}
+
+// A window that closes under the first probe is a launch that lost a race,
+// not a scenario result: one fresh start before giving up.
+async function openApp(): Promise<Running> {
+  try {
+    return await openAppOnce()
+  } catch (err) {
+    console.log(`golden: the app closed while starting (${(err as Error).message.split('\n')[0]}) — starting it once more`)
+    if (process.platform === 'win32') spawnSync('taskkill', ['/F', '/IM', 'electron.exe', '/T'], { stdio: 'ignore' })
+    return await openAppOnce()
+  }
 }
 
 const history: { role: 'user' | 'assistant'; text: string }[] = []

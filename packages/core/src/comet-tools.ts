@@ -10,6 +10,21 @@ import { carriesSecret } from './secrets.js'
 
 // A note keeps its title as a heading at the top of its body. Shown beside the
 // title it is noise, and worse than noise where something is being copied out.
+// The body of the note whose title the model wrote, out of the notes the loop
+// has printed so far - "[title] (id: ...) body" - or null when the words are
+// not a title.
+export function noteBodyIn(read: string, label: string): string | null {
+  const want = label.trim().toLowerCase()
+  if (!want) return null
+  for (const match of read.matchAll(/\[([^\]]+)\] \(id: [^)]+\) ([^[]+)/g)) {
+    const title = match[1]!.trim().toLowerCase()
+    if (title !== want && !title.includes(want) && !want.includes(title)) continue
+    const body = match[2]!.replace(/(More than one of these|These are the nearest|These may not say it)[\s\S]*$/, '').trim()
+    if (body) return body
+  }
+  return null
+}
+
 function withoutHeading(body: string): string {
   const lines = body.split('\n')
   return (/^#{1,6} /.test(lines[0] ?? '') ? lines.slice(1) : lines).join('\n').trim()
@@ -493,6 +508,15 @@ ${note.body.slice(0, 2_000)}`
         // Titles and ids are labels the loop printed, not what a note says. Left
         // in, "오늘 한 일" - the name of the note - counted as something read and
         // went up on the website in place of the day it named.
+        // A note's title in the blank is a pointer to its contents, not the
+        // contents: "오늘 한 일" typed into the work log is the model saying
+        // "what that note says" - and then looking the note up again, three
+        // times running (measured). What a person would do is put the note's
+        // words there, so that is done here, from what was already read.
+        for (const [slot, value] of Object.entries(filled)) {
+          const body = typeof value === 'string' ? noteBodyIn(context.read ?? '', value) : null
+          if (body) filled[slot] = body
+        }
         const read = (context.read ?? '').replace(/\[[^\]]*\]/g, ' ').replace(/\(id: [^)]*\)/g, ' ')
         const invented = Object.entries(filled).find(
           ([, value]) => typeof value === 'string' && value.length > 0 && !answersTheQuestion(read, value),

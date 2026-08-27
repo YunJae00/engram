@@ -112,6 +112,44 @@ export function contentWords(text: string): string[] {
     .filter((word) => word.length > 1)
 }
 
+// Does the request name anything to work on? "Handle that" names nothing:
+// every word in it points or asks, and a lookup for it lands on whatever is
+// nearest. Pointers, the bare verbs of asking and the adverbs of urgency are
+// listed; anything left is a subject.
+const POINTERS = new Set([
+  '그거', '그것', '저거', '저것', '이거', '이것', '이걸', '그걸', '저걸', '그건', '이건', '저건',
+  'that', 'this', 'those', 'these', 'them', 'one', 'thing', 'stuff', 'same',
+])
+const ASKING = new Set([
+  '처리', '해결', '정리', '확인', '진행', '부탁', '해줘', '해주세요', '해봐', '해줄래', '하기', '하자', '해요', '해라', '해',
+  '다시', '빨리', '지금', '얼른', '한번', '제발', '그냥', '바로', '먼저', '아까', '방금',
+  'please', 'handle', 'do', 'deal', 'fix', 'check', 'take', 'care', 'of', 'go', 'ahead', 'run', 'make', 'get', 'sort',
+  'out', 'with', 'just', 'now', 'again', 'it', 'the', 'a', 'an', 'on', 'for', 'to', 'can', 'you', 'and', 'then',
+])
+export function namesSubject(text: string): boolean {
+  return contentWords(text).some((word) => {
+    if (POINTERS.has(word) || ASKING.has(word)) return false
+    const stem = word.replace(/(해주세요|해줄래|해줘|해봐|해라|하자|해요|해|좀|요)$/u, '')
+    return stem.length > 1 && !POINTERS.has(stem) && !ASKING.has(stem)
+  })
+}
+
+// Did the person ask for something written down? A request that says so and
+// ends in prose is unfinished, however good the prose - measured: two notes
+// merged beautifully into an answer, and no note.
+const WRITE_WORDS = /노트로|노트에|메모로|메모해|적어|저장해|기록해|남겨|write (it |this |that )?down|save (it|this|that)|jot|make a note|as a note/i
+export function asksForNote(text: string): boolean {
+  return WRITE_WORDS.test(text)
+}
+
+// The title such a note gets when the loop writes it down itself: the request
+// with the asking taken off - "make a note of X" becomes "X".
+const ASK_TAIL = /s*(노트로|노트에|메모로|메모해|적어|저장해|기록해|남겨)[^s]*s*(만들어s*줘|만들어s*주세요|줘|주세요|둬|두세요)?s*[.!]*$|^s*(pleases+)?(write (it |this |that )?down|make a note of|save|jot down)s*|s*(as a note|,? ?please)s*[.!]*$/giu
+export function noteTitleFor(task: string): string {
+  const title = task.replace(ASK_TAIL, ' ').replace(/\s+/g, ' ').trim().replace(/[을를]$/u, '')
+  return (title || task).slice(0, 60)
+}
+
 // Did what came back have anything to do with what was asked? A question that
 // names nothing — "handle that" with no "that" in sight — searches perfectly
 // well and lands on a page about something else entirely, and the only honest
