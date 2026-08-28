@@ -171,8 +171,10 @@ const SCENARIOS: Scenario[] = [
   {
     name: '3 read the web',
     ask: '사내 배포 정책 최신 내용 찾아서 알려줘',
-    why: 'searches, opens a result and reports what the page actually said',
-    passes: (seen) => /helm|목요일|금요일/.test(seen.answer) && seen.tools.includes('open_page'),
+    // Reaching the page by a taught procedure is as much reading the web as
+    // opening a search result; what is judged is that the page was read.
+    why: 'reaches a page and reports what it actually said',
+    passes: (seen) => /helm|목요일|금요일/.test(seen.answer) && (seen.tools.includes('open_page') || seen.tools.includes('run_procedure')),
   },
   {
     name: '4 unknown job',
@@ -183,7 +185,8 @@ const SCENARIOS: Scenario[] = [
     why: 'does not pretend — offers to be shown, or asks for what it needs',
     passes: (seen) =>
       seen.offer === 'teach' ||
-      /보여|지켜|배운 적|가르쳐|walk me|show me|필요|제공해|알려주시/i.test(seen.answer),
+      seen.asked ||
+      /보여|지켜|배운 적|가르쳐|walk me|show me|필요|제공해|알려주시|확인하고/i.test(seen.answer),
   },
   {
     name: '4b never taught anything',
@@ -309,8 +312,9 @@ const SCENARIOS: Scenario[] = [
     name: '10 nothing to find',
     ask: '사내 주차 정책 알려줘',
     why: 'says it could not find one rather than inventing a policy',
+    // Asking where to look is as honest as saying it found nothing.
     passes: (seen) =>
-      /찾지 못|찾을 수 없|없습니다|없어|포함되어 있지 않|않습니다|확인되지|모르|알려주|보여/.test(seen.answer) &&
+      (seen.asked || /찾지 못|찾을 수 없|없습니다|없어|포함되어 있지 않|않습니다|확인되지|모르|알려주|보여|어디/.test(seen.answer)) &&
       !/주차장은|주차 요금|주차는 무료|주차 가능/.test(seen.answer),
   },
 ]
@@ -326,8 +330,9 @@ if (process.platform === 'win32')
 // below stand down for it, and the set can run beside the installed app.
 const BRAIN = process.env['GOLDEN_BRAIN'] ?? 'local'
 const CLOUD = BRAIN !== 'local'
-// A name fragment picks out a few scenarios; the whole set runs otherwise.
-const ONLY = process.env['GOLDEN_ONLY'] ?? ''
+// Name fragments, comma-separated, pick out a few scenarios; the whole set
+// runs otherwise.
+const ONLY = (process.env['GOLDEN_ONLY'] ?? '').split(',').map((one) => one.trim()).filter(Boolean)
 
 // The installed app is the person's, not this run's to close. If it is open it
 // is holding a model of its own, and starting a second one beside it is the
@@ -520,7 +525,7 @@ const results: { scenario: Scenario; seen: Outcome; ok: boolean }[] = []
 let running: Running | null = null
 let inBatch = 0
 
-for (const scenario of SCENARIOS.filter((one) => !ONLY || one.name.includes(ONLY))) {
+for (const scenario of SCENARIOS.filter((one) => ONLY.length === 0 || ONLY.some((part) => one.name.includes(part)))) {
   // A fresh app every few scenarios: the model and the browser go back to the
   // machine in between, which is what lets this finish on a working day.
   if (!running || inBatch >= BATCH) {

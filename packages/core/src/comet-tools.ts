@@ -301,7 +301,7 @@ ${note.body.slice(0, 2_000)}`
           return [
             `NOTHING-TAUGHT: no saved procedure matches "${task.slice(0, 60)}". Say you have not been shown this one and offer to watch them do it once. Saved procedures, in case one of them IS the job:`,
             ...routines.slice(0, RESULTS_CAP).map((r) => `- "${r.name}" — ${callFor(r)}`),
-            'If one of these is the job, make that call. If the person asked you to write, summarise or keep something rather than to work a website, this is not the tool — use propose_note. Otherwise say you have not been shown this one.',
+            'Make that call only when a saved name IS this very job. A neighbouring one — another report, another site, another form — is not it, and running it would do the wrong chore: say you have not been shown this one and offer to watch. If the person asked you to write, summarise or keep something rather than to work a website, this is not the tool — use propose_note.',
           ].join('\n')
         const steps = best.r.steps.map((s, i) => `${i + 1}. ${routineStepLabel(s)}`).join('; ')
         return `found "${best.r.name}" (id: ${best.r.id}): ${steps}. ${callFor(best.r)}`
@@ -442,7 +442,7 @@ ${note.body.slice(0, 2_000)}`
         // Searching, with the person's own search page. Nothing here knows
         // which one that is; if they have not said yet, the comet asks.
         name: 'search_web',
-        description: 'search the web for something — args: {"query": "..."}',
+        description: 'search the way the person searches — their own search page, the company intranet included when that is where they search — args: {"query": "..."}',
         argsSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
         async run(args, context) {
           const query = str(args, 'query')

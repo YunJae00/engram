@@ -96,7 +96,10 @@ export class ClaudeEngine implements CloudEngine {
           persistSession: false,
           settingSources: [],
           ...(job.jsonSchema ? { outputFormat: { type: 'json_schema', schema: job.jsonSchema } } : {}),
-          ...(job.modelHint === 'fast' ? { model: 'haiku' } : {}),
+          // A chore is a few small decisions in a row; the mid-size model makes
+          // each one in seconds where the largest takes a minute, and the
+          // person's own default is theirs to keep for their own sessions.
+          model: job.modelHint === 'fast' ? 'haiku' : 'sonnet',
         },
       })
       for await (const message of stream) {
