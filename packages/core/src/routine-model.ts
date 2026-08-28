@@ -49,6 +49,9 @@ export interface RoutineDriver {
   click(target: RoutineTarget, signal?: AbortSignal): Promise<RoutineStepResult>
   type(target: RoutineTarget, text: string, signal?: AbortSignal): Promise<RoutineStepResult>
   read(signal?: AbortSignal): Promise<RoutineReading & { wall?: 'login' | 'captcha' }>
+  // The address the driver is on right now, when it can say. What an
+  // approval is remembered against.
+  location?(): string | null
 }
 
 export interface RoutineRunOptions {
@@ -65,7 +68,14 @@ export interface RoutineRunOptions {
   // what was typed into the page and says whether it may go. Anything but
   // 'approve' stops the run with nothing submitted. No handler means no
   // approval was possible, so the run stops rather than posting unasked.
-  onSubmit?(preview: { routine: string; filled: { label: string; text: string }[] }): Promise<'approve' | 'cancel'>
+  // 'always' is an approval the person asked the host to remember for this
+  // procedure on this site; to the run it is an approve.
+  onSubmit?(preview: {
+    routine: string
+    routineId: string
+    url: string | null
+    filled: { label: string; text: string }[]
+  }): Promise<'approve' | 'always' | 'cancel'>
 }
 
 // Why a rerun was refused. Not an error: the answer may well be "run it

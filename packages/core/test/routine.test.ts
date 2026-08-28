@@ -440,7 +440,7 @@ describe('the submit gate', () => {
     })
     expect(result.ok).toBe(true)
     expect(seen).toEqual([
-      { routine: 'Daily log', filled: [{ label: 'Entry', text: 'shipped the replayer' }] },
+      expect.objectContaining({ routine: 'Daily log', url: null, filled: [{ label: 'Entry', text: 'shipped the replayer' }] }),
     ])
     expect(driver.calls).toContain('click Submit')
   })

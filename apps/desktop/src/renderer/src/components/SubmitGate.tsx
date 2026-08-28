@@ -23,6 +23,11 @@ export function SubmitGate() {
         <button className="secondary" data-testid="routine-submit-cancel" onClick={() => answerRoutineSubmit('cancel')}>
           {t('routines.submitCancel')}
         </button>
+        {routineSubmit.canRemember && routineSubmit.host && (
+          <button className="secondary" data-testid="routine-submit-always" onClick={() => answerRoutineSubmit('always')}>
+            {t('routines.submitAlways', { host: routineSubmit.host })}
+          </button>
+        )}
         <button className="primary" data-testid="routine-submit-approve" onClick={() => answerRoutineSubmit('approve')}>
           {t('routines.submitApprove')}
         </button>

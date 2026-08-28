@@ -101,8 +101,8 @@ interface AppState {
   answerRoutineWall(verdict: 'resolved' | 'skip'): void
   // What a procedure is about to post, waiting for a yes. Nothing is
   // submitted while this stands.
-  routineSubmit: { name: string; filled: { label: string; text: string }[] } | null
-  answerRoutineSubmit(verdict: 'approve' | 'cancel'): void
+  routineSubmit: { name: string; filled: { label: string; text: string }[]; host: string | null; canRemember: boolean } | null
+  answerRoutineSubmit(verdict: 'approve' | 'always' | 'cancel'): void
   // Resolves with the refusal so a caller can ask the rerun question itself.
   startRoutine(
     id: string,
@@ -413,7 +413,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // A routine replay narrating its steps. The logged event ends the run
       // and speaks once — with a door to review when a reading landed.
       if (event.type === 'routine:wall') setRoutineWall({ wall: event.wall })
-      if (event.type === 'routine:submit') setRoutineSubmit({ name: event.name, filled: event.filled })
+      if (event.type === 'routine:submit')
+        setRoutineSubmit({ name: event.name, filled: event.filled, host: event.host, canRemember: event.canRemember })
+      if (event.type === 'routine:passed')
+        setRoutine((prev) =>
+          prev.running
+            ? { ...prev, steps: [...prev.steps, { label: latest.current.t('routines.passedAuto', { host: event.host }), at: Date.now() }] }
+            : prev,
+        )
       if (event.type === 'routine:step') {
         setRoutineWall(null)
         setRoutine((prev) => {
@@ -494,7 +501,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void api.routineWallDone(verdict).catch(() => undefined)
   }, [])
 
-  const answerRoutineSubmit = useCallback((verdict: 'approve' | 'cancel') => {
+  const answerRoutineSubmit = useCallback((verdict: 'approve' | 'always' | 'cancel') => {
     setRoutineSubmit(null)
     void api.routineSubmitDone(verdict).catch(() => undefined)
   }, [])

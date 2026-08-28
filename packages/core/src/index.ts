@@ -73,6 +73,7 @@ export { buildRoutineFromTeach, type TeachEvent } from './teach.js'
 export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
 export { choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
+export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
 export {
   factScore,
   forgetBotMemory,

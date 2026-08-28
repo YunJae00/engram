@@ -149,6 +149,14 @@ export interface BotSuggestionDto {
   reason: string
 }
 
+// A standing approval: this routine may post to this site without asking.
+export interface ApprovalRuleDto {
+  fingerprint: string
+  routineId: string
+  host: string
+  createdAt: string
+}
+
 // One line a comet remembers about the person.
 export interface BotFactDto {
   id: string
@@ -394,7 +402,18 @@ export type EngramEvent =
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
   // A procedure is about to post something. The run waits until
   // routineSubmitDone answers with the person's verdict.
-  | { type: 'routine:submit'; routineId: string; name: string; filled: { label: string; text: string }[] }
+  | {
+      type: 'routine:submit'
+      routineId: string
+      name: string
+      filled: { label: string; text: string }[]
+      // The site being posted to, and whether an approval could be
+      // remembered for it (it cannot without a known site).
+      host: string | null
+      canRemember: boolean
+    }
+  // A post went through under an approval the person gave for good.
+  | { type: 'routine:passed'; routineId: string; host: string }
   // The floating bubble asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
   | { type: 'brain:setup' }
@@ -529,7 +548,9 @@ export interface EngramApi {
   routineWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   // The person's answer to "may this be posted?" — nothing is submitted
   // until this says approve.
-  routineSubmitDone(verdict: 'approve' | 'cancel'): Promise<void>
+  routineSubmitDone(verdict: 'approve' | 'always' | 'cancel'): Promise<void>
+  approvalsList(): Promise<ApprovalRuleDto[]>
+  approvalForget(fingerprint: string): Promise<void>
   // Teach mode: open the agent Chrome and record the person's moves, then hand
   // them back as steps to name and save. teachStart resolves once the window
   // is up (or refused); teachStop returns the recorded steps.

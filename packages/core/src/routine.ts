@@ -131,10 +131,10 @@ export async function runRoutine(
           .filter((one): one is Extract<RoutineStep, { kind: 'type' }> => one.kind === 'type')
           .map((one) => ({ label: one.target.text ?? 'field', text: one.text }))
         const verdict = options.onSubmit
-          ? await options.onSubmit({ routine: routine.name, filled })
+          ? await options.onSubmit({ routine: routine.name, routineId: routine.id, url: driver.location?.() ?? null, filled })
           : 'cancel'
         checkAbort(options.signal)
-        if (verdict !== 'approve') {
+        if (verdict !== 'approve' && verdict !== 'always') {
           // Nothing was posted and we know it: clear the doubt marker so the
           // next run is not warned about a submit that never happened.
           await clearRoutinePendingWrite(paths, routine.id)

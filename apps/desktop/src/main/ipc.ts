@@ -59,6 +59,9 @@ import {
   runErrand,
   addRoutine,
   buildRoutineFromTeach,
+  hostOf,
+  ruleCovers,
+  ruleFor,
   listRoutines,
   loadBotMemory,
   renderMemory,
@@ -79,6 +82,7 @@ import {
   writeContextPack,
   writeNote,
   type Engine,
+  type GatedAction,
   type EngineEvent,
   type JobFailure,
   type Note,
@@ -94,6 +98,7 @@ import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
+import { approvalsStore } from './approvals.js'
 import { agentBrowserAvailable, agentCourier, browserChoicePending, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { consentedFolders } from './content-capture.js'
@@ -101,7 +106,7 @@ import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { open, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
@@ -598,7 +603,7 @@ let routineAbort: AbortController | null = null
 let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 // Set while a replay waits for permission to post; answered by
 // routines:submitDone, and by an abort with 'cancel' so it cannot wedge.
-let routineSubmitWaiter: ((verdict: 'approve' | 'cancel') => void) | null = null
+let routineSubmitWaiter: ((verdict: 'approve' | 'always' | 'cancel') => void) | null = null
 // Teach mode shares the agent browser, so it excludes routine runs and errands.
 let teachingSession = false
 
@@ -1099,9 +1104,14 @@ export function registerIpc(ctx: VaultContext): void {
   const ROUTINE_MIN_FREE = 4e9
   type RoutineRunReply = { ok: boolean; error?: string; blocked?: RoutineBlock }
 
+  const approvals = approvalsStore(app.getPath('userData'))
   ipcMain.handle('routines:list', () => listRoutines(paths))
   ipcMain.handle('routines:add', (_e, input: { name: string; steps: RoutineStep[] }) => addRoutine(paths, input))
-  ipcMain.handle('routines:remove', (_e, id: string) => removeRoutine(paths, id))
+  // A rule is about one procedure; the procedure going takes it along.
+  ipcMain.handle('routines:remove', async (_e, id: string) => {
+    await removeRoutine(paths, id)
+    await approvals.retire(id)
+  })
 
   // Starting a replay, guarded once for every caller: the Run button, which
   // wants the answer immediately, and the comet's hands, which wait for the
@@ -1165,17 +1175,36 @@ export function registerIpc(ctx: VaultContext): void {
           }
           broadcast({ type: 'routine:wall', routineId: routine.id, wall: wall.wall })
         }),
-      // Nothing is posted until the person has read what would be posted.
-      onSubmit: (preview) =>
-        new Promise((resolve) => {
+      // Nothing is posted until the person has read what would be posted -
+      // or has already said, for this procedure on this site, that it may go.
+      onSubmit: async (preview) => {
+        const host = hostOf(preview.url)
+        const action: GatedAction | null = host
+          ? { routineId: preview.routineId, kind: 'submit', host, fieldLabels: preview.filled.map((f) => f.label) }
+          : null
+        if (action && ruleCovers(await approvals.list(), action)) {
+          flog('routine', `posting under a standing approval on ${host}`)
+          broadcast({ type: 'routine:passed', routineId: routine.id, host: host! })
+          return 'approve'
+        }
+        return new Promise((resolve) => {
           const keepOpen = holdAgentBrowser()
           routineSubmitWaiter = (verdict) => {
             routineSubmitWaiter = null
             keepOpen()
+            if (verdict === 'always' && action) void approvals.add(ruleFor(action))
             resolve(verdict)
           }
-          broadcast({ type: 'routine:submit', routineId: routine.id, name: preview.routine, filled: preview.filled })
-        }),
+          broadcast({
+            type: 'routine:submit',
+            routineId: routine.id,
+            name: preview.routine,
+            filled: preview.filled,
+            host,
+            canRemember: action !== null,
+          })
+        })
+      },
     })
       .catch((err) => {
         flog('routine', err)
@@ -1257,9 +1286,11 @@ export function registerIpc(ctx: VaultContext): void {
     routineAbort?.abort()
   })
 
-  ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'cancel') => {
-    routineSubmitWaiter?.(verdict === 'approve' ? 'approve' : 'cancel')
+  ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
+    routineSubmitWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
   })
+  ipcMain.handle('approvals:list', () => approvals.list())
+  ipcMain.handle('approvals:forget', (_e, fingerprint: string) => approvals.forget(fingerprint))
 
   ipcMain.handle('routines:wallDone', (_e, verdict: 'resolved' | 'skip') => {
     routineWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')

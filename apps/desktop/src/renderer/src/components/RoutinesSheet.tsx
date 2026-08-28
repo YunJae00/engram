@@ -1,6 +1,7 @@
 import { AlertTriangle, Eye, Play, Plus, Repeat, Square, Wand2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { RoutineBlockDto, RoutineDto, RoutineStepDto } from '../../../shared/types.js'
+import type { ApprovalRuleDto, RoutineBlockDto, RoutineDto, RoutineStepDto } from '../../../shared/types.js'
+import { ApprovalChips } from './ApprovalChips.js'
 import { stepLine } from '../lib/routineSteps.js'
 import { SubmitGate } from './SubmitGate.js'
 import { api } from '../api.js'
@@ -59,7 +60,11 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
 
   useEscape(onClose, true)
 
-  const reload = () => void api.routinesList().then(setRoutines).catch(() => {})
+  const [rules, setRules] = useState<ApprovalRuleDto[]>([])
+  const reload = () => {
+    void api.routinesList().then(setRoutines).catch(() => {})
+    void api.approvalsList().then(setRules).catch(() => {})
+  }
 
   // Opened by "show me how": begin watching immediately, so the person is
   // in the browser doing the job rather than hunting for the button.
@@ -285,6 +290,10 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
                       </span>
                     )}
                   </span>
+                  <ApprovalChips
+                    rules={rules.filter((rule) => rule.routineId === r.id)}
+                    onForget={(fingerprint) => void api.approvalForget(fingerprint).then(reload)}
+                  />
                 </span>
                 <button
                   className="secondary routine-run"
