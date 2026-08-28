@@ -54,14 +54,13 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
   }).toPass({ timeout: 30_000 })
 
   await page.getByTestId('bots-new').click()
-  await page.getByTestId('bots-name').fill('Deploy keeper')
-  await page.getByTestId('bots-purpose').fill('Answers questions about how we deploy.')
-  await page.getByTestId('bots-create-submit').click()
 
   const composer = page.locator('.bots-write textarea')
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
   await composer.press('Enter')
+  // A comet made with one press takes its name from its first words.
+  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?', { timeout: 60_000 })
 
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
   // Wait for the END of the canned answer, not its start — only then has the
@@ -81,17 +80,14 @@ test('the conversation survives leaving and re-entering the tab', async () => {
 
 test('the selected comet is remembered across tabs', async () => {
   await page.getByTestId('bots-new').click()
-  await page.getByTestId('bots-name').fill('Second keeper')
-  await page.getByTestId('bots-purpose').fill('Answers about the second thing.')
-  await page.getByTestId('bots-create-submit').click()
-  await expect(page.locator('.bots-row.active')).toContainText('Second keeper')
+  await expect(page.locator('.bots-row.active')).toContainText('New comet')
   // Pick the comet that is NOT first in the rail, then leave and come back.
-  await page.locator('.bots-row', { hasText: 'Deploy keeper' }).click()
-  await expect(page.locator('.bots-row.active')).toContainText('Deploy keeper')
+  await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
+  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
   await page.getByTestId('activity-brain').click()
   await expect(page.getByTestId('bots-view')).toHaveCount(0)
   await page.getByTestId('activity-bots').click()
-  await expect(page.locator('.bots-row.active')).toContainText('Deploy keeper')
+  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
     'Record this if you want it kept',
   )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots } from '../src/bots.js'
+import { appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
@@ -12,9 +12,17 @@ describe('bots — named colleagues with charters and their own conversations', 
     expect(await loadBots(paths)).toEqual([])
   })
 
-  it('a bot without a purpose is refused — the charter IS the bot', async () => {
+  it('a bot needs a name and nothing more; its first words can name it later', async () => {
     const paths = await initVault(await tmpVaultRoot('bots-purpose'), { git: false })
-    await expect(createBot(paths, { name: 'X', purpose: '   ' })).rejects.toThrow(/purpose/)
+    await expect(createBot(paths, { name: '   ' })).rejects.toThrow(/name/)
+    const bot = await createBot(paths, { name: UNTITLED_BOT_NAME })
+    expect(bot.purpose).toBe('')
+    await renameBot(paths, bot.id, titleFromMessage('  What is our   deploy procedure, and who signs it off every Thursday?  '))
+    const named = (await loadBots(paths)).find((b) => b.id === bot.id)?.name ?? ''
+    expect(named.startsWith('What is our deploy procedure, and who')).toBe(true)
+    expect(named.length).toBeLessThanOrEqual(41)
+    expect(named.endsWith('…')).toBe(true)
+    expect(titleFromMessage('   ')).toBe(UNTITLED_BOT_NAME)
   })
 
   it('the conversation persists in order and survives a corrupt line', async () => {

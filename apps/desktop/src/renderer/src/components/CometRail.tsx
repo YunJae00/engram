@@ -1,5 +1,4 @@
 import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
-import { useState } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
 import { useApp } from '../state.js'
 import { BotSuggestions } from './BotSuggestions.js'
@@ -29,21 +28,12 @@ function initialOf(name: string): string {
 
 export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSelect, onCreate, onDismiss }: Props) {
   const { t } = useApp()
-  const [creating, setCreating] = useState(false)
-  const [draftName, setDraftName] = useState('')
-  const [draftPurpose, setDraftPurpose] = useState('')
 
+  // One press, one comet: it takes its name from the first message. From the
+  // strip the press also opens the rail so the new one can be seen.
   const create = async (name: string, purpose: string) => {
-    if (!(await onCreate(name, purpose))) return
-    setCreating(false)
-    setDraftName('')
-    setDraftPurpose('')
-  }
-
-  // The form needs the open rail; from the strip the plus opens it first.
-  const startCreating = () => {
     if (!open) onToggle()
-    setCreating(true)
+    await onCreate(name, purpose)
   }
 
   return (
@@ -81,50 +71,10 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
           </li>
         ))}
       </ul>
-      {creating && (
-        <div className="bots-create" data-testid="bots-create">
-          <input
-            autoFocus
-            data-testid="bots-name"
-            placeholder={t('bots.nameLabel')}
-            value={draftName}
-            maxLength={60}
-            onChange={(e) => setDraftName(e.target.value)}
-          />
-          <textarea
-            data-testid="bots-purpose"
-            placeholder={t('bots.purposeLabel')}
-            value={draftPurpose}
-            maxLength={500}
-            rows={3}
-            onChange={(e) => setDraftPurpose(e.target.value)}
-          />
-          {(!draftName.trim() || !draftPurpose.trim()) && (
-            // A disabled button with no reason reads as a broken button —
-            // this says which of the two fields is still empty.
-            <div className="bots-create-need">{t(!draftName.trim() ? 'bots.needName' : 'bots.needPurpose')}</div>
-          )}
-          <div className="bots-create-actions">
-            <button
-              className="primary"
-              data-testid="bots-create-submit"
-              disabled={!draftName.trim() || !draftPurpose.trim()}
-              onClick={() => void create(draftName, draftPurpose)}
-            >
-              {t('bots.create')}
-            </button>
-            <button className="secondary" onClick={() => setCreating(false)}>
-              {t('palette.cancel')}
-            </button>
-          </div>
-        </div>
-      )}
-      {(!creating || !open) && (
-        <button className="bots-new" data-testid="bots-new" title={open ? undefined : t('bots.new')} onClick={startCreating}>
-          <Plus size={13} strokeWidth={2} aria-hidden />
-          <span className="bots-new-label">{t('bots.new')}</span>
-        </button>
-      )}
+      <button className="bots-new" data-testid="bots-new" title={open ? undefined : t('bots.new')} onClick={() => void create(t('bots.untitled'), '')}>
+        <Plus size={13} strokeWidth={2} aria-hidden />
+        <span className="bots-new-label">{t('bots.new')}</span>
+      </button>
       <BotSuggestions
         suggestions={suggestions}
         onCreate={(name, purpose) => void create(name, purpose)}

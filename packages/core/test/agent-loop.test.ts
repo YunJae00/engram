@@ -66,6 +66,27 @@ describe('runAgentLoop — dispatch', () => {
     expect(prompts[1]).toContain('Deploy keeper')
   })
 
+  // A brain that plans for itself sees every tool, is not told what it
+  // cannot do, and is given room to answer.
+  it('unguided, the model sees every tool and no seeded refusal', async () => {
+    const tools = Array.from({ length: 7 }, (_, i) => tool(`t${i}`))
+    const finder = tool('find_procedure', async () => 'NOTHING-TAUGHT')
+    const prompts: string[] = []
+    const engine = new MockEngine({
+      'COMET-STEP': (prompt) => {
+        prompts.push(prompt)
+        return '{"tool": "answer", "args": {"text": "done"}}'
+      },
+    })
+    const { deps: d } = await deps('loop-open', [...tools, finder], engine)
+    const result = await runAgentLoop(d, 'ai 관련 리서치좀 하고싶어', { guided: false })
+    expect(result.answer).toBe('done')
+    expect(result.steps).toEqual([])
+    for (const one of tools) expect(prompts[0]).toContain(`- ${one.name}:`)
+    expect(prompts[0]).not.toContain('NOTHING-TAUGHT')
+    expect(prompts[0]).not.toContain('Suggested next move')
+  })
+
   it('shows the model at most five tools — a longer menu costs accuracy', async () => {
     const tools = Array.from({ length: 7 }, (_, i) => tool(`t${i}`))
     let seen = ''

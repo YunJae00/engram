@@ -411,6 +411,8 @@ export type EngramEvent =
   | { type: 'comet:step'; channel: string; line: string }
   // The comet wrote something down about the person after a turn.
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
+  // A comet was renamed or otherwise changed outside the person's own hand.
+  | { type: 'bots:changed' }
   // A procedure is about to post something. The run waits until
   // routineSubmitDone answers with the person's verdict.
   | {
@@ -528,7 +530,7 @@ export interface EngramApi {
   // engine); progress and the eventual outcome arrive as errand:phase events.
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
-  botCreate(input: { name: string; purpose: string }): Promise<BotDto>
+  botCreate(input: { name: string; purpose?: string }): Promise<BotDto>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>

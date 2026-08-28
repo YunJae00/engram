@@ -22,53 +22,55 @@
 }
 
 [data-theme='light'] {
+  /* Two colours: the page is white and everything on it is the one ink.
+     What used to be a grey surface is white with an ink line around it; what
+     used to be grey text is the ink at less than full strength. */
+  --ink: #2b2b33;
   --editor-bg: #ffffff;
-  --sidebar-bg: #f2f4f8;
-  --activity-bg: #33343a;
-  --panel-bg: #eef0f4;
-  --tab-inactive-bg: #e3e6ec;
-  --tab-border: #e0e2ea;
+  --sidebar-bg: #ffffff;
+  --activity-bg: #2b2b33;
+  --panel-bg: #ffffff;
+  --tab-inactive-bg: #ffffff;
+  --tab-border: rgba(43, 43, 51, 0.16);
   --fg: #2b2b33;
   --fg-strong: #1c1c22;
-  --fg-dim: #585a66;
-  --fg-faint: #888b98;
-  --border: #e0e2ea;
-  --border-soft: #e9ebf1;
+  --fg-dim: rgba(43, 43, 51, 0.72);
+  --fg-faint: rgba(43, 43, 51, 0.5);
+  --border: rgba(43, 43, 51, 0.16);
+  --border-soft: rgba(43, 43, 51, 0.1);
   --input-bg: #ffffff;
-  --input-border: #d3d7e0;
-  --hover-bg: #e3e6ec;
-  --selected-bg: #33343a;
+  --input-border: rgba(43, 43, 51, 0.24);
+  --hover-bg: rgba(43, 43, 51, 0.06);
+  --selected-bg: #2b2b33;
   --selected-fg: #ffffff;
-  --accent: #33343a;
-  --accent-hover: #55575f;
-  --accent-soft: #ecedf1;
-  --accent-line: #c8cad2;
-  --button-bg: #33343a;
-  --button-hover: #55575f;
+  --accent: #2b2b33;
+  --accent-hover: #1c1c22;
+  --accent-soft: rgba(43, 43, 51, 0.08);
+  --accent-line: rgba(43, 43, 51, 0.28);
+  --button-bg: #2b2b33;
+  --button-hover: #1c1c22;
   --button-fg: #ffffff;
-  --statusbar-bg: #33343a;
+  --statusbar-bg: #2b2b33;
   --statusbar-fg: #ffffff;
   --danger: #b0603b;
   --clay: #b0603b;
-  --clay-soft: #f4e6dd;
+  --clay-soft: rgba(176, 96, 59, 0.12);
   --gild: #a9832f;
   --teal: #3c6b66;
   --ok: #5f8a4c;
-  --focus-ring: #8a8c94;
+  --focus-ring: rgba(43, 43, 51, 0.45);
   --widget-bg: #ffffff;
-  --widget-border: #e0e2ea;
+  --widget-border: rgba(43, 43, 51, 0.16);
   --card-top: #ffffff;
-  --card-bot: #f4f6fa;
-  --chrome-top: #f9fafc;
-  --chrome-bot: #eef0f4;
-  --canvas-dot: rgba(70, 74, 92, 0.085);
-  /* Resting card shadow — tighter than --shadow-card; the card now carries a real
-     1px border so this drops the inset ring and stays a soft, close lift. */
-  --shadow-card-rest: 0 2px 6px -3px rgba(35, 38, 55, 0.22);
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 10px 26px -12px rgba(35, 38, 55, 0.32), 0 0 0 1px rgba(90, 95, 120, 0.14);
-  --shadow-card-hover: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 18px 38px -14px rgba(35, 38, 55, 0.4), 0 0 0 1px rgba(90, 95, 120, 0.24);
-  --shadow-float: 0 16px 36px -14px rgba(40, 44, 60, 0.4), 0 0 0 1px rgba(90, 95, 120, 0.16);
-  --shadow-sheet: 0 40px 90px -30px rgba(20, 20, 30, 0.55), 0 0 0 1px rgba(90, 95, 120, 0.14);
+  --card-bot: #ffffff;
+  --chrome-top: #ffffff;
+  --chrome-bot: #ffffff;
+  --canvas-dot: rgba(43, 43, 51, 0.09);
+  --shadow-card-rest: 0 1px 2px rgba(43, 43, 51, 0.08);
+  --shadow-card: 0 0 0 1px rgba(43, 43, 51, 0.14), 0 6px 18px -10px rgba(43, 43, 51, 0.25);
+  --shadow-card-hover: 0 0 0 1px rgba(43, 43, 51, 0.24), 0 10px 24px -12px rgba(43, 43, 51, 0.3);
+  --shadow-float: 0 0 0 1px rgba(43, 43, 51, 0.16), 0 12px 28px -14px rgba(43, 43, 51, 0.3);
+  --shadow-sheet: 0 0 0 1px rgba(43, 43, 51, 0.14), 0 30px 70px -30px rgba(43, 43, 51, 0.45);
 }
 
 [data-theme='dark'] {
@@ -1615,6 +1617,10 @@ body.bubble-host { background: transparent; }
 .bots-choice { max-width: 100%; white-space: normal; text-align: left; }
 .bots-task-when { font-size: var(--fs-micro); color: var(--fg-faint); margin-left: 2px; }
 .brain-pick { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0 8px; }
+.settings-more { margin: 14px 0 6px; }
+.settings-more > summary { cursor: pointer; font-size: var(--fs-small); color: var(--fg-dim); padding: 6px 0; list-style: none; }
+.settings-more > summary::before { content: '›'; display: inline-block; margin-right: 6px; transition: transform 120ms ease; }
+.settings-more[open] > summary::before { transform: rotate(90deg); }
 .brain-choice.armed { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .bots-memory-toggle { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .bots-memory-toggle.armed { border-color: var(--accent); color: var(--accent); }

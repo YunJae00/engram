@@ -51,6 +51,10 @@ export interface AgentLoopOptions {
   // What this comet remembers about the person, rendered once by the caller
   // before the turn; the same bytes ride in every prompt of the turn.
   memory?: string
+  // Guided: the loop narrows the menu each step, seeds what it knows, nudges
+  // and budgets tightly - the hand-holding a small on-device model needs to
+  // finish a job. Off, the model sees every tool and plans for itself.
+  guided?: boolean
   // One narration line per step ("search_memory: deploy decisions") — the
   // chat thread relays these while the loop works.
   onStep?(line: string): void
@@ -91,6 +95,10 @@ export interface AgentLoopResult {
 }
 
 const MAX_CALLS = 6
+// A brain that plans for itself is given room to: more moves, longer
+// answers.
+const OPEN_MAX_CALLS = 12
+const OPEN_TOKENS = 1_200
 
 const CALL_TIMEOUT_MS = 180_000
 const SCHEMA_STRIKES = 2
@@ -182,12 +190,12 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: wrapUpPrompt(task, steps, options.persona, options.history, options.memory),
+    prompt: wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false),
     workdir: deps.workdir,
     disallowTools: true,
     timeoutMs: CALL_TIMEOUT_MS,
     modelHint: 'fast',
-    maxTokens: ANSWER_TOKENS,
+    maxTokens: options.guided === false ? OPEN_TOKENS : ANSWER_TOKENS,
     ...(options.signal ? { signal: options.signal } : {}),
   })
 }
@@ -260,8 +268,10 @@ export async function runAgentLoop(
   // Chosen per step, not once: an empty vault search is what earns the web
   // tools their place on the menu.
   const conversed = (options.history?.length ?? 0) > 0
-  let tools = pickTools(deps.tools, task, [], conversed)
-  const maxCalls = options.maxCalls ?? MAX_CALLS
+  const guided = options.guided !== false
+  const menu = (steps: AgentLoopStep[]): AgentTool[] => (guided ? pickTools(deps.tools, task, steps, conversed) : deps.tools)
+  let tools = menu([])
+  const maxCalls = options.maxCalls ?? (guided ? MAX_CALLS : OPEN_MAX_CALLS)
   const steps: AgentLoopStep[] = []
   const keys: string[] = []
   let strikes = 0
@@ -285,9 +295,11 @@ export async function runAgentLoop(
     // Only when it really knows the job. Announcing "I was never shown this"
     // at the top of every conversation taught the model to answer that to
     // anything, including "write this down for me".
+    // A brain that plans for itself is not told what it cannot do: read as
+    // an instruction, that line made a capable model refuse to look.
     const quiet = /^found /.test(observation)
       ? observation
-      : observation.startsWith('NOTHING-TAUGHT')
+      : guided && observation.startsWith('NOTHING-TAUGHT')
         ? 'NOTHING-TAUGHT: no saved procedure covers this. You can read and write things down, but you cannot work a website you were never shown.'
         : ''
     if (quiet)
@@ -296,16 +308,16 @@ export async function runAgentLoop(
 
   for (let call = 0; call < maxCalls; call++) {
     if (options.signal?.aborted) throw new Error('canceled')
-    tools = pickTools(deps.tools, task, steps, conversed)
+    tools = menu(steps)
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
-        prompt: stepPrompt(task, tools, steps, options.persona, options.history, options.memory),
+        prompt: stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided),
         workdir: deps.workdir,
         disallowTools: true,
         timeoutMs: CALL_TIMEOUT_MS,
         modelHint: 'fast',
-        maxTokens: stepBudget(tools),
+        maxTokens: guided ? stepBudget(tools) : OPEN_TOKENS,
         jsonSchema: stepSchema(tools),
         ...(options.signal ? { signal: options.signal } : {}),
       })
@@ -336,8 +348,8 @@ export async function runAgentLoop(
       if (await followRead(deps, task, steps, options, followed)) continue
       // Asked for a note and about to end in prose: the same one nudge.
       const unwritten =
-        asksForNote(task) && !steps.some((s) => WRITING_TOOLS.has(s.tool)) && deps.tools.some((t) => t.name === 'propose_note')
-      if ((pending || unwritten) && !nudged) {
+        guided && asksForNote(task) && !steps.some((s) => WRITING_TOOLS.has(s.tool)) && deps.tools.some((t) => t.name === 'propose_note')
+      if (guided && (pending || unwritten) && !nudged) {
         nudged = true
         steps.push({
           tool: 'note-to-self',

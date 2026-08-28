@@ -1,5 +1,6 @@
 import type { WebCourier, WebPage } from 'core'
 import { app } from 'electron'
+import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
@@ -102,16 +103,38 @@ export function setAgentBrowser(path: string | null): void {
   chosenPath = path && existsSync(path) ? path : null
 }
 
+// The browser the system opens links with, by the name Windows records for
+// it. Elsewhere, and where the record cannot be read, the first one found.
+function defaultBrowserName(): string | null {
+  if (process.platform !== 'win32') return null
+  try {
+    const out = execFileSync(
+      'reg',
+      ['query', 'HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice', '/v', 'ProgId'],
+      { encoding: 'utf8', windowsHide: true, timeout: 3_000 },
+    )
+    const progId = /ProgId\s+REG_SZ\s+(\S+)/.exec(out)?.[1] ?? ''
+    if (/chrome/i.test(progId)) return 'Google Chrome'
+    if (/edge/i.test(progId)) return 'Microsoft Edge'
+    if (/brave/i.test(progId)) return 'Brave'
+  } catch {
+    /* no record to read */
+  }
+  return null
+}
+
+// The browser the comet works in: the one the person picked, else the one
+// their system opens links with, else the first installed. Nobody is asked.
 export function findChrome(): string | null {
   if (chosenPath && existsSync(chosenPath)) return chosenPath
   const installed = installedBrowsers()
-  return installed.length === 1 ? installed[0]!.path : (installed[0]?.path ?? null)
+  const usual = defaultBrowserName()
+  return installed.find((one) => one.name === usual)?.path ?? installed[0]?.path ?? null
 }
 
-// What to say when the browser cannot simply be opened: nothing installed, or
-// several installed and none chosen.
+// Whether a choice is still open: only when nothing at all is installed.
 export function browserChoicePending(): boolean {
-  return !chosenPath && installedBrowsers().length > 1
+  return installedBrowsers().length === 0
 }
 
 // A page a machine cannot pass. Pure so the heuristics have a unit test.

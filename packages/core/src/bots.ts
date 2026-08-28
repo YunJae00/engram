@@ -136,15 +136,25 @@ export function dismissBotSuggestion(paths: VaultPaths, name: string): Promise<v
   })
 }
 
+// A comet made with one press carries this name until its first message
+// names it.
+export const UNTITLED_BOT_NAME = 'New comet'
+const TITLE_CHARS = 40
+
+export function titleFromMessage(message: string): string {
+  const line = message.replace(/\s+/g, ' ').trim()
+  return (line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS).trimEnd()}…` : line) || UNTITLED_BOT_NAME
+}
+
 export async function createBot(
   paths: VaultPaths,
-  input: { name: string; purpose: string },
+  input: { name: string; purpose?: string },
   now: Date = new Date(),
 ): Promise<Bot> {
   const name = input.name.trim().slice(0, 60)
-  const purpose = input.purpose.trim().slice(0, 500)
+  // The charter is optional: most comets are a conversation, not a role.
+  const purpose = (input.purpose ?? '').trim().slice(0, 500)
   if (!name) throw new Error('a bot needs a name')
-  if (!purpose) throw new Error('a bot needs a purpose — what is it for?')
   const bots = await loadBots(paths)
   const bot: Bot = {
     id: `bot-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
@@ -154,6 +164,16 @@ export async function createBot(
   }
   await saveBots(paths, [...bots, bot])
   return bot
+}
+
+export async function renameBot(paths: VaultPaths, id: string, name: string): Promise<void> {
+  const next = name.trim().slice(0, 60)
+  if (!next) return
+  const bots = await loadBots(paths)
+  const bot = bots.find((b) => b.id === id)
+  if (!bot) return
+  bot.name = next
+  await saveBots(paths, bots)
 }
 
 export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {

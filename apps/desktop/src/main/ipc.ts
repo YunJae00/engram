@@ -67,6 +67,9 @@ import {
   repeatedAsk,
   routineSlots,
   routineWrites,
+  renameBot,
+  titleFromMessage,
+  UNTITLED_BOT_NAME,
   listRoutines,
   loadBotMemory,
   renderMemory,
@@ -108,7 +111,7 @@ import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
-import { agentBrowserAvailable, agentCourier, browserChoicePending, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
+import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -1070,7 +1073,7 @@ export function registerIpc(ctx: VaultContext): void {
   // answering borrows the same retrieval and engine every chat uses.
   registerCometMemoryIpc(paths)
   ipcMain.handle('bots:list', () => loadBots(paths))
-  ipcMain.handle('bots:create', (_e, input: { name: string; purpose: string }) => createBot(paths, input))
+  ipcMain.handle('bots:create', (_e, input: { name: string; purpose?: string }) => createBot(paths, input))
   ipcMain.handle('bots:delete', (_e, id: string) => deleteBot(paths, id))
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
   ipcMain.handle('bots:taskAdd', (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) =>
@@ -1361,15 +1364,6 @@ export function registerIpc(ctx: VaultContext): void {
       return { ok: false, error: 'Something is already using the browser — try again in a moment.' }
     if (!agentBrowserAvailable())
       return { ok: false, error: 'No Chrome-family browser found — install Chrome, Edge or Brave to teach a routine.' }
-    // Several browsers installed and none picked: the person is about to work
-    // through one of them, and which one is not ours to decide.
-    if (browserChoicePending())
-      return {
-        ok: false,
-        error: `You have more than one browser installed (${installedBrowsers()
-          .map((one) => one.name)
-          .join(', ')}) — pick the one to work in under Settings, and this will open that one.`,
-      }
     const free = os.freemem()
     if (free < ROUTINE_MIN_FREE)
       return {
@@ -1949,6 +1943,11 @@ export function registerIpc(ctx: VaultContext): void {
         const at = new Date().toISOString()
         await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
+        // A comet made with one press is named by its first words.
+        if (bot.name === UNTITLED_BOT_NAME) {
+          await renameBot(paths, bot.id, titleFromMessage(request.message)).catch(() => undefined)
+          broadcast({ type: 'bots:changed' })
+        }
       }
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
       markEngineOk(engine.id)
@@ -1963,6 +1962,9 @@ export function registerIpc(ctx: VaultContext): void {
       // The model stays for the whole turn: a loop pauses for pages and
       // searches, and every pause read as idle cost the next step a reload.
       const releaseModel = holdLocalModel()
+      // The brain on this disk needs the loop's guidance; the cloud brains
+      // plan for themselves and are only handed the tools.
+      const guided = engine.id !== 'claude' && engine.id !== 'codex'
       // Read once per turn so every prompt of the turn carries the same bytes.
       const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
       const memory = renderMemory(await loadBotMemory(paths, bot.id))
@@ -1983,6 +1985,11 @@ export function registerIpc(ctx: VaultContext): void {
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
               runProcedure: (id, slots) => runProcedureForComet(id, slots),
               remembered: () => remembered,
+              guided,
+              learnSearch: async (template) => {
+                const held = await loadSettings()
+                if (!held.searchTemplate) await saveSettings({ ...held, searchTemplate: template })
+              },
               retrieve: async (query, limit) => {
                 // The embedder is what tells one subject from another when the
                 // words differ - "집안일" against "집에서 할 일" - so it is woken
@@ -2016,7 +2023,10 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
-            persona: `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`,
+            persona: bot.purpose
+              ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
+              : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
+            guided,
             ...(memory ? { memory } : {}),
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             onStep: (line) => broadcast({ type: 'comet:step', channel, line }),

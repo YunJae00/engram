@@ -150,16 +150,15 @@ test('the comets rail folds away and returns', async () => {
   // floating button.
   await expect(page.getByTestId('comets-rail-folded')).toBeVisible()
   await expect(page.getByTestId('comets-rail-open')).toBeVisible()
-  // Folded, every comet is still one click away as a chip, and the plus opens
-  // the rail with the form instead of dead-ending in the strip.
+  // Folded, every comet is still one click away as a chip, and the plus makes
+  // a new one and opens the rail to show it, instead of dead-ending in the strip.
   const chip = page.locator('[data-testid^="bot-"]').first()
   await expect(chip).toBeVisible()
   await chip.click()
   await expect(chip).toHaveClass(/active/)
   await page.getByTestId('bots-new').click()
   await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)
-  await expect(page.getByTestId('bots-create')).toBeVisible()
-  await page.getByText('Cancel').click()
+  await expect(page.locator('.bots-row.active')).toContainText('New comet')
   await page.getByTestId('comets-rail-close').click()
   await expect(page.getByTestId('comets-rail-open')).toBeVisible()
   await page.getByTestId('comets-rail-open').click()

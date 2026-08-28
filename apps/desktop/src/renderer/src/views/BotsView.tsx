@@ -74,6 +74,10 @@ export function BotsView() {
 
   useEffect(() => {
     void reload()
+    // A comet named by its first words shows the new name without a press.
+    return api.onEvent((event) => {
+      if (event.type === 'bots:changed') void reload()
+    })
   }, [])
 
   // Selecting a comet shows what the store already holds and refreshes it
@@ -183,9 +187,11 @@ export function BotsView() {
             <header className="bots-head">
               <div className="bots-head-id">
                 <span className="bots-head-name">{selected.name}</span>
-                <span className="bots-head-purpose" title={selected.purpose}>
-                  {selected.purpose}
-                </span>
+                {selected.purpose && (
+                  <span className="bots-head-purpose" title={selected.purpose}>
+                    {selected.purpose}
+                  </span>
+                )}
               </div>
               <button
                 className={`secondary bots-memory-toggle${memoryOpen ? ' armed' : ''}`}

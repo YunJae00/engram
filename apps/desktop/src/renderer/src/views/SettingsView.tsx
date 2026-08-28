@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { AppSettingsDto, EngineStatusDto, LocalModelsStateDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
-
-const BRAIN_NAME = { local: 'settings.brainLocal', claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
+
+const BRAIN_NAME = { local: 'settings.brainLocal', claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 
 export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
@@ -42,19 +42,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
-  const [installed, setInstalled] = useState<{ id: string; name: string; path: string; chosen: boolean }[]>([])
-  const [importedAt, setImportedAt] = useState<string | null>(null)
-  const [searchPaste, setSearchPaste] = useState('')
-  const [searchTemplate, setSearchTemplate] = useState('')
 
   useEffect(() => {
     void api.appVersion().then(setVersion).catch(() => {})
     void api.localModelsState().then(setLocalModels).catch(() => {})
     void api.engineStates().then(setBrains).catch(() => {})
     void api.contentFolders().then(setFolders).catch(() => {})
-    void api.browsersInstalled().then(setInstalled).catch(() => {})
-    void api.browserImportedAt().then(setImportedAt).catch(() => {})
-    void api.settingsGet().then((current) => setSearchTemplate(current.searchTemplate ?? '')).catch(() => {})
     void api.activityGet().then(setDeskJournal).catch(() => {})
     void api.sessionWatchGet().then(setSessionWatch).catch(() => {})
     // What the updater already knows, shown without a click — a downloaded
@@ -198,135 +191,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             />
           </label>
         </div>
-        {/* The local brain: curated models, download
-            what you want, pick one as active. The recommended badge comes
-            from a real hardware probe, not a guess. */}
-        {/* Consent gate for content capture: nothing
-            is read until the user names the folders. */}
-        {/* The agent window starts as a stranger to every site the person
-            uses. This hands it their own sessions, once, on purpose. */}
-        {/* Where the person searches. They paste one results address; the
-            shape is read out of it. No engine is named anywhere in the app. */}
-        <div className="settings-group-head">{t('settings.searchTitle')}</div>
-        <div className="settings-group">
-          <div className="setting-note">{t('settings.searchHint')}</div>
-          <div className="model-row">
-            <input
-              className="routine-step-input"
-              data-testid="search-template"
-              placeholder={t('settings.searchPlaceholder')}
-              value={searchPaste}
-              onChange={(e) => setSearchPaste(e.target.value)}
-            />
-            <button
-              className="secondary"
-              data-testid="search-template-save"
-              disabled={searchPaste.trim().length === 0}
-              onClick={() =>
-                void api.searchTemplateLearn(searchPaste).then((result) => {
-                  if (result.ok && result.template) {
-                    setSearchTemplate(result.template)
-                    setSearchPaste('')
-                    showToast(t('settings.searchLearned'))
-                  } else showToast(t('settings.searchNotLearned'))
-                })
-              }
-            >
-              {t('settings.searchSave')}
-            </button>
-          </div>
-          {searchTemplate !== '' && <div className="setting-note">{searchTemplate}</div>}
-        </div>
-
-        <div className="settings-group-head">{t('settings.whichBrowserTitle')}</div>
-        <div className="settings-group">
-          <div className="setting-note">{t('settings.whichBrowserHint')}</div>
-          {installed.length === 0 && <div className="setting-note">{t('settings.whichBrowserNone')}</div>}
-          {installed.length > 1 && !installed.some((one) => one.chosen) && (
-            <div className="setting-note">{t('settings.whichBrowserPick')}</div>
-          )}
-          {installed.map((browser) => (
-            <div key={browser.id} className="model-row">
-              <span className="model-desc">{browser.name}</span>
-              <button
-                className="secondary"
-                disabled={browser.chosen}
-                data-testid={`browser-use-${browser.name.replace(/\s+/g, '-').toLowerCase()}`}
-                onClick={() =>
-                  void api
-                    .browserChoose(browser.path)
-                    .then(() => api.browsersInstalled().then(setInstalled))
-                    .catch(() => {})
-                }
-              >
-                {browser.chosen ? t('settings.whichBrowserChosen') : t('settings.whichBrowserUse')}
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="settings-group-head">{t('settings.browserTitle')}</div>
-        <div className="settings-group">
-          {/* Nothing to press: the sign-ins follow by themselves whenever the
-              person's browser happens to be closed. What this section owns is
-              the truth of when that last happened, and the way out. */}
-          <div className="setting-note">{t('settings.browserAutoHint')}</div>
-          {importedAt !== null ? (
-            <div className="setting-note" data-testid="signins-status">
-              {t('settings.browserImported', { when: new Date(importedAt).toLocaleString() })}
-            </div>
-          ) : (
-            <div className="setting-note" data-testid="signins-status">
-              {t('settings.browserNotYet')}
-            </div>
-          )}
-          {importedAt !== null && (
-            <button
-              className="secondary"
-              onClick={() =>
-                void api.browserForget().then(() => {
-                  setImportedAt(null)
-                  showToast(t('settings.browserForgotten'))
-                })
-              }
-            >
-              {t('settings.browserForget')}
-            </button>
-          )}
-        </div>
-
-        <div className="settings-group-head">{t('settings.contentTitle')}</div>
-        <div className="settings-group">
-          <div className="setting-note">{t('settings.contentHint')}</div>
-          {folders.map((folder) => (
-            <div key={folder} className="model-row">
-              <span className="model-desc" style={{ wordBreak: 'break-all' }}>{folder}</span>
-              <button
-                className="secondary"
-                onClick={() =>
-                  void api
-                    .contentRemoveFolder(folder)
-                    .then(setFolders)
-                    .catch(() => void api.contentFolders().then(setFolders))
-                }
-              >
-                {t('settings.contentRemove')}
-              </button>
-            </div>
-          ))}
-          <button
-            className="secondary"
-            onClick={() =>
-              void api
-                .contentAddFolder()
-                .then(setFolders)
-                .catch(() => void api.contentFolders().then(setFolders))
-            }
-          >
-            {t('settings.contentAdd')}
-          </button>
-        </div>
-
         <div className="settings-group-head">{t('settings.brainTitle')}</div>
         <div className="settings-group">
           <div className="setting-note">{t('settings.brainHint')}</div>
@@ -407,52 +271,75 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           })}
         </div>
 
-        <div className="settings-group-head">{t('settings.groupConnections')}</div>
-
-        <div className="setting-row column">
-          <span>{t('settings.mcpTitle')}</span>
-          <div className="setting-hint">{t('settings.mcpHint')}</div>
-          {/* One button, not three. The app already connects both clients on
-              launch, so asking the user to pick which one to fix was making
-              them do the app's bookkeeping. Copy JSON stays as a quiet escape
-              hatch — it is the only route for a non-Claude MCP client. */}
-          <div className="mcp-actions">
-            <button className="secondary" data-testid="mcp-reconnect" onClick={() => void reconnectMcp()}>
-              {t('settings.mcpReconnect')}
-            </button>
-            <button className="link-button" onClick={() => void copyMcpConfig()}>
-              {t('settings.mcpCopy')}
-            </button>
-          </div>
-          {mcpStatus && <div className="setting-hint" data-testid="mcp-status">{mcpStatus}</div>}
-        </div>
-
-        {/* No switch: the app being open is the switch. But a deal only works
-            if the other side knows what it is, and this one reads conversations
-            from every project on the machine and spends the user's own Claude
-            quota — which until now was documented in a source comment and
-            nowhere a user could see. */}
-        <div className="setting-row column" data-testid="setting-session-watch">
-          <span>{t('settings.watchTitle')}</span>
-          <div className="setting-hint">{t('settings.watchHint')}</div>
-        </div>
-
-        <div className="setting-row column">
-          <span>{t('settings.githubTitle')}</span>
-          <div className="setting-hint">{t('settings.githubHint')}</div>
-          <div className="mcp-actions">
+        <details className="settings-more" data-testid="settings-more">
+          <summary>{t('settings.more')}</summary>
+          <div className="settings-group-head">{t('settings.contentTitle')}</div>
+          <div className="settings-group">
+            <div className="setting-note">{t('settings.contentHint')}</div>
+            {folders.map((folder) => (
+              <div key={folder} className="model-row">
+                <span className="model-desc" style={{ wordBreak: 'break-all' }}>{folder}</span>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    void api
+                      .contentRemoveFolder(folder)
+                      .then(setFolders)
+                      .catch(() => void api.contentFolders().then(setFolders))
+                  }
+                >
+                  {t('settings.contentRemove')}
+                </button>
+              </div>
+            ))}
             <button
               className="secondary"
-              data-testid="settings-github-backup"
-              onClick={() => {
-                onClose()
-                window.dispatchEvent(new Event('engram:open-github'))
-              }}
+              onClick={() =>
+                void api
+                  .contentAddFolder()
+                  .then(setFolders)
+                  .catch(() => void api.contentFolders().then(setFolders))
+              }
             >
-              {t('settings.githubButton')}
+              {t('settings.contentAdd')}
             </button>
           </div>
-        </div>
+
+          <div className="settings-group-head">{t('settings.groupConnections')}</div>
+          <div className="setting-row column">
+            <span>{t('settings.mcpTitle')}</span>
+            <div className="setting-hint">{t('settings.mcpHint')}</div>
+            <div className="mcp-actions">
+              <button className="secondary" data-testid="mcp-reconnect" onClick={() => void reconnectMcp()}>
+                {t('settings.mcpReconnect')}
+              </button>
+              <button className="link-button" onClick={() => void copyMcpConfig()}>
+                {t('settings.mcpCopy')}
+              </button>
+            </div>
+            {mcpStatus && <div className="setting-hint" data-testid="mcp-status">{mcpStatus}</div>}
+          </div>
+          <div className="setting-row column" data-testid="setting-session-watch">
+            <span>{t('settings.watchTitle')}</span>
+            <div className="setting-hint">{t('settings.watchHint')}</div>
+          </div>
+          <div className="setting-row column">
+            <span>{t('settings.githubTitle')}</span>
+            <div className="setting-hint">{t('settings.githubHint')}</div>
+            <div className="mcp-actions">
+              <button
+                className="secondary"
+                data-testid="settings-github-backup"
+                onClick={() => {
+                  onClose()
+                  window.dispatchEvent(new Event('engram:open-github'))
+                }}
+              >
+                {t('settings.githubButton')}
+              </button>
+            </div>
+          </div>
+        </details>
 
         <div className="settings-facts">
           <div className="settings-fact" title={t('settings.semanticHint')}>

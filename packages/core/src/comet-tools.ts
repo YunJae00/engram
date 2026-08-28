@@ -5,7 +5,7 @@ import type { VaultPaths } from './vault.js'
 import type { AgentTool } from './agent-loop.js'
 import { listRoutines, routineSlots, routineStepLabel } from './routine.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
-import { answersTheQuestion, contentWords, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
+import { answersTheQuestion, contentWords, deriveSearchTemplate, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
 import { cleanOptions, formatAsk } from './ask.js'
 import { carriesSecret } from './secrets.js'
 
@@ -66,6 +66,13 @@ export interface CometToolDeps {
   // What this comet remembers about the person, for a question the notebook
   // cannot answer but the comet can.
   remembered?(): string[]
+  // A results page the comet opened teaches the shape of the person's search
+  // without anyone pasting anything.
+  learnSearch?(template: string): Promise<void>
+  // A guided brain is asked where to search when no shape is known; one that
+  // plans for itself is told to go and look, and the shape is learned from
+  // where it went.
+  guided?: boolean
 }
 
 function recalled(remembered: string[] | undefined, query: string, task: string): string[] {
@@ -404,6 +411,11 @@ ${note.body.slice(0, 2_000)}`
           if (bare && deps.searchTemplate && (await deps.searchTemplate()))
             return `${url} is a front page — it will not hold the answer. Search instead: call search_web with {"query": "${context.task.slice(0, 60)}"}`
           const page = await courier.fetchPage(url, context.signal)
+          // The first results page it opens is the person's search, in shape.
+          if (deps.learnSearch && deps.searchTemplate && !(await deps.searchTemplate())) {
+            const learned = deriveSearchTemplate(url)
+            if (learned) await deps.learnSearch(learned).catch(() => undefined)
+          }
           if (page.wall)
             return `${url} needs a person to sign in — say so and ask them to do it in the agent window`
           if (isFurniture(page))
@@ -424,7 +436,9 @@ ${note.body.slice(0, 2_000)}`
           if (!query) return 'search_web needs something to look for'
           const template = (await deps.searchTemplate?.()) ?? null
           if (!template)
-            return 'ASK: Where should I search? Paste the address of a results page from the search you use — I will remember the shape and use it from now on.'
+            return deps.guided === false
+              ? 'no search address is known yet — open the results page of any search yourself: call open_page with the address of a results page for this query; its shape is learned from that visit'
+              : 'ASK: Where should I search? Paste the address of a results page from the search you use — I will remember the shape and use it from now on.'
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           const page = await courier.fetchPage(url, context.signal)
