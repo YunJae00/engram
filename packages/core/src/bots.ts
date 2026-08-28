@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
+import { forgetBotMemory } from './bot-memory.js'
 
 // Bots are named colleagues inside the vault: each carries a charter (what it
 // is for), keeps its own conversation, and can dispatch errands. The heart of
@@ -149,6 +150,9 @@ export async function createBot(
 export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
   const bots = await loadBots(paths)
   await saveBots(paths, bots.filter((b) => b.id !== id))
+  // What it remembered of the person goes with it: that was its reading,
+  // and deleting the comet is the person's word on it.
+  await forgetBotMemory(paths, id)
   // The transcript file stays on disk (cheap, and deleting user words should
   // never ride silently on another action); recreating the bot id is
   // impossible, so it is unreachable garbage a vault reset clears.

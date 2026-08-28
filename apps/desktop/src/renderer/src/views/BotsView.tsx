@@ -1,9 +1,10 @@
-import { ArrowUp, Bookmark, Play, Square, Trash2, Wand2, X } from 'lucide-react'
+import { ArrowUp, Bookmark, Brain, Play, Square, Trash2, Wand2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
+import { CometMemory } from '../components/CometMemory.js'
 import { CometRail } from '../components/CometRail.js'
 import { Thinking } from '../components/Thinking.js'
 import { modelActivity } from '../lib/modelActivityLive.js'
@@ -37,6 +38,7 @@ export function BotsView() {
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [memoryOpen, setMemoryOpen] = useState(false)
   const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.comets.rail') !== '0')
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
@@ -75,6 +77,7 @@ export function BotsView() {
   // Selecting a comet shows what the store already holds and refreshes it
   // from disk underneath; a turn still streaming stays on top of the reload.
   useEffect(() => {
+    setMemoryOpen(false)
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
@@ -177,6 +180,15 @@ export function BotsView() {
                 </span>
               </div>
               <button
+                className={`secondary bots-memory-toggle${memoryOpen ? ' armed' : ''}`}
+                data-testid="bots-memory-toggle"
+                title={t('bots.memory')}
+                onClick={() => setMemoryOpen(!memoryOpen)}
+              >
+                <Brain size={12} strokeWidth={1.8} aria-hidden />
+                {t('bots.memory')}
+              </button>
+              <button
                 className={`secondary bots-delete${confirmingDelete === selected.id ? ' armed' : ''}`}
                 onBlur={() => setConfirmingDelete(null)}
                 onClick={() => (confirmingDelete === selected.id ? void remove(selected.id) : setConfirmingDelete(selected.id))}
@@ -185,6 +197,7 @@ export function BotsView() {
                 {confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
               </button>
             </header>
+            {memoryOpen && <CometMemory botId={selected.id} name={selected.name} />}
             <div className="bots-tasks">
               {(selected.tasks ?? []).map((task) => (
                 <button

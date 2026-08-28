@@ -149,6 +149,14 @@ export interface BotSuggestionDto {
   reason: string
 }
 
+// One line a comet remembers about the person.
+export interface BotFactDto {
+  id: string
+  text: string
+  at: string
+  touchedAt: string
+}
+
 // A saved browser sequence, replayed verbatim — no model involved.
 export interface RoutineTargetDto {
   css?: string[]
@@ -382,6 +390,8 @@ export type EngramEvent =
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.
   | { type: 'comet:step'; channel: string; line: string }
+  // The comet wrote something down about the person after a turn.
+  | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
   // A procedure is about to post something. The run waits until
   // routineSubmitDone answers with the person's verdict.
   | { type: 'routine:submit'; routineId: string; name: string; filled: { label: string; text: string }[] }
@@ -497,6 +507,8 @@ export interface EngramApi {
   botsRecommend(): Promise<BotSuggestionDto[]>
   // A refused suggestion, remembered in the vault so it is never offered again.
   botSuggestionDismiss(name: string): Promise<void>
+  botMemory(botId: string): Promise<BotFactDto[]>
+  botMemoryForget(botId: string, factId: string): Promise<void>
   // Past runs, newest first — the errand sheet's history.
   errandJournal(): Promise<ErrandRunDto[]>
   errandAbort(): Promise<void>

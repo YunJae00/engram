@@ -5,7 +5,7 @@ import type { VaultPaths } from './vault.js'
 import type { AgentTool } from './agent-loop.js'
 import { listRoutines, routineSlots, routineStepLabel } from './routine.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
-import { answersTheQuestion, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
+import { answersTheQuestion, contentWords, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
 import { cleanOptions, formatAsk } from './ask.js'
 import { carriesSecret } from './secrets.js'
 
@@ -63,6 +63,18 @@ export interface CometToolDeps {
   // Folders the person consented to. A file proposal outside them is refused
   // before it can even become a card.
   allowedFolders?(): Promise<string[]>
+  // What this comet remembers about the person, for a question the notebook
+  // cannot answer but the comet can.
+  remembered?(): string[]
+}
+
+function recalled(remembered: string[] | undefined, query: string, task: string): string[] {
+  if (!remembered?.length) return []
+  const words = new Set([...contentWords(query), ...contentWords(task)].filter((w) => w.length > 1))
+  return remembered.filter((fact) => {
+    const low = fact.toLowerCase()
+    return [...words].some((w) => low.includes(w))
+  })
 }
 
 const RESULTS_CAP = 5
@@ -124,8 +136,12 @@ export function cometTools(deps: CometToolDeps): AgentTool[] {
         // said — measured: the paraphrase missed a vault the words would hit.
         if (hits.length === 0 && context.task && context.task !== query)
           hits = await deps.retrieve(context.task, RESULTS_CAP)
-        if (hits.length === 0)
+        if (hits.length === 0) {
+          const known = recalled(deps.remembered?.(), query, context.task ?? '')
+          if (known.length)
+            return ['The notebook has nothing on this, but you remember:', ...known.map((f) => `- ${f}`), 'Answer from that.'].join('\n')
           return `nothing in the vault about "${query}" — try again with the words the person used in their request`
+        }
         // Found something is not the same as found the answer, and how close
         // the embedder puts a note is not a verdict either: measured on a real
         // vault, notes that genuinely answered sat between 0.51 and 0.60 while
@@ -149,8 +165,12 @@ export function cometTools(deps: CometToolDeps): AgentTool[] {
             missed = false
           }
         }
-        if (missed)
+        if (missed) {
+          const known = recalled(deps.remembered?.(), query, asked)
+          if (known.length)
+            return ['The notebook has nothing on this, but you remember:', ...known.map((f) => `- ${f}`), 'Answer from that.'].join('\n')
           return `the notebook has nothing about "${asked.slice(0, 60)}" - call search_web with {"query": "${asked.slice(0, 60)}"}`
+        }
         return [
           // The title once, in brackets, and then the note itself. Printing the
           // heading again at the head of the excerpt put the title first and

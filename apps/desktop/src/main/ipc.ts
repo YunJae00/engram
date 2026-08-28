@@ -60,6 +60,8 @@ import {
   addRoutine,
   buildRoutineFromTeach,
   listRoutines,
+  loadBotMemory,
+  renderMemory,
   removeRoutine,
   routineBlock,
   runRoutine,
@@ -91,6 +93,7 @@ import { holdLocalModel, backgroundInferenceOk, errandFloors } from './local-llm
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
+import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
 import { agentBrowserAvailable, agentCourier, browserChoicePending, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { consentedFolders } from './content-capture.js'
@@ -1051,6 +1054,7 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Bots: named colleagues. The charter (purpose) is the whole configuration —
   // answering borrows the same retrieval and engine every chat uses.
+  registerCometMemoryIpc(paths)
   ipcMain.handle('bots:list', () => loadBots(paths))
   ipcMain.handle('bots:create', (_e, input: { name: string; purpose: string }) => createBot(paths, input))
   ipcMain.handle('bots:delete', (_e, id: string) => deleteBot(paths, id))
@@ -1884,6 +1888,9 @@ export function registerIpc(ctx: VaultContext): void {
       // The model stays for the whole turn: a loop pauses for pages and
       // searches, and every pause read as idle cost the next step a reload.
       const releaseModel = holdLocalModel()
+      // Read once per turn so every prompt of the turn carries the same bytes.
+      const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
+      const memory = renderMemory(await loadBotMemory(paths, bot.id))
       try {
         const result = await runAgentLoop(
           {
@@ -1900,6 +1907,7 @@ export function registerIpc(ctx: VaultContext): void {
               allowedFolders: consentedFolders,
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
               runProcedure: (id, slots) => runProcedureForComet(id, slots),
+              remembered: () => remembered,
               retrieve: async (query, limit) => {
                 // The embedder is what tells one subject from another when the
                 // words differ - "집안일" against "집에서 할 일" - so it is woken
@@ -1934,6 +1942,7 @@ export function registerIpc(ctx: VaultContext): void {
           {
             signal,
             persona: `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`,
+            ...(memory ? { memory } : {}),
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
             // Probes only: what each tool actually said. A loop is fixed from
@@ -1997,6 +2006,19 @@ export function registerIpc(ctx: VaultContext): void {
                 ? { kind: 'keep', name: request.message.slice(0, 40), goal: request.message }
                 : undefined,
         )
+        // After the answer is out, while the model is still held: what of
+        // this turn is worth keeping about the person.
+        if (!result.asked)
+          await rememberTurn({
+            engine,
+            workdir: engineCwd(paths),
+            paths,
+            botId: bot.id,
+            channel,
+            message: request.message,
+            answer: result.answer,
+            signal,
+          })
       } catch (err) {
         if (signal.aborted) {
           broadcast({ type: 'chat:done', channel, text: '' })

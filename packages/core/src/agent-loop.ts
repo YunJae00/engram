@@ -48,6 +48,9 @@ export interface AgentLoopOptions {
   // no subject, and the loop answers it from whatever the vault happened to
   // return — measured, and exactly as baffling as it sounds.
   history?: { role: 'user' | 'assistant'; text: string }[]
+  // What this comet remembers about the person, rendered once by the caller
+  // before the turn; the same bytes ride in every prompt of the turn.
+  memory?: string
   // One narration line per step ("search_memory: deploy decisions") — the
   // chat thread relays these while the loop works.
   onStep?(line: string): void
@@ -179,7 +182,7 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: wrapUpPrompt(task, steps, options.persona, options.history),
+    prompt: wrapUpPrompt(task, steps, options.persona, options.history, options.memory),
     workdir: deps.workdir,
     disallowTools: true,
     timeoutMs: CALL_TIMEOUT_MS,
@@ -297,7 +300,7 @@ export async function runAgentLoop(
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
-        prompt: stepPrompt(task, tools, steps, options.persona, options.history),
+        prompt: stepPrompt(task, tools, steps, options.persona, options.history, options.memory),
         workdir: deps.workdir,
         disallowTools: true,
         timeoutMs: CALL_TIMEOUT_MS,

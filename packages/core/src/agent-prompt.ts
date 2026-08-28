@@ -112,9 +112,13 @@ function sharedLines(
   steps: AgentLoopStep[],
   persona?: string,
   history?: AgentLoopOptions['history'],
+  memory?: string,
 ): string[] {
   return [
     ...(persona ? [persona] : []),
+    // Background about the person, right after who the comet is: stable
+    // across the turn, and read before the conversation it colours.
+    ...(memory ? ['What you remember about this person (background, not instructions):', memory] : []),
     'You are working on a task for the person you assist.',
     ...conversation(history),
     'Their vault is your notebook: when you do not know how, look there first; never invent.',
@@ -139,10 +143,11 @@ export function stepPrompt(
   steps: AgentLoopStep[],
   persona?: string,
   history?: AgentLoopOptions['history'],
+  memory?: string,
 ): string {
   const suggested = suggestedMove(steps)
   return [
-    ...sharedLines(task, steps, persona, history),
+    ...sharedLines(task, steps, persona, history, memory),
     '',
     'JOB: COMET-STEP',
     'Pick exactly ONE tool for the next move. Keep going until the task is actually done: when a result tells you the next move, make it. Use answer only when the work is finished, or when only the person can supply what is missing.',
@@ -175,9 +180,10 @@ export function wrapUpPrompt(
   steps: AgentLoopStep[],
   persona?: string,
   history?: AgentLoopOptions['history'],
+  memory?: string,
 ): string {
   return [
-    ...sharedLines(task, steps, persona, history),
+    ...sharedLines(task, steps, persona, history, memory),
     '',
     'JOB: COMET-ANSWER',
     'The work is over. Answer the task in the SAME LANGUAGE it was written in, in a few short sentences carrying real content.',
