@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LocalModelDto, LocalModelsStateDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
+import { armAutoFetch } from './local-model-fetch.js'
 import { CRITICAL_FLOOR, planModelLoad, PRESSURE_FLOOR, roomNow } from './memory-plan.js'
 
 // Whether this machine has a GPU backend at all. Learned from the worker: a
@@ -96,6 +97,22 @@ function stateFile(): string {
 
 interface LocalState {
   activeModelId?: string
+  // The last download that did not finish: when, and what it said. Shown in
+  // Settings, and what keeps the automatic retry to once a day.
+  lastDownloadFailedAt?: number
+  lastDownloadError?: string
+}
+
+async function noteDownload(outcome: { failedAt: number; error: string } | null): Promise<void> {
+  const state = await readState()
+  if (outcome) {
+    state.lastDownloadFailedAt = outcome.failedAt
+    state.lastDownloadError = outcome.error
+  } else {
+    delete state.lastDownloadFailedAt
+    delete state.lastDownloadError
+  }
+  await writeFile(stateFile(), JSON.stringify(state)).catch(() => undefined)
 }
 
 async function readState(): Promise<LocalState> {
@@ -208,6 +225,7 @@ async function downloadModel(id: string): Promise<{ ok: boolean; log?: string }>
     await new Promise<void>((resolve, reject) => sink.out?.end((err: unknown) => (err ? reject(err) : resolve())))
     await rename(partPath, finalPath)
     broadcast({ type: 'localmodel:progress', id, received: total, total })
+    await noteDownload(null)
     return { ok: true }
   } catch (err) {
     sink.out?.destroy()
@@ -218,7 +236,9 @@ async function downloadModel(id: string): Promise<{ ok: boolean; log?: string }>
       return { ok: false, log: 'canceled' }
     }
     flog('localmodel-download-failed', writeFailure ?? err)
-    return { ok: false, log: String(writeFailure ?? err).slice(0, 200) }
+    const log = String(writeFailure ?? err).slice(0, 200)
+    await noteDownload({ failedAt: Date.now(), error: log })
+    return { ok: false, log }
   } finally {
     downloads.delete(id)
     announce()
@@ -803,6 +823,7 @@ async function toDto(): Promise<LocalModelsStateDto> {
       downloaded: await modelPresent(spec),
       downloading: downloads.has(spec.id),
       active: state.activeModelId === spec.id,
+      ...(state.lastDownloadError ? { lastError: state.lastDownloadError } : {}),
     })
   }
   return {
@@ -825,8 +846,30 @@ export function setModelsChangedHook(hook: () => void): void {
   modelsChangedHook = hook
 }
 
+// The brain arrives by itself in the packaged app; a probe or a test run
+// says so explicitly, or keeps its network to itself.
+function armBrainFetch(): void {
+  if (!app.isPackaged && process.env['ENGRAM_AUTO_FETCH'] !== '1') return
+  armAutoFetch({
+    missing: async () => {
+      const spec = MODELS[0]
+      if (!spec || downloads.has(spec.id)) return null
+      return (await modelPresent(spec)) ? null : spec.id
+    },
+    download: (id) =>
+      downloadModel(id).then((r) => {
+        announce()
+        if (r.ok) modelsChangedHook?.()
+        return r
+      }),
+    lastFailedAt: async () => (await readState()).lastDownloadFailedAt ?? null,
+    noteFailure: async () => undefined,
+  })
+}
+
 export function registerLocalLlmIpc(): void {
   void sweepRetiredModels()
+  armBrainFetch()
   ipcMain.handle('localmodels:state', () => toDto())
   // The chat panel calls this on open: 'none' = no downloaded model (nothing
   // to warm), otherwise kick a warm-up and report where it stands. Progress

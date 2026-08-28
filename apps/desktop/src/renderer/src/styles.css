@@ -182,33 +182,7 @@ input:focus, textarea:focus { border-color: var(--focus-ring); }
 .settings-fact-sub { display: block; font-size: var(--fs-micro); color: var(--fg-faint); font-family: var(--mono); margin-top: 2px; }
 .setting-note { font-size: var(--fs-small); color: var(--fg-dim); line-height: 1.5; padding: 2px 0 6px; }
 .model-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
-.model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.model-name { font-size: var(--fs-body); font-weight: 650; color: var(--fg); display: flex; align-items: center; gap: 7px; }
-.model-badge {
-  font-size: var(--fs-badge); font-weight: 700; padding: 2px 7px; border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
-}
 .model-desc { font-size: var(--fs-small); color: var(--fg-dim); }
-.model-fail { grid-column: 1 / -1; font-size: var(--fs-small); color: var(--clay); line-height: 1.5; }
-.model-actions { display: flex; align-items: center; gap: 8px; flex: none; }
-.model-progress { font-size: var(--fs-small); font-variant-numeric: tabular-nums; color: var(--fg-dim); min-width: 38px; text-align: right; }
-.model-card {
-  border: 1px solid var(--border-soft); border-radius: var(--radius-card); padding: 9px 12px;
-}
-.model-card.active { border-color: var(--accent); background: var(--accent-soft); }
-.model-meta { font-size: var(--fs-micro); color: var(--fg-faint); font-variant-numeric: tabular-nums; }
-.model-chip-inuse {
-  font-size: var(--fs-small); font-weight: 650; color: var(--accent);
-  border: 1px solid var(--accent); border-radius: 999px; padding: 2px 10px; white-space: nowrap;
-}
-/* The armed half of the two-step delete: the button must not look like the
-   quiet secondary it was a click ago, or the second click is a surprise. */
-button.secondary.model-delete-armed {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-}
-button.secondary.model-delete-armed:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
 
 .setting-select {
   padding: 5px 9px; border-radius: var(--radius-s); border: 1px solid var(--input-border);

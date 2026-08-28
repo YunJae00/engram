@@ -106,6 +106,8 @@ export interface LocalModelDto {
   downloaded: boolean
   downloading: boolean
   active: boolean
+  // What the last download attempt said when it did not finish.
+  lastError?: string
 }
 
 export interface LocalModelsStateDto {

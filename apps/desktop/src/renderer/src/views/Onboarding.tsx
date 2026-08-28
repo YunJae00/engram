@@ -14,7 +14,6 @@ export function Onboarding() {
   const [models, setModels] = useState<LocalModelsStateDto | null>(null)
   const [modelsFailed, setModelsFailed] = useState(false)
   const [modelPct, setModelPct] = useState<number | null>(null)
-  const [modelError, setModelError] = useState('')
   const [imported, setImported] = useState<{ done: number; total: number } | null>(null)
 
   // A failed state fetch must not leave step 2 as a title over an empty
@@ -42,16 +41,6 @@ export function Onboarding() {
       }
     })
   }, [])
-
-  const downloadModel = async (id: string) => {
-    setModelError('')
-    const result = await api.localModelDownload(id)
-    if (result.ok) await api.localModelSetActive(id)
-    // A silent revert to the Download button after forty minutes reads as a
-    // broken app. Say what happened; the partial file survives, so the same
-    // button resumes.
-    else if (result.log !== 'canceled') setModelError(result.log ?? '')
-  }
 
   const pickImport = async () => {
     const folder = await api.importPick()
@@ -108,27 +97,15 @@ export function Onboarding() {
                 <li key={m.id} className={m.downloaded ? 'engine-ready' : ''}>
                   <span className={`engine-dot${m.downloaded ? ' on' : ''}`} />
                   <span className="engine-name">{m.label} · {m.approxGB}GB</span>
-                  {m.downloading ? (
-                    <>
-                      <span className="engine-pill">{modelPct !== null ? `${modelPct}%` : '…'}</span>
-                      <button
-                        className="secondary"
-                        data-testid="onboard-model-cancel"
-                        onClick={() => {
-                          setModelPct(null)
-                          void api.localModelCancel(m.id)
-                        }}
-                      >
-                        {t('settings.localCancel')}
-                      </button>
-                    </>
-                  ) : m.downloaded ? (
-                    <span className="engine-pill">{t('diag.connected')}</span>
-                  ) : (
-                    <button className="primary" data-testid="onboard-model-download" onClick={() => void downloadModel(m.id)}>
-                      {t('onboard.modelDownload')}
-                    </button>
-                  )}
+                  <span className="engine-pill" data-testid="onboard-model-state">
+                    {m.downloading
+                      ? modelPct !== null ? `${modelPct}%` : '…'
+                      : m.downloaded
+                        ? t('diag.connected')
+                        : m.lastError
+                          ? t('settings.localFailed', { reason: m.lastError })
+                          : t('settings.localWaiting')}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -140,7 +117,6 @@ export function Onboarding() {
                 </button>
               </p>
             )}
-            {modelError && <p className="onboard-fail">{t('settings.localFailed', { reason: modelError })}</p>}
             <p className="onboard-note">{t('onboard.modelNote', { ram: models?.ramGB ?? 0 })}</p>
             <div className="onboard-actions">
               <button className="secondary" data-testid="onboard-skip-ai" onClick={() => setStep(3)}>

@@ -17,13 +17,8 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [localModels, setLocalModels] = useState<LocalModelsStateDto | null>(null)
-  const [downloadFail, setDownloadFail] = useState<Record<string, string>>({})
-  const [deleteFail, setDeleteFail] = useState<Record<string, string>>({})
-  // Delete is two-step and irreversible: the id whose button is armed, and the
-  // id whose deletion is in flight. Per-model, so arming one row cannot spill
-  // onto the next.
-  const [confirmingId, setConfirmingId] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  // The one brain on the list; the row reads its state, nothing more.
+  const brain = localModels?.models.find((m) => m.id === localModels.recommendedId) ?? localModels?.models[0] ?? null
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
@@ -64,28 +59,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     const timer = setInterval(() => void api.updateState().then(setUpdate).catch(() => {}), 2000)
     return () => clearInterval(timer)
   }, [update?.state])
-
-  // An armed Delete button that stays armed is a mis-click away from a
-  // multi-gigabyte re-download, so it disarms itself shortly after the first
-  // click. (Clicking elsewhere blurs the button, which disarms it too.)
-  useEffect(() => {
-    if (!confirmingId) return
-    const timer = setTimeout(() => setConfirmingId(null), 4000)
-    return () => clearTimeout(timer)
-  }, [confirmingId])
-
-  const deleteModel = (id: string) => {
-    setConfirmingId(null)
-    setDeletingId(id)
-    setDeleteFail((prior) => ({ ...prior, [id]: '' }))
-    void api
-      .localModelDelete(id)
-      .then((r) => {
-        if (!r.ok) setDeleteFail((prior) => ({ ...prior, [id]: r.reason ?? '' }))
-      })
-      .catch((err: unknown) => setDeleteFail((prior) => ({ ...prior, [id]: String(err) })))
-      .finally(() => setDeletingId((prior) => (prior === id ? null : prior)))
-  }
 
   // One action for both clients, reporting per-client in place (no toast — the
   // sheet stays open). A client that is not installed is not a failure worth
@@ -335,91 +308,36 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
         <div className="settings-group-head">{t('settings.localTitle')}</div>
         <div className="settings-group">
-          <div className="setting-note">{t('settings.localHint', { ram: localModels?.ramGB ?? 0 })}</div>
-          {(localModels?.models ?? []).map((m) => {
-            const pct = progress[m.id]
-            return (
-              <div key={m.id} className={`model-row model-card${m.active ? ' active' : ''}`} data-testid={`model-${m.id}`}>
-                <div className="model-info">
-                  <span className="model-name">
-                    {m.label}
-                    {localModels?.recommendedId === m.id && (
-                      <span className="model-badge">{t('settings.localRecommended')}</span>
-                    )}
-                  </span>
-                  <span className="model-desc">{m.desc}</span>
-                  <span className="model-meta">
-                    {m.approxGB}GB · RAM {m.ramGB}GB+
-                  </span>
-                </div>
-                <span className="model-actions">
-                  {m.downloading ? (
-                    <>
-                      <span className="model-progress">{pct !== undefined ? `${pct}%` : '…'}</span>
-                      <button className="secondary" onClick={() => void api.localModelCancel(m.id)}>
-                        {t('settings.localCancel')}
-                      </button>
-                    </>
-                  ) : m.downloaded ? (
-                    <>
-                      {m.active ? (
-                        <span className="model-chip-inuse">{t('settings.localInUse')}</span>
-                      ) : (
-                        <button
-                          className="secondary"
-                          data-testid={`model-use-${m.id}`}
-                          onClick={() =>
-                            void api
-                              .localModelSetActive(m.id)
-                              .catch(() => undefined)
-                              .finally(() => void api.localModelsState().then(setLocalModels))
-                          }
-                        >
-                          {t('settings.localUse')}
-                        </button>
-                      )}
-                      {/* First click arms, second click deletes. Never offered
-                          while the model downloads — Cancel is that action. */}
-                      <button
-                        className={confirmingId === m.id ? 'secondary model-delete-armed' : 'secondary'}
-                        data-testid={`model-delete-${m.id}`}
-                        disabled={deletingId === m.id}
-                        onBlur={() => setConfirmingId((prior) => (prior === m.id ? null : prior))}
-                        onClick={() => (confirmingId === m.id ? deleteModel(m.id) : setConfirmingId(m.id))}
-                      >
-                        {deletingId === m.id
-                          ? t('settings.localDeleting')
-                          : confirmingId === m.id
-                            ? t('settings.localDeleteConfirm')
-                            : t('settings.localDelete')}
-                      </button>
-                    </>
-                  ) : (
+          <div className="settings-fact" title={t('settings.localHint', { ram: localModels?.ramGB ?? 0 })}>
+            <span className="settings-fact-key">{t('settings.localBrain')}</span>
+            <span className="settings-fact-value" data-testid="local-brain-status">
+              {brain ? (
+                <>
+                  {brain.downloading
+                    ? t('settings.localDownloading', { pct: progress[brain.id] ?? 0 })
+                    : brain.downloaded
+                      ? t('settings.localReady')
+                      : brain.lastError
+                        ? t('settings.localFailed', { reason: brain.lastError })
+                        : t('settings.localWaiting')}
+                  {!brain.downloading && !brain.downloaded && brain.lastError && (
                     <button
                       className="secondary"
-                      onClick={() => {
-                        setDownloadFail((prev) => ({ ...prev, [m.id]: '' }))
-                        void api.localModelDownload(m.id).then((r) => {
-                          if (!r.ok && r.log !== 'canceled')
-                            setDownloadFail((prev) => ({ ...prev, [m.id]: r.log ?? '' }))
-                        })
-                      }}
+                      data-testid="local-brain-retry"
+                      onClick={() => void api.localModelDownload(brain.id).then(() => api.localModelsState().then(setLocalModels))}
                     >
-                      {t('settings.localDownload')}
+                      {t('settings.localRetry')}
                     </button>
                   )}
-                </span>
-                {downloadFail[m.id] && (
-                  <span className="model-fail">{t('settings.localFailed', { reason: downloadFail[m.id]! })}</span>
-                )}
-                {deleteFail[m.id] && (
-                  <span className="model-fail" data-testid={`model-delete-fail-${m.id}`}>
-                    {t('settings.localDeleteFailed', { reason: deleteFail[m.id]! })}
+                  <span className="settings-fact-sub">
+                    {brain.label} · {brain.approxGB}GB
                   </span>
-                )}
-              </div>
-            )
-          })}
+                </>
+              ) : (
+                t('settings.localWaiting')
+              )}
+            </span>
+          </div>
         </div>
 
         <div className="settings-group-head">{t('settings.groupConnections')}</div>
