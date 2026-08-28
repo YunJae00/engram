@@ -1987,7 +1987,9 @@ export function registerIpc(ctx: VaultContext): void {
         const keepable = !untaught && !routine && !result.asked && worked >= KEEP_AFTER_STEPS
         await deliverAnswer(
           `${result.answer}${note}`,
-          untaught
+          result.asked && result.options?.length
+            ? { kind: 'asked', question: result.answer, options: result.options }
+            : untaught
             ? { kind: 'teach' }
             : routine
               ? { kind: 'run', routineId: routine.id, name: routine.name, slots }

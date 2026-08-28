@@ -3,6 +3,7 @@ import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { Choices } from '../components/Choices.js'
 import { CometRail } from '../components/CometRail.js'
 import { Thinking } from '../components/Thinking.js'
 import { modelActivity } from '../lib/modelActivityLive.js'
@@ -84,8 +85,11 @@ export function BotsView() {
   }, [messages])
 
   // One answer at a time across every comet: the local model does not share.
-  const send = async () => {
-    const message = draft.trim()
+  const send = () => sendText(draft.trim())
+
+  // A tapped choice goes the same way as typed words: through the thread,
+  // so the comet hears it with the conversation behind it.
+  const sendText = async (message: string) => {
     if (!message || cometThreads.anyBusy() || errand.running || !selected) return
     const id = selected.id
     const history = cometThreads.begin(id, message)
@@ -233,7 +237,16 @@ export function BotsView() {
                   )}
                 </div>
               ))}
-              {offer && !routine.running && (
+              {offer && offer.kind === 'asked' && !routine.running && (
+                <Choices
+                  options={offer.options}
+                  onPick={(label) => {
+                    cometThreads.clearOffer(selected.id)
+                    void sendText(label)
+                  }}
+                />
+              )}
+              {offer && offer.kind !== 'asked' && !routine.running && (
                 <div className="bots-offer" data-testid="bots-offer">
                   <span className="bots-offer-text">
                     {offer.kind === 'run'

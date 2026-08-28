@@ -1,4 +1,5 @@
 import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, suggestedMove, wrapUpPrompt } from './agent-prompt.js'
+import { choiceQuestion, parseAsk } from './ask.js'
 import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
 import { collectResult, extractJson, type Engine, type EngineCwd } from './engine/types.js'
@@ -77,6 +78,9 @@ export interface AgentLoopResult {
   stopped?: 'calls' | 'repetition' | 'oscillation'
   // The loop ended by putting a question to the person.
   asked?: boolean
+  // Ways forward the person can pick from, beside the question in answer.
+  // Empty or absent when the question is free text.
+  options?: string[]
   // A move a tool asked for that was never made. Measured: pushed to act, a
   // small model may instead ANNOUNCE that it acted. The caller states the
   // truth alongside the answer rather than letting the claim stand.
@@ -350,6 +354,10 @@ export async function runAgentLoop(
         // notes merged into a good answer twice running, and no note either
         // time).
         if (unwritten && text.trim().length >= NOTE_MIN) await writeDown(deps, task, text, steps, options)
+        // Prose that is really "A or B?" is a question with choices, and is
+        // handed over as one so the person taps instead of typing.
+        const choice = choiceQuestion(text)
+        if (choice) return { answer: withoutSecrets(text, task), steps, fellBack: false, asked: true, options: choice.options }
         return { answer: withoutSecrets(text, task), steps, fellBack: false, ...unfinished }
       }
       return wrapUp()
@@ -364,9 +372,10 @@ export async function runAgentLoop(
       observation = await tool.run(parsed.args, { task, read: readSoFar(steps), ...(options.signal ? { signal: options.signal } : {}) })
       // A question to the person IS the answer: carrying on would mean
       // guessing at exactly the thing it just said it does not know.
-      if (observation.startsWith('ASK: ')) {
+      const ask = parseAsk(observation)
+      if (ask) {
         steps.push({ tool: parsed.tool, args: parsed.args, observation })
-        return { answer: withoutSecrets(observation.slice(5), task), steps, fellBack: false, asked: true }
+        return { answer: withoutSecrets(ask.question, task), steps, fellBack: false, asked: true, options: ask.options }
       }
     } catch (err) {
       if (options.signal?.aborted) throw new Error('canceled')

@@ -207,7 +207,9 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   // conversation to name it. Looking first found the nearest notes and a web
   // page about something else, and wrote those up (measured). The one move
   // that can supply the subject is asking for it.
-  if (steps.length === 0 && !conversed && !namesSubject(task)) wanted.push(by('ask_person'))
+  // Keyed on "nothing but seeded steps", not on an empty list: the procedure
+  // check seeds a step before the model is asked anything.
+  if (steps.every((s) => s.seeded) && !conversed && !namesSubject(task)) wanted.push(by('ask_person'))
   // What came back had nothing to do with what was asked: the request itself
   // is what is missing, and no further looking will supply it.
   if (observed(/has anything to do with/)) wanted.push(by('ask_person'))

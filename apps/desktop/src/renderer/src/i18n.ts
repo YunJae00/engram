@@ -62,6 +62,7 @@ const en = {
   'bots.offerRun': 'I know this one — “{name}” does it. Run it?',
   'bots.offerKeep': 'That took a few steps. Keep it as a one-click task?',
   'bots.offerKeepGo': 'Keep it',
+  'bots.offerAsked': 'Pick one, or type your own:',
   'bots.offerTeach': 'I have never been shown this one. Walk me through it once and I can do it from then on.',
   'bots.offerTeachGo': 'Show me how',
   'bots.taskRemove': 'Remove this task',

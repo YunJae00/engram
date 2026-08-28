@@ -1610,6 +1610,9 @@ body.bubble-host { background: transparent; }
   padding: 8px 10px; border: 1px solid var(--accent-line); border-radius: var(--radius-card);
 }
 .bots-offer-text { flex: 1; min-width: 180px; font-size: var(--fs-small); color: var(--fg); }
+.bots-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 14px 0; }
+.bots-choices .bots-offer-text { flex: 0 0 100%; min-width: 0; }
+.bots-choice { max-width: 100%; white-space: normal; text-align: left; }
 .bots-offer-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .bots-working { display: flex; align-items: flex-start; gap: 9px; max-width: 94%; }
 .bots-working-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

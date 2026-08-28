@@ -6,10 +6,9 @@ import type { AgentTool } from './agent-loop.js'
 import { listRoutines, routineSlots, routineStepLabel } from './routine.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
 import { answersTheQuestion, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
+import { cleanOptions, formatAsk } from './ask.js'
 import { carriesSecret } from './secrets.js'
 
-// A note keeps its title as a heading at the top of its body. Shown beside the
-// title it is noise, and worse than noise where something is being copied out.
 // The body of the note whose title the model wrote, out of the notes the loop
 // has printed so far - "[title] (id: ...) body" - or null when the words are
 // not a title.
@@ -25,6 +24,8 @@ export function noteBodyIn(read: string, label: string): string | null {
   return null
 }
 
+// A note keeps its title as a heading at the top of its body. Shown beside the
+// title it is noise, and worse than noise where something is being copied out.
 function withoutHeading(body: string): string {
   const lines = body.split('\n')
   return (/^#{1,6} /.test(lines[0] ?? '') ? lines.slice(1) : lines).join('\n').trim()
@@ -447,11 +448,16 @@ ${note.body.slice(0, 2_000)}`
     // to look, which of two things was meant, or what to put in a blank, the
     // colleague's move is to ask — and the loop ends on the question.
     name: 'ask_person',
-    description: 'ask the person when you do not know where to look or what they meant — args: {"question": "..."}',
-    argsSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
+    description:
+      'ask the person when you do not know where to look or what they meant; when there are a few clear ways forward, list them — args: {"question": "...", "options": ["...", "..."]}',
+    argsSchema: {
+      type: 'object',
+      properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' }, maxItems: 4 } },
+      required: ['question'],
+    },
     async run(args) {
       const question = str(args, 'question')
-      return question ? `ASK: ${question}` : 'ask_person needs the question'
+      return question ? formatAsk(question, cleanOptions(args['options'])) : 'ask_person needs the question'
     },
   })
 

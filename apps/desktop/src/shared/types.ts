@@ -375,7 +375,9 @@ export type EngramEvent =
         // A job that took real work is worth keeping: the loop says so, the
         // person decides. Nothing here is a form to fill.
         | { kind: 'keep'; name: string; goal: string }
-        | { kind: 'asked' }
+        // The loop ended on a question; the options are ways forward the
+        // thread shows as chips. Only sent when there are some.
+        | { kind: 'asked'; question: string; options: string[] }
     }
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.
