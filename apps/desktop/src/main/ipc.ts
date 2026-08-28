@@ -70,6 +70,7 @@ import {
   renameBot,
   titleFromMessage,
   UNTITLED_BOT_NAME,
+  secretsIn,
   listRoutines,
   loadBotMemory,
   renderMemory,
@@ -1943,8 +1944,9 @@ export function registerIpc(ctx: VaultContext): void {
         const at = new Date().toISOString()
         await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
-        // A comet made with one press is named by its first words.
-        if (bot.name === UNTITLED_BOT_NAME) {
+        // A comet made with one press is named by its first words - unless
+        // those words carry a secret, which is never written anywhere.
+        if (bot.name === UNTITLED_BOT_NAME && secretsIn(request.message).length === 0) {
           await renameBot(paths, bot.id, titleFromMessage(request.message)).catch(() => undefined)
           broadcast({ type: 'bots:changed' })
         }
@@ -1959,6 +1961,17 @@ export function registerIpc(ctx: VaultContext): void {
     // Every failure path inside degrades to a plain answer, so the worst a
     // broken model can do here is behave like the old chat.
     if (bot) {
+      // A results address pasted into the thread is the answer to "where
+      // should I search": its shape is learned here, with nothing to press.
+      const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null
+      if (pastedSearch) {
+        const held = await loadSettings()
+        if (!held.searchTemplate) {
+          await saveSettings({ ...held, searchTemplate: pastedSearch })
+          await deliverAnswer('Got it — from now on I search the way you do.')
+          return
+        }
+      }
       // The model stays for the whole turn: a loop pauses for pages and
       // searches, and every pause read as idle cost the next step a reload.
       const releaseModel = holdLocalModel()

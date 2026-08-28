@@ -105,6 +105,19 @@ function pageReport(page: { title: string; text: string; controls?: string[] }):
   return lines.join('\n')
 }
 
+// The address carries the task's own words in a parameter, and what came
+// back is a list of links: the shape of a search, not of a page.
+export function looksLikeSearchFor(url: string, task: string, page: { links?: { text: string; url: string }[] }): boolean {
+  if (!deriveSearchTemplate(url) || (page.links?.length ?? 0) < NAVIGATION_LINKS) return false
+  let params: string[]
+  try {
+    params = [...new URL(url).searchParams.values()]
+  } catch {
+    return false
+  }
+  return params.some((value) => value.trim().length >= 2 && answersTheQuestion(value, task))
+}
+
 function isFurniture(page: { text: string; links?: { text: string; url: string }[] }): boolean {
   const words = page.text.trim().length
   if (words >= PAGE_TEXT_MIN) return false
@@ -411,13 +424,13 @@ ${note.body.slice(0, 2_000)}`
           if (bare && deps.searchTemplate && (await deps.searchTemplate()))
             return `${url} is a front page — it will not hold the answer. Search instead: call search_web with {"query": "${context.task.slice(0, 60)}"}`
           const page = await courier.fetchPage(url, context.signal)
-          // The first results page it opens is the person's search, in shape.
-          if (deps.learnSearch && deps.searchTemplate && !(await deps.searchTemplate())) {
-            const learned = deriveSearchTemplate(url)
-            if (learned) await deps.learnSearch(learned).catch(() => undefined)
-          }
           if (page.wall)
             return `${url} needs a person to sign in — say so and ask them to do it in the agent window`
+          // A results page it opened for this very task is the person's
+          // search, in shape - and only that: an address with a query string
+          // is also every video, ticket and tracking link on the web.
+          if (deps.learnSearch && deps.searchTemplate && !(await deps.searchTemplate()) && looksLikeSearchFor(url, context.task ?? '', page))
+            await deps.learnSearch(deriveSearchTemplate(url)!).catch(() => undefined)
           if (isFurniture(page))
             return `${url} is mostly links rather than an answer — open one of them, or search instead`
           // Untrusted text, and the loop is told so: a page must never be able

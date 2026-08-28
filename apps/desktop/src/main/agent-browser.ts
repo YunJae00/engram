@@ -105,7 +105,15 @@ export function setAgentBrowser(path: string | null): void {
 
 // The browser the system opens links with, by the name Windows records for
 // it. Elsewhere, and where the record cannot be read, the first one found.
+// Read once: it is a process, and availability is asked on every focus.
+let usualBrowser: string | null | undefined
 function defaultBrowserName(): string | null {
+  if (usualBrowser !== undefined) return usualBrowser
+  usualBrowser = readDefaultBrowserName()
+  return usualBrowser
+}
+
+function readDefaultBrowserName(): string | null {
   if (process.platform !== 'win32') return null
   try {
     const out = execFileSync(
@@ -426,7 +434,7 @@ export function agentWorkPage(): Page | null {
 }
 
 export function agentBrowserAvailable(): boolean {
-  return findChrome() !== null
+  return (chosenPath !== null && existsSync(chosenPath)) || installedBrowsers().length > 0
 }
 
 // Low-level access for the routine driver: same browser, same reused tab,

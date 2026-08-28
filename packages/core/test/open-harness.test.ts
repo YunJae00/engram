@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest'
+import { openStepSchema, stepSchema } from '../src/agent-prompt.js'
+import { titleFromMessage } from '../src/bots.js'
+import { looksLikeSearchFor } from '../src/comet-tools.js'
+import type { AgentTool } from '../src/agent-loop.js'
+
+const tools: AgentTool[] = [
+  { name: 'search_web', description: 'search', argsSchema: { type: 'object', properties: { query: { type: 'string' } } }, run: async () => '' },
+  { name: 'open_page', description: 'open', argsSchema: { type: 'object', properties: { url: { type: 'string' } } }, run: async () => '' },
+]
+
+const links = (count: number) => Array.from({ length: count }, (_, i) => ({ text: `result ${i}`, url: `https://x.example/${i}` }))
+
+describe('a search shape is learned only from a search the comet ran for its task', () => {
+  it('a results page whose address carries the task words is the search', () => {
+    expect(looksLikeSearchFor('https://find.example/results?q=electron+memory+leak', 'find the electron memory leak thread', { links: links(12) })).toBe(true)
+  })
+
+  it('a query string alone is not a search - videos, tickets and trackers carry them too', () => {
+    expect(looksLikeSearchFor('https://video.example/watch?v=dQw4w9WgXcQ', 'find the electron memory leak thread', { links: links(12) })).toBe(false)
+    expect(looksLikeSearchFor('https://tickets.example/issue?id=4821', 'find the electron memory leak thread', { links: links(12) })).toBe(false)
+  })
+
+  it('a page with the task words but no list of links is an article, not results', () => {
+    expect(looksLikeSearchFor('https://blog.example/post?topic=electron+memory', 'find the electron memory leak thread', { links: links(2) })).toBe(false)
+  })
+
+  it('an unreadable address learns nothing', () => {
+    expect(looksLikeSearchFor('not a url?q=electron', 'electron', { links: links(12) })).toBe(false)
+  })
+})
+
+describe('the open step shape suits a hosted structured-output runtime', () => {
+  it('is one closed object over the tool names, with the arguments left open', () => {
+    const schema = openStepSchema(tools) as { properties: { tool: { enum: string[] } }; required: string[]; additionalProperties: boolean; oneOf?: unknown }
+    expect(schema.properties.tool.enum).toEqual(['search_web', 'open_page', 'answer'])
+    expect(schema.required).toEqual(['tool', 'args'])
+    expect(schema.additionalProperties).toBe(false)
+    expect(schema.oneOf).toBeUndefined()
+  })
+
+  it('the guided shape stays the exact one the local grammar compiles', () => {
+    expect((stepSchema(tools) as { oneOf?: unknown[] }).oneOf?.length).toBe(3)
+  })
+})
+
+describe('a comet named by its first words', () => {
+  it('cuts by whole characters, never through one', () => {
+    const emoji = '🙂'.repeat(60)
+    const name = titleFromMessage(emoji)
+    expect(name.endsWith('…')).toBe(true)
+    expect([...name.slice(0, -1)].every((char) => char === '🙂')).toBe(true)
+  })
+})

@@ -1,4 +1,4 @@
-import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, suggestedMove, wrapUpPrompt } from './agent-prompt.js'
+import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, suggestedMove, wrapUpPrompt, openStepSchema } from './agent-prompt.js'
 import { choiceQuestion, parseAsk } from './ask.js'
 import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
@@ -318,7 +318,7 @@ export async function runAgentLoop(
         timeoutMs: CALL_TIMEOUT_MS,
         modelHint: 'fast',
         maxTokens: guided ? stepBudget(tools) : OPEN_TOKENS,
-        jsonSchema: stepSchema(tools),
+        jsonSchema: guided ? stepSchema(tools) : openStepSchema(tools),
         ...(options.signal ? { signal: options.signal } : {}),
       })
     } catch (err) {

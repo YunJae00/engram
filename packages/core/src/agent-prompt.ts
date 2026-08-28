@@ -24,6 +24,21 @@ const HISTORY_CHARS = 220
 // — grammatically valid, useless in practice, and measured: the first live
 // run picked the right tool and called it with nothing in it. Branching makes
 // the empty call impossible at decoding time rather than merely discouraged.
+// The same choice as a shape a hosted runtime accepts for structured output:
+// one object, a closed set of tool names, and the arguments left to the tool
+// descriptions the model has already read.
+export function openStepSchema(tools: AgentTool[]): object {
+  return {
+    type: 'object',
+    properties: {
+      tool: { type: 'string', enum: [...tools.map((t) => t.name), 'answer'] },
+      args: { type: 'object', additionalProperties: true },
+    },
+    required: ['tool', 'args'],
+    additionalProperties: false,
+  }
+}
+
 export function stepSchema(tools: AgentTool[]): object {
   return {
     oneOf: [

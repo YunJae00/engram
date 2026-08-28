@@ -143,7 +143,8 @@ const TITLE_CHARS = 40
 
 export function titleFromMessage(message: string): string {
   const line = message.replace(/\s+/g, ' ').trim()
-  return (line.length > TITLE_CHARS ? `${line.slice(0, TITLE_CHARS).trimEnd()}…` : line) || UNTITLED_BOT_NAME
+  const chars = Array.from(line)
+  return (chars.length > TITLE_CHARS ? `${chars.slice(0, TITLE_CHARS).join('').trimEnd()}…` : line) || UNTITLED_BOT_NAME
 }
 
 export async function createBot(
