@@ -125,3 +125,9 @@ mac:
     - "!node_modules/@anthropic-ai/claude-agent-sdk-linux-*/**"
     - "!node_modules/@openai/codex-win32-*/**"
     - "!node_modules/@openai/codex-linux-*/**"
+    # Both Mac builds come off one machine, so both runtimes are installed;
+    # each disk image keeps the one for its own chip.
+    - "!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
+    - "!node_modules/@openai/codex-darwin-*/**"
+    - "node_modules/@anthropic-ai/claude-agent-sdk-darwin-${arch}/**"
+    - "node_modules/@openai/codex-darwin-${arch}/**"

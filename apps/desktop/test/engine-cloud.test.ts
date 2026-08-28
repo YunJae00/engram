@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAuthStatus, textOf } from '../src/main/engine-claude.js'
-import { claudeBinary, cloudErrorKind, codexBinary, unpackedPath } from '../src/main/engine-cloud.js'
+import { claudeBinary, cloudErrorKind, codexBinary, StatusCache, STATUS_TTL_MS, unpackedPath, withHelpersOnPath } from '../src/main/engine-cloud.js'
 import { readLoginStatus } from '../src/main/engine-codex.js'
 
 // The runtimes speak for themselves; these pin down how their words are read.
@@ -37,6 +37,48 @@ describe('bundled runtimes', () => {
   it('finds both runtimes for this platform', () => {
     expect(claudeBinary()).not.toBeNull()
     expect(codexBinary()).not.toBeNull()
+  })
+})
+
+// Detection is asked constantly; a sign-in seen a minute ago is not asked
+// again, a probe in flight is shared, and a "not signed in" is re-asked.
+describe('StatusCache', () => {
+  it('keeps a positive answer for a while and shares an in-flight probe', async () => {
+    const cache = new StatusCache()
+    let probes = 0
+    const probe = async () => (probes++, { installed: true, loggedIn: true, conclusive: true })
+    const [a, b] = await Promise.all([cache.read(probe, 1000), cache.read(probe, 1000)])
+    expect(a.loggedIn && b.loggedIn).toBe(true)
+    expect(probes).toBe(1)
+    await cache.read(probe, 1000 + STATUS_TTL_MS - 1)
+    expect(probes).toBe(1)
+    await cache.read(probe, 1000 + STATUS_TTL_MS + 1)
+    expect(probes).toBe(2)
+  })
+  it('asks again after a negative answer, and after forget', async () => {
+    const cache = new StatusCache()
+    let probes = 0
+    const probe = async () => (probes++, { installed: true, loggedIn: false, conclusive: true })
+    await cache.read(probe, 1000)
+    await cache.read(probe, 1001)
+    expect(probes).toBe(2)
+    const yes = async () => (probes++, { installed: true, loggedIn: true, conclusive: true })
+    await cache.read(yes, 2000)
+    cache.forget()
+    await cache.read(yes, 2001)
+    expect(probes).toBe(4)
+  })
+})
+
+describe('withHelpersOnPath', () => {
+  it('puts the helper folder first on the path, whatever the key is called', () => {
+    const sep = process.platform === 'win32' ? '\\' : '/'
+    const binary = `${sep}x${sep}vendor${sep}bin${sep}codex`
+    const env = withHelpersOnPath(binary, { Path: 'a', HOME: 'h' })
+    expect(env['Path']!.startsWith(`${sep}x${sep}vendor${sep}codex-path`)).toBe(true)
+    expect(env['Path']!.endsWith('a')).toBe(true)
+    expect(env['HOME']).toBe('h')
+    expect(withHelpersOnPath(binary, {})['PATH']).toBe(`${sep}x${sep}vendor${sep}codex-path`)
   })
 })
 

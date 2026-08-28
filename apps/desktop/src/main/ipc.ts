@@ -1742,13 +1742,17 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('engines:states', () => engineStates())
   // Sign-in happens in the vendor's own window; this only starts it, waits,
   // and re-detects. Nothing about the credential passes through here.
-  ipcMain.handle('engines:connect', async (_e, id: 'claude' | 'codex') => {
-    const result = await cloudEngine(id).login()
+  const cloudId = (id: unknown): 'claude' | 'codex' => {
+    if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
+    return id
+  }
+  ipcMain.handle('engines:connect', async (_e, id: unknown) => {
+    const result = await cloudEngine(cloudId(id)).login()
     await revalidateEngines(ctx)
     return result
   })
-  ipcMain.handle('engines:disconnect', async (_e, id: 'claude' | 'codex') => {
-    await cloudEngine(id).logout()
+  ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
+    await cloudEngine(cloudId(id)).logout()
     await revalidateEngines(ctx)
   })
 

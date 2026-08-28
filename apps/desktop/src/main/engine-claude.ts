@@ -1,5 +1,5 @@
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
-import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, type CloudEngine } from './engine-cloud.js'
+import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine } from './engine-cloud.js'
 import { flog } from './flog.js'
 
 // Claude, through the vendor's agent runtime bundled with this app. The
@@ -13,7 +13,7 @@ interface AgentSdk {
 
 type SdkMessage =
   | { type: 'assistant'; message: { content: unknown } }
-  | { type: 'result'; subtype: string; is_error?: boolean; result?: string; structured_output?: unknown; api_error_status?: number | null }
+  | { type: 'result'; subtype: string; is_error?: boolean; result?: string; errors?: string[]; structured_output?: unknown; api_error_status?: number | null }
   | { type: string }
 
 export function textOf(content: unknown): string {
@@ -39,19 +39,23 @@ export function readAuthStatus(out: string): EngineDetection {
 export class ClaudeEngine implements CloudEngine {
   readonly id = 'claude' as const
   readonly label = 'Claude'
+  private readonly status = new StatusCache()
 
-  async detect(): Promise<EngineDetection> {
-    const binary = claudeBinary()
-    if (!binary) return { installed: false, loggedIn: false, conclusive: true }
-    const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS)
-    if (code === null) return { installed: true, loggedIn: false, conclusive: false }
-    return readAuthStatus(out)
+  detect(): Promise<EngineDetection> {
+    return this.status.read(async () => {
+      const binary = claudeBinary()
+      if (!binary) return { installed: false, loggedIn: false, conclusive: true }
+      const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS)
+      if (code === null) return { installed: true, loggedIn: false, conclusive: false }
+      return readAuthStatus(out)
+    })
   }
 
   async login(): Promise<{ ok: boolean; message?: string }> {
     const binary = claudeBinary()
     if (!binary) return { ok: false, message: 'the Claude runtime is not part of this build' }
     const { code, out } = await runText(binary, ['auth', 'login', '--claudeai'], LOGIN_TIMEOUT_MS)
+    this.status.forget()
     const status = await this.detect()
     if (status.loggedIn) return { ok: true }
     flog('engine-claude', `login did not complete (exit ${code ?? 'timeout'}): ${out.slice(-300)}`)
@@ -61,6 +65,7 @@ export class ClaudeEngine implements CloudEngine {
   async logout(): Promise<void> {
     const binary = claudeBinary()
     if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS)
+    this.status.forget()
   }
 
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
@@ -71,7 +76,8 @@ export class ClaudeEngine implements CloudEngine {
     }
     const sdk = (await import('@anthropic-ai/claude-agent-sdk')) as unknown as AgentSdk
     const abort = new AbortController()
-    const timer = setTimeout(() => abort.abort(), job.timeoutMs ?? ENGINE_BUDGETS.job)
+    const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
+    const timer = setTimeout(() => abort.abort(), budget)
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
     try {
@@ -84,7 +90,9 @@ export class ClaudeEngine implements CloudEngine {
           // One answer, from the words alone: no files, no commands, and none
           // of the person's own runtime configuration riding along.
           tools: [],
-          maxTurns: 1,
+          // A fixed shape is delivered through one more exchange when the
+          // first answer came as prose; one turn leaves no room for it.
+          maxTurns: job.jsonSchema ? 3 : 1,
           persistSession: false,
           settingSources: [],
           ...(job.jsonSchema ? { outputFormat: { type: 'json_schema', schema: job.jsonSchema } } : {}),
@@ -100,7 +108,7 @@ export class ClaudeEngine implements CloudEngine {
         if (message.type !== 'result') continue
         const result = message as Extract<SdkMessage, { type: 'result' }>
         if (result.is_error || result.subtype !== 'success') {
-          const said = result.result || result.subtype
+          const said = (result.errors?.length ? result.errors.join('; ') : result.result) || result.subtype
           const kind = result.api_error_status === 401 || result.api_error_status === 403 ? 'auth' : result.api_error_status === 429 ? 'quota' : cloudErrorKind(said)
           yield { type: 'error', message: said, kind }
           return
@@ -110,6 +118,10 @@ export class ClaudeEngine implements CloudEngine {
       }
     } catch (err) {
       if (job.signal?.aborted) return
+      if (abort.signal.aborted) {
+        yield { type: 'error', message: `timed out after ${budget}ms`, kind: 'timeout' }
+        return
+      }
       const message = err instanceof Error ? err.message : String(err)
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {

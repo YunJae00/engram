@@ -44,6 +44,7 @@ export {
   setLocalTransport,
   type EngineBinaries,
   ENGINE_ORDER,
+  keepsEngine,
   setCloudEngineFactory,
   type CloudEngineId,
 } from './engine/registry.js'

@@ -9,7 +9,7 @@ import {
   type BinaryProvider,
   type Engine,
   type EngineId,
-  type VaultPaths, ENGINE_ORDER, detectAvailableEngines } from 'core'
+  type VaultPaths, ENGINE_ORDER, keepsEngine } from 'core'
 import { loadSettings } from './settings.js'
 import { app } from 'electron'
 import { join } from 'node:path'
@@ -56,9 +56,10 @@ export async function saveVaultRoot(root: string): Promise<void> {
   await registerWorkspace({ name: 'Personal', root, kind: 'personal' })
 }
 
-// Every brain that is usable now, the chosen one first - it is what the
-// librarian and a default chat send reach for. A cloud brain that is not
-// signed in is left out, and stays out: nothing here falls back to another.
+// The chosen brain, when it is usable now, and nothing else: the librarian
+// and every chat reach for the first entry, so a second one would be a
+// brain the person never chose answering for them. A chosen brain that is
+// not signed in leaves the list empty, and the surfaces say so.
 async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') {
@@ -67,7 +68,13 @@ async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> 
   }
   if (engineFlag === 'none') return []
   const chosen = (await loadSettings()).defaultEngine
-  return detectAvailableEngines(chosen, {}, keepSet(keep))
+  const engine = createEngine(chosen)
+  const known = keepSet(keep).has(chosen)
+  try {
+    return keepsEngine(await engine.detect(), known) ? [engine] : []
+  } catch {
+    return known ? [engine] : []
+  }
 }
 
 function keepSet(keep: Iterable<EngineId>): Set<EngineId> {

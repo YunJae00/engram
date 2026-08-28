@@ -4,7 +4,7 @@ import { rmSync, statSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { NoteDto, OnboardPayload } from '../shared/types.js'
-import { registerConfigIpc, registerSettingsIpc } from './config-ipc.js'
+import { registerConfigIpc, registerSettingsIpc, setBrainChoiceHook } from './config-ipc.js'
 import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from './security.js'
 import { detectApiKeyEnv } from './installer.js'
 import { abortAllChat, broadcast, drainAbsorbQueue, LIBRARIAN_RUN_OPTS, noteRunOutcome, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
@@ -568,6 +568,7 @@ async function bootVault(root: string): Promise<VaultContext> {
     // A brain downloaded or switched in Settings becomes usable the moment it
     // lands — not at the next refocus or the 30-minute watch tick.
     setModelsChangedHook(() => void revalidateEngines(ctx))
+    setBrainChoiceHook(() => void revalidateEngines(ctx))
     startEngineWatch(ctx)
     // Write the session block once at boot, so a Claude session started before
     // the first tidy still gets today's picture rather than yesterday's.

@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import { existsSync, realpathSync } from 'node:fs'
-import { dirname, join, sep } from 'node:path'
+import { delimiter, dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { classifyEngineError, setCloudEngineFactory, type Engine, type EngineErrorKind } from 'core'
+import { classifyEngineError, setCloudEngineFactory, type Engine, type EngineDetection, type EngineErrorKind } from 'core'
 import { ClaudeEngine } from './engine-claude.js'
 import { CodexEngine } from './engine-codex.js'
 
@@ -90,8 +90,20 @@ export interface RunText {
   out: string
 }
 
+// The runtime's helpers (its own search tool among them) sit in a folder
+// beside its binary and are found through PATH. Handing the runtime a path of
+// our own means handing it that folder too.
+export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const helpers = join(dirname(dirname(binary)), 'codex-path')
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) if (value !== undefined) out[key] = value
+  const key = Object.keys(out).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
+  out[key] = out[key] ? `${helpers}${delimiter}${out[key]}` : helpers
+  return out
+}
+
 // One command of the runtime, its output collected, ended after the budget.
-export function runText(binary: string, args: string[], timeoutMs: number): Promise<RunText> {
+export function runText(binary: string, args: string[], timeoutMs: number, env?: Record<string, string>): Promise<RunText> {
   return new Promise((resolve) => {
     let out = ''
     let done = false
@@ -103,7 +115,7 @@ export function runText(binary: string, args: string[], timeoutMs: number): Prom
     }
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(binary, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(binary, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env } : {}) })
     } catch (err) {
       out = err instanceof Error ? err.message : String(err)
       resolve({ code: null, out })
@@ -133,6 +145,31 @@ export function cloudErrorKind(message: string): EngineErrorKind {
 
 export const LOGIN_TIMEOUT_MS = 5 * 60_000
 export const STATUS_TIMEOUT_MS = 15_000
+// A sign-in that was there a minute ago is still there: detection is asked
+// on every focus and by every poll, and each ask is a process.
+export const STATUS_TTL_MS = 60_000
+
+// One probe at a time, and a positive answer kept for a minute. A negative
+// one is asked again next time - that is the state the person is fixing.
+export class StatusCache {
+  private probing: Promise<EngineDetection> | null = null
+  private known: { at: number; detection: EngineDetection } | null = null
+
+  async read(probe: () => Promise<EngineDetection>, now = Date.now()): Promise<EngineDetection> {
+    if (this.known?.detection.loggedIn && now - this.known.at < STATUS_TTL_MS) return this.known.detection
+    if (this.probing) return this.probing
+    this.probing = probe().finally(() => {
+      this.probing = null
+    })
+    const detection = await this.probing
+    this.known = { at: now, detection }
+    return detection
+  }
+
+  forget(): void {
+    this.known = null
+  }
+}
 
 export interface CloudEngine extends Engine {
   readonly id: CloudEngineId

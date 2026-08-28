@@ -14,6 +14,13 @@ import { binaryProvider, type VaultContext } from './vault.js'
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
 // handlers must exist from registerBaseIpc, not from bootVault.
+// Choosing another brain must reach the engine list at once, not at the
+// next scheduled detection; the vault owner installs this when it is up.
+let onBrainChoice: (() => void) | null = null
+export function setBrainChoiceHook(hook: () => void): void {
+  onBrainChoice = hook
+}
+
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
 
@@ -28,6 +35,7 @@ export function registerSettingsIpc(): void {
       agentBrowser: settings.agentBrowser ?? held.agentBrowser,
     })
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
+    if (settings.defaultEngine !== held.defaultEngine) onBrainChoice?.()
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
     // Live surfaces (the agent terminal's colours) restyle immediately.
     broadcast({ type: 'settings:changed', settings })
