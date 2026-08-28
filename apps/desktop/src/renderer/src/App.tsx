@@ -14,7 +14,6 @@ import { RoutinesSheet } from './components/RoutinesSheet.js'
 import { BotsView } from './views/BotsView.js'
 import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
-import { BrainView } from './views/BrainView.js'
 import { BubbleView } from './views/BubbleView.js'
 import { DiagnosticsView } from './views/DiagnosticsView.js'
 import { InboxOverlay } from './views/InboxOverlay.js'
@@ -268,6 +267,54 @@ function Shell() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => setPalette('search')}
       />
+      {/* Notices sit in the flow between the bar and the canvas: a pill
+          that pushes the page down rather than floating over its header. */}
+      <div className="notices">
+        {vaultReady && enginesDetected && engines.length === 0 && (
+        <div className="connect-banner" data-testid="connect-banner">
+          <PlugZap size={14} strokeWidth={1.8} aria-hidden />
+          <span>
+            {t('banner.noBrain')}
+            {pendingWork.inbox + pendingWork.notes > 0 && ` · ${t('banner.waiting', { n: pendingWork.inbox + pendingWork.notes })}`}
+          </span>
+          <button className="connect-banner-btn" onClick={() => setSettingsOpen(true)}>
+            {t('banner.getBrain')}
+          </button>
+        </div>
+      )}
+      {/* Connected on paper, silent in practice: the engine is logged in but
+          the boot ping got nothing back (expired token, no network, quota).
+          Saying nothing here is what made this read as "it keeps
+          disconnecting" — the app looked fine while every call failed. */}
+      {unhealthy.length > 0 && (
+        <div className="connect-banner" data-testid="unhealthy-banner">
+          <PlugZap size={14} strokeWidth={1.8} aria-hidden />
+          <span>{unhealthyText}</span>
+          {/* Every warning gets an action that actually resolves it: for an
+              expired login that is the login terminal, which Diagnostics now
+              offers because it reads this same health verdict. */}
+          <button className="connect-banner-btn" onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}>
+            {reason === 'auth' ? t('banner.login') : t('banner.check')}
+          </button>
+        </div>
+      )}
+      {updateReady && (
+        <div
+          className="connect-banner update-banner"
+          data-testid="update-banner"
+        >
+          <Download size={14} strokeWidth={1.8} aria-hidden />
+          <span>
+            {updateSelfInstalls
+              ? t('banner.updateReady', { version: updateReady })
+              : t('banner.updateAvailable', { version: updateReady })}
+          </span>
+          <button className="connect-banner-btn" onClick={() => void api.updateInstall()}>
+            {updateSelfInstalls ? t('banner.updateRestart') : t('banner.updateDownload')}
+          </button>
+        </div>
+      )}
+      </div>
       <div className="canvas">
         {/* While a big vault is still being read the views would all claim
             "nothing here" — show the opening state until vault:ready. */}
@@ -293,50 +340,8 @@ function Shell() {
           <BotsView />
         ) : activity === 'sky' ? (
           <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
-        ) : activity === 'brain' ? <BrainView /> : <ListView />}
-        {vaultReady && enginesDetected && engines.length === 0 && (
-          <div className="connect-banner" data-testid="connect-banner">
-            <PlugZap size={14} strokeWidth={1.8} aria-hidden />
-            <span>
-              {t('banner.noBrain')}
-              {pendingWork.inbox + pendingWork.notes > 0 && ` · ${t('banner.waiting', { n: pendingWork.inbox + pendingWork.notes })}`}
-            </span>
-            <button className="connect-banner-btn" onClick={() => setSettingsOpen(true)}>
-              {t('banner.getBrain')}
-            </button>
-          </div>
-        )}
-        {/* Connected on paper, silent in practice: the engine is logged in but
-            the boot ping got nothing back (expired token, no network, quota).
-            Saying nothing here is what made this read as "it keeps
-            disconnecting" — the app looked fine while every call failed. */}
-        {unhealthy.length > 0 && (
-          <div className="connect-banner" data-testid="unhealthy-banner">
-            <PlugZap size={14} strokeWidth={1.8} aria-hidden />
-            <span>{unhealthyText}</span>
-            {/* Every warning gets an action that actually resolves it: for an
-                expired login that is the login terminal, which Diagnostics now
-                offers because it reads this same health verdict. */}
-            <button className="connect-banner-btn" onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}>
-              {reason === 'auth' ? t('banner.login') : t('banner.check')}
-            </button>
-          </div>
-        )}
-        {updateReady && (
-          <div
-            className={`connect-banner update-banner${(vaultReady && engines.length === 0) || unhealthy.length > 0 ? ' stacked' : ''}`}
-            data-testid="update-banner"
-          >
-            <Download size={14} strokeWidth={1.8} aria-hidden />
-            <span>
-              {updateSelfInstalls
-                ? t('banner.updateReady', { version: updateReady })
-                : t('banner.updateAvailable', { version: updateReady })}
-            </span>
-            <button className="connect-banner-btn" onClick={() => void api.updateInstall()}>
-              {updateSelfInstalls ? t('banner.updateRestart') : t('banner.updateDownload')}
-            </button>
-          </div>
+        ) : (
+          <ListView />
         )}
         {/* The launcher IS the panel at rest — never both on screen at once. */}
         {activity === 'sky' && <CosmosChat />}

@@ -322,10 +322,17 @@ await mkdir(USERDATA, { recursive: true })
 // resident models is how the machine gets powered off rather than slowed down.
 if (process.platform === 'win32')
   spawnSync('taskkill', ['/F', '/IM', 'electron.exe', '/T'], { stdio: 'ignore' })
+// Which brain answers. A cloud brain holds no model, so the memory guards
+// below stand down for it, and the set can run beside the installed app.
+const BRAIN = process.env['GOLDEN_BRAIN'] ?? 'local'
+const CLOUD = BRAIN !== 'local'
+// A name fragment picks out a few scenarios; the whole set runs otherwise.
+const ONLY = process.env['GOLDEN_ONLY'] ?? ''
+
 // The installed app is the person's, not this run's to close. If it is open it
 // is holding a model of its own, and starting a second one beside it is the
 // pairing that takes the machine down - so the set stands aside and says so.
-if (process.platform === 'win32') {
+if (process.platform === 'win32' && !CLOUD) {
   // Judged by weight, not by name: a killed app leaves helper processes behind
   // that still answer to Engram.exe at forty megabytes, and standing aside for
   // those means never running at all. What matters is whether something is
@@ -345,7 +352,7 @@ if (process.platform === 'win32') {
     process.exit(1)
   }
 }
-const FLOOR_GB = 8
+const FLOOR_GB = CLOUD ? 4 : 8
 console.log(`comet-golden: free memory ${(os.freemem() / 1e9).toFixed(1)}GB`)
 if (os.freemem() < FLOOR_GB * 1e9) {
   console.log(`comet-golden: not starting — this set loads a model and opens a browser, and wants ${FLOOR_GB}GB free`)
@@ -379,12 +386,12 @@ if (mk.status !== 0) {
   process.exit(1)
 }
 await startSite()
-await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
+if (!CLOUD) await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
 // The person has told it where they search, once — as they would in Settings.
 await writeFile(
   join(USERDATA, 'settings.json'),
   JSON.stringify({
-    defaultEngine: 'local',
+    defaultEngine: BRAIN,
     autoStart: false,
     teamSync: 'auto',
     searchTemplate: `${siteUrl}find?q={q}`,
@@ -453,7 +460,7 @@ async function openAppOnce(): Promise<Running> {
   await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })
   for (let i = 0; i < 40; i++) {
     const engines = (await page.evaluate(() => window.engram.engines())) as { id: string }[]
-    if (engines.some((e) => e.id === 'local')) break
+    if (engines.some((e) => e.id === BRAIN)) break
     await new Promise((r) => setTimeout(r, 2_000))
   }
   // The embedder is what tells one subject from another when the words differ.
@@ -513,7 +520,7 @@ const results: { scenario: Scenario; seen: Outcome; ok: boolean }[] = []
 let running: Running | null = null
 let inBatch = 0
 
-for (const scenario of SCENARIOS) {
+for (const scenario of SCENARIOS.filter((one) => !ONLY || one.name.includes(ONLY))) {
   // A fresh app every few scenarios: the model and the browser go back to the
   // machine in between, which is what lets this finish on a working day.
   if (!running || inBatch >= BATCH) {

@@ -1,4 +1,4 @@
-import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setLocalTransport, setSpawnObserver, sweep, sweepStaleEnginePids } from 'core'
+import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setLocalTransport, setSpawnObserver, sweepStaleEnginePids } from 'core'
 import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeTheme, powerMonitor, session, shell, type WebContents } from 'electron'
 import { rmSync, statSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -7,7 +7,7 @@ import type { NoteDto, OnboardPayload } from '../shared/types.js'
 import { registerConfigIpc, registerSettingsIpc, setBrainChoiceHook } from './config-ipc.js'
 import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from './security.js'
 import { detectApiKeyEnv } from './installer.js'
-import { abortAllChat, broadcast, drainAbsorbQueue, LIBRARIAN_RUN_OPTS, noteRunOutcome, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
+import { abortAllChat, broadcast, drainAbsorbQueue, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
 import { fixMacPath } from './macos-path.js'
 import { autoConnectMcp, registerMcpIpc } from './mcp-connect.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
@@ -17,8 +17,8 @@ import { syncSessionContext } from './session-context.js'
 import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
-import { isBubbleVisible, setBubbleVisible, startBubble, stopBubble } from './bubble.js'
-import { isActivityWatchEnabled, registerActivityIpc, setActivityWatchEnabled, startActivityWatch, stopActivityWatch } from './activity-watch.js'
+import { startBubble, stopBubble } from './bubble.js'
+import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
 import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHook, stopLocalServer } from './local-llm.js'
 import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
@@ -301,7 +301,6 @@ async function startResidency(ctx: VaultContext): Promise<void> {
       tray = createTray({
         onOpen: showMainWindow,
         onQuickCapture: () => void toggleQuickCapture(),
-        onSweep: () => runSweepNow(ctx),
         onQuit: () => {
           quitting = true
           app.quit()
@@ -312,14 +311,6 @@ async function startResidency(ctx: VaultContext): Promise<void> {
           quitting = true
           installUpdateNow()
         },
-        onToggleBubble: () => {
-          const next = !isBubbleVisible()
-          setBubbleVisible(next)
-          return next
-        },
-        bubbleVisible: isBubbleVisible,
-        onToggleActivity: () => void setActivityWatchEnabled(!isActivityWatchEnabled()),
-        activityEnabled: isActivityWatchEnabled,
       })
       if (updateReadyVersion !== null) tray.setUpdateReady(updateReadyVersion)
     } catch (err) {
@@ -374,34 +365,6 @@ async function startResidency(ctx: VaultContext): Promise<void> {
 
   // ⑧ team sync: start-up + 5-minute pulls, idle push (auto mode).
   startAutoSync(ctx, settings.teamSync === 'auto' && !isHidden)
-}
-
-function runSweepNow(ctx: VaultContext): void {
-  if (ctx.engines.length === 0) return
-  broadcast({ type: 'sweep:start' })
-  const modelsDir = join(app.getPath('userData'), 'models')
-  void sweep(ctx.paths, ctx.engines, { ...LIBRARIAN_RUN_OPTS, ingest: { provider: ctx.provider, modelsDir } })
-    .then((report) => {
-      noteRunOutcome(ctx, report)
-      broadcast({
-        type: 'sweep:done',
-        report: {
-          executed: report.executed,
-          skipped: report.skipped,
-          failed: report.failed.length,
-          deferred: report.deferred,
-          briefWritten: report.briefWritten,
-          // The tray sweep is the one path with no UI around it — if it halts
-          // on a limit, this field is the only way the user ever hears.
-          ...(report.haltReason ? { haltReason: report.haltReason } : {}),
-        },
-      })
-    })
-    .catch((err) => {
-      broadcast({ type: 'sweep:error', message: String(err) })
-      void revalidateEngines(ctx)
-    })
-    .finally(() => broadcast({ type: 'vault:changed' }))
 }
 
 // IPC that must exist BEFORE a vault does (onboarding window).

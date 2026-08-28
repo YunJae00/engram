@@ -53,6 +53,10 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
           )}
         </button>
       </div>
+      <button className="bots-new" data-testid="bots-new" title={open ? undefined : t('bots.new')} onClick={() => void create(t('bots.untitled'), '')}>
+        <Plus size={13} strokeWidth={2} aria-hidden />
+        <span className="bots-new-label">{t('bots.new')}</span>
+      </button>
       <ul className="bots-list">
         {bots.map((bot) => (
           <li key={bot.id}>
@@ -71,10 +75,6 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
           </li>
         ))}
       </ul>
-      <button className="bots-new" data-testid="bots-new" title={open ? undefined : t('bots.new')} onClick={() => void create(t('bots.untitled'), '')}>
-        <Plus size={13} strokeWidth={2} aria-hidden />
-        <span className="bots-new-label">{t('bots.new')}</span>
-      </button>
       <BotSuggestions
         suggestions={suggestions}
         onCreate={(name, purpose) => void create(name, purpose)}

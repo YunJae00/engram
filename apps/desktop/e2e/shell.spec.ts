@@ -53,8 +53,8 @@ test.beforeAll(async () => {
   })
   await createNote(paths, { id: 'n-mid-0001', body: '# Midpoint check\n\nSomewhere between kickoff and ship.' })
   await createNote(paths, { id: 'n-ref-0001', body: '# Style guide\n\nTimeless reference material.' })
-  // A linked cluster: three notes joined by derived_from, so the Brain grows a
-  // topic page and "View in the cosmos" has member stars to spotlight.
+  // A linked cluster: three notes joined by derived_from, so the sky has a
+  // constellation to draw.
   await createNote(paths, { id: 'n-argo-0001', body: '# Argo redesign\n\nThe umbrella decision.' })
   await createNote(paths, { id: 'n-argo-0002', body: '# Argo palette\n\nColor decisions.', derived_from: ['n-argo-0001'] })
   await createNote(paths, { id: 'n-argo-0003', body: '# Argo typography\n\nType decisions.', derived_from: ['n-argo-0001'] })
@@ -302,39 +302,6 @@ test('list view: rows render chronologically, the filter narrows them, a row ope
   await expect(page.getByTestId('cm-host')).toContainText('The very first note')
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('note-sheet')).toHaveCount(0)
-})
-
-test('brain view: unconnected memories render as a page and open the note sheet', async () => {
-  await page.getByTestId('activity-brain').click()
-  await expect(page.getByTestId('brain-view')).toBeVisible()
-  // the linked Argo seeds grew a topic; the loose notes sit in the rail's
-  // "not yet connected" bucket
-  await page.getByTestId('brain-unconnected').click()
-  await expect(page.getByTestId('brain-page')).toBeVisible()
-  await expect.poll(() => page.getByTestId('memory-row').count()).toBeGreaterThan(1)
-  await page.getByTestId('memory-row').first().click()
-  await expect(page.getByTestId('note-sheet')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('note-sheet')).toHaveCount(0)
-})
-
-test('View in the cosmos spotlights the topic stars, survives zoom, clears on empty-sky click', async () => {
-  await page.getByTestId('activity-brain').click()
-  await page.getByTestId('brain-topic').first().click()
-  await page.getByTestId('brain-graph-open').click()
-  await expect(page.getByTestId('sky-view')).toBeVisible()
-  // member stars burn with the halo treatment, the rest of the sky recedes
-  await expect(page.locator('[data-node-id="n-argo-0002"]')).toHaveClass(/\bspot\b/)
-  await expect(page.locator('[data-node-id="n-argo-0001"]')).toHaveClass(/\bspot\b/)
-  await expect(page.locator('[data-node-id="n-hello-0001"]')).toHaveClass(/\bfaded\b/)
-  await page.getByTestId('brain-graph').hover()
-  await page.mouse.wheel(0, -120)
-  await expect(page.locator('[data-node-id="n-argo-0002"]')).toHaveClass(/\bspot\b/)
-  // a plain click on empty sky lets the light go
-  const box = (await page.getByTestId('brain-graph').boundingBox())!
-  await page.mouse.click(box.x + 8, box.y + box.height - 8)
-  await expect(page.locator('[data-node-id="n-argo-0002"]')).not.toHaveClass(/\bspot\b/)
-  await expect(page.locator('[data-node-id="n-hello-0001"]')).not.toHaveClass(/\bfaded\b/)
 })
 
 test('approving the seeded supersede card (A key) flips frontmatter', async () => {

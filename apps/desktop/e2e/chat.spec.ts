@@ -84,7 +84,7 @@ test('the selected comet is remembered across tabs', async () => {
   // Pick the comet that is NOT first in the rail, then leave and come back.
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
-  await page.getByTestId('activity-brain').click()
+  await page.getByTestId('activity-list').click()
   await expect(page.getByTestId('bots-view')).toHaveCount(0)
   await page.getByTestId('activity-bots').click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')

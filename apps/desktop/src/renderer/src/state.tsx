@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto, RoutineBlockDto, SubjectKnowledgeDto, EngramEvent } from '../../shared/types.js'
+import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto, RoutineBlockDto, EngramEvent } from '../../shared/types.js'
 import { api } from './api.js'
 import { t, type Translate } from './i18n.js'
 
-type Activity = 'bots' | 'sky' | 'brain' | 'list'
+type Activity = 'bots' | 'sky' | 'list'
 
 // Sweep status is stored as data (not a pre-translated string) so the label can
 // re-render in the active language; the error message comes verbatim from main.
@@ -36,7 +36,6 @@ interface AppState {
   // What the vault has been told about names (workspace/aliases.md). The
   // Brain groups topics with it so it and the librarian agree; empty means
   // "guess cautiously", which is the behaviour that shipped before.
-  subjectKnowledge: SubjectKnowledgeDto
   fabric: BrainFabricDto
   notes: NoteDto[]
   cards: CardDto[]
@@ -166,7 +165,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [inbox, setInbox] = useState<InboxDto>({ files: [], failures: [] })
   const [engines, setEngines] = useState<EngineStatusDto[]>([])
   const [enginesDetected, setEnginesDetected] = useState(false)
-  const [subjectKnowledge, setSubjectKnowledge] = useState<SubjectKnowledgeDto>({ aliases: [], umbrella: [] })
   const [fabric, setFabric] = useState<BrainFabricDto>({ edges: [] })
   const [sheetNoteId, setSheetNoteId] = useState<string | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -296,7 +294,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         void refresh()
         void api.engines().then(setEngines)
         void api.enginesDetected().then(setEnginesDetected).catch(() => undefined)
-        void api.subjectKnowledge().then(setSubjectKnowledge).catch(() => undefined)
         void api.brainFabric().then(setFabric).catch(() => undefined)
         if (localStorage.getItem(DESK_NOTICE_KEY) === null) {
           localStorage.setItem(DESK_NOTICE_KEY, '1')
@@ -315,7 +312,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         void refresh()
         void api.engines().then(setEngines)
         void api.enginesDetected().then(setEnginesDetected).catch(() => undefined)
-        void api.subjectKnowledge().then(setSubjectKnowledge).catch(() => undefined)
         void api.brainFabric().then(setFabric).catch(() => undefined)
       }
       if (event.type === 'vault:error') setVaultError({ message: event.message, root: event.root })
@@ -546,7 +542,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       vaultReady,
       vaultError,
       enginesDetected,
-      subjectKnowledge,
       fabric,
       notes,
       cards,
@@ -585,7 +580,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, subjectKnowledge, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, startRoutine, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, startRoutine, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

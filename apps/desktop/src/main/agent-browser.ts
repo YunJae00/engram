@@ -246,6 +246,9 @@ async function ensureContext(): Promise<Ctx> {
     const ctx = await chromium.launchPersistentContext(profileDir, {
       executablePath,
       headless: false,
+      // The driver's default drops the sandbox, and the browser says so in a
+      // banner on every page; a person's window keeps its sandbox.
+      chromiumSandbox: true,
       // One frame for every page: a layout that does not depend on the
       // person's screen reads the same on every machine, and a taught
       // procedure replays against the page it was shown.

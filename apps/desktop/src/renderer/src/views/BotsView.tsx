@@ -212,6 +212,7 @@ export function BotsView() {
               </button>
             </header>
             {memoryOpen && <CometMemory botId={selected.id} name={selected.name} />}
+            {(selected.tasks ?? []).length > 0 && (
             <div className="bots-tasks">
               {(selected.tasks ?? []).map((task) => (
                 <button
@@ -239,6 +240,7 @@ export function BotsView() {
                 </button>
               ))}
             </div>
+            )}
             <div className="bots-thread" ref={listRef}>
               {messages.length === 0 && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               {messages.map((m, i) => (

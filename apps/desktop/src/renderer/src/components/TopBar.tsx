@@ -1,4 +1,4 @@
-import { CircleHelp, Globe, List, Network, Orbit } from 'lucide-react'
+import { CircleHelp, Globe, List, Orbit } from 'lucide-react'
 import { ThinkingDots } from './Thinking.js'
 import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
@@ -174,13 +174,6 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
           onClick={() => setActivity('sky')}
         >
           <Orbit size={14} strokeWidth={1.8} aria-hidden /> {t('topbar.tabSky')}
-        </button>
-        <button
-          className={`canvas-tab${activity === 'brain' ? ' active' : ''}`}
-          data-testid="activity-brain"
-          onClick={() => setActivity('brain')}
-        >
-          <Network size={14} strokeWidth={1.8} aria-hidden /> {t('topbar.tabBrain')}
         </button>
         <button
           className={`canvas-tab${activity === 'list' ? ' active' : ''}`}

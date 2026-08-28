@@ -80,15 +80,8 @@ function trayIcon() {
 interface TrayActions {
   onOpen(): void
   onQuickCapture(): void
-  onSweep(): void
   onQuit(): void
   onInstallUpdate(): void
-  // Toggle for the floating assistant bubble; returns the new visibility so
-  // the checkbox reflects what actually happened.
-  onToggleBubble(): boolean
-  bubbleVisible(): boolean
-  onToggleActivity(): void
-  activityEnabled(): boolean
 }
 
 export interface TrayHandle {
@@ -110,25 +103,6 @@ export function createTray(actions: TrayActions): TrayHandle {
           : []),
         { label: 'Open Engram', click: actions.onOpen },
         { label: 'Quick capture', click: actions.onQuickCapture },
-        { label: '⚡ Tidy now', click: actions.onSweep },
-        {
-          label: 'Floating assistant',
-          type: 'checkbox',
-          checked: actions.bubbleVisible(),
-          click: () => {
-            actions.onToggleBubble()
-            build()
-          },
-        },
-        {
-          label: 'Desk journal (app + window titles)',
-          type: 'checkbox',
-          checked: actions.activityEnabled(),
-          click: () => {
-            actions.onToggleActivity()
-            build()
-          },
-        },
         { type: 'separator' },
         { label: 'Quit', click: actions.onQuit },
       ]),

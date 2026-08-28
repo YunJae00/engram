@@ -7,10 +7,9 @@ export const TOUR_DONE_KEY = 'engram.tour.done'
 // resolves to exact i18n keys and stays compile-checked.
 const STEPS = [
   { anchor: null, key: 'welcome' },
+  { anchor: '[data-testid="activity-bots"]', key: 'comets' },
   { anchor: '[data-testid="activity-sky"]', key: 'cosmos' },
-  { anchor: '[data-testid="remember-button"]', key: 'capture' },
-  { anchor: null, key: 'tidy' },
-  { anchor: '[data-testid="activity-brain"]', key: 'brain' },
+  { anchor: '[data-testid="activity-settings"]', key: 'brain' },
 ] as const
 
 const PAD = 6
