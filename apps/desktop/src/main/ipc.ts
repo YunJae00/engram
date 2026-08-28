@@ -62,6 +62,11 @@ import {
   hostOf,
   ruleCovers,
   ruleFor,
+  askKey,
+  declineStanding,
+  repeatedAsk,
+  routineSlots,
+  routineWrites,
   listRoutines,
   loadBotMemory,
   renderMemory,
@@ -82,6 +87,7 @@ import {
   writeContextPack,
   writeNote,
   type Engine,
+  type Schedule,
   type GatedAction,
   type EngineEvent,
   type JobFailure,
@@ -99,6 +105,7 @@ import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
+import { startStanding } from './standing.js'
 import { agentBrowserAvailable, agentCourier, browserChoicePending, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { consentedFolders } from './content-capture.js'
@@ -1064,9 +1071,10 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:create', (_e, input: { name: string; purpose: string }) => createBot(paths, input))
   ipcMain.handle('bots:delete', (_e, id: string) => deleteBot(paths, id))
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
-  ipcMain.handle('bots:taskAdd', (_e, botId: string, input: { name: string; goal: string }) =>
+  ipcMain.handle('bots:taskAdd', (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) =>
     addBotTask(paths, botId, input),
   )
+  ipcMain.handle('bots:standingDecline', (_e, botId: string, goal: string) => declineStanding(paths, botId, askKey(goal)))
   ipcMain.handle('bots:taskRemove', (_e, botId: string, taskId: string) => removeBotTask(paths, botId, taskId))
   ipcMain.handle('bots:taskRan', (_e, botId: string, taskId: string) => markBotTaskRun(paths, botId, taskId))
   const suggestionsNow = async () => {
@@ -1291,6 +1299,14 @@ export function registerIpc(ctx: VaultContext): void {
   })
   ipcMain.handle('approvals:list', () => approvals.list())
   ipcMain.handle('approvals:forget', (_e, fingerprint: string) => approvals.forget(fingerprint))
+  // Standing tasks go through the same door as a press of Run.
+  startStanding({
+    paths,
+    runRoutine: async (id) => {
+      const reply = await beginRoutine(id)
+      return { ok: reply.ok, ...((reply as { blocked?: boolean }).blocked ? { blocked: true } : {}) }
+    },
+  })
 
   ipcMain.handle('routines:wallDone', (_e, verdict: 'resolved' | 'skip') => {
     routineWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
@@ -2025,10 +2041,23 @@ export function registerIpc(ctx: VaultContext): void {
         // click next time. A quick answer offers nothing at all.
         const worked = result.steps.filter((step) => !step.seeded).length
         const keepable = !untaught && !routine && !result.asked && worked >= KEEP_AFTER_STEPS
+        // The third morning of the same ask, and a read-only procedure with
+        // no blanks was just run for it: that one can run itself from now on.
+        const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
+        const ran = ranId ? (await listRoutines(paths)).find((r) => r.id === ranId) : undefined
+        const standing =
+          ran && !routineWrites(ran) && routineSlots(ran.steps).length === 0 && !(bot.declined ?? []).includes(askKey(request.message))
+            ? repeatedAsk(
+                (await readBotTranscript(paths, bot.id)).filter((turn) => turn.role === 'user'),
+                request.message,
+              )
+            : null
         await deliverAnswer(
           `${result.answer}${note}`,
           result.asked && result.options?.length
             ? { kind: 'asked', question: result.answer, options: result.options }
+            : standing && ran
+              ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
             : untaught
             ? { kind: 'teach' }
             : routine

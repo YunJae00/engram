@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 import { forgetBotMemory } from './bot-memory.js'
+import { isSchedule, type Schedule } from './schedule.js'
 
 // Bots are named colleagues inside the vault: each carries a charter (what it
 // is for), keeps its own conversation, and can dispatch errands. The heart of
@@ -17,6 +18,11 @@ export interface BotTask {
   name: string
   goal: string
   lastRunAt?: string
+  // A task that stands: the procedure it replays and when. Only a
+  // read-only procedure with no blanks is ever given one - anything that
+  // posts, or needs words, stays a press away.
+  schedule?: Schedule
+  routineId?: string
 }
 
 export interface Bot {
@@ -25,6 +31,9 @@ export interface Bot {
   purpose: string
   createdAt: string
   tasks?: BotTask[]
+  // Asks the person refused to make standing, by ask key: offered once, not
+  // every third morning.
+  declined?: string[]
 }
 
 export interface BotTurn {
@@ -161,13 +170,15 @@ export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
 export async function addBotTask(
   paths: VaultPaths,
   botId: string,
-  input: { name: string; goal: string },
+  input: { name: string; goal: string; schedule?: Schedule; routineId?: string },
   now: Date = new Date(),
 ): Promise<BotTask> {
   const name = input.name.trim().slice(0, 60)
   const goal = input.goal.trim().slice(0, 500)
   if (!name) throw new Error('a task needs a name')
   if (!goal) throw new Error('a task needs a goal — what should it do?')
+  if (input.schedule !== undefined && !isSchedule(input.schedule)) throw new Error('a schedule needs days, an hour and a minute')
+  if (input.schedule && !input.routineId) throw new Error('a standing task needs a procedure to replay')
   const bots = await loadBots(paths)
   const bot = bots.find((b) => b.id === botId)
   if (!bot) throw new Error('no such comet')
@@ -175,10 +186,20 @@ export async function addBotTask(
     id: `task-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
     name,
     goal,
+    ...(input.schedule ? { schedule: input.schedule } : {}),
+    ...(input.routineId ? { routineId: input.routineId } : {}),
   }
   bot.tasks = [...(bot.tasks ?? []), task]
   await saveBots(paths, bots)
   return task
+}
+
+export async function declineStanding(paths: VaultPaths, botId: string, key: string): Promise<void> {
+  const bots = await loadBots(paths)
+  const bot = bots.find((b) => b.id === botId)
+  if (!bot || !key) return
+  bot.declined = [...new Set([...(bot.declined ?? []), key])].slice(-100)
+  await saveBots(paths, bots)
 }
 
 export async function removeBotTask(paths: VaultPaths, botId: string, taskId: string): Promise<void> {

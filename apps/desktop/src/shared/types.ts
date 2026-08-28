@@ -121,11 +121,19 @@ export interface LocalModelsStateDto {
 // means the platform cannot swap the app itself (an unsigned macOS build), so
 // an available version leads to a download page instead of an install.
 // One finished delegation, as the journal remembers it.
+export interface ScheduleDto {
+  days: number[]
+  hour: number
+  minute: number
+}
+
 export interface BotTaskDto {
   id: string
   name: string
   goal: string
   lastRunAt?: string
+  schedule?: ScheduleDto
+  routineId?: string
 }
 
 export interface BotDto {
@@ -391,6 +399,9 @@ export type EngramEvent =
         // A job that took real work is worth keeping: the loop says so, the
         // person decides. Nothing here is a form to fill.
         | { kind: 'keep'; name: string; goal: string }
+        // The same ask on a third morning: a read-only procedure it just ran
+        // could run itself at that hour from now on.
+        | { kind: 'standing'; name: string; goal: string; count: number; schedule: ScheduleDto; routineId: string }
         // The loop ended on a question; the options are ways forward the
         // thread shows as chips. Only sent when there are some.
         | { kind: 'asked'; question: string; options: string[] }
@@ -520,7 +531,8 @@ export interface EngramApi {
   botCreate(input: { name: string; purpose: string }): Promise<BotDto>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
-  botTaskAdd(botId: string, input: { name: string; goal: string }): Promise<BotTaskDto>
+  botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
+  botStandingDecline(botId: string, goal: string): Promise<void>
   botTaskRemove(botId: string, taskId: string): Promise<void>
   botTaskRan(botId: string, taskId: string): Promise<void>
   botsRecommend(): Promise<BotSuggestionDto[]>

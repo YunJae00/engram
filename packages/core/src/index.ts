@@ -66,7 +66,7 @@ export * from './import.js'
 export { BundledBinaryProvider } from './bundled-binary.js'
 export * from './audio.js'
 export * from './capture/doc-extract.js'
-export { addBotTask, appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, markBotTaskRun, readBotTranscript, recommendBots, removeBotTask, type Bot, type BotSuggestion, type BotTask, type BotTurn } from './bots.js'
+export { addBotTask, appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, markBotTaskRun, readBotTranscript, recommendBots, removeBotTask, declineStanding, type Bot, type BotSuggestion, type BotTask, type BotTurn } from './bots.js'
 export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './errand-journal.js'
 export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRoutineRun, removeRoutine, routineBlock, routineSlots, routineStepLabel, routineWrites, runRoutine, validateRoutineSteps, type Routine, type RoutineBlock, type RoutineDriver, type RoutineReading, type RoutineRunOptions, type RoutineRunResult, type RoutineStep, type RoutineStepResult, type RoutineTarget } from './routine.js'
 export { buildRoutineFromTeach, type TeachEvent } from './teach.js'
@@ -74,6 +74,8 @@ export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type Ag
 export { cometTools, type CometToolDeps } from './comet-tools.js'
 export { choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
+export { dueNow, guessSchedule, isSchedule, type Schedule } from './schedule.js'
+export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {
   factScore,
   forgetBotMemory,

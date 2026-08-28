@@ -1,9 +1,10 @@
-import { ArrowUp, Bookmark, Brain, Play, Square, Trash2, Wand2, X } from 'lucide-react'
+import { ArrowUp, Brain, Clock, Play, Square, Trash2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
+import { CometOffer } from '../components/CometOffer.js'
 import { CometMemory } from '../components/CometMemory.js'
 import { CometRail } from '../components/CometRail.js'
 import { Thinking } from '../components/Thinking.js'
@@ -12,6 +13,7 @@ import { pendingStatus, stepLabel } from '../lib/pendingStatus.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
+import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { answerHtml } from '../markdown.js'
 import { SubmitGate } from '../components/SubmitGate.js'
@@ -130,6 +132,12 @@ export function BotsView() {
     await reload()
   }
 
+  const stand = async (offer: { name: string; goal: string; schedule: { days: number[]; hour: number; minute: number }; routineId: string }) => {
+    if (!selected) return
+    await api.botTaskAdd(selected.id, { name: offer.name, goal: offer.goal, schedule: offer.schedule, routineId: offer.routineId }).catch(() => undefined)
+    await reload()
+  }
+
   const create = async (name: string, purpose: string): Promise<boolean> => {
     const bot = await api.botCreate({ name, purpose }).catch(() => null)
     if (!bot) return false
@@ -208,8 +216,9 @@ export function BotsView() {
                   title={task.goal}
                   onClick={() => runTask(task)}
                 >
-                  <Play size={11} strokeWidth={2.2} aria-hidden />
+                  {task.schedule ? <Clock size={11} strokeWidth={2.2} aria-hidden /> : <Play size={11} strokeWidth={2.2} aria-hidden />}
                   {task.name}
+                  {task.schedule && <span className="bots-task-when">{t('bots.taskStanding', { when: scheduleLabel(task.schedule) })}</span>}
                   <span
                     className="bots-task-x"
                     role="button"
@@ -260,51 +269,29 @@ export function BotsView() {
                 />
               )}
               {offer && offer.kind !== 'asked' && !routine.running && (
-                <div className="bots-offer" data-testid="bots-offer">
-                  <span className="bots-offer-text">
-                    {offer.kind === 'run'
-                      ? t('bots.offerRun', { name: offer.name })
-                      : offer.kind === 'keep'
-                        ? t('bots.offerKeep')
-                        : t('bots.offerTeach')}
-                  </span>
-                  {offer.kind === 'keep' ? (
-                    <button
-                      className="primary bots-offer-run"
-                      data-testid="bots-offer-keep"
-                      onClick={() => {
-                        const wanted = offer
-                        cometThreads.clearOffer(selected.id)
-                        void keep(wanted.name, wanted.goal)
-                      }}
-                    >
-                      <Bookmark size={11} strokeWidth={2.5} aria-hidden /> {t('bots.offerKeepGo')}
-                    </button>
-                  ) : offer.kind === 'run' ? (
-                    <button
-                      className="primary bots-offer-run"
-                      data-testid="bots-offer-run"
-                      onClick={() => {
-                        const wanted = offer
-                        cometThreads.clearOffer(selected.id)
-                        void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
-                      }}
-                    >
-                      <Play size={11} strokeWidth={2.5} aria-hidden /> {t('routines.run')}
-                    </button>
-                  ) : (
-                    <button
-                      className="primary bots-offer-run"
-                      data-testid="bots-offer-teach"
-                      onClick={() => {
-                        cometThreads.clearOffer(selected.id)
-                        window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))
-                      }}
-                    >
-                      <Wand2 size={11} strokeWidth={2.5} aria-hidden /> {t('bots.offerTeachGo')}
-                    </button>
-                  )}
-                </div>
+                <CometOffer
+                  offer={offer}
+                  onKeep={(name, goal) => {
+                    cometThreads.clearOffer(selected.id)
+                    void keep(name, goal)
+                  }}
+                  onRun={(wanted) => {
+                    cometThreads.clearOffer(selected.id)
+                    void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
+                  }}
+                  onStand={(wanted) => {
+                    cometThreads.clearOffer(selected.id)
+                    void stand(wanted)
+                  }}
+                  onDecline={(wanted) => {
+                    cometThreads.clearOffer(selected.id)
+                    void api.botStandingDecline(selected.id, wanted.goal).catch(() => undefined)
+                  }}
+                  onTeach={() => {
+                    cometThreads.clearOffer(selected.id)
+                    window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))
+                  }}
+                />
               )}
               <SubmitGate />
               {errand.running && (

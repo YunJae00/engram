@@ -23,6 +23,7 @@ import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHo
 import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
+import { stopStanding } from './standing.js'
 import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './session-watch.js'
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
@@ -720,6 +721,7 @@ app.on('will-quit', () => {
   stopSessionWatch()
   stopBubble()
   stopKeeper()
+  stopStanding()
   stopActivityWatch()
   stopLocalServer()
   void stopContentCapture()
