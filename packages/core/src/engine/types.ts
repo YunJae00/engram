@@ -2,7 +2,7 @@ import { classifyEngineError, type EngineErrorKind } from './classify.js'
 
 export { classifyEngineError, type EngineErrorKind } from './classify.js'
 
-export type EngineId = 'local' | 'mock'
+export type EngineId = 'local' | 'claude' | 'codex' | 'mock'
 
 export interface EngineDetection {
   installed: boolean

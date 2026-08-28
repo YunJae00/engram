@@ -215,8 +215,12 @@ async function ensureContext(): Promise<Ctx> {
     const ctx = await chromium.launchPersistentContext(profileDir, {
       executablePath,
       headless: false,
-      viewport: null,
+      // One frame for every page: a layout that does not depend on the
+      // person's screen reads the same on every machine, and a taught
+      // procedure replays against the page it was shown.
+      viewport: { width: 1440, height: 900 },
       args: [
+        '--window-size=1440,900',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',
@@ -267,7 +271,7 @@ async function ensurePage(): Promise<Page> {
 async function readPage(page: Page): Promise<WebPage> {
   const url = page.url()
   const title = await page.title().catch(() => '')
-  const { text, hasPasswordField, links } = await page
+  const { text, hasPasswordField, links, controls } = await page
     .evaluate(() => {
       const root = document.querySelector('article, main') ?? document.body
       // Every anchor that leaves this host, with the words on it. No selector
@@ -294,15 +298,41 @@ async function readPage(page: Page): Promise<WebPage> {
         found.push({ text: label.slice(0, 120), url: href })
         if (found.length >= 25) break
       }
+      // What a page can be asked to do, as short lines: its buttons, fields
+      // and menus with the words on them. Far smaller than the markup, and
+      // what a small model needs to pick the next move without reading the
+      // whole page again.
+      const controls: string[] = []
+      const seenControl = new Set<string>()
+      for (const el of Array.from(document.querySelectorAll('button, input, select, textarea, [role="button"], [role="tab"], [role="menuitem"], a[href][role]'))) {
+        const node = el as HTMLElement
+        if (node.hidden || node.getAttribute('aria-hidden') === 'true') continue
+        const rect = node.getBoundingClientRect()
+        if (rect.width === 0 || rect.height === 0) continue
+        const tag = node.tagName.toLowerCase()
+        const role = node.getAttribute('role') ?? (tag === 'input' ? `input:${(node as HTMLInputElement).type || 'text'}` : tag)
+        if (role === 'input:hidden') continue
+        const name = (node.getAttribute('aria-label') ?? node.getAttribute('placeholder') ?? node.getAttribute('name') ?? node.innerText ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 60)
+        if (!name) continue
+        const line = `[${role}] ${name}`
+        if (seenControl.has(line)) continue
+        seenControl.add(line)
+        controls.push(line)
+        if (controls.length >= 40) break
+      }
       return {
         text: ((root as HTMLElement | null)?.innerText ?? '').replace(/\n{3,}/g, '\n\n'),
         hasPasswordField: document.querySelector('input[type="password"]') !== null,
         links: found,
+        controls,
       }
     })
-    .catch(() => ({ text: '', hasPasswordField: false, links: [] as { text: string; url: string }[] }))
+    .catch(() => ({ text: '', hasPasswordField: false, links: [] as { text: string; url: string }[], controls: [] as string[] }))
   const wall = classifyWall(url, title, text, hasPasswordField)
-  return { url, title, text: text.slice(0, PAGE_TEXT_CAP), links, ...(wall ? { wall } : {}) }
+  return { url, title, text: text.slice(0, PAGE_TEXT_CAP), links, controls, ...(wall ? { wall } : {}) }
 }
 
 async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {

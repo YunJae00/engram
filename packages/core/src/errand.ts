@@ -50,6 +50,9 @@ export interface WebPage {
   // engine produced it, so reading the links is how the comet follows one
   // without this codebase knowing a single search engine.
   links?: { text: string; url: string }[]
+  // The page's buttons, fields and menus, one short line each, so the next
+  // move can be picked without the whole page.
+  controls?: string[]
   wall?: 'login' | 'captcha'
 }
 

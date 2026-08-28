@@ -69,14 +69,24 @@ interface ModelSpec {
 // is the smallest one.
 const MODELS: ModelSpec[] = [
   {
+    id: 'gemma3-1b',
+    label: 'Gemma 3 1B',
+    file: 'gemma-3-1b-it-Q4_K_M.gguf',
+    url: 'https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf',
+    approxGB: 0.8,
+    ramGB: 8,
+    tag: 'light',
+    desc: 'The lightest brain — fits beside a browser on an ordinary laptop.',
+  },
+  {
     id: 'gemma4-e2b',
     label: 'Gemma 4 E2B',
     file: 'gemma-4-E2B-it-Q4_K_M.gguf',
     url: 'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
     approxGB: 3.1,
-    ramGB: 8,
-    tag: 'light',
-    desc: 'Small and quick — runs comfortably beside your other work.',
+    ramGB: 24,
+    tag: 'balanced',
+    desc: 'Sharper, for machines with room to spare.',
   },
 ]
 
@@ -852,9 +862,12 @@ function armBrainFetch(): void {
   if (!app.isPackaged && process.env['ENGRAM_AUTO_FETCH'] !== '1') return
   armAutoFetch({
     missing: async () => {
-      const spec = MODELS[0]
+      // The brain this machine can carry: the largest that fits its RAM, and
+      // only that one - two downloads for one job is two disks' worth of room.
+      const spec = MODELS.find((m) => m.id === recommendId()) ?? MODELS[0]
       if (!spec || downloads.has(spec.id)) return null
-      return (await modelPresent(spec)) ? null : spec.id
+      for (const other of MODELS) if (await modelPresent(other)) return null
+      return spec.id
     },
     download: (id) =>
       downloadModel(id).then((r) => {

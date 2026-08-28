@@ -105,6 +105,8 @@ import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
+import { cloudEngine } from './engine-cloud.js'
+import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, agentCourier, browserChoicePending, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
@@ -1737,6 +1739,18 @@ export function registerIpc(ctx: VaultContext): void {
   })
 
   ipcMain.handle('engines:list', () => ctx.engines.map(engineDto))
+  ipcMain.handle('engines:states', () => engineStates())
+  // Sign-in happens in the vendor's own window; this only starts it, waits,
+  // and re-detects. Nothing about the credential passes through here.
+  ipcMain.handle('engines:connect', async (_e, id: 'claude' | 'codex') => {
+    const result = await cloudEngine(id).login()
+    await revalidateEngines(ctx)
+    return result
+  })
+  ipcMain.handle('engines:disconnect', async (_e, id: 'claude' | 'codex') => {
+    await cloudEngine(id).logout()
+    await revalidateEngines(ctx)
+  })
 
   // Live re-detection (login just completed in the embedded terminal, a CLI
   // was installed, …) — updates ctx in place and tells every window. It also
@@ -1785,9 +1799,19 @@ export function registerIpc(ctx: VaultContext): void {
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal): Promise<void> {
     const channel = request.channel ?? 'panel'
-    const engine = ctx.engines.find((e2) => e2.id === request.engineId) ?? ctx.engines[0]
+    // The brain the person chose, and no other: a cloud brain that is not
+    // signed in is said so, never quietly swapped for the one on this disk.
+    const wanted = request.engineId || (await loadSettings()).defaultEngine
+    const engine = ctx.engines.find((e2) => e2.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
     if (!engine) {
-      broadcast({ type: 'chat:error', channel, message: 'No engine available — connect an AI first.' })
+      broadcast({
+        type: 'chat:error',
+        channel,
+        message:
+          wanted === 'claude' || wanted === 'codex'
+            ? `${wanted === 'claude' ? 'Claude' : 'ChatGPT'} is not connected — open Settings and sign in.`
+            : 'No engine available — connect an AI first.',
+      })
       return
     }
     // Short on purpose. These ride on EVERY local turn (the warm-session lane

@@ -1614,6 +1614,8 @@ body.bubble-host { background: transparent; }
 .bots-choices .bots-offer-text { flex: 0 0 100%; min-width: 0; }
 .bots-choice { max-width: 100%; white-space: normal; text-align: left; }
 .bots-task-when { font-size: var(--fs-micro); color: var(--fg-faint); margin-left: 2px; }
+.brain-pick { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0 8px; }
+.brain-choice.armed { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .bots-memory-toggle { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .bots-memory-toggle.armed { border-color: var(--accent); color: var(--accent); }
 .bots-memory {

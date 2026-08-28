@@ -585,6 +585,11 @@ export interface EngramApi {
   search(query: string, strict?: boolean): Promise<SearchHitDto[]>
   engines(): Promise<EngineStatusDto[]>
   enginesRefresh(): Promise<EngineStatusDto[]>
+  // Sign in to / out of a cloud brain through the vendor's own flow.
+  engineConnect(id: 'claude' | 'codex'): Promise<{ ok: boolean; message?: string }>
+  engineDisconnect(id: 'claude' | 'codex'): Promise<void>
+  // Every brain this build carries, signed in or not.
+  engineStates(): Promise<EngineStatusDto[]>
   onEvent(listener: (event: EngramEvent) => void): () => void
   // quick-capture floating window helpers
   hideQuickCapture(): void
@@ -688,8 +693,8 @@ export interface OnboardPayload {
 }
 
 export interface AppSettingsDto {
-  // stored and used for engine detection, but no longer shown — one option
-  defaultEngine: 'claude' | 'local'
+  // Which brain answers: this disk, or one of the two the person signed in to.
+  defaultEngine: 'local' | 'claude' | 'codex'
   autoStart: boolean
   teamSync: 'auto' | 'manual'
   semanticModel?: string

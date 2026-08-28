@@ -2,10 +2,34 @@ import { LocalAdapter, type LocalTransport } from './local.js'
 import { MockEngine } from './mock.js'
 import type { Engine, EngineDetection, EngineId } from './types.js'
 
-// One engine: the brain on this disk. The app's whole premise is that
-// nothing the librarian does leaves the machine — a cloud adapter here was
-// the one contradiction, and it billed a user's plan before it was caught.
-export const ENGINE_ORDER: EngineId[] = ['local']
+// Three brains, each on its own: the one on this disk, and two the person
+// signs in to with their own plan and pays for themselves. Nothing here
+// switches between them behind the person's back - the one they chose is the
+// one that answers, and a brain that is not signed in says so rather than
+// handing the work to another.
+export const ENGINE_ORDER: EngineId[] = ['local', 'claude', 'codex']
+
+export type CloudEngineId = 'claude' | 'codex'
+
+// The cloud brains run the vendors' own runtimes, which only the host app
+// carries. Injected once at boot, like the local transport; absent, a cloud
+// id reads as not installed.
+let cloudFactory: ((id: CloudEngineId) => Engine | null) | null = null
+export function setCloudEngineFactory(factory: (id: CloudEngineId) => Engine | null): void {
+  cloudFactory = factory
+}
+
+function absentEngine(id: CloudEngineId): Engine {
+  return {
+    id,
+    async detect(): Promise<EngineDetection> {
+      return { installed: false, loggedIn: false, conclusive: true }
+    },
+    async *run() {
+      yield { type: 'error' as const, message: `${id} is not part of this build`, kind: 'crash' as const }
+    },
+  }
+}
 
 // The local adapter needs to know where its server lives, and only the host
 // app knows that (it owns the process). Injected once at boot — same pattern
@@ -28,6 +52,9 @@ export function createEngine(id: EngineId, binary?: string): Engine {
   switch (id) {
     case 'local':
       return new LocalAdapter(localTransport)
+    case 'claude':
+    case 'codex':
+      return cloudFactory?.(id) ?? absentEngine(id)
     case 'mock':
       return new MockEngine()
   }

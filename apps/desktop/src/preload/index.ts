@@ -144,6 +144,9 @@ const api: EngramApi = {
   search: (query: string, strict?: boolean) => ipcRenderer.invoke('search:query', query, strict),
   engines: () => ipcRenderer.invoke('engines:list'),
   enginesRefresh: () => ipcRenderer.invoke('engines:refresh'),
+  engineConnect: (id: 'claude' | 'codex') => ipcRenderer.invoke('engines:connect', id),
+  engineDisconnect: (id: 'claude' | 'codex') => ipcRenderer.invoke('engines:disconnect', id),
+  engineStates: () => ipcRenderer.invoke('engines:states'),
   onEvent: (listener: (event: EngramEvent) => void) => {
     const wrapped = (_e: unknown, event: EngramEvent) => listener(event)
     ipcRenderer.on('engram:event', wrapped)

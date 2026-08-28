@@ -3,7 +3,9 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 interface AppSettings {
-  defaultEngine: 'claude' | 'local'
+  // Which brain answers: the one on this disk, or one of the two the person
+  // signed in to. Chosen once, never switched behind their back.
+  defaultEngine: 'local' | 'claude' | 'codex'
   autoStart: boolean // ⑦
   teamSync: 'auto' | 'manual' // ⑧ — surfaced in the GitHub backup dialog
   // The address the person searches with, with {q} where the words go. Empty
@@ -32,10 +34,9 @@ export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = JSON.parse(await readFile(settingsPath(), 'utf8')) as Partial<AppSettings>
     const merged = { ...DEFAULT_SETTINGS, ...raw }
-    // Old files may carry engines that no longer exist (codex/antigravity) —
-    // coerce the unknown to the on-device default instead of breaking detection.
-    if ((merged.defaultEngine as string) !== 'claude' && (merged.defaultEngine as string) !== 'local')
-      merged.defaultEngine = 'local'
+    // An old file may name a brain this build does not carry; the one on
+    // this disk is the safe reading.
+    if (!['local', 'claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'local'
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }

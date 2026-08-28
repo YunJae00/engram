@@ -9,8 +9,8 @@ import {
   type BinaryProvider,
   type Engine,
   type EngineId,
-  type VaultPaths,
-} from 'core'
+  type VaultPaths, ENGINE_ORDER, detectAvailableEngines } from 'core'
+import { loadSettings } from './settings.js'
 import { app } from 'electron'
 import { join } from 'node:path'
 import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
@@ -56,6 +56,9 @@ export async function saveVaultRoot(root: string): Promise<void> {
   await registerWorkspace({ name: 'Personal', root, kind: 'personal' })
 }
 
+// Every brain that is usable now, the chosen one first - it is what the
+// librarian and a default chat send reach for. A cloud brain that is not
+// signed in is left out, and stays out: nothing here falls back to another.
 async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') {
@@ -63,14 +66,8 @@ async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> 
     return [dir ? await MockEngine.fromDir(dir) : new MockEngine()]
   }
   if (engineFlag === 'none') return []
-  const local = createEngine('local')
-  try {
-    const detection = await local.detect()
-    if (detection.installed || keepSet(keep).has('local')) return [local]
-  } catch {
-    if (keepSet(keep).has('local')) return [local]
-  }
-  return []
+  const chosen = (await loadSettings()).defaultEngine
+  return detectAvailableEngines(chosen, {}, keepSet(keep))
 }
 
 function keepSet(keep: Iterable<EngineId>): Set<EngineId> {
@@ -84,8 +81,14 @@ export async function engineStates(): Promise<EngineStatusDto[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') return [{ id: 'mock', installed: true, loggedIn: true }]
   if (engineFlag === 'none') return [{ id: 'local', installed: false, loggedIn: false }]
-  const detection = await createEngine('local').detect()
-  return [{ id: 'local', installed: detection.installed, loggedIn: detection.loggedIn }]
+  const states: EngineStatusDto[] = []
+  for (const id of ENGINE_ORDER) {
+    const detection = await createEngine(id)
+      .detect()
+      .catch(() => ({ installed: false, loggedIn: false }))
+    states.push({ id, installed: detection.installed, loggedIn: detection.loggedIn })
+  }
+  return states
 }
 
 // Re-detects engines in place (e.g. right after the user logs a CLI in via

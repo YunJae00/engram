@@ -43,6 +43,9 @@ export {
   detectEngineStates,
   setLocalTransport,
   type EngineBinaries,
+  ENGINE_ORDER,
+  setCloudEngineFactory,
+  type CloudEngineId,
 } from './engine/registry.js'
 export { LocalAdapter, type LocalTransport } from './engine/local.js'
 export { spawnServerChild } from './engine/spawn.js'

@@ -24,6 +24,7 @@ import { registerContentCaptureIpc, startContentCapture, stopContentCapture } fr
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
 import { stopStanding } from './standing.js'
+import { installCloudEngines } from './engine-cloud.js'
 import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './session-watch.js'
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
@@ -656,8 +657,10 @@ app.whenReady().then(async () => {
   registerLocalLlmIpc()
   registerContentCaptureIpc()
   registerMemoryFabricIpc()
-  // The core adapter learns where the local brain lives (started on demand).
+  // The core adapter learns where the local brain lives (started on demand),
+  // and where the two cloud brains' runtimes are.
   setLocalTransport({ complete: localComplete, configured: localConfigured })
+  installCloudEngines()
   // Auto-update: check the public release feed (packaged only). Where the
   // platform can install for itself it does so on the next quit; where it
   // cannot, the same surfaces offer the download instead.
