@@ -292,8 +292,14 @@ ${note.body.slice(0, 2_000)}`
         // right: asked about a page's rate limit, it "found" the work-log
         // procedure and the loop went and ran it. A hit by meaning counts only
         // where the words back it up; otherwise the shelf is shown instead.
-        const meant = byRank[0] && scored[0]!.score > 0 ? byRank[0] : null
-        const best = only ? { r: only, score: 1 } : meant ? { r: meant, score: 1 } : scored[0]!
+        // A verb alone is not a match: "upload" is in every upload, and a
+        // weekly report asked for with the work log's verb is not the work
+        // log. The name's subject has to be in the ask, or two of its words.
+        const subjectOf = (r: (typeof routines)[number]): string => r.name.toLowerCase().split(/\s+/)[0] ?? ''
+        const backed = (r: (typeof routines)[number], score: number): boolean =>
+          score >= 2 || (subjectOf(r).length > 1 && task.toLowerCase().includes(subjectOf(r)))
+        const meant = byRank[0] && scored[0]!.score > 0 && backed(scored[0]!.r, scored[0]!.score) ? byRank[0] : null
+        const best = only ? { r: only, score: 1 } : meant ? { r: meant, score: 1 } : backed(scored[0]!.r, scored[0]!.score) ? scored[0]! : { r: scored[0]!.r, score: 0 }
         // Nothing matched by words or by meaning — but the person's own
         // procedures are few and named by them, so showing the shelf beats
         // guessing. A small model picks reliably from a short list of ids.

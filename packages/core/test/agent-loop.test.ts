@@ -842,3 +842,20 @@ describe('a follow-up sees the conversation', () => {
     expect(prompt).toContain('call answer with it')
   })
 })
+
+describe('find_procedure: a shared verb is not a match', () => {
+  it('needs the name\'s subject in the ask, or two of its words', async () => {
+    const paths = await initVault(await tmpVaultRoot('tools-findproc'), { git: false })
+    await addRoutine(paths, { name: '포털 공지 확인', steps: [{ kind: 'open', url: 'https://portal.example/notices' }, { kind: 'read' }] })
+    await addRoutine(paths, {
+      name: '업무일지 올리기',
+      steps: [{ kind: 'open', url: 'https://portal.example/log' }, { kind: 'type', target: { text: 'Entry' }, text: '{{entry}}' }],
+    })
+    const find = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'find_procedure')!
+    // The work log's verb alone does not make a weekly report the work log.
+    expect(await find.run({ task: '주간 보고서 사이트에 올리기' }, CTX)).toContain('NOTHING-TAUGHT')
+    // The subject named is enough, whatever the verb's ending.
+    expect(await find.run({ task: '오늘 업무일지 올려줘' }, CTX)).toContain('found "업무일지 올리기"')
+    expect(await find.run({ task: '포털 공지 확인해줘' }, CTX)).toContain('found "포털 공지 확인"')
+  })
+})

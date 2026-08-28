@@ -2105,12 +2105,15 @@ export function registerIpc(ctx: VaultContext): void {
             : null
         await deliverAnswer(
           `${result.answer}${note}`,
-          result.asked && result.options?.length
-            ? { kind: 'asked', question: result.answer, options: result.options }
-            : standing && ran
-              ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
-            : untaught
+          // A job it was never shown is answered by being shown, whatever
+          // question it thought of on the way: the one press that moves this
+          // forward is the offer to watch, so it outranks the chips.
+          untaught
             ? { kind: 'teach' }
+            : result.asked && result.options?.length
+              ? { kind: 'asked', question: result.answer, options: result.options }
+              : standing && ran
+                ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
             : routine
               ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
               : keepable
