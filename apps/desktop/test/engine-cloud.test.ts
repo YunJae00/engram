@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAuthStatus, textOf } from '../src/main/engine-claude.js'
-import { cloudErrorKind, unpackedPath } from '../src/main/engine-cloud.js'
+import { claudeBinary, cloudErrorKind, codexBinary, unpackedPath } from '../src/main/engine-cloud.js'
 import { readLoginStatus } from '../src/main/engine-codex.js'
 
 // The runtimes speak for themselves; these pin down how their words are read.
@@ -28,6 +28,15 @@ describe('cloudErrorKind', () => {
     expect(cloudErrorKind('rate limit exceeded, retry later')).toBe('quota')
     expect(cloudErrorKind('Third-party apps now draw from your extra usage')).toBe('quota')
     expect(cloudErrorKind('segmentation fault')).not.toBe('auth')
+  })
+})
+
+// The runtimes ship with the app as dependencies; this build must be able to
+// find both for the platform it runs on, or the sign-in buttons are dead.
+describe('bundled runtimes', () => {
+  it('finds both runtimes for this platform', () => {
+    expect(claudeBinary()).not.toBeNull()
+    expect(codexBinary()).not.toBeNull()
   })
 })
 

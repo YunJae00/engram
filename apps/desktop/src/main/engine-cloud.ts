@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { existsSync, realpathSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { classifyEngineError, setCloudEngineFactory, type Engine, type EngineErrorKind } from 'core'
 import { ClaudeEngine } from './engine-claude.js'
 import { CodexEngine } from './engine-codex.js'
@@ -19,18 +19,44 @@ export function unpackedPath(path: string): string {
   return path.replace(`${sep}app.asar${sep}`, `${sep}app.asar.unpacked${sep}`)
 }
 
-const need = createRequire(import.meta.url)
-
-function resolvePackageDir(name: string): string | null {
+// The platform package that holds a runtime is a dependency of the vendor's
+// SDK package, not of this app: it sits beside the SDK's own folder, wherever
+// the package manager put that. The SDK's entry file is what can be resolved
+// from here; the runtime is found relative to it.
+// Where the files really are, when that can be asked; the path itself when
+// it cannot (inside the app archive).
+function real(path: string): string {
   try {
-    return dirname(need.resolve(`${name}/package.json`))
+    return realpathSync(path)
   } catch {
-    return null
+    return path
   }
 }
 
+// The SDK's folder, found the way a module loader would look for it - up from
+// this file through every node_modules - without going through the package's
+// own export map, which one of the SDKs closes to everything but its entry.
+function sdkRoot(name: string): string | null {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (;;) {
+    const candidate = join(dir, 'node_modules', ...name.split('/'))
+    if (existsSync(candidate)) return real(candidate)
+    const up = dirname(dir)
+    if (up === dir) return null
+    dir = up
+  }
+}
+
+// A package the SDK depends on lives beside the SDK's own folder, once links
+// are followed to where the files really are.
+function sibling(root: string, name: string): string | null {
+  const candidate = join(dirname(root), name)
+  return existsSync(candidate) ? real(candidate) : null
+}
+
 export function claudeBinary(): string | null {
-  const dir = resolvePackageDir(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`)
+  const sdk = sdkRoot('@anthropic-ai/claude-agent-sdk')
+  const dir = sdk && sibling(sdk, `claude-agent-sdk-${process.platform}-${process.arch}`)
   if (!dir) return null
   const path = unpackedPath(join(dir, process.platform === 'win32' ? 'claude.exe' : 'claude'))
   return existsSync(path) ? path : null
@@ -49,7 +75,11 @@ export function codexBinary(): string | null {
   const key = `${process.platform}-${process.arch}`
   const triple = CODEX_TRIPLE[key]
   if (!triple) return null
-  const dir = resolvePackageDir(`@openai/codex-${key}`)
+  // SDK → the vendor's launcher package beside it → the platform package
+  // beside that, each a dependency of the one before.
+  const sdk = sdkRoot('@openai/codex-sdk')
+  const launcher = sdk && sibling(sdk, 'codex')
+  const dir = launcher && sibling(launcher, `codex-${key}`)
   if (!dir) return null
   const path = unpackedPath(join(dir, 'vendor', triple, 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex'))
   return existsSync(path) ? path : null
