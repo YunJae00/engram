@@ -150,7 +150,31 @@ export function insideAllowedFolder(path: string, folders: string[]): boolean {
   })
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return ''
+  }
+}
+
+// The address is the person's own search page with a query in it.
+export function isResultsPage(url: string, template: string): boolean {
+  try {
+    const page = new URL(url)
+    const shape = new URL(template.replace('{q}', 'x'))
+    if (page.host !== shape.host) return false
+    const param = [...shape.searchParams.entries()].find(([, value]) => value === 'x')?.[0]
+    return param ? page.searchParams.has(param) : page.pathname === shape.pathname
+  } catch {
+    return false
+  }
+}
+
 export function cometTools(deps: CometToolDeps): AgentTool[] {
+  // Hosts that timed out this turn: one wait is information, a second is
+  // minutes lost to the same answer.
+  const dead = new Set<string>()
   const tools: AgentTool[] = [
     {
       name: 'search_memory',
@@ -429,7 +453,23 @@ ${note.body.slice(0, 2_000)}`
           })()
           if (bare && deps.searchTemplate && (await deps.searchTemplate()))
             return `${url} is a front page — it will not hold the answer. Search instead: call search_web with {"query": "${context.task.slice(0, 60)}"}`
-          const page = await courier.fetchPage(url, context.signal)
+          // The person's own results page is what search_web reads; opened
+          // by hand it is a list of links that leads back to itself.
+          const shape = deps.searchTemplate ? await deps.searchTemplate() : null
+          if (shape && isResultsPage(url, shape))
+            return `${url} is a results page — use search_web for it, or open one of the result addresses`
+          // A host that did not answer a moment ago will not answer now; the
+          // second wait cost minutes (measured) and the answer was the same.
+          const host = hostOf(url)
+          if (host && dead.has(host))
+            return `${host} did not answer earlier this turn — do not try it again; say so and use what you have, or another site`
+          let page: Awaited<ReturnType<typeof courier.fetchPage>>
+          try {
+            page = await courier.fetchPage(url, context.signal)
+          } catch (err) {
+            if (host && /timeout|timed out|net::|ERR_/i.test(String(err))) dead.add(host)
+            throw err
+          }
           if (page.wall)
             return `${url} needs a person to sign in — say so and ask them to do it in the agent window`
           // A results page it opened for this very task is the person's

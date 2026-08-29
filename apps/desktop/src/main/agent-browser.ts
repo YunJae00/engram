@@ -18,7 +18,10 @@ import { routineDriver } from './routine-driver.js'
 // user performs in that window across errands, which is the whole answer to
 // SSO: the human logs in once, the agent browses logged-in after.
 
-const NAV_TIMEOUT_MS = 25_000
+// Long enough for a slow portal, short enough that a page that will not
+// come does not take the turn with it (measured: two waits at 25s were the
+// whole of a three-minute answer).
+const NAV_TIMEOUT_MS = 15_000
 const PAGE_TEXT_CAP = 12_000
 // The browser is heavyweight company for an 8GB machine — it leaves when the
 // errand stops using it rather than idling next to the model.

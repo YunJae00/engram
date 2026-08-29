@@ -52,3 +52,13 @@ describe('a comet named by its first words', () => {
     expect([...name.slice(0, -1)].every((char) => char === '🙂')).toBe(true)
   })
 })
+
+describe('a results page is recognised by the shape of the person\'s search', () => {
+  it('matches the host and the query parameter, whatever the words', async () => {
+    const { isResultsPage } = await import('../src/comet-tools.js')
+    expect(isResultsPage('https://find.example/search?q=vitest+latest&p=2', 'https://find.example/search?q={q}')).toBe(true)
+    expect(isResultsPage('https://find.example/settings', 'https://find.example/search?q={q}')).toBe(false)
+    expect(isResultsPage('https://www.npmjs.com/package/vitest', 'https://find.example/search?q={q}')).toBe(false)
+    expect(isResultsPage('nonsense', 'https://find.example/search?q={q}')).toBe(false)
+  })
+})
