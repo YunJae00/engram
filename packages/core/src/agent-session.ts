@@ -58,7 +58,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         asked = ask
         return 'The question is with the person. Reply with exactly that question and nothing else.'
       }
-      return observation
+      // The last few calls are counted out loud, so the answer is written
+      // before the budget is gone rather than after.
+      const left = SESSION_MAX_CALLS - steps.length
+      return left <= 3 ? `${observation}\n(${left} call${left === 1 ? '' : 's'} left this turn)` : observation
     },
   }))
   // The standing rules make the system prompt, the same for every turn, so

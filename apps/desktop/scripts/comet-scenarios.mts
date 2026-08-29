@@ -191,6 +191,91 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: 'approved for good: the second booking posts without a gate',
+    async run(person, office, botId) {
+      person.gate = 'always'
+      const before = office.booked.length
+      const first = await person.say(botId, '회의실 A 다음주 월요일 9시 예약해줘')
+      person.gate = 'cancel'
+      const second = await person.say(botId, '회의실 B 다음주 화요일 14시도 예약해줘')
+      person.gate = 'approve'
+      return {
+        checks: [
+          { name: 'the first run stopped at the gate', ok: first.gates >= 1 },
+          { name: 'the second run posted without asking', ok: second.gates === 0 && office.booked.length === before + 2 },
+          { name: 'both bookings carry their own words', ok: /A/.test(office.booked.slice(-2)[0]?.room ?? '') && /B/.test(office.booked.slice(-1)[0]?.room ?? '') },
+        ],
+        turns: [first, second],
+      }
+    },
+  },
+  {
+    name: 'a page and a note into one memo',
+    async run(person, _office, botId) {
+      const cardsBefore = (await listCards(paths)).length
+      const first = await person.say(botId, '마지막 배포 신청 마감이 언제인지 공지에서 확인하고, 배포 담당자 내선번호랑 같이 메모로 남겨줘')
+      const cards = await listCards(paths)
+      return {
+        checks: [
+          { name: 'the deadline came from the page', ok: has(first.answer, /9월 12일/) },
+          { name: 'the extension came from the notes', ok: has(first.answer, /4192/) },
+          { name: 'a memo card holds both', ok: cards.length > cardsBefore && cards.some((c) => /9월 12일/.test(c.proposed) && /4192/.test(c.proposed)) },
+        ],
+        turns: [first],
+      }
+    },
+  },
+  {
+    name: 'chips offered, none of them right: the person types their own',
+    async run(person, _office, botId) {
+      const first = await person.say(botId, '점심 관련해서 알아봐줘')
+      const checks: Check[] = [{ name: 'asks what about lunch', ok: first.offer === 'asked' || has(first.answer, /어떤|무엇|뭘/) }]
+      const second = await person.say(botId, '채식 코너가 몇 층인지')
+      checks.push({ name: 'answers the typed-in choice from the page', ok: has(second.answer, /2층/) })
+      return { checks, turns: [first, second] }
+    },
+  },
+  {
+    name: 'asked in English about notes written in Korean',
+    async run(person, _office, botId) {
+      const first = await person.say(botId, 'Who handles security review, and what is their extension?')
+      return {
+        checks: [
+          { name: 'finds the Korean note', ok: has(first.answer, /4207/) && has(first.answer, /박현수|Hyunsoo|Park/) },
+          { name: 'answers in English', ok: !/[가-힣]{6,}/.test(first.answer.replace(/박현수/g, '')) },
+        ],
+        turns: [first],
+      }
+    },
+  },
+  {
+    name: 'two questions in one ask',
+    async run(person, _office, botId) {
+      const first = await person.say(botId, '금요일 구내식당 메뉴가 뭐고, 안 쓴 연차는 언제까지 이월돼?')
+      return {
+        checks: [
+          { name: 'the menu is answered', ok: has(first.answer, /비빔밥/) },
+          { name: 'the leave rule is answered', ok: has(first.answer, /3월/) },
+        ],
+        turns: [first],
+      }
+    },
+  },
+  {
+    name: 'a correction mid-way: not that quarter, this one',
+    async run(person, _office, botId) {
+      const first = await person.say(botId, '3분기 신규 고객 수 알려줘')
+      const second = await person.say(botId, '아 3분기 말고 1분기')
+      return {
+        checks: [
+          { name: 'the first answer is the third quarter', ok: has(first.answer, /44/) },
+          { name: 'the correction is honoured', ok: has(second.answer, /38/) && !has(second.answer.split('38')[0] ?? '', /44곳/) },
+        ],
+        turns: [first, second],
+      }
+    },
+  },
+  {
     name: 'a turn cut short, then the next one works',
     async run(person, _office, botId) {
       const cut = person.say(botId, '분기 보고서 세 개 다 읽고 신규 고객 수 합쳐줘', 40)
@@ -247,6 +332,7 @@ await person.attach()
 const results: { name: string; checks: Check[]; turns: Outcome[]; error?: string }[] = []
 for (const scenario of SCENARIOS.filter((one) => ONLY.length === 0 || ONLY.some((part) => one.name.includes(part)))) {
   const botId = await person.newComet(scenario.name.slice(0, 30))
+  person.turns = []
   try {
     const got = await scenario.run(person, office, botId)
     results.push({ name: scenario.name, ...got })
@@ -255,8 +341,9 @@ for (const scenario of SCENARIOS.filter((one) => ONLY.length === 0 || ONLY.some(
     for (const c of failed) console.log(`      x ${c.name}`)
     for (const t of got.turns) console.log(`      > [${t.tools.join(' → ') || 'no tools'}] ${(t.error ?? t.answer).replace(/\s+/g, ' ').slice(0, 160)}`)
   } catch (err) {
-    results.push({ name: scenario.name, checks: [], turns: [], error: String(err instanceof Error ? err.message : err) })
+    results.push({ name: scenario.name, checks: [], turns: person.turns, error: String(err instanceof Error ? err.message : err) })
     console.log(`ERROR ${scenario.name}: ${String(err instanceof Error ? err.message : err).split('\n')[0]}`)
+    for (const t of person.turns) console.log(`      > [${t.tools.join(' → ') || 'no tools'}] ${(t.error ?? t.answer).replace(/\s+/g, ' ').slice(0, 160)}`)
   }
   await writeFile(OUT, JSON.stringify(results, null, 1))
 }

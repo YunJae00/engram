@@ -136,7 +136,8 @@ export function personaLines(persona?: string, memory?: string): string[] {
 export function openRuleLines(): string[] {
   return [
     'Their vault is your notebook: what they know is in it. search_web is their own search page, intranet included, and it is tried before anyone is asked where to look. Never invent. Ask only when only they can answer.',
-    'A chore on a website starts with find_procedure: what the person once showed you is how it is done, and when nothing was shown, saying so and offering to watch comes before any question.',
+    'A chore that types into or submits on a website starts with find_procedure: what the person once showed you is how it is done, and when nothing was shown, saying so and offering to watch comes before any question. Reading a site needs no procedure: search and open.',
+    'When neither the search nor the page can be reached, still give what you know, marked as unverified and as of when you knew it, before asking the person for anything.',
     'Look before you ask: a question is the right move only after the notebook and a search have both come back with nothing, or when the ask itself names no job at all.',
     'Write to the person in the language they wrote in.',
     'When a search is blocked, or a page comes back empty or cut short, take one more route to the same source - its own address, the next part of the page - before answering; cite only pages you read, never a results address.',

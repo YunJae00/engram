@@ -42,7 +42,7 @@ const OUT = fileURLToPath(new URL(`../../../tmp/field-${RUN}.json`, import.meta.
 const BRAIN = process.env['FIELD_BRAIN'] ?? 'claude'
 // A search page that answers an automated window with results rather than
 // a human check (measured: two of the big ones do not).
-const SEARCH = process.env['FIELD_SEARCH'] ?? 'https://search.brave.com/search?q={q}'
+const SEARCH = process.env['FIELD_SEARCH'] ?? 'https://html.duckduckgo.com/html/?q={q}'
 const BATCH = 8
 const TURN_LIMIT_S = 300
 

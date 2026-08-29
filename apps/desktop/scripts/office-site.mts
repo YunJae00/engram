@@ -38,13 +38,20 @@ const PAGES: Record<string, string> = {
   '/promo': '<h1>우리 브라우저 받기</h1><p>더 빠른 브라우저를 지금 설치하세요.</p>',
 }
 
+// Pages the search knows by their door, not their contents: what is behind
+// them is for the person who can open them.
+const DOORS: Record<string, string> = {
+  '/expense': '<h1>사내 경비 시스템</h1><p>경비 내역 조회와 신청. 로그인이 필요합니다.</p>',
+  '/vpn': '<h1>VPN 안내</h1><p>사내망 VPN 주소와 포트 안내 페이지.</p>',
+}
+
 const LOGIN =
   '<h1>사내 경비 시스템</h1><p>계속하려면 로그인하세요.</p><form action="/session" method="post"><input name="user" aria-label="ID"/><input type="password" name="pw" aria-label="Password"/><button type="submit">Sign in</button></form>'
 const CHECK = '<h1>One last step</h1><p>Please solve this puzzle so we know you are a real person.</p><form action="/human" method="post"><button type="submit">I am human</button></form>'
 
 function searchPage(url: string, query: string): string {
   const words = query.toLowerCase().split(/[\s,./?!]+/).filter((w) => w.length > 1)
-  const hits = Object.entries(PAGES)
+  const hits = Object.entries({ ...PAGES, ...DOORS })
     .filter(([path]) => path !== '/expense-data' && path !== '/promo')
     .map(([path, html]) => ({
       path,

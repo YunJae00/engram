@@ -20,6 +20,8 @@ export class Person {
   private readonly trace: string[] = []
   private history: { role: 'user' | 'assistant'; text: string }[] = []
   gate: GateAnswer = 'approve'
+  // Every turn of the scenario under way, kept even when it ends in an error.
+  turns: Outcome[] = []
 
   constructor(
     readonly app: AppPage,
@@ -72,7 +74,7 @@ export class Person {
       : null
     const answer = parsed?.text ?? ''
     if (answer) this.history.push({ role: 'user', text }, { role: 'assistant', text: answer })
-    return {
+    const outcome: Outcome = {
       answer,
       tools: this.trace.filter((l) => l.startsWith('step ') && !l.startsWith('step   <-')).map((l) => l.slice(5).split(':')[0]!.trim()),
       steps: this.trace.filter((l) => l.startsWith('step ') || l.startsWith('hands ') || l === 'GATE'),
@@ -82,6 +84,8 @@ export class Person {
       seconds: Math.round((Date.now() - started) / 1000),
       error: this.trace.find((l) => l.startsWith('ERROR'))?.slice(6) ?? (answerLine ? null : 'no answer within the time limit'),
     }
+    this.turns.push(outcome)
+    return outcome
   }
 
   async stop(botId: string): Promise<void> {

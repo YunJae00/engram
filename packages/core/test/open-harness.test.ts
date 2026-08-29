@@ -62,3 +62,27 @@ describe('a results page is recognised by the shape of the person\'s search', ()
     expect(isResultsPage('nonsense', 'https://find.example/search?q={q}')).toBe(false)
   })
 })
+
+describe('a long page is read in parts', () => {
+  it('reports which part this is and how to get the next, and the last part is the last', async () => {
+    const { cometTools } = await import('../src/comet-tools.js')
+    const { initVault } = await import('../src/vault.js')
+    const { tmpVaultRoot } = await import('./helpers.js')
+    const paths = await initVault(await tmpVaultRoot('tools-parts'), { git: false })
+    const text = 'A'.repeat(3_000) + 'B'.repeat(3_000) + 'C'.repeat(100)
+    const read = cometTools({
+      paths,
+      retrieve: async () => [],
+      courier: { fetchPage: async (url) => ({ url, title: 'Long', text }), readOpen: async () => ({ url: 'https://x.example/long', title: 'Long', text }) },
+    }).find((t) => t.name === 'read_open_page')!
+    const first = await read.run({}, { task: 'read it' })
+    expect(first).toContain('part 1 of 3')
+    expect(first).toContain('"part": 2')
+    expect(first).toContain('AAAA')
+    expect(first).not.toContain('BBBB')
+    const last = await read.run({ part: 3 }, { task: 'read it' })
+    expect(last).toContain('part 3 of 3')
+    expect(last).not.toContain('"part": 4')
+    expect(last).toContain('CCC')
+  })
+})
