@@ -59,7 +59,9 @@ export interface CometToolDeps {
   searchTemplate?(): Promise<string | null>
   // Replaying a saved procedure, blanks filled. The host owns the browser,
   // the single-flight guard and the submit approval.
-  runProcedure?(id: string, slots: Record<string, string>, signal?: AbortSignal): Promise<string>
+  // `again` carries the person's yes to a job that posts and already ran
+  // today; without it such a run is refused and the person asked.
+  runProcedure?(id: string, slots: Record<string, string>, signal?: AbortSignal, again?: boolean): Promise<string>
   // Folders the person consented to. A file proposal outside them is refused
   // before it can even become a card.
   allowedFolders?(): Promise<string[]>
@@ -593,7 +595,8 @@ ${note.body.slice(0, 2_000)}`
     const runProcedure = deps.runProcedure
     tools.push({
       name: 'run_procedure',
-      description: 'replay a saved procedure, filling its blanks — args: {"id": "rt-...", "slots": {"name": "value"}}',
+      description:
+        'replay a saved procedure, filling its blanks; "again": true only after the person said to run a job that already ran today — args: {"id": "rt-...", "slots": {"name": "value"}, "again": false}',
       // Flat, because nesting is what defeats a small model: shown the id and
       // a slots object to fill, it called this twice with the id alone, having
       // just read the very words that belonged in the blank. One key per
@@ -601,7 +604,7 @@ ${note.body.slice(0, 2_000)}`
       // nested form still works for anything that sends it.
       argsSchema: {
         type: 'object',
-        properties: { id: { type: 'string' }, slots: { type: 'object', additionalProperties: { type: 'string' } } },
+        properties: { id: { type: 'string' }, slots: { type: 'object', additionalProperties: { type: 'string' } }, again: { type: 'boolean' } },
         required: ['id'],
         additionalProperties: { type: 'string' },
       },
@@ -613,7 +616,7 @@ ${note.body.slice(0, 2_000)}`
         // the same thing, so it is taken to mean it.
         const flat: Record<string, string> = {}
         for (const [key, value] of Object.entries(args))
-          if (key !== 'id' && key !== 'slots' && typeof value === 'string') flat[key] = value
+          if (key !== 'id' && key !== 'slots' && key !== 'again' && typeof value === 'string') flat[key] = value
         // A small model copying an id sometimes doubles its prefix. The
         // procedure it meant is unmistakable, and refusing over a typo cost a
         // whole run (measured: "rt-mt-<id>" for "rt-<id>").
@@ -665,7 +668,7 @@ ${note.body.slice(0, 2_000)}`
             `${BLANK_EMPTY}: "${invented[0]}" holds "${String(invented[1]).slice(0, 30)}", which is nowhere in anything you have read.`,
             `Find it first - call search_memory with {"query": "${context.task.slice(0, 50)}"} - then run the procedure with what it says.`,
           ].join('\n')
-        const outcome = await runProcedure(id, filled, context.signal)
+        const outcome = await runProcedure(id, filled, context.signal, args['again'] === true)
         // A blank left empty is not a question for the person yet: the words
         // they used are the query, and only what that fails to find is worth
         // asking about. The way back in comes with it — looking something up

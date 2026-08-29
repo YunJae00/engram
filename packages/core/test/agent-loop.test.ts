@@ -889,3 +889,23 @@ describe('a blank is filled from the ask, and keeps what it was shown when the a
     expect(refused).toContain('nowhere in anything you have read')
   })
 })
+
+describe('a job that posts and already ran today runs again only with the person\'s yes', () => {
+  it('passes "again" through to the host, and nothing else from the args', async () => {
+    const paths = await initVault(await tmpVaultRoot('tools-again'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Log', steps: [{ kind: 'open', url: 'https://portal.example/log' }, { kind: 'type', target: { text: 'Entry' }, text: '{{Entry}}' }] })
+    const seen: { slots: Record<string, string>; again?: boolean }[] = []
+    const run = cometTools({
+      paths,
+      retrieve: async () => [],
+      runProcedure: async (_id, slots, _signal, again) => {
+        seen.push({ slots, ...(again !== undefined ? { again } : {}) })
+        return 'ran'
+      },
+    }).find((t) => t.name === 'run_procedure')!
+    await run.run({ id: routine.id, slots: { Entry: 'shipped it' }, again: true }, { task: 'post that I shipped it, yes again', read: '' })
+    expect(seen[0]).toEqual({ slots: { Entry: 'shipped it' }, again: true })
+    await run.run({ id: routine.id, Entry: 'shipped it' }, { task: 'post that I shipped it', read: '' })
+    expect(seen[1]).toEqual({ slots: { Entry: 'shipped it' }, again: false })
+  })
+})

@@ -1273,13 +1273,10 @@ export function registerIpc(ctx: VaultContext): void {
   // Fewer than this and the answer was cheap enough to just ask again.
   const KEEP_AFTER_STEPS = 3
 
-  async function runProcedureForComet(
-    id: string,
-    slots: Record<string, string>,
-  ): Promise<string> {
-    const started = await beginRoutine(id, { slots })
+  async function runProcedureForComet(id: string, slots: Record<string, string>, again = false): Promise<string> {
+    const started = await beginRoutine(id, { slots, force: again })
     if (started.blocked === 'already-ran-today')
-      return 'that procedure already ran today and it posts to a page — ask the person whether to run it again'
+      return 'that procedure already ran today and it posts to a page — ask the person whether to run it again; once they say yes, call run_procedure once more with "again": true'
     if (started.blocked === 'unfinished-write')
       return 'the last run of that procedure stopped mid-submit — ask the person to check the site before retrying'
     if (!started.ok || !started.done) return started.error ?? 'the procedure could not start'
@@ -2021,7 +2018,7 @@ export function registerIpc(ctx: VaultContext): void {
               },
               allowedFolders: consentedFolders,
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
-              runProcedure: (id, slots) => runProcedureForComet(id, slots),
+              runProcedure: (id, slots, _signal, again) => runProcedureForComet(id, slots, again),
               remembered: () => remembered,
               guided,
               learnSearch: async (template) => {
