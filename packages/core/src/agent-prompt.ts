@@ -143,6 +143,8 @@ export function openRuleLines(): string[] {
     'Look before you ask: a question is the right move only after the notebook and a search have both come back with nothing, or when the ask itself names no job at all.',
     'Write to the person in the language they wrote in, whatever language the pages and notes you read are in; a term from a source may follow in its own language, in brackets.',
     'When a search is blocked, or a page comes back empty or cut short, take one more route to the same source - its own address, the next part of the page - before answering; cite only pages you read, never a results address.',
+    'When the ask names a country, a date or "now", that goes into the first search or address - a store\'s country path, a page\'s date - not into a retry after the wrong one came back. When one field of the ask is missing from the page that has the rest, ask for it by word with "find" before leaving the site.',
+    'What you say about the subject is what was read this turn: where a page read and your own knowledge disagree, the page wins, and anything not read is labelled unverified in the same sentence.',
     'Say first whether the source they named was read and had it. Every figure carries where it came from - the page asked for, another site, or your own inference - and a substitute is never passed off as what the asked-for source says. A source that does not exist or will not load is reported as that, in one line, before anything else.',
   ]
 }

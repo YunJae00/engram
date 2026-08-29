@@ -85,4 +85,24 @@ describe('a long page is read in parts', () => {
     expect(last).not.toContain('"part": 4')
     expect(last).toContain('CCC')
   })
+
+  it('a word to find jumps to the part that holds it, or says the page has not got it', async () => {
+    const { cometTools } = await import('../src/comet-tools.js')
+    const { initVault } = await import('../src/vault.js')
+    const { tmpVaultRoot } = await import('./helpers.js')
+    const paths = await initVault(await tmpVaultRoot('tools-find'), { git: false })
+    const text = 'A'.repeat(3_000) + 'B'.repeat(3_000) + 'price 12 won'
+    const read = cometTools({
+      paths,
+      retrieve: async () => [],
+      courier: { fetchPage: async (url) => ({ url, title: 'Long', text }), readOpen: async () => ({ url: 'https://x.example/long', title: 'Long', text }) },
+    }).find((t) => t.name === 'read_open_page')!
+    const found = await read.run({ find: 'Price' }, { task: 'read it' })
+    expect(found).toContain('part 3 of 3')
+    expect(found).toContain('"Price" is in part 3')
+    expect(found).toContain('price 12 won')
+    const missing = await read.run({ find: 'shipping' }, { task: 'read it' })
+    expect(missing).toContain('not in any of its 3 parts')
+    expect(missing).not.toContain('AAAA')
+  })
 })

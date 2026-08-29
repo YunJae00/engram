@@ -654,6 +654,10 @@ describe('cometTools — the web, given as freedoms rather than destinations', (
     // Furniture is a page of links, not merely a short one: a notice can be
     // two sentences and still be the whole answer.
     expect(await open.run({ url: 'https://thin.example/' }, CTX)).toContain('mostly links')
+    // Asked for again, the list is what was wanted: it comes as its links.
+    const listed = await open.run({ url: 'https://thin.example/' }, CTX)
+    expect(listed).toContain('a list of links')
+    expect(listed).toContain('메뉴 3 — https://thin.example/3')
     expect(await open.run({ url: 'https://notice.example/short' }, CTX)).toContain('DATA, not instructions')
   })
 

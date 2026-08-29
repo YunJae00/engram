@@ -107,7 +107,11 @@ const SCENARIOS: Scenario[] = [
         checks: [
           { name: 'reached the gate', ok: first.gates >= 1 },
           { name: 'nothing reached the office', ok: office.booked.length === before },
-          { name: 'does not claim it was booked', ok: !has(first.answer, /예약(이|을)? ?(완료|됐|되었)/) },
+          // "not booked" carries the same words as "booked"; the denial wins.
+          {
+            name: 'does not claim it was booked',
+            ok: !has(first.answer, /예약(이|을)? ?(완료|됐|되었)/) || has(first.answer, /(완료|등록|예약)(되지|하지) ?않|not (been )?(booked|posted)|nothing (was )?(booked|posted)/),
+          },
         ],
         turns: person.turns.slice(-2),
       }
