@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AppSettingsDto, EngineStatusDto, LocalModelsStateDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -6,6 +7,9 @@ import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
 
 const BRAIN_NAME = { local: 'settings.brainLocal', claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
+// The sheet opens once, with every row already knowing its state, rather
+// than filling in as answers arrive; a load that hangs does not keep it shut.
+const READY_WAIT_MS = 8_000
 
 export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
@@ -42,18 +46,25 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // id → percent while a download runs.
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    void api.appVersion().then(setVersion).catch(() => {})
-    void api.localModelsState().then(setLocalModels).catch(() => {})
-    void api.engineStates().then(setBrains).catch(() => {})
-    void api.contentFolders().then(setFolders).catch(() => {})
-    void api.activityGet().then(setDeskJournal).catch(() => {})
-    void api.sessionWatchGet().then(setSessionWatch).catch(() => {})
-    // What the updater already knows, shown without a click — a downloaded
-    // update used to hide behind Check now.
-    void api.updateState().then(setUpdate).catch(() => {})
-    return api.onEvent((event) => {
+    const loads = [
+      api.settingsGet().then(setSettings),
+      api.appVersion().then(setVersion),
+      api.localModelsState().then(setLocalModels),
+      api.engineStates().then(setBrains),
+      api.contentFolders().then(setFolders),
+      api.activityGet().then(setDeskJournal),
+      api.sessionWatchGet().then(setSessionWatch),
+      // What the updater already knows, shown without a click — a downloaded
+      // update used to hide behind Check now.
+      api.updateState().then(setUpdate),
+      api.semanticStatus().then(setSemantic),
+    ]
+    void Promise.allSettled(loads).then(() => setReady(true))
+    const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
+    const off = api.onEvent((event) => {
       if (event.type === 'localmodels:changed') setLocalModels(event.state)
       else if (event.type === 'localmodel:progress') {
         setProgress((prior) => ({
@@ -64,6 +75,10 @@ export function SettingsView({ onClose }: { onClose(): void }) {
         setUpdate({ state: 'ready', version: event.version, selfInstalls: event.selfInstalls })
       }
     })
+    return () => {
+      clearTimeout(fallback)
+      off()
+    }
   }, [])
 
   // While the download runs, the percent moves — follow it, and catch the
@@ -112,11 +127,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     }
   }
 
+  // Semantic layer status refreshes while the sheet is open — model
+  // download/indexing progress is worth watching live.
   useEffect(() => {
-    void api.settingsGet().then(setSettings)
-    // Semantic layer status refreshes while the sheet is open — model
-    // download/indexing progress is worth watching live.
-    void api.semanticStatus().then(setSemantic).catch(() => {})
     const timer = setInterval(() => void api.semanticStatus().then(setSemantic).catch(() => {}), 2000)
     return () => clearInterval(timer)
   }, [])
@@ -125,7 +138,14 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // stacked on top (that one handles its own Escape).
   useEscape(onClose, !showDiagnostics)
 
-  if (!settings) return null
+  if (!settings || !ready)
+    return (
+      <div className="brief-overlay" onClick={onClose}>
+        <div className="settings-loading" data-testid="settings-loading" onClick={(e) => e.stopPropagation()}>
+          <Loader2 className="spin" size={18} strokeWidth={1.8} aria-hidden />
+        </div>
+      </div>
+    )
   const patch = (p: Partial<AppSettingsDto>) => setSettings({ ...settings, ...p })
 
   const save = async () => {
