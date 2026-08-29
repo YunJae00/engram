@@ -6,6 +6,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
+import { markAgentProfile } from './agent-profile.js'
 import { releaseModelForRoom, setRoomMaker } from './local-llm.js'
 import { reserveRoom, ROOM_FOR_BROWSER } from './memory-plan.js'
 import { routineDriver } from './routine-driver.js'
@@ -242,6 +243,7 @@ async function ensureContext(): Promise<Ctx> {
     // browser is open or the last copy is fresh.
     await autoImportSession(executablePath).catch(() => undefined)
     const profileDir = join(app.getPath('userData'), 'agent-browser-profile')
+    await markAgentProfile(profileDir).catch(() => undefined)
     flog('agent-browser', `launching ${executablePath}`)
     const ctx = await chromium.launchPersistentContext(profileDir, {
       executablePath,
@@ -262,6 +264,13 @@ async function ensureContext(): Promise<Ctx> {
         // check instead of the page — measured: the same query returns nothing
         // with the flag and a full page of results without it.
         '--disable-blink-features=AutomationControlled',
+        // The browser tells the person about that flag in a banner on every
+        // page; a test-typed process is spared the banner and changes nothing
+        // else they can see. Measured: the banner names that flag alone.
+        '--test-type',
+        // Probe hook: the window opens off the screen so a test loop does not
+        // take the desk over. Never set in production.
+        ...(process.env['ENGRAM_AGENT_OFFSCREEN'] ? ['--window-position=-4000,-4000'] : []),
         // Test harness hook: exposes a CDP endpoint so an e2e run can stand in
         // for the person's hands in the agent window. Never set in production.
         ...(process.env['ENGRAM_AGENT_CDP'] ? [`--remote-debugging-port=${process.env['ENGRAM_AGENT_CDP']}`] : []),

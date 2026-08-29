@@ -51,7 +51,7 @@ import {
   recordRecall,
   recordRecallReceipt,
   rejectCard,
-  runAgentLoop,
+  runComet,
   cometTools,
   deriveSearchTemplate,
   fillSlots,
@@ -1982,7 +1982,7 @@ export function registerIpc(ctx: VaultContext): void {
       const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
       const memory = renderMemory(await loadBotMemory(paths, bot.id))
       try {
-        const result = await runAgentLoop(
+        const result = await runComet(
           {
             engine,
             workdir: engineCwd(paths),
@@ -2042,6 +2042,8 @@ export function registerIpc(ctx: VaultContext): void {
             guided,
             ...(memory ? { memory } : {}),
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
+            // A cloud brain keeps this comet's session open between turns.
+            session: bot.id,
             onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
             // Probes only: what each tool actually said. A loop is fixed from
             // its tools' own words, not from what it did next.

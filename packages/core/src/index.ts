@@ -75,6 +75,7 @@ export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './erra
 export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRoutineRun, removeRoutine, routineBlock, routineSlots, routineStepLabel, routineWrites, runRoutine, validateRoutineSteps, type Routine, type RoutineBlock, type RoutineDriver, type RoutineReading, type RoutineRunOptions, type RoutineRunResult, type RoutineStep, type RoutineStepResult, type RoutineTarget } from './routine.js'
 export { buildRoutineFromTeach, type TeachEvent } from './teach.js'
 export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
+export { runComet, runToolSession } from './agent-session.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
 export { choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
@@ -99,3 +100,4 @@ export { deriveSearchTemplate, rankLinks, searchUrlFor } from './search-template
 export { carriesSecret, secretsIn, withoutSecrets } from './secrets.js'
 export { fitPrompt } from './prompt-budget.js'
 export { parseRetryAfterMs } from './engine/classify.js'
+export type { ToolSessionCall, ToolSessionJob, ToolSessionResult } from './engine/types.js'

@@ -55,6 +55,8 @@ export interface AgentLoopOptions {
   // and budgets tightly - the hand-holding a small on-device model needs to
   // finish a job. Off, the model sees every tool and plans for itself.
   guided?: boolean
+  // A key under which a brain may keep one session open across turns.
+  session?: string
   // One narration line per step ("search_memory: deploy decisions") — the
   // chat thread relays these while the loop works.
   onStep?(line: string): void

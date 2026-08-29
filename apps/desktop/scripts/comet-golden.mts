@@ -534,6 +534,10 @@ for (const scenario of SCENARIOS.filter((one) => ONLY.length === 0 || ONLY.some(
     inBatch = 0
   }
   inBatch++
+  // A scenario that does not follow on is a fresh morning: its own comet,
+  // so a brain that keeps a session open starts this one cold.
+  if (!scenario.continues)
+    running.botId = ((await running.page.evaluate(() => window.engram.botCreate({ name: '업무 도우미', purpose: '이 사람의 일을 대신 해낸다.' }))) as { id: string }).id
   const { page, botId, trace: batchTrace } = running
   batchTrace.length = 0
   const trace = batchTrace

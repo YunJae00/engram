@@ -15,6 +15,7 @@ import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
+import { closeClaudeSessions } from './engine-claude.js'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { startBubble, stopBubble } from './bubble.js'
@@ -683,6 +684,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   void closeAgentBrowser({ force: true })
+  closeClaudeSessions()
   globalShortcut.unregisterAll()
   // Closing the app is the user saying "stop remembering from here".
   stopSessionWatch()

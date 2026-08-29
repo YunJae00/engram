@@ -110,6 +110,37 @@ export interface Engine {
   // Optional warm chat lane (chat-session.ts): one long-lived process, many
   // turns — the per-question cold boot paid once. Adapters without it simply
   // omit it and chat rides run() as always; callers MUST keep that fallback.
+  // Optional tool session: the brain is handed the tools and runs the whole
+  // turn itself, calling back into them. A brain without it is driven one
+  // step at a time by the agent loop.
+  runTools?(job: ToolSessionJob): Promise<ToolSessionResult>
+}
+
+export interface ToolSessionCall {
+  name: string
+  description: string
+  argsSchema: object
+  run(args: Record<string, unknown>): Promise<string>
+}
+
+export interface ToolSessionJob {
+  workdir: EngineCwd
+  // Standing instructions, the same for every turn of a session.
+  system: string
+  // This turn: who is speaking and what they want.
+  prompt: string
+  // The conversation so far, for a session that is only now opening.
+  opening?: string
+  // Turns with the same key may share one session.
+  sessionKey?: string
+  tools: ToolSessionCall[]
+  maxCalls: number
+  signal?: AbortSignal
+}
+
+export interface ToolSessionResult {
+  answer: string
+  error?: string
 }
 
 // Base for every classified engine failure, so a caller that only wants to

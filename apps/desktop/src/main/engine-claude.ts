@@ -1,4 +1,5 @@
-import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
+import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine } from './engine-cloud.js'
 import { flog } from './flog.js'
 
@@ -132,4 +133,23 @@ export class ClaudeEngine implements CloudEngine {
       job.signal?.removeEventListener('abort', onAbort)
     }
   }
+
+  // The whole turn in one session, and the session kept warm for the next:
+  // the runtime is handed the comet's tools and loops over them itself.
+  runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
+    const binary = claudeBinary()
+    if (!binary) return Promise.resolve({ answer: '', error: 'the Claude runtime is not part of this build' })
+    return sdkModule().then((sdk) => sessions.run(job, { sdk, binary, workdir: job.workdir, model: 'sonnet' }))
+  }
+}
+
+const sessions = new SessionPool()
+setInterval(() => sessions.sweep(), 60_000).unref()
+
+export function closeClaudeSessions(): void {
+  sessions.closeAll()
+}
+
+async function sdkModule(): Promise<SessionSdk> {
+  return (await import('@anthropic-ai/claude-agent-sdk')) as unknown as SessionSdk
 }

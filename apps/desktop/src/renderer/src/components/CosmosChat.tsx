@@ -1,4 +1,4 @@
-import { ArrowUp, PanelRightClose, PanelRightOpen, Square } from 'lucide-react'
+import { ArrowUp, MessageCircle, PanelRightClose, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -121,28 +121,36 @@ export function CosmosChat() {
     )
   }
 
-  // One panel in both states: it narrows to a strip instead of being swapped
-  // for a different element, so the motion is the panel itself giving way -
-  // the way every sidebar the person already knows behaves. The toggle stays
-  // in the same corner throughout; only its icon turns around.
+  // Folded, the panel leaves the row entirely and one round launcher floats
+  // over the sky's corner; the thread lives in this component's state, so
+  // opening again restores it as it was. The graph gets the whole width back.
+  if (collapsed) {
+    return (
+      <div className="cosmos-chat-launcher" data-testid="cosmos-chat-folded">
+        <button
+          className="cosmos-chat-launch"
+          data-testid="cosmos-chat-open"
+          title={t('cosmos.chatOpen')}
+          aria-label={t('cosmos.chatOpen')}
+          onClick={() => setCollapsed(false)}
+        >
+          <MessageCircle size={18} strokeWidth={1.8} aria-hidden />
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <aside
-      className={`cosmos-chat${collapsed ? ' folded' : ''}`}
-      data-testid={collapsed ? 'cosmos-chat-folded' : 'cosmos-chat'}
-    >
+    <aside className="cosmos-chat" data-testid="cosmos-chat">
       <div className="cosmos-chat-head">
-        {!collapsed && <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>}
+        <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>
         <button
           className="rail-toggle"
-          data-testid={collapsed ? 'cosmos-chat-open' : 'cosmos-chat-collapse'}
-          title={collapsed ? t('cosmos.chatOpen') : t('cosmos.chatCollapse')}
-          onClick={() => setCollapsed(!collapsed)}
+          data-testid="cosmos-chat-collapse"
+          title={t('cosmos.chatCollapse')}
+          onClick={() => setCollapsed(true)}
         >
-          {collapsed ? (
-            <PanelRightOpen size={15} strokeWidth={1.8} aria-hidden />
-          ) : (
-            <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
-          )}
+          <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
         </button>
       </div>
       <div className="cosmos-chat-thread" ref={listRef}>
