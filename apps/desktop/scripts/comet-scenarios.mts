@@ -97,7 +97,11 @@ const SCENARIOS: Scenario[] = [
     async run(person, office, botId) {
       person.gate = 'cancel'
       const before = office.booked.length
-      const first = await person.say(botId, '회의실 B 모레 오전 11시 예약해줘')
+      let first = await person.say(botId, '회의실 B 모레 오전 11시 예약해줘')
+      // A job that posts and already ran today is asked about first; the
+      // person says to go ahead.
+      if (first.gates === 0 && (first.offer === 'asked' || has(first.answer, /이미|already|다시|again/i)))
+        first = await person.say(botId, first.options.find((one) => /새로|다시|진행|new|again/i.test(one)) ?? '응, 새로 예약해줘')
       person.gate = 'approve'
       return {
         checks: [
@@ -105,7 +109,7 @@ const SCENARIOS: Scenario[] = [
           { name: 'nothing reached the office', ok: office.booked.length === before },
           { name: 'does not claim it was booked', ok: !has(first.answer, /예약(이|을)? ?(완료|됐|되었)/) },
         ],
-        turns: [first],
+        turns: person.turns.slice(-2),
       }
     },
   },
@@ -195,9 +199,13 @@ const SCENARIOS: Scenario[] = [
     async run(person, office, botId) {
       person.gate = 'always'
       const before = office.booked.length
-      const first = await person.say(botId, '회의실 A 다음주 월요일 9시 예약해줘')
+      const goAhead = async (turn: Outcome): Promise<Outcome> =>
+        turn.gates === 0 && (turn.offer === 'asked' || has(turn.answer, /이미|already|다시|again/i))
+          ? person.say(botId, turn.options.find((one) => /새로|다시|진행|new|again/i.test(one)) ?? '응, 새로 예약해줘')
+          : turn
+      const first = await goAhead(await person.say(botId, '회의실 A 다음주 월요일 9시 예약해줘'))
       person.gate = 'cancel'
-      const second = await person.say(botId, '회의실 B 다음주 화요일 14시도 예약해줘')
+      const second = await goAhead(await person.say(botId, '회의실 B 다음주 화요일 14시도 예약해줘'))
       person.gate = 'approve'
       return {
         checks: [

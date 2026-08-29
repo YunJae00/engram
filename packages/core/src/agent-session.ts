@@ -1,5 +1,5 @@
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
-import { runAgentLoop } from './agent-loop.js'
+import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, openRuleLines, personaLines } from './agent-prompt.js'
 import { parseAsk } from './ask.js'
 import type { ToolSessionCall } from './engine/types.js'
@@ -14,11 +14,8 @@ const SESSION_MAX_CALLS = 12
 
 const CONTENT_TOOLS = new Set(['search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web'])
 
-function readSoFar(steps: AgentLoopStep[]): string {
-  return steps
-    .filter((step) => CONTENT_TOOLS.has(step.tool))
-    .map((step) => step.observation)
-    .join('\n')
+function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
+  return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
 }
 
 function summarizeArgs(args: Record<string, unknown>): string {
@@ -31,6 +28,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
   let asked: { question: string; options: string[] } | null = null
+  const canSearch = deps.tools.some((tool) => tool.name === 'search_web')
+  let lookedFirst = false
   const calls: ToolSessionCall[] = deps.tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
@@ -43,10 +42,17 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // hundred tries; past it the answer is made from what is in hand.
       if (steps.length >= SESSION_MAX_CALLS)
         return `No more calls this turn (${SESSION_MAX_CALLS} made). Answer now from what you have, and say what you could not reach.`
+      // Looking comes before asking: the first question of a turn, put
+      // before the person's own search page was tried, is sent to the
+      // search instead. Asked again after looking, it goes through.
+      if (tool.name === 'ask_person' && canSearch && !lookedFirst && !steps.some((step) => step.tool === 'search_web' || step.tool === 'open_page')) {
+        lookedFirst = true
+        return `Look before you ask: call search_web with {"query": "${task.slice(0, 80).replace(/"/g, "'")}"} first. Ask only if that comes back with nothing, or if the ask names no job at all.`
+      }
       options.onStep?.(`${tool.name}: ${summarizeArgs(args)}`)
       let observation: string
       try {
-        observation = await tool.run(args, { task, read: readSoFar(steps), ...(options.signal ? { signal: options.signal } : {}) })
+        observation = await tool.run(args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
       } catch (err) {
         if (options.signal?.aborted) throw err
         observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`

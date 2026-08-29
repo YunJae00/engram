@@ -35,13 +35,14 @@ export class Person {
     })
     await this.app.exposeFunction('__gateAnswer', () => this.gate)
     await this.app.evaluate(() => {
-      const w = window as unknown as { __probe(line: string): void; __gateAnswer(): 'approve' | 'always' | 'cancel' }
+      // An exposed function answers with a promise on this side of the bridge.
+      const w = window as unknown as { __probe(line: string): void; __gateAnswer(): Promise<'approve' | 'always' | 'cancel'> }
       window.engram.onEvent((event) => {
         if (event.type === 'comet:step') w.__probe(`step ${event.line}`)
         if (event.type === 'routine:step') w.__probe(`hands ${event.label}`)
         if (event.type === 'routine:submit') {
           w.__probe('GATE')
-          setTimeout(() => void window.engram.routineSubmitDone(w.__gateAnswer()), 400)
+          setTimeout(() => void w.__gateAnswer().then((verdict) => window.engram.routineSubmitDone(verdict)), 400)
         }
         if (event.type === 'chat:done') w.__probe(`ANSWER ${JSON.stringify({ text: event.text, offer: event.offer ?? null })}`)
         if (event.type === 'chat:error') w.__probe(`ERROR ${event.message}`)

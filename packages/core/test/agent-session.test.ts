@@ -85,3 +85,52 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
     await expect(runToolSession({ engine, workdir: WORKDIR, tools }, 'hello', { guided: false })).rejects.toThrow(/timed out/)
   })
 })
+
+describe('what the person said earlier is a source for a blank', () => {
+  it('a "yes, go ahead" turn keeps the room and time from the message before it', async () => {
+    const seen: { task: string; read?: string }[] = []
+    const engine = sessionBrain(async (job) => {
+      const tool = job.tools.find((t) => t.name === 'search_memory')!
+      await tool.run({ query: 'x' })
+      return { answer: 'done' }
+    })
+    const spy: AgentTool = {
+      name: 'search_memory',
+      description: 'search',
+      argsSchema: {},
+      run: async (_args, context) => {
+        seen.push({ task: context.task, ...(context.read !== undefined ? { read: context.read } : {}) })
+        return 'nothing'
+      },
+    }
+    await runToolSession({ engine, workdir: WORKDIR, tools: [spy] }, '네, 진행해주세요', {
+      guided: false,
+      history: [
+        { role: 'user', text: '회의실 B 모레 오전 11시 예약해줘' },
+        { role: 'assistant', text: '오늘 이미 실행했는데 다시 할까요?' },
+      ],
+    })
+    expect(seen[0]!.read).toContain('회의실 B 모레 오전 11시')
+  })
+})
+
+describe('looking comes before asking', () => {
+  it('the first question of a turn, before any search, is sent to the search; asked again after looking, it goes through', async () => {
+    const heard: string[] = []
+    const engine = sessionBrain(async (job) => {
+      const ask = job.tools.find((t) => t.name === 'ask_person')!
+      const search = job.tools.find((t) => t.name === 'search_web')!
+      heard.push(await ask.run({ question: 'Which report?' }))
+      heard.push(await search.run({ query: 'the report' }))
+      heard.push(await ask.run({ question: 'Which report?' }))
+      return { answer: 'ignored' }
+    })
+    const withSearch: AgentTool[] = [...tools, { name: 'search_web', description: 'search', argsSchema: {}, run: async () => 'nothing came back' }]
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: withSearch }, 'summarise the report', { guided: false })
+    expect(heard[0]).toContain('Look before you ask')
+    expect(heard[0]).toContain('search_web')
+    expect(heard[1]).toBe('nothing came back')
+    expect(result.asked).toBe(true)
+    expect(result.answer).toBe('Which report?')
+  })
+})

@@ -122,11 +122,16 @@ function sameArgs(a: Record<string, unknown>, b: Record<string, unknown>): boole
 // check that counted the loop's own scaffolding as reading.
 const CONTENT_TOOLS = new Set(['search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web'])
 
-function readSoFar(steps: AgentLoopStep[]): string {
-  return steps
-    .filter((step) => CONTENT_TOOLS.has(step.tool))
-    .map((step) => step.observation)
-    .join('\n')
+function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
+  return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
+}
+
+// The person's own recent words, which a blank may be filled from.
+export function said(history: AgentLoopOptions['history']): string[] {
+  return (history ?? [])
+    .filter((turn) => turn.role === 'user')
+    .slice(-4)
+    .map((turn) => turn.text)
 }
 
 interface ParsedStep {
@@ -233,7 +238,7 @@ async function writeDown(deps: AgentLoopDeps, task: string, text: string, steps:
   const args = { title: noteTitleFor(task), body: text.trim() }
   options.onStep?.(`${tool.name}: ${summarizeArgs(args)}`)
   const observation = await tool
-    .run(args, { task, read: readSoFar(steps), ...(options.signal ? { signal: options.signal } : {}) })
+    .run(args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
     .catch((err: unknown) => `that did not work: ${err instanceof Error ? err.message : String(err)}`)
   options.onObservation?.(tool.name, observation)
   steps.push({ tool: tool.name, args, observation: observation.slice(0, OBSERVATION_CAP) })
@@ -255,7 +260,7 @@ async function followRead(
   followed.count++
   options.onStep?.(`${tool.name}: ${summarizeArgs(next.args)}`)
   const observation = await tool
-    .run(next.args, { task, read: readSoFar(steps), ...(options.signal ? { signal: options.signal } : {}) })
+    .run(next.args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
     .catch((err: unknown) => `that did not work: ${err instanceof Error ? err.message : String(err)}`)
   options.onObservation?.(tool.name, observation)
   steps.push({ tool: tool.name, args: next.args, observation: observation.slice(0, OBSERVATION_CAP) })
@@ -386,7 +391,7 @@ export async function runAgentLoop(
     options.onStep?.(`${tool.name}: ${summarizeArgs(parsed.args)}`)
     let observation: string
     try {
-      observation = await tool.run(parsed.args, { task, read: readSoFar(steps), ...(options.signal ? { signal: options.signal } : {}) })
+      observation = await tool.run(parsed.args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
       // A question to the person IS the answer: carrying on would mean
       // guessing at exactly the thing it just said it does not know.
       const ask = parseAsk(observation)
