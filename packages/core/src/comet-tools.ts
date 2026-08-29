@@ -566,7 +566,7 @@ ${note.body.slice(0, 2_000)}`
             deps.wallMet?.(page.url)
             return 'the open page needs a person — say so, and that the agent window stays open for it; ask them to tell you when it is done'
           }
-          if (!page.text.trim()) return 'the open page has no readable text'
+          if (!page.text.trim()) return 'the open page shows nothing readable - it may draw itself with scripts, or hold nothing; say which is unknown rather than reporting an empty result'
           return pageReport(page, partOf(args))
         },
       },

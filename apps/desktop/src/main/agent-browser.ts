@@ -427,7 +427,12 @@ export function agentCourier(): WebCourier {
       // JS-rendered pages paint just after domcontentloaded; a short settle
       // beats waiting for 'load' on ad-heavy pages that never finish.
       await page.waitForTimeout(800)
-      const result = await withAbort(readPage(page), signal)
+      let result = await withAbort(readPage(page), signal)
+      // A page that draws itself after loading is given one more moment.
+      if (result.text.trim().length < 40) {
+        await page.waitForTimeout(2_000)
+        result = await withAbort(readPage(page), signal)
+      }
       armIdleClose()
       return result
     },
