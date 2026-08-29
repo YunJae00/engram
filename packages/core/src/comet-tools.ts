@@ -462,7 +462,7 @@ ${note.body.slice(0, 2_000)}`
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           const page = await courier.fetchPage(url, context.signal)
           if (page.wall) return `the search page wants a person — ask them to clear it in the agent window`
-          const links = rankLinks(page.links ?? [], query, RESULTS_CAP)
+          const links = rankLinks(page.links ?? [], query, RESULTS_CAP, url)
           // A question that names nothing searches perfectly well and lands
           // somewhere unrelated. Writing up whatever turned up is how a
           // colleague invents a job; the honest move is to ask what was meant.

@@ -154,7 +154,7 @@ export function classifyWall(
   hasPasswordField: boolean,
 ): 'login' | 'captcha' | null {
   const head = `${title}\n${textHead.slice(0, 2_500)}`
-  if (/captcha|are you a robot|not a robot|unusual traffic|verify you are human|cloudflare.{0,40}checking/i.test(head))
+  if (/captcha|are you a robot|not a robot|unusual traffic|verify you are human|one last step|real person|cloudflare.{0,40}checking|비정상적인 트래픽|로봇이 아니|사람인지 확인/i.test(head))
     return 'captcha'
   if (hasPasswordField) return 'login'
   if (/\/(login|signin|sign-in|sign_in|sso|auth)\b/i.test(new URL(url).pathname)) return 'login'

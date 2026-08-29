@@ -59,3 +59,11 @@ describe('the browser is chosen, not assumed', () => {
     setAgentBrowser(null)
   })
 })
+
+describe('a human check in any of the words the big search pages use', () => {
+  it('reads the last-step and real-person phrasings, in English and Korean', () => {
+    expect(classifyWall('https://s.example/search?q=x', 'x - Search', 'One last step. Please solve this puzzle so we know you are a real person', false)).toBe('captcha')
+    expect(classifyWall('https://s.example/search?q=x', 'x', 'Google의 시스템이 컴퓨터 네트워크에서 비정상적인 트래픽을 감지했습니다', false)).toBe('captcha')
+    expect(classifyWall('https://s.example/search?q=x', 'x', '이 페이지는 로봇이 아니라 실제 사용자가 요청을 보내고 있는지를 확인하는 페이지입니다', false)).toBe('captcha')
+  })
+})

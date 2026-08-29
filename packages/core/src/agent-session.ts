@@ -39,6 +39,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // A question to the person ends the turn: whatever the model says
       // after it, the question is the answer.
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
+      // A turn has a budget of calls, or a page that will not load becomes a
+      // hundred tries; past it the answer is made from what is in hand.
+      if (steps.length >= SESSION_MAX_CALLS)
+        return `No more calls this turn (${SESSION_MAX_CALLS} made). Answer now from what you have, and say what you could not reach.`
       options.onStep?.(`${tool.name}: ${summarizeArgs(args)}`)
       let observation: string
       try {

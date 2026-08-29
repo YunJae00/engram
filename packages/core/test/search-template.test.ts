@@ -125,3 +125,28 @@ describe('answersTheQuestion', () => {
     expect(answersTheQuestion('anything at all', '?')).toBe(false)
   })
 })
+
+describe('resultLinks: a results page is not one of its own results', () => {
+  it('drops the page\'s own tabs and next pages, and unwraps redirect links', async () => {
+    const { resultLinks } = await import('../src/search-template.js')
+    const from = 'https://find.example/search?q=vitest'
+    const kept = resultLinks(
+      [
+        { text: 'Images', url: 'https://find.example/images?q=vitest' },
+        { text: 'Next', url: 'https://find.example/search?q=vitest&p=2' },
+        { text: 'Settings', url: 'https://find.example/settings' },
+        { text: 'vitest - npm', url: 'https://www.npmjs.com/package/vitest' },
+        { text: 'via duck', url: 'https://duckduckgo.com/l/?uddg=https%3A%2F%2Fvitest.dev%2Fguide%2F&rut=abc' },
+        { text: 'via bing', url: 'https://www.bing.com/ck/a?!&&p=1&u=a1aHR0cHM6Ly9naXRodWIuY29tL3ZpdGVzdC1kZXYvdml0ZXN0&ntb=1' },
+        { text: 'broken', url: 'not a url' },
+      ],
+      from,
+    )
+    expect(kept.map((one) => one.url)).toEqual([
+      'https://find.example/settings',
+      'https://www.npmjs.com/package/vitest',
+      'https://vitest.dev/guide/',
+      'https://github.com/vitest-dev/vitest',
+    ])
+  })
+})

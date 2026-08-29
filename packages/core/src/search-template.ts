@@ -45,16 +45,59 @@ export function searchUrlFor(template: string, query: string): string | null {
 // A results page is mostly furniture: menus, promos, the site's own apps.
 // Ordering the links by how much of the question they echo picks the result
 // and leaves the furniture — without knowing whose page it is.
+// A results page links to itself as much as to the world: the image and
+// news tabs, the next page, the same words in another language. Those are
+// the search again, not a result, and a comet that opened one read its own
+// query back. Where the page hands out redirect links, the address behind
+// them is the one shown, so the list reads as the sites it actually is.
+export function resultLinks(links: { text: string; url: string }[], from?: string): { text: string; url: string }[] {
+  let page: URL | null = null
+  try {
+    page = from ? new URL(from) : null
+  } catch {
+    page = null
+  }
+  const out: { text: string; url: string }[] = []
+  for (const link of links) {
+    let url: URL
+    try {
+      url = new URL(link.url)
+    } catch {
+      continue
+    }
+    const behind = url.searchParams.get('uddg') ?? unwrapBingLink(url)
+    if (behind) {
+      out.push({ text: link.text, url: behind })
+      continue
+    }
+    if (page && url.host === page.host && (url.searchParams.has('q') || url.pathname === page.pathname)) continue
+    out.push(link)
+  }
+  return out
+}
+
+function unwrapBingLink(url: URL): string | null {
+  const packed = url.pathname === '/ck/a' ? url.searchParams.get('u') : null
+  if (!packed || !packed.startsWith('a1')) return null
+  try {
+    const decoded = Buffer.from(packed.slice(2).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    return /^https?:\/\//.test(decoded) ? decoded : null
+  } catch {
+    return null
+  }
+}
+
 export function rankLinks(
   links: { text: string; url: string }[],
   query: string,
   cap = 5,
+  from?: string,
 ): { text: string; url: string }[] {
   const words = query
     .toLowerCase()
     .split(/[\s,./?!]+/)
     .filter((word) => word.length > 1)
-  const scored = links.map((link, order) => {
+  const scored = resultLinks(links, from).map((link, order) => {
     const hay = `${link.text} ${link.url}`.toLowerCase()
     // The same reading as everywhere else: a word counts when the page says
     // it, ending or no ending. Counting whole words only put a page whose
