@@ -139,6 +139,7 @@ export function openRuleLines(): string[] {
     'A chore on a website starts with find_procedure: what the person once showed you is how it is done, and when nothing was shown, saying so and offering to watch comes before any question.',
     'Look before you ask: a question is the right move only after the notebook and a search have both come back with nothing, or when the ask itself names no job at all.',
     'Write to the person in the language they wrote in.',
+    'When a search is blocked, or a page comes back empty or cut short, take one more route to the same source - its own address, the next part of the page - before answering; cite only pages you read, never a results address.',
     'Say first whether the source they named was read and had it. Every figure carries where it came from - the page asked for, another site, or your own inference - and a substitute is never passed off as what the asked-for source says. A source that does not exist or will not load is reported as that, in one line, before anything else.',
   ]
 }

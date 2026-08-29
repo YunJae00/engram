@@ -859,3 +859,33 @@ describe('find_procedure: a shared verb is not a match', () => {
     expect(await find.run({ task: '포털 공지 확인해줘' }, CTX)).toContain('found "포털 공지 확인"')
   })
 })
+
+describe('a blank is filled from the ask, and keeps what it was shown when the ask says nothing', () => {
+  it('runs with the person\'s own words in the blank, and the shown value where they said nothing', async () => {
+    const paths = await initVault(await tmpVaultRoot('tools-slot-default'), { git: false })
+    const routine = await addRoutine(paths, {
+      name: '회의실 예약',
+      steps: [
+        { kind: 'open', url: 'https://portal.example/rooms' },
+        { kind: 'type', target: { text: 'Room' }, text: '{{Room}}', example: '회의실 A' },
+        { kind: 'type', target: { text: 'When' }, text: '{{When}}', example: '내일 10시' },
+        { kind: 'click', target: { text: 'Book' } },
+      ],
+    })
+    const seen: Record<string, string>[] = []
+    const run = cometTools({
+      paths,
+      retrieve: async () => [],
+      runProcedure: async (_id, slots) => {
+        seen.push(slots)
+        return 'booked'
+      },
+    }).find((t) => t.name === 'run_procedure')!
+    const told = await run.run({ id: routine.id, slots: { Room: '회의실 C' } }, { task: '회의실 C 내일 오후 3시로 예약해줘', read: '' })
+    expect(told).toContain('booked')
+    expect(seen[0]).toEqual({ Room: '회의실 C', When: '내일 10시' })
+    // A value from nowhere - not the ask, not a page - is still refused.
+    const refused = await run.run({ id: routine.id, slots: { Room: '회의실 Z', When: '모레' } }, { task: '회의실 예약해줘', read: '' })
+    expect(refused).toContain('nowhere in anything you have read')
+  })
+})

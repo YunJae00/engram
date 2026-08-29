@@ -12,7 +12,9 @@ export interface RoutineTarget {
 export type RoutineStep =
   | { kind: 'open'; url: string }
   | { kind: 'click'; target: RoutineTarget }
-  | { kind: 'type'; target: RoutineTarget; text: string }
+  // A blank's default is what was typed when the job was shown: replayed
+  // as it was unless the ask says otherwise.
+  | { kind: 'type'; target: RoutineTarget; text: string; example?: string }
   | { kind: 'read' }
 
 export interface Routine {
@@ -151,7 +153,7 @@ export function normalizeStep(step: RoutineStep): RoutineStep {
     case 'click':
       return { kind: 'click', target: normalizeTarget(step.target) }
     case 'type':
-      return { kind: 'type', target: normalizeTarget(step.target), text: step.text }
+      return { kind: 'type', target: normalizeTarget(step.target), text: step.text, ...(step.example ? { example: step.example } : {}) }
     case 'read':
       return { kind: 'read' }
   }
@@ -195,7 +197,7 @@ export function writeStepIndexes(steps: RoutineStep[]): Set<number> {
 
 // The blanks a procedure leaves for the day it runs: "{{today}}" in a typed
 // value is a slot, filled fresh each time rather than replayed verbatim.
-const SLOT = /\{\{\s*([\w-]{1,40})\s*\}\}/g
+const SLOT = /\{\{\s*([\p{L}\p{N}_-]{1,40})\s*\}\}/gu
 
 export function routineSlots(steps: RoutineStep[]): string[] {
   const names = new Set<string>()
@@ -204,6 +206,17 @@ export function routineSlots(steps: RoutineStep[]): string[] {
     for (const match of step.text.matchAll(SLOT)) names.add(match[1]!)
   }
   return [...names]
+}
+
+// What each blank held when the job was shown, by name.
+export function routineSlotExamples(steps: RoutineStep[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const step of steps) {
+    if (step.kind !== 'type' || !step.example) continue
+    const only = /^\{\{\s*([\p{L}\p{N}_-]{1,40})\s*\}\}$/u.exec(step.text)
+    if (only) out[only[1]!] = step.example
+  }
+  return out
 }
 
 // Unfilled slots stay as they are rather than becoming an empty string: a

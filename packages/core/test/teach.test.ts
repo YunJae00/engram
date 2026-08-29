@@ -33,7 +33,7 @@ describe('buildRoutineFromTeach', () => {
     expect(steps).toEqual([
       { kind: 'open', url: 'https://portal.example/login' },
       { kind: 'open', url: 'https://portal.example/app' },
-      { kind: 'type', target: { css: ['#entry'], text: 'Entry' }, text: 'shipped it' },
+      { kind: 'type', target: { css: ['#entry'], text: 'Entry' }, text: '{{Entry}}', example: 'shipped it' },
       { kind: 'read' },
     ])
     expect(JSON.stringify(steps)).not.toContain('hunter2')
@@ -60,7 +60,7 @@ describe('buildRoutineFromTeach', () => {
     ])
     expect(steps).toEqual([
       { kind: 'open', url: 'https://a.example/' },
-      { kind: 'type', target: { css: ['#title'], text: 'Title' }, text: 'draft done' },
+      { kind: 'type', target: { css: ['#title'], text: 'Title' }, text: '{{Title}}', example: 'draft done' },
     ])
   })
 
@@ -107,7 +107,8 @@ describe('buildRoutineFromTeach', () => {
       { kind: 'input', css: '#f', text: 'Field', value: 'x'.repeat(900) },
     ])
     const typed = steps.find((s) => s.kind === 'type')
-    expect(typed && typed.kind === 'type' && typed.text.length).toBe(500)
+    expect(typed && typed.kind === 'type' && typed.example?.length).toBe(500)
+    expect(typed && typed.kind === 'type' && typed.text).toBe('{{Field}}')
     expect(validateRoutineSteps(steps)).toBeNull()
   })
 })

@@ -244,6 +244,10 @@ export {
 
 export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 
+// How long a window met with a sign-in wall waits for the person.
+const WALL_HOLD_MS = 10 * 60_000
+let wallHold: (() => void) | null = null
+
 // Shared by capture:text/file and the watch-folder pipeline: run the
 // realtime jobs without blocking the caller (quick capture must feel
 // instant). SINGLE-FLIGHT with a trailing rerun — a 23-file drop used to
@@ -1961,6 +1965,13 @@ export function registerIpc(ctx: VaultContext): void {
     // Every failure path inside degrades to a plain answer, so the worst a
     // broken model can do here is behave like the old chat.
     if (bot) {
+      // The person is back: whatever wall was left open for them is theirs
+      // to have cleared, and the window is the turn's again.
+      if (wallHold) {
+        const release = wallHold
+        wallHold = null
+        release()
+      }
       // A results address pasted into the thread is the answer to "where
       // should I search": its shape is learned here, with nothing to press.
       const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null
@@ -1994,6 +2005,20 @@ export function registerIpc(ctx: VaultContext): void {
               // here, where a tight reading meant a comet with no web at all
               // telling the person it had no such tool (measured).
               courier: agentBrowserAvailable() ? agentCourier() : null,
+              // A wall met this turn keeps the window open past the answer,
+              // so the person signs in where they were told to; the hold is
+              // let go when they speak again, or after a while on its own.
+              wallMet: () => {
+                if (wallHold) return
+                const release = holdAgentBrowser()
+                wallHold = release
+                setTimeout(() => {
+                  if (wallHold === release) {
+                    wallHold = null
+                    release()
+                  }
+                }, WALL_HOLD_MS).unref()
+              },
               allowedFolders: consentedFolders,
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
               runProcedure: (id, slots) => runProcedureForComet(id, slots),
@@ -2149,9 +2174,10 @@ export function registerIpc(ctx: VaultContext): void {
         // The window goes away when the work does. A person shuts the tab they
         // opened rather than leaving it sitting there, and a browser left open
         // is memory held for nothing - it reopens in a second when the next
-        // question needs it. A teach recording or a routine mid-run holds the
-        // window itself, and an unforced close steps aside for them.
-        void closeAgentBrowser()
+        // question needs it. A teach recording, a routine mid-run, or a wall
+        // waiting for the person holds the window, and an unforced close
+        // steps aside for them.
+        if (!wallHold) void closeAgentBrowser()
       }
       return
     }

@@ -29,6 +29,15 @@ function cleanTarget(ev: { css?: string; text?: string }): RoutineTarget | null 
   return out
 }
 
+// A blank is named after its field; a field with no usable name is numbered.
+function slotName(target: RoutineTarget, steps: RoutineStep[]): string {
+  const base = (target.text ?? '').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+  const taken = new Set(steps.flatMap((step) => (step.kind === 'type' ? [...step.text.matchAll(/\{\{\s*([^}\s]+)\s*\}\}/g)].map((m) => m[1]) : [])))
+  let name = base || `text_${taken.size + 1}`
+  for (let n = 2; taken.has(name); n++) name = `${base || 'text'}_${n}`
+  return name
+}
+
 function sameTarget(a: RoutineTarget, b: RoutineTarget): boolean {
   return (a.css?.[0] ?? '') === (b.css?.[0] ?? '') && (a.text ?? '') === (b.text ?? '')
 }
@@ -85,10 +94,13 @@ export function buildRoutineFromTeach(events: TeachEvent[]): RoutineStep[] {
         lastKind = 'input-empty'
         continue
       }
+      // What was typed is the part that changes from one time to the next:
+      // it becomes a blank named after the field, and what was typed stays
+      // beside it as the default.
       const value = ev.value.slice(0, TYPE_TEXT_CAP)
       const prev = steps[steps.length - 1]
-      if (prev && prev.kind === 'type' && sameTarget(prev.target, target)) prev.text = value
-      else steps.push({ kind: 'type', target, text: value })
+      if (prev && prev.kind === 'type' && sameTarget(prev.target, target)) prev.example = value
+      else steps.push({ kind: 'type', target, text: `{{${slotName(target, steps)}}}`, example: value })
       lastKind = 'input'
     } else if (ev.kind === 'read') {
       const prev = steps[steps.length - 1]

@@ -3,7 +3,7 @@ import { readNote } from './notes.js'
 import { noteTitle } from './schema.js'
 import type { VaultPaths } from './vault.js'
 import type { AgentTool } from './agent-loop.js'
-import { listRoutines, routineSlots, routineStepLabel } from './routine.js'
+import { listRoutines, routineSlotExamples, routineSlots, routineStepLabel } from './routine.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
 import { answersTheQuestion, contentWords, deriveSearchTemplate, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
 import { cleanOptions, formatAsk } from './ask.js'
@@ -73,6 +73,9 @@ export interface CometToolDeps {
   // plans for itself is told to go and look, and the shape is learned from
   // where it went.
   guided?: boolean
+  // A page a machine cannot pass was met: the host keeps the window open so
+  // the person can clear it where they were told to.
+  wallMet?(url: string): void
 }
 
 function recalled(remembered: string[] | undefined, query: string, task: string): string[] {
@@ -178,7 +181,8 @@ export function cometTools(deps: CometToolDeps): AgentTool[] {
   const tools: AgentTool[] = [
     {
       name: 'search_memory',
-      description: "search the person's vault for notes about a topic — args: {\"query\": \"...\"}",
+      description:
+        "search the person's vault for notes about a topic; when what comes back is unrelated, try once more with the single most distinctive word — args: {\"query\": \"...\"}",
       argsSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
       async run(args, context) {
         const query = str(args, 'query')
@@ -304,8 +308,10 @@ ${note.body.slice(0, 2_000)}`
         // template it can copy and stalls on a description it has to invent.
         const callFor = (r: (typeof routines)[number]): string => {
           const slots = routineSlots(r.steps)
+          const examples = routineSlotExamples(r.steps)
+          const shown = slots.map((name) => (examples[name] ? `${name} (last time: "${examples[name].slice(0, 30)}")` : name))
           return slots.length > 0
-            ? `Blanks to fill: ${slots.join(', ')}. Look up what each blank needs (search_memory), then call run_procedure with {"id": "${r.id}", "slots": {${slots.map((name) => `"${name}": "..."`).join(', ')}}}.`
+            ? `Blanks to fill: ${shown.join(', ')}. Take each from the ask or from something read (search_memory); a blank the ask says nothing about keeps what it held last time. Then call run_procedure with {"id": "${r.id}", "slots": {${slots.map((name) => `"${name}": "..."`).join(', ')}}}.`
             : `Nothing to fill — call run_procedure with {"id": "${r.id}", "slots": {}}.`
         }
         // One saved procedure and a request to do a chore: there is nothing to
@@ -470,8 +476,10 @@ ${note.body.slice(0, 2_000)}`
             if (host && /timeout|timed out|net::|ERR_/i.test(String(err))) dead.add(host)
             throw err
           }
-          if (page.wall)
-            return `${url} needs a person to sign in — say so and ask them to do it in the agent window`
+          if (page.wall) {
+            deps.wallMet?.(url)
+            return `${url} needs a person to ${page.wall === 'captcha' ? 'pass a check' : 'sign in'} — say so, and that the agent window stays open for it; ask them to tell you when it is done`
+          }
           // A results page it opened for this very task is the person's
           // search, in shape - and only that: an address with a query string
           // is also every video, ticket and tracking link on the web.
@@ -538,7 +546,10 @@ ${note.body.slice(0, 2_000)}`
         async run(_args, context) {
           if (!courier.readOpen) return 'nothing is open — use open_page first'
           const page = await courier.readOpen(context.signal)
-          if (page.wall) return 'the open page needs a person to sign in — ask them to do it in the agent window'
+          if (page.wall) {
+            deps.wallMet?.(page.url)
+            return 'the open page needs a person — say so, and that the agent window stays open for it; ask them to tell you when it is done'
+          }
           if (!page.text.trim()) return 'the open page has no readable text'
           return pageReport(page)
         },
@@ -598,6 +609,9 @@ ${note.body.slice(0, 2_000)}`
         const near = saved.filter((one) => one.id.endsWith(tail))
         const id = exact?.id ?? (near.length === 1 ? near[0]!.id : asked)
         const filled = { ...flat, ...record(args, 'slots') }
+        // A blank the ask said nothing about is replayed as it was shown.
+        const shownWith = routineSlotExamples((await listRoutines(deps.paths)).find((r) => r.id === id)?.steps ?? [])
+        for (const [slot, example] of Object.entries(shownWith)) if (!filled[slot]) filled[slot] = example
         // A blank filled with the shape of an answer is not filled. Shown a
         // template to copy, the model copied it - and "..." went up on the
         // website in place of the day's work.
@@ -626,7 +640,9 @@ ${note.body.slice(0, 2_000)}`
           const body = typeof value === 'string' ? noteBodyIn(context.read ?? '', value) : null
           if (body) filled[slot] = body
         }
-        const read = (context.read ?? '').replace(/\[[^\]]*\]/g, ' ').replace(/\(id: [^)]*\)/g, ' ')
+        // The person's own words are the first source a blank may be filled
+        // from; what was read this turn is the second.
+        const read = `${context.task}\n${context.read ?? ''}`.replace(/\[[^\]]*\]/g, ' ').replace(/\(id: [^)]*\)/g, ' ')
         const invented = Object.entries(filled).find(
           ([, value]) => typeof value === 'string' && value.length > 0 && !answersTheQuestion(read, value),
         )
