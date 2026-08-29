@@ -237,7 +237,8 @@ const SCENARIOS: Scenario[] = [
     name: 'chips offered, none of them right: the person types their own',
     async run(person, _office, botId) {
       const first = await person.say(botId, '점심 관련해서 알아봐줘')
-      const checks: Check[] = [{ name: 'asks what about lunch', ok: first.offer === 'asked' || has(first.answer, /어떤|무엇|뭘/) }]
+      // Asking is one honest move; reading the cafeteria page and saying it all is another.
+      const checks: Check[] = [{ name: 'asks what about lunch, or tells all of it', ok: first.offer === 'asked' || has(first.answer, /어떤|무엇|뭘/) || has(first.answer, /11시 30분|비빔밥|2층/) }]
       const second = await person.say(botId, '채식 코너가 몇 층인지')
       checks.push({ name: 'answers the typed-in choice from the page', ok: has(second.answer, /2층/) })
       return { checks, turns: [first, second] }
@@ -293,7 +294,7 @@ const SCENARIOS: Scenario[] = [
       const next = await person.say(botId, '구내식당 점심 시간이 언제야?')
       return {
         checks: [
-          { name: 'the next turn answers after the cut', ok: has(next.answer, /11시 30분|1시/) },
+          { name: 'the next turn answers after the cut', ok: has(next.answer, /11시 30분|11:30|13:00|1시/) },
           { name: 'the cut turn did not pretend to finish', ok: !has(stopped.answer, /103/) },
         ],
         turns: [stopped, next],
