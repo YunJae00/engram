@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  AgentInputDto,
   AppSettingsDto,
   ApproveOptionsDto,
   ChatRequestDto,
@@ -130,6 +131,11 @@ const api: EngramApi = {
   routineTeachStart: () => ipcRenderer.invoke('routines:teachStart'),
   routineTeachRead: () => ipcRenderer.invoke('routines:teachRead'),
   routineTeachStop: () => ipcRenderer.invoke('routines:teachStop'),
+  routineTeachState: () => ipcRenderer.invoke('routines:teachState'),
+  agentWatch: (on: boolean) => ipcRenderer.invoke('agent:watch', on),
+  agentInput: (input: AgentInputDto) => ipcRenderer.invoke('agent:input', input),
+  agentWindow: (show: boolean) => ipcRenderer.invoke('agent:window', show),
+  agentGo: (url: string) => ipcRenderer.invoke('agent:go', url),
   browsersInstalled: () => ipcRenderer.invoke('browsers:installed'),
   browserChoose: (path: string) => ipcRenderer.invoke('browsers:choose', path),
   browsersList: () => ipcRenderer.invoke('browsers:list'),

@@ -114,6 +114,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
+import { agentViewGo, agentViewInput, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
@@ -123,6 +124,7 @@ import { app, ipcMain } from 'electron'
 import { open, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
+  AgentInputDto,
   EngramEvent,
   ApproveOptionsDto,
   ChatRequestDto,
@@ -247,6 +249,12 @@ export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 // How long a window met with a sign-in wall waits for the person.
 const WALL_HOLD_MS = 10 * 60_000
 let wallHold: (() => void) | null = null
+function releaseWallHold(): void {
+  if (!wallHold) return
+  const release = wallHold
+  wallHold = null
+  release()
+}
 
 // Shared by capture:text/file and the watch-folder pipeline: run the
 // realtime jobs without blocking the caller (quick capture must feel
@@ -1362,8 +1370,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('browsers:importedAt', () => importedAt())
 
   ipcMain.handle('routines:teachStart', async (): Promise<RoutineRunReply> => {
-    if (teachingSession || routineRunning || errandRunning)
-      return { ok: false, error: 'Something is already using the browser — try again in a moment.' }
+    if (routineRunning || errandRunning) return { ok: false, error: 'Something is already using the browser — try again in a moment.' }
     if (!agentBrowserAvailable())
       return { ok: false, error: 'No Chrome-family browser found — install Chrome, Edge or Brave to teach a routine.' }
     const free = os.freemem()
@@ -1372,6 +1379,15 @@ export function registerIpc(ctx: VaultContext): void {
         ok: false,
         error: `Not enough free memory to open the browser right now (${(free / 1e9).toFixed(1)}GB free) — close some apps and try again.`,
       }
+    // A lesson left open (the sheet closed part-way, or the window shut with
+    // nothing done) gives way to the new one: pressing Teach again means
+    // begin again. A wall held open for the person's sign-in yields the
+    // window too — the lesson is what they chose to do with it.
+    if (teachingSession) {
+      teachingSession = false
+      await stopTeach().catch(() => [])
+    }
+    releaseWallHold()
     teachingSession = true
     try {
       await startTeach()
@@ -1382,6 +1398,14 @@ export function registerIpc(ctx: VaultContext): void {
       return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
     }
   })
+
+  ipcMain.handle('routines:teachState', () => ({ teaching: teachingSession }))
+
+  startAgentView()
+  ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
+  ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
+  ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
+  ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
 
   ipcMain.handle('routines:teachRead', () => {
     if (teachingSession) markTeachRead()
@@ -1964,11 +1988,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (bot) {
       // The person is back: whatever wall was left open for them is theirs
       // to have cleared, and the window is the turn's again.
-      if (wallHold) {
-        const release = wallHold
-        wallHold = null
-        release()
-      }
+      releaseWallHold()
       // A results address pasted into the thread is the answer to "where
       // should I search": its shape is learned here, with nothing to press.
       const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null

@@ -7,6 +7,7 @@ import { Choices } from '../components/Choices.js'
 import { CometOffer } from '../components/CometOffer.js'
 import { CometMemory } from '../components/CometMemory.js'
 import { CometRail } from '../components/CometRail.js'
+import { LiveView } from '../components/LiveView.js'
 import { Thinking } from '../components/Thinking.js'
 import { modelActivity } from '../lib/modelActivityLive.js'
 import { pendingStatus, stepLabel } from '../lib/pendingStatus.js'
@@ -295,13 +296,13 @@ export function BotsView() {
                     cometThreads.clearOffer(selected.id)
                     void api.botStandingDecline(selected.id, wanted.goal).catch(() => undefined)
                   }}
-                  onTeach={() => {
-                    cometThreads.clearOffer(selected.id)
-                    window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))
-                  }}
+                  // The offer stays: a lesson closed with nothing done can be
+                  // begun again from here until the next message.
+                  onTeach={() => window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))}
                 />
               )}
               <SubmitGate />
+              <LiveView />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <span className="bots-errand-pulse">

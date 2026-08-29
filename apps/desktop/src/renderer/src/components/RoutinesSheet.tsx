@@ -1,7 +1,8 @@
-import { AlertTriangle, Eye, Play, Plus, Repeat, Square, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Eye, Play, Repeat, Square, Wand2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApprovalRuleDto, RoutineBlockDto, RoutineDto, RoutineStepDto } from '../../../shared/types.js'
 import { ApprovalChips } from './ApprovalChips.js'
+import { LiveView } from './LiveView.js'
 import { stepLine } from '../lib/routineSteps.js'
 import { SubmitGate } from './SubmitGate.js'
 import { api } from '../api.js'
@@ -9,46 +10,13 @@ import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 
 // Routines are the repetition with the thinking already done: the pages and
-// clicks a person walks every day, saved once, replayed with one press. The
-// builder speaks in plain moves (open, click, type, read) so a non-developer
-// can author one without ever seeing a selector — selectors arrive later,
-// when a teach-mode records them; the visible words are enough to start.
-
-interface DraftStep {
-  kind: RoutineStepDto['kind']
-  url: string
-  target: string
-  text: string
-}
-
-const EMPTY_STEP: DraftStep = { kind: 'open', url: '', target: '', text: '' }
-
-function toStepDto(draft: DraftStep): RoutineStepDto {
-  switch (draft.kind) {
-    case 'open':
-      return { kind: 'open', url: draft.url.trim() }
-    case 'click':
-      return { kind: 'click', target: { text: draft.target.trim() } }
-    case 'type':
-      return { kind: 'type', target: { text: draft.target.trim() }, text: draft.text }
-    case 'read':
-      return { kind: 'read' }
-  }
-}
-
-function draftReady(draft: DraftStep): boolean {
-  if (draft.kind === 'open') return draft.url.trim().length > 0
-  if (draft.kind === 'click') return draft.target.trim().length > 0
-  if (draft.kind === 'type') return draft.target.trim().length > 0 && draft.text.length > 0
-  return true
-}
+// clicks a person walks every day, saved once, replayed with one press. A
+// routine is only ever taught — the person does the job once in the browser
+// and the moves are kept — so there is no form to fill and nothing to learn.
 
 export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: boolean; onClose(): void }) {
   const { routine, routineWall, answerRoutineWall, startRoutine, errand, showToast, t } = useApp()
   const [routines, setRoutines] = useState<RoutineDto[]>([])
-  const [building, setBuilding] = useState(false)
-  const [name, setName] = useState('')
-  const [drafts, setDrafts] = useState<DraftStep[]>([{ ...EMPTY_STEP }])
   const [armedDelete, setArmedDelete] = useState<string | null>(null)
   // A refused rerun is a question, asked right where it was answered.
   const [ask, setAsk] = useState<{ id: string; name: string; blocked: RoutineBlockDto } | null>(null)
@@ -66,10 +34,16 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
     void api.approvalsList().then(setRules).catch(() => {})
   }
 
-  // Opened by "show me how": begin watching immediately, so the person is
-  // in the browser doing the job rather than hunting for the button.
   useEffect(() => {
     reload()
+    // A lesson that was under way when this sheet last closed is still being
+    // recorded; reopening shows it where it was left, not a fresh start.
+    void api
+      .routineTeachState()
+      .then((state) => {
+        if (state.teaching) setTeaching(true)
+      })
+      .catch(() => {})
     return api.onEvent((event) => {
       // vault:changed too: a routine is a note now, so one appearing (sync,
       // another window, a fresh save) must show up without reopening.
@@ -78,19 +52,6 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
   }, [])
 
   const busy = routine.running || errand.running
-
-  const save = async () => {
-    const steps = drafts.map(toStepDto)
-    try {
-      await api.routineAdd({ name, steps })
-      setBuilding(false)
-      setName('')
-      setDrafts([{ ...EMPTY_STEP }])
-      reload()
-    } catch (err) {
-      showToast(err instanceof Error ? err.message.replace(/^.*Error: /, '') : String(err))
-    }
-  }
 
   const run = async (id: string, name: string, force = false) => {
     setAsk(null)
@@ -108,6 +69,8 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
     setTeaching(true)
   }, [showToast, t])
 
+  // Opened by "show me how": begin watching immediately, so the person is
+  // in the browser doing the job rather than hunting for the button.
   const askedToTeach = useRef(false)
   useEffect(() => {
     if (!startTeaching || askedToTeach.current) return
@@ -148,13 +111,34 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
     void api.routineRemove(id).then(reload)
   }
 
-  const patchDraft = (index: number, patch: Partial<DraftStep>) =>
-    setDrafts((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
+  // The lesson's controls sit on the sheet and on the large view alike, so
+  // Done is at hand wherever the person is looking.
+  const teachButtons = (live: boolean) => (
+    <>
+      <button className="secondary" data-testid={`routine-teach-cancel${live ? '-live' : ''}`} onClick={() => void teachStop(false)}>
+        {t('routines.cancel')}
+      </button>
+      <button className="secondary" data-testid={`routine-teach-read${live ? '-live' : ''}`} onClick={() => void api.routineTeachRead()}>
+        {t('routines.teachRead')}
+      </button>
+      <button className="primary" data-testid={`routine-teach-done${live ? '-live' : ''}`} onClick={() => void teachStop(true)}>
+        {t('routines.teachDone')}
+      </button>
+    </>
+  )
+  const wallButtons = (live: boolean) => (
+    <>
+      <button className="errand-wall-done" data-testid={`routine-wall-done${live ? '-live' : ''}`} onClick={() => answerRoutineWall('resolved')}>
+        {t('routines.wallDone')}
+      </button>
+      <button className="errand-wall-skip" onClick={() => answerRoutineWall('skip')}>
+        {t('routines.wallStop')}
+      </button>
+    </>
+  )
 
   const when = (iso: string): string =>
     new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-
-  const canSave = name.trim().length > 0 && drafts.length > 0 && drafts.every(draftReady)
 
   return (
     <div className="brief-overlay" onClick={onClose}>
@@ -183,14 +167,10 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
             {routineWall && (
               <div className="errand-wall-inline">
                 <span>{t(routineWall.wall === 'login' ? 'routines.wallLogin' : 'routines.wallCaptcha')}</span>
-                <button className="errand-wall-done" data-testid="routine-wall-done" onClick={() => answerRoutineWall('resolved')}>
-                  {t('routines.wallDone')}
-                </button>
-                <button className="errand-wall-skip" onClick={() => answerRoutineWall('skip')}>
-                  {t('routines.wallStop')}
-                </button>
+                {wallButtons(false)}
               </div>
             )}
+            <LiveView open={routineWall !== null}>{routineWall && wallButtons(true)}</LiveView>
             <SubmitGate />
             <button className="secondary errand-stop" onClick={() => void api.routineAbort()}>
               <Square size={11} strokeWidth={2.5} aria-hidden /> {t('routines.stop')}
@@ -221,17 +201,8 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
               <Eye size={14} aria-hidden /> {t('routines.teachWatching')}
             </div>
             <div className="routine-teach-hint">{t('routines.teachPrivacy')}</div>
-            <div className="dialog-actions">
-              <button className="secondary" data-testid="routine-teach-cancel" onClick={() => void teachStop(false)}>
-                {t('routines.cancel')}
-              </button>
-              <button className="secondary" data-testid="routine-teach-read" onClick={() => void api.routineTeachRead()}>
-                {t('routines.teachRead')}
-              </button>
-              <button className="primary" data-testid="routine-teach-done" onClick={() => void teachStop(true)}>
-                {t('routines.teachDone')}
-              </button>
-            </div>
+            <LiveView open>{teachButtons(true)}</LiveView>
+            <div className="dialog-actions">{teachButtons(false)}</div>
           </div>
         )}
 
@@ -272,7 +243,7 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
           </div>
         )}
 
-        {routines.length === 0 && !building && !teaching && !taught ? (
+        {routines.length === 0 && !teaching && !taught ? (
           <div className="errands-empty">{t('routines.empty')}</div>
         ) : (
           <ul className="routines-list">
@@ -316,97 +287,11 @@ export function RoutinesSheet({ startTeaching, onClose }: { startTeaching?: bool
           </ul>
         )}
 
-        {building ? (
-          <div className="routine-builder" data-testid="routine-builder">
-            <input
-              autoFocus
-              className="routine-name"
-              data-testid="routine-name"
-              placeholder={t('routines.namePlaceholder')}
-              maxLength={60}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            {drafts.map((draft, i) => (
-              <div key={i} className="routine-step-row" data-testid="routine-step-row">
-                <select
-                  className="routine-step-kind"
-                  data-testid={`routine-step-kind-${i}`}
-                  value={draft.kind}
-                  onChange={(e) => patchDraft(i, { kind: e.target.value as DraftStep['kind'] })}
-                >
-                  <option value="open">{t('routines.stepOpen')}</option>
-                  <option value="click">{t('routines.stepClick')}</option>
-                  <option value="type">{t('routines.stepType')}</option>
-                  <option value="read">{t('routines.stepRead')}</option>
-                </select>
-                {draft.kind === 'open' && (
-                  <input
-                    className="routine-step-input"
-                    data-testid={`routine-step-url-${i}`}
-                    placeholder={t('routines.stepUrl')}
-                    value={draft.url}
-                    onChange={(e) => patchDraft(i, { url: e.target.value })}
-                  />
-                )}
-                {(draft.kind === 'click' || draft.kind === 'type') && (
-                  <input
-                    className="routine-step-input"
-                    data-testid={`routine-step-target-${i}`}
-                    placeholder={t('routines.stepTarget')}
-                    maxLength={120}
-                    value={draft.target}
-                    onChange={(e) => patchDraft(i, { target: e.target.value })}
-                  />
-                )}
-                {draft.kind === 'type' && (
-                  <input
-                    className="routine-step-input"
-                    data-testid={`routine-step-text-${i}`}
-                    placeholder={t('routines.stepText')}
-                    maxLength={500}
-                    value={draft.text}
-                    onChange={(e) => patchDraft(i, { text: e.target.value })}
-                  />
-                )}
-                {draft.kind === 'read' && <span className="routine-step-note">{t('routines.stepReadNote')}</span>}
-                <button
-                  className="routine-step-remove"
-                  aria-label={t('routines.removeStep')}
-                  disabled={drafts.length === 1}
-                  onClick={() => setDrafts((prev) => prev.filter((_, x) => x !== i))}
-                >
-                  <X size={12} aria-hidden />
-                </button>
-              </div>
-            ))}
-            <button
-              className="secondary routine-add-step"
-              data-testid="routine-add-step"
-              disabled={drafts.length >= 30}
-              onClick={() => setDrafts((prev) => [...prev, { ...EMPTY_STEP }])}
-            >
-              <Plus size={12} aria-hidden /> {t('routines.addStep')}
-            </button>
-            <div className="dialog-actions">
-              <button className="secondary" onClick={() => setBuilding(false)}>
-                {t('routines.cancel')}
-              </button>
-              <button className="primary" data-testid="routine-save" disabled={!canSave} onClick={() => void save()}>
-                {t('routines.save')}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="dialog-actions">
-            <button className="secondary" data-testid="routines-new" disabled={teaching} onClick={() => setBuilding(true)}>
-              <Plus size={12} aria-hidden /> {t('routines.new')}
-            </button>
-            <button className="primary" data-testid="routines-teach" disabled={teaching || busy} onClick={() => void teachStart()}>
-              <Wand2 size={12} aria-hidden /> {t('routines.teach')}
-            </button>
-          </div>
-        )}
+        <div className="dialog-actions">
+          <button className="primary" data-testid="routines-teach" disabled={teaching || busy} onClick={() => void teachStart()}>
+            <Wand2 size={12} aria-hidden /> {t('routines.teach')}
+          </button>
+        </div>
       </div>
     </div>
   )

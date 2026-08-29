@@ -321,7 +321,6 @@ const app = await launchApp({
   ENGRAM_INDEX_NOW: '1',
   ENGRAM_SEMANTIC: '1',
   ENGRAM_STEP_DETAIL: '1',
-  ENGRAM_AGENT_OFFSCREEN: '1',
   ENGRAM_AGENT_CDP: String(CDP_PORT),
 })
 await app.page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })

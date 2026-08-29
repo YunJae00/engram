@@ -1615,12 +1615,7 @@ body.bubble-host { background: transparent; }
 }
 .routine-delete:hover { background: var(--hover-bg); color: var(--fg); }
 .routine-delete.armed { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.routine-builder { display: flex; flex-direction: column; gap: 8px; }
 .routine-name { font-size: var(--fs-body); padding: 8px 10px; }
-.routine-step-row { display: flex; align-items: center; gap: 6px; }
-.routine-step-kind { flex: none; width: 108px; font-size: var(--fs-small); padding: 6px 8px; }
-.routine-step-input { flex: 1; min-width: 0; font-size: var(--fs-small); padding: 6px 8px; }
-.routine-step-note { flex: 1; font-size: var(--fs-small); color: var(--fg-faint); }
 .routine-step-remove {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 50%; color: var(--fg-faint);
@@ -1829,3 +1824,52 @@ body.bubble-host { background: transparent; }
 .errand-wall-done { background: var(--accent); border-color: transparent; color: var(--button-fg); }
 .errand-wall-done:hover { background: var(--accent-hover); }
 .errand-wall-skip:hover { background: var(--hover-bg); color: var(--fg); }
+
+/* Settings opens whole: until every row knows its state, only the turning
+   mark shows, at the size the sheet will take. */
+.settings-loading {
+  display: flex; align-items: center; justify-content: center;
+  width: min(880px, 92vw); min-height: 320px; color: var(--fg-dim);
+}
+
+/* The agent browser's mirror. A small card in the thread while the page is
+   worked on; opened up, a stage the person acts on as if in the window. */
+.live-card {
+  position: relative; width: min(100%, 420px); border-radius: var(--radius-card); overflow: hidden;
+  background: var(--rail-bg); cursor: pointer; align-self: flex-start; margin: 2px 0 6px;
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+.live-card img { display: block; width: 100%; }
+.live-card:hover .live-card-bar { opacity: 1; }
+.live-card-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px;
+  padding: 5px 9px; font-size: var(--fs-small); color: #fff;
+  background: linear-gradient(transparent, rgba(43, 43, 51, 0.55)); opacity: 0.85;
+}
+.live-card-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-waiting {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 10;
+  font-size: var(--fs-small); color: var(--fg-faint);
+}
+.live-overlay { z-index: 240; }
+.live-panel {
+  width: min(1200px, 94vw); background: var(--panel-bg); border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-sheet); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.live-panel-bar { display: flex; align-items: center; gap: 10px; font-size: var(--fs-small); color: var(--fg); }
+
+.live-panel-hint { flex: 1; min-width: 0; color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-panel-window { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-small); }
+.live-stage {
+  position: relative; width: 100%; border-radius: var(--radius-m); overflow: hidden; background: var(--rail-bg); cursor: default;
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+.live-stage img { display: block; width: 100%; height: 100%; user-select: none; }
+.live-stage .live-waiting { height: 100%; }
+.live-keys {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; resize: none; cursor: default;
+  border: 0; padding: 0; background: transparent; caret-color: transparent;
+}
+.live-address { flex: 1; min-width: 0; font-size: var(--fs-small); padding: 6px 10px; border-radius: 999px; }
+.live-panel-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.live-panel-foot .primary, .live-panel-foot .secondary { font-size: var(--fs-small); }

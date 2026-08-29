@@ -408,6 +408,10 @@ export type EngramEvent =
     }
   | { type: 'chat:error'; channel: string; message: string }
   // The comet's tool loop narrating one step of its work on this channel.
+  // The agent browser's mirror: whether there is a page to show, and each
+  // frame of it while a view is open. Frames are shown and dropped.
+  | { type: 'agent:live'; on: boolean; url?: string }
+  | { type: 'agent:frame'; data: string; width: number; height: number; url: string }
   | { type: 'comet:step'; channel: string; line: string }
   // The comet wrote something down about the person after a turn.
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
@@ -484,7 +488,30 @@ export interface WorkspaceInfoDto {
   kind: 'personal' | 'team'
 }
 
+// A person's move on the browser mirror, in the frame's own fractions —
+// the main side maps it onto the page, whatever size the frame was shown at.
+export type AgentInputDto =
+  | {
+      kind: 'mouse'
+      type: 'pressed' | 'released' | 'moved' | 'wheel'
+      x: number
+      y: number
+      button?: 'left' | 'right' | 'middle' | 'none'
+      clicks?: number
+      modifiers?: number
+      deltaX?: number
+      deltaY?: number
+    }
+  | { kind: 'key'; type: 'down' | 'up'; key: string; code: string; keyCode: number; text?: string; modifiers?: number }
+  | { kind: 'text'; text: string }
+
 export interface EngramApi {
+  // The agent browser's mirror: watch (frames flow while at least one view
+  // is open), act on it, and call the real window onto the desk or away.
+  agentWatch(on: boolean): Promise<{ on: boolean; url?: string }>
+  agentInput(input: AgentInputDto): Promise<void>
+  agentWindow(show: boolean): Promise<void>
+  agentGo(url: string): Promise<void>
   // workspace registry/switcher (app-level vaults)
   workspaceList(): Promise<{ current: string | null; vaults: WorkspaceInfoDto[] }>
   workspaceCreate(name: string): Promise<void>
@@ -571,6 +598,9 @@ export interface EngramApi {
   routineTeachStart(): Promise<{ ok: boolean; error?: string }>
   routineTeachRead(): Promise<void>
   routineTeachStop(): Promise<RoutineStepDto[]>
+  // Whether a lesson is being recorded right now — a reopened sheet picks
+  // it up where it was left.
+  routineTeachState(): Promise<{ teaching: boolean }>
   // Browsers whose sessions can be inherited, and the one-press inherit.
   browsersList(): Promise<{ id: string; name: string; userData: string; running: boolean }[]>
   browserImport(id: string): Promise<{ ok: boolean; copied?: number; error?: string }>

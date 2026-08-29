@@ -94,7 +94,6 @@ async function openApp(): Promise<Running> {
     ENGRAM_INDEX_NOW: '1',
     ENGRAM_SEMANTIC: '1',
     ENGRAM_STEP_DETAIL: '1',
-    ENGRAM_AGENT_OFFSCREEN: '1',
   })
   const page: Page = app.page
   await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })

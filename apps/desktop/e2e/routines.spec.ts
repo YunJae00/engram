@@ -124,19 +124,28 @@ async function connectAgent(): Promise<Browser> {
   throw last ?? new Error('the teach window never appeared on the debug port')
 }
 
-test('the builder saves a routine a non-developer could author', async () => {
+test('a saved routine appears on the sheet as a note in the vault', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await openSheet()
 
-  await page.getByTestId('routines-new').click()
-  await page.getByTestId('routine-name').fill('Portal notices')
-  await page.getByTestId('routine-step-url-0').fill(siteUrl)
-  await page.getByTestId('routine-add-step').click()
-  await page.getByTestId('routine-step-kind-1').selectOption('click')
-  await page.getByTestId('routine-step-target-1').fill('Notices')
-  await page.getByTestId('routine-add-step').click()
-  await page.getByTestId('routine-step-kind-2').selectOption('read')
-  await page.getByTestId('routine-save').click()
+  // The sheet has no form: a routine is only ever taught, so the one this
+  // run replays is handed in through the same door a lesson uses.
+  await expect(page.getByTestId('routines-teach')).toBeVisible()
+  await page.evaluate(
+    (url) =>
+      window.engram.routineAdd({
+        name: 'Portal notices',
+        steps: [
+          { kind: 'open', url },
+          { kind: 'click', target: { text: 'Notices' } },
+          { kind: 'read' },
+        ],
+      }),
+    siteUrl,
+  )
+  // The sheet reads the list when it opens; a note written past it is seen
+  // on the next opening.
+  await openSheet()
 
   await expect(page.locator('[data-testid^="routine-row-"]')).toHaveCount(1)
   await expect.poll(async () => (await listRoutines(paths)).map((r) => r.name)).toEqual(['Portal notices'])
@@ -166,6 +175,9 @@ test('teach mode records the work as done in the agent window — and replays it
   await page.getByTestId('routines-teach').click()
   // A cold Chrome launch on a busy runner can take a while.
   await expect(page.getByTestId('routine-teach')).toBeVisible({ timeout: 60_000 })
+  // The lesson is done in the app's own view of that window, which opens on
+  // its own once the window is up; its controls are on that view.
+  await expect(page.getByTestId('live-panel')).toBeVisible({ timeout: 30_000 })
 
   // The person's hands: walk the portal in the agent Chrome itself.
   const agent = await connectAgent()
@@ -178,8 +190,8 @@ test('teach mode records the work as done in the agent window — and replays it
     await agent.close().catch(() => undefined)
   }
 
-  await page.getByTestId('routine-teach-read').click()
-  await page.getByTestId('routine-teach-done').click()
+  await page.getByTestId('routine-teach-read-live').click()
+  await page.getByTestId('routine-teach-done-live').click()
 
   // The captured steps wait under a name box: open → click → read.
   await expect(page.getByTestId('routine-taught')).toBeVisible({ timeout: 15_000 })
@@ -209,11 +221,12 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   await openSheet()
   await page.getByTestId(`routine-run-${gated.id}`).click()
   // The wall surfaces as a question in the live block, not as a failure.
-  await expect(page.getByTestId('routine-wall-done')).toBeVisible({ timeout: 90_000 })
+  // A wall brings the large view up by itself, with Continue beside the page.
+  await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
 
   // The person signs in (the gate opens), then tells the run to continue.
   gateUnlocked = true
-  await page.getByTestId('routine-wall-done').click()
+  await page.getByTestId('routine-wall-done-live').click()
 
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
   await expect

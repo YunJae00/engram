@@ -167,6 +167,16 @@ export function classifyWall(
 let context: Ctx | null = null
 let opening: Promise<Ctx> | null = null
 let workPage: Page | null = null
+// Whoever mirrors the window is told of every page as it opens.
+const pageWatchers = new Set<(page: Page) => void>()
+
+export function watchAgentPages(watcher: (page: Page) => void): () => void {
+  pageWatchers.add(watcher)
+  for (const page of context?.pages() ?? []) watcher(page)
+  return () => {
+    pageWatchers.delete(watcher)
+  }
+}
 let idleTimer: NodeJS.Timeout | null = null
 let pressureTimer: NodeJS.Timeout | null = null
 
@@ -271,9 +281,10 @@ async function ensureContext(): Promise<Ctx> {
         // page; a test-typed process is spared the banner and changes nothing
         // else they can see. Measured: the banner names that flag alone.
         '--test-type',
-        // Probe hook: the window opens off the screen so a test loop does not
-        // take the desk over. Never set in production.
-        ...(process.env['ENGRAM_AGENT_OFFSCREEN'] ? ['--window-position=-4000,-4000'] : []),
+        // The window opens off the screen: the person watches and works in
+        // its mirror inside the app, and can call the window over when the
+        // mirror is not enough. Parked there it still paints.
+        '--window-position=-4000,-4000',
         // Test harness hook: exposes a CDP endpoint so an e2e run can stand in
         // for the person's hands in the agent window. Never set in production.
         ...(process.env['ENGRAM_AGENT_CDP'] ? [`--remote-debugging-port=${process.env['ENGRAM_AGENT_CDP']}`] : []),
@@ -297,7 +308,11 @@ async function ensureContext(): Promise<Ctx> {
       }
       flog('agent-browser', 'closed')
     })
+    ctx.on('page', (page) => {
+      for (const watcher of pageWatchers) watcher(page)
+    })
     context = ctx
+    for (const page of ctx.pages()) for (const watcher of pageWatchers) watcher(page)
     armPressureWatch()
     return ctx
   })().finally(() => {
