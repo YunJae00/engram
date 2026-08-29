@@ -376,7 +376,7 @@ ${note.body.slice(0, 2_000)}`
         // whatever they asked for: a note outlives the conversation and the
         // vault syncs.
         if (carriesSecret(`${title} ${body}`, context.task))
-          return 'that carries a password, so it is not going in a note — tell the person you do not write passwords down, and that they should sign in themselves in the agent window'
+          return 'that carries a password, so it is not going in a note — tell the person you do not write passwords down, and that they should sign in themselves on the page shown in the thread'
         const card = await createCard(deps.paths, {
           cardType: 'new-note',
           targets: [],
@@ -494,7 +494,7 @@ ${note.body.slice(0, 2_000)}`
           }
           if (page.wall) {
             deps.wallMet?.(url)
-            return `${url} needs a person to ${page.wall === 'captcha' ? 'pass a check' : 'sign in'} — say so, and that the agent window stays open for it; ask them to tell you when it is done`
+            return `${url} needs a person to ${page.wall === 'captcha' ? 'pass a check' : 'sign in'} — say so, and that the page stays open in the thread for them to do it; ask them to tell you when it is done`
           }
           // A results page it opened for this very task is the person's
           // search, in shape - and only that: an address with a query string
@@ -525,7 +525,7 @@ ${note.body.slice(0, 2_000)}`
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           const page = await courier.fetchPage(url, context.signal)
-          if (page.wall) return `the search page wants a person — ask them to clear it in the agent window`
+          if (page.wall) return `the search page wants a person — ask them to clear it on the page shown in the thread`
           const links = rankLinks(page.links ?? [], query, RESULTS_CAP, url)
           // A question that names nothing searches perfectly well and lands
           // somewhere unrelated. Writing up whatever turned up is how a
@@ -564,7 +564,7 @@ ${note.body.slice(0, 2_000)}`
           const page = await courier.readOpen(context.signal)
           if (page.wall) {
             deps.wallMet?.(page.url)
-            return 'the open page needs a person — say so, and that the agent window stays open for it; ask them to tell you when it is done'
+            return 'the open page needs a person — say so, and that the page stays open in the thread for them to do it; ask them to tell you when it is done'
           }
           if (!page.text.trim()) return 'the open page shows nothing readable - it may draw itself with scripts, or hold nothing; say which is unknown rather than reporting an empty result'
           return pageReport(page, partOf(args))
