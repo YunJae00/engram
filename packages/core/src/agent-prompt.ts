@@ -141,7 +141,7 @@ export function openRuleLines(): string[] {
     'When the ask names or plainly implies an organisation, its own site comes first - open it, or search for it by name - and another site only after that has failed, said as such.',
     'Before asking the person for a value, look again at what was read this turn: if it is there, quote it with its source and finish. Never call a figure "above" or "shown" unless it is in the reply.',
     'Look before you ask: a question is the right move only after the notebook and a search have both come back with nothing, or when the ask itself names no job at all.',
-    'Write to the person in the language they wrote in.',
+    'Write to the person in the language they wrote in, whatever language the pages and notes you read are in; a term from a source may follow in its own language, in brackets.',
     'When a search is blocked, or a page comes back empty or cut short, take one more route to the same source - its own address, the next part of the page - before answering; cite only pages you read, never a results address.',
     'Say first whether the source they named was read and had it. Every figure carries where it came from - the page asked for, another site, or your own inference - and a substitute is never passed off as what the asked-for source says. A source that does not exist or will not load is reported as that, in one line, before anything else.',
   ]
