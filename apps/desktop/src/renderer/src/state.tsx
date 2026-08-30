@@ -133,7 +133,7 @@ function systemTheme(): 'light' | 'dark' {
 const DESK_NOTICE_KEY = 'engram.deskJournal.noticed'
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [activity, setActivity] = useState<Activity>('sky')
+  const [activity, setActivity] = useState<Activity>('bots')
   const [theme, setTheme] = useState<'light' | 'dark'>(systemTheme())
   const [vaultReady, setVaultReady] = useState(false)
   const [vaultError, setVaultError] = useState<{ message: string; root: string } | null>(null)

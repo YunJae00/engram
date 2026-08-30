@@ -89,7 +89,10 @@ test.afterAll(async () => {
 test('boots into the minimal shell on a temp vault', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await expect(page.getByTestId('topbar')).toBeVisible()
-  await expect(page.getByTestId('sky-view')).toBeVisible() // the sky is home (Engram redesign)
+  // Comets are home: the app opens on the work, and the sky is one tab over.
+  await expect(page.getByTestId('bots-view')).toBeVisible()
+  await page.getByTestId('activity-sky').click()
+  await expect(page.getByTestId('sky-view')).toBeVisible()
   // The seeded memories render as stars.
   await expect(page.getByTestId('brain-graph')).toBeVisible()
   // Asking (and keeping) is a docked panel on the cosmos's right edge.
