@@ -53,7 +53,18 @@ export interface WebPage {
   // The page's buttons, fields and menus, one short line each, so the next
   // move can be picked without the whole page.
   controls?: string[]
+  // Words the page keeps folded away - a closed tab, a collapsed section -
+  // so a search can say they are there without opening every part.
+  hidden?: string
   wall?: 'login' | 'captcha'
+}
+
+// What came of a hand on the page: it moved, it was refused because the
+// control would commit something (with the words on it), or it failed.
+export interface PageMove {
+  ok: boolean
+  refused?: string
+  error?: string
 }
 
 // Injected by the host (the desktop drives a real browser); core stays pure
@@ -67,10 +78,20 @@ export interface WebCourier {
   readOpen?(signal?: AbortSignal): Promise<WebPage>
   typeInto?(field: string, text: string, signal?: AbortSignal): Promise<{ ok: boolean }>
   clickOn?(target: string, signal?: AbortSignal): Promise<{ ok: boolean }>
-  // A press that only moves around the page: a tab, a calendar day, the
-  // next page. One that would commit something comes back refused, with
-  // the words on the control, and nothing pressed.
-  press?(target: string, signal?: AbortSignal): Promise<{ ok: boolean; refused?: string; error?: string }>
+  // The hands on a page, each moving around it without committing anything:
+  // a press on a tab, a day, an arrow; words into a search box (Enter only
+  // where the form gets, never posts); an entry from a list; a scroll; a
+  // hover; a key. A move that would commit comes back refused with the
+  // words on the control, and nothing done.
+  press?(target: string, signal?: AbortSignal): Promise<PageMove>
+  typeText?(target: string, text: string, enter: boolean, signal?: AbortSignal): Promise<PageMove>
+  choose?(target: string, option: string, signal?: AbortSignal): Promise<PageMove>
+  scroll?(to: string, signal?: AbortSignal): Promise<PageMove>
+  hover?(target: string, signal?: AbortSignal): Promise<PageMove>
+  pressKey?(key: string, signal?: AbortSignal): Promise<PageMove>
+  // The page as a picture, for a brain that can see one: what a canvas, a
+  // chart or an image says that the words do not.
+  look?(signal?: AbortSignal): Promise<{ data: string; mimeType: string } | null>
 }
 
 export interface ErrandDeps {

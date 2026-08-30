@@ -132,8 +132,8 @@ describe('press moves around a page and refuses to commit', () => {
     })
     const press = tools.find((t) => t.name === 'press')!
     expect(await press.run({ target: 'Previous week' }, { task: 'last week' })).toContain('week of the 17th')
-    expect(await press.run({ target: 'Submit' }, { task: 'last week' })).toContain('not yours to make')
-    expect(await press.run({ target: 'Nowhere' }, { task: 'last week' })).toContain('nothing on the page reads')
+    expect(await press.run({ target: 'Submit' }, { task: 'last week' })).toContain('would submit or commit')
+    expect(await press.run({ target: 'Nowhere' }, { task: 'last week' })).toContain('read_open_page lists')
     expect(await press.run({}, { task: 'last week' })).toContain('needs the words')
   })
 
