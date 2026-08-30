@@ -234,29 +234,12 @@ const en = {
   // The floating question — a card at the edge of the screen while the user is
   // working somewhere else. Every string here is read in about a second, from
   // across a monitor, by someone who did not ask for it.
-  // floating assistant bubble
-  'bubble.open': 'Ask Engram',
-  'bubble.min': 'Minimize to button',
-  'bubble.quit': 'Quit Engram',
-  'bubble.quitAsk': 'Quit Engram?',
-  'bubble.quitWhy': 'Memory-keeping stops until you open it again — sessions during that time are picked up on the next start.',
-  'bubble.quitYes': 'Quit',
-  'bubble.quitNo': 'Keep running',
-  'bubble.hint': 'Ask your memory anything — what you decided, where you left off, what a thing was.',
-  'bubble.placeholder': 'Ask your memory…',
-  'bubble.send': 'Send',
   'editor.saving': 'Saving…',
   'editor.saved': 'Saved',
   'editor.saveFailed': 'Save failed — edits kept in the editor, retrying on close',
-  'bubble.noBrain': 'No brain yet. Engram needs a local AI model before it can answer — it downloads once and then runs entirely on this machine.',
-  'bubble.noBrainPlaceholder': 'Download a brain first…',
-  'bubble.getBrain': 'Get a brain',
   'bubble.stop': 'Stop',
   'bubble.stopped': 'Stopped.',
-  'bubble.retry': 'Try again',
   'bubble.thinking': 'Searching your memory',
-  'bubble.thinkingLong': 'Reading the notes it found',
-  'bubble.thinkingCold': 'Waking the local model — first answer takes a moment',
 
   // shell opening state (shown while a big vault is still being read)
   'shell.opening': 'Opening your vault…',

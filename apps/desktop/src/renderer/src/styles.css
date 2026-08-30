@@ -516,25 +516,6 @@ body.bubble-host { background: transparent; }
 }
 .bubble-dot:hover { background: var(--accent-hover); }
 .bubble-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.bubble-chat {
-  display: flex; flex-direction: column; height: 100vh; box-sizing: border-box;
-  border-radius: 14px; border: 1px solid var(--border);
-  background: var(--card-top); overflow: hidden;
-}
-.bubble-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 12px; -webkit-app-region: drag;
-  border-bottom: 1px solid var(--border-soft);
-}
-.bubble-brand { font-size: var(--fs-body); font-weight: 700; color: var(--fg); }
-.bubble-bar-btns { display: flex; gap: 2px; }
-.bubble-x {
-  -webkit-app-region: no-drag; border: none; background: transparent;
-  color: var(--fg-faint); font-size: var(--fs-small); cursor: pointer; padding: 2px 7px; border-radius: 6px; line-height: 1.4;
-}
-.bubble-x:hover { background: var(--hover-bg); color: var(--fg); }
-.bubble-list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-.bubble-hint { color: var(--fg-faint); font-size: var(--fs-body); line-height: 1.5; padding: 6px 2px; display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
 /* The wait, made visible: three breathing dots, a plain-language status and
    a second counter, so a long local answer never reads as a hang. */
 .bubble-thinking {
@@ -556,16 +537,8 @@ body.bubble-host { background: transparent; }
   .bubble-dots i { animation: none; opacity: 0.6; }
   .bubble-thinking-label { animation: none; }
 }
-.bubble-brand { display: inline-flex; align-items: center; gap: 5px; }
 
 .bubble-stop { background: var(--clay); }
-.bubble-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.bubble-retry {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: var(--fs-small); color: inherit; opacity: 0.85;
-  border: 1px solid currentColor; border-radius: 999px; padding: 2px 9px; cursor: pointer;
-}
-.bubble-retry:hover { opacity: 1; }
 
 .bubble-msg {
   max-width: 94%; box-sizing: border-box; min-width: 0;
@@ -1825,12 +1798,17 @@ body.bubble-host { background: transparent; }
 .errand-wall-done:hover { background: var(--accent-hover); }
 .errand-wall-skip:hover { background: var(--hover-bg); color: var(--fg); }
 
-/* Settings opens whole: until every row knows its state, only the turning
-   mark shows, at the size the sheet will take. */
-.settings-loading {
-  display: flex; align-items: center; justify-content: center;
-  width: min(880px, 92vw); min-height: 320px; color: var(--fg-dim);
+/* Settings opens at once and empty: rows in outline, breathing, until every
+   one knows its state and the real rows take their place. */
+.settings-skeleton { display: flex; flex-direction: column; gap: 22px; padding: 6px 0 18px; }
+.settings-skeleton-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.skeleton-line {
+  display: block; height: 12px; border-radius: 999px; background: var(--selected-soft);
+  animation: skeleton-breathe 1.4s ease-in-out infinite;
 }
+.skeleton-line.short { width: 64px; }
+@keyframes skeleton-breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-line { animation: none; } }
 
 /* The agent browser's mirror. A small card in the thread while the page is
    worked on; opened up, a stage the person acts on as if in the window. */

@@ -14,7 +14,6 @@ import { RoutinesSheet } from './components/RoutinesSheet.js'
 import { BotsView } from './views/BotsView.js'
 import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
-import { BubbleView } from './views/BubbleView.js'
 import { DiagnosticsView } from './views/DiagnosticsView.js'
 import { InboxOverlay } from './views/InboxOverlay.js'
 import { ListView } from './views/ListView.js'
@@ -67,7 +66,7 @@ function Shell() {
         setUpdateReady(e.version)
         setUpdateSelfInstalls(e.selfInstalls)
       }
-      // A citation clicked in the floating bubble: the main process already
+      // A citation clicked in another window: the main process already
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'brain:setup') setSettingsOpen(true)
@@ -378,7 +377,6 @@ function Shell() {
 export function App() {
   // The quick-capture and onboarding windows load the same bundle with a hash route.
   if (window.location.hash === '#quick') return <QuickCapture />
-  if (window.location.hash === '#bubble') return <BubbleView />
   if (window.location.hash === '#onboarding') return <Onboarding />
   return (
     <AppProvider>

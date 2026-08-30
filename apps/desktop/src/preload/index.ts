@@ -18,13 +18,7 @@ const api: EngramApi = {
   hideQuickCapture: () => ipcRenderer.send('quick:hide'),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   chatSend: (request: ChatRequestDto) => ipcRenderer.invoke('chat:send', request),
-  bubbleExpand: () => ipcRenderer.invoke('bubble:expand'),
-  bubbleCollapse: () => ipcRenderer.invoke('bubble:collapse'),
-  bubbleOpenNote: (id: string) => ipcRenderer.invoke('bubble:openNote', id),
-  bubbleSetup: () => ipcRenderer.invoke('bubble:setup'),
   // fire-and-forget: drag deltas at pointer-move rate must never await
-  bubbleDragBy: (dx: number, dy: number) => ipcRenderer.send('bubble:drag', dx, dy),
-  bubbleQuit: () => ipcRenderer.invoke('bubble:quit'),
   activityToday: () => ipcRenderer.invoke('activity:today'),
   contentFolders: () => ipcRenderer.invoke('content:folders'),
   contentAddFolder: () => ipcRenderer.invoke('content:addFolder'),

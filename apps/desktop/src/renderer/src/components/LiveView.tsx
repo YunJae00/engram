@@ -33,7 +33,7 @@ function useMirror(): { on: boolean; url?: string; frame: string | null; size: {
   const [on, setOn] = useState(false)
   const [url, setUrl] = useState<string | undefined>(undefined)
   const [frame, setFrame] = useState<string | null>(null)
-  const [size, setSize] = useState({ width: 1440, height: 900 })
+  const [size, setSize] = useState({ width: 1280, height: 800 })
   useEffect(() => {
     void api
       .agentWatch(true)

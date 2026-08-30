@@ -10,7 +10,7 @@ import { flog } from './flog.js'
 // their own clicks and keys. Frames go to the screen and nowhere else: none
 // is written, logged or kept past the next one.
 
-const FRAME = { format: 'jpeg', quality: 55, maxWidth: 960, maxHeight: 600 } as const
+const FRAME = { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 } as const
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
@@ -55,7 +55,7 @@ async function follow(page: Page): Promise<void> {
   } catch {
     return
   }
-  const size = page.viewportSize() ?? { width: 1440, height: 900 }
+  const size = page.viewportSize() ?? { width: 1280, height: 800 }
   const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false }
   mirror = m
   cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {

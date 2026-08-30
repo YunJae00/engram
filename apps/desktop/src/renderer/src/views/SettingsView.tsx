@@ -1,4 +1,3 @@
-import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AppSettingsDto, EngineStatusDto, LocalModelsStateDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -7,9 +6,11 @@ import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
 
 const BRAIN_NAME = { local: 'settings.brainLocal', claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
-// The sheet opens once, with every row already knowing its state, rather
-// than filling in as answers arrive; a load that hangs does not keep it shut.
+// The sheet opens at once, empty, and its rows fill in together when every
+// one of them knows its state - none of them is shown half-known. A load
+// that hangs does not keep the rows blank for good.
 const READY_WAIT_MS = 8_000
+const SKELETON_ROWS = 7
 
 export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
@@ -141,8 +142,16 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   if (!settings || !ready)
     return (
       <div className="brief-overlay" onClick={onClose}>
-        <div className="settings-loading" data-testid="settings-loading" onClick={(e) => e.stopPropagation()}>
-          <Loader2 className="spin" size={18} strokeWidth={1.8} aria-hidden />
+        <div className="brief-box settings-box" data-testid="settings-loading" onClick={(e) => e.stopPropagation()} aria-busy>
+          <div className="brief-title">{t('settings.title')}</div>
+          <div className="settings-skeleton">
+            {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+              <div key={i} className="settings-skeleton-row">
+                <span className="skeleton-line" style={{ width: `${28 + ((i * 17) % 30)}%` }} />
+                <span className="skeleton-line short" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     )

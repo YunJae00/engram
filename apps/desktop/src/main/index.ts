@@ -18,7 +18,7 @@ import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
-import { startBubble, stopBubble } from './bubble.js'
+import { keepWindowState, loadWindowState, placeWindow } from './window-state.js'
 import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
 import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHook, stopLocalServer } from './local-llm.js'
 import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
@@ -219,6 +219,10 @@ async function createMainWindow(hash?: string): Promise<void> {
   } catch {
     /* nothing to tear up */
   }
+  if (!isHidden) {
+    placeWindow(mainWin, await loadWindowState())
+    keepWindowState(mainWin)
+  }
   hardenWebContents(mainWin.webContents)
   // keep the overlay controls in step with the OS theme
   nativeTheme.on('updated', () => {
@@ -246,7 +250,6 @@ async function createMainWindow(hash?: string): Promise<void> {
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
   mainWin.on('leave-full-screen', () => broadcast({ type: 'window:fullscreen', value: false }))
   mainWin.on('close', (event) => {
-    // The bubble outlives the shell window — only stop the panel's own stream.
     abortAllChat('panel')
     if (!quitting && !isHidden) {
       event.preventDefault()
@@ -545,18 +548,6 @@ async function bootVault(root: string): Promise<VaultContext> {
     startKeeper(ctx)
     void startActivityWatch(ctx)
     startContentCapture(ctx)
-    if (!isHidden) {
-      void startBubble({
-        webPreferences,
-        loadRenderer,
-        harden: hardenWebContents,
-        showMainWindow,
-        onQuit: () => {
-          quitting = true
-          app.quit()
-        },
-      }).catch((err) => console.error('bubble unavailable (non-fatal):', err))
-    }
     powerMonitor.on('resume', () => {
       void revalidateEngines(ctx)
     })
@@ -688,7 +679,6 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   // Closing the app is the user saying "stop remembering from here".
   stopSessionWatch()
-  stopBubble()
   stopKeeper()
   stopStanding()
   stopActivityWatch()
