@@ -9,7 +9,7 @@ import { flog } from './flog.js'
 import { markAgentProfile } from './agent-profile.js'
 import { releaseModelForRoom, setRoomMaker } from './local-llm.js'
 import { reserveRoom, ROOM_FOR_BROWSER } from './memory-plan.js'
-import { routineDriver } from './routine-driver.js'
+import { pressOn, routineDriver } from './routine-driver.js'
 
 // The errand's hands: the user's own Chrome, driven over CDP by
 // playwright-core. Its window is an ordinary window — park it on another
@@ -267,9 +267,9 @@ async function ensureContext(): Promise<Ctx> {
       // One frame for every page: a layout that does not depend on the
       // person's screen reads the same on every machine, and a taught
       // procedure replays against the page it was shown.
-      viewport: { width: 1440, height: 900 },
+      viewport: { width: 1280, height: 800 },
       args: [
-        '--window-size=1440,900',
+        '--window-size=1280,800',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',
@@ -434,6 +434,11 @@ export function agentCourier(): WebCourier {
       const done = await routineDriver().click({ text: target }, signal)
       void page
       return { ok: done.ok }
+    },
+    async press(target, signal) {
+      const page = await withAbort(ensurePage(), signal)
+      armIdleClose()
+      return pressOn(page, target, signal)
     },
     async fetchPage(url, signal) {
       const page = await withAbort(ensurePage(), signal)

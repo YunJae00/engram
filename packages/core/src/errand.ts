@@ -67,6 +67,10 @@ export interface WebCourier {
   readOpen?(signal?: AbortSignal): Promise<WebPage>
   typeInto?(field: string, text: string, signal?: AbortSignal): Promise<{ ok: boolean }>
   clickOn?(target: string, signal?: AbortSignal): Promise<{ ok: boolean }>
+  // A press that only moves around the page: a tab, a calendar day, the
+  // next page. One that would commit something comes back refused, with
+  // the words on the control, and nothing pressed.
+  press?(target: string, signal?: AbortSignal): Promise<{ ok: boolean; refused?: string; error?: string }>
 }
 
 export interface ErrandDeps {

@@ -11,6 +11,8 @@ export interface Outcome {
   options: string[]
   gates: number
   seconds: number
+  // Pieces of the reply that arrived while it was being written.
+  tokens: number
   error: string | null
 }
 
@@ -44,6 +46,7 @@ export class Person {
           w.__probe('GATE')
           setTimeout(() => void w.__gateAnswer().then((verdict) => window.engram.routineSubmitDone(verdict)), 400)
         }
+        if (event.type === 'chat:token') w.__probe('TOKEN')
         if (event.type === 'chat:done') w.__probe(`ANSWER ${JSON.stringify({ text: event.text, offer: event.offer ?? null })}`)
         if (event.type === 'chat:error') w.__probe(`ERROR ${event.message}`)
       })
@@ -83,6 +86,7 @@ export class Person {
       options: parsed?.offer?.options ?? [],
       gates: this.trace.filter((l) => l === 'GATE').length,
       seconds: Math.round((Date.now() - started) / 1000),
+      tokens: this.trace.filter((l) => l === 'TOKEN').length,
       error: this.trace.find((l) => l.startsWith('ERROR'))?.slice(6) ?? (answerLine ? null : 'no answer within the time limit'),
     }
     this.turns.push(outcome)

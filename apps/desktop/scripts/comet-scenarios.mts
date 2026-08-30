@@ -110,7 +110,9 @@ const SCENARIOS: Scenario[] = [
           // "not booked" carries the same words as "booked"; the denial wins.
           {
             name: 'does not claim it was booked',
-            ok: !has(first.answer, /예약(이|을)? ?(완료|됐|되었)/) || has(first.answer, /(완료|등록|예약)(되지|하지) ?않|not (been )?(booked|posted)|nothing (was )?(booked|posted)/),
+            ok:
+              !has(first.answer, /예약(이|을)? ?(완료|됐|되었)/) ||
+              has(first.answer, /(완료|등록|예약|접수|제출)(되지|하지) ?않|누르지 않|not (been )?(booked|posted|pressed|submitted)|did not press|nothing (was )?(booked|posted|submitted)/),
           },
         ],
         turns: person.turns.slice(-2),
@@ -289,6 +291,21 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: 'a page turned by pressing: last week is read, and nothing is saved',
+    async run(person, office, botId) {
+      const before = office.posted.length
+      const first = await person.say(botId, `${office.url}timesheet 들어가서 지난주(8/17 주)에 뭐 했는지 확인해줘`)
+      return {
+        checks: [
+          { name: 'turned the page by pressing', ok: first.tools.includes('press') },
+          { name: 'reads last week, not this one', ok: has(first.answer, /검색 품질|32/) },
+          { name: 'saved nothing', ok: office.posted.length === before },
+        ],
+        turns: [first],
+      }
+    },
+  },
+  {
     name: 'a turn cut short, then the next one works',
     async run(person, _office, botId) {
       const cut = person.say(botId, '분기 보고서 세 개 다 읽고 신규 고객 수 합쳐줘', 40)
@@ -351,7 +368,7 @@ for (const scenario of SCENARIOS.filter((one) => ONLY.length === 0 || ONLY.some(
     const failed = got.checks.filter((c) => !c.ok)
     console.log(`${failed.length === 0 ? 'PASS' : 'FAIL'}  ${scenario.name}  ${got.turns.map((t) => `${t.seconds}s`).join('+')}`)
     for (const c of failed) console.log(`      x ${c.name}`)
-    for (const t of got.turns) console.log(`      > [${t.tools.join(' → ') || 'no tools'}] ${(t.error ?? t.answer).replace(/\s+/g, ' ').slice(0, 160)}`)
+    for (const t of got.turns) console.log(`      > [${t.tools.join(' → ') || 'no tools'}] tokens=${t.tokens} ${(t.error ?? t.answer).replace(/\s+/g, ' ').slice(0, 160)}`)
   } catch (err) {
     results.push({ name: scenario.name, checks: [], turns: person.turns, error: String(err instanceof Error ? err.message : err) })
     console.log(`ERROR ${scenario.name}: ${String(err instanceof Error ? err.message : err).split('\n')[0]}`)

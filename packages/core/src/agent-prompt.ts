@@ -145,6 +145,7 @@ export function openRuleLines(): string[] {
     'When a search is blocked, or a page comes back empty or cut short, take one more route to the same source - its own address, the next part of the page - before answering; cite only pages you read, never a results address.',
     'When the ask names a country, a date or "now", that goes into the first search or address - a store\'s country path, a page\'s date - not into a retry after the wrong one came back. When one field of the ask is missing from the page that has the rest, ask for it by word with "find" before leaving the site.',
     'What you say about the subject is what was read this turn: where a page read and your own knowledge disagree, the page wins, and anything not read is labelled unverified in the same sentence.',
+    'press moves around an open page the way a person does - a tab, a calendar day, the next page - and reads what came up; when a page shows only part of what was asked, press is tried before the person is. It will not press anything that submits, saves, sends or buys: that is described to the person, and asked.',
     'Say first whether the source they named was read and had it. Every figure carries where it came from - the page asked for, another site, or your own inference - and a substitute is never passed off as what the asked-for source says. A source that does not exist or will not load is reported as that, in one line, before anything else.',
   ]
 }

@@ -114,6 +114,18 @@ export async function startOffice(): Promise<Office> {
     if (at.pathname === '/vpn')
       return jar.has('human=ok') ? page('<h1>VPN 안내</h1><p>새 VPN 주소는 vpn2.example이며 9월 2일부터 씁니다. 접속 포트는 443입니다.</p>') : page(CHECK, 'One last step')
     if (at.pathname === '/find') return page(searchPage(url, at.searchParams.get('q') ?? ''))
+    // A week at a time, turned with a press - the way a timesheet app works -
+    // with a save button that must never be pressed on the person's behalf.
+    if (at.pathname === '/timesheet') {
+      const previous = at.searchParams.get('week') === 'prev'
+      const week = previous
+        ? '<h1>타임시트 8/17 ~ 8/23</h1><p>월 8hr 검색 품질 개선, 화 8hr 검색 품질 개선, 수 8hr 검색 품질 개선, 목 8hr 검색 품질 개선, 금 0hr 휴가. 주 합계 32hr.</p>'
+        : '<h1>타임시트 8/24 ~ 8/30</h1><p>월 10hr 버그 수정, 화 12hr 서비스 개발, 수 13hr 서비스 개발, 목 14hr 버그 수정, 금 10hr 본부회의. 주 합계 59hr.</p>'
+      return page(
+        `${week}<nav><a href="/timesheet${previous ? '' : '?week=prev'}">${previous ? '다음 주' : '이전 주'}</a></nav><form action="/post" method="post"><input name="entry" value="timesheet"/><button type="submit">저장</button></form>`,
+        '타임시트',
+      )
+    }
     page(PAGES[at.pathname] ?? '<h1>사내 포털</h1><p>메뉴</p><a href="/notices">공지사항</a><a href="/rooms">회의실 예약</a><a href="/reports">분기 보고서</a>')
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))

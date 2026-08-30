@@ -1,4 +1,4 @@
-import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } from 'core'
+import { pressCommits, type PressTarget, type RoutineDriver, type RoutineReading, type RoutineStepResult, type RoutineTarget } from 'core'
 import { agentAbortable, agentPage, readAgentPage, agentWorkPage } from './agent-browser.js'
 
 // The routine's hands: the same agent Chrome the errand courier drives, so a
@@ -88,6 +88,46 @@ async function act(
   const wall = await wallOf(page, signal)
   if (wall) return { ok: false, wall }
   return { ok: false, error: `could not find "${describeTarget(target)}" on the page` }
+}
+
+// What a control is, read off the page before it is pressed: whether it
+// submits a form by its shape, and the words on it. Runs inside the page.
+function inspectControl(node: Element): PressTarget {
+  const el = node.closest('a,button,input,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"]') ?? node
+  const tag = el.tagName.toLowerCase()
+  const type = (el.getAttribute('type') ?? '').toLowerCase()
+  const inForm = el.closest('form') !== null
+  const submits = (tag === 'button' && inForm && type !== 'button' && type !== 'reset') || (tag === 'input' && (type === 'submit' || type === 'image'))
+  const words = [(el as HTMLElement).innerText ?? el.textContent ?? '', el.getAttribute('aria-label') ?? '', el.getAttribute('value') ?? '', el.getAttribute('title') ?? '']
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { submits, words }
+}
+
+// A press that only moves around the page. The control is looked at first
+// and a press that would commit something is refused before it happens.
+export async function pressOn(page: Page, text: string, signal?: AbortSignal): Promise<{ ok: boolean; refused?: string; error?: string }> {
+  for (const probe of targetPlan({ text }, 'click')) {
+    if (signal?.aborted) throw new Error('canceled')
+    const locator = toLocator(page, probe)
+    let control: PressTarget
+    try {
+      control = await agentAbortable(locator.evaluate(inspectControl, undefined, { timeout: FIND_TIMEOUT_MS }), signal)
+    } catch (err) {
+      if (err instanceof Error && err.message === 'canceled') throw err
+      continue
+    }
+    if (pressCommits(control)) return { ok: false, refused: control.words.slice(0, 80) }
+    try {
+      await agentAbortable(locator.click({ timeout: FIND_TIMEOUT_MS }), signal)
+      await settle(page)
+      return { ok: true }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'canceled') throw err
+    }
+  }
+  return { ok: false, error: `could not find "${text}" on the page` }
 }
 
 export function routineDriver(): RoutineDriver {

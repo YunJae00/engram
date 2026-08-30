@@ -485,6 +485,7 @@ ${note.body.slice(0, 2_000)}`
 
   if (deps.courier) {
     const courier = deps.courier
+    const press = courier.press
     tools.push(
       {
         // No engine, no site list: the model names the address. That is the
@@ -594,6 +595,35 @@ ${note.body.slice(0, 2_000)}`
           ].join('\n')
         },
       },
+      ...(press && courier.readOpen
+        ? [
+            {
+              // Moving around a page the way a person does - a tab, a
+              // calendar day, the next page - and reading what came up.
+              // Nothing that commits is pressed here: that press is the
+              // person's own, or a procedure they showed.
+              name: 'press',
+              description:
+                'press a link, tab, date or button on the open page to move around it - a menu entry, a calendar day, the next page - and read what came up; anything that would submit, save, send or buy is refused and is for the person to press - args: {"target": "the words on it", "find": "..."}',
+              argsSchema: { type: 'object', properties: { target: { type: 'string' }, find: { type: 'string' } }, required: ['target'] },
+              async run(args, context) {
+                const target = str(args, 'target')
+                if (!target) return 'press needs the words on the thing to press'
+                const done = await press(target, context.signal)
+                if (done.refused !== undefined)
+                  return `"${done.refused || target}" would submit or commit something, and that press is not yours to make - tell the person what it is and ask them, or use a procedure they showed you`
+                if (!done.ok) return `nothing on the page reads "${target}" - read_open_page shows its controls; the words must be as they appear`
+                const page = await courier.readOpen!(context.signal)
+                if (page.wall) {
+                  deps.wallMet?.(page.url)
+                  return 'the page now needs a person - say so, and that it stays open in the thread for them to do it; ask them to tell you when it is done'
+                }
+                if (!page.text.trim()) return `pressed "${target}", but the page shows nothing readable yet - call read_open_page in a moment`
+                return pageReport(page, 1, findOf(args))
+              },
+            } satisfies AgentTool,
+          ]
+        : []),
       {
         // The page in front of it, after typing or clicking changed it.
         name: 'read_open_page',

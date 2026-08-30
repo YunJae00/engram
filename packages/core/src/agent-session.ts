@@ -12,7 +12,7 @@ import { withoutSecrets } from './secrets.js'
 
 const SESSION_MAX_CALLS = 12
 
-const CONTENT_TOOLS = new Set(['search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web'])
+const CONTENT_TOOLS = new Set(['search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
@@ -88,6 +88,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ...(options.session ? { sessionKey: options.session } : {}),
     tools: calls,
     maxCalls: SESSION_MAX_CALLS,
+    ...(options.onToken ? { onToken: options.onToken } : {}),
+    ...(options.onReset ? { onReset: options.onReset } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   })
   if (options.signal?.aborted) throw new Error('canceled')

@@ -106,3 +106,43 @@ describe('a long page is read in parts', () => {
     expect(missing).not.toContain('AAAA')
   })
 })
+
+describe('press moves around a page and refuses to commit', () => {
+  it('reads what a press brought up, turns a committing press into a question, and says when nothing matched', async () => {
+    const { cometTools } = await import('../src/comet-tools.js')
+    const { initVault } = await import('../src/vault.js')
+    const { tmpVaultRoot } = await import('./helpers.js')
+    const paths = await initVault(await tmpVaultRoot('tools-press'), { git: false })
+    let shown = 'week of the 24th'
+    const tools = cometTools({
+      paths,
+      retrieve: async () => [],
+      courier: {
+        fetchPage: async (url) => ({ url, title: 'Report', text: shown }),
+        readOpen: async () => ({ url: 'https://x.example/report', title: 'Report', text: shown }),
+        press: async (target) => {
+          if (target === 'Submit') return { ok: false, refused: 'Submit' }
+          if (target === 'Previous week') {
+            shown = 'week of the 17th'
+            return { ok: true }
+          }
+          return { ok: false, error: 'missing' }
+        },
+      },
+    })
+    const press = tools.find((t) => t.name === 'press')!
+    expect(await press.run({ target: 'Previous week' }, { task: 'last week' })).toContain('week of the 17th')
+    expect(await press.run({ target: 'Submit' }, { task: 'last week' })).toContain('not yours to make')
+    expect(await press.run({ target: 'Nowhere' }, { task: 'last week' })).toContain('nothing on the page reads')
+    expect(await press.run({}, { task: 'last week' })).toContain('needs the words')
+  })
+
+  it('is not on offer when the browser cannot press', async () => {
+    const { cometTools } = await import('../src/comet-tools.js')
+    const { initVault } = await import('../src/vault.js')
+    const { tmpVaultRoot } = await import('./helpers.js')
+    const paths = await initVault(await tmpVaultRoot('tools-nopress'), { git: false })
+    const names = cometTools({ paths, retrieve: async () => [], courier: { fetchPage: async (url) => ({ url, title: 'x', text: 'y' }) } }).map((t) => t.name)
+    expect(names).not.toContain('press')
+  })
+})
