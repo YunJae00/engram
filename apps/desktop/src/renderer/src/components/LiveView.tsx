@@ -212,7 +212,12 @@ export function LiveView({ open = false, children }: { open?: boolean; children?
       {big &&
         createPortal(
           <div className="brief-overlay live-overlay" onClick={() => setBig(false)}>
-            <div className="live-panel" data-testid="live-panel" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="live-panel"
+              data-testid="live-panel"
+              style={{ '--live-aspect': `${size.width / size.height}` } as React.CSSProperties}
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="live-panel-bar">
                 <Address url={url} />
                 <button className="secondary live-panel-window" onClick={callWindow}>

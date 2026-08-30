@@ -10,7 +10,10 @@ import { flog } from './flog.js'
 // their own clicks and keys. Frames go to the screen and nowhere else: none
 // is written, logged or kept past the next one.
 
-const FRAME = { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 } as const
+// Frames come at the screen's own pixel density (the page is 1280 wide in
+// CSS pixels; on a dense screen that is more device pixels), so the mirror
+// stays sharp however large the window shows it.
+const FRAME = { format: 'jpeg', quality: 62, maxWidth: 2560, maxHeight: 1600 } as const
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
