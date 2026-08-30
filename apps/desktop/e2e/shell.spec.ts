@@ -147,6 +147,9 @@ test('the comets rail folds away and returns', async () => {
   // A comet to fold beside: the strip is judged by what it keeps reachable.
   await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await page.getByTestId('activity-bots').click()
+  // The strip remembers being folded, and this machine may carry that choice
+  // from an earlier session: start from open, whatever it remembers.
+  if (await page.getByTestId('comets-rail-open').count()) await page.getByTestId('comets-rail-open').click()
   await page.getByTestId('comets-rail-close').click()
   // Folded, the rail keeps a strip of its own: the reopen control lives INSIDE
   // the layout, so the thread beside it widens instead of hiding underneath a
