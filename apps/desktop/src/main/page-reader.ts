@@ -35,7 +35,7 @@ export function readDocument(mark?: number): FrameReading {
   const INTERACTIVE =
     'button, input, select, textarea, a[href], summary, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="checkbox"], [role="radio"], [role="combobox"], [role="switch"], [role="treeitem"], [role="textbox"], [role="searchbox"], [onclick], [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'])
-  const CONTROLS_CAP = 150
+  const CONTROLS_CAP = 250
   const HIDDEN_CAP = 20_000
   const clean = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim()
   const shown = (el: Element): boolean => {
@@ -60,14 +60,38 @@ export function readDocument(mark?: number): FrameReading {
   }
   walk(document)
   const parentOf = (el: Element): Element | null => el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)
-  // Folded once per element: its own display, or a folded ancestor's.
+  // One pass for what every element's style says: whether it is folded away,
+  // and whether the browser offers it to a pointer. Folded-ness is inherited
+  // from the nearest folded ancestor, which is why parents come first.
   const foldedOf = new Map<Element, boolean>()
   const ownFolded = new Map<Element, boolean>()
+  const pointerOf = new Map<Element, boolean>()
   for (const el of all) {
-    const own = (el as HTMLElement).hidden || getComputedStyle(el).display === 'none'
+    const style = getComputedStyle(el)
+    const own =
+      (el as HTMLElement).hidden || style.display === 'none' || (el.closest('details:not([open])') !== null && el.closest('summary') === null)
     ownFolded.set(el, own)
+    pointerOf.set(el, style.cursor === 'pointer')
     const parent = parentOf(el)
     foldedOf.set(el, own || (parent ? (foldedOf.get(parent) ?? false) : false))
+  }
+  // A page can hang one listener on a table and leave its cells plain: the
+  // cells then declare nothing, and the only thing that says "press me" is
+  // the pointer the browser shows over them. That hint is taken, for the
+  // outermost element that carries it - the words inside inherit it and are
+  // the same control - and only where a press would actually land on it.
+  const pressable = (el: Element, rect: DOMRect): boolean => {
+    if (!pointerOf.get(el)) return false
+    for (let up = parentOf(el); up; up = parentOf(up)) if (pointerOf.get(up)) return false
+    // Something covering half the page is a backdrop, not a control.
+    if (rect.width * rect.height > innerWidth * innerHeight * 0.5) return false
+    const x = rect.left + rect.width / 2
+    const y = rect.top + rect.height / 2
+    // Off the screen there is nothing to test against; it is kept, and a
+    // press scrolls to it first.
+    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return true
+    const at = document.elementFromPoint(x, y)
+    return at === null || at === el || el.contains(at) || at.contains(el)
   }
   // The visible words: what the page shows, plus what its shadow trees show
   // (a host's own text leaves its shadow tree out).
@@ -158,7 +182,9 @@ export function readDocument(mark?: number): FrameReading {
   const controls: { kind: string; name: string; state: string }[] = []
   let marked: Element | null = null
   for (const el of all) {
-    if (foldedOf.get(el) || !el.matches(INTERACTIVE) || !shown(el)) continue
+    if (foldedOf.get(el) || !shown(el)) continue
+    const declared = el.matches(INTERACTIVE)
+    if (!declared && !pressable(el, el.getBoundingClientRect())) continue
     const tag = el.tagName.toLowerCase()
     const type = (el.getAttribute('type') ?? '').toLowerCase()
     if (tag === 'input' && type === 'hidden') continue
@@ -166,7 +192,9 @@ export function readDocument(mark?: number): FrameReading {
     // button) is one control, the outer one.
     const outer = el.parentElement?.closest(INTERACTIVE)
     if (outer && shown(outer) && nameOf(outer) === nameOf(el)) continue
-    const kind = el.getAttribute('role') ?? (tag === 'input' ? `input:${type || 'text'}` : tag === 'a' ? 'link' : tag)
+    const kind = !declared
+      ? 'clickable'
+      : (el.getAttribute('role') ?? (tag === 'input' ? `input:${type || 'text'}` : tag === 'a' ? 'link' : tag))
     const expanded = el.getAttribute('aria-expanded')
     const input = el as HTMLInputElement
     const state = [

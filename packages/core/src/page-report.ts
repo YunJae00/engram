@@ -3,7 +3,7 @@
 // an instruction by being read.
 
 export const PAGE_TEXT_CAP = 3_000
-const CONTROLS_SHOWN = 60
+const CONTROLS_SHOWN = 120
 const LINKS_LISTED = 40
 
 export function str(args: Record<string, unknown>, key: string): string {
@@ -41,7 +41,7 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
     const hits = partsWith(page.text, find, parts)
     if (hits.length === 0) {
       if (page.hidden && page.hidden.toLowerCase().includes(find.toLowerCase()))
-        return `page "${page.title}": "${find}" is not in what the page shows - it is in a part the page keeps folded; open that part (a tab, "more", an arrow from the controls below) with press and read again\nControls (press by number, e.g. {"target": "#12"}):\n${(page.controls ?? []).slice(0, CONTROLS_SHOWN).join('\n')}`
+        return `page "${page.title}": "${find}" is not in what the page shows - it is in a part the page keeps folded; call reveal with {"find": "${find}"} to open that part, or press one of the controls below\nControls (press by number, e.g. {"target": "#12"}):\n${(page.controls ?? []).slice(0, CONTROLS_SHOWN).join('\n')}`
       return `page "${page.title}": "${find}" is not in any of its ${parts} part${parts === 1 ? '' : 's'} - it is not on this page as written; try another wording once, or another page`
     }
     at = hits.find((hit) => hit >= at) ?? hits[0]!
