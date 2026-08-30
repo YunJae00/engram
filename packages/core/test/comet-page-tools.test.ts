@@ -42,6 +42,12 @@ function courier(log: string[]): WebCourier {
       return key === 'Escape' ? { ok: true } : { ok: false, error: 'not a key' }
     },
     look: async () => ({ data: 'aGVsbG8=', mimeType: 'image/jpeg' }),
+    pressPoint: async (x, y) => {
+      log.push(`point ${x},${y}`)
+      if (y > 0.9) return { ok: false, refused: 'Send' }
+      shown = 'the grid opened at that point'
+      return { ok: true, changed: true }
+    },
   }
 }
 
@@ -51,7 +57,7 @@ describe('the hands on a page', () => {
     const tools = pageTools({}, courier(log))
     const tool = (name: string) => tools.find((t) => t.name === name)!
     const ctx = { task: 'last week' }
-    expect(tools.map((t) => t.name)).toEqual(['press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'look'])
+    expect(tools.map((t) => t.name)).toEqual(['press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'look'])
     expect(await tool('press').run({ target: '#1' }, ctx)).toContain('week of the 17th')
     expect(await tool('press').run({ target: 'Submit' }, ctx)).toContain('would submit or commit')
     expect(await tool('press').run({ target: 'Nowhere' }, ctx)).toContain('could not find "Nowhere"')
@@ -70,6 +76,15 @@ describe('the hands on a page', () => {
     const report = await tools.find((t) => t.name === 'press')!.run({ target: '#1', find: 'international' }, { task: 'baggage' })
     expect(report).toContain('keeps folded')
     expect(report).toContain('#2 [tab] International')
+  })
+
+  it('a point on the picture is pressed, and a commit under it is refused', async () => {
+    const log: string[] = []
+    const point = pageTools({}, courier(log)).find((t) => t.name === 'press_point')!
+    expect(await point.run({ x: 0.42, y: 0.78 }, { task: 'the grid' })).toContain('the grid opened at that point')
+    expect(await point.run({ x: 0.5, y: 0.95 }, { task: 'the grid' })).toContain('would submit or commit')
+    expect(await point.run({ x: 'no' }, { task: 'the grid' })).toContain('fractions of the picture')
+    expect(log).toEqual(['point 0.42,0.78', 'point 0.5,0.95'])
   })
 
   it('a look hands the picture to a brain that sees, and only words to one that does not', async () => {
