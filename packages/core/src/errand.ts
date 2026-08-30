@@ -65,6 +65,9 @@ export interface PageMove {
   ok: boolean
   refused?: string
   error?: string
+  // The move happened, but the page is exactly as it was: what was touched
+  // was probably not what was meant.
+  changed?: boolean
 }
 
 // Injected by the host (the desktop drives a real browser); core stays pure
@@ -89,6 +92,13 @@ export interface WebCourier {
   scroll?(to: string, signal?: AbortSignal): Promise<PageMove>
   hover?(target: string, signal?: AbortSignal): Promise<PageMove>
   pressKey?(key: string, signal?: AbortSignal): Promise<PageMove>
+  // A press where the picture shows it, in fractions of that picture. The
+  // way through for what the page never named: a day drawn in a grid, a
+  // point on a chart, a control inside a frame nothing can reach into.
+  pressPoint?(x: number, y: number, signal?: AbortSignal): Promise<PageMove>
+  // Open whatever part of the page is holding some words out of sight - a
+  // closed section, a summary, a tab that is not the open one.
+  reveal?(word: string, signal?: AbortSignal): Promise<PageMove>
   // The page as a picture, for a brain that can see one: what a canvas, a
   // chart or an image says that the words do not.
   look?(signal?: AbortSignal): Promise<{ data: string; mimeType: string } | null>
