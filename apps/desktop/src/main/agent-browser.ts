@@ -1,4 +1,4 @@
-import type { WebCourier, WebPage } from 'core'
+import type { WebPage } from 'core'
 import { app } from 'electron'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -9,7 +9,7 @@ import { flog } from './flog.js'
 import { markAgentProfile } from './agent-profile.js'
 import { releaseModelForRoom, setRoomMaker } from './local-llm.js'
 import { reserveRoom, ROOM_FOR_BROWSER } from './memory-plan.js'
-import { pressOn, routineDriver } from './routine-driver.js'
+import { readFrames } from './page-reader.js'
 
 // The errand's hands: the user's own Chrome, driven over CDP by
 // playwright-core. Its window is an ordinary window — park it on another
@@ -21,7 +21,7 @@ import { pressOn, routineDriver } from './routine-driver.js'
 // Long enough for a slow portal, short enough that a page that will not
 // come does not take the turn with it (measured: two waits at 25s were the
 // whole of a three-minute answer).
-const NAV_TIMEOUT_MS = 15_000
+export const NAV_TIMEOUT_MS = 15_000
 const PAGE_TEXT_CAP = 12_000
 // The browser is heavyweight company for an 8GB machine — it leaves when the
 // errand stops using it rather than idling next to the model.
@@ -166,6 +166,27 @@ export function classifyWall(
 
 let context: Ctx | null = null
 let opening: Promise<Ctx> | null = null
+// A close under way: a launch waits for it, or it would trip on the profile
+// the closing process still holds.
+let closing: Promise<void> | null = null
+
+// A window that closed a moment ago can hold its profile while the process
+// winds down; a launch that trips on that is tried again shortly rather
+// than reported as a page that would not open.
+const LAUNCH_TRIES = 4
+const LAUNCH_RETRY_MS = 2_500
+async function launchPatiently<T>(launch: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await launch()
+    } catch (err) {
+      const said = String(err instanceof Error ? err.message : err)
+      if (attempt >= LAUNCH_TRIES || !/profile|lock|in use|singleton|EBUSY|already running/i.test(said)) throw err
+      flog('agent-browser', `profile still held, trying again (${attempt})`)
+      await new Promise((resolve) => setTimeout(resolve, LAUNCH_RETRY_MS))
+    }
+  }
+}
 let workPage: Page | null = null
 // Whoever mirrors the window is told of every page as it opens.
 const pageWatchers = new Set<(page: Page) => void>()
@@ -222,7 +243,7 @@ export function holdAgentBrowser(): () => void {
   }
 }
 
-function armIdleClose(): void {
+export function armIdleClose(): void {
   if (idleHolds > 0) return
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => void closeAgentBrowser(), IDLE_CLOSE_MS)
@@ -238,6 +259,7 @@ async function ensureContext(): Promise<Ctx> {
   if (opening) return opening
   const spokenFor = reserveRoom(LAUNCH_FOOTPRINT)
   opening = (async () => {
+    if (closing) await closing.catch(() => undefined)
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
     // A browser opening beside a resident model is the pairing that freezes
@@ -258,7 +280,8 @@ async function ensureContext(): Promise<Ctx> {
     const profileDir = join(app.getPath('userData'), 'agent-browser-profile')
     await markAgentProfile(profileDir).catch(() => undefined)
     flog('agent-browser', `launching ${executablePath}`)
-    const ctx = await chromium.launchPersistentContext(profileDir, {
+    const ctx = await launchPatiently(() =>
+      chromium.launchPersistentContext(profileDir, {
       executablePath,
       headless: false,
       // The driver's default drops the sandbox, and the browser says so in a
@@ -290,7 +313,8 @@ async function ensureContext(): Promise<Ctx> {
         ...(process.env['ENGRAM_AGENT_CDP'] ? [`--remote-debugging-port=${process.env['ENGRAM_AGENT_CDP']}`] : []),
       ],
       ignoreDefaultArgs: ['--enable-automation'],
-    })
+      }),
+    )
     // The flag has a twin in the DOM; both have to go or neither matters.
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false })
@@ -309,6 +333,9 @@ async function ensureContext(): Promise<Ctx> {
       flog('agent-browser', 'closed')
     })
     ctx.on('page', (page) => {
+      // A link that opened a new tab is followed there: the newest page is
+      // the one the person sees, and the one the next read means.
+      workPage = page
       for (const watcher of pageWatchers) watcher(page)
     })
     context = ctx
@@ -322,78 +349,30 @@ async function ensureContext(): Promise<Ctx> {
   return opening
 }
 
-async function ensurePage(): Promise<Page> {
+export async function ensureAgentPage(): Promise<Page> {
   const ctx = await ensureContext()
   if (workPage && !workPage.isClosed()) return workPage
-  workPage = ctx.pages()[0] ?? (await ctx.newPage())
+  workPage = ctx.pages().at(-1) ?? (await ctx.newPage())
   return workPage
 }
 
-async function readPage(page: Page): Promise<WebPage> {
+// What the page shows, through every frame and open shadow root, with its
+// controls numbered so a press can name one that has no words.
+export async function readPage(page: Page): Promise<WebPage> {
   const url = page.url()
   const title = await page.title().catch(() => '')
-  const { text, hasPasswordField, links, controls } = await page
-    .evaluate(() => {
-      const root = document.querySelector('article, main') ?? document.body
-      // Every anchor that leaves this host, with the words on it. No selector
-      // here belongs to any particular site: a results page, a wiki index and
-      // a portal menu are all just lists of links, which is how a page can be
-      // followed without this app knowing a single search engine.
-      const here = location.hostname
-      const seen = new Set<string>()
-      const found: { text: string; url: string }[] = []
-      for (const anchor of Array.from(document.querySelectorAll('a[href]'))) {
-        const href = (anchor as HTMLAnchorElement).href
-        const label = ((anchor as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim()
-        if (!/^https?:/.test(href) || label.length < 4 || seen.has(href)) continue
-        // Same-host links are kept: a company's own search links to its own
-        // pages, and dropping them left an intranet search with no results.
-        // Only the page itself is uninteresting.
-        try {
-          if (new URL(href).href.split('#')[0] === location.href.split('#')[0]) continue
-        } catch {
-          continue
-        }
-        void here
-        seen.add(href)
-        found.push({ text: label.slice(0, 120), url: href })
-        if (found.length >= 25) break
-      }
-      // What a page can be asked to do, as short lines: its buttons, fields
-      // and menus with the words on them. Far smaller than the markup, and
-      // what a small model needs to pick the next move without reading the
-      // whole page again.
-      const controls: string[] = []
-      const seenControl = new Set<string>()
-      for (const el of Array.from(document.querySelectorAll('button, input, select, textarea, [role="button"], [role="tab"], [role="menuitem"], a[href][role]'))) {
-        const node = el as HTMLElement
-        if (node.hidden || node.getAttribute('aria-hidden') === 'true') continue
-        const rect = node.getBoundingClientRect()
-        if (rect.width === 0 || rect.height === 0) continue
-        const tag = node.tagName.toLowerCase()
-        const role = node.getAttribute('role') ?? (tag === 'input' ? `input:${(node as HTMLInputElement).type || 'text'}` : tag)
-        if (role === 'input:hidden') continue
-        const name = (node.getAttribute('aria-label') ?? node.getAttribute('placeholder') ?? node.getAttribute('name') ?? node.innerText ?? '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 60)
-        if (!name) continue
-        const line = `[${role}] ${name}`
-        if (seenControl.has(line)) continue
-        seenControl.add(line)
-        controls.push(line)
-        if (controls.length >= 40) break
-      }
-      return {
-        text: ((root as HTMLElement | null)?.innerText ?? '').replace(/\n{3,}/g, '\n\n'),
-        hasPasswordField: document.querySelector('input[type="password"]') !== null,
-        links: found,
-        controls,
-      }
-    })
-    .catch(() => ({ text: '', hasPasswordField: false, links: [] as { text: string; url: string }[], controls: [] as string[] }))
-  const wall = classifyWall(url, title, text, hasPasswordField)
-  return { url, title, text: text.slice(0, PAGE_TEXT_CAP), links, controls, ...(wall ? { wall } : {}) }
+  const reading = await readFrames(page).catch(() => null)
+  const text = reading?.text ?? ''
+  const wall = classifyWall(url, title, text, reading?.hasPasswordField ?? false)
+  return {
+    url,
+    title,
+    text: text.slice(0, PAGE_TEXT_CAP),
+    links: reading?.links ?? [],
+    controls: reading?.lines ?? [],
+    ...(reading?.hidden ? { hidden: reading.hidden } : {}),
+    ...(wall ? { wall } : {}),
+  }
 }
 
 async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -408,54 +387,6 @@ async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> 
     return await Promise.race([work, cancel])
   } finally {
     signal.removeEventListener('abort', onAbort!)
-  }
-}
-
-// One browser, one reused tab. It knows how to open, read, type and click —
-// and nothing at all about search engines: where to go is the caller's
-// judgement, which is what lets it be sent somewhere new.
-export function agentCourier(): WebCourier {
-  return {
-    async readOpen(signal) {
-      const page = await withAbort(ensurePage(), signal)
-      armIdleClose()
-      return withAbort(readPage(page), signal)
-    },
-    async typeInto(field, text, signal) {
-      const page = await withAbort(ensurePage(), signal)
-      armIdleClose()
-      const done = await routineDriver().type({ text: field }, text, signal)
-      void page
-      return { ok: done.ok }
-    },
-    async clickOn(target, signal) {
-      const page = await withAbort(ensurePage(), signal)
-      armIdleClose()
-      const done = await routineDriver().click({ text: target }, signal)
-      void page
-      return { ok: done.ok }
-    },
-    async press(target, signal) {
-      const page = await withAbort(ensurePage(), signal)
-      armIdleClose()
-      return pressOn(page, target, signal)
-    },
-    async fetchPage(url, signal) {
-      const page = await withAbort(ensurePage(), signal)
-      armIdleClose()
-      await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
-      // JS-rendered pages paint just after domcontentloaded; a short settle
-      // beats waiting for 'load' on ad-heavy pages that never finish.
-      await page.waitForTimeout(800)
-      let result = await withAbort(readPage(page), signal)
-      // A page that draws itself after loading is given one more moment.
-      if (result.text.trim().length < 40) {
-        await page.waitForTimeout(2_000)
-        result = await withAbort(readPage(page), signal)
-      }
-      armIdleClose()
-      return result
-    },
   }
 }
 
@@ -480,7 +411,7 @@ export function agentBrowserAvailable(): boolean {
 // Low-level access for the routine driver: same browser, same reused tab,
 // same idle and pressure lifecycle the courier lives under.
 export async function agentPage(signal?: AbortSignal): Promise<Page> {
-  const page = await withAbort(ensurePage(), signal)
+  const page = await withAbort(ensureAgentPage(), signal)
   armIdleClose()
   return page
 }
@@ -529,9 +460,11 @@ export async function closeAgentBrowser(options: { force?: boolean } = {}): Prom
     workPage = null
   }
   if (!held) return
+  const done = held.close().catch(() => undefined)
+  closing = done
   try {
-    await held.close()
-  } catch {
-    /* already gone */
+    await done
+  } finally {
+    if (closing === done) closing = null
   }
 }

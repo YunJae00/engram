@@ -44,7 +44,7 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
     // The rules stand in the system prompt; who speaks and what they want
     // travel with the turn; the conversation opens the session; the key
     // lets the brain keep it.
-    expect(seen[0]!.system).toContain('language they wrote in')
+    expect(seen[0]!.system).toContain('language of their message')
     expect(seen[0]!.system).not.toContain('Scout')
     expect(seen[0]!.prompt).toContain('You are "Scout".')
     expect(seen[0]!.prompt).toContain('Task: what did we decide about deploys?')
@@ -120,9 +120,9 @@ describe('looking comes before asking', () => {
     const engine = sessionBrain(async (job) => {
       const ask = job.tools.find((t) => t.name === 'ask_person')!
       const search = job.tools.find((t) => t.name === 'search_web')!
-      heard.push(await ask.run({ question: 'Which report?' }))
-      heard.push(await search.run({ query: 'the report' }))
-      heard.push(await ask.run({ question: 'Which report?' }))
+      heard.push(String(await ask.run({ question: 'Which report?' })))
+      heard.push(String(await search.run({ query: 'the report' })))
+      heard.push(String(await ask.run({ question: 'Which report?' })))
       return { answer: 'ignored' }
     })
     const withSearch: AgentTool[] = [...tools, { name: 'search_web', description: 'search', argsSchema: {}, run: async () => 'nothing came back' }]

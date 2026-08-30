@@ -1,4 +1,4 @@
-import { pressCommits, type PressTarget, type RoutineDriver, type RoutineReading, type RoutineStepResult, type RoutineTarget } from 'core'
+import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } from 'core'
 import { agentAbortable, agentPage, readAgentPage, agentWorkPage } from './agent-browser.js'
 
 // The routine's hands: the same agent Chrome the errand courier drives, so a
@@ -7,7 +7,6 @@ import { agentAbortable, agentPage, readAgentPage, agentWorkPage } from './agent
 // must surface as "needs a person", never as a mysterious missing button.
 
 type Page = import('playwright-core').Page
-type Frame = import('playwright-core').Frame
 type Locator = import('playwright-core').Locator
 
 const NAV_TIMEOUT_MS = 25_000
@@ -89,76 +88,6 @@ async function act(
   const wall = await wallOf(page, signal)
   if (wall) return { ok: false, wall }
   return { ok: false, error: `could not find "${describeTarget(target)}" on the page` }
-}
-
-// What a control is, read off the page before it is pressed: whether it
-// submits a form by its shape, and the words on it. Runs inside the page.
-function inspectControl(node: Element): PressTarget {
-  const el = node.closest('a,button,input,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"]') ?? node
-  const tag = el.tagName.toLowerCase()
-  const type = (el.getAttribute('type') ?? '').toLowerCase()
-  const inForm = el.closest('form') !== null
-  const submits = (tag === 'button' && inForm && type !== 'button' && type !== 'reset') || (tag === 'input' && (type === 'submit' || type === 'image'))
-  const words = [(el as HTMLElement).innerText ?? el.textContent ?? '', el.getAttribute('aria-label') ?? '', el.getAttribute('value') ?? '', el.getAttribute('title') ?? '']
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return { submits, words }
-}
-
-// Every way a page can name a control, in the order a person would look:
-// the accessible name of a button, tab, link or menu entry (which covers a
-// label, a title, an image's alt text), a label or title on its own, the
-// words on it exactly, then loosely, then the attributes a scripted page
-// hangs its names on. Frames count: an app drawn inside one is still the
-// page the person sees.
-function pressLocators(root: Page | Frame, text: string): Locator[] {
-  const exact = { name: text, exact: true }
-  const attr = text.replace(/["\\]/g, '\\$&')
-  return [
-    root.getByRole('button', exact),
-    root.getByRole('tab', exact),
-    root.getByRole('link', exact),
-    root.getByRole('menuitem', exact),
-    root.getByRole('option', exact),
-    root.getByRole('button', { name: text }),
-    root.getByRole('link', { name: text }),
-    root.getByLabel(text),
-    root.getByTitle(text),
-    root.getByAltText(text),
-    root.getByText(text, { exact: true }),
-    root.getByText(text, { exact: false }),
-    root.locator(`[name="${attr}"], [value="${attr}"], [data-title="${attr}"]`),
-  ].map((one) => one.first())
-}
-
-// A press that only moves around the page. The control is looked at first
-// and a press that would commit something is refused before it happens.
-export async function pressOn(page: Page, text: string, signal?: AbortSignal): Promise<{ ok: boolean; refused?: string; error?: string }> {
-  const roots: (Page | Frame)[] = [page, ...page.frames().filter((frame) => frame !== page.mainFrame())]
-  for (const root of roots) {
-    for (const locator of pressLocators(root, text)) {
-      if (signal?.aborted) throw new Error('canceled')
-      // Absent is decided at once; only a control that is there is waited on.
-      if ((await locator.count().catch(() => 0)) === 0) continue
-      let control: PressTarget
-      try {
-        control = await agentAbortable(locator.evaluate(inspectControl, undefined, { timeout: FIND_TIMEOUT_MS }), signal)
-      } catch (err) {
-        if (err instanceof Error && err.message === 'canceled') throw err
-        continue
-      }
-      if (pressCommits(control)) return { ok: false, refused: control.words.slice(0, 80) }
-      try {
-        await agentAbortable(locator.click({ timeout: FIND_TIMEOUT_MS }), signal)
-        await settle(page)
-        return { ok: true }
-      } catch (err) {
-        if (err instanceof Error && err.message === 'canceled') throw err
-      }
-    }
-  }
-  return { ok: false, error: `could not find "${text}" on the page` }
 }
 
 export function routineDriver(): RoutineDriver {
