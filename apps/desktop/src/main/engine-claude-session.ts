@@ -62,6 +62,15 @@ interface Turn {
   resolve(result: ToolSessionResult): void
   answer: string
   timer: ReturnType<typeof setTimeout>
+  onToken?: (text: string) => void
+  onReset?: () => void
+}
+
+// The pieces of a reply as the runtime writes it.
+interface PartialEvent {
+  type?: string
+  delta?: { type?: string; text?: string }
+  content_block?: { type?: string }
 }
 
 export class WarmSession {
@@ -105,6 +114,7 @@ export class WarmSession {
         mcpServers: { [TOOL_SERVER]: server },
         allowedTools: allowedToolNames(job.tools),
         permissionMode: 'dontAsk',
+        includePartialMessages: true,
         maxTurns: 400,
         persistSession: false,
         settingSources: [],
@@ -139,6 +149,14 @@ export class WarmSession {
   private async pump(stream: AsyncIterable<SdkMessage>): Promise<void> {
     try {
       for await (const message of stream) {
+        if (message.type === 'stream_event') {
+          const event = (message as { event?: PartialEvent }).event
+          if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.turn?.onToken?.(event.delta.text)
+          // Words written before a tool call were thinking aloud; the reply
+          // starts over after the call.
+          else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') this.turn?.onReset?.()
+          continue
+        }
         if (message.type === 'assistant') {
           const text = textOf((message as { message: { content: unknown } }).message.content)
           if (text && this.turn) this.turn.answer = text
@@ -189,7 +207,7 @@ export class WarmSession {
         this.close()
       }
       const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
-      this.turn = { resolve, answer: '', timer }
+      this.turn = { resolve, answer: '', timer, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
       job.signal?.addEventListener('abort', () => cut('canceled'), { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()

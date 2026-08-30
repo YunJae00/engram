@@ -136,6 +136,10 @@ export interface ToolSessionJob {
   tools: ToolSessionCall[]
   maxCalls: number
   signal?: AbortSignal
+  // The reply as it is written, and the word that what came so far was
+  // said before a tool call and is not the reply.
+  onToken?(text: string): void
+  onReset?(): void
 }
 
 export interface ToolSessionResult {

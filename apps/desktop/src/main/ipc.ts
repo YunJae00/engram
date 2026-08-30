@@ -115,6 +115,7 @@ import { startStanding } from './standing.js'
 import { agentBrowserAvailable, agentCourier, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { agentViewGo, agentViewInput, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
+import { titleFor } from './comet-title.js'
 import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
@@ -635,7 +636,7 @@ let teachingSession = false
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
-// an answer the floating bubble is mid-sentence on. No argument aborts all.
+// an answer another surface is mid-sentence on. No argument aborts all.
 export function abortAllChat(channel?: string): void {
   for (const entry of chatAborts) {
     if (channel !== undefined && entry.channel !== channel) continue
@@ -1972,8 +1973,20 @@ export function registerIpc(ctx: VaultContext): void {
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
         if (bot.name === UNTITLED_BOT_NAME && secretsIn(request.message).length === 0) {
-          await renameBot(paths, bot.id, titleFromMessage(request.message)).catch(() => undefined)
+          const first = titleFromMessage(request.message)
+          await renameBot(paths, bot.id, first).catch(() => undefined)
           broadcast({ type: 'bots:changed' })
+          // A short name about the subject follows once the brain has a
+          // moment - unless the person renamed the comet themselves first.
+          void titleFor(engine, engineCwd(paths), request.message, cleaned)
+            .then(async (name) => {
+              if (!name || name === first) return
+              const now = (await loadBots(paths)).find((one) => one.id === bot.id)
+              if (!now || now.name !== first) return
+              await renameBot(paths, bot.id, name)
+              broadcast({ type: 'bots:changed' })
+            })
+            .catch(() => undefined)
         }
       }
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
@@ -2087,6 +2100,8 @@ export function registerIpc(ctx: VaultContext): void {
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
             onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
+            onToken: (text) => broadcast({ type: 'chat:token', channel, text }),
+            onReset: () => broadcast({ type: 'chat:token', channel, text: '', reset: true }),
             // Probes only: what each tool actually said. A loop is fixed from
             // its tools' own words, not from what it did next.
             ...(process.env['ENGRAM_STEP_DETAIL'] === '1'

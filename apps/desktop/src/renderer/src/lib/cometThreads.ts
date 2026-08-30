@@ -189,7 +189,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         const at = streamingAt(current.messages)
         if (at < 0) return id
         const next = [...current.messages]
-        next[at] = { ...next[at]!, text: next[at]!.text + event.text }
+        next[at] = { ...next[at]!, text: event.reset ? '' : next[at]!.text + event.text }
         patch(id, { messages: next })
         return id
       }

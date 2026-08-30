@@ -64,6 +64,10 @@ export interface AgentLoopOptions {
   // this; the probes do, because a loop can only be fixed from what its tools
   // said, not from what it did next.
   onObservation?(tool: string, observation: string): void
+  // The answer as it is being written, a few words at a time; a reset says
+  // the words so far were thinking aloud before a tool call, not the answer.
+  onToken?(text: string): void
+  onReset?(): void
   maxCalls?: number
 }
 

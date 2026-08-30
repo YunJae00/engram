@@ -246,10 +246,9 @@ export interface ChatRequestDto {
   history: ChatTurnDto[]
   // the note the panel is focused on, if any
   noteId?: string
-  // Which surface is asking. Chat events broadcast to every window, so the
-  // in-app panel and the floating bubble must be able to ignore each other's
-  // streams. Absent = 'panel' (older callers).
-  // 'panel', 'bubble', or a per-bot channel like 'bot-<id>'.
+  // Which surface is asking. Chat events broadcast to every window, so each
+  // surface can ignore the others' streams. Absent = 'panel' (older callers).
+  // 'panel', or a per-bot channel like 'bot-<id>'.
   channel?: string
   // Answer as this bot: its charter rides ahead of the chat rules.
   botId?: string
@@ -382,8 +381,10 @@ export type EngramEvent =
   | { type: 'sweep:done'; report: SweepReportDto }
   | { type: 'sweep:error'; message: string }
   // Chat events broadcast to every window; `channel` says which surface asked
-  // (in-app panel or the floating bubble) so the other one can ignore them.
-  | { type: 'chat:token'; channel: string; text: string }
+  // so the others can ignore them.
+  // reset: what streamed so far was said before a tool call and is not the
+  // reply; the thread starts the reply again from nothing.
+  | { type: 'chat:token'; channel: string; text: string; reset?: boolean }
   // `offer` rides along when the comet identified a saved procedure for this
   // request but did not run it: the thread shows a one-tap Run instead of
   // leaving the person to go find it.
@@ -431,7 +432,7 @@ export type EngramEvent =
     }
   // A post went through under an approval the person gave for good.
   | { type: 'routine:passed'; routineId: string; host: string }
-  // The floating bubble asked the shell to open a note (a citation click).
+  // Another window asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
   | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
@@ -628,17 +629,6 @@ export interface EngramApi {
   pathForFile(file: File): string
   // chat panel & context packs
   chatSend(request: ChatRequestDto): Promise<void>
-  // Floating bubble window (its own BrowserWindow, hash #bubble): the window
-  // grows into the mini chat and shrinks back to the button.
-  bubbleExpand(): Promise<void>
-  bubbleCollapse(): Promise<void>
-  // A citation clicked in the bubble: surface the main window on that note.
-  bubbleOpenNote(id: string): Promise<void>
-  bubbleSetup(): Promise<void>
-  // Collapsed-dot drag: screen-pixel deltas, fire-and-forget.
-  bubbleDragBy(dx: number, dy: number): void
-  // Confirmed quit from the bubble's ✕ — terminates the app like tray Quit.
-  bubbleQuit(): Promise<void>
   activityToday(): Promise<{ totalMs: number; apps: { app: string; ms: number; topTitles: string[] }[] }>
   contentFolders(): Promise<string[]>
   contentAddFolder(): Promise<string[]>

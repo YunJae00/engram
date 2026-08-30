@@ -108,3 +108,44 @@ describe('a warm session: one process, many turns', () => {
 })
 
 export type { SdkUserMessage }
+
+// A runtime that writes its reply a few words at a time: thinking aloud,
+// then a tool call, then the answer - the pieces a person watches arrive.
+function streamingSdk(): SessionSdk {
+  return {
+    createSdkMcpServer: (options) => options,
+    tool: (name, description, shape, handler) => ({ name, description, shape, handler }),
+    query: ({ prompt, options }) => {
+      const partial = options?.['includePartialMessages'] === true
+      async function* run(): AsyncGenerator<{ type: string; [key: string]: unknown }> {
+        for await (const message of prompt) {
+          void message
+          if (partial) {
+            yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Let me look. ' } } }
+            yield { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use' } } }
+            for (const word of ['The ', 'answer ', 'is 42.']) yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: word } } }
+          }
+          yield { type: 'assistant', message: { content: [{ type: 'text', text: 'The answer is 42.' }] } }
+          yield { type: 'result', subtype: 'success', result: 'The answer is 42.' }
+        }
+      }
+      const stream = run() as AsyncGenerator<{ type: string }> & { interrupt(): Promise<unknown> }
+      stream.interrupt = async () => undefined
+      return stream
+    },
+  }
+}
+
+describe('the reply streams as it is written', () => {
+  it('hands each piece over as it comes, and starts over after a tool call', async () => {
+    const pool = new SessionPool()
+    const spec = { sdk: streamingSdk(), binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
+    const pieces: string[] = []
+    let resets = 0
+    const result = await pool.run(job('Task: anything', { sessionKey: 'k', onToken: (text) => pieces.push(text), onReset: () => resets++ }), spec)
+    expect(result.answer).toBe('The answer is 42.')
+    expect(pieces).toEqual(['Let me look. ', 'The ', 'answer ', 'is 42.'])
+    expect(resets).toBe(1)
+    pool.closeAll()
+  })
+})
