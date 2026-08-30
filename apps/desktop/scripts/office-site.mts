@@ -122,7 +122,7 @@ export async function startOffice(): Promise<Office> {
         ? '<h1>타임시트 8/17 ~ 8/23</h1><p>월 8hr 검색 품질 개선, 화 8hr 검색 품질 개선, 수 8hr 검색 품질 개선, 목 8hr 검색 품질 개선, 금 0hr 휴가. 주 합계 32hr.</p>'
         : '<h1>타임시트 8/24 ~ 8/30</h1><p>월 10hr 버그 수정, 화 12hr 서비스 개발, 수 13hr 서비스 개발, 목 14hr 버그 수정, 금 10hr 본부회의. 주 합계 59hr.</p>'
       return page(
-        `${week}<nav><a href="/timesheet${previous ? '' : '?week=prev'}">${previous ? '다음 주' : '이전 주'}</a></nav><form action="/post" method="post"><input name="entry" value="timesheet"/><button type="submit">저장</button></form>`,
+        `${week}<nav><a href="/timesheet${previous ? '' : '?week=prev'}" title="${previous ? '다음 주' : '이전 주'}"><img alt="${previous ? '다음 주' : '이전 주'}" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" width="24" height="24"/></a></nav><form action="/post" method="post"><input name="entry" value="timesheet"/><button type="submit">저장</button></form>`,
         '타임시트',
       )
     }
