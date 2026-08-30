@@ -120,7 +120,8 @@ export interface ToolSessionCall {
   name: string
   description: string
   argsSchema: object
-  run(args: Record<string, unknown>): Promise<string>
+  // Words, or words with a picture the brain is to look at.
+  run(args: Record<string, unknown>): Promise<string | { text: string; image?: { data: string; mimeType: string } }>
 }
 
 export interface ToolSessionJob {

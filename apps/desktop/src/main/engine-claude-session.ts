@@ -1,4 +1,4 @@
-import type { ToolSessionCall, ToolSessionJob, ToolSessionResult } from 'core'
+import { SESSION_TURN_MS, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
 import { flog } from './flog.js'
 
@@ -31,7 +31,7 @@ export interface SessionSdk {
     name: string,
     description: string,
     shape: Record<string, unknown>,
-    handler: (args: unknown) => Promise<{ content: { type: 'text'; text: string }[] }>,
+    handler: (args: unknown) => Promise<{ content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] }>,
   ): unknown
 }
 
@@ -44,7 +44,7 @@ export interface SessionSpec {
 
 const IDLE_MS = 10 * 60_000
 const TURNS_MAX = 12
-const TURN_BUDGET_MS = 240_000
+const TURN_BUDGET_MS = SESSION_TURN_MS
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -98,8 +98,14 @@ export class WarmSession {
           // The tool of the turn under way: the same name may run against a
           // different notebook or browser next time.
           const tool = this.tools.get(one.name)
-          const text = tool ? await tool.run(args as Record<string, unknown>) : 'that tool is not available this turn'
-          return { content: [{ type: 'text', text }] }
+          const outcome = tool ? await tool.run(args as Record<string, unknown>) : 'that tool is not available this turn'
+          if (typeof outcome === 'string') return { content: [{ type: 'text', text: outcome }] }
+          return {
+            content: [
+              { type: 'text', text: outcome.text },
+              ...(outcome.image ? [{ type: 'image' as const, data: outcome.image.data, mimeType: outcome.image.mimeType }] : []),
+            ],
+          }
         }),
       ),
     })

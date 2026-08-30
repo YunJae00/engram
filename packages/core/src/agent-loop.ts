@@ -24,6 +24,13 @@ export interface AgentToolContext {
   read?: string
 }
 
+// What a tool hands back: words, and sometimes a picture for a brain that
+// can see one (a page drawn on a canvas has no words to give).
+export interface ToolOutcome {
+  text: string
+  image?: { data: string; mimeType: string }
+}
+
 export interface AgentTool {
   name: string
   // One line for the menu — what it does and when to pick it.
@@ -31,6 +38,9 @@ export interface AgentTool {
   // JSON schema for this tool's args, embedded into the step schema.
   argsSchema: object
   run(args: Record<string, unknown>, context: AgentToolContext): Promise<string>
+  // The same call for a brain that can take a picture; the words alone go
+  // to one that cannot.
+  runRich?(args: Record<string, unknown>, context: AgentToolContext): Promise<ToolOutcome>
 }
 
 export interface AgentLoopDeps {
