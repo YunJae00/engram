@@ -1,7 +1,8 @@
 import type { PageMove, WebCourier } from 'core'
 import { armIdleClose, agentAbortable as withAbort, ensureAgentPage as ensurePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
-import { chooseOption, hoverOn, pressKey, pressOn, scrollPage, typeText } from './page-actions.js'
+import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText } from './page-actions.js'
+import { revealText } from './page-reveal.js'
 
 // What a comet is given when it can reach the web: one browser, one reused
 // tab, and the hands that move around a page without committing anything.
@@ -74,10 +75,22 @@ export function agentCourier(): WebCourier {
       armIdleClose()
       return withinBudget(pressKey(page, key))
     },
+    async reveal(word, signal) {
+      const page = await withAbort(ensurePage(), signal)
+      armIdleClose()
+      return withinBudget(revealText(page, word))
+    },
+    async pressPoint(x, y, signal) {
+      const page = await withAbort(ensurePage(), signal)
+      armIdleClose()
+      return withinBudget(pressPoint(page, x, y))
+    },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      const shot = await withAbort(page.screenshot({ type: 'jpeg', quality: 60, scale: 'css' }), signal).catch(() => null)
+      // The visible part only, so a point on the picture is a point on the
+      // page: the fractions a press is given mean the same thing to both.
+      const shot = await withAbort(page.screenshot({ type: 'jpeg', quality: 60, scale: 'css', fullPage: false }), signal).catch(() => null)
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
     async fetchPage(url, signal) {
