@@ -111,9 +111,9 @@ import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
-import { agentBrowserAvailable, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
+import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
-import { agentViewGo, agentViewInput, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
+import { agentViewGo, agentViewInput, refreshAgentView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
 import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -1342,6 +1342,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
   ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
+  ipcMain.handle('agent:refresh', () => refreshAgentView())
 
   ipcMain.handle('press:askDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
     pressAskWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
@@ -2191,13 +2192,12 @@ export function registerIpc(ctx: VaultContext): void {
         )
       } finally {
         releaseModel()
-        // The window goes away when the work does. A person shuts the tab they
-        // opened rather than leaving it sitting there, and a browser left open
-        // is memory held for nothing - it reopens in a second when the next
-        // question needs it. A routine mid-run, or a wall
-        // waiting for the person holds the window, and an unforced close
-        // steps aside for them.
-        if (!wallHold) void closeAgentBrowser()
+        // The window stays where the work left it: the page a comet worked on
+        // is what the person reads the answer against, and closing it the
+        // moment the answer lands takes the evidence away. It goes on its own
+        // after a few quiet minutes, when the next question opens a fresh one,
+        // or when the machine needs the memory.
+        if (!wallHold) armIdleClose()
       }
       return
     }

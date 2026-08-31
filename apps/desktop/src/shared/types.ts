@@ -515,6 +515,9 @@ export interface EngramApi {
   agentInput(input: AgentInputDto): Promise<void>
   agentWindow(show: boolean): Promise<void>
   agentGo(url: string): Promise<void>
+  // Take the picture again now: for a view left on a page that went still
+  // half-drawn.
+  agentRefresh(): Promise<void>
   // workspace registry/switcher (app-level vaults)
   workspaceList(): Promise<{ current: string | null; vaults: WorkspaceInfoDto[] }>
   workspaceCreate(name: string): Promise<void>

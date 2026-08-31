@@ -20,6 +20,9 @@ const OFF_SCREEN = { left: -4000, top: -4000 }
 interface Mirror {
   page: Page
   cdp: CDPSession
+  // When a frame last went out, and whether a photograph is being taken.
+  painted: number
+  shooting: boolean
   // The page's own size, which the frame is a scaled copy of; pointer
   // positions arrive as fractions and are mapped back onto it.
   width: number
@@ -31,6 +34,44 @@ let mirror: Mirror | null = null
 // How many views in the app are showing frames right now; the stream runs
 // only while someone is looking.
 let viewers = 0
+// A screencast sends a frame when the page paints and nothing when it is
+// still. A page mid-render sends its half-drawn state and then goes quiet,
+// which leaves that half-drawn state on screen looking like a dead page. So
+// while someone is watching, a still page is photographed now and then and
+// the picture goes out as a frame like any other.
+const QUIET_MS = 2_500
+let poke: ReturnType<typeof setInterval> | null = null
+
+async function shoot(m: Mirror): Promise<void> {
+  if (Date.now() - m.painted < QUIET_MS || m.shooting) return
+  m.shooting = true
+  try {
+    const shot = await m.page.screenshot({ type: 'jpeg', quality: 60, scale: 'css', fullPage: false, timeout: 4_000 })
+    if (mirror !== m) return
+    m.painted = Date.now()
+    broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url() })
+  } catch {
+    // A page that will not be photographed (navigating, closed) is left to
+    // the next round.
+  } finally {
+    m.shooting = false
+  }
+}
+
+function watchForStillness(): void {
+  if (poke) return
+  poke = setInterval(() => {
+    const m = mirror
+    if (!m || viewers === 0) return
+    void shoot(m)
+  }, QUIET_MS).unref()
+}
+
+function stopWatchingForStillness(): void {
+  if (!poke) return
+  clearInterval(poke)
+  poke = null
+}
 
 function say(on: boolean): void {
   broadcast({ type: 'agent:live', on, ...(on && mirror ? { url: mirror.page.url() } : {}) })
@@ -59,13 +100,14 @@ async function follow(page: Page): Promise<void> {
     return
   }
   const size = page.viewportSize() ?? { width: 1280, height: 800 }
-  const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false }
+  const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false, painted: 0, shooting: false }
   mirror = m
   cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
     void cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined)
     if (mirror !== m) return
     m.width = frame.metadata.deviceWidth || m.width
     m.height = frame.metadata.deviceHeight || m.height
+    m.painted = Date.now()
     broadcast({ type: 'agent:frame', data: frame.data, width: m.width, height: m.height, url: page.url() })
   })
   page.on('close', () => {
@@ -91,8 +133,19 @@ export function startAgentView(): void {
 
 export async function watchAgentView(on: boolean): Promise<{ on: boolean; url?: string }> {
   viewers = Math.max(0, viewers + (on ? 1 : -1))
+  if (viewers > 0) watchForStillness()
+  else stopWatchingForStillness()
   if (mirror) await stream(mirror, viewers > 0)
   return mirror ? { on: true, url: mirror.page.url() } : { on: false }
+}
+
+// The picture again, now, whatever the page is doing: what a person presses
+// when the view has gone still on a half-drawn page.
+export async function refreshAgentView(): Promise<void> {
+  const m = mirror
+  if (!m) return
+  m.painted = 0
+  await shoot(m)
 }
 
 const BUTTON = { left: 'left', right: 'right', middle: 'middle', none: 'none' } as const
