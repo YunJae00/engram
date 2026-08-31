@@ -1855,3 +1855,21 @@ body.bubble-host { background: transparent; }
 .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); padding: 6px 10px; border-radius: 999px; }
 .live-panel-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; }
 .live-panel-foot .primary, .live-panel-foot .secondary { font-size: var(--fs-small); }
+
+/* What the comet is doing, under the answer it is writing: the steps in the
+   order they happened, and the page it is on. */
+.comet-work { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; width: 100%; margin: 2px 0 6px; }
+.comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.comet-work-line { font-size: var(--fs-small); color: var(--fg-faint); padding-left: 12px; position: relative; }
+.comet-work-line::before { content: '·'; position: absolute; left: 2px; }
+.comet-work-line.current { color: var(--fg-dim); }
+.comet-work.done { gap: 4px; }
+.comet-work-toggle {
+  display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
+  font-size: var(--fs-small); color: var(--fg-faint); padding: 2px 6px 2px 2px; border-radius: 999px;
+}
+.comet-work-toggle:hover { color: var(--fg-dim); background: var(--hover-bg); }
+/* The page it left behind, once the browser has gone: still there to look at. */
+.live-card.frozen { cursor: default; opacity: 0.72; }
+/* Before the first frame the card is a thin line, not a wall of nothing. */
+.live-card .live-waiting { aspect-ratio: auto; height: 84px; }

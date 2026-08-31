@@ -46,7 +46,10 @@ function useMirror(): { on: boolean; url?: string; frame: string | null; size: {
       if (event.type === 'agent:live') {
         setOn(event.on)
         setUrl(event.url)
-        if (!event.on) setFrame(null)
+        // A window that went away leaves its last frame on the card: the
+        // person can still see where the work got to. A new one starts
+        // blank rather than showing the page before it.
+        if (event.on) setFrame(null)
       } else if (event.type === 'agent:frame') {
         setFrame(`data:image/jpeg;base64,${event.data}`)
         setUrl(event.url)
@@ -164,10 +167,11 @@ function Address({ url }: { url?: string }) {
 }
 
 // open: the large view comes up on its own — a lesson is done there, and a
-// wall is cleared there, not watched from a card. children: the controls
-// that belong beside the page (a lesson's Done, a wall's Continue), shown
-// on the large view too.
-export function LiveView({ open = false, children }: { open?: boolean; children?: ReactNode }) {
+// wall is cleared there, not watched from a card. keep: hold the card while
+// the turn runs, even between windows, so it does not blink in and out.
+// children: the controls that belong beside the page (a lesson's Done, a
+// wall's Continue), shown on the large view too.
+export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
   const { t } = useApp()
   const { on, url, frame, size } = useMirror()
   const [big, setBig] = useState(false)
@@ -193,7 +197,11 @@ export function LiveView({ open = false, children }: { open?: boolean; children?
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [big])
-  if (!on) return null
+  // The card is there while there is a window, and stays with its last
+  // frame while the turn goes on without one - a browser that closed
+  // between steps used to take the whole card with it.
+  const frozen = !on && frame !== null
+  if (!on && !(keep && frozen)) return null
   const host = hostOf(url)
   const callWindow = () => {
     const next = !windowOut
@@ -202,11 +210,18 @@ export function LiveView({ open = false, children }: { open?: boolean; children?
   }
   return (
     <>
-      <div className="live-card" data-testid="live-card" role="button" tabIndex={0} title={t('live.expand')} onClick={() => setBig(true)}>
+      <div
+        className={'live-card' + (frozen ? ' frozen' : '')}
+        data-testid="live-card"
+        role="button"
+        tabIndex={0}
+        title={frozen ? t('live.closed') : t('live.expand')}
+        onClick={() => !frozen && setBig(true)}
+      >
         {frame ? <img src={frame} alt="" draggable={false} /> : <span className="live-waiting">{t('live.waiting')}</span>}
         <span className="live-card-bar">
-          <span className="live-card-host">{host || t('live.caption')}</span>
-          <Maximize2 size={12} aria-hidden />
+          <span className="live-card-host">{frozen ? t('live.closed') : host || t('live.caption')}</span>
+          {!frozen && <Maximize2 size={12} aria-hidden />}
         </span>
       </div>
       {big &&
