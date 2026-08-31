@@ -1812,18 +1812,6 @@ body.bubble-host { background: transparent; }
 
 /* The agent browser's mirror. A small card in the thread while the page is
    worked on; opened up, a stage the person acts on as if in the window. */
-.live-card {
-  position: relative; width: clamp(260px, 56%, 640px); border-radius: var(--radius-card); overflow: hidden;
-  background: var(--rail-bg); cursor: pointer; align-self: flex-start; margin: 2px 0 6px;
-  box-shadow: inset 0 0 0 1px var(--border-soft);
-}
-.live-card img { display: block; width: 100%; }
-.live-card:hover .live-card-bar { opacity: 1; }
-.live-card-bar {
-  position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px;
-  padding: 5px 9px; font-size: var(--fs-small); color: #fff;
-  background: linear-gradient(transparent, rgba(43, 43, 51, 0.55)); opacity: 0.85;
-}
 .live-card-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-waiting {
   display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 10;
@@ -1860,7 +1848,9 @@ body.bubble-host { background: transparent; }
 
 /* What the comet is doing, under the answer it is writing: the steps in the
    order they happened, and the page it is on. */
-.comet-work { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; width: 100%; margin: 2px 0 6px; }
+/* The work sits at the foot of the thread whether the conversation is long
+   or short: pushed down when there is room, stuck there when there is not. */
+.comet-work { display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: 100%; margin: auto 0 6px; }
 /* Nothing to say and no page to show: the strip takes no room at all. */
 .comet-work:empty { display: none; }
 .comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -1874,7 +1864,36 @@ body.bubble-host { background: transparent; }
 }
 .comet-work-toggle:hover { color: var(--fg-dim); background: var(--hover-bg); }
 /* The page it left behind, once the browser has gone: still there to look at. */
-.live-card.frozen { cursor: default; opacity: 0.72; }
 /* Before the first frame the card is a thin line, not a wall of nothing. */
-.live-card .live-waiting { aspect-ratio: auto; height: 84px; }
 .routine-submit-hint { font-size: var(--fs-small); color: var(--fg-faint); }
+
+/* The page the comet is working on, at the foot of the thread: as wide as
+   the conversation, stuck there while it scrolls above, and dragged taller
+   by its top edge. A page is wider than it is tall, so this is where it
+   fits without leaving half a column empty. */
+.live-dock {
+  position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column;
+  background: var(--panel-bg); border-radius: var(--radius-card) var(--radius-card) 0 0;
+  box-shadow: 0 -1px 0 var(--border-soft), var(--shadow-card-rest);
+  margin: 6px 0 0; overflow: hidden; flex: none;
+}
+.live-dock.frozen { opacity: 0.72; }
+.live-dock.folded { height: auto; }
+.live-dock-grip { height: 6px; margin-bottom: -6px; cursor: ns-resize; flex: none; }
+.live-dock-bar {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 4px;
+  font-size: var(--fs-small); color: var(--fg-dim); flex: none;
+}
+.live-dock-fold, .live-dock-act {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; color: var(--fg-faint); flex: none;
+}
+.live-dock-fold:hover, .live-dock-act:hover { background: var(--hover-bg); color: var(--fg); }
+.live-dock-chevron { transition: transform 140ms ease; }
+.live-dock-chevron.up { transform: rotate(-90deg); }
+.live-dock-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px 8px; }
+.live-dock-body img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  border-radius: var(--radius-s); box-shadow: 0 0 0 1px var(--border-soft);
+}
+.live-dock .routine-submit { margin: 8px; }

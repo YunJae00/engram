@@ -1,18 +1,25 @@
-import { AppWindow, Maximize2, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AppWindow, ChevronDown, Maximize2, RotateCw, X } from 'lucide-react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AgentInputDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { agentMirror } from '../lib/agentMirrorLive.js'
 import { useApp } from '../state.js'
 
-// The agent browser, seen from inside the app: a small card of the page it
-// is on while it works, and — opened up — a large view the person can act
-// in, so a sign-in, a robot check or a lesson happens here rather than in a
-// window they would have to go and find.
+// The agent browser, seen from inside the app: while a comet works, the page
+// sits at the foot of the thread, as wide as the conversation and stuck
+// there while it scrolls above. Opened up, it becomes a large view the
+// person can act in, so a sign-in, a robot check or a question about a press
+// happens here rather than in a window they would have to go and find.
 
 const MODIFIER = { alt: 1, ctrl: 2, meta: 4, shift: 8 } as const
 const BUTTON: Record<number, 'left' | 'middle' | 'right'> = { 0: 'left', 1: 'middle', 2: 'right' }
 const MOVE_EVERY_MS = 40
+// What the dock may take of the window's height, and where it starts.
+const DOCK_MIN = 160
+const DOCK_MAX_SHARE = 0.62
+const DOCK_DEFAULT = 340
+const DOCK_KEY = 'engram.live.height'
 // Keys that mean something to a page beyond a character.
 const PRESSED_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 
@@ -29,42 +36,7 @@ function hostOf(url: string | undefined): string {
   }
 }
 
-function useMirror(): { on: boolean; url?: string; frame: string | null; size: { width: number; height: number } } {
-  const [on, setOn] = useState(false)
-  const [url, setUrl] = useState<string | undefined>(undefined)
-  const [frame, setFrame] = useState<string | null>(null)
-  const [size, setSize] = useState({ width: 1280, height: 800 })
-  useEffect(() => {
-    void api
-      .agentWatch(true)
-      .then((state) => {
-        setOn(state.on)
-        setUrl(state.url)
-      })
-      .catch(() => {})
-    const off = api.onEvent((event) => {
-      if (event.type === 'agent:live') {
-        setOn(event.on)
-        setUrl(event.url)
-        // A window that went away leaves its last frame on the card: the
-        // person can still see where the work got to. A new one starts
-        // blank rather than showing the page before it.
-        if (event.on) setFrame(null)
-      } else if (event.type === 'agent:frame') {
-        setFrame(`data:image/jpeg;base64,${event.data}`)
-        setUrl(event.url)
-        setSize({ width: event.width, height: event.height })
-      }
-    })
-    return () => {
-      off()
-      void api.agentWatch(false).catch(() => {})
-    }
-  }, [])
-  return { on, url, frame, size }
-}
-
-function Stage({ frame, size }: { frame: string | null; size: { width: number; height: number } }) {
+function Stage({ frame, size, live }: { frame: string | null; size: { width: number; height: number }; live: boolean }) {
   const { t } = useApp()
   const image = useRef<HTMLImageElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
@@ -77,7 +49,7 @@ function Stage({ frame, size }: { frame: string | null; size: { width: number; h
   }
   const mouse = (e: React.MouseEvent, type: 'pressed' | 'released' | 'moved') => {
     const p = at(e)
-    if (!p) return
+    if (!p || !live) return
     if (type === 'moved') {
       const now = Date.now()
       if (now - lastMove.current < MOVE_EVERY_MS) return
@@ -93,7 +65,7 @@ function Stage({ frame, size }: { frame: string | null; size: { width: number; h
     const typed = type === 'down' && plain && e.key.length === 1 ? e.key : type === 'down' && e.key === 'Enter' ? '\r' : undefined
     if (!typed && !PRESSED_KEYS.has(e.key) && plain && e.key.length !== 1) return
     e.preventDefault()
-    send({ kind: 'key', type, key: e.key, code: e.code, keyCode: e.keyCode, ...(typed ? { text: typed } : {}), modifiers: modifiersOf(e) })
+    if (live) send({ kind: 'key', type, key: e.key, code: e.code, keyCode: e.keyCode, ...(typed ? { text: typed } : {}), modifiers: modifiersOf(e) })
   }
   return (
     <div
@@ -109,7 +81,7 @@ function Stage({ frame, size }: { frame: string | null; size: { width: number; h
       onContextMenu={(e) => e.preventDefault()}
       onWheel={(e) => {
         const p = at(e)
-        if (p) send({ kind: 'mouse', type: 'wheel', ...p, deltaX: e.deltaX, deltaY: e.deltaY, modifiers: modifiersOf(e) })
+        if (p && live) send({ kind: 'mouse', type: 'wheel', ...p, deltaX: e.deltaX, deltaY: e.deltaY, modifiers: modifiersOf(e) })
       }}
     >
       {frame ? <img ref={image} src={frame} alt="" draggable={false} /> : <span className="live-waiting">{t('live.waiting')}</span>}
@@ -121,18 +93,18 @@ function Stage({ frame, size }: { frame: string | null; size: { width: number; h
         onKeyDown={(e) => key(e, 'down')}
         onKeyUp={(e) => key(e, 'up')}
         onCompositionEnd={(e) => {
-          if (e.data) send({ kind: 'text', text: e.data })
+          if (e.data && live) send({ kind: 'text', text: e.data })
           e.currentTarget.value = ''
         }}
         onPaste={(e) => {
           e.preventDefault()
           const text = e.clipboardData.getData('text')
-          if (text) send({ kind: 'text', text })
+          if (text && live) send({ kind: 'text', text })
         }}
         onChange={(e) => {
           // Anything that slipped past the key handler is typed as text.
           if (!(e.nativeEvent as InputEvent).isComposing && e.target.value) {
-            send({ kind: 'text', text: e.target.value })
+            if (live) send({ kind: 'text', text: e.target.value })
             e.target.value = ''
           }
         }}
@@ -166,16 +138,18 @@ function Address({ url }: { url?: string }) {
   )
 }
 
-// open: the large view comes up on its own — a lesson is done there, and a
-// wall is cleared there, not watched from a card. keep: hold the card while
-// the turn runs, even between windows, so it does not blink in and out.
-// children: the controls that belong beside the page (a lesson's Done, a
-// wall's Continue), shown on the large view too.
+// open: the large view comes up on its own — a question about a press is
+// answered there, not from a strip. keep: hold the dock while the turn runs,
+// even between windows, so it does not blink in and out. children: what
+// belongs beside the page (the question, a wall's Continue).
 export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
   const { t } = useApp()
-  const { on, url, frame, size } = useMirror()
+  const { on, url, frame, width, height } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const size = { width, height }
   const [big, setBig] = useState(false)
   const [windowOut, setWindowOut] = useState(false)
+  const [folded, setFolded] = useState(false)
+  const [dock, setDock] = useState(() => Number(localStorage.getItem(DOCK_KEY)) || DOCK_DEFAULT)
   // The large view opens once there is a page to show, and closes with it.
   useEffect(() => {
     if (on) {
@@ -197,9 +171,25 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [big])
-  // The card is there while there is a window, and stays with its last
-  // frame while the turn goes on without one - a browser that closed
-  // between steps used to take the whole card with it.
+  // The dock's height is dragged from its top edge, and kept for next time.
+  const drag = (down: React.MouseEvent) => {
+    down.preventDefault()
+    const from = down.clientY
+    const started = dock
+    const move = (e: MouseEvent) => setDock(Math.max(DOCK_MIN, Math.min(window.innerHeight * DOCK_MAX_SHARE, started + (from - e.clientY))))
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      setDock((held) => {
+        localStorage.setItem(DOCK_KEY, String(held))
+        return held
+      })
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+  // The page stays after the window has gone: the last thing it showed is
+  // what the person reads the answer against.
   const frozen = !on && frame !== null
   if (!on && !(keep && frozen)) return null
   const host = hostOf(url)
@@ -210,19 +200,40 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
   }
   return (
     <>
-      <div
-        className={'live-card' + (frozen ? ' frozen' : '')}
-        data-testid="live-card"
-        role="button"
-        tabIndex={0}
-        title={frozen ? t('live.closed') : t('live.expand')}
-        onClick={() => !frozen && setBig(true)}
-      >
-        {frame ? <img src={frame} alt="" draggable={false} /> : <span className="live-waiting">{t('live.waiting')}</span>}
-        <span className="live-card-bar">
+      <div className={`live-dock${frozen ? ' frozen' : ''}${folded ? ' folded' : ''}`} data-testid="live-card" style={folded ? undefined : { height: dock }}>
+        {!folded && <div className="live-dock-grip" onMouseDown={drag} aria-hidden />}
+        <div className="live-dock-bar">
+          <button
+            className="live-dock-fold"
+            data-testid="live-fold"
+            aria-label={t(folded ? 'live.unfold' : 'live.fold')}
+            title={t(folded ? 'live.unfold' : 'live.fold')}
+            onClick={() => setFolded(!folded)}
+          >
+            <ChevronDown size={12} className={folded ? 'live-dock-chevron up' : 'live-dock-chevron'} aria-hidden />
+          </button>
           <span className="live-card-host">{frozen ? t('live.closed') : host || t('live.caption')}</span>
-          {!frozen && <Maximize2 size={12} aria-hidden />}
-        </span>
+          {!frozen && (
+            <button
+              className="live-dock-act"
+              data-testid="live-refresh"
+              aria-label={t('live.refresh')}
+              title={t('live.refresh')}
+              onClick={() => void api.agentRefresh().catch(() => {})}
+            >
+              <RotateCw size={12} aria-hidden />
+            </button>
+          )}
+          <button className="live-dock-act" data-testid="live-expand" aria-label={t('live.expand')} title={t('live.expand')} onClick={() => setBig(true)}>
+            <Maximize2 size={12} aria-hidden />
+          </button>
+        </div>
+        {!folded && (
+          <div className="live-dock-body">{frame ? <img src={frame} alt="" draggable={false} /> : <span className="live-waiting">{t('live.waiting')}</span>}</div>
+        )}
+        {/* The controls live in one place at a time: in the large view when
+            it is open, in the dock when it is not. */}
+        {!big && children}
       </div>
       {big &&
         createPortal(
@@ -235,6 +246,9 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
             >
               <div className="live-panel-bar">
                 <Address url={url} />
+                <button className="secondary live-panel-window" onClick={() => void api.agentRefresh().catch(() => {})}>
+                  <RotateCw size={12} aria-hidden /> {t('live.refresh')}
+                </button>
                 <button className="secondary live-panel-window" onClick={callWindow}>
                   <AppWindow size={12} aria-hidden /> {t(windowOut ? 'live.hideWindow' : 'live.openWindow')}
                 </button>
@@ -242,7 +256,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
                   <X size={14} aria-hidden />
                 </button>
               </div>
-              <Stage frame={frame} size={size} />
+              <Stage frame={frame} size={size} live={on} />
               <div className="live-panel-foot">
                 <span className="live-panel-hint">{t('live.hint')}</span>
                 {children}

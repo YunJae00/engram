@@ -84,7 +84,7 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await page.evaluate(() => window.engram.agentWatch(true))
   await page.evaluate((url) => window.engram.agentGo(url), siteUrl)
   await expect(page.getByTestId('live-card')).toBeVisible({ timeout: 60_000 })
-  await page.getByTestId('live-card').click()
+  await page.getByTestId('live-expand').click()
   await expect(page.getByTestId('live-panel')).toBeVisible({ timeout: 30_000 })
   // The first window opens on a blank page; the address is asked for again
   // from the view itself, which is what a person would do.
