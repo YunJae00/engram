@@ -1,7 +1,7 @@
 import type { CDPSession, Page } from 'playwright-core'
 import type { AgentInputDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
-import { agentPages, watchAgentPages } from './agent-browser.js'
+import { agentPages, ensureAgentPage, watchAgentPages } from './agent-browser.js'
 import { flog } from './flog.js'
 
 // The agent's window stays out of sight. What it shows is mirrored into the
@@ -137,8 +137,11 @@ export async function agentViewInput(input: AgentInputDto): Promise<void> {
 // An address typed on the mirror: the page goes there as if it had been
 // typed in the window's own bar, so a lesson can begin from a blank tab.
 export async function agentViewGo(url: string): Promise<void> {
-  const m = mirror
-  if (!m || !/^https?:\/\//i.test(url)) return
+  if (!/^https?:\/\//i.test(url)) return
+  // An address typed with no window behind it - the card frozen on the last
+  // thing a closed browser showed - opens one and goes there.
+  const m = mirror ?? (await ensureAgentPage().then(() => mirror).catch(() => null))
+  if (!m) return
   await m.page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   })

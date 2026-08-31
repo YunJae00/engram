@@ -555,9 +555,9 @@ describe('cometTools — every write ends in a card', () => {
     // Nothing matches: the shelf is shown, each row carrying the call to make,
     // because a small model copies a template and stalls on a description.
     const miss = await find.run({ task: 'water the plants' }, CTX)
-    // The shelf is shown, and the fact that nothing was taught for this is
-            // said in the words the host turns into an offer to be shown.
-            expect(miss).toContain('NOTHING-TAUGHT')
+    // The shelf is shown, and the answer says to go and do the job on the
+    // site rather than to wait for anybody.
+    expect(miss).toContain('nothing written down matches')
     expect(miss).toContain('Weekly report upload')
     expect(miss).toContain('run_procedure')
   })
@@ -857,7 +857,7 @@ describe('find_procedure: a shared verb is not a match', () => {
     })
     const find = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'find_procedure')!
     // The work log's verb alone does not make a weekly report the work log.
-    expect(await find.run({ task: '주간 보고서 사이트에 올리기' }, CTX)).toContain('NOTHING-TAUGHT')
+    expect(await find.run({ task: '주간 보고서 사이트에 올리기' }, CTX)).toContain('nothing written down matches')
     // The subject named is enough, whatever the verb's ending.
     expect(await find.run({ task: '오늘 업무일지 올려줘' }, CTX)).toContain('found "업무일지 올리기"')
     expect(await find.run({ task: '포털 공지 확인해줘' }, CTX)).toContain('found "포털 공지 확인"')

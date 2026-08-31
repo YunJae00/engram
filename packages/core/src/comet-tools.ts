@@ -284,7 +284,7 @@ ${note.body.slice(0, 2_000)}`
         // Nothing has been shown to it yet. Saying so — and asking to be
         // shown — is the honest move, and the host turns it into a button.
         if (routines.length === 0)
-          return 'NOTHING-TAUGHT: no procedure has been saved yet. If the job types into or submits on a site, tell the person you have not been shown it and offer to watch them do it once (Routines → Teach it by doing). If it only reads or looks something up, go on without one.'
+          return 'nothing has been written down about this job yet - go and do it on the site itself: open it, read it, use the hands. At anything that would submit, save, send or buy, the person is asked first and sees the page.'
         // A procedure is a note, so the vault's own search finds it — which is
         // what makes a Korean request reach a procedure named in English.
         // Word overlap is only the fallback for when retrieval is cold.
@@ -328,9 +328,9 @@ ${note.body.slice(0, 2_000)}`
         // guessing. A small model picks reliably from a short list of ids.
         if (best.score === 0)
           return [
-            `NOTHING-TAUGHT: no saved procedure matches "${task.slice(0, 60)}". If the job types into or submits on a site, say you have not been shown this one and offer to watch them do it once; if it only reads, go on without one. Saved procedures, in case one of them IS the job:`,
+            `nothing written down matches "${task.slice(0, 60)}" - go and do the job on the site itself, asking the person at anything that would submit. What is written down, in case one of these IS the job:`,
             ...routines.slice(0, RESULTS_CAP).map((r) => `- "${r.name}" — ${callFor(r)}`),
-            'Make that call only when a saved name IS this very job. A neighbouring one — another report, another site, another form — is not it, and running it would do the wrong chore: say you have not been shown this one and offer to watch. If the person asked you to write, summarise or keep something rather than to work a website, this is not the tool — use propose_note.',
+            'Make that call only when a saved name IS this very job. A neighbouring one — another report, another site, another form — is not it, and running it would do the wrong chore: do that job yourself on the site instead. If the person asked you to write, summarise or keep something rather than to work a website, this is not the tool — use propose_note.',
           ].join('\n')
         const steps = best.r.steps.map((s, i) => `${i + 1}. ${routineStepLabel(s)}`).join('; ')
         return `found "${best.r.name}" (id: ${best.r.id}): ${steps}. ${callFor(best.r)}`

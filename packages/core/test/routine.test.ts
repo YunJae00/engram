@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { listCards } from '../src/cards.js'
 import { readNote } from '../src/notes.js'
-import { buildRoutineFromTeach } from '../src/teach.js'
 import {
   addRoutine,
   listRoutines,
@@ -361,15 +360,15 @@ describe('routines are vault notes', () => {
     expect(note.body).toContain('1. Open example.com')
   })
 
-  it('teach → save → load → replay walks the exact same steps (full round trip)', async () => {
+  it('save → load → replay walks the exact same steps (full round trip)', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-roundtrip'), { git: false })
-    const steps = buildRoutineFromTeach([
-      { kind: 'nav', url: 'https://portal.example/home' },
-      { kind: 'click', css: 'a#notices', text: 'Notices' },
-      { kind: 'nav', url: 'https://portal.example/notices' },
-      { kind: 'read', url: 'https://portal.example/notices' },
-    ])
-    const saved = await addRoutine(paths, { name: 'Taught', steps })
+    // What a comet keeps after doing a job: the moves it made, in order.
+    const steps: RoutineStep[] = [
+      { kind: 'open', url: 'https://portal.example/home' },
+      { kind: 'click', target: { css: ['a#notices'], text: 'Notices' } },
+      { kind: 'read' },
+    ]
+    const saved = await addRoutine(paths, { name: 'Kept', steps })
     const loaded = (await listRoutines(paths)).find((r) => r.id === saved.id)!
     expect(loaded.steps).toEqual(steps)
     const driver = fakeDriver({})
