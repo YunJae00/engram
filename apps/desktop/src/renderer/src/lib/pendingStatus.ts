@@ -16,6 +16,15 @@ const STEP_LABEL: Record<string, StringKey> = {
   propose_file: 'bots.stepWriteDown',
   ask_person: 'bots.stepAsk',
   run_procedure: 'bots.stepRun',
+  press: 'bots.stepPress',
+  type_text: 'bots.stepType',
+  choose: 'bots.stepChoose',
+  scroll: 'bots.stepScroll',
+  hover: 'bots.stepHover',
+  press_key: 'bots.stepKey',
+  press_point: 'bots.stepPressPoint',
+  reveal: 'bots.stepReveal',
+  look: 'bots.stepLook',
 }
 
 export function stepLabel(t: Translate, line: string): string {

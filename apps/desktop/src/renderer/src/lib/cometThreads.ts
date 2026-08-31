@@ -17,6 +17,9 @@ export interface CometThread {
   messages: CometMessage[]
   busy: boolean
   workLines: string[]
+  // The steps of the turn that just ended, kept so a person can look back at
+  // what was done; the next turn clears them.
+  keptWork: string[]
   offer: CometOffer | null
   draft: string
   // The seat was taken for an answer this renderer never sent (a reload
@@ -42,9 +45,9 @@ export interface CometThreadsSnapshot {
 
 export type CometThreadsStore = ReturnType<typeof createCometThreads>
 
-const EMPTY: CometThread = { messages: [], busy: false, workLines: [], offer: null, draft: '', adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
+const EMPTY: CometThread = { messages: [], busy: false, workLines: [], keptWork: [], offer: null, draft: '', adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
 const CHANNEL_PREFIX = 'bot-'
-const WORK_LINES_KEPT = 6
+const WORK_LINES_KEPT = 16
 
 export function cometChannel(botId: string): string {
   return `${CHANNEL_PREFIX}${botId}`
@@ -83,7 +86,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     emit()
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: false, adopted: false, workLines: [], startedAt: null, messages, ...extra })
+    patch(id, { busy: false, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: null, messages, ...extra })
   const fail = (id: string, text: string) =>
     settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }])
 
@@ -136,6 +139,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         stopped: false,
         startedAt: Date.now(),
         workLines: [],
+        keptWork: [],
         offer: null,
         draft: '',
         messages: [...current.messages, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }],

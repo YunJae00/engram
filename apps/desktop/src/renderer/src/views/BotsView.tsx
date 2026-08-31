@@ -7,10 +7,9 @@ import { Choices } from '../components/Choices.js'
 import { CometOffer } from '../components/CometOffer.js'
 import { CometMemory } from '../components/CometMemory.js'
 import { CometRail } from '../components/CometRail.js'
-import { LiveView } from '../components/LiveView.js'
-import { Thinking } from '../components/Thinking.js'
+import { CometWork } from '../components/CometWork.js'
 import { modelActivity } from '../lib/modelActivityLive.js'
-import { pendingStatus, stepLabel } from '../lib/pendingStatus.js'
+import { pendingStatus } from '../lib/pendingStatus.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
@@ -50,7 +49,7 @@ export function BotsView() {
   const boxRef = useRef<HTMLTextAreaElement | null>(null)
   const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
   const selected = bots.find((b) => b.id === selectedId) ?? null
-  const { messages, busy, workLines, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
+  const { messages, busy, workLines, keptWork, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   useAutoGrow(boxRef, draft)
@@ -248,18 +247,9 @@ export function BotsView() {
                 <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
                   {m.role === 'assistant' ? (
                     m.streaming && !m.text ? (
-                      <span className="bots-pending" data-testid="bots-pending">
-                        <Thinking label={status} since={startedAt ?? undefined} testId="bots-thinking" />
-                        {workLines.length > 1 && (
-                          <span className="bots-work-lines" data-testid="bots-work-lines">
-                            {workLines.slice(0, -1).map((line, x) => (
-                              <span key={`${x}-${line}`} className="bots-work-line">
-                                {stepLabel(t, line)}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </span>
+                      // The wait, and everything it is doing, is the strip
+                      // below the thread: it stays put once words arrive.
+                      <span className="bots-pending" data-testid="bots-pending" />
                     ) : (
                       <div className="bubble-msg-body" dangerouslySetInnerHTML={{ __html: answerHtml(m.text) }} />
                     )
@@ -301,8 +291,10 @@ export function BotsView() {
                   onTeach={() => window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))}
                 />
               )}
+              {/* What it is doing, under the answer it is writing: the
+                  work stays watchable while the words arrive. */}
+              <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />
               <SubmitGate />
-              <LiveView />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <span className="bots-errand-pulse">

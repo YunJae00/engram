@@ -116,3 +116,29 @@ describe('stop leaves a mark the abort echo can read', () => {
     expect(store.thread('a').startedAt).not.toBe(null)
   })
 })
+
+describe('what the turn did stays readable', () => {
+  it('keeps the steps after the answer lands, and clears them when the next turn starts', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'what did I do last week?')
+    store.handleEvent({ type: 'comet:step', channel, line: 'open_page: https://one.example' })
+    store.handleEvent({ type: 'comet:step', channel, line: 'press: #12' })
+    // The answer arriving does not take the steps away with it.
+    store.handleEvent({ type: 'chat:token', channel, text: 'Last week you' })
+    expect(store.thread(BOT).workLines).toEqual(['open_page: https://one.example', 'press: #12'])
+    store.handleEvent({ type: 'chat:done', channel, text: 'Last week you fixed bugs.' })
+    const settled = store.thread(BOT)
+    expect(settled.busy).toBe(false)
+    expect(settled.workLines).toEqual([])
+    expect(settled.keptWork).toEqual(['open_page: https://one.example', 'press: #12'])
+    store.begin(BOT, 'and this week?')
+    expect(store.thread(BOT).keptWork).toEqual([])
+  })
+
+  it(`keeps the whole turn's steps, not the last few`, () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'q')
+    for (let i = 0; i < 12; i++) store.handleEvent({ type: 'comet:step', channel, line: `press: #${i}` })
+    expect(store.thread(BOT).workLines).toHaveLength(12)
+  })
+})
