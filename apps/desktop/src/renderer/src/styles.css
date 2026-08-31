@@ -1873,9 +1873,9 @@ body.bubble-host { background: transparent; }
    fits without leaving half a column empty. */
 .live-dock {
   position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column;
-  background: var(--panel-bg); border-radius: var(--radius-card) var(--radius-card) 0 0;
-  box-shadow: 0 -1px 0 var(--border-soft), var(--shadow-card-rest);
-  margin: 6px 0 0; overflow: hidden; flex: none;
+  background: var(--panel-bg); border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px var(--border-soft), var(--shadow-card);
+  margin: 6px 0 2px; overflow: hidden; flex: none;
 }
 .live-dock.frozen { opacity: 0.72; }
 .live-dock.folded { height: auto; }
@@ -1891,9 +1891,11 @@ body.bubble-host { background: transparent; }
 .live-dock-fold:hover, .live-dock-act:hover { background: var(--hover-bg); color: var(--fg); }
 .live-dock-chevron { transition: transform 140ms ease; }
 .live-dock-chevron.up { transform: rotate(-90deg); }
-.live-dock-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px 8px; }
-.live-dock-body img {
-  max-width: 100%; max-height: 100%; object-fit: contain;
-  border-radius: var(--radius-s); box-shadow: 0 0 0 1px var(--border-soft);
+/* The picture sits in a field of its own, so it reads as a screen rather
+   than an image floating on the card. */
+.live-dock-body {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  margin: 0 8px 8px; background: var(--rail-bg); border-radius: var(--radius-m); overflow: hidden;
 }
-.live-dock .routine-submit { margin: 8px; }
+.live-dock-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.live-dock .routine-submit { margin: 0 8px 8px; }
