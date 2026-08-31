@@ -71,20 +71,21 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
-    name: 'shown once, then asked: the job runs and stops at the gate',
+    name: 'a job kept from last time runs again, and stops at the gate',
     async run(person, office, botId) {
-      await person.teach('회의실 예약', async (page) => {
-        await page.goto(`${office.url}rooms`, { waitUntil: 'domcontentloaded' })
-        await page.fill('input[name="room"]', '회의실 A')
-        await page.fill('input[name="when"]', '내일 10시')
-        await page.click('button[type="submit"]')
-        await page.waitForURL('**/book', { timeout: 10_000 })
-      })
+      // What a comet kept the last time it did this: the same moves, with the
+      // parts that change left as blanks.
+      await person.kept('회의실 예약', [
+        { kind: 'open', url: `${office.url}rooms` },
+        { kind: 'type', target: { text: 'Room' }, text: '{{회의실}}', example: '회의실 A' },
+        { kind: 'type', target: { text: 'When' }, text: '{{언제}}', example: '내일 10시' },
+        { kind: 'click', target: { text: 'Book' } },
+      ])
       person.gate = 'approve'
       const before = office.booked.length
       const first = await person.say(botId, '회의실 C 내일 오후 3시로 예약해줘')
       const checks: Check[] = [
-        { name: 'runs the taught procedure', ok: first.tools.includes('run_procedure') },
+        { name: 'runs the kept job', ok: first.tools.includes('run_procedure') },
         { name: 'stops at the submit gate', ok: first.gates >= 1 },
         { name: 'the office received the booking after approval', ok: office.booked.length === before + 1 },
         { name: 'the blanks were filled from the ask', ok: office.booked.slice(-1)[0]?.room.includes('C') === true && /3/.test(office.booked.slice(-1)[0]?.when ?? '') },

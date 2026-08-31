@@ -286,9 +286,6 @@ export function BotsView() {
                     cometThreads.clearOffer(selected.id)
                     void api.botStandingDecline(selected.id, wanted.goal).catch(() => undefined)
                   }}
-                  // The offer stays: a lesson closed with nothing done can be
-                  // begun again from here until the next message.
-                  onTeach={() => window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } }))}
                 />
               )}
               {/* What it is doing, under the answer it is writing: the

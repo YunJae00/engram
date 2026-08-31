@@ -1,4 +1,4 @@
-import { expect, test, _electron as electron, chromium, type Browser, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { addRoutine, initVault, listCards, listRoutines, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -102,35 +102,12 @@ async function openSheet(): Promise<void> {
   }).toPass({ timeout: 30_000 })
 }
 
-// The agent Chrome takes a few seconds to come up; keep knocking on its CDP
-// door until it answers. A previous run's window may still be shutting down
-// and still holding the port, so only the freshly opened teach window — the
-// one sitting on about:blank — counts as an answer.
-async function connectAgent(): Promise<Browser> {
-  let last: unknown
-  for (let i = 0; i < 60; i++) {
-    let browser: Browser | null = null
-    try {
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
-      const open = browser.contexts()[0]?.pages() ?? []
-      if (open.length > 0 && open.every((one) => one.url() === 'about:blank')) return browser
-      await browser.close()
-    } catch (err) {
-      last = err
-      await browser?.close().catch(() => undefined)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
-  }
-  throw last ?? new Error('the teach window never appeared on the debug port')
-}
-
 test('a saved routine appears on the sheet as a note in the vault', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await openSheet()
 
-  // The sheet has no form: a routine is only ever taught, so the one this
-  // run replays is handed in through the same door a lesson uses.
-  await expect(page.getByTestId('routines-teach')).toBeVisible()
+  // Nothing is authored on the sheet: what a comet learned is written to the
+  // vault, which is how the one this run replays is handed in.
   await page.evaluate(
     (url) =>
       window.engram.routineAdd({
@@ -161,54 +138,6 @@ test('running the routine drives a real Chrome and lands the reading in review',
     .toContain('the office closes early on Friday')
   const routine = (await listRoutines(paths)).find((r) => r.name === 'Portal notices')!
   expect(routine.lastOutcome).toBe('done')
-})
-
-test('teach mode records the work as done in the agent window — and replays it', async () => {
-  // A machine with several browsers installed is asked which one to work in
-  // before anything is recorded; a CI runner is such a machine. The person
-  // picks in Settings - here the pick is made the same way, through the API.
-  await page.evaluate(async () => {
-    const installed = (await window.engram.browsersInstalled()) as { path: string }[]
-    if (installed[0]) await window.engram.browserChoose(installed[0].path)
-  })
-  await openSheet()
-  await page.getByTestId('routines-teach').click()
-  // A cold Chrome launch on a busy runner can take a while.
-  await expect(page.getByTestId('routine-teach')).toBeVisible({ timeout: 60_000 })
-  // The lesson is done in the app's own view of that window, which opens on
-  // its own once the window is up; its controls are on that view.
-  await expect(page.getByTestId('live-panel')).toBeVisible({ timeout: 30_000 })
-
-  // The person's hands: walk the portal in the agent Chrome itself.
-  const agent = await connectAgent()
-  try {
-    const agentPage = agent.contexts()[0]!.pages()[0]!
-    await agentPage.goto(siteUrl, { waitUntil: 'domcontentloaded' })
-    await agentPage.click('a', { timeout: 10_000 })
-    await agentPage.waitForURL('**/notices', { timeout: 10_000 })
-  } finally {
-    await agent.close().catch(() => undefined)
-  }
-
-  await page.getByTestId('routine-teach-read-live').click()
-  await page.getByTestId('routine-teach-done-live').click()
-
-  // The captured steps wait under a name box: open → click → read.
-  await expect(page.getByTestId('routine-taught')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('routine-taught').locator('.errand-step')).toHaveCount(3)
-  await page.getByTestId('routine-taught-name').fill('Taught notices')
-  await page.getByTestId('routine-taught-save').click()
-  await expect(page.locator('[data-testid^="routine-row-"]')).toHaveCount(2)
-
-  // The taught routine replays like any other and brings the reading home.
-  const taught = (await listRoutines(paths)).find((r) => r.name === 'Taught notices')!
-  await page.getByTestId(`routine-run-${taught.id}`).click()
-  await expect(page.getByTestId('routine-live')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
-  await expect
-    .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
-    .toContain('Taught notices')
-  expect((await listRoutines(paths)).find((r) => r.id === taught.id)!.lastOutcome).toBe('done')
 })
 
 test('a login wall pauses the replay, and the run resumes from that step once the person clears it', async () => {

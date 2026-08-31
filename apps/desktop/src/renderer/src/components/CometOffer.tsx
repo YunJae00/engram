@@ -1,4 +1,4 @@
-import { Bookmark, Clock, Play, Wand2 } from 'lucide-react'
+import { Bookmark, Clock, Play } from 'lucide-react'
 import type { CometOffer as Offer } from '../lib/cometThreads.js'
 import { scheduleLabel, timesLabel } from '../lib/schedule.js'
 import { t } from '../i18n.js'
@@ -16,14 +16,12 @@ export function CometOffer({
   onRun,
   onStand,
   onDecline,
-  onTeach,
 }: {
   offer: Exclude<Offer, { kind: 'asked' }>
   onKeep(name: string, goal: string): void
   onRun(offer: Run): void
   onStand(offer: Standing): void
   onDecline(offer: Standing): void
-  onTeach(): void
 }) {
   return (
     <div className="bots-offer" data-testid="bots-offer">
@@ -32,9 +30,7 @@ export function CometOffer({
           ? t('bots.offerRun', { name: offer.name })
           : offer.kind === 'keep'
             ? t('bots.offerKeep')
-            : offer.kind === 'standing'
-              ? t('bots.offerStanding', { name: offer.name, times: timesLabel(offer.count), when: scheduleLabel(offer.schedule) })
-              : t('bots.offerTeach')}
+            : t('bots.offerStanding', { name: offer.name, times: timesLabel(offer.count), when: scheduleLabel(offer.schedule) })}
       </span>
       {offer.kind === 'standing' ? (
         <>
@@ -49,13 +45,9 @@ export function CometOffer({
         <button className="primary bots-offer-run" data-testid="bots-offer-keep" onClick={() => onKeep(offer.name, offer.goal)}>
           <Bookmark size={11} strokeWidth={2.5} aria-hidden /> {t('bots.offerKeepGo')}
         </button>
-      ) : offer.kind === 'run' ? (
+      ) : (
         <button className="primary bots-offer-run" data-testid="bots-offer-run" onClick={() => onRun(offer)}>
           <Play size={11} strokeWidth={2.5} aria-hidden /> {t('routines.run')}
-        </button>
-      ) : (
-        <button className="primary bots-offer-run" data-testid="bots-offer-teach" onClick={onTeach}>
-          <Wand2 size={11} strokeWidth={2.5} aria-hidden /> {t('bots.offerTeachGo')}
         </button>
       )}
     </div>

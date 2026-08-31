@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { initVault } from 'core'
+import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -24,7 +24,9 @@ test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   const root = await mkdtemp(join(REPO_TMP, 'e2e-live-'))
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-live-userdata-'))
-  await initVault(root, { git: false })
+  // The mirror lives in a comet thread, so there has to be one to open.
+  const paths = await initVault(root, { git: false })
+  await createBot(paths, { name: 'Watching', purpose: '' })
 
   // A form that carries what was typed into its address, and a page whose
   // one link fills the top of the window so a click on the mirror finds it.
@@ -69,20 +71,26 @@ test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 
-test('a lesson is done on the mirror: the address, the keys and the clicks all reach the window', async () => {
+test('the mirror is watchable and acted in: the address, the keys and the clicks all reach the window', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await page.evaluate(async () => {
     const installed = (await window.engram.browsersInstalled()) as { path: string }[]
     if (installed[0]) await window.engram.browserChoose(installed[0].path)
   })
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('engram:open-routines', { detail: { teach: true } })))
-  await expect(page.getByTestId('routine-teach')).toBeVisible({ timeout: 60_000 })
+  // The app watches the agent browser and sends it to the page - the same
+  // two calls the thread's live card makes when a comet opens something.
+  await page.getByTestId('activity-bots').click()
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
+  await page.evaluate(() => window.engram.agentWatch(true))
+  await page.evaluate((url) => window.engram.agentGo(url), siteUrl)
+  await expect(page.getByTestId('live-card')).toBeVisible({ timeout: 60_000 })
+  await page.getByTestId('live-card').click()
   await expect(page.getByTestId('live-panel')).toBeVisible({ timeout: 30_000 })
-
-  // The address bar takes the window to the page; the frames show it came.
+  // The first window opens on a blank page; the address is asked for again
+  // from the view itself, which is what a person would do.
   await page.getByTestId('live-address').fill(siteUrl)
   await page.getByTestId('live-address').press('Enter')
-  await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 15_000 })
+  await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 20_000 })
   const stage = page.getByTestId('live-panel').locator('.live-stage')
   await expect(stage.locator('img')).toBeVisible({ timeout: 15_000 })
 
@@ -96,10 +104,4 @@ test('a lesson is done on the mirror: the address, the keys and the clicks all r
   // A click on the mirror is a click on the page.
   await stage.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`, { timeout: 15_000 })
-
-  // Done on the large view ends the lesson with the moves recorded.
-  await page.getByTestId('routine-teach-done-live').click()
-  await expect(page.getByTestId('routine-taught')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('live-panel')).toHaveCount(0)
-  expect(await page.getByTestId('routine-taught').locator('.errand-step').count()).toBeGreaterThanOrEqual(2)
 })

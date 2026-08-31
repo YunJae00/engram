@@ -46,6 +46,12 @@ export class Person {
           w.__probe('GATE')
           setTimeout(() => void w.__gateAnswer().then((verdict) => window.engram.routineSubmitDone(verdict)), 400)
         }
+        // The same question, asked about a press the comet is making itself
+        // on a page it found: one gate, whichever way the job was done.
+        if (event.type === 'press:ask') {
+          w.__probe('GATE')
+          setTimeout(() => void w.__gateAnswer().then((verdict) => window.engram.pressAskDone(verdict)), 400)
+        }
         if (event.type === 'chat:token') w.__probe('TOKEN')
         if (event.type === 'chat:done') w.__probe(`ANSWER ${JSON.stringify({ text: event.text, offer: event.offer ?? null })}`)
         if (event.type === 'chat:error') w.__probe(`ERROR ${event.message}`)
@@ -124,11 +130,9 @@ export class Person {
 
   // Shows the comet a job once, by doing it in the teach window, then keeps
   // it under a name.
-  async teach(name: string, work: (page: Page) => Promise<void>, readAtEnd = false): Promise<string> {
-    await this.app.evaluate(() => window.engram.routineTeachStart())
-    await this.hands(work)
-    if (readAtEnd) await this.app.evaluate(() => window.engram.routineTeachRead())
-    const steps = (await this.app.evaluate(() => window.engram.routineTeachStop())) as unknown[]
+  // A job a comet did once and kept: the moves, saved under a name, exactly
+  // as the offer at the end of a turn saves them.
+  async kept(name: string, steps: unknown[]): Promise<string> {
     const routine = (await this.app.evaluate(({ name, steps }) => window.engram.routineAdd({ name, steps: steps as never }), { name, steps })) as { id: string }
     return routine.id
   }

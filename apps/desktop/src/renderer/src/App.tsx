@@ -48,9 +48,7 @@ function Shell() {
   const [digestOpen, setDigestOpen] = useState(false)
   // "Delegate an errand…" from the command palette raises this one window intent.
   const [errandOpen, setErrandOpen] = useState(false)
-  // `teach` means the sheet should open already recording — the answer to
-  // "show me how" is the agent window, not another button to find.
-  const [routinesOpen, setRoutinesOpen] = useState<{ teach: boolean } | null>(null)
+  const [routinesOpen, setRoutinesOpen] = useState(false)
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
@@ -140,8 +138,7 @@ function Shell() {
     const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
-    const openRoutines = (event: Event) =>
-      setRoutinesOpen({ teach: (event as CustomEvent<{ teach?: boolean }>).detail?.teach === true })
+    const openRoutines = () => setRoutinesOpen(true)
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
@@ -352,7 +349,7 @@ function Shell() {
       <NoteSheet />
       {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
       {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
-      {routinesOpen && <RoutinesSheet startTeaching={routinesOpen.teach} onClose={() => setRoutinesOpen(null)} />}
+      {routinesOpen && <RoutinesSheet onClose={() => setRoutinesOpen(false)} />}
       <ReviewOverlay />
       <InboxOverlay />
       <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />

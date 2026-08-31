@@ -1853,12 +1853,16 @@ body.bubble-host { background: transparent; }
   border: 0; padding: 0; background: transparent; caret-color: transparent;
 }
 .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); padding: 6px 10px; border-radius: 999px; }
-.live-panel-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.live-panel-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; flex-wrap: wrap; }
+/* A question asked inside the view takes the width and leads the row. */
+.live-panel-foot .routine-submit { order: -1; flex: 1 1 100%; }
 .live-panel-foot .primary, .live-panel-foot .secondary { font-size: var(--fs-small); }
 
 /* What the comet is doing, under the answer it is writing: the steps in the
    order they happened, and the page it is on. */
 .comet-work { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; width: 100%; margin: 2px 0 6px; }
+/* Nothing to say and no page to show: the strip takes no room at all. */
+.comet-work:empty { display: none; }
 .comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .comet-work-line { font-size: var(--fs-small); color: var(--fg-faint); padding-left: 12px; position: relative; }
 .comet-work-line::before { content: '·'; position: absolute; left: 2px; }
@@ -1873,3 +1877,4 @@ body.bubble-host { background: transparent; }
 .live-card.frozen { cursor: default; opacity: 0.72; }
 /* Before the first frame the card is a thin line, not a wall of nothing. */
 .live-card .live-waiting { aspect-ratio: auto; height: 84px; }
+.routine-submit-hint { font-size: var(--fs-small); color: var(--fg-faint); }
