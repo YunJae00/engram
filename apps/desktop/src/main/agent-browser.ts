@@ -291,6 +291,12 @@ async function ensureContext(): Promise<Ctx> {
       // person's screen reads the same on every machine, and a taught
       // procedure replays against the page it was shown.
       viewport: { width: 1280, height: 800 },
+      // The page is laid out at 1280 CSS pixels and drawn at twice that, so
+      // a still taken of it (what the person looks at when they open the
+      // view) carries real detail instead of an enlarged blur. The live run
+      // of frames is unaffected: a screencast is captured per CSS pixel
+      // whatever this says - measured.
+      deviceScaleFactor: 2,
       args: [
         '--window-size=1280,800',
         '--no-first-run',

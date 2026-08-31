@@ -177,6 +177,22 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [big])
+  // What is open, asked once when this view appears: the address is worth
+  // showing even when no frames are wanted.
+  useEffect(() => {
+    void agentMirror.ask()
+  }, [])
+  // Frames are asked for only while the picture is actually on screen, and
+  // the large view opening asks for a sharp one to read.
+  const showingPixels = on && (big || !folded)
+  useEffect(() => {
+    if (!showingPixels) return
+    agentMirror.showPixels(true)
+    return () => agentMirror.showPixels(false)
+  }, [showingPixels])
+  useEffect(() => {
+    if (big) void api.agentRefresh(true).catch(() => {})
+  }, [big])
   // The dock's height is dragged from its top edge, and kept for next time.
   const drag = (down: React.MouseEvent) => {
     down.preventDefault()

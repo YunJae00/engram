@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
-import { answerHtml } from '../markdown.js'
+import { Answer } from './Answer.js'
 import { useApp } from '../state.js'
 import { Thinking } from './Thinking.js'
 
@@ -161,7 +161,7 @@ export function CosmosChat() {
               m.streaming && !m.text ? (
                 <Thinking label={t('bubble.thinking')} />
               ) : (
-                <div className="bubble-msg-body" dangerouslySetInnerHTML={{ __html: answerHtml(m.text) }} />
+                <Answer text={m.text} />
               )
             ) : (
               m.text

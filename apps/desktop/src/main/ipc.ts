@@ -113,7 +113,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
-import { agentViewGo, agentViewInput, refreshAgentView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
+import { agentViewGo, agentViewInput, agentViewState, refreshAgentView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
 import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -659,6 +659,10 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
 }
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
+// Channels whose answer has not been delivered yet. A turn keeps working
+// after that - what to remember from it, what to offer - and that work is
+// still cancellable, but it is not something to wait on.
+const answering = new Set<string>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
@@ -928,7 +932,7 @@ export function registerIpc(ctx: VaultContext): void {
   // Which surfaces have an answer running right now. A renderer that comes
   // up after the send (a reload mid-answer) asks this to take the seat back
   // before the done event arrives.
-  ipcMain.handle('chat:active', (): string[] => [...chatAborts].map((entry) => entry.channel))
+  ipcMain.handle('chat:active', (): string[] => [...answering])
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
   // the run is accepted (or refused) — the errand itself is detached and takes
@@ -1342,7 +1346,8 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
   ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
-  ipcMain.handle('agent:refresh', () => refreshAgentView())
+  ipcMain.handle('agent:refresh', (_e, sharp: boolean) => refreshAgentView(sharp === true))
+  ipcMain.handle('agent:state', () => agentViewState())
 
   ipcMain.handle('press:askDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
     pressAskWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
@@ -1804,10 +1809,12 @@ export function registerIpc(ctx: VaultContext): void {
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
     chatAborts.add(entry)
+    answering.add(entry.channel)
     try {
       return await handleChatSend(request, controller.signal)
     } finally {
       chatAborts.delete(entry)
+      answering.delete(entry.channel)
     }
   })
 
@@ -1978,6 +1985,7 @@ export function registerIpc(ctx: VaultContext): void {
             .catch(() => undefined)
         }
       }
+      answering.delete(channel)
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
       markEngineOk(engine.id)
     }

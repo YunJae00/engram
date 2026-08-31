@@ -2,15 +2,11 @@ import { api } from '../api.js'
 import { createAgentMirror } from './agentMirror.js'
 
 // One store for the renderer's lifetime, fed from the main-process event
-// feed. Asking for the stream and letting it go travels with whether any
-// view is subscribed, not with which view is mounted.
-export const agentMirror = createAgentMirror((on) => {
-  void api
-    .agentWatch(on)
-    .then((state) => {
-      if (on) agentMirror.open(state.on, state.url)
-    })
-    .catch(() => {})
+// feed. Asking for frames travels with whether anything is showing the
+// picture, not with which view happens to be mounted.
+export const agentMirror = createAgentMirror({
+  watch: (on) => void api.agentWatch(on).catch(() => {}),
+  ask: () => api.agentState(),
 })
 
 api.onEvent((event) => agentMirror.handleEvent(event))

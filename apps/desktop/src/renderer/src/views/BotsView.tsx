@@ -15,7 +15,7 @@ import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
-import { answerHtml } from '../markdown.js'
+import { Answer } from '../components/Answer.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
 
@@ -251,7 +251,7 @@ export function BotsView() {
                       // below the thread: it stays put once words arrive.
                       <span className="bots-pending" data-testid="bots-pending" />
                     ) : (
-                      <div className="bubble-msg-body" dangerouslySetInnerHTML={{ __html: answerHtml(m.text) }} />
+                      <Answer text={m.text} />
                     )
                   ) : (
                     m.text

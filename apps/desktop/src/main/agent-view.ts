@@ -13,7 +13,10 @@ import { flog } from './flog.js'
 // Frames come at the screen's own pixel density (the page is 1280 wide in
 // CSS pixels; on a dense screen that is more device pixels), so the mirror
 // stays sharp however large the window shows it.
-const FRAME = { format: 'jpeg', quality: 62, maxWidth: 2560, maxHeight: 1600 } as const
+// A screencast frame comes at the page's own CSS size however high the cap
+// is set (measured), so the cap only guards against a very large viewport.
+// Quality is what is left to spend, and a page of text wants it.
+const FRAME = { format: 'jpeg', quality: 72, maxWidth: 1920, maxHeight: 1200 } as const
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
@@ -42,11 +45,15 @@ let viewers = 0
 const QUIET_MS = 2_500
 let poke: ReturnType<typeof setInterval> | null = null
 
-async function shoot(m: Mirror): Promise<void> {
-  if (Date.now() - m.painted < QUIET_MS || m.shooting) return
+// sharp: every device pixel the page was drawn with, for the view a person
+// is reading. Otherwise one pixel per CSS pixel, which is what the run of
+// frames carries and costs a third as much.
+async function shoot(m: Mirror, sharp = false): Promise<void> {
+  if (!sharp && (Date.now() - m.painted < QUIET_MS || m.shooting)) return
+  if (m.shooting) return
   m.shooting = true
   try {
-    const shot = await m.page.screenshot({ type: 'jpeg', quality: 60, scale: 'css', fullPage: false, timeout: 4_000 })
+    const shot = await m.page.screenshot({ type: 'jpeg', quality: sharp ? 78 : 60, scale: sharp ? 'device' : 'css', fullPage: false, timeout: 6_000 })
     if (mirror !== m) return
     m.painted = Date.now()
     broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url() })
@@ -110,6 +117,11 @@ async function follow(page: Page): Promise<void> {
     m.painted = Date.now()
     broadcast({ type: 'agent:frame', data: frame.data, width: m.width, height: m.height, url: page.url() })
   })
+  // Where the page has got to, said whether or not anyone wants frames: a
+  // folded view shows the address alone, and it has to stay true.
+  page.on('framenavigated', (frame) => {
+    if (mirror === m && frame === page.mainFrame()) say(true)
+  })
   page.on('close', () => {
     if (mirror !== m) return
     void drop().then(() => {
@@ -140,12 +152,19 @@ export async function watchAgentView(on: boolean): Promise<{ on: boolean; url?: 
 }
 
 // The picture again, now, whatever the page is doing: what a person presses
-// when the view has gone still on a half-drawn page.
-export async function refreshAgentView(): Promise<void> {
+// when the view has gone still on a half-drawn page, and what the large view
+// asks for when it opens - there, every pixel the page was drawn with.
+export async function refreshAgentView(sharp = false): Promise<void> {
   const m = mirror
   if (!m) return
   m.painted = 0
-  await shoot(m)
+  await shoot(m, sharp)
+}
+
+// Whether a window is being mirrored, asked without joining the watch: a
+// view that shows only the address needs this and no frames at all.
+export function agentViewState(): { on: boolean; url?: string } {
+  return mirror ? { on: true, url: mirror.page.url() } : { on: false }
 }
 
 const BUTTON = { left: 'left', right: 'right', middle: 'middle', none: 'none' } as const

@@ -4,20 +4,25 @@ import { createAgentMirror } from '../src/renderer/src/lib/agentMirror.js'
 const FRAME = { type: 'agent:frame' as const, data: 'aGk=', width: 1280, height: 800, url: 'https://x.example/one' }
 
 describe('the browser picture outlives the view that showed it', () => {
-  it('asks for the stream once however many views look, and lets it go when the last leaves', () => {
+  it('asks for frames only while a view is showing them, once for however many', () => {
     const asked: boolean[] = []
-    const mirror = createAgentMirror((on) => asked.push(on))
-    const first = mirror.subscribe(() => {})
-    const second = mirror.subscribe(() => {})
+    const mirror = createAgentMirror({ watch: (on) => asked.push(on), ask: async () => ({ on: false }) })
+    // Watching the store costs nothing: a view that shows the address alone
+    // asks for no frames at all.
+    const off = mirror.subscribe(() => {})
+    expect(asked).toEqual([])
+    mirror.showPixels(true)
+    mirror.showPixels(true)
     expect(asked).toEqual([true])
-    first()
+    mirror.showPixels(false)
     expect(asked).toEqual([true])
-    second()
+    mirror.showPixels(false)
     expect(asked).toEqual([true, false])
+    off()
   })
 
   it('keeps the last frame when the window goes, and through a view coming and going', () => {
-    const mirror = createAgentMirror(() => {})
+    const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
     const off = mirror.subscribe(() => {})
     mirror.handleEvent(FRAME)
     expect(mirror.getSnapshot()).toMatchObject({ on: true, frame: 'data:image/jpeg;base64,aGk=', url: 'https://x.example/one' })

@@ -2,9 +2,12 @@ import type { EngramEvent } from '../../../shared/types.js'
 
 // The agent browser's picture, held outside any view. A person who leaves
 // the thread for the cosmos and comes back is looking at the same work, so
-// the last frame has to outlive the component that showed it - and the
-// stream has to be asked for once, by the window, rather than started and
-// stopped by whatever happens to be mounted.
+// the last frame has to outlive the component that showed it.
+//
+// Frames are the expensive part - a hundred kilobytes each, several times a
+// second - so they are asked for only while something is actually showing
+// pixels. A view that shows the address alone knows what it needs from
+// `ask`, and costs nothing.
 
 export interface MirrorState {
   // A window is open and being mirrored.
@@ -17,30 +20,35 @@ export interface MirrorState {
 
 const EMPTY: MirrorState = { on: false, frame: null, width: 1280, height: 800 }
 
-export function createAgentMirror(watch: (on: boolean) => void) {
+export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promise<{ on: boolean; url?: string }> }) {
   let state: MirrorState = EMPTY
   const listeners = new Set<() => void>()
-  let watching = 0
+  let showing = 0
   const emit = (): void => {
     for (const listener of listeners) listener()
   }
   return {
     subscribe(listener: () => void): () => void {
       listeners.add(listener)
-      // The first view to look asks for the stream; the last to leave lets
-      // it go. Moving between views does not interrupt it.
-      if (++watching === 1) watch(true)
       return () => {
         listeners.delete(listener)
-        if (--watching === 0) watch(false)
       }
     },
     getSnapshot(): MirrorState {
       return state
     },
-    // What the main side says when a view first asks.
-    open(on: boolean, url?: string): void {
-      state = on ? { ...state, on, ...(url ? { url } : {}) } : { ...state, on }
+    // Whether this view is showing the picture. The first to say so starts
+    // the run of frames; the last to stop ends it.
+    showPixels(on: boolean): void {
+      showing = Math.max(0, showing + (on ? 1 : -1))
+      if (on && showing === 1) deps.watch(true)
+      if (!on && showing === 0) deps.watch(false)
+    },
+    // What is open right now, for a view that has just appeared.
+    async ask(): Promise<void> {
+      const now = await deps.ask().catch(() => null)
+      if (!now) return
+      state = { ...state, on: now.on, ...(now.url ? { url: now.url } : {}) }
       emit()
     },
     handleEvent(event: EngramEvent): void {

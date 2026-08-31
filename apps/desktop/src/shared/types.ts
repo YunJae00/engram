@@ -516,8 +516,10 @@ export interface EngramApi {
   agentWindow(show: boolean): Promise<void>
   agentGo(url: string): Promise<void>
   // Take the picture again now: for a view left on a page that went still
-  // half-drawn.
-  agentRefresh(): Promise<void>
+  // half-drawn. sharp asks for every device pixel, for a view being read.
+  agentRefresh(sharp?: boolean): Promise<void>
+  // Whether a window is being mirrored, without joining the watch.
+  agentState(): Promise<{ on: boolean; url?: string }>
   // workspace registry/switcher (app-level vaults)
   workspaceList(): Promise<{ current: string | null; vaults: WorkspaceInfoDto[] }>
   workspaceCreate(name: string): Promise<void>
