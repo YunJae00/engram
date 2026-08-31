@@ -20,6 +20,7 @@ const DOCK_MIN = 160
 const DOCK_MAX_SHARE = 0.62
 const DOCK_DEFAULT = 340
 const DOCK_KEY = 'engram.live.height'
+const FOLD_KEY = 'engram.live.folded'
 // Keys that mean something to a page beyond a character.
 const PRESSED_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 
@@ -138,22 +139,27 @@ function Address({ url }: { url?: string }) {
   )
 }
 
-// open: the large view comes up on its own — a question about a press is
-// answered there, not from a strip. keep: hold the dock while the turn runs,
-// even between windows, so it does not blink in and out. children: what
-// belongs beside the page (the question, a wall's Continue).
+// open: something is being asked about the page, so the dock unfolds to
+// show it - the question is answered here, and the large view stays a thing
+// the person opens when they want a proper look. keep: hold the dock while
+// the turn runs, even between windows, so it does not blink in and out.
+// children: what belongs beside the page (the question, a wall's Continue).
 export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
   const { t } = useApp()
   const { on, url, frame, width, height } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const size = { width, height }
   const [big, setBig] = useState(false)
   const [windowOut, setWindowOut] = useState(false)
-  const [folded, setFolded] = useState(false)
+  // Folded to a line by default: the page is there to glance at, and what
+  // is asked about it is asked here in words. Unfolds by itself when there
+  // is something to look at, and stays wherever the person leaves it.
+  const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) !== '0')
   const [dock, setDock] = useState(() => Number(localStorage.getItem(DOCK_KEY)) || DOCK_DEFAULT)
-  // The large view opens once there is a page to show, and closes with it.
+  // A question about the page unfolds the dock; the window going closes
+  // whatever was open on it.
   useEffect(() => {
     if (on) {
-      if (open) setBig(true)
+      if (open) setFolded(false)
     } else {
       setBig(false)
       setWindowOut(false)
@@ -208,7 +214,10 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
             data-testid="live-fold"
             aria-label={t(folded ? 'live.unfold' : 'live.fold')}
             title={t(folded ? 'live.unfold' : 'live.fold')}
-            onClick={() => setFolded(!folded)}
+            onClick={() => {
+              localStorage.setItem(FOLD_KEY, folded ? '0' : '1')
+              setFolded(!folded)
+            }}
           >
             <ChevronDown size={12} className={folded ? 'live-dock-chevron up' : 'live-dock-chevron'} aria-hidden />
           </button>
