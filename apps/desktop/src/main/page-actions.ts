@@ -140,6 +140,19 @@ async function inspected(hand: Locator): Promise<ReturnType<typeof inspectContro
   }
 }
 
+// The person's answer to "may this go?": the host asks them, with the page
+// in front of them. No asker means the old refusal - nothing commits by
+// accident because a caller forgot to wire the question.
+export type Ask = (what: { words: string; url: string }) => Promise<'approve' | 'always' | 'cancel'>
+
+async function allowed(page: Page, words: string, ask?: Ask): Promise<'yes' | 'no' | 'theirs'> {
+  if (!ask) return 'no'
+  const said = await ask({ words: words.slice(0, 80), url: page.url() }).catch(() => 'cancel' as const)
+  // 'always' is remembered by the host; here both mean the press may go.
+  if (said === 'approve' || said === 'always') return 'yes'
+  return 'theirs'
+}
+
 function missing(target: string): PageMove {
   return { ok: false, error: `could not find "${target}" on the page` }
 }
@@ -179,7 +192,7 @@ async function ambiguity(page: Page, target: string): Promise<PageMove> {
   }
 }
 
-export async function pressOn(page: Page, target: string, signal?: AbortSignal): Promise<PageMove> {
+export async function pressOn(page: Page, target: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   const aim = await handOn(page, target, signal)
   if ('many' in aim) return ambiguity(page, target)
   if ('none' in aim) return missing(target)
@@ -187,7 +200,10 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal):
   try {
     const control = await inspected(hand)
     if (!control) return missing(target)
-    if (pressCommits(control)) return { ok: false, refused: control.words.slice(0, 80) }
+    if (pressCommits(control)) {
+      const said = await allowed(page, control.words, ask)
+      if (said !== 'yes') return { ok: false, refused: control.words.slice(0, 80), ...(said === 'theirs' ? { theirs: true } : {}) }
+    }
     const before = await signature(page)
     try {
       await hand.scrollIntoViewIfNeeded({ timeout: FIND_TIMEOUT_MS })
@@ -293,7 +309,7 @@ export async function scrollPage(page: Page, to: string, signal?: AbortSignal): 
 // A press where the picture shows it. The point is looked at first - what
 // sits there is inspected exactly as a named control would be - so this is
 // a way to reach a thing, never a way around the guard.
-export async function pressPoint(page: Page, x: number, y: number): Promise<PageMove> {
+export async function pressPoint(page: Page, x: number, y: number, ask?: Ask): Promise<PageMove> {
   const size = page.viewportSize() ?? { width: 1280, height: 800 }
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return { ok: false, error: 'a point is given in fractions of the picture, between 0 and 1' }
   const at = { x: Math.round(x * size.width), y: Math.round(y * size.height) }
@@ -311,7 +327,10 @@ export async function pressPoint(page: Page, x: number, y: number): Promise<Page
       }
     }, at)
     if (!there) return { ok: false, error: 'nothing is at that point of the picture' }
-    if (pressCommits(there)) return { ok: false, refused: there.words || 'what is at that point' }
+    if (pressCommits(there)) {
+      const said = await allowed(page, there.words, ask)
+      if (said !== 'yes') return { ok: false, refused: there.words || 'what is at that point', ...(said === 'theirs' ? { theirs: true } : {}) }
+    }
     const before = await signature(page)
     await page.mouse.click(at.x, at.y)
     await settle(page)

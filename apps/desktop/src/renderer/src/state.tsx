@@ -102,6 +102,10 @@ interface AppState {
   // submitted while this stands.
   routineSubmit: { name: string; filled: { label: string; text: string }[]; host: string | null; canRemember: boolean } | null
   answerRoutineSubmit(verdict: 'approve' | 'always' | 'cancel'): void
+  // A comet is at a control that would commit; the person answers with the
+  // page in front of them.
+  pressAsk: { channel: string; words: string; host: string | null } | null
+  answerPressAsk(verdict: 'approve' | 'always' | 'cancel'): void
   // Resolves with the refusal so a caller can ask the rerun question itself.
   startRoutine(
     id: string,
@@ -181,6 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [routine, setRoutine] = useState<AppState['routine']>({ running: false, steps: [] })
   const [routineWall, setRoutineWall] = useState<{ wall: 'login' | 'captcha' } | null>(null)
   const [routineSubmit, setRoutineSubmit] = useState<AppState['routineSubmit']>(null)
+  const [pressAsk, setPressAsk] = useState<AppState['pressAsk']>(null)
   const [toast, setToast] = useState<string | null>(null)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
@@ -409,6 +414,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // A routine replay narrating its steps. The logged event ends the run
       // and speaks once — with a door to review when a reading landed.
       if (event.type === 'routine:wall') setRoutineWall({ wall: event.wall })
+      if (event.type === 'press:ask') setPressAsk({ channel: event.channel, words: event.words, host: event.host })
       if (event.type === 'routine:submit')
         setRoutineSubmit({ name: event.name, filled: event.filled, host: event.host, canRemember: event.canRemember })
       if (event.type === 'routine:passed')
@@ -497,6 +503,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void api.routineWallDone(verdict).catch(() => undefined)
   }, [])
 
+  const answerPressAsk = useCallback((verdict: 'approve' | 'always' | 'cancel') => {
+    setPressAsk(null)
+    void api.pressAskDone(verdict).catch(() => undefined)
+  }, [])
+
   const answerRoutineSubmit = useCallback((verdict: 'approve' | 'always' | 'cancel') => {
     setRoutineSubmit(null)
     void api.routineSubmitDone(verdict).catch(() => undefined)
@@ -575,12 +586,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       answerRoutineWall,
       routineSubmit,
       answerRoutineSubmit,
+      pressAsk,
+      answerPressAsk,
       startRoutine,
       toast,
       showToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, startRoutine, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, reviewOpen, inboxOpen, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, pressAsk, answerPressAsk, startRoutine, toast, showToast],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

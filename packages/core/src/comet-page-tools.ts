@@ -17,8 +17,10 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
   if (!readOpen) return []
   // What came of a move: the page as it now stands, or why it did not move.
   const after = async (move: PageMove, what: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> => {
+    if (move.theirs)
+      return `the person read what "${move.refused || what}" would do and chose to do it themselves - the page is open in front of them; say what is left for them and wait for their word`
     if (move.refused !== undefined)
-      return `"${move.refused || what}" would submit or commit something, and that is not yours to do - tell the person what it is and ask them, or use a procedure they showed you`
+      return `"${move.refused || what}" was not pressed: it would submit or commit something and the person did not allow it. Say what is left undone, in one line`
     if (!move.ok) return `${move.error ?? `could not ${what}`} - read_open_page lists the page's controls with their numbers; a control is named by its words or its number (#12)`
     const page = await readOpen(signal)
     if (page.wall) {
@@ -38,7 +40,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     tools.push({
       name: 'press',
       description:
-        'press a link, tab, date, arrow or button on the open page to move around it - by the words on it, or by its number from the control list (#12) when it has no words; anything that would submit, save, send or buy is refused - args: {"target": "the words on it or #12", "find": "..."}',
+        'press a link, tab, date, arrow or button on the open page - by the words on it, or by its number from the control list (#12) when it has no words. Press the one the job needs, whatever it does: at anything that would submit, save, send or buy, the app stops and asks the person, who is looking at the page - args: {"target": "the words on it or #12", "find": "..."}',
       argsSchema: { type: 'object', properties: { target: { type: 'string' }, find: { type: 'string' } }, required: ['target'] },
       async run(args, context) {
         const target = str(args, 'target')

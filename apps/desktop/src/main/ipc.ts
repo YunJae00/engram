@@ -58,7 +58,6 @@ import {
   parsePendingCall,
   runErrand,
   addRoutine,
-  buildRoutineFromTeach,
   hostOf,
   ruleCovers,
   ruleFor,
@@ -114,7 +113,6 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
-import { markTeachRead, startTeach, stopTeach } from './teach-recorder.js'
 import { agentViewGo, agentViewInput, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
 import { consentedFolders } from './content-capture.js'
@@ -631,8 +629,34 @@ let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 // Set while a replay waits for permission to post; answered by
 // routines:submitDone, and by an abort with 'cancel' so it cannot wedge.
 let routineSubmitWaiter: ((verdict: 'approve' | 'always' | 'cancel') => void) | null = null
-// Teach mode shares the agent browser, so it excludes routine runs and errands.
-let teachingSession = false
+// The same, for a press the comet wants to make on a page it merely found.
+let pressAskWaiter: ((verdict: 'approve' | 'always' | 'cancel') => void) | null = null
+
+// A comet at a control that would commit: the person is shown the page and
+// says whether it goes. An answer they gave "for good" on this site is kept
+// and answers by itself next time.
+function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsStore>) {
+  return async (what: { words: string; url: string }): Promise<'approve' | 'always' | 'cancel'> => {
+    const host = hostOf(what.url)
+    const action: GatedAction | null = host ? { routineId: 'comet', kind: 'submit', host, fieldLabels: [what.words] } : null
+    if (action && ruleCovers(await approvals.list(), action)) {
+      flog('comet', `pressing "${what.words}" under a standing approval on ${host}`)
+      return 'approve'
+    }
+    // Whatever they answer, the window stays until they have answered: the
+    // page they are looking at is the question.
+    const keepOpen = holdAgentBrowser()
+    return new Promise((resolve) => {
+      pressAskWaiter = (verdict) => {
+        pressAskWaiter = null
+        keepOpen()
+        if (verdict === 'always' && action) void approvals.add(ruleFor(action))
+        resolve(verdict)
+      }
+      broadcast({ type: 'press:ask', channel, words: what.words, host })
+    })
+  }
+}
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 
@@ -1311,6 +1335,18 @@ export function registerIpc(ctx: VaultContext): void {
     routineAbort?.abort()
   })
 
+  // The agent browser mirrored into the app: frames while a view watches,
+  // the moves a person makes on that view, and the real window on call.
+  startAgentView()
+  ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
+  ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
+  ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
+  ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
+
+  ipcMain.handle('press:askDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
+    pressAskWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
+  })
+
   ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
     routineSubmitWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
   })
@@ -1370,55 +1406,6 @@ export function registerIpc(ctx: VaultContext): void {
     await forgetImportedSession()
   })
   ipcMain.handle('browsers:importedAt', () => importedAt())
-
-  ipcMain.handle('routines:teachStart', async (): Promise<RoutineRunReply> => {
-    if (routineRunning || errandRunning) return { ok: false, error: 'Something is already using the browser — try again in a moment.' }
-    if (!agentBrowserAvailable())
-      return { ok: false, error: 'No Chrome-family browser found — install Chrome, Edge or Brave to teach a routine.' }
-    const free = os.freemem()
-    if (free < ROUTINE_MIN_FREE)
-      return {
-        ok: false,
-        error: `Not enough free memory to open the browser right now (${(free / 1e9).toFixed(1)}GB free) — close some apps and try again.`,
-      }
-    // A lesson left open (the sheet closed part-way, or the window shut with
-    // nothing done) gives way to the new one: pressing Teach again means
-    // begin again. A wall held open for the person's sign-in yields the
-    // window too — the lesson is what they chose to do with it.
-    if (teachingSession) {
-      teachingSession = false
-      await stopTeach().catch(() => [])
-    }
-    releaseWallHold()
-    teachingSession = true
-    try {
-      await startTeach()
-      return { ok: true }
-    } catch (err) {
-      teachingSession = false
-      await stopTeach().catch(() => [])
-      return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
-    }
-  })
-
-  ipcMain.handle('routines:teachState', () => ({ teaching: teachingSession }))
-
-  startAgentView()
-  ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
-  ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
-  ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
-  ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
-
-  ipcMain.handle('routines:teachRead', () => {
-    if (teachingSession) markTeachRead()
-  })
-
-  ipcMain.handle('routines:teachStop', async (): Promise<RoutineStep[]> => {
-    if (!teachingSession) return []
-    teachingSession = false
-    const events = await stopTeach().catch(() => [])
-    return buildRoutineFromTeach(events)
-  })
 
   ipcMain.handle('notes:list', () => ctx.store.getAll().map(toDto))
 
@@ -2035,7 +2022,7 @@ export function registerIpc(ctx: VaultContext): void {
               // opening - where the model can step aside to make room - not
               // here, where a tight reading meant a comet with no web at all
               // telling the person it had no such tool (measured).
-              courier: agentBrowserAvailable() ? agentCourier() : null,
+              courier: agentBrowserAvailable() ? agentCourier({ askBeforePress: askBeforePress(channel, approvals) }) : null,
               // A wall met this turn keeps the window open past the answer,
               // so the person signs in where they were told to; the hold is
               // let go when they speak again, or after a while on its own.
@@ -2142,16 +2129,18 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        // Never been shown this job: the loop says so in its observation, and
-        // the thread turns that into an offer to watch the person do it once.
-        const untaught = result.steps.some((step) => step.observation.startsWith('NOTHING-TAUGHT:'))
+        // A job worked on a website, hands and all: worth writing down how it
+        // went, so the next time starts from what was learned rather than from
+        // nothing. The note is the person's to approve, like any other.
+        const HANDS = new Set(['press', 'type_text', 'choose', 'press_point', 'reveal'])
+        const handled = result.steps.some((step) => HANDS.has(step.tool))
         // What to offer is read off what happened, never off a fixed row of
         // buttons: a job it was never shown asks to be taught, a procedure
         // it found asks to be run, and a job that took real work - several
         // tools, a real answer at the end - asks whether to be kept for one
         // click next time. A quick answer offers nothing at all.
         const worked = result.steps.filter((step) => !step.seeded).length
-        const keepable = !untaught && !routine && !result.asked && worked >= KEEP_AFTER_STEPS
+        const keepable = !routine && !result.asked && worked >= KEEP_AFTER_STEPS
         // The third morning of the same ask, and a read-only procedure with
         // no blanks was just run for it: that one can run itself from now on.
         const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
@@ -2168,15 +2157,13 @@ export function registerIpc(ctx: VaultContext): void {
           // A job it was never shown is answered by being shown, whatever
           // question it thought of on the way: the one press that moves this
           // forward is the offer to watch, so it outranks the chips.
-          untaught
-            ? { kind: 'teach' }
-            : result.asked && result.options?.length
+          result.asked && result.options?.length
               ? { kind: 'asked', question: result.answer, options: result.options }
               : standing && ran
                 ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
             : routine
               ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
-              : keepable
+              : keepable || handled
                 ? { kind: 'keep', name: request.message.slice(0, 40), goal: request.message }
                 : undefined,
         )
@@ -2207,7 +2194,7 @@ export function registerIpc(ctx: VaultContext): void {
         // The window goes away when the work does. A person shuts the tab they
         // opened rather than leaving it sitting there, and a browser left open
         // is memory held for nothing - it reopens in a second when the next
-        // question needs it. A teach recording, a routine mid-run, or a wall
+        // question needs it. A routine mid-run, or a wall
         // waiting for the person holds the window, and an unforced close
         // steps aside for them.
         if (!wallHold) void closeAgentBrowser()

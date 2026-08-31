@@ -243,3 +243,29 @@ test('a folded section is opened by the words inside it, and a view toggle is no
   expect(await pressOn(page, '월간 결제')).toMatchObject({ ok: true })
   expect(await page.textContent('#mode')).toBe('monthly')
 })
+
+test('a commit is put to the person: they can let it go, or keep it for themselves', async () => {
+  await page.setContent(`<html><body><main>
+    <form action="/post" method="post"><button type="submit" style="width:200px;height:50px">Send</button></form>
+    <p id="state">unsent</p></main></body></html>`)
+  // No asker: the old refusal stands, and nothing is pressed.
+  const alone = await pressOn(page, 'Send')
+  expect(alone).toMatchObject({ ok: false, refused: 'Send' })
+  expect(alone.theirs).toBeUndefined()
+  expect(posted).toBe(0)
+
+  // They take it themselves: refused, and said to be theirs.
+  const mine = await pressOn(page, 'Send', undefined, async () => 'cancel')
+  expect(mine).toMatchObject({ ok: false, refused: 'Send', theirs: true })
+  expect(posted).toBe(0)
+
+  // They say it goes: it goes, once.
+  const asked: string[] = []
+  const go = await pressOn(page, 'Send', undefined, async (what) => {
+    asked.push(what.words)
+    return 'approve'
+  })
+  expect(go.ok).toBe(true)
+  expect(asked).toEqual(['Send'])
+  await expect.poll(() => posted).toBe(1)
+})

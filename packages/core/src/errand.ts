@@ -68,6 +68,8 @@ export interface PageMove {
   // The move happened, but the page is exactly as it was: what was touched
   // was probably not what was meant.
   changed?: boolean
+  // The person was asked and said they would rather do it themselves.
+  theirs?: boolean
 }
 
 // Injected by the host (the desktop drives a real browser); core stays pure
@@ -92,6 +94,9 @@ export interface WebCourier {
   scroll?(to: string, signal?: AbortSignal): Promise<PageMove>
   hover?(target: string, signal?: AbortSignal): Promise<PageMove>
   pressKey?(key: string, signal?: AbortSignal): Promise<PageMove>
+  // Asked before a press that would commit something: the person is shown
+  // the page and says whether it goes. Absent, such a press is refused.
+  askBeforePress?(what: { words: string; url: string }): Promise<'approve' | 'always' | 'cancel'>
   // A press where the picture shows it, in fractions of that picture. The
   // way through for what the page never named: a day drawn in a grid, a
   // point on a chart, a control inside a frame nothing can reach into.

@@ -393,10 +393,9 @@ export type EngramEvent =
       channel: string
       text: string
       // 'run' — a saved procedure matches this request, one press away.
-      // 'teach' — nothing has been shown to it yet, so the offer is to watch.
+
       offer?:
         | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string> }
-        | { kind: 'teach' }
         // A job that took real work is worth keeping: the loop says so, the
         // person decides. Nothing here is a form to fill.
         | { kind: 'keep'; name: string; goal: string }
@@ -432,6 +431,9 @@ export type EngramEvent =
     }
   // A post went through under an approval the person gave for good.
   | { type: 'routine:passed'; routineId: string; host: string }
+  // A comet is at a control that would commit something. The person sees the
+  // page beside this and says whether it goes, or takes it themselves.
+  | { type: 'press:ask'; channel: string; words: string; host: string | null }
   // Another window asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
   | { type: 'brain:setup' }
@@ -591,17 +593,11 @@ export interface EngramApi {
   // The person's answer to "may this be posted?" — nothing is submitted
   // until this says approve.
   routineSubmitDone(verdict: 'approve' | 'always' | 'cancel'): Promise<void>
+  // The person's word on a press that would commit: it goes, it goes here
+  // from now on, or they will do it themselves.
+  pressAskDone(verdict: 'approve' | 'always' | 'cancel'): Promise<void>
   approvalsList(): Promise<ApprovalRuleDto[]>
   approvalForget(fingerprint: string): Promise<void>
-  // Teach mode: open the agent Chrome and record the person's moves, then hand
-  // them back as steps to name and save. teachStart resolves once the window
-  // is up (or refused); teachStop returns the recorded steps.
-  routineTeachStart(): Promise<{ ok: boolean; error?: string }>
-  routineTeachRead(): Promise<void>
-  routineTeachStop(): Promise<RoutineStepDto[]>
-  // Whether a lesson is being recorded right now — a reopened sheet picks
-  // it up where it was left.
-  routineTeachState(): Promise<{ teaching: boolean }>
   // Browsers whose sessions can be inherited, and the one-press inherit.
   browsersList(): Promise<{ id: string; name: string; userData: string; running: boolean }[]>
   browserImport(id: string): Promise<{ ok: boolean; copied?: number; error?: string }>

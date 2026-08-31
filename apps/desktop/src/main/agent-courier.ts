@@ -1,7 +1,7 @@
 import type { PageMove, WebCourier } from 'core'
 import { armIdleClose, agentAbortable as withAbort, ensureAgentPage as ensurePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
-import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText } from './page-actions.js'
+import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
 import { revealText } from './page-reveal.js'
 
 // What a comet is given when it can reach the web: one browser, one reused
@@ -24,7 +24,8 @@ function withinBudget(work: Promise<PageMove>): Promise<PageMove> {
 // One browser, one reused tab. It knows how to open, read, type and click —
 // and nothing at all about search engines: where to go is the caller's
 // judgement, which is what lets it be sent somewhere new.
-export function agentCourier(): WebCourier {
+export function agentCourier(deps: { askBeforePress?: Ask } = {}): WebCourier {
+  const ask = deps.askBeforePress
   return {
     async readOpen(signal) {
       const page = await withAbort(ensurePage(), signal)
@@ -48,7 +49,7 @@ export function agentCourier(): WebCourier {
     async press(target, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressOn(page, target, signal))
+      return withinBudget(pressOn(page, target, signal, ask))
     },
     async typeText(target, text, enter, signal) {
       const page = await withAbort(ensurePage(), signal)
@@ -83,7 +84,7 @@ export function agentCourier(): WebCourier {
     async pressPoint(x, y, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressPoint(page, x, y))
+      return withinBudget(pressPoint(page, x, y, ask))
     },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)
