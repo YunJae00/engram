@@ -10,11 +10,14 @@ import { CometRail } from '../components/CometRail.js'
 import { CometWork } from '../components/CometWork.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
+import { useStickToBottom } from '../lib/useStickToBottom.js'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
-import { Answer } from '../components/Answer.js'
+import { StreamingAnswer } from '../components/StreamingAnswer.js'
+import { LiveView } from '../components/LiveView.js'
+import { PressGate } from '../components/PressGate.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
 
@@ -35,7 +38,7 @@ const PHASE_LABEL: Record<string, StringKey> = {
 
 
 export function BotsView() {
-  const { errand, startErrand, routine, startRoutine, t } = useApp()
+  const { errand, startErrand, pressAsk, routine, startRoutine, t } = useApp()
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
@@ -82,11 +85,7 @@ export function BotsView() {
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
-  useEffect(() => {
-    const list = listRef.current
-    if (!list) return
-    if (list.scrollHeight - list.scrollTop - list.clientHeight < 140) list.scrollTo({ top: list.scrollHeight })
-  }, [messages])
+  useStickToBottom(listRef, messages)
 
   // One answer at a time across every comet: the local model does not share.
   const send = () => sendText(draft.trim())
@@ -236,7 +235,7 @@ export function BotsView() {
               ))}
             </div>
             )}
-            <div className="bots-thread" ref={listRef}>
+            <div className="bots-thread" data-testid="bots-thread" ref={listRef}>
               {messages.length === 0 && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               {messages.map((m, i) => (
                 <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
@@ -246,7 +245,7 @@ export function BotsView() {
                       // below the thread: it stays put once words arrive.
                       <span className="bots-pending" data-testid="bots-pending" />
                     ) : (
-                      <Answer text={m.text} />
+                      <StreamingAnswer text={m.text} done={!m.streaming} />
                     )
                   ) : (
                     m.text
@@ -310,6 +309,12 @@ export function BotsView() {
                 </div>
               )}
             </div>
+            {/* The page the comet is working on sits under the conversation
+                and over the composer: always in the same place, and never
+                across a word of what was said. */}
+            <LiveView keep open={pressAsk !== null}>
+              <PressGate />
+            </LiveView>
             <div className="bots-write chat-write">
               <textarea
                 ref={boxRef}

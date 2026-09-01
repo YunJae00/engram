@@ -1,21 +1,17 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { LiveView } from './LiveView.js'
-import { PressGate } from './PressGate.js'
 import { Thinking } from './Thinking.js'
 import { stepLabel } from '../lib/pendingStatus.js'
 import { useApp } from '../state.js'
 
 // What the comet is doing, while it does it: every step of the turn in the
-// order it happened, and the page it is on. It stays put while the answer is
-// written above it - watching the work is how a person knows to step in -
-// and folds into one line once the turn is over. The page outlives the turn:
-// a browser still open, or the last thing a closed one showed, is here to be
-// looked at rather than gone. With neither steps nor page, it takes no room.
+// order it happened. It stays put while the answer is written above it -
+// watching the work is how a person knows to step in - and folds into one
+// line once the turn is over. The page it is working on is not here: that
+// sits below the conversation, where it never covers a word of it.
 
 export function CometWork({ busy, status, since, lines, kept }: { busy: boolean; status: string; since?: number; lines: string[]; kept: string[] }) {
-  const { pressAsk, t } = useApp()
-  const waiting = pressAsk !== null
+  const { t } = useApp()
   const [open, setOpen] = useState(false)
   const shown = busy ? lines : kept
   return (
@@ -36,11 +32,6 @@ export function CometWork({ busy, status, since, lines, kept }: { busy: boolean;
           ))}
         </ol>
       )}
-      {/* The question comes with the page, and rides inside the view: its
-          buttons have to sit above the page, not behind it. */}
-      <LiveView keep open={waiting}>
-        <PressGate />
-      </LiveView>
     </div>
   )
 }

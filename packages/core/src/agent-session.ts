@@ -10,11 +10,16 @@ import { withoutSecrets } from './secrets.js'
 // of one fresh process, and the model keeps the pages it already read. The
 // step loop stays for a brain that cannot, and for the guided small one.
 
-const SESSION_MAX_CALLS = 12
+// Real work on a page is a dozen small moves - open, read, type, choose,
+// check - before anything has been achieved, and a budget that runs out
+// mid-job hands the person a half-finished turn to restart by hand. So the
+// budget is sized for the whole job, and is there only to stop a page that
+// will not load from becoming a hundred tries.
+const SESSION_MAX_CALLS = 40
 // How long one turn may take, and the point past which the clock is
 // counted out loud so the answer is written before it runs out.
-export const SESSION_TURN_MS = 240_000
-const SESSION_SOFT_MS = 150_000
+export const SESSION_TURN_MS = 600_000
+const SESSION_SOFT_MS = 480_000
 
 const CONTENT_TOOLS = new Set(['search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
 
@@ -82,7 +87,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const left = SESSION_MAX_CALLS - steps.length
       const elapsed = Date.now() - started
       const notes = [
-        ...(left <= 3 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
+        ...(left <= 5 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
         ...(elapsed > SESSION_SOFT_MS
           ? [`about ${Math.max(5, Math.round((SESSION_TURN_MS - elapsed) / 1000))}s left this turn - answer from what you have unless the next step is sure`]
           : []),

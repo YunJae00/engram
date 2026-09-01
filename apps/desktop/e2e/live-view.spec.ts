@@ -92,7 +92,7 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await page.getByTestId('live-address').press('Enter')
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 20_000 })
   const stage = page.getByTestId('live-panel').locator('.live-stage')
-  await expect(stage.locator('img')).toBeVisible({ timeout: 15_000 })
+  await expect(stage.locator('canvas')).toBeVisible({ timeout: 15_000 })
 
   // A click on the mirror focuses the page's field; keys typed there land in it.
   const box = (await stage.boundingBox())!

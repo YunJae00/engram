@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
-import { Answer } from './Answer.js'
+import { useStickToBottom } from '../lib/useStickToBottom.js'
+import { StreamingAnswer } from './StreamingAnswer.js'
 import { useApp } from '../state.js'
 import { Thinking } from './Thinking.js'
 
@@ -86,11 +87,7 @@ export function CosmosChat() {
     })
   }, [])
 
-  useEffect(() => {
-    const list = listRef.current
-    if (!list) return
-    if (list.scrollHeight - list.scrollTop - list.clientHeight < 140) list.scrollTo({ top: list.scrollHeight })
-  }, [messages])
+  useStickToBottom(listRef, messages)
 
   const send = async () => {
     const message = text.trim()
@@ -161,7 +158,7 @@ export function CosmosChat() {
               m.streaming && !m.text ? (
                 <Thinking label={t('bubble.thinking')} />
               ) : (
-                <Answer text={m.text} />
+                <StreamingAnswer text={m.text} done={!m.streaming} />
               )
             ) : (
               m.text

@@ -80,10 +80,34 @@ export function createCometThreads(initialSelected: string | null = null) {
   const emit = () => {
     for (const listener of listeners) listener()
   }
+  // Words arrive far faster than a screen can draw them. The snapshot is
+  // always current - a reader never sees stale text - but the telling is
+  // held to one a frame, so a long answer streams instead of stuttering.
+  // A frame where there is a screen, a short timer where there is not (the
+  // store is the same object under test as in the window).
+  const soon: (run: () => void) => number =
+    typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (run) => setTimeout(run, 16) as unknown as number
+  const cancel: (handle: number) => void =
+    typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : (handle) => clearTimeout(handle)
+  let framed = 0
+  const emitSoon = () => {
+    if (framed) return
+    framed = soon(() => {
+      framed = 0
+      emit()
+    })
+  }
   const thread = (id: string | null): CometThread => (id ? (snapshot.threads[id] ?? EMPTY) : EMPTY)
-  const patch = (id: string, next: Partial<CometThread>) => {
+  const patch = (id: string, next: Partial<CometThread>, soon = false) => {
     snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...thread(id), ...next } } }
-    emit()
+    if (soon) emitSoon()
+    else {
+      if (framed) {
+        cancel(framed)
+        framed = 0
+      }
+      emit()
+    }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
     patch(id, { busy: false, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: null, messages, ...extra })
@@ -186,7 +210,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       const current = thread(id)
       if (!current.busy) return null
       if (event.type === 'comet:step') {
-        patch(id, { workLines: [...current.workLines.slice(1 - WORK_LINES_KEPT), event.line] })
+        patch(id, { workLines: [...current.workLines.slice(1 - WORK_LINES_KEPT), event.line] }, true)
         return id
       }
       if (event.type === 'chat:token') {
@@ -194,7 +218,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         if (at < 0) return id
         const next = [...current.messages]
         next[at] = { ...next[at]!, text: event.reset ? '' : next[at]!.text + event.text }
-        patch(id, { messages: next })
+        patch(id, { messages: next }, true)
         return id
       }
       if (event.type === 'chat:done') {

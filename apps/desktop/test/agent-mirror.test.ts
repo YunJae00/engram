@@ -23,19 +23,39 @@ describe('the browser picture outlives the view that showed it', () => {
 
   it('keeps the last frame when the window goes, and through a view coming and going', () => {
     const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
+    const seen: string[] = []
     const off = mirror.subscribe(() => {})
+    const stop = mirror.onFrame((data) => seen.push(data))
     mirror.handleEvent(FRAME)
-    expect(mirror.getSnapshot()).toMatchObject({ on: true, frame: 'data:image/jpeg;base64,aGk=', url: 'https://x.example/one' })
+    expect(seen).toEqual(['aGk='])
+    expect(mirror.getSnapshot()).toMatchObject({ on: true, frame: true, url: 'https://x.example/one' })
     // The browser closes: the picture stays, so the person can still read the
     // answer against what was on screen.
     mirror.handleEvent({ type: 'agent:live', on: false })
-    expect(mirror.getSnapshot()).toMatchObject({ on: false, frame: 'data:image/jpeg;base64,aGk=' })
-    // Leaving the thread and coming back does not wipe it.
+    expect(mirror.getSnapshot()).toMatchObject({ on: false, frame: true })
+    // Leaving the thread and coming back does not wipe it: whatever paints
+    // next is handed the picture already in hand.
     off()
+    stop()
     mirror.subscribe(() => {})
-    expect(mirror.getSnapshot().frame).toBe('data:image/jpeg;base64,aGk=')
+    mirror.onFrame((data) => seen.push(data))
+    expect(seen).toEqual(['aGk=', 'aGk='])
     // A new window starts blank rather than showing the page before it.
     mirror.handleEvent({ type: 'agent:live', on: true, url: 'https://x.example/two' })
-    expect(mirror.getSnapshot()).toMatchObject({ on: true, frame: null, url: 'https://x.example/two' })
+    expect(mirror.getSnapshot()).toMatchObject({ on: true, frame: false, url: 'https://x.example/two' })
+  })
+
+  it('tells a view only when the window, its address or its shape changes', () => {
+    let told = 0
+    const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
+    mirror.subscribe(() => told++)
+    mirror.handleEvent(FRAME)
+    expect(told).toBe(1)
+    // Frame after frame of the same page: the pixels move, the view does not.
+    mirror.handleEvent({ ...FRAME, data: 'aGkh' })
+    mirror.handleEvent({ ...FRAME, data: 'aGki' })
+    expect(told).toBe(1)
+    mirror.handleEvent({ ...FRAME, url: 'https://x.example/two' })
+    expect(told).toBe(2)
   })
 })

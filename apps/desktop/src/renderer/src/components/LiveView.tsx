@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import type { AgentInputDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
+import { FrameScreen } from './FrameScreen.js'
 import { useApp } from '../state.js'
 
 // The agent browser, seen from inside the app: while a comet works, the page
@@ -37,9 +38,9 @@ function hostOf(url: string | undefined): string {
   }
 }
 
-function Stage({ frame, size, live }: { frame: string | null; size: { width: number; height: number }; live: boolean }) {
+function Stage({ frame, size, live }: { frame: boolean; size: { width: number; height: number }; live: boolean }) {
   const { t } = useApp()
-  const image = useRef<HTMLImageElement>(null)
+  const image = useRef<HTMLDivElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)
   const send = (input: AgentInputDto) => void api.agentInput(input).catch(() => {})
@@ -85,7 +86,10 @@ function Stage({ frame, size, live }: { frame: string | null; size: { width: num
         if (p && live) send({ kind: 'mouse', type: 'wheel', ...p, deltaX: e.deltaX, deltaY: e.deltaY, modifiers: modifiersOf(e) })
       }}
     >
-      {frame ? <img ref={image} src={frame} alt="" draggable={false} /> : <span className="live-waiting">{t('live.waiting')}</span>}
+      <div className="live-screen" ref={image} hidden={!frame}>
+        <FrameScreen />
+      </div>
+      {!frame && <span className="live-waiting">{t('live.waiting')}</span>}
       <textarea
         ref={keys}
         className="live-keys"
@@ -188,6 +192,10 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
   useEffect(() => {
     if (!showingPixels) return
     agentMirror.showPixels(true)
+    // A screencast sends a frame when the page paints. A dock that has just
+    // been unfolded onto a still page would wait for one, so it asks for the
+    // picture as it is now.
+    void api.agentRefresh().catch(() => {})
     return () => agentMirror.showPixels(false)
   }, [showingPixels])
   useEffect(() => {
@@ -212,7 +220,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
   }
   // The page stays after the window has gone: the last thing it showed is
   // what the person reads the answer against.
-  const frozen = !on && frame !== null
+  const frozen = !on && frame
   if (!on && !(keep && frozen)) return null
   const host = hostOf(url)
   const callWindow = () => {
@@ -254,7 +262,9 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
           </button>
         </div>
         {!folded && (
-          <div className="live-dock-body">{frame ? <img src={frame} alt="" draggable={false} /> : <span className="live-waiting">{t('live.waiting')}</span>}</div>
+          <div className="live-dock-body">
+            {frame ? <FrameScreen /> : <span className="live-waiting">{t('live.waiting')}</span>}
+          </div>
         )}
         {/* The controls live in one place at a time: in the large view when
             it is open, in the dock when it is not. */}
