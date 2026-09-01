@@ -98,3 +98,19 @@ jobs:
           body: ${{ steps.notes.outputs.body }}
           generate_release_notes: true
           files: artifacts/**/*
+      # Each release is about three gigabytes of installers and only the newest
+      # is ever fetched, so the older ones go as soon as this one is up. Tags
+      # stay - see .github/workflows/prune-releases.yml.
+      - name: Keep only the newest releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          KEEP: '3'
+        run: |
+          set -euo pipefail
+          gh release list --repo "$REPO" --limit 300 --json tagName,createdAt             | jq -r --argjson keep "$KEEP" 'sort_by(.createdAt) | reverse | .[$keep:] | .[].tagName' > old.txt
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            echo "removing $tag"
+            gh release delete "$tag" --repo "$REPO" --yes
+          done < old.txt

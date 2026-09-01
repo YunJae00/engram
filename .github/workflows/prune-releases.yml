@@ -1,0 +1,43 @@
+name: Prune releases
+
+# Every release carries about three gigabytes of installers, and they are only
+# ever downloaded from the newest one - the updater reads the latest release's
+# feed, and a differential update is computed from the installed file and the
+# new blockmap, never from an older release. So only the last few are kept.
+# Tags are left alone: they cost nothing and they are how a version's source is
+# found again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: How many of the newest releases to keep
+        required: false
+        default: '3'
+  # Editing this file runs it once, which is also how the first sweep happens.
+  push:
+    paths: ['.github/workflows/prune-releases.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete every release but the newest few
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ github.event.inputs.keep || '3' }}
+        run: |
+          set -euo pipefail
+          gh release list --repo "$REPO" --limit 300 --json tagName,createdAt \
+            | jq -r --argjson keep "$KEEP" 'sort_by(.createdAt) | reverse | .[$keep:] | .[].tagName' > old.txt
+          count=$(wc -l < old.txt)
+          echo "keeping the newest $KEEP; removing $count older release(s)"
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            echo "  $tag"
+            gh release delete "$tag" --repo "$REPO" --yes
+          done < old.txt
