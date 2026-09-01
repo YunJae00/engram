@@ -97,6 +97,7 @@ export {
   type BotMemoryFile,
 } from './bot-memory.js'
 export { deriveSearchTemplate, rankLinks, searchUrlFor } from './search-template.js'
+export { answerLanguageLine, parseProposal, proposalPrompt, PROPOSAL_TOKENS, type TaskProposal } from './task-proposal.js'
 export { carriesSecret, secretsIn, withoutSecrets } from './secrets.js'
 export { parseRetryAfterMs } from './engine/classify.js'
 export type { ToolSessionCall, ToolSessionJob, ToolSessionResult } from './engine/types.js'

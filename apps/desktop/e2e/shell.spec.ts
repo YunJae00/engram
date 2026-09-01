@@ -105,7 +105,7 @@ test('no engine → connect banner shows', async () => {
   // every seeded note counts as not-yet-organized).
   const banner = page.getByTestId('connect-banner')
   await expect(banner).toBeVisible()
-  await banner.getByRole('button', { name: 'Get a brain' }).click()
+  await banner.getByRole('button', { name: 'Connect a brain' }).click()
   await expect(page.getByTestId('settings-view')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('settings-view')).toHaveCount(0)

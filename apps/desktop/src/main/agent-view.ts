@@ -10,13 +10,11 @@ import { flog } from './flog.js'
 // their own clicks and keys. Frames go to the screen and nowhere else: none
 // is written, logged or kept past the next one.
 
-// Frames come at the screen's own pixel density (the page is 1280 wide in
-// CSS pixels; on a dense screen that is more device pixels), so the mirror
-// stays sharp however large the window shows it.
-// A screencast frame comes at the page's own CSS size however high the cap
-// is set (measured), so the cap only guards against a very large viewport.
-// Quality is what is left to spend, and a page of text wants it.
-const FRAME = { format: 'jpeg', quality: 72, maxWidth: 1920, maxHeight: 1200 } as const
+// The page is drawn at twice its CSS size, so a frame can carry every device
+// pixel it was drawn with: the cap is set above that rather than below it,
+// where it would quietly halve the picture. Quality is what is left to spend,
+// and small text is exactly what loses first without it.
+const FRAME = { format: 'jpeg', quality: 90, maxWidth: 2560, maxHeight: 1600 } as const
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
@@ -38,22 +36,29 @@ let mirror: Mirror | null = null
 // only while someone is looking.
 let viewers = 0
 // A screencast sends a frame when the page paints and nothing when it is
-// still. A page mid-render sends its half-drawn state and then goes quiet,
-// which leaves that half-drawn state on screen looking like a dead page. So
-// while someone is watching, a still page is photographed now and then and
-// the picture goes out as a frame like any other.
+// still, and every frame it sends carries one pixel per CSS pixel however
+// the cap is set - a page drawn at twice that size still arrives halved
+// (measured). A page mid-render also sends its half-drawn state and then
+// goes quiet, which leaves that half-drawn state on screen looking dead.
+// Both are answered the same way: while someone is watching, a page that has
+// gone still is photographed at every pixel it was drawn with and that
+// picture goes out as a frame like any other. Motion is smooth because the
+// screencast carries it; what a person actually reads is sharp because
+// nothing that stands still stays halved.
 const QUIET_MS = 2_500
 let poke: ReturnType<typeof setInterval> | null = null
 
-// sharp: every device pixel the page was drawn with, for the view a person
-// is reading. Otherwise one pixel per CSS pixel, which is what the run of
-// frames carries and costs a third as much.
-async function shoot(m: Mirror, sharp = false): Promise<void> {
-  if (!sharp && (Date.now() - m.painted < QUIET_MS || m.shooting)) return
+// A photograph of the page as it stands, at every pixel it was drawn with.
+// `now` takes one whether or not the page has settled - what a person asks
+// for by hand, or what the view wants the moment it opens; without it the
+// picture is only taken of a page that has been quiet long enough to be
+// worth the cost.
+async function shoot(m: Mirror, now = false): Promise<void> {
+  if (!now && Date.now() - m.painted < QUIET_MS) return
   if (m.shooting) return
   m.shooting = true
   try {
-    const shot = await m.page.screenshot({ type: 'jpeg', quality: sharp ? 78 : 60, scale: sharp ? 'device' : 'css', fullPage: false, timeout: 6_000 })
+    const shot = await m.page.screenshot({ type: 'jpeg', quality: 80, scale: 'device', fullPage: false, timeout: 6_000 })
     if (mirror !== m) return
     m.painted = Date.now()
     broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url() })
@@ -152,13 +157,12 @@ export async function watchAgentView(on: boolean): Promise<{ on: boolean; url?: 
 }
 
 // The picture again, now, whatever the page is doing: what a person presses
-// when the view has gone still on a half-drawn page, and what the large view
-// asks for when it opens - there, every pixel the page was drawn with.
-export async function refreshAgentView(sharp = false): Promise<void> {
+// when the view has gone still on a half-drawn page, and what a view asks for
+// the moment it opens.
+export async function refreshAgentView(): Promise<void> {
   const m = mirror
   if (!m) return
-  m.painted = 0
-  await shoot(m, sharp)
+  await shoot(m, true)
 }
 
 // Whether a window is being mirrored, asked without joining the watch: a

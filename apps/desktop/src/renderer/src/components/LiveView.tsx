@@ -199,7 +199,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
     return () => agentMirror.showPixels(false)
   }, [showingPixels])
   useEffect(() => {
-    if (big) void api.agentRefresh(true).catch(() => {})
+    if (big) void api.agentRefresh().catch(() => {})
   }, [big])
   // The dock's height is dragged from its top edge, and kept for next time.
   const drag = (down: React.MouseEvent) => {

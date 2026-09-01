@@ -10,6 +10,7 @@ import {
   buildContextPack,
   buildLineage,
   chainOf,
+  collectResult,
   classifyEngineError,
   ENGINE_BUDGETS,
   engineBackoff,
@@ -55,6 +56,9 @@ import {
   deriveSearchTemplate,
   fillSlots,
   parsePendingCall,
+  parseProposal,
+  proposalPrompt,
+  PROPOSAL_TOKENS,
   runErrand,
   addRoutine,
   hostOf,
@@ -1272,6 +1276,9 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Fewer than this and the answer was cheap enough to just ask again.
   const KEEP_AFTER_STEPS = 3
+  // Writing the button is one short call after the answer is already out;
+  // past this the offer is simply not made.
+  const PROPOSAL_TIMEOUT_MS = 45_000
 
   async function runProcedureForComet(id: string, slots: Record<string, string>, again = false): Promise<string> {
     const started = await beginRoutine(id, { slots, force: again })
@@ -1308,7 +1315,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
   ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
-  ipcMain.handle('agent:refresh', (_e, sharp: boolean) => refreshAgentView(sharp === true))
+  ipcMain.handle('agent:refresh', () => refreshAgentView())
   ipcMain.handle('agent:state', () => agentViewState())
 
   ipcMain.handle('press:askDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
@@ -2075,6 +2082,31 @@ export function registerIpc(ctx: VaultContext): void {
         // click next time. A quick answer offers nothing at all.
         const worked = result.steps.filter((step) => !step.seeded).length
         const keepable = !routine && !result.asked && worked >= KEEP_AFTER_STEPS
+        // The words they typed name this morning, not the work. Asked while
+        // the brain still has the turn in hand, it writes the button instead:
+        // a short label, the job as an instruction, and what pressing it
+        // would do. A brain that will not answer that leaves the offer off.
+        const proposal =
+          keepable || handled
+            ? await collectResult(engine, {
+                prompt: proposalPrompt({
+                  user: request.message,
+                  answer: result.answer,
+                  steps: result.steps
+                    .filter((step) => !step.seeded)
+                    .map((step) => `${step.tool}: ${String(Object.values(step.args).find((one) => typeof one === 'string') ?? '').slice(0, 80)}`),
+                }),
+                workdir: engineCwd(paths),
+                disallowTools: true,
+                timeoutMs: PROPOSAL_TIMEOUT_MS,
+                modelHint: 'fast',
+                maxTokens: PROPOSAL_TOKENS,
+                ...(signal ? { signal } : {}),
+              })
+                .then((raw: string) => parseProposal(raw))
+                .catch(() => null)
+            : null
+        if (keepable || handled) flog('comet', `a button for this turn: ${proposal ? proposal.name : 'not worth one'}`)
         // The third morning of the same ask, and a read-only procedure with
         // no blanks was just run for it: that one can run itself from now on.
         const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
@@ -2097,8 +2129,8 @@ export function registerIpc(ctx: VaultContext): void {
                 ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
             : routine
               ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
-              : keepable || handled
-                ? { kind: 'keep', name: request.message.slice(0, 40), goal: request.message }
+              : (keepable || handled) && proposal
+                ? { kind: 'keep', name: proposal.name, goal: proposal.goal, does: proposal.does }
                 : undefined,
         )
         // After the answer is out, while the model is still held: what of

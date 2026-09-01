@@ -362,7 +362,10 @@ export type EngramEvent =
         | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string> }
         // A job that took real work is worth keeping: the loop says so, the
         // person decides. Nothing here is a form to fill.
-        | { kind: 'keep'; name: string; goal: string }
+        // A button the comet wrote for a job it just did: what it would be
+        // called, the job as an instruction it could be given again, and what
+        // pressing it would do - shown to the person before anything is kept.
+        | { kind: 'keep'; name: string; goal: string; does: string }
         // The same ask on a third morning: a read-only procedure it just ran
         // could run itself at that hour from now on.
         | { kind: 'standing'; name: string; goal: string; count: number; schedule: ScheduleDto; routineId: string }
@@ -478,7 +481,7 @@ export interface EngramApi {
   agentGo(url: string): Promise<void>
   // Take the picture again now: for a view left on a page that went still
   // half-drawn. sharp asks for every device pixel, for a view being read.
-  agentRefresh(sharp?: boolean): Promise<void>
+  agentRefresh(): Promise<void>
   // Whether a window is being mirrored, without joining the watch.
   agentState(): Promise<{ on: boolean; url?: string }>
   // workspace registry/switcher (app-level vaults)

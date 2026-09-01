@@ -4,6 +4,7 @@ import { conversationLines, openRuleLines, personaLines } from './agent-prompt.j
 import { parseAsk } from './ask.js'
 import type { ToolSessionCall } from './engine/types.js'
 import { withoutSecrets } from './secrets.js'
+import { answerLanguageLine } from './task-proposal.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
 // the whole turn in one session: every step then costs one exchange instead
@@ -111,8 +112,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ].join('\n'),
     // The last thing said before the work is the language to answer in:
     // the pages ahead are usually in another one, and whichever language
-    // fills the turn wins by weight alone unless this is said last.
-    prompt: [...personaLines(options.persona, options.memory), `Task: ${task}`, 'Answer in the language this task is written in, even when every page you read is in another language.'].join('\n'),
+    // fills the turn wins by weight alone unless this is said last - and
+    // said by name, not left to be read off the ask.
+    prompt: [...personaLines(options.persona, options.memory), `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     tools: calls,

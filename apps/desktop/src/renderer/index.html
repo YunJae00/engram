@@ -4,9 +4,56 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Engram</title>
+    <style>
+      /* Painted before a single line of the app has run. A renderer process
+         takes seconds to start on a machine whose endpoint protection
+         inspects it (measured: the same bundle runs in 47ms once the process
+         is up), and for those seconds the window was blank white. This is
+         what stands there instead - the app's own ground and its name, in
+         both themes - and React replaces it the moment it mounts. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #fbfbfa;
+        color: #16161a;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #16161a;
+          color: #f4f4f6;
+        }
+      }
+      .boot {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        opacity: 0.42;
+        animation: boot-breathe 1.9s ease-in-out infinite;
+      }
+      @keyframes boot-breathe {
+        0%,
+        100% {
+          opacity: 0.22;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot">Engram</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

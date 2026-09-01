@@ -1,28 +1,36 @@
 import { Download, PlugZap } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from './api.js'
 import { AbsorbWidget } from './components/AbsorbWidget.js'
-import { DigestSheet } from './components/DigestSheet.js'
 import { HelpPanel } from './components/HelpPanel.js'
 import { CosmosChat } from './components/CosmosChat.js'
-import { Palette, type PaletteAction, type PaletteMode } from './components/Palette.js'
+import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
-import { TourOverlay, TOUR_DONE_KEY } from './components/TourOverlay.js'
-import { ActionDialog } from './components/ActionDialog.js'
-import { ErrandsSheet } from './components/ErrandsSheet.js'
-import { RoutinesSheet } from './components/RoutinesSheet.js'
+import { TOUR_DONE_KEY } from './components/TourOverlay.js'
 import { BotsView } from './views/BotsView.js'
-import { GithubConnect } from './components/GithubConnect.js'
 import { AppProvider, useApp } from './state.js'
-import { DiagnosticsView } from './views/DiagnosticsView.js'
-import { InboxOverlay } from './views/InboxOverlay.js'
-import { ListView } from './views/ListView.js'
-import { NoteSheet } from './views/NoteSheet.js'
-import { Onboarding } from './views/Onboarding.js'
-import { QuickCapture } from './views/QuickCapture.js'
-import { ReviewOverlay } from './views/ReviewOverlay.js'
-import { SettingsView } from './views/SettingsView.js'
-import { SkyView } from './views/SkyView.js'
+
+// Only what the first screen needs is in the first bundle. An editor, a sky
+// full of stars, a settings sheet and a walkthrough are all real weight, and
+// none of them is on screen when the window opens - fetched when they are
+// first asked for, they cost nothing until then. Each is a local file, so
+// the wait is a frame, not a download.
+const DigestSheet = lazy(() => import('./components/DigestSheet.js').then((m) => ({ default: m.DigestSheet })))
+const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
+const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
+const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
+const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
+const RoutinesSheet = lazy(() => import('./components/RoutinesSheet.js').then((m) => ({ default: m.RoutinesSheet })))
+const GithubConnect = lazy(() => import('./components/GithubConnect.js').then((m) => ({ default: m.GithubConnect })))
+const DiagnosticsView = lazy(() => import('./views/DiagnosticsView.js').then((m) => ({ default: m.DiagnosticsView })))
+const InboxOverlay = lazy(() => import('./views/InboxOverlay.js').then((m) => ({ default: m.InboxOverlay })))
+const ListView = lazy(() => import('./views/ListView.js').then((m) => ({ default: m.ListView })))
+const NoteSheet = lazy(() => import('./views/NoteSheet.js').then((m) => ({ default: m.NoteSheet })))
+const Onboarding = lazy(() => import('./views/Onboarding.js').then((m) => ({ default: m.Onboarding })))
+const QuickCapture = lazy(() => import('./views/QuickCapture.js').then((m) => ({ default: m.QuickCapture })))
+const ReviewOverlay = lazy(() => import('./views/ReviewOverlay.js').then((m) => ({ default: m.ReviewOverlay })))
+const SettingsView = lazy(() => import('./views/SettingsView.js').then((m) => ({ default: m.SettingsView })))
+const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: m.SkyView })))
 
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, showToast, refresh, vaultReady, vaultError, t, enginesDetected, openNote } = useApp()
@@ -335,9 +343,13 @@ function Shell() {
         ) : activity === 'bots' ? (
           <BotsView />
         ) : activity === 'sky' ? (
-          <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
+          <Suspense fallback={<div className="empty-view" />}>
+            <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
+          </Suspense>
         ) : (
-          <ListView />
+          <Suspense fallback={<div className="empty-view" />}>
+            <ListView />
+          </Suspense>
         )}
         {/* The launcher IS the panel at rest — never both on screen at once. */}
         {activity === 'sky' && <CosmosChat />}
@@ -346,18 +358,22 @@ function Shell() {
       </div>
       <AbsorbWidget />
 
-      <NoteSheet />
-      {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
-      {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
-      {routinesOpen && <RoutinesSheet onClose={() => setRoutinesOpen(false)} />}
-      <ReviewOverlay />
-      <InboxOverlay />
-      <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />
-      <ActionDialog action={action} onClose={() => setAction(null)} />
-      {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
-      {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
-      {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
-      {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
+      {/* Every one of these is off screen until something opens it, so a
+          chunk still on its way shows nothing rather than a spinner. */}
+      <Suspense fallback={null}>
+        <NoteSheet />
+        {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
+        {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
+        {routinesOpen && <RoutinesSheet onClose={() => setRoutinesOpen(false)} />}
+        <ReviewOverlay />
+        <InboxOverlay />
+        {palette && <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />}
+        {action && <ActionDialog action={action} onClose={() => setAction(null)} />}
+        {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
+        {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
+        {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
+        {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
+      </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
       {dropping && (
         <div className="drop-overlay" data-testid="drop-overlay">
@@ -373,8 +389,18 @@ function Shell() {
 
 export function App() {
   // The quick-capture and onboarding windows load the same bundle with a hash route.
-  if (window.location.hash === '#quick') return <QuickCapture />
-  if (window.location.hash === '#onboarding') return <Onboarding />
+  if (window.location.hash === '#quick')
+    return (
+      <Suspense fallback={null}>
+        <QuickCapture />
+      </Suspense>
+    )
+  if (window.location.hash === '#onboarding')
+    return (
+      <Suspense fallback={null}>
+        <Onboarding />
+      </Suspense>
+    )
   return (
     <AppProvider>
       <Shell />

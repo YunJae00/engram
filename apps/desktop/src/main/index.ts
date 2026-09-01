@@ -633,6 +633,10 @@ app.whenReady().then(async () => {
   const root = await configuredVaultRoot()
   if (root) {
     await createMainWindow()
+    // A slow start is the commonest thing a person reports and the hardest
+    // to see afterwards; this is the number that says whether it was the
+    // app or the machine.
+    flog('boot', `window ready ${Math.round(process.uptime() * 1000)}ms after start`)
     try {
       await bootVault(root)
       broadcast({ type: 'vault:ready' })

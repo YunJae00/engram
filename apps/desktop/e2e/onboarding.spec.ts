@@ -76,5 +76,5 @@ test('walks all five screens (skipping AI) into a working shell', async () => {
 
   // The sky is home (Engram redesign) — the global connect banner carries the
   // "usable without AI" promise.
-  await expect(page.getByTestId('connect-banner')).toContainText('No AI brain yet')
+  await expect(page.getByTestId('connect-banner')).toContainText('No brain connected')
 })

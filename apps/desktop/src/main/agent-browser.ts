@@ -29,8 +29,11 @@ const IDLE_CLOSE_MS = 3 * 60_000
 const PRESSURE_CLOSE_FLOOR = 2e9
 const LAUNCH_MIN_FREE = 2.5e9
 
-// Text pages only: the page weight is mostly pixels the reader never reads.
-const BLOCKED_RESOURCES = new Set(['image', 'media', 'font'])
+// A page is watched as well as read: an icon, a logo, a photograph is how a
+// person recognises where the work is, and a layout built around pictures
+// that never arrive reads as a broken site. Only video and audio are turned
+// away - megabytes that no reading and no watching needs.
+const BLOCKED_RESOURCES = new Set(['media'])
 
 type Ctx = import('playwright-core').BrowserContext
 type Page = import('playwright-core').Page

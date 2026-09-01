@@ -280,6 +280,7 @@ export function BotsView() {
                     cometThreads.clearOffer(selected.id)
                     void api.botStandingDecline(selected.id, wanted.goal).catch(() => undefined)
                   }}
+                  onDismiss={() => cometThreads.clearOffer(selected.id)}
                 />
               )}
               {/* What it is doing, under the answer it is writing: the

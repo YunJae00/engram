@@ -1472,6 +1472,24 @@ body.bubble-host { background: transparent; }
   padding: 8px 10px; border: 1px solid var(--accent-line); border-radius: var(--radius-card);
 }
 .bots-offer-text { flex: 1; min-width: 180px; font-size: var(--fs-small); color: var(--fg); }
+/* Keeping a job reads as the comet speaking, then the button it would make:
+   the sentence sits in the thread like any other line, and the card under it
+   is the thing being agreed to - its name is the part a person changes. */
+.comet-keep { display: flex; flex-direction: column; gap: 8px; }
+.comet-keep-say { margin: 0; font-size: var(--fs-small); color: var(--fg); }
+.comet-keep-card {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  padding: 9px 11px; border-radius: var(--radius-card); background: var(--rail-bg);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+.comet-keep-name {
+  font-size: var(--fs-body); font-weight: 600; color: var(--fg); text-align: left;
+  padding: 1px 3px; margin: -1px -3px; border-radius: var(--radius-s); max-width: 100%;
+}
+button.comet-keep-name:hover { background: var(--hover-bg); }
+input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--accent-line); min-width: 220px; }
+.comet-keep-does { font-size: var(--fs-small); color: var(--fg-dim); }
+.comet-keep-acts { display: flex; align-items: center; gap: 8px; }
 .bots-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 0; }
 .bots-choices .bots-offer-text { flex: 0 0 100%; min-width: 0; }
 .bots-choice { max-width: 100%; white-space: normal; text-align: left; }

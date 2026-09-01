@@ -65,8 +65,10 @@ const en = {
   'cosmos.chatPlaceholder': 'Ask, or say \u201ckeep this\u2026\u201d',
   'cosmos.chatHint': 'Ask what you decided, or tell it something to keep \u2014 anything worth remembering is filed as a memory.',
   'bots.offerRun': 'I know this one — “{name}” does it. Run it?',
-  'bots.offerKeep': 'That took a few steps. Keep it as a one-click task?',
-  'bots.offerKeepGo': 'Keep it',
+  'bots.keepAsk': 'That took a few steps. Shall I keep it as a button? Here is what I would make:',
+  'bots.keepRename': 'Change the name',
+  'bots.keepYes': 'Make the button',
+  'bots.keepNo': 'No thanks',
   'bots.offerAsked': 'Pick one, or type your own:',
   'bots.offerStanding': 'You have asked for "{name}" {times} — want me to run it {when}?',
   'bots.offerStandingGo': 'Yes, {when}',
@@ -185,8 +187,8 @@ const en = {
   'topbar.engineConnectShort': 'Connect AI',
 
   // no-engine banner (canvas top): the connect nudge + waiting-capture count
-  'banner.noBrain': 'No AI brain yet — the librarian is waiting. Download one (free, runs on this PC).',
-  'banner.getBrain': 'Get a brain',
+  'banner.noBrain': 'No brain connected — the librarian is waiting. Sign in to Claude or ChatGPT with your own account.',
+  'banner.getBrain': 'Connect a brain',
   'banner.waiting': '{n} waiting',
   'banner.login': 'Log in',
   // Four failures, four sentences — they need four different actions from the
@@ -595,7 +597,7 @@ const en = {
   'tour.cosmosTitle': 'Cosmos — your memories as stars',
   'tour.cosmosBody': 'Every memory is a star. Bright means fresh, dim means aging. Click a star to open it, scroll to zoom, and tell the librarian on the right what to keep.',
   'tour.brainTitle': 'Settings — pick the brain',
-  'tour.brainBody': 'One brain answers everything: the one on this machine, Claude, or ChatGPT with your own subscription. Everything else is already decided for you.',
+  'tour.brainBody': 'One brain answers everything: Claude or ChatGPT, signed in with your own subscription. Everything else is already decided for you.',
   'tour.next': 'Next',
   'tour.skip': 'Skip',
   'tour.start': 'Start using Engram',
