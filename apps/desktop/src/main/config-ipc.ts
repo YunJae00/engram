@@ -1,4 +1,4 @@
-import { createEngine, type EngineId } from 'core'
+import { createEngine, ENGINE_ORDER } from 'core'
 import { app, dialog, ipcMain, shell } from 'electron'
 import { cp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -6,7 +6,6 @@ import os from 'node:os'
 import type { AppSettingsDto, DiagnosticsDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
 import { detectApiKeyEnv } from './installer.js'
-import { activeModelLabel } from './local-llm.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { getSyncStatus } from './team.js'
 import { binaryProvider, type VaultContext } from './vault.js'
@@ -46,17 +45,20 @@ export function registerSettingsIpc(): void {
 export function registerConfigIpc(ctx: VaultContext): void {
   ipcMain.handle('diagnostics:info', async (): Promise<DiagnosticsDto> => {
     const engines: DiagnosticsDto['engines'] = []
-    for (const id of ['local'] as EngineId[]) {
+    for (const id of ENGINE_ORDER) {
       try {
         const detection = await createEngine(id).detect()
         engines.push({
           id,
           ...detection,
-          label: (await activeModelLabel()) ?? undefined,
-          diagnosis: detection.installed ? 'local brain ready' : 'no model downloaded — Settings → Local AI',
+          diagnosis: detection.installed
+            ? detection.loggedIn
+              ? 'signed in'
+              : 'not signed in — Settings → Brain'
+            : 'not part of this build',
         })
       } catch {
-        engines.push({ id, installed: false, loggedIn: false, diagnosis: 'no model downloaded — Settings → Local AI' })
+        engines.push({ id, installed: false, loggedIn: false, diagnosis: 'could not be asked' })
       }
     }
     return {

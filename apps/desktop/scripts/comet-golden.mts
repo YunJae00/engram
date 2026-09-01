@@ -322,51 +322,25 @@ const SCENARIOS: Scenario[] = [
 // ── the run ──────────────────────────────────────────────────────────────
 const paths: VaultPaths = await initVault(VAULT, { git: false })
 await mkdir(USERDATA, { recursive: true })
-// An app left over from an interrupted run still holds a model, and two
-// resident models is how the machine gets powered off rather than slowed down.
+// An app left over from an interrupted run still holds a browser of its own.
 if (process.platform === 'win32')
   spawnSync('taskkill', ['/F', '/IM', 'electron.exe', '/T'], { stdio: 'ignore' })
-// Which brain answers. A cloud brain holds no model, so the memory guards
-// below stand down for it, and the set can run beside the installed app.
-const BRAIN = process.env['GOLDEN_BRAIN'] ?? 'local'
-const CLOUD = BRAIN !== 'local'
+// Which brain answers.
+const BRAIN = process.env['GOLDEN_BRAIN'] ?? 'claude'
 // Name fragments, comma-separated, pick out a few scenarios; the whole set
 // runs otherwise.
 const ONLY = (process.env['GOLDEN_ONLY'] ?? '').split(',').map((one) => one.trim()).filter(Boolean)
 
-// The installed app is the person's, not this run's to close. If it is open it
-// is holding a model of its own, and starting a second one beside it is the
-// pairing that takes the machine down - so the set stands aside and says so.
-if (process.platform === 'win32' && !CLOUD) {
-  // Judged by weight, not by name: a killed app leaves helper processes behind
-  // that still answer to Engram.exe at forty megabytes, and standing aside for
-  // those means never running at all. What matters is whether something is
-  // holding a model.
-  const theirs = spawnSync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-Command',
-      '(Get-Process Engram -ErrorAction SilentlyContinue | Measure-Object WorkingSet64 -Maximum).Maximum',
-    ],
-    { encoding: 'utf8', windowsHide: true },
-  )
-  const heaviest = Number((theirs.stdout ?? '0').trim()) || 0
-  if (heaviest > 300e6) {
-    console.log('comet-golden: not starting - Engram is open. Two apps means two models; close it and run this again.')
-    process.exit(1)
-  }
-}
-const FLOOR_GB = CLOUD ? 4 : 8
+const FLOOR_GB = 4
 console.log(`comet-golden: free memory ${(os.freemem() / 1e9).toFixed(1)}GB`)
 if (os.freemem() < FLOOR_GB * 1e9) {
-  console.log(`comet-golden: not starting — this set loads a model and opens a browser, and wants ${FLOOR_GB}GB free`)
+  console.log(`comet-golden: not starting — this set opens a browser and wants ${FLOOR_GB}GB free`)
   process.exit(1)
 }
 
-// The set holds a model and a browser open for minutes at a time. If the
-// machine gets close to the edge while it runs, the run is what gives way -
-// never the machine. Nothing here is worth a forced power-off.
+// The set holds a browser open for minutes at a time. If the machine gets
+// close to the edge while it runs, the run is what gives way - never the
+// machine. Nothing here is worth a forced power-off.
 const HARD_FLOOR = 3.5e9
 let giveWay: (() => Promise<void>) | null = null
 const watch = setInterval(() => {
@@ -378,20 +352,19 @@ const watch = setInterval(() => {
 }, 2_000)
 watch.unref?.()
 
-// The whole model shelf, not just the language model: the embedder is a
-// 600MB download, and a fresh profile every run would fetch it every run -
-// which on a network that inspects TLS means never having it at all.
+// The embedder is a 600MB download, and a fresh profile every run would fetch
+// it every run - which on a network that inspects TLS means never having it at
+// all.
 const mk = spawnSync(
   'cmd.exe',
   ['/c', 'mklink', '/J', join(USERDATA, 'models'), join(process.env['APPDATA']!, 'desktop', 'models')],
   { windowsHide: true },
 )
 if (mk.status !== 0) {
-  console.error('cannot reach the real model')
+  console.error('cannot reach the embedder')
   process.exit(1)
 }
 await startSite()
-if (!CLOUD) await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
 // The person has told it where they search, once — as they would in Settings.
 await writeFile(
   join(USERDATA, 'settings.json'),

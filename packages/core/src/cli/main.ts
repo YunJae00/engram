@@ -147,7 +147,7 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
       if (!paths) return 1
       const engines = await resolveEngines(values.engine, values['mock-dir'])
       if (engines.length === 0) {
-        io.err('no engine available. Check that a local model is downloaded, or that the CLI engine is logged in.')
+        io.err('no engine available. Check that the CLI engine is installed and logged in.')
         return 1
       }
       const report = await sweep(paths, engines, { full: values.full })

@@ -7,7 +7,7 @@ import { _electron as electron } from '@playwright/test'
 import { addRoutine, createNote, initVault, listCards } from 'core'
 import { spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import os from 'node:os'
@@ -26,7 +26,6 @@ if (mk.status !== 0) {
   console.error('junction failed — cannot reach the real model')
   process.exit(1)
 }
-await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
 
 // The company portal: a notices page worth reading every morning.
 const server = createServer((_req, res) => {
@@ -69,7 +68,7 @@ const page = await app.firstWindow()
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 for (let i = 0; i < 30; i++) {
   const engines = (await page.evaluate(() => window.engram.engines())) as { id: string }[]
-  if (engines.some((e) => e.id === 'local')) break
+  if (engines.some((e) => e.id === 'claude')) break
   await new Promise((r) => setTimeout(r, 2_000))
 }
 

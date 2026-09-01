@@ -6,10 +6,9 @@ import { noteTitle, type Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
 // An errand is one delegated goal ("gather what we decided about X and write
-// it up") run entirely on-device. Small local models fail open-ended agent
-// loops — multi-turn drift, hallucinated state, format breakage — so the
-// shape of the work is FIXED code and the model only fills slots, one
-// stateless call per phase:
+// it up"). Open-ended agent loops drift — multi-turn drift, hallucinated
+// state, format breakage — so the shape of the work is FIXED code and the
+// model only fills slots, one stateless call per phase:
 //
 //   plan     goal → search queries + a note title   (schema-constrained)
 //   gather   run the queries through the host's retrieval — no model

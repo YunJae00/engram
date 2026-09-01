@@ -2,17 +2,17 @@
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
-**A second brain that runs entirely on your machine.**
+**A second brain that keeps your memories on your machine.**
 
-Engram watches what you work on, files it into a plain-markdown vault, and organizes it the way human memory works — memories strengthen with use, fade without it, associate by meaning, and consolidate while you're away. All of it happens on-device: a local LLM writes the notes, local embeddings connect them, and nothing ever leaves your computer.
+Engram watches what you work on, files it into a plain-markdown vault, and organizes it the way human memory works — memories strengthen with use, fade without it, associate by meaning, and consolidate while you're away. Your vault, the embeddings that connect it and every judgement about it stay on this computer; the sentences are written by the AI you already subscribe to, signed in with your own account.
 
-No cloud. No account. No subscription.
+No Engram account. No Engram subscription.
 
 ## How it works
 
 **Capture.** Drop a thought into the composer, drop a file on the window, or just work — Engram can (with your consent, folder by folder) notice saved documents (`docx` / `xlsx` / `pptx` / `pdf` / `hwpx`), your browser trail (titles only, from the browser's local history), and transcripts of AI CLI sessions (Claude Code, Codex). Everything lands in an inbox as plain text.
 
-**The librarian.** A background worker absorbs the inbox into structured markdown notes — titled, tagged with decay class and salience, linked to related memories, deduplicated, superseded when a newer note replaces an older claim. It settles its own questions; you are almost never asked anything. Sentence-writing is done by a local model (Gemma, Apache 2.0) running **in-process** via [`node-llama-cpp`](https://github.com/withcatai/node-llama-cpp) — no sidecar server, which also means it survives corporate endpoint protection that blocks unsigned executables.
+**The librarian.** A background worker absorbs the inbox into structured markdown notes — titled, tagged with decay class and salience, linked to related memories, deduplicated, superseded when a newer note replaces an older claim. It settles its own questions; you are almost never asked anything. Sentence-writing is done by the brain you signed in to — Claude or ChatGPT, through the vendor's own runtime, billed to your own plan.
 
 **The memory model.** Judgment is embeddings, prose is the LLM, hygiene is rules:
 
@@ -51,7 +51,7 @@ Everything lands as markdown in a folder you choose. `private/` is never passed 
 
 ## Install
 
-Grab the installer from [Releases](../../releases). On first run you pick a local model (curated Gemma builds, sized to your RAM — from an 8 GB-friendly 2B to a 26B MoE); it downloads once and everything runs offline from then on.
+Grab the installer from [Releases](../../releases). On first run you sign in to the brain you already pay for — Claude or ChatGPT — with your own account; the embedding model that connects your memories downloads once and runs on this machine.
 
 Windows is the tested platform. macOS builds are produced by CI and the code paths are in place, but they have had far less real use — bug reports welcome. Linux target configuration exists but CI does not publish Linux artifacts yet.
 
@@ -109,8 +109,8 @@ pnpm run dist       # build the installer
 packages/core     the engine: vault operations, librarian jobs, memory model,
                   retrieval, capture parsing — pure Node, no Electron imports,
                   fully unit-tested
-apps/desktop      the Electron shell: windows, IPC, local LLM host, semantic
-                  indexer, capture watchers, the UI (React + canvas sky)
+apps/desktop      the Electron shell: windows, IPC, the brains' runtimes,
+                  semantic indexer, capture watchers, the UI (React + canvas sky)
 ```
 
 The core is the product; the desktop app is a shell around it. Anything the app can do, the core can do headless. [ARCHITECTURE.md](ARCHITECTURE.md) has the memory model in detail — the equations, the thresholds, and why each one is where it is.

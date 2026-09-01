@@ -30,8 +30,8 @@ const MEMORY_DIR = 'bot-memory'
 // again fades out of the prompt in a few months and stays on disk.
 export const HALF_LIFE_DAYS = 30
 export const FACT_CHARS = 160
-// The window the local model runs in cannot shift, so the block is capped by
-// characters, not lines: this is roughly the size of one observation.
+// The block is capped by characters, not lines, so its share of the prompt
+// holds whatever the notes look like: this is roughly one observation.
 export const MEMORY_CHARS = 800
 export const MEMORY_LINES = 12
 export const DISK_CAP = 200

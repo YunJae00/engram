@@ -96,27 +96,6 @@ export interface EngineHealthDto {
   reason?: EngineHealthReason
 }
 
-export interface LocalModelDto {
-  id: string
-  label: string
-  desc: string
-  approxGB: number
-  ramGB: number
-  tag: 'korean' | 'balanced' | 'light' | 'power'
-  downloaded: boolean
-  downloading: boolean
-  active: boolean
-  // What the last download attempt said when it did not finish.
-  lastError?: string
-}
-
-export interface LocalModelsStateDto {
-  models: LocalModelDto[]
-  recommendedId: string
-  ramGB: number
-  serverReady: boolean
-}
-
 // Answer to the Settings "check for updates" button. `selfInstalls` false
 // means the platform cannot swap the app itself (an unsigned macOS build), so
 // an available version leads to a download page instead of an install.
@@ -358,21 +337,6 @@ export type EngramEvent =
   // the semantic layer fell over (model download/load failed) — said once per
   // transition, so search quietly degrading to lexical is not fully silent
   | { type: 'semantic:error'; detail: string }
-  // local inference warm state: the chat panel shows a warming banner while
-  // the model loads and arms the composer when it lands
-  | { type: 'localllm:warm'; state: 'cold' | 'loading' | 'ready' }
-  // What the model is doing right now, from the inference worker's own
-  // counters: prompt tokens read so far while it evaluates, then tokens (and
-  // words) written as they land. `kind` tells a grammar-bound call - choosing
-  // between moves - from free prose. 'done' closes the line on every exit.
-  | {
-      type: 'localllm:progress'
-      phase: 'reading' | 'writing' | 'done'
-      kind: 'choice' | 'prose'
-      done: number
-      total?: number
-      words?: number
-    }
   // the first engine detection after boot has finished — until this lands the
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
@@ -440,9 +404,6 @@ export type EngramEvent =
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.
   | { type: 'settings:changed'; settings: AppSettingsDto }
-  // Local model download progress / registry state.
-  | { type: 'localmodel:progress'; id: string; received: number; total: number }
-  | { type: 'localmodels:changed'; state: LocalModelsStateDto }
   | { type: 'import:progress'; done: number; total: number }
   | { type: 'engines:changed'; engines: EngineStatusDto[] }
   // a newer app version was downloaded and will install on next quit
@@ -559,7 +520,6 @@ export interface EngramApi {
   chatActive(): Promise<string[]>
   // Would the vault answer this, or does it need the web? Retrieval decides;
   // no inference runs, so it is safe to call before every send.
-  chatRoute(message: string): Promise<{ kind: 'chat' | 'errand'; notes: number }>
   // Delegate one goal to the on-device librarian (core's runErrand). Runs
   // detached in main — this resolves once it has STARTED (or refused, e.g. no
   // engine); progress and the eventual outcome arrive as errand:phase events.
@@ -634,19 +594,11 @@ export interface EngramApi {
   contentFolders(): Promise<string[]>
   contentAddFolder(): Promise<string[]>
   contentRemoveFolder(folder: string): Promise<string[]>
-  localModelsState(): Promise<LocalModelsStateDto>
-  localModelDownload(id: string): Promise<{ ok: boolean; log?: string }>
-  localModelCancel(id: string): Promise<void>
-  // Frees the multi-gigabyte file. Refused while that model downloads —
-  // cancel is the action there.
-  localModelDelete(id: string): Promise<{ ok: boolean; reason?: string }>
-  localModelSetActive(id: string | null): Promise<void>
   // Desk journal switch (settings ⑨ + tray share the same state).
   activityGet(): Promise<boolean>
   activitySet(enabled: boolean): Promise<boolean>
   sessionWatchGet(): Promise<boolean>
   sessionWatchSet(enabled: boolean): Promise<boolean>
-  llmWarm(): Promise<'cold' | 'loading' | 'ready' | 'none'>
   sendFeedback(): Promise<void>
   // promote a chat answer into an artifact note; returns the new note id
   buildPack(query?: string): Promise<{ file: string; content: string }>
@@ -717,7 +669,7 @@ export interface OnboardPayload {
 
 export interface AppSettingsDto {
   // Which brain answers: this disk, or one of the two the person signed in to.
-  defaultEngine: 'local' | 'claude' | 'codex'
+  defaultEngine: 'claude' | 'codex'
   autoStart: boolean
   teamSync: 'auto' | 'manual'
   semanticModel?: string

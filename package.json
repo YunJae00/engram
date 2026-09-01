@@ -38,8 +38,7 @@
     "lint": "eslint .",
     "test": "vitest run --project unit && vitest run --project timing",
     "todo-scan": "node scripts/todo-scan.mjs",
-    "css-scan": "node scripts/css-orphan-scan.mjs",
-    "verify-models": "node apps/desktop/scripts/verify-models.mjs"
+    "css-scan": "node scripts/css-orphan-scan.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

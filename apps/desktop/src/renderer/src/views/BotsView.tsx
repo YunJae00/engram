@@ -8,7 +8,6 @@ import { CometOffer } from '../components/CometOffer.js'
 import { CometMemory } from '../components/CometMemory.js'
 import { CometRail } from '../components/CometRail.js'
 import { CometWork } from '../components/CometWork.js'
-import { modelActivity } from '../lib/modelActivityLive.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
 import type { StringKey } from '../i18n.js'
@@ -56,13 +55,9 @@ export function BotsView() {
   const busyElsewhere = !busy && cometThreads.anyBusy()
   const locked = busyElsewhere || errand.running
 
-  // The wait, said from evidence: the model loading outranks a stale step
-  // line (an unload between calls reloads mid-run); a step line outranks
-  // the generic word; the generic word is what is left when nothing is known.
-  const latestStep = workLines[workLines.length - 1]
-  const activity = useSyncExternalStore(modelActivity.subscribe, modelActivity.getSnapshot)
   // The wait, said from evidence - see pendingStatus for the order it trusts.
-  const status = pendingStatus(t, activity, latestStep)
+  const latestStep = workLines[workLines.length - 1]
+  const status = pendingStatus(t, latestStep)
 
   const reload = async (keepSelection = true) => {
     const [list, recs] = await Promise.all([api.botsList(), api.botsRecommend().catch(() => [])])

@@ -27,13 +27,9 @@ asar: true
 # for why a missing signature is safer than the stale one electron-builder
 # would otherwise leave behind.
 afterPack: scripts/adhoc-sign.mjs
-# Native inference (node-llama-cpp) cannot run from inside the asar — its
-# .node addons and runtime libraries load from real paths.
+# The two brains' runtimes are executables and must be spawned from real
+# paths, so they cannot live inside the asar.
 asarUnpack:
-  - "node_modules/node-llama-cpp/**"
-  - "node_modules/@node-llama-cpp/**"
-  # The two cloud brains' runtimes are executables and must be spawned from
-  # real paths.
   - "node_modules/@anthropic-ai/claude-agent-sdk-*/**"
   - "node_modules/@openai/codex-*/**"
 npmRebuild: false
@@ -64,8 +60,6 @@ linux:
     - package.json
     - "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**"
     - "!node_modules/onnxruntime-node/bin/napi-v6/win32/**"
-    - "!node_modules/@node-llama-cpp/win-*/**"
-    - "!node_modules/@node-llama-cpp/mac-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
     - "!node_modules/@openai/codex-win32-*/**"
@@ -81,14 +75,6 @@ win:
     - "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**"
     - "!node_modules/onnxruntime-node/bin/napi-v6/linux/**"
     - "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
-    # 510MB for an acceleration Vulkan already provides on the same NVIDIA
-    # cards (node-llama-cpp probes vulkan → cpu when cuda is absent), and we
-    # ship x64 only. Kept: win-x64 (cpu fallback) + win-x64-vulkan (gpu).
-    - "!node_modules/@node-llama-cpp/win-x64-cuda/**"
-    - "!node_modules/@node-llama-cpp/win-x64-cuda-ext/**"
-    - "!node_modules/@node-llama-cpp/win-arm64/**"
-    - "!node_modules/@node-llama-cpp/mac-*/**"
-    - "!node_modules/@node-llama-cpp/linux-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-linux-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/**"
@@ -119,8 +105,6 @@ mac:
     - package.json
     - "!node_modules/onnxruntime-node/bin/napi-v6/linux/**"
     - "!node_modules/onnxruntime-node/bin/napi-v6/win32/**"
-    - "!node_modules/@node-llama-cpp/win-*/**"
-    - "!node_modules/@node-llama-cpp/linux-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**"
     - "!node_modules/@anthropic-ai/claude-agent-sdk-linux-*/**"
     - "!node_modules/@openai/codex-win32-*/**"

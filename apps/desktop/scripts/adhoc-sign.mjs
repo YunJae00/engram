@@ -78,8 +78,8 @@ export default async function adhocSign(context) {
   if (context.electronPlatformName !== 'darwin') return
   const app = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   compileIcon(context, app)
-  // --deep so the nested helpers and the unpacked native addons (node-llama-cpp
-  // loads its .node files from real paths, outside the asar) are sealed too:
+  // --deep so the nested helpers and the unpacked runtimes (spawned from real
+  // paths, outside the asar) are sealed too:
   // on arm64 an unsigned Mach-O cannot be loaded at all.
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' })
   // Fail the build rather than ship another bundle whose seal does not hold.

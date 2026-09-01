@@ -8,7 +8,7 @@
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault, vaultPaths } from 'core'
 import { execSync } from 'node:child_process'
-import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -25,7 +25,6 @@ const realGguf =
     ? join(home, 'Library', 'Application Support', 'desktop', 'models', 'gguf')
     : join(process.env['APPDATA'] ?? '', 'desktop', 'models', 'gguf')
 await symlink(realGguf, join(USERDATA, 'models', 'gguf'), 'junction')
-await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
 
 const paths = vaultPaths(VAULT)
 await createNote(paths, {
@@ -44,7 +43,7 @@ const app = await electron.launch({
     ENGRAM_USERDATA: USERDATA,
     ENGRAM_NO_GIT: '1',
     ENGRAM_NO_AUTOTIDY: '1',
-    ENGRAM_ENGINE: 'local',
+    ENGRAM_ENGINE: 'claude',
   },
 })
 const page = await app.firstWindow()

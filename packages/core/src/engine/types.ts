@@ -2,7 +2,7 @@ import { classifyEngineError, type EngineErrorKind } from './classify.js'
 
 export { classifyEngineError, type EngineErrorKind } from './classify.js'
 
-export type EngineId = 'local' | 'claude' | 'codex' | 'mock'
+export type EngineId = 'claude' | 'codex' | 'mock'
 
 export interface EngineDetection {
   installed: boolean
@@ -76,11 +76,9 @@ export interface EngineJobInput {
   // model for a tier ignore the hint and keep their default — so a hint can
   // never break an engine. Unset = the engine's own default model (chat).
   modelHint?: 'fast' | 'smart'
-  // Hard output contract for structured steps. An adapter that can constrain
-  // decoding (local, via llama.cpp grammars) forces the answer to match this
-  // JSON schema at sampling time — a small model's format drift breaks the
-  // parser otherwise. Adapters that cannot (CLI engines) ignore it and rely
-  // on the prompt's own instructions.
+  // Hard output contract for structured steps. An adapter that can ask its
+  // runtime for a schema-shaped answer does; one that cannot ignores this and
+  // relies on the prompt's own instructions.
   jsonSchema?: object
   // Upper bound on generated tokens, for adapters that can enforce one.
   maxTokens?: number

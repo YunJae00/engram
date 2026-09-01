@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { AppSettingsDto, EngineStatusDto, LocalModelsStateDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
+import type { AppSettingsDto, EngineStatusDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
 
-const BRAIN_NAME = { local: 'settings.brainLocal', claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
+const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 // The sheet opens at once, empty, and its rows fill in together when every
 // one of them knows its state - none of them is shown half-known. A load
 // that hangs does not keep the rows blank for good.
@@ -23,9 +23,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
-  const [localModels, setLocalModels] = useState<LocalModelsStateDto | null>(null)
-  // The one brain on the list; the row reads its state, nothing more.
-  const brain = localModels?.models.find((m) => m.id === localModels.recommendedId) ?? localModels?.models[0] ?? null
   // Every brain this build carries, signed in or not - the cloud rows read
   // their state off this, and the sign-in flows refresh it.
   const [brains, setBrains] = useState<EngineStatusDto[]>([])
@@ -44,8 +41,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     await api.engineDisconnect(id).catch(() => undefined)
     refreshBrains()
   }
-  // id → percent while a download runs.
-  const [progress, setProgress] = useState<Record<string, number>>({})
   const [folders, setFolders] = useState<string[]>([])
   const [ready, setReady] = useState(false)
 
@@ -53,7 +48,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     const loads = [
       api.settingsGet().then(setSettings),
       api.appVersion().then(setVersion),
-      api.localModelsState().then(setLocalModels),
       api.engineStates().then(setBrains),
       api.contentFolders().then(setFolders),
       api.activityGet().then(setDeskJournal),
@@ -66,13 +60,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     void Promise.allSettled(loads).then(() => setReady(true))
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
-      if (event.type === 'localmodels:changed') setLocalModels(event.state)
-      else if (event.type === 'localmodel:progress') {
-        setProgress((prior) => ({
-          ...prior,
-          [event.id]: event.total > 0 ? Math.min(100, Math.round((event.received / event.total) * 100)) : 0,
-        }))
-      } else if (event.type === 'update:ready') {
+      if (event.type === 'update:ready') {
         setUpdate({ state: 'ready', version: event.version, selfInstalls: event.selfInstalls })
       }
     })
@@ -224,7 +212,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
         <div className="settings-group">
           <div className="setting-note">{t('settings.brainHint')}</div>
           <div className="brain-pick" role="radiogroup" aria-label={t('settings.brainUse')}>
-            {(['local', 'claude', 'codex'] as const).map((id) => (
+            {(['claude', 'codex'] as const).map((id) => (
               <button
                 key={id}
                 type="button"
@@ -237,36 +225,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
                 {t(BRAIN_NAME[id])}
               </button>
             ))}
-          </div>
-          <div className="settings-fact" title={t('settings.localHint', { ram: localModels?.ramGB ?? 0 })}>
-            <span className="settings-fact-key">{t('settings.brainLocal')}</span>
-            <span className="settings-fact-value" data-testid="local-brain-status">
-              {brain ? (
-                <>
-                  {brain.downloading
-                    ? t('settings.localDownloading', { pct: progress[brain.id] ?? 0 })
-                    : brain.downloaded
-                      ? t('settings.localReady')
-                      : brain.lastError
-                        ? t('settings.localFailed', { reason: brain.lastError })
-                        : t('settings.localWaiting')}
-                  {!brain.downloading && !brain.downloaded && brain.lastError && (
-                    <button
-                      className="secondary"
-                      data-testid="local-brain-retry"
-                      onClick={() => void api.localModelDownload(brain.id).then(() => api.localModelsState().then(setLocalModels))}
-                    >
-                      {t('settings.localRetry')}
-                    </button>
-                  )}
-                  <span className="settings-fact-sub">
-                    {brain.label} · {brain.approxGB}GB
-                  </span>
-                </>
-              ) : (
-                t('settings.localWaiting')
-              )}
-            </span>
           </div>
           {(['claude', 'codex'] as const).map((id) => {
             const state = brains.find((b) => b.id === id)

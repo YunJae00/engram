@@ -5,7 +5,7 @@ import { join } from 'node:path'
 interface AppSettings {
   // Which brain answers: the one on this disk, or one of the two the person
   // signed in to. Chosen once, never switched behind their back.
-  defaultEngine: 'local' | 'claude' | 'codex'
+  defaultEngine: 'claude' | 'codex'
   autoStart: boolean // ⑦
   teamSync: 'auto' | 'manual' // ⑧ — surfaced in the GitHub backup dialog
   // The address the person searches with, with {q} where the words go. Empty
@@ -19,7 +19,7 @@ interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  defaultEngine: 'local',
+  defaultEngine: 'claude',
   autoStart: false,
   teamSync: 'auto',
   searchTemplate: '',
@@ -36,7 +36,7 @@ export async function loadSettings(): Promise<AppSettings> {
     const merged = { ...DEFAULT_SETTINGS, ...raw }
     // An old file may name a brain this build does not carry; the one on
     // this disk is the safe reading.
-    if (!['local', 'claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'local'
+    if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }

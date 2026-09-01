@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { LocalModelsStateDto } from '../../../shared/types.js'
+import type { EngineStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 
@@ -11,30 +11,35 @@ export function Onboarding() {
   const [teamUrl, setTeamUrl] = useState('')
   const [firstCapture, setFirstCapture] = useState('')
   const [finishing, setFinishing] = useState(false)
-  const [models, setModels] = useState<LocalModelsStateDto | null>(null)
-  const [modelsFailed, setModelsFailed] = useState(false)
-  const [modelPct, setModelPct] = useState<number | null>(null)
+  const [brains, setBrains] = useState<EngineStatusDto[]>([])
+  const [brainsFailed, setBrainsFailed] = useState(false)
+  const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
   const [imported, setImported] = useState<{ done: number; total: number } | null>(null)
 
   // A failed state fetch must not leave step 2 as a title over an empty
   // list — without the retry the user proceeds brainless, never having seen
-  // a download button.
-  const loadModels = () => {
-    setModelsFailed(false)
+  // a sign-in button.
+  const loadBrains = () => {
+    setBrainsFailed(false)
     void api
-      .localModelsState()
-      .then(setModels)
-      .catch(() => setModelsFailed(true))
+      .engineStates()
+      .then(setBrains)
+      .catch(() => setBrainsFailed(true))
+  }
+
+  const connect = async (id: 'claude' | 'codex') => {
+    setConnecting(id)
+    await api.engineConnect(id).catch(() => undefined)
+    setConnecting(null)
+    loadBrains()
   }
 
   useEffect(() => {
     void api.onboardDefaults().then((d) => setRoot(d.defaultRoot))
-    loadModels()
+    loadBrains()
     return api.onEvent((event) => {
-      if (event.type === 'localmodels:changed') setModels(event.state)
-      else if (event.type === 'localmodel:progress') {
-        setModelPct(event.total > 0 ? Math.min(100, Math.round((event.received / event.total) * 100)) : null)
-      } else if (event.type === 'import:progress') {
+      if (event.type === 'engines:changed') loadBrains()
+      else if (event.type === 'import:progress') {
         // The finishing step blocks on the whole import; without this the user
         // watches a disabled button for minutes with no count.
         setImported({ done: event.done, total: event.total })
@@ -93,31 +98,39 @@ export function Onboarding() {
             <h1>{t('onboard.s2Title')}</h1>
             <p className="onboard-sub">{t('onboard.s2Sub')}</p>
             <ul className="engine-lights">
-              {(models?.models ?? []).filter((m) => m.id === models?.recommendedId || m.downloaded).map((m) => (
-                <li key={m.id} className={m.downloaded ? 'engine-ready' : ''}>
-                  <span className={`engine-dot${m.downloaded ? ' on' : ''}`} />
-                  <span className="engine-name">{m.label} · {m.approxGB}GB</span>
-                  <span className="engine-pill" data-testid="onboard-model-state">
-                    {m.downloading
-                      ? modelPct !== null ? `${modelPct}%` : '…'
-                      : m.downloaded
-                        ? t('diag.connected')
-                        : m.lastError
-                          ? t('settings.localFailed', { reason: m.lastError })
-                          : t('settings.localWaiting')}
-                  </span>
-                </li>
-              ))}
+              {(['claude', 'codex'] as const).map((id) => {
+                const state = brains.find((b) => b.id === id)
+                const signedIn = state?.installed === true && state.loggedIn
+                return (
+                  <li key={id} className={signedIn ? 'engine-ready' : ''}>
+                    <span className={`engine-dot${signedIn ? ' on' : ''}`} />
+                    <span className="engine-name">{t(id === 'claude' ? 'settings.brainClaude' : 'settings.brainChatGPT')}</span>
+                    <span className="engine-pill" data-testid={`onboard-brain-${id}`}>
+                      {connecting === id
+                        ? t('settings.brainConnecting')
+                        : signedIn
+                          ? t('settings.brainConnected')
+                          : state?.installed
+                            ? (
+                                <button className="secondary" data-testid={`onboard-connect-${id}`} onClick={() => void connect(id)}>
+                                  {t('settings.brainConnect')}
+                                </button>
+                              )
+                            : t('settings.brainMissing')}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
-            {modelsFailed && (
+            {brainsFailed && (
               <p className="onboard-fail">
-                {t('onboard.modelsUnavailable')}{' '}
-                <button className="secondary" data-testid="onboard-models-retry" onClick={loadModels}>
-                  {t('onboard.modelsRetry')}
+                {t('onboard.brainsUnavailable')}{' '}
+                <button className="secondary" data-testid="onboard-brains-retry" onClick={loadBrains}>
+                  {t('onboard.brainsRetry')}
                 </button>
               </p>
             )}
-            <p className="onboard-note">{t('onboard.modelNote', { ram: models?.ramGB ?? 0 })}</p>
+            <p className="onboard-note">{t('onboard.brainNote')}</p>
             <div className="onboard-actions">
               <button className="secondary" data-testid="onboard-skip-ai" onClick={() => setStep(3)}>
                 {t('onboard.skipForNow')}

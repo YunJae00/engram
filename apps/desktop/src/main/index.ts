@@ -1,4 +1,4 @@
-import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setLocalTransport, setSpawnObserver, sweepStaleEnginePids } from 'core'
+import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setSpawnObserver, sweepStaleEnginePids } from 'core'
 import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeTheme, powerMonitor, session, shell, type WebContents } from 'electron'
 import { rmSync, statSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -7,7 +7,7 @@ import type { NoteDto, OnboardPayload } from '../shared/types.js'
 import { registerConfigIpc, registerSettingsIpc, setBrainChoiceHook } from './config-ipc.js'
 import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from './security.js'
 import { detectApiKeyEnv } from './installer.js'
-import { abortAllChat, broadcast, drainAbsorbQueue, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
+import { abortAllChat, broadcast, drainAbsorbQueue, registerEngineIpc, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
 import { fixMacPath } from './macos-path.js'
 import { autoConnectMcp, registerMcpIpc } from './mcp-connect.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
@@ -20,7 +20,6 @@ import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { keepWindowState, loadWindowState, placeWindow } from './window-state.js'
 import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
-import { localComplete, localConfigured, registerLocalLlmIpc, setModelsChangedHook, stopLocalServer } from './local-llm.js'
 import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
@@ -532,9 +531,8 @@ async function bootVault(root: string): Promise<VaultContext> {
       enginesDetected = true
       broadcast({ type: 'engines:detected' })
     })
-    // A brain downloaded or switched in Settings becomes usable the moment it
-    // lands — not at the next refocus or the 30-minute watch tick.
-    setModelsChangedHook(() => void revalidateEngines(ctx))
+    // A brain switched in Settings becomes usable the moment it is chosen —
+    // not at the next refocus or the 30-minute watch tick.
     setBrainChoiceHook(() => void revalidateEngines(ctx))
     startEngineWatch(ctx)
     // Write the session block once at boot, so a Claude session started before
@@ -558,15 +556,11 @@ async function bootVault(root: string): Promise<VaultContext> {
     void loadAbsorbState(ctx.paths).then((s) => {
       if (s.pending.length > 0) void drainAbsorbQueue(ctx)
     })
-    // Semantic memory: bring the local embedding layer up in the background
+    // Semantic memory: bring the embedding layer up in the background
     // (first packaged boot downloads the model once; failures degrade to
     // lexical search silently).
     startMemoryFabric(ctx)
     startSemantic(ctx)
-    // Deliberately NO boot warm-up: it pinned the model into memory on every
-    // start whether anyone would ask anything or not, and on a shared-iGPU
-    // machine that residency was the first domino of a machine-wide freeze.
-    // The model now loads on intent — opening a chat surface warms it.
   }
   return ctx
 }
@@ -608,14 +602,12 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler(() => false)
 
   registerBaseIpc()
+  registerEngineIpc()
   registerActivityIpc()
   registerSessionWatchIpc()
-  registerLocalLlmIpc()
   registerContentCaptureIpc()
   registerMemoryFabricIpc()
-  // The core adapter learns where the local brain lives (started on demand),
-  // and where the two cloud brains' runtimes are.
-  setLocalTransport({ complete: localComplete, configured: localConfigured })
+  // The core adapter learns where the two brains' runtimes are.
   installCloudEngines()
   // Auto-update: check the public release feed (packaged only). Where the
   // platform can install for itself it does so on the next quit; where it
@@ -682,7 +674,6 @@ app.on('will-quit', () => {
   stopKeeper()
   stopStanding()
   stopActivityWatch()
-  stopLocalServer()
   void stopContentCapture()
   for (const watcher of watchers) void watcher.close()
   killAllEngineChildrenSync()

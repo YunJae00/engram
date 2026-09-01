@@ -30,7 +30,6 @@ jobs:
       - run: pnpm run css-scan
       # The model catalogue points at someone else's server; a renamed file
       # there is a 404 the first user with that much RAM discovers.
-      - run: pnpm run verify-models
 
   e2e:
     name: end-to-end (Electron)

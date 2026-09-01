@@ -1,12 +1,10 @@
-// The session the person actually had, reproduced against the REAL model: a
+// The session the person actually had, reproduced against a real brain: a
 // question the vault cannot answer, then a follow-up that only makes sense in
-// context. Both went wrong in the shipped build — the web tools were never on
-// the menu, and the loop never saw the conversation.
+// context.
 //
 // Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/comet-web-probe.mts"
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault } from 'core'
-import { spawnSync } from 'node:child_process'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
@@ -20,21 +18,11 @@ const paths = await initVault(VAULT, { git: false })
 await mkdir(join(USERDATA, 'models'), { recursive: true })
 console.log(`comet-web-probe: free memory ${(os.freemem() / 1e9).toFixed(1)}GB`)
 
-const mk = spawnSync(
-  'cmd.exe',
-  ['/c', 'mklink', '/J', join(USERDATA, 'models', 'gguf'), join(process.env['APPDATA']!, 'desktop', 'models', 'gguf')],
-  { windowsHide: true },
-)
-if (mk.status !== 0) {
-  console.error('junction failed — cannot reach the real model')
-  process.exit(1)
-}
-await writeFile(join(USERDATA, 'local-llm.json'), JSON.stringify({ activeModelId: 'gemma4-e2b' }))
 // The person has already pasted a results address once, as they would in
 // Settings — the app itself still knows no engines.
 await writeFile(
   join(USERDATA, 'settings.json'),
-  JSON.stringify({ defaultEngine: 'local', autoStart: false, teamSync: 'auto', searchTemplate: process.env['PROBE_SEARCH'] ?? '' }),
+  JSON.stringify({ defaultEngine: 'claude', autoStart: false, teamSync: 'auto', searchTemplate: process.env['PROBE_SEARCH'] ?? '' }),
 )
 
 // A vault about this person's own product — the notes that were wrongly
@@ -53,7 +41,7 @@ const page = await app.firstWindow()
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 for (let i = 0; i < 30; i++) {
   const engines = (await page.evaluate(() => window.engram.engines())) as { id: string }[]
-  if (engines.some((e) => e.id === 'local')) break
+  if (engines.some((e) => e.id === 'claude')) break
   await new Promise((r) => setTimeout(r, 2_000))
 }
 

@@ -7,8 +7,7 @@ import { join } from 'node:path'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { markAgentProfile } from './agent-profile.js'
-import { releaseModelForRoom, setRoomMaker } from './local-llm.js'
-import { reserveRoom, ROOM_FOR_BROWSER } from './memory-plan.js'
+import { reserveRoom } from './memory-plan.js'
 import { readFrames } from './page-reader.js'
 
 // The errand's hands: the user's own Chrome, driven over CDP by
@@ -262,14 +261,6 @@ async function ensureContext(): Promise<Ctx> {
     if (closing) await closing.catch(() => undefined)
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
-    // A browser opening beside a resident model is the pairing that freezes
-    // machines: the model was admitted against a measurement Chrome then
-    // spends. Ask for the room before taking it.
-    if (os.freemem() < ROOM_FOR_BROWSER && releaseModelForRoom(`opening the browser with ${(os.freemem() / 1e9).toFixed(1)}GB free`))
-      // Freeing is a message to another process; give the pages a moment to
-      // come back before measuring what is left.
-      for (let waited = 0; waited < 4_000 && os.freemem() < ROOM_FOR_BROWSER; waited += 250)
-        await new Promise((resolve) => setTimeout(resolve, 250))
     if (os.freemem() < LAUNCH_MIN_FREE)
       throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
     const { chromium } = await import('playwright-core')
@@ -434,16 +425,6 @@ export { withAbort as agentAbortable }
 // fire-and-forget calls, moments AFTER a teach session has opened the window
 // the person is being recorded in. A recording session owns the browser, so
 // an unforced close steps aside; memory pressure and quit pass force.
-// The browser's half of taking turns: when the model would otherwise load
-// CPU-bound beside it, an idle window - nobody at it, no recording holding it -
-// closes and gives its room back. The next page opens a fresh one.
-setRoomMaker(async () => {
-  if (!context || claimed || idleHolds > 0) return false
-  flog('agent-browser', 'stepping aside so the model has room')
-  await closeAgentBrowser()
-  return context === null
-})
-
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
   // Somebody is standing at the window - a recording, or a person typing their
   // password into a login wall. An unforced close waits for them; memory

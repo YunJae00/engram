@@ -41,14 +41,12 @@ export {
   createEngine,
   detectAvailableEngines,
   detectEngineStates,
-  setLocalTransport,
   type EngineBinaries,
   ENGINE_ORDER,
   keepsEngine,
   setCloudEngineFactory,
   type CloudEngineId,
 } from './engine/registry.js'
-export { LocalAdapter, type LocalTransport } from './engine/local.js'
 export { spawnServerChild } from './engine/spawn.js'
 export * from './jobs/graph.js'
 export * from './jobs/subject.js'
@@ -100,6 +98,5 @@ export {
 } from './bot-memory.js'
 export { deriveSearchTemplate, rankLinks, searchUrlFor } from './search-template.js'
 export { carriesSecret, secretsIn, withoutSecrets } from './secrets.js'
-export { fitPrompt } from './prompt-budget.js'
 export { parseRetryAfterMs } from './engine/classify.js'
 export type { ToolSessionCall, ToolSessionJob, ToolSessionResult } from './engine/types.js'

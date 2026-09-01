@@ -38,12 +38,10 @@ const en = {
   'settings.contentHint': 'Pick the folders you work in. When a document there is saved, what changed becomes a memory — read locally, never uploaded.',
   'settings.contentAdd': 'Add folder…',
   'settings.contentRemove': 'Remove',
-  'settings.localTitle': 'Local AI (no subscription needed)',
   'settings.more': 'More',
   'settings.brainTitle': 'Brain',
-  'settings.brainHint': 'Pick which one answers. The one on this machine needs nothing; the other two use your own subscription, signed in through the vendor and billed by them to you.',
+  'settings.brainHint': 'Pick which one answers. Both use your own subscription, signed in through the vendor and billed by them to you.',
   'settings.brainUse': 'Which brain answers',
-  'settings.brainLocal': 'On this machine',
   'settings.brainClaude': 'Claude',
   'settings.brainChatGPT': 'ChatGPT',
   'settings.brainConnected': 'Signed in',
@@ -53,13 +51,6 @@ const en = {
   'settings.brainConnect': 'Sign in',
   'settings.brainDisconnect': 'Sign out',
   'settings.brainConnectFailed': 'Sign-in did not complete',
-  'settings.localHint': 'Runs entirely on this machine ({ram}GB RAM detected). The brain downloads once by itself and works offline after that.',
-  'settings.localBrain': 'Local brain',
-  'settings.localWaiting': 'Waiting to download',
-  'settings.localDownloading': 'Downloading {pct}%',
-  'settings.localReady': 'Ready',
-  'settings.localRetry': 'Retry',
-  'settings.localFailed': 'Download failed — {reason}. It will try again later.',
   'onboard.importing': 'Importing {done} / {total} notes…',
   // Second click confirms. The file is gigabytes and getting it back is a
   // fresh download, so the button asks once before it goes.
@@ -116,7 +107,6 @@ const en = {
   'live.hideWindow': 'Hide the window',
   'bots.busyElsewhere': 'Another comet is answering — one moment',
   'bots.thinking': 'Thinking',
-  'bots.warming': 'Warming up the model',
   'bots.readingAsk': 'Reading your message · {done} of {total} tokens',
   'bots.readingFound': 'Reading what it found · {done} of {total} tokens',
   'bots.choosing': 'Working out the next move · {n} tokens',
@@ -563,8 +553,6 @@ const en = {
   // the panel: transcript + the one composer
   // The empty state teaches both gestures, because one box now serves both.
   'chat.offlineSaveFailed': 'Could not save that thought — the vault folder rejected the write. Try again.',
-  'chat.warming': 'Warming up your local brain — ready in a moment',
-  'chat.warmingPlaceholder': 'The brain is waking up…',
   'chat.send': 'Send',
 
   // settings
@@ -633,11 +621,11 @@ const en = {
   'onboard.setupError': 'Setup hit a snag — nothing is lost, just try again.',
   'onboard.s1Title': 'Where should your vault live?',
   'onboard.s1Sub': 'One folder holds everything — notes, sources and your private space.',
-  'onboard.modelNote': 'Runs entirely on this machine ({ram}GB RAM detected). It downloads by itself — carry on, and the librarian starts the moment it arrives.',
-  'onboard.modelsUnavailable': 'Could not list the available brains.',
-  'onboard.modelsRetry': 'Retry',
+  'onboard.brainNote': 'Your own subscription, signed in here. Carry on — the librarian starts the moment one is connected.',
+  'onboard.brainsUnavailable': 'Could not list the available brains.',
+  'onboard.brainsRetry': 'Retry',
   'onboard.s2Title': 'Your AI brain',
-  'onboard.s2Sub': 'Free, and it runs entirely on this PC — nothing you write ever leaves the machine. It is downloading now; the librarian starts organizing for you once it is here.',
+  'onboard.s2Sub': 'Sign in to the one you already pay for. Your notes stay in your vault; only the question and what it needs are sent.',
   // Logging in is the one step that cannot be automated (it is the user's own
   // Anthropic account), so the UI does the next best thing: run it in place
   // and say plainly which of the three states they are in.

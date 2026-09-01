@@ -1,5 +1,4 @@
 import type { StringKey, Translate } from '../i18n.js'
-import type { ModelActivity } from './modelActivity.js'
 
 // The loop narrates a step as "tool: argument". The tool's own name is the
 // evidence; this is the sentence a person reads for it. A line that is not
@@ -33,17 +32,9 @@ export function stepLabel(t: Translate, line: string): string {
   return key && match ? t(key, { arg: match[2]! }) : line
 }
 
-// One sentence for the wait, from the strongest evidence down: the model
-// loading outranks its counters (an unload between calls reloads mid-run);
-// the counters outrank the last step line (that step is over once the model
-// is reading what it found); the step line outranks the generic word, which
-// is only ever shown before the model has started.
-export function pendingStatus(t: Translate, activity: ModelActivity, latestStep: string | undefined): string {
-  if (activity.warm === 'loading') return t('bots.warming')
-  const progress = activity.progress
-  if (progress?.phase === 'reading')
-    return t(latestStep ? 'bots.readingFound' : 'bots.readingAsk', { done: progress.done, total: progress.total ?? 0 })
-  if (progress?.phase === 'writing')
-    return progress.kind === 'choice' ? t('bots.choosing', { n: progress.done }) : t('bots.writing', { n: progress.words ?? 0 })
+// One sentence for the wait: the last step line if there is one - that is
+// what the work is actually doing - and otherwise the generic word, which is
+// only ever shown before the first step lands.
+export function pendingStatus(t: Translate, latestStep: string | undefined): string {
   return latestStep ? stepLabel(t, latestStep) : t('bots.thinking')
 }

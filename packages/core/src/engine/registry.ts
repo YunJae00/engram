@@ -1,19 +1,16 @@
-import { LocalAdapter, type LocalTransport } from './local.js'
 import { MockEngine } from './mock.js'
 import type { Engine, EngineDetection, EngineId } from './types.js'
 
-// Three brains, each on its own: the one on this disk, and two the person
-// signs in to with their own plan and pays for themselves. Nothing here
-// switches between them behind the person's back - the one they chose is the
-// one that answers, and a brain that is not signed in says so rather than
-// handing the work to another.
-export const ENGINE_ORDER: EngineId[] = ['local', 'claude', 'codex']
+// Two brains, each signed in to with the person's own plan and paid for by
+// them. Nothing here switches between them behind the person's back - the one
+// they chose is the one that answers, and a brain that is not signed in says
+// so rather than handing the work to another.
+export const ENGINE_ORDER: EngineId[] = ['claude', 'codex']
 
 export type CloudEngineId = 'claude' | 'codex'
 
-// The cloud brains run the vendors' own runtimes, which only the host app
-// carries. Injected once at boot, like the local transport; absent, a cloud
-// id reads as not installed.
+// The brains run the vendors' own runtimes, which only the host app carries.
+// Injected once at boot; absent, an id reads as not installed.
 let cloudFactory: ((id: CloudEngineId) => Engine | null) | null = null
 export function setCloudEngineFactory(factory: (id: CloudEngineId) => Engine | null): void {
   cloudFactory = factory
@@ -31,27 +28,11 @@ function absentEngine(id: CloudEngineId): Engine {
   }
 }
 
-// The local adapter needs to know where its server lives, and only the host
-// app knows that (it owns the process). Injected once at boot — same pattern
-// as setSpawnObserver. Null endpoint = local engine reads as not installed,
-// which is exactly right for the bare CLI.
-let localTransport: LocalTransport = {
-  complete: async () => {
-    throw new Error('no local transport installed')
-  },
-  configured: async () => false,
-}
-export function setLocalTransport(transport: LocalTransport): void {
-  localTransport = transport
-}
-
 export type EngineBinaries = Partial<Record<EngineId, string>>
 
 export function createEngine(id: EngineId, binary?: string): Engine {
   void binary
   switch (id) {
-    case 'local':
-      return new LocalAdapter(localTransport)
     case 'claude':
     case 'codex':
       return cloudFactory?.(id) ?? absentEngine(id)
@@ -104,7 +85,7 @@ export function keepsEngine(detection: EngineDetection, wasKnown: boolean): bool
 }
 
 export async function detectAvailableEngines(
-  defaultEngine: EngineId = 'local',
+  defaultEngine: EngineId = 'claude',
   binaries: EngineBinaries = {},
   keep: Iterable<EngineId> = [],
 ): Promise<Engine[]> {

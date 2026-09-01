@@ -87,7 +87,7 @@ function keepSet(keep: Iterable<EngineId>): Set<EngineId> {
 export async function engineStates(): Promise<EngineStatusDto[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') return [{ id: 'mock', installed: true, loggedIn: true }]
-  if (engineFlag === 'none') return [{ id: 'local', installed: false, loggedIn: false }]
+  if (engineFlag === 'none') return [{ id: 'claude', installed: false, loggedIn: false }]
   const states: EngineStatusDto[] = []
   for (const id of ENGINE_ORDER) {
     const detection = await createEngine(id)

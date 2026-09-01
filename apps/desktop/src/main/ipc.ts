@@ -1,7 +1,6 @@
 import {
   activationRerank,
   fadingMemories,
-  fitPrompt,
   noteActivation,
   appendBotTurn,
   appendCounterexample,
@@ -102,7 +101,6 @@ import {
   type ErrandResult,
 } from 'core'
 import { randomUUID } from 'node:crypto'
-import { holdLocalModel, backgroundInferenceOk, errandFloors } from './local-llm.js'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
@@ -296,30 +294,10 @@ function runPipelineSoon(ctx: VaultContext, message: string): void {
   }, CAPTURE_GRACE_MS)
 }
 
-let pipelineDeferTimer: NodeJS.Timeout | null = null
-
 export function runPipelineAsync(ctx: VaultContext, message: string): void {
   if (ctx.engines.length === 0) return
   if (pipelineRunning) {
     pipelineQueued = true
-    return
-  }
-  // Background filing on the LOCAL brain waits for a machine that can spare
-  // it — the captures sit safely in the inbox and the pending badge counts
-  // them. Cloud engines cost no local memory and run regardless.
-  if (ctx.engines[0]?.id === 'local') {
-    void backgroundInferenceOk().then((verdict) => {
-      if (verdict.ok) {
-        startPipeline(ctx, message)
-        return
-      }
-      flog('sweep', `deferred — ${verdict.reason}`)
-      if (pipelineDeferTimer) clearTimeout(pipelineDeferTimer)
-      pipelineDeferTimer = setTimeout(() => {
-        pipelineDeferTimer = null
-        runPipelineAsync(ctx, message)
-      }, 10 * 60_000)
-    })
     return
   }
   startPipeline(ctx, message)
@@ -402,16 +380,6 @@ export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
   stopRequested = false
   try {
     for (;;) {
-      if (ctx.engines[0]?.id === 'local') {
-        // A reboot queues a backlog, and draining it at boot was exactly the
-        // freeze loop: force-off, autostart, drain, freeze again. It waits.
-        const verdict = await backgroundInferenceOk()
-        if (!verdict.ok) {
-          flog('sweep', `absorb drain deferred — ${verdict.reason}`)
-          setTimeout(() => void drainAbsorbQueue(ctx), 10 * 60_000)
-          return
-        }
-      }
       const state = await loadAbsorbState(ctx.paths)
       if (state.pending.length === 0) {
         // Queue clear — a final progress event so the UI dismisses the bar.
@@ -532,16 +500,6 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
   if (ctx.engines.length === 0) {
     scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
     return
-  }
-  // Same bar as capture filing: the auto-tidy is optional by definition, and
-  // an optional job must not be what pushes a busy machine into thrash.
-  if (ctx.engines[0]?.id === 'local') {
-    const verdict = await backgroundInferenceOk()
-    if (!verdict.ok) {
-      flog('sweep', `auto-tidy deferred — ${verdict.reason}`)
-      scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
-      return
-    }
   }
   if (draining || manualSweepInFlight || stopRequested) {
     scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
@@ -912,7 +870,14 @@ function buildVaultMap(store: VaultContext['store']): string | null {
   return `--- Vault topic map (the complete list of topics that actually exist in this vault — for questions like "what projects do I have?" or "is there anything about X?", THIS list is the answer. A topic missing from the retrieved notes below does not mean it does not exist) ---\n${lines.join('\n')}${more}`
 }
 
+// A sign-in can happen before a vault exists (onboarding), so the handlers for
+// it live at app level; this is how they reach the vault once there is one.
+let onEnginesChanged: (() => Promise<void>) | null = null
+
 export function registerIpc(ctx: VaultContext): void {
+  onEnginesChanged = async () => {
+    await revalidateEngines(ctx)
+  }
   // Boot check: a vault carrying old backlog (unswept edits, unlinked notes)
   // starts healing shortly after launch — no button required.
   scheduleAutoTidy(ctx, 120_000)
@@ -938,12 +903,12 @@ export function registerIpc(ctx: VaultContext): void {
   // the run is accepted (or refused) — the errand itself is detached and takes
   // minutes, so blocking here would hang the palette. Progress and the final
   // verdict travel as errand:phase events; a 'failed' phase carries the reason.
-  // Minutes of continuous inference plus a Chrome: the heaviest thing this
-  // app can do. Measured on a 32GB shared-iGPU machine, starting one with
-  // less free than this ends in a machine-wide freeze, so it is refused with
-  // a number instead. Web needs the browser's own slice on top.
-  const ERRAND_MIN_FREE = 8e9
-  const ERRAND_WEB_MIN_FREE = 10e9
+  // Minutes of work with a Chrome open beside it: the heaviest thing this app
+  // can do. Started on a machine with less free than this it ends in thrash,
+  // so it is refused with a number instead. Web needs the browser's own slice
+  // on top.
+  const ERRAND_MIN_FREE = 2e9
+  const ERRAND_WEB_MIN_FREE = 4e9
 
   // One guarded way to start an errand: the Delegate button returns as soon
   // as the run is accepted, while the comet's research tool waits for what
@@ -964,11 +929,8 @@ export function registerIpc(ctx: VaultContext): void {
     const release = (): void => {
       errandRunning = false
     }
-    // Sized by the smallest downloaded brain — errand calls step down to it —
-    // so a machine that cannot host the flagship still runs its errands.
-    const floors = ctx.engines[0]?.id === 'local' ? await errandFloors() : null
-    const minFree = floors?.min ?? ERRAND_MIN_FREE
-    const webMinFree = floors?.webMin ?? ERRAND_WEB_MIN_FREE
+    const minFree = ERRAND_MIN_FREE
+    const webMinFree = ERRAND_WEB_MIN_FREE
     const freeAtStart = os.freemem()
     if (freeAtStart < minFree) {
       release()
@@ -1754,23 +1716,6 @@ export function registerIpc(ctx: VaultContext): void {
   })
 
   ipcMain.handle('engines:list', () => ctx.engines.map(engineDto))
-  ipcMain.handle('engines:states', () => engineStates())
-  // Sign-in happens in the vendor's own window; this only starts it, waits,
-  // and re-detects. Nothing about the credential passes through here.
-  const cloudId = (id: unknown): 'claude' | 'codex' => {
-    if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
-    return id
-  }
-  ipcMain.handle('engines:connect', async (_e, id: unknown) => {
-    const result = await cloudEngine(cloudId(id)).login()
-    await revalidateEngines(ctx)
-    return result
-  })
-  ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
-    await cloudEngine(cloudId(id)).logout()
-    await revalidateEngines(ctx)
-  })
-
   // Live re-detection (login just completed in the embedded terminal, a CLI
   // was installed, …) — updates ctx in place and tells every window. It also
   // RE-MEASURES health: this is the path Diagnostics polls and window focus
@@ -1787,23 +1732,6 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Chat panel: streams engine tokens to the renderer. The
   // prompt carries only current-note context — never superseded text.
-  // How much retrieved material counts as "the vault can answer this". Below
-  // it a question is about something the vault does not hold, and answering
-  // from an empty context is how the librarian ends up saying "I could not
-  // find anything" — the answer nobody wants. Those escalate to an errand.
-  const THIN_CONTEXT_NOTES = 2
-
-  ipcMain.handle('chat:route', async (_e, message: string): Promise<{ kind: 'chat' | 'errand'; notes: number }> => {
-    // Retrieval only — no inference, so this is cheap enough to run before
-    // every send.
-    if (ctx.engines[0]?.id !== 'local') return { kind: 'chat', notes: THIN_CONTEXT_NOTES }
-    const hits = activationRerank(
-      hybridMerge(ctx.store.search(message), await semanticQueryIfLive(message, 8), 8),
-      (id) => ctx.store.get(id),
-    )
-    const live = hits.map((h) => ctx.store.get(h.id)).filter((n) => n !== null && n.front.status === 'current')
-    return { kind: live.length >= THIN_CONTEXT_NOTES ? 'chat' : 'errand', notes: live.length }
-  })
 
   ipcMain.handle('chat:send', async (_e, request: ChatRequestDto) => {
     const controller = new AbortController()
@@ -1898,7 +1826,7 @@ export function registerIpc(ctx: VaultContext): void {
       .slice(-CHAT_HISTORY_TURNS)
       .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.text.slice(0, CHAT_TURN_CHARS)}`)
     const ask = `User: ${request.message}`
-    const coldPrompt = fitPrompt(rules, [clock, ...background], [...evidence, ...history], ask, engine.id)
+    const coldPrompt = [...rules, clock, ...background, ...evidence, ...history, ask].filter(Boolean).join('\n\n')
 
     // Dedup guard: the claude adapter emits the answer as EITHER incremental
     // partial deltas OR a single `assistant` summary (never both), so token
@@ -2010,11 +1938,8 @@ export function registerIpc(ctx: VaultContext): void {
           return
         }
       }
-      // The model stays for the whole turn: a loop pauses for pages and
-      // searches, and every pause read as idle cost the next step a reload.
-      const releaseModel = holdLocalModel()
-      // The brain on this disk needs the loop's guidance; the cloud brains
-      // plan for themselves and are only handed the tools.
+      // A brain that plans for itself is handed the tools and left to it;
+      // one that cannot needs the loop's guidance step by step.
       const guided = engine.id !== 'claude' && engine.id !== 'codex'
       // Read once per turn so every prompt of the turn carries the same bytes.
       const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
@@ -2199,7 +2124,6 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
-        releaseModel()
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the
         // moment the answer lands takes the evidence away. It goes on its own
@@ -2243,5 +2167,27 @@ export function registerIpc(ctx: VaultContext): void {
     const content = buildContextPack(ctx.store.getAll(), { query })
     const file = await writeContextPack(paths, content)
     return { file, content }
+  })
+}
+
+// Which brains this build carries and whether they are signed in, and the
+// sign-in itself. Registered before any vault: the onboarding walk asks the
+// person to connect one, and that has to work with no vault behind it.
+// Sign-in happens in the vendor's own window; this only starts it, waits, and
+// re-detects. Nothing about the credential passes through here.
+export function registerEngineIpc(): void {
+  const cloudId = (id: unknown): 'claude' | 'codex' => {
+    if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
+    return id
+  }
+  ipcMain.handle('engines:states', () => engineStates())
+  ipcMain.handle('engines:connect', async (_e, id: unknown) => {
+    const result = await cloudEngine(cloudId(id)).login()
+    await onEnginesChanged?.()
+    return result
+  })
+  ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
+    await cloudEngine(cloudId(id)).logout()
+    await onEnginesChanged?.()
   })
 }

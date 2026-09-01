@@ -5,11 +5,11 @@ import { withoutSecrets } from './secrets.js'
 import { collectResult, extractJson, type Engine, type EngineCwd } from './engine/types.js'
 
 // The comet's working loop: think → pick ONE tool → run it → look at what
-// came back, a handful of times, then answer. Small local models fail
-// open-ended agent loops, so every wall here is load-bearing: the menu is
-// tiny, the choice is schema-forced, the state lives in this code (the model
-// sees only the last few observations), and every guard ends in a graceful
-// wrap-up — never a dead end.
+// came back, a handful of times, then answer. Open-ended agent loops drift,
+// so every wall here is load-bearing: the menu is tiny, the choice is
+// schema-forced, the state lives in this code (the model sees only the last
+// few observations), and every guard ends in a graceful wrap-up — never a
+// dead end.
 
 // What every tool is told besides its arguments: the words the person
 // actually used. A small model paraphrases the request into tidy English and
