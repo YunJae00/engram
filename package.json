@@ -1,7 +1,7 @@
 {
   "name": "engram-monorepo",
   "private": true,
-  "version": "0.6.26",
+  "version": "0.6.27",
   "description": "A second brain that runs entirely on your machine",
   "author": "YunJae Kwon",
   "license": "MIT",
@@ -11,8 +11,13 @@
   "packageManager": "pnpm@10.25.0",
   "pnpm": {
     "supportedArchitectures": {
-      "os": ["current"],
-      "cpu": ["x64", "arm64"]
+      "os": [
+        "current"
+      ],
+      "cpu": [
+        "x64",
+        "arm64"
+      ]
     },
     "onlyBuiltDependencies": [
       "canvas",
