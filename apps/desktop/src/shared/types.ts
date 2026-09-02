@@ -482,6 +482,8 @@ export interface EngramApi {
   // Take the picture again now: for a view left on a page that went still
   // half-drawn. sharp asks for every device pixel, for a view being read.
   agentRefresh(): Promise<void>
+  // How tall the pages should lay themselves out, from the pane showing them.
+  agentHeight(height: number): Promise<void>
   // Whether a window is being mirrored, without joining the watch.
   agentState(): Promise<{ on: boolean; url?: string }>
   // workspace registry/switcher (app-level vaults)

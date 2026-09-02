@@ -1,5 +1,5 @@
 import { AppWindow, ChevronsLeft, ChevronsRight, RotateCw, Square } from 'lucide-react'
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { MirrorSurface } from './MirrorSurface.js'
@@ -18,6 +18,10 @@ const MIN_W = 380
 // How long a page keeps streaming after the person's last touch on it.
 const HANDS_ON_MS = 4_000
 const MAX_SHARE = 0.72
+// The page's own width, fixed - the pane only ever changes its height.
+const VIEW_WIDTH = 1280
+// A drag settles before the pages are asked to lay out again.
+const SETTLE_MS = 260
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
@@ -57,7 +61,7 @@ function Address({ url }: { url?: string }) {
 
 export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): void; children?: ReactNode }) {
   const { t } = useApp()
-  const { on, url, frame, width: pageW, height: pageH } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1')
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
   const [windowOut, setWindowOut] = useState(false)
@@ -118,7 +122,39 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
   }
+  // The window is opened in the shape of this pane: the pages lay themselves
+  // out to its height, so the picture fills what the person gave it. Only the
+  // height travels - the width is fixed, or a narrow pane would drop sites to
+  // their phone layout and a taught procedure would meet a page it never saw.
+  const stage = useRef<HTMLDivElement>(null)
   const frozen = !on && frame
+  const paneShown = (on || frozen) && !folded
+  useEffect(() => {
+    const box = stage.current
+    if (!box || !paneShown) return
+    let asked = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const tell = () => {
+      const rect = box.getBoundingClientRect()
+      if (rect.width < 40 || rect.height < 40) return
+      // The height the page needs to fill this box at the fixed width, rounded
+      // so a drag of a few pixels is not a hundred relayouts.
+      const wanted = Math.round((VIEW_WIDTH * rect.height) / rect.width / 20) * 20
+      if (wanted === asked) return
+      asked = wanted
+      void api.agentHeight(wanted).catch(() => {})
+    }
+    const watch = new ResizeObserver(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(tell, SETTLE_MS)
+    })
+    watch.observe(box)
+    tell()
+    return () => {
+      if (timer) clearTimeout(timer)
+      watch.disconnect()
+    }
+  }, [paneShown])
   if (!on && !frozen) return null
   if (folded)
     return (
@@ -191,7 +227,7 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
             field and the space left over is simply the pane. */}
         <div
           className="web-pane-stage"
-          style={{ aspectRatio: `${pageW} / ${pageH}` }}
+          ref={stage}
           onPointerDown={() => setTouched(Date.now())}
           onWheel={() => setTouched(Date.now())}
           onKeyDown={() => setTouched(Date.now())}

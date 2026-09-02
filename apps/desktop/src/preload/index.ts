@@ -121,6 +121,7 @@ const api: EngramApi = {
   agentWindow: (show: boolean) => ipcRenderer.invoke('agent:window', show),
   agentGo: (url: string) => ipcRenderer.invoke('agent:go', url),
   agentRefresh: () => ipcRenderer.invoke('agent:refresh'),
+  agentHeight: (height: number) => ipcRenderer.invoke('agent:height', height),
   agentState: () => ipcRenderer.invoke('agent:state'),
   browsersInstalled: () => ipcRenderer.invoke('browsers:installed'),
   browserChoose: (path: string) => ipcRenderer.invoke('browsers:choose', path),

@@ -35,6 +35,24 @@ const LAUNCH_MIN_FREE = 2.5e9
 // away - megabytes that no reading and no watching needs.
 const BLOCKED_RESOURCES = new Set(['media'])
 
+// The page's own width, fixed for every machine and every pane.
+export const VIEW_WIDTH = 1280
+// How tall the pages are laid out. Set from the pane that shows them, within
+// bounds a real window could have; every page open at the time follows.
+const VIEW_HEIGHT_MIN = 620
+const VIEW_HEIGHT_MAX = 2200
+let viewHeight = 860
+
+export async function setViewHeight(height: number): Promise<boolean> {
+  const wanted = Math.round(Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_MAX, height)))
+  if (wanted === viewHeight) return false
+  viewHeight = wanted
+  await Promise.all(
+    (context?.pages() ?? []).map((page) => page.setViewportSize({ width: VIEW_WIDTH, height: viewHeight }).catch(() => undefined)),
+  )
+  return true
+}
+
 type Ctx = import('playwright-core').BrowserContext
 type Page = import('playwright-core').Page
 
@@ -290,13 +308,14 @@ async function ensureContext(): Promise<Ctx> {
       // The driver's default drops the sandbox, and the browser says so in a
       // banner on every page; a person's window keeps its sandbox.
       chromiumSandbox: true,
-      // One frame for every page: a layout that does not depend on the
-      // person's screen reads the same on every machine, and a taught
-      // procedure replays against the page it was shown. A laptop's width,
-      // which is what sites are built for - and in a pane beside a
-      // conversation, the narrower the layout the larger its text reads,
-      // while the detail comes from the still being taken at twice this.
-      viewport: { width: 1280, height: 860 },
+      // The WIDTH never changes: a layout that does not depend on the
+      // person's screen reads the same on every machine, a taught procedure
+      // replays against the page it was shown, and no site drops to its
+      // phone layout because a pane got narrow. A laptop's width, which is
+      // what sites are built for. The HEIGHT follows the pane the person is
+      // watching it in - see setViewHeight - so the picture fills what they
+      // gave it instead of sitting in the top half of an empty box.
+      viewport: { width: VIEW_WIDTH, height: viewHeight },
       // The page is laid out at 1280 CSS pixels and drawn at twice that, so
       // a still taken of it (what the person looks at when they open the
       // view) carries real detail instead of an enlarged blur. The live run
@@ -304,7 +323,7 @@ async function ensureContext(): Promise<Ctx> {
       // whatever this says - measured.
       deviceScaleFactor: 2,
       args: [
-        '--window-size=1280,860',
+        `--window-size=${VIEW_WIDTH},${viewHeight}`,
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',

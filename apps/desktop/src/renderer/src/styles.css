@@ -1444,7 +1444,7 @@ body.bubble-host { background: transparent; }
   background: var(--fg); color: var(--panel-bg);
 }
 .web-pane-stage {
-  flex: none; max-height: calc(100% - 74px); display: flex; margin: 0 8px;
+  flex: 1; min-height: 0; display: flex; margin: 0 8px;
   border-radius: var(--radius-m); overflow: hidden;
 }
 .web-pane-note { flex: none; padding: 5px 10px 7px; font-size: var(--fs-micro); color: var(--fg-faint); min-height: 24px; }

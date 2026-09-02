@@ -48,5 +48,14 @@ const sharp = (await page.evaluate(`window.__seen`)) as { w: number; h: number; 
 console.log(`the large view's still: ${sharp.map((one) => `${one.px} ${one.kb}KB`).join(', ') || '(none)'}`)
 
 
+// The pane says it is tall: the page should lay itself out to fit it.
+await page.evaluate(`window.__seen = []`)
+await page.evaluate(() => window.engram.agentHeight(1500))
+await page.waitForTimeout(1_500)
+await page.evaluate(() => window.engram.agentRefresh())
+await page.waitForTimeout(3_000)
+const tall = (await page.evaluate(`window.__seen`)) as { w: number; h: number; kb: number; px: string }[]
+console.log(`after asking for a 1280x1500 page: ${tall.map((one) => `${one.w}x${one.h} (${one.px})`).join(', ') || '(no frame)'}`)
+
 await app.close()
 console.log('mirror-probe: DONE')

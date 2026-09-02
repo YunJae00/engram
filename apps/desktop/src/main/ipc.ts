@@ -113,7 +113,7 @@ import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
-import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser } from './agent-browser.js'
+import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, refreshAgentView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
@@ -1316,6 +1316,13 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
   ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
   ipcMain.handle('agent:refresh', () => refreshAgentView())
+  // The pane says how tall it is; the pages lay themselves out to fit it, so
+  // the picture fills the space instead of leaving half of it empty.
+  ipcMain.handle('agent:height', async (_e, height: number) => {
+    // A page laid out again is a page that has changed shape: the picture is
+    // taken afresh, or the pane keeps showing the old one letterboxed.
+    if (await setViewHeight(Number(height) || 0)) await refreshAgentView()
+  })
   ipcMain.handle('agent:state', () => agentViewState())
 
   ipcMain.handle('press:askDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
