@@ -1,4 +1,4 @@
-import { ArrowUp, Brain, Clock, Play, Square, Trash2, X } from 'lucide-react'
+import { ArrowUp, Clock, Orbit, Play, Square, Trash2, X } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
@@ -193,7 +193,7 @@ export function BotsView() {
                 title={t('bots.memory')}
                 onClick={() => setMemoryOpen(!memoryOpen)}
               >
-                <Brain size={12} strokeWidth={1.8} aria-hidden />
+                <Orbit size={12} strokeWidth={1.8} aria-hidden />
                 {t('bots.memory')}
               </button>
               <button

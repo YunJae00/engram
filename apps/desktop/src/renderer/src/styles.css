@@ -321,7 +321,8 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .topbar button, .topbar .canvas-tabs, .topbar input { -webkit-app-region: no-drag; }
 /* The mark inherits its surface colour — a hard-coded one turned it dark
    on the dark floating button. */
-.logomark { display: block; }
+.logomark { display: inline-flex; }
+.logomark svg { display: block; }
 .workspace-btn .logomark { color: var(--fg-strong); }
 .canvas-tabs { display: flex; gap: 2px; background: var(--hover-bg); border-radius: 999px; padding: 3px; flex-shrink: 0; }
 .canvas-tab { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 15px; border-radius: 999px; color: var(--fg-dim); font-size: var(--fs-body); font-weight: 500; transition: all 120ms ease; }
