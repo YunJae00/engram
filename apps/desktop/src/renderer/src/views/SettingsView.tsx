@@ -41,7 +41,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     await api.engineDisconnect(id).catch(() => undefined)
     refreshBrains()
   }
-  const [folders, setFolders] = useState<string[]>([])
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -49,7 +48,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
       api.settingsGet().then(setSettings),
       api.appVersion().then(setVersion),
       api.engineStates().then(setBrains),
-      api.contentFolders().then(setFolders),
       api.activityGet().then(setDeskJournal),
       api.sessionWatchGet().then(setSessionWatch),
       // What the updater already knows, shown without a click — a downloaded
@@ -260,38 +258,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
         <details className="settings-more" data-testid="settings-more">
           <summary>{t('settings.more')}</summary>
-          <div className="settings-group-head">{t('settings.contentTitle')}</div>
-          <div className="settings-group">
-            <div className="setting-note">{t('settings.contentHint')}</div>
-            {folders.map((folder) => (
-              <div key={folder} className="model-row">
-                <span className="model-desc" style={{ wordBreak: 'break-all' }}>{folder}</span>
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    void api
-                      .contentRemoveFolder(folder)
-                      .then(setFolders)
-                      .catch(() => void api.contentFolders().then(setFolders))
-                  }
-                >
-                  {t('settings.contentRemove')}
-                </button>
-              </div>
-            ))}
-            <button
-              className="secondary"
-              onClick={() =>
-                void api
-                  .contentAddFolder()
-                  .then(setFolders)
-                  .catch(() => void api.contentFolders().then(setFolders))
-              }
-            >
-              {t('settings.contentAdd')}
-            </button>
-          </div>
-
           <div className="settings-group-head">{t('settings.groupConnections')}</div>
           <div className="setting-row column">
             <span>{t('settings.mcpTitle')}</span>

@@ -20,7 +20,6 @@ import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { keepWindowState, loadWindowState, placeWindow } from './window-state.js'
 import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
-import { registerContentCaptureIpc, startContentCapture, stopContentCapture } from './content-capture.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
 import { stopStanding } from './standing.js'
@@ -554,7 +553,6 @@ async function bootVault(root: string): Promise<VaultContext> {
     // (recurring know-how → real ~/.claude/skills). Receipts, never questions.
     startKeeper(ctx)
     void startActivityWatch(ctx)
-    startContentCapture(ctx)
     powerMonitor.on('resume', () => {
       void revalidateEngines(ctx)
     })
@@ -614,7 +612,6 @@ app.whenReady().then(async () => {
   registerEngineIpc()
   registerActivityIpc()
   registerSessionWatchIpc()
-  registerContentCaptureIpc()
   registerMemoryFabricIpc()
   // The core adapter learns where the two brains' runtimes are.
   installCloudEngines()
@@ -687,7 +684,6 @@ app.on('will-quit', () => {
   stopKeeper()
   stopStanding()
   stopActivityWatch()
-  void stopContentCapture()
   for (const watcher of watchers) void watcher.close()
   killAllEngineChildrenSync()
 })

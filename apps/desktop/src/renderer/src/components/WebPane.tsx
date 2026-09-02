@@ -1,4 +1,4 @@
-import { AppWindow, ChevronsLeft, ChevronsRight, RotateCw, Square } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Globe, RotateCw, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -64,7 +64,6 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
   const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1')
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
-  const [windowOut, setWindowOut] = useState(false)
   // What is open, asked once when the pane first mounts: the last picture and
   // address survive a walk to another tab and back.
   useEffect(() => {
@@ -100,9 +99,6 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
     }, HANDS_ON_MS)
     return () => clearTimeout(until)
   }, [handsOn, touched])
-  useEffect(() => {
-    if (!on) setWindowOut(false)
-  }, [on])
   const drag = (down: React.MouseEvent) => {
     down.preventDefault()
     const fromX = down.clientX
@@ -156,22 +152,26 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
     }
   }, [paneShown])
   if (!on && !frozen) return null
+  // Folded, it is one button that says what it is holding: the same idiom
+  // as the comets rail, so it is obvious both what it is and how to get it
+  // back. Sideways text nobody can read is not a UI.
   if (folded)
     return (
       <aside className="web-pane folded" data-testid="web-pane-folded">
         <button
-          className="web-pane-unfold"
+          className="web-pane-tab"
           data-testid="web-pane-unfold"
-          aria-label={t('live.unfold')}
-          title={t('live.unfold')}
+          title={`${t('live.unfold')} — ${frozen ? t('live.closed') : hostOf(url) || t('live.caption')}`}
           onClick={() => {
             localStorage.setItem(FOLD_KEY, '0')
             setFolded(false)
           }}
         >
-          <ChevronsLeft size={14} aria-hidden />
+          <ChevronsLeft size={13} aria-hidden />
+          <Globe size={14} strokeWidth={1.9} aria-hidden />
+          {!frozen && <span className={`web-pane-live${busy ? ' working' : ''}`} aria-hidden />}
+          <span className="web-pane-tab-label">{frozen ? t('live.closed') : hostOf(url) || t('live.caption')}</span>
         </button>
-        <span className="web-pane-side-host">{frozen ? t('live.closed') : hostOf(url) || t('live.caption')}</span>
       </aside>
     )
   const host = hostOf(url)
@@ -198,23 +198,9 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
           </button>
           <Address url={url} />
           {!frozen && (
-            <>
-              <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>
-                <RotateCw size={13} aria-hidden />
-              </button>
-              <button
-                className="live-dock-act"
-                aria-label={t(windowOut ? 'live.hideWindow' : 'live.openWindow')}
-                title={t(windowOut ? 'live.hideWindow' : 'live.openWindow')}
-                onClick={() => {
-                  const next = !windowOut
-                  setWindowOut(next)
-                  void api.agentWindow(next).catch(() => {})
-                }}
-              >
-                <AppWindow size={13} aria-hidden />
-              </button>
-            </>
+            <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>
+              <RotateCw size={13} aria-hidden />
+            </button>
           )}
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>

@@ -1449,19 +1449,28 @@ body.bubble-host { background: transparent; }
 }
 .web-pane-note { flex: none; padding: 5px 10px 7px; font-size: var(--fs-micro); color: var(--fg-faint); min-height: 24px; }
 .web-pane .routine-submit, .web-pane .press-gate { margin: 0 8px 8px; }
+/* Folded, the pane is one tab against the right edge: an icon, a light that
+   says whether the page is being worked on, and the host in words a person
+   can read without turning their head. */
 .web-pane.folded {
-  width: 34px; min-width: 34px; flex-direction: column; align-items: center; gap: 8px;
-  background: var(--panel-bg); border-radius: var(--radius-card);
-  box-shadow: inset 0 0 0 1px var(--border-soft); padding: 8px 0;
+  width: auto; min-width: 0; flex: none; align-items: flex-start;
+  margin: 8px 10px 10px 0; background: none; box-shadow: none; padding: 0;
 }
-.web-pane-unfold {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 50%; color: var(--fg-faint);
+.web-pane-tab {
+  display: flex; align-items: center; gap: 7px; padding: 8px 12px 8px 9px;
+  border-radius: var(--radius-card); background: var(--panel-bg); color: var(--fg-dim);
+  box-shadow: inset 0 0 0 1px var(--border-soft), var(--shadow-card);
+  font-size: var(--fs-small); font-weight: 600; max-width: 220px;
 }
-.web-pane-unfold:hover { background: var(--hover-bg); color: var(--fg); }
-.web-pane-side-host {
-  writing-mode: vertical-rl; font-size: var(--fs-micro); color: var(--fg-faint);
-  overflow: hidden; text-overflow: ellipsis; max-height: 70%;
+.web-pane-tab:hover { color: var(--fg); }
+.web-pane-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-pane-live {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--fg-faint); flex: none;
+}
+.web-pane-live.working { background: var(--accent); animation: web-pane-pulse 1.4s ease-in-out infinite; }
+@keyframes web-pane-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 /* The interactive picture: the canvas keeps its own shape centred in the
    box, and the invisible key sink covers the whole surface. */

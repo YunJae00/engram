@@ -66,7 +66,6 @@ export interface CometToolDeps {
   runProcedure?(id: string, slots: Record<string, string>, signal?: AbortSignal, again?: boolean): Promise<string>
   // Folders the person consented to. A file proposal outside them is refused
   // before it can even become a card.
-  allowedFolders?(): Promise<string[]>
   // What this comet remembers about the person, for a question the notebook
   // cannot answer but the comet can.
   remembered?(): string[]
@@ -129,18 +128,6 @@ function record(args: Record<string, unknown>, key: string): Record<string, stri
   for (const [name, raw] of Object.entries(value as Record<string, unknown>))
     if (typeof raw === 'string') out[name] = raw
   return out
-}
-
-// Containment, not prefix-matching: "/home/me/docs-secret" must not pass as
-// inside "/home/me/docs". Case-folded because Windows paths are.
-export function insideAllowedFolder(path: string, folders: string[]): boolean {
-  const normal = (one: string): string => one.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-  const target = normal(path)
-  if (target.includes('..')) return false
-  return folders.some((folder) => {
-    const root = normal(folder)
-    return root.length > 0 && (target === root || target.startsWith(`${root}/`))
-  })
 }
 
 function hostOf(url: string): string {
@@ -392,39 +379,6 @@ ${note.body.slice(0, 2_000)}`
       },
     },
   ]
-
-  if (deps.allowedFolders) {
-    const allowedFolders = deps.allowedFolders
-    tools.push({
-      name: 'propose_file',
-      description: 'propose writing a file into a folder the person allowed — args: {"path": "...", "content": "..."}',
-      argsSchema: {
-        type: 'object',
-        properties: { path: { type: 'string' }, content: { type: 'string' } },
-        required: ['path', 'content'],
-      },
-      async run(args) {
-        const path = str(args, 'path')
-        const content = str(args, 'content')
-        if (!path || !content) return 'propose_file needs a path and the content'
-        const folders = await allowedFolders()
-        if (folders.length === 0)
-          return 'no folders are allowed yet — the person adds them in Settings before a file can be written'
-        if (!insideAllowedFolder(path, folders))
-          return `"${path.slice(0, 80)}" is outside the folders the person allowed — refused`
-        // The card carries the destination in plain sight, so approving it is
-        // an informed act rather than a blind yes.
-        const card = await createCard(deps.paths, {
-          cardType: 'new-note',
-          targets: [],
-          rationale: `file: ${path}`.slice(0, 160),
-          proposed: `# Draft for ${path}\n\n${content}`.slice(0, PROPOSE_BODY_CAP),
-          job: 'J1',
-        })
-        return `file proposed for ${path} — nothing is written until the person approves it in review (card ${card.id})`
-      },
-    })
-  }
 
   if (deps.courier) {
     const courier = deps.courier

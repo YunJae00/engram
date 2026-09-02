@@ -20,9 +20,6 @@ const api: EngramApi = {
   chatSend: (request: ChatRequestDto) => ipcRenderer.invoke('chat:send', request),
   // fire-and-forget: drag deltas at pointer-move rate must never await
   activityToday: () => ipcRenderer.invoke('activity:today'),
-  contentFolders: () => ipcRenderer.invoke('content:folders'),
-  contentAddFolder: () => ipcRenderer.invoke('content:addFolder'),
-  contentRemoveFolder: (folder: string) => ipcRenderer.invoke('content:removeFolder', folder),
   activityGet: () => ipcRenderer.invoke('activity:get'),
   activitySet: (enabled: boolean) => ipcRenderer.invoke('activity:set', enabled),
   sessionWatchGet: () => ipcRenderer.invoke('sessionwatch:get'),

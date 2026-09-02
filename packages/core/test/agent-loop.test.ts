@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { carriedSteps, detectLoop, parsePendingCall, pickTools, runAgentLoop, type AgentTool } from '../src/agent-loop.js'
-import { cometTools, insideAllowedFolder } from '../src/comet-tools.js'
+import { cometTools } from '../src/comet-tools.js'
 import { listCards } from '../src/cards.js'
 import { createNote } from '../src/notes.js'
 import { addRoutine, listRoutines } from '../src/routine.js'
@@ -724,46 +724,8 @@ describe('propose_edit and propose_file — writing is always a proposal', () =>
     expect(await edit.run({ id: 'n-does-not-exist', body: 'x' }, CTX)).toContain('nothing to edit')
   })
 
-  it('propose_file only exists with consented folders, and refuses a path outside them', async () => {
-    const paths = await initVault(await tmpVaultRoot('tools-file'), { git: false })
-    expect(cometTools({ paths, retrieve: async () => [] }).map((t) => t.name)).not.toContain('propose_file')
-
-    const tools = cometTools({
-      paths,
-      retrieve: async () => [],
-      allowedFolders: async () => ['C:/Users/me/Documents/work'],
-    })
-    const file = tools.find((t) => t.name === 'propose_file')!
-    expect(await file.run({ path: 'C:/Users/me/Documents/work/report.md', content: 'hello' }, CTX)).toContain('proposed')
-    expect(await file.run({ path: 'C:/Users/me/Secrets/passwords.txt', content: 'x' }, CTX)).toContain('refused')
-    // Only the allowed one became a card, and nothing was written anywhere.
-    const cards = await listCards(paths)
-    expect(cards).toHaveLength(1)
-    expect(cards[0]!.rationale).toContain('file: C:/Users/me/Documents/work/report.md')
-  })
-
-  it('with no folders allowed at all, a file proposal says so instead of guessing', async () => {
-    const paths = await initVault(await tmpVaultRoot('tools-file-none'), { git: false })
-    const file = cometTools({ paths, retrieve: async () => [], allowedFolders: async () => [] }).find(
-      (t) => t.name === 'propose_file',
-    )!
-    expect(await file.run({ path: 'C:/anywhere/x.md', content: 'x' }, CTX)).toContain('no folders are allowed yet')
-    expect(await listCards(paths)).toHaveLength(0)
-  })
 })
 
-describe('insideAllowedFolder', () => {
-  it('contains rather than prefix-matches, and never walks upward', () => {
-    const folders = ['C:/Users/me/Documents/work']
-    expect(insideAllowedFolder('C:/Users/me/Documents/work/a/b.md', folders)).toBe(true)
-    expect(insideAllowedFolder('C:\\Users\\me\\Documents\\work\\a.md', folders)).toBe(true)
-    // the classic near-miss: a sibling folder whose name starts the same
-    expect(insideAllowedFolder('C:/Users/me/Documents/work-secret/a.md', folders)).toBe(false)
-    expect(insideAllowedFolder('C:/Users/me/Documents/work/../../secrets.txt', folders)).toBe(false)
-    expect(insideAllowedFolder('C:/elsewhere/a.md', folders)).toBe(false)
-    expect(insideAllowedFolder('C:/anything', [])).toBe(false)
-  })
-})
 
 // The answer is written from what travelled to it, so what travels matters:
 // a look-up that found nothing must never push out the page that answered.

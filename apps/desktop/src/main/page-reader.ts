@@ -12,6 +12,13 @@ export interface FrameReading {
   hasPasswordField: boolean
   links: { text: string; url: string }[]
   controls: { kind: string; name: string; state: string }[]
+  // What stands in front of the page right now: a dialog it has opened over
+  // itself. Its own words, so it can be answered without hunting for them
+  // among the page behind it.
+  dialog: string
+  // Fields the page itself says are wrong or missing, each with what it said
+  // about them. Read off the page's own markup, never guessed.
+  faults: string[]
 }
 
 export interface PageReading extends FrameReading {
@@ -179,6 +186,58 @@ export function readDocument(mark?: number): FrameReading {
     )
     return hint ? `(icon: ${hint[1]!.toLowerCase()})` : ''
   }
+  // A dialog standing over the page. The standard shapes first (an element
+  // the page declares as one, or a native <dialog open>), then the shape
+  // every framework's modal has anyway: something lifted above the page,
+  // large enough to be a panel and small enough not to be the page itself.
+  const dialogOf = (): Element | null => {
+    const declared = Array.from(document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]')).filter((el) => shown(el))
+    if (declared.length > 0) return declared[declared.length - 1]!
+    let best: Element | null = null
+    let bestArea = 0
+    for (const el of all) {
+      if (!shown(el)) continue
+      const style = getComputedStyle(el as HTMLElement)
+      if (style.position !== 'fixed' && style.position !== 'absolute') continue
+      if (Number(style.zIndex) < 10) continue
+      const rect = el.getBoundingClientRect()
+      const area = rect.width * rect.height
+      if (area < 40_000 || area > innerWidth * innerHeight * 0.9) continue
+      if (el.querySelector('button, [role="button"], input, a[href]') === null) continue
+      if (area > bestArea) {
+        best = el
+        bestArea = area
+      }
+    }
+    return best
+  }
+  const openDialog = dialogOf()
+  const dialog = openDialog ? clean((openDialog as HTMLElement).innerText).slice(0, 1_200) : ''
+
+  // What the page says is wrong with what was entered. Every signal is the
+  // page's own: the aria contract for an invalid field, the browser's own
+  // validity state, and the message the field points at.
+  const faults: string[] = []
+  const faultSeen = new Set<string>()
+  for (const el of all) {
+    if (faults.length >= 12) break
+    if (!shown(el)) continue
+    const node = el as HTMLInputElement
+    const invalid =
+      el.getAttribute('aria-invalid') === 'true' ||
+      (typeof node.checkValidity === 'function' && node.willValidate && !node.checkValidity())
+    if (!invalid) continue
+    const said =
+      clean(textOfIds(el.getAttribute('aria-errormessage'))) ||
+      clean(textOfIds(el.getAttribute('aria-describedby'))) ||
+      clean(node.validationMessage) ||
+      'the page marked this as not filled in correctly'
+    const line = `${nameOf(el) || el.tagName.toLowerCase()}: ${said}`.slice(0, 160)
+    if (faultSeen.has(line)) continue
+    faultSeen.add(line)
+    faults.push(line)
+  }
+
   const controls: { kind: string; name: string; state: string }[] = []
   let marked: Element | null = null
   for (const el of all) {
@@ -209,7 +268,15 @@ export function readDocument(mark?: number): FrameReading {
     if (controls.length >= CONTROLS_CAP) break
   }
   if (marked) marked.setAttribute('data-engram-hand', '')
-  return { text, hidden: hidden.join('\n'), hasPasswordField: document.querySelector('input[type="password"]') !== null, links, controls }
+  return {
+    text,
+    hidden: hidden.join('\n'),
+    hasPasswordField: document.querySelector('input[type="password"]') !== null,
+    links,
+    controls,
+    dialog,
+    faults,
+  }
 }
 
 function frameName(frame: Frame): string {
@@ -221,7 +288,7 @@ function frameName(frame: Frame): string {
 export async function readFrames(page: Page): Promise<PageReading> {
   const frames = [page.mainFrame(), ...page.frames().filter((frame) => frame !== page.mainFrame())]
   const map = new Map<number, { frame: Frame; local: number }>()
-  const whole: PageReading = { text: '', hidden: '', hasPasswordField: false, links: [], controls: [], lines: [] }
+  const whole: PageReading = { text: '', hidden: '', hasPasswordField: false, links: [], controls: [], lines: [], dialog: '', faults: [] }
   for (const frame of frames) {
     let reading: FrameReading
     try {
@@ -238,6 +305,10 @@ export async function readFrames(page: Page): Promise<PageReading> {
     whole.text += (whole.text && reading.text.trim() ? `\n\n[frame: ${frameName(frame)}]\n` : '') + reading.text
     whole.hidden += (whole.hidden && reading.hidden ? '\n' : '') + reading.hidden
     whole.hasPasswordField ||= reading.hasPasswordField
+    // A dialog anywhere in the page - including inside a frame - is what is
+    // in front of the person; the first one found wins.
+    if (!whole.dialog && reading.dialog) whole.dialog = reading.dialog
+    whole.faults.push(...reading.faults)
     whole.links.push(...reading.links)
     reading.controls.forEach((control, at) => {
       const index = whole.controls.length + 1
@@ -247,6 +318,7 @@ export async function readFrames(page: Page): Promise<PageReading> {
     })
   }
   whole.links = whole.links.slice(0, 25)
+  whole.faults = whole.faults.slice(0, 12)
   placed.set(page, map)
   return whole
 }

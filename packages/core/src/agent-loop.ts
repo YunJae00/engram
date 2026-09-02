@@ -67,6 +67,11 @@ export interface AgentLoopOptions {
   guided?: boolean
   // A key under which a brain may keep one session open across turns.
   session?: string
+  // What is already on screen when the turn starts: the address of the page
+  // the browser is holding, and whatever stands in front of it. A person
+  // begins a turn looking at their screen; without this the loop begins with
+  // its eyes shut and goes looking for a page it already has open.
+  onScreen?: string
   // One narration line per step ("search_memory: deploy decisions") — the
   // chat thread relays these while the loop works.
   onStep?(line: string): void

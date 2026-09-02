@@ -55,6 +55,10 @@ export interface WebPage {
   // Words the page keeps folded away - a closed tab, a collapsed section -
   // so a search can say they are there without opening every part.
   hidden?: string
+  // A dialog the page has opened over itself, in its own words.
+  dialog?: string
+  // What the page itself says is wrong with what was entered.
+  faults?: string[]
   wall?: 'login' | 'captcha'
 }
 

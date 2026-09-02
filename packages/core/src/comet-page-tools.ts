@@ -28,8 +28,13 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       return 'the page now needs a person - say so, and that it stays open in the thread for them to do it; ask them to tell you when it is done'
     }
     if (!page.text.trim()) return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`
+    // A move that seemed to change nothing is only a dead end when the page
+    // did not answer it either. A dialog that opened, or a field the page has
+    // marked as wrong, IS the answer: that is what to deal with next, and the
+    // move is tried again after - which the page report says in its own words.
+    const answered = Boolean(page.dialog) || Boolean(page.faults?.length)
     const still =
-      move.changed === false
+      move.changed === false && !answered
         ? `${what}: nothing on the page changed, so that was probably not the thing meant - press another of the controls below by its number, or look at the page and press the point\n`
         : ''
     return still + pageReport(page, 1, findOf(args))

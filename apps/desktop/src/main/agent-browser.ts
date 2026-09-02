@@ -22,9 +22,12 @@ import { readFrames } from './page-reader.js'
 // whole of a three-minute answer).
 export const NAV_TIMEOUT_MS = 15_000
 const PAGE_TEXT_CAP = 12_000
-// The browser is heavyweight company for an 8GB machine — it leaves when the
-// errand stops using it rather than idling next to the model.
-const IDLE_CLOSE_MS = 3 * 60_000
+// The browser is heavyweight company for an 8GB machine, so it leaves when
+// nobody is using it. Long enough, though, that a person reading an answer
+// and typing a follow-up still finds the page they were just shown: a window
+// that closed under them is the difference between carrying on and starting
+// the job again. Memory pressure still takes it away at any time.
+const IDLE_CLOSE_MS = 15 * 60_000
 // Below this the browser is the memory somebody else needs — it leaves.
 const PRESSURE_CLOSE_FLOOR = 2e9
 const LAUNCH_MIN_FREE = 2.5e9
@@ -402,6 +405,8 @@ export async function readPage(page: Page): Promise<WebPage> {
     links: reading?.links ?? [],
     controls: reading?.lines ?? [],
     ...(reading?.hidden ? { hidden: reading.hidden } : {}),
+    ...(reading?.dialog ? { dialog: reading.dialog } : {}),
+    ...(reading?.faults?.length ? { faults: reading.faults } : {}),
     ...(wall ? { wall } : {}),
   }
 }

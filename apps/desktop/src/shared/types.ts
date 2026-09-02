@@ -596,9 +596,6 @@ export interface EngramApi {
   // chat panel & context packs
   chatSend(request: ChatRequestDto): Promise<void>
   activityToday(): Promise<{ totalMs: number; apps: { app: string; ms: number; topTitles: string[] }[] }>
-  contentFolders(): Promise<string[]>
-  contentAddFolder(): Promise<string[]>
-  contentRemoveFolder(folder: string): Promise<string[]>
   // Desk journal switch (settings ⑨ + tray share the same state).
   activityGet(): Promise<boolean>
   activitySet(enabled: boolean): Promise<boolean>

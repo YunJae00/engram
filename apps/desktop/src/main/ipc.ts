@@ -117,7 +117,6 @@ import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowse
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, refreshAgentView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
-import { consentedFolders } from './content-capture.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
@@ -1958,6 +1957,12 @@ export function registerIpc(ctx: VaultContext): void {
       // Read once per turn so every prompt of the turn carries the same bytes.
       const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
       const memory = renderMemory(await loadBotMemory(paths, bot.id))
+      // The window the person is watching, said at the top of the turn.
+      const open = agentViewState()
+      const onScreen =
+        open.on && open.url && open.url !== 'about:blank'
+          ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
+          : ''
       try {
         const result = await runComet(
           {
@@ -1985,7 +1990,6 @@ export function registerIpc(ctx: VaultContext): void {
                   }
                 }, WALL_HOLD_MS).unref()
               },
-              allowedFolders: consentedFolders,
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
               runProcedure: (id, slots, _signal, again) => runProcedureForComet(id, slots, again),
               remembered: () => remembered,
@@ -2032,6 +2036,10 @@ export function registerIpc(ctx: VaultContext): void {
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
             guided,
             ...(memory ? { memory } : {}),
+            // What is already on screen. A person starts a turn looking at
+            // their own screen; without this the turn starts blind and goes
+            // hunting for a page it is already holding open.
+            ...(onScreen ? { onScreen } : {}),
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
