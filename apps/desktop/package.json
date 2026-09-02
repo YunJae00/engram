@@ -1,7 +1,7 @@
 {
   "name": "desktop",
   "private": true,
-  "version": "0.6.32",
+  "version": "0.6.33",
   "license": "MIT",
   "description": "Engram — a self-organizing knowledge vault with an AI librarian",
   "author": "YunJae Kwon",
