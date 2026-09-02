@@ -68,6 +68,10 @@ test.beforeAll(async () => {
     env: {
       ...process.env,
       ENGRAM_VAULT: root,
+      // Its own userData, like every other spec: without this the test
+      // shares the installed app's state, and boots against a vault that
+      // app may be holding open right now.
+      ENGRAM_USERDATA: await mkdtemp(join(REPO_TMP, 'e2e-shell-userdata-')),
       ENGRAM_NO_GIT: '1',
       ENGRAM_NO_AUTOTIDY: '1',
       ENGRAM_ENGINE: 'none',
@@ -137,13 +141,17 @@ test('help panel opens with quick actions and legend', async () => {
 test('the cosmos chat collapses and comes back', async () => {
   await page.getByTestId('activity-sky').click()
   await expect(page.getByTestId('cosmos-chat')).toBeVisible()
-  await page.getByTitle('Hide').click()
+  await page.getByTitle('Hide', { exact: true }).click()
   await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
   await page.getByTestId('cosmos-chat-open').click()
   await expect(page.getByTestId('cosmos-chat-input')).toBeVisible()
 })
 
 test('the comets rail folds away and returns', async () => {
+  // The vault may still be opening when this is the first test a fresh
+  // worker runs (a retry, or the worker after another test's failure) - and
+  // an invoke before the vault's handlers exist is an error, not a wait.
+  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   // A comet to fold beside: the strip is judged by what it keeps reachable.
   await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await page.getByTestId('activity-bots').click()

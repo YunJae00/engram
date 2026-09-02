@@ -1081,8 +1081,17 @@ export function registerIpc(ctx: VaultContext): void {
   // answering borrows the same retrieval and engine every chat uses.
   registerCometMemoryIpc(paths)
   ipcMain.handle('bots:list', () => loadBots(paths))
-  ipcMain.handle('bots:create', (_e, input: { name: string; purpose?: string }) => createBot(paths, input))
-  ipcMain.handle('bots:delete', (_e, id: string) => deleteBot(paths, id))
+  // Creation and deletion say so, like every other change: the views stay
+  // mounted across tabs now, so nothing re-reads the list by remounting.
+  ipcMain.handle('bots:create', async (_e, input: { name: string; purpose?: string }) => {
+    const bot = await createBot(paths, input)
+    broadcast({ type: 'bots:changed' })
+    return bot
+  })
+  ipcMain.handle('bots:delete', async (_e, id: string) => {
+    await deleteBot(paths, id)
+    broadcast({ type: 'bots:changed' })
+  })
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
   ipcMain.handle('bots:taskAdd', (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) =>
     addBotTask(paths, botId, input),

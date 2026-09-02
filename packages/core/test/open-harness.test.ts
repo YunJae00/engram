@@ -30,17 +30,31 @@ describe('a search shape is learned only from a search the comet ran for its tas
   })
 })
 
-describe('the open step shape suits a hosted structured-output runtime', () => {
-  it('is one closed object over the tool names, with the arguments left open', () => {
-    const schema = openStepSchema(tools) as { properties: { tool: { enum: string[] } }; required: string[]; additionalProperties: boolean; oneOf?: unknown }
+describe('the step shapes suit a hosted structured-output runtime', () => {
+  it('is one closed object over the tool names, args the union of every tool argument', () => {
+    const schema = openStepSchema(tools) as {
+      properties: { tool: { enum: string[] }; args: { properties: Record<string, unknown>; additionalProperties: boolean } }
+      required: string[]
+      additionalProperties: boolean
+      oneOf?: unknown
+    }
     expect(schema.properties.tool.enum).toEqual(['search_web', 'open_page', 'answer'])
     expect(schema.required).toEqual(['tool', 'args'])
     expect(schema.additionalProperties).toBe(false)
     expect(schema.oneOf).toBeUndefined()
+    // The strict runtimes refuse an object that does not close itself, so
+    // args lists every tool's arguments and closes.
+    expect(schema.properties.args.additionalProperties).toBe(false)
+    expect(Object.keys(schema.properties.args.properties)).toEqual(expect.arrayContaining(['text', 'query', 'url']))
   })
 
-  it('the guided shape stays the exact one the local grammar compiles', () => {
-    expect((stepSchema(tools) as { oneOf?: unknown[] }).oneOf?.length).toBe(3)
+  it('every object in every branch of the guided shape closes itself too', () => {
+    const branches = (stepSchema(tools) as { oneOf: { additionalProperties: boolean; properties: { args: { additionalProperties?: boolean } } }[] }).oneOf
+    expect(branches.length).toBe(3)
+    for (const branch of branches) {
+      expect(branch.additionalProperties).toBe(false)
+      expect(branch.properties.args.additionalProperties).toBe(false)
+    }
   })
 })
 

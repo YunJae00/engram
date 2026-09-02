@@ -1346,6 +1346,9 @@ body.bubble-host { background: transparent; }
 
 /* ── Bots: the first tab — colleagues over the same brain ──────────── */
 .bots-view { flex: 1; min-height: 0; display: flex; }
+/* A mounted-but-hidden canvas keeps its state and costs no paint. */
+.canvas-slot { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.canvas-slot[hidden] { display: none; }
 .bots-rail {
   width: 260px; flex: none;
   background: var(--rail-bg); padding: 0 10px 12px; overflow: hidden;

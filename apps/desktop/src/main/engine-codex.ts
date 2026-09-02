@@ -15,6 +15,25 @@ interface CodexSdk {
   }
 }
 
+// This runtime reads schemas strictly: every object must close itself with
+// additionalProperties: false, and a schema-valued additionalProperties (a
+// map of free keys) is refused outright. The schemas are authored once for
+// every brain, so the strictness is applied here, where the requirement
+// lives - each object is closed, and a map collapses to a closed object the
+// model simply will not fill. Losing a free-key argument beats losing the
+// whole call to a 400.
+export function strictSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(strictSchema)
+  if (schema === null || typeof schema !== 'object') return schema
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === 'additionalProperties') continue
+    out[key] = strictSchema(value)
+  }
+  if ((out['type'] === 'object' || 'properties' in out) && !('additionalProperties' in out)) out['additionalProperties'] = false
+  return out
+}
+
 // "Not logged in" is the runtime's own wording; a status it printed anything
 // else for is a sign-in.
 export function readLoginStatus(out: string, code: number | null): EngineDetection {
@@ -79,7 +98,7 @@ export class CodexEngine implements CloudEngine {
         ...(job.modelHint === 'fast' ? { modelReasoningEffort: 'low' } : {}),
       })
       const turn = await thread.run(job.prompt, {
-        ...(job.jsonSchema ? { outputSchema: job.jsonSchema } : {}),
+        ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
         signal: abort.signal,
       })
       yield { type: 'result', text: turn.finalResponse }

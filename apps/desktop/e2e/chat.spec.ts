@@ -29,6 +29,9 @@ test.beforeAll(async () => {
     env: {
       ...process.env,
       ENGRAM_VAULT: root,
+      // Its own userData - shared state with the installed app is how a test
+      // boots against a vault that app is holding open.
+      ENGRAM_USERDATA: await mkdtemp(join(REPO_TMP, 'e2e-chat-userdata-')),
       ENGRAM_NO_GIT: '1',
       ENGRAM_NO_AUTOTIDY: '1',
       ENGRAM_ENGINE: 'mock',
@@ -70,7 +73,9 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
 
 test('the conversation survives leaving and re-entering the tab', async () => {
   await page.getByTestId('activity-sky').click()
-  await expect(page.getByTestId('bots-view')).toHaveCount(0)
+  // The view stays mounted and hidden now - coming back is instant and the
+  // thread is exactly where it was.
+  await expect(page.getByTestId('bots-view')).toBeHidden()
   await page.getByTestId('activity-bots').click()
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
   // The thread is held outside the view and refreshed from the transcript
@@ -85,7 +90,9 @@ test('the selected comet is remembered across tabs', async () => {
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
   await page.getByTestId('activity-list').click()
-  await expect(page.getByTestId('bots-view')).toHaveCount(0)
+  // The view stays mounted and hidden now - coming back is instant and the
+  // thread is exactly where it was.
+  await expect(page.getByTestId('bots-view')).toBeHidden()
   await page.getByTestId('activity-bots').click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
@@ -99,7 +106,9 @@ test('a question just sent and a draft not yet sent both survive a tab switch', 
   await composer.press('Enter')
   // Leave at once - before main has written anything to disk.
   await page.getByTestId('activity-list').click()
-  await expect(page.getByTestId('bots-view')).toHaveCount(0)
+  // The view stays mounted and hidden now - coming back is instant and the
+  // thread is exactly where it was.
+  await expect(page.getByTestId('bots-view')).toBeHidden()
   await page.getByTestId('activity-bots').click()
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').last()).toContainText('Where do we deploy from?')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readAuthStatus, textOf } from '../src/main/engine-claude.js'
 import { claudeBinary, cloudErrorKind, codexBinary, StatusCache, STATUS_TTL_MS, unpackedPath, withHelpersOnPath } from '../src/main/engine-cloud.js'
-import { readLoginStatus } from '../src/main/engine-codex.js'
+import { readLoginStatus, strictSchema } from '../src/main/engine-codex.js'
 
 // The runtimes speak for themselves; these pin down how their words are read.
 describe('readAuthStatus', () => {
@@ -92,5 +92,30 @@ describe('textOf / unpackedPath', () => {
     const sep = process.platform === 'win32' ? '\\' : '/'
     expect(unpackedPath(`C:${sep}app${sep}app.asar${sep}node_modules${sep}x`)).toBe(`C:${sep}app${sep}app.asar.unpacked${sep}node_modules${sep}x`)
     expect(unpackedPath(`${sep}plain${sep}path`)).toBe(`${sep}plain${sep}path`)
+  })
+})
+
+describe('the schema handed to the strict runtime', () => {
+  it('closes every object and drops a map-valued additionalProperties', () => {
+    const strict = strictSchema({
+      type: 'object',
+      properties: {
+        args: { type: 'object', properties: { slots: { type: 'object', additionalProperties: { type: 'string' } } } },
+      },
+      additionalProperties: { type: 'string' },
+    }) as { additionalProperties: boolean; properties: { args: { additionalProperties: boolean; properties: { slots: { additionalProperties: boolean } } } } }
+    expect(strict.additionalProperties).toBe(false)
+    expect(strict.properties.args.additionalProperties).toBe(false)
+    expect(strict.properties.args.properties.slots.additionalProperties).toBe(false)
+  })
+
+  it('leaves an already-closed schema exactly closed', () => {
+    const strict = strictSchema({ type: 'object', properties: { a: { type: 'string' } }, additionalProperties: false }) as { additionalProperties: boolean }
+    expect(strict.additionalProperties).toBe(false)
+  })
+
+  it('walks oneOf branches too', () => {
+    const strict = strictSchema({ oneOf: [{ type: 'object', properties: {} }] }) as { oneOf: { additionalProperties: boolean }[] }
+    expect(strict.oneOf[0]!.additionalProperties).toBe(false)
   })
 })

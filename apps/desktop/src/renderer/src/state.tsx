@@ -154,8 +154,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // change (same order as core's NoteStore.getAll — by id).
   const notesRef = useRef<Map<string, NoteDto>>(new Map())
   const [notes, setNotes] = useState<NoteDto[]>([])
+  // Publishing the notes array re-renders everything under the provider, so
+  // it happens only when the notes actually changed: a background ping that
+  // read the same list back must not cost the whole window a render while
+  // the person is typing or scrolling.
+  const notesSignature = useRef('')
   const publishNotes = useCallback(() => {
-    setNotes([...notesRef.current.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)))
+    const sorted = [...notesRef.current.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    const signature = sorted.map((n) => `${n.id}:${n.updated}:${n.status}:${n.badge}`).join('|')
+    if (signature === notesSignature.current) return
+    notesSignature.current = signature
+    setNotes(sorted)
   }, [])
   const publishTimer = useRef<number | null>(null)
   const schedulePublish = useCallback(() => {

@@ -60,6 +60,11 @@ function Shell() {
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
+  // The list mounts the first time it is looked at, then stays.
+  const [listSeen, setListSeen] = useState(false)
+  useEffect(() => {
+    if (activity === 'list') setListSeen(true)
+  }, [activity])
   // Version of a downloaded update waiting to be applied.
   const [updateReady, setUpdateReady] = useState<string | null>(null)
   const [updateSelfInstalls, setUpdateSelfInstalls] = useState(true)
@@ -340,19 +345,28 @@ function Shell() {
           </div>
         ) : !vaultReady ? (
           <div className="empty-view vault-opening" data-testid="vault-opening">{t('shell.opening')}</div>
-        ) : activity === 'bots' ? (
-          <BotsView />
-        ) : activity === 'sky' ? (
-          <Suspense fallback={<div className="empty-view" />}>
-            <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
-          </Suspense>
         ) : (
-          <Suspense fallback={<div className="empty-view" />}>
-            <ListView />
-          </Suspense>
+          <>
+            {/* Every canvas stays mounted and the inactive ones are hidden:
+                switching tabs is then a repaint, not a rebuild, and a thread
+                mid-answer or a half-typed draft is exactly where it was. The
+                sky is the exception - its canvas animates on its own clock,
+                so it mounts when looked at and unmounts when left. */}
+            <div className="canvas-slot" hidden={activity !== 'bots'}>
+              <BotsView />
+            </div>
+            {activity === 'sky' && (
+              <Suspense fallback={<div className="empty-view" />}>
+                <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
+              </Suspense>
+            )}
+            <div className="canvas-slot" hidden={activity !== 'list'}>
+              <Suspense fallback={<div className="empty-view" />}>{listSeen && <ListView />}</Suspense>
+            </div>
+            {/* The launcher IS the panel at rest — never both on screen at once. */}
+            {activity === 'sky' && <CosmosChat />}
+          </>
         )}
-        {/* The launcher IS the panel at rest — never both on screen at once. */}
-        {activity === 'sky' && <CosmosChat />}
         {/* Hung from the top bar now, so it is available wherever the bar is. */}
         <HelpPanel />
       </div>
