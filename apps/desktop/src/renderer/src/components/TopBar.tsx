@@ -27,7 +27,7 @@ function sweepLabel(t: Translate, status: SweepStatus): string {
     case 'running':
       return t('topbar.sweepRunning')
     case 'done':
-      // "Tidy complete" over 40 items the librarian never touched is the lie
+      // A finished-filing line over 40 items the librarian never touched is the lie
       // this bar told every time a run halted. Say what stopped it.
       if (status.haltReason === 'quota') return t('topbar.sweepQuota', { n: status.deferred })
       if (status.haltReason === 'auth') return t('topbar.sweepAuth', { n: status.deferred })

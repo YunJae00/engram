@@ -167,7 +167,7 @@ const en = {
   'brain.memories': 'Connected memories · {count}',
   'brain.memoriesPlain': 'Memories · {count}',
   'brain.synthesisHead': 'Synthesis',
-  'brain.noHub': 'The librarian writes this topic’s synthesis on its next tidy.',
+  'brain.noHub': 'The librarian writes this topic’s synthesis the next time it files.',
   'brain.noTopics': 'No topics yet — the librarian connects memories as they arrive.',
   'brain.unconnected': 'Not yet connected',
   'brain.unconnectedHint': 'Memories the librarian hasn’t wired anywhere yet — they join topics as connections form.',
@@ -205,14 +205,14 @@ const en = {
   'topbar.settingsTitle': 'Settings',
   'topbar.teamChanges': 'What the team changed',
   'topbar.close': 'Close',
-  'topbar.sweepRunning': 'Librarian tidying…',
+  'topbar.sweepRunning': 'Filing your notes…',
   'topbar.filing': 'Filing your capture…',
-  'topbar.sweepDone': 'Tidy complete',
-  // A halted sweep used to report "Tidy complete" over work it had not done.
+  'topbar.sweepDone': 'Filing done',
+  // A halted sweep used to report it had finished over work it had not done.
   // These say what stopped it AND that the work is kept, not lost.
-  'topbar.sweepDeferred': 'Tidy paused — {n} left for the next run',
-  'topbar.sweepQuota': 'Tidy paused — {n} left, the AI hit its usage limit',
-  'topbar.sweepAuth': 'Tidy paused — {n} left, log in to the AI again',
+  'topbar.sweepDeferred': 'Filing paused — {n} left for the next run',
+  'topbar.sweepQuota': 'Filing paused — {n} left, the AI hit its usage limit',
+  'topbar.sweepAuth': 'Filing paused — {n} left, log in to the AI again',
   'topbar.jobJ1': 'Absorbing notes',
   'topbar.jobJ2': 'Linking',
   'topbar.jobJ3': 'Suggesting links',
@@ -236,7 +236,7 @@ const en = {
   // re-hit the same limit, so the widget explains instead of offering a button
   // that does nothing. Auth is the same, except the user CAN fix it.
   'absorb.quotaPaused': '{n} waiting — the AI hit its usage limit',
-  'absorb.quotaHint': 'Nothing is lost. Tidying resumes on its own once the limit resets.',
+  'absorb.quotaHint': 'Nothing is lost. Filing resumes on its own once the limit resets.',
   'absorb.authPaused': '{n} waiting — the AI needs you to log in again',
   'absorb.login': 'Log in',
 
@@ -276,7 +276,7 @@ const en = {
   'today.fadingHead': 'Fading memories — worth a glance',
   'today.fadingDays': 'quiet for {n}d',
   'today.title': 'Today',
-  'today.empty': 'No briefing yet — run Tidy once.',
+  'today.empty': 'No briefing yet — let the librarian file once.',
   'today.close': 'Close',
   'today.refresh': 'Refresh',
   'today.refreshing': 'Going over your vault again…',

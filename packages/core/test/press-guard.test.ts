@@ -30,7 +30,9 @@ describe('a press that would be hard to take back is told apart from one that on
   })
 
   it('goes where a link or a menu entry says it goes', () => {
-    for (const words of ['휴가/휴직 신청', 'Time Off', 'Expenses', 'Apply for leave']) {
+    // A menu entry named for what it leads to is passage, even when the
+    // word on it is one an action would also use.
+    for (const words of ['Reports', '설정', 'Sign up page', '신청 내역']) {
       expect(pressCommits({ submits: false, words, navigates: true })).toBe(false)
     }
     // A link that says it deletes is still a deletion.

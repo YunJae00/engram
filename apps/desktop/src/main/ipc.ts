@@ -217,7 +217,7 @@ function toReport(report: RunReport & { briefWritten?: boolean }): SweepReportDt
     failed: report.failed.length,
     deferred: report.deferred,
     briefWritten: report.briefWritten ?? false,
-    // Carried, not dropped: "Tidy complete" over 40 undone items with a Resume
+    // Carried, not dropped: a finished-filing line over 40 undone items with a Resume
     // button that only re-hits the same limit was the librarian's silence made
     // visible. The renderer picks the sentence from this.
     ...(report.haltReason ? { haltReason: report.haltReason } : {}),

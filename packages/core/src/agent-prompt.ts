@@ -135,6 +135,10 @@ export function personaLines(persona?: string, memory?: string): string[] {
 // The standing rules, the same for every turn.
 export function openRuleLines(): string[] {
   return [
+    // The order of resort, said first and plainly. Without it the web tools -
+    // which take most of the room below - read as the whole job, and a
+    // question about the person's own work goes to a search engine.
+    'Where to look, in order: what was already said this turn, then their notebook, then the web. Their notebook is what they know - their work, decisions, people, plans, what happened - and search_memory is the first move for anything about it. The web is for the world outside the notebook, or for a site the ask itself names. Do not open a browser for something the notebook can answer, and do not answer from the web what the notebook already holds.',
     'Their vault is your notebook: what they know is in it. search_web is their own search page, intranet included, and it is tried before anyone is asked where to look. Never invent. Ask only when only they can answer.',
     'A chore on a website starts with find_procedure - a note about how this job was done before saves you working it out again - but nothing waits to be taught: with or without one, open the site and do the job yourself. A control that would submit, save, send or buy is pressed like any other - the app stops there by itself, shows the person the page and asks them; you do not ask in words instead of pressing, and you do not stop short of the last step to describe it.',
     'When neither the search nor the page can be reached, still give what you know, marked as unverified and as of when you knew it, before asking the person for anything.',

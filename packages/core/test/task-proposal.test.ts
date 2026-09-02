@@ -3,11 +3,11 @@ import { answerLanguageLine, NAME_CHARS, parseProposal, proposalPrompt } from '.
 
 describe('the button a finished job proposes', () => {
   it('reads the three lines, quotes and all', () => {
-    const kept = parseProposal('NAME: "Check the week\'s hours"\nGOAL: Open the time report and read this week back to me\nDOES: Opens the report and reads the week back')
+    const kept = parseProposal('NAME: "Morning headlines"\nGOAL: Read the top stories and summarise them\nDOES: Reads the front page and writes a short summary')
     expect(kept).toEqual({
-      name: "Check the week's hours",
-      goal: 'Open the time report and read this week back to me',
-      does: 'Opens the report and reads the week back',
+      name: 'Morning headlines',
+      goal: 'Read the top stories and summarise them',
+      does: 'Reads the front page and writes a short summary',
     })
   })
 
@@ -31,7 +31,7 @@ describe('the button a finished job proposes', () => {
   })
 
   it('asks for the work, never for the words that were typed', () => {
-    const prompt = proposalPrompt({ user: 'go in here and check', answer: 'It is the time report.', steps: ['open_page: https://example.test'] })
+    const prompt = proposalPrompt({ user: 'go in here and check', answer: 'It is a status page.', steps: ['open_page: https://example.test'] })
     expect(prompt).toContain('naming the WORK')
     expect(prompt).toContain('open_page: https://example.test')
     expect(prompt).toContain('language the person wrote in')

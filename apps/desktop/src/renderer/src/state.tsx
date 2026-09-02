@@ -12,7 +12,7 @@ export type SweepStatus =
   | { running: boolean; kind: 'running' }
   // `deferred` and `haltReason` come straight off the report main already
   // broadcasts and nothing read: without them a sweep that filed nothing
-  // because the AI hit its limit rendered as "Tidy complete".
+  // because the AI hit its limit rendered as filing having finished.
   | { running: boolean; kind: 'done'; executed: number; skipped: number; deferred: number; haltReason?: 'quota' | 'auth' }
   | { running: boolean; kind: 'error'; message: string }
 
@@ -65,7 +65,7 @@ interface AppState {
   // Absorb queue counts, the current sweep job/step, and the epoch-ms the active
   // sweep:start fired (for the widget's elapsed ticker).
   absorb: AbsorbStatusDto
-  // What the librarian hasn't seen yet (inbox + unswept notes) — the Tidy badge.
+  // What the librarian hasn't seen yet (inbox + unswept notes) — the badge.
   pendingWork: PendingWorkDto
   sweepJob: { job: string; index: number; total: number } | null
   sweepStartedAt: number | null
