@@ -284,7 +284,7 @@ async function ensureContext(): Promise<Ctx> {
       // One frame for every page: a layout that does not depend on the
       // person's screen reads the same on every machine, and a taught
       // procedure replays against the page it was shown.
-      viewport: { width: 1280, height: 800 },
+      viewport: { width: 1440, height: 900 },
       // The page is laid out at 1280 CSS pixels and drawn at twice that, so
       // a still taken of it (what the person looks at when they open the
       // view) carries real detail instead of an enlarged blur. The live run
@@ -292,7 +292,7 @@ async function ensureContext(): Promise<Ctx> {
       // whatever this says - measured.
       deviceScaleFactor: 2,
       args: [
-        '--window-size=1280,800',
+        '--window-size=1440,900',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',

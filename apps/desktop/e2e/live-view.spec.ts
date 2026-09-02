@@ -83,25 +83,26 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   await page.evaluate(() => window.engram.agentWatch(true))
   await page.evaluate((url) => window.engram.agentGo(url), siteUrl)
-  await expect(page.getByTestId('live-card')).toBeVisible({ timeout: 60_000 })
-  await page.getByTestId('live-expand').click()
-  await expect(page.getByTestId('live-panel')).toBeVisible({ timeout: 30_000 })
+  // The page stands beside the conversation as its own pane, live at once.
+  await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 60_000 })
   // The first window opens on a blank page; the address is asked for again
-  // from the view itself, which is what a person would do.
+  // from the pane itself, which is what a person would do.
   await page.getByTestId('live-address').fill(siteUrl)
   await page.getByTestId('live-address').press('Enter')
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 20_000 })
-  const stage = page.getByTestId('live-panel').locator('.live-stage')
+  const stage = page.getByTestId('web-pane').locator('.mirror-surface')
   await expect(stage.locator('canvas')).toBeVisible({ timeout: 15_000 })
 
-  // A click on the mirror focuses the page's field; keys typed there land in it.
-  const box = (await stage.boundingBox())!
-  await stage.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
+  // Clicks are measured against the picture itself, so the test clicks the
+  // canvas the way a person does.
+  const screen = stage.locator('canvas')
+  const box = (await screen.boundingBox())!
+  await screen.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
   await page.keyboard.type('hello')
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}typed?q=hello`, { timeout: 15_000 })
 
   // A click on the mirror is a click on the page.
-  await stage.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
+  await screen.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`, { timeout: 15_000 })
 })

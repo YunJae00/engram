@@ -37,13 +37,15 @@ await page.evaluate(`window.engram.onEvent((e) => { if (e.type === 'chat:done' |
 await page.getByTestId(`bot-${bot.id}`).click()
 const box = page.locator('.bots-write textarea')
 await box.click()
-await box.fill('open https://news.ycombinator.com, open the top story from there, and give me a two line summary of it - this is something I will want every morning')
+await box.fill('open https://en.wikipedia.org/wiki/Seoul and read me the first paragraph')
 await box.press('Enter')
 
+let paneShot = false
 for (let i = 0; i < 150 && !done; i++) {
-  if (i === 4) {
-    const folded = await page.getByTestId('live-card').getAttribute('class').catch(() => null)
-    if (folded?.includes('folded')) await page.getByTestId('live-fold').click().catch(() => {})
+  if (!paneShot && (await page.getByTestId('web-pane').isVisible().catch(() => false))) {
+    await page.waitForTimeout(2_500)
+    await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/pane-shot.png', import.meta.url)) })
+    paneShot = true
   }
   await page.waitForTimeout(2_000)
 }

@@ -45,7 +45,7 @@ let viewers = 0
 // picture goes out as a frame like any other. Motion is smooth because the
 // screencast carries it; what a person actually reads is sharp because
 // nothing that stands still stays halved.
-const QUIET_MS = 2_500
+const QUIET_MS = 1_500
 let poke: ReturnType<typeof setInterval> | null = null
 
 // A photograph of the page as it stands, at every pixel it was drawn with.
@@ -111,7 +111,7 @@ async function follow(page: Page): Promise<void> {
   } catch {
     return
   }
-  const size = page.viewportSize() ?? { width: 1280, height: 800 }
+  const size = page.viewportSize() ?? { width: 1440, height: 900 }
   const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false, painted: 0, shooting: false }
   mirror = m
   cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {

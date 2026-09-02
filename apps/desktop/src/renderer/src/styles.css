@@ -1420,7 +1420,57 @@ body.bubble-host { background: transparent; }
 }
 .bots-suggestion-x:hover { opacity: 1; color: var(--clay); background: var(--hover-bg); }
 .bots-suggestion-reason { font-size: var(--fs-micro); color: var(--fg-faint); }
-.bots-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bots-main { flex: 1; min-width: 0; display: flex; flex-direction: row; }
+.bots-chat { flex: 1; min-width: 320px; display: flex; flex-direction: column; }
+/* The page as the other half of the screen: full height, its own bar, the
+   picture as large as the pane allows. The grip on its left edge drags the
+   split; folded, it is a sliver that names the page it is holding. */
+.web-pane {
+  position: relative; width: 46%; min-width: 380px; flex: none;
+  display: flex; margin: 8px 10px 10px 0;
+}
+.web-pane-grip { width: 7px; margin-right: -2px; cursor: ew-resize; flex: none; }
+.web-pane-inner {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: var(--panel-bg); border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px var(--border-soft), var(--shadow-card); overflow: hidden;
+}
+.web-pane.frozen .web-pane-inner { opacity: 0.72; }
+.web-pane-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; flex: none; }
+.web-pane-bar .live-address { flex: 1; min-width: 0; }
+.web-pane-stop {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 4px 11px; border-radius: 999px; font-size: var(--fs-small); font-weight: 600;
+  background: var(--fg); color: var(--panel-bg);
+}
+.web-pane-stage {
+  flex: 1; min-height: 0; display: flex; margin: 0 8px;
+  background: var(--rail-bg); border-radius: var(--radius-m); overflow: hidden;
+}
+.web-pane-note { flex: none; padding: 5px 10px 7px; font-size: var(--fs-micro); color: var(--fg-faint); min-height: 24px; }
+.web-pane .routine-submit, .web-pane .press-gate { margin: 0 8px 8px; }
+.web-pane.folded {
+  width: 34px; min-width: 34px; flex-direction: column; align-items: center; gap: 8px;
+  background: var(--panel-bg); border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px var(--border-soft); padding: 8px 0;
+}
+.web-pane-unfold {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; color: var(--fg-faint);
+}
+.web-pane-unfold:hover { background: var(--hover-bg); color: var(--fg); }
+.web-pane-side-host {
+  writing-mode: vertical-rl; font-size: var(--fs-micro); color: var(--fg-faint);
+  overflow: hidden; text-overflow: ellipsis; max-height: 70%;
+}
+/* The interactive picture: the canvas keeps its own shape centred in the
+   box, and the invisible key sink covers the whole surface. */
+.mirror-surface { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: default; }
+/* The picture hangs from the top of its box the way a page does in a
+   browser; the box's spare height stays below it. */
+.mirror-screen { display: flex; align-items: flex-start; justify-content: center; width: 100%; height: 100%; }
+.mirror-screen canvas { max-width: 100%; max-height: 100%; }
+.mirror-waiting { position: absolute; inset: auto; }
 .bots-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 12px 20px 4px;
@@ -1859,6 +1909,9 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .live-keys {
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; resize: none; cursor: default;
   border: 0; padding: 0; background: transparent; caret-color: transparent;
+  /* The sink only listens; the picture takes the pointer. It is focused by
+     hand on mousedown, so it needs no clicks of its own. */
+  pointer-events: none;
 }
 .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); padding: 6px 10px; border-radius: 999px; }
 .live-panel-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; flex-wrap: wrap; }

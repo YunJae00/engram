@@ -16,7 +16,7 @@ import { cometChannel } from '../lib/cometThreads.js'
 import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
-import { LiveView } from '../components/LiveView.js'
+import { WebPane } from '../components/WebPane.js'
 import { PressGate } from '../components/PressGate.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
@@ -38,7 +38,7 @@ const PHASE_LABEL: Record<string, StringKey> = {
 
 
 export function BotsView() {
-  const { errand, startErrand, pressAsk, routine, startRoutine, t } = useApp()
+  const { errand, startErrand, routine, startRoutine, t } = useApp()
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
@@ -178,6 +178,7 @@ export function BotsView() {
       <section className="bots-main">
         {selected ? (
           <>
+          <div className="bots-chat">
             <header className="bots-head">
               <div className="bots-head-id">
                 <span className="bots-head-name">{selected.name}</span>
@@ -310,12 +311,6 @@ export function BotsView() {
                 </div>
               )}
             </div>
-            {/* The page the comet is working on sits under the conversation
-                and over the composer: always in the same place, and never
-                across a word of what was said. */}
-            <LiveView keep open={pressAsk !== null}>
-              <PressGate />
-            </LiveView>
             <div className="bots-write chat-write">
               <textarea
                 ref={boxRef}
@@ -343,6 +338,12 @@ export function BotsView() {
                 </button>
               )}
             </div>
+          </div>
+          {/* The page the comet works on, beside the conversation: watched,
+              acted in, and stoppable right where the work is. */}
+          <WebPane busy={busy} onStop={() => void stop()}>
+            <PressGate />
+          </WebPane>
           </>
         ) : (
           <div className="bots-empty">
