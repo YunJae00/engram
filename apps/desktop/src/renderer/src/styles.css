@@ -1426,7 +1426,7 @@ body.bubble-host { background: transparent; }
    picture as large as the pane allows. The grip on its left edge drags the
    split; folded, it is a sliver that names the page it is holding. */
 .web-pane {
-  position: relative; width: 46%; min-width: 380px; flex: none;
+  position: relative; width: 52%; min-width: 380px; flex: none;
   display: flex; margin: 8px 10px 10px 0;
 }
 .web-pane-grip { width: 7px; margin-right: -2px; cursor: ew-resize; flex: none; }
@@ -1444,8 +1444,8 @@ body.bubble-host { background: transparent; }
   background: var(--fg); color: var(--panel-bg);
 }
 .web-pane-stage {
-  flex: 1; min-height: 0; display: flex; margin: 0 8px;
-  background: var(--rail-bg); border-radius: var(--radius-m); overflow: hidden;
+  flex: none; max-height: calc(100% - 74px); display: flex; margin: 0 8px;
+  border-radius: var(--radius-m); overflow: hidden;
 }
 .web-pane-note { flex: none; padding: 5px 10px 7px; font-size: var(--fs-micro); color: var(--fg-faint); min-height: 24px; }
 .web-pane .routine-submit, .web-pane .press-gate { margin: 0 8px 8px; }
@@ -1469,7 +1469,7 @@ body.bubble-host { background: transparent; }
 /* The picture hangs from the top of its box the way a page does in a
    browser; the box's spare height stays below it. */
 .mirror-screen { display: flex; align-items: flex-start; justify-content: center; width: 100%; height: 100%; }
-.mirror-screen canvas { max-width: 100%; max-height: 100%; }
+.mirror-screen canvas { width: 100%; height: 100%; object-fit: contain; }
 .mirror-waiting { position: absolute; inset: auto; }
 .bots-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

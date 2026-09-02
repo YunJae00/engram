@@ -15,7 +15,11 @@ import { useApp } from '../state.js'
 const WIDTH_KEY = 'engram.webpane.width'
 const FOLD_KEY = 'engram.webpane.folded'
 const MIN_W = 380
+// How long a page keeps streaming after the person's last touch on it.
+const HANDS_ON_MS = 4_000
 const MAX_SHARE = 0.72
+// What the page gets of the window before anyone drags the divider.
+const DEFAULT_SHARE = 0.52
 
 function hostOf(url: string | undefined): string {
   if (!url || url === 'about:blank') return ''
@@ -53,7 +57,7 @@ function Address({ url }: { url?: string }) {
 
 export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): void; children?: ReactNode }) {
   const { t } = useApp()
-  const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame, width: pageW, height: pageH } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1')
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
   const [windowOut, setWindowOut] = useState(false)
@@ -62,23 +66,43 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
   useEffect(() => {
     void agentMirror.ask()
   }, [])
-  // Frames flow only while the pane is actually showing the picture.
-  const showing = on && !folded
+  // A run of frames is a video encoder running: cheap for a moment, not
+  // cheap all afternoon. The pane is on screen the whole time now, so frames
+  // flow only while there is motion to carry - the comet working, or the
+  // person's own hands on the page - and a still page is simply photographed
+  // once. Everything else (a navigation, the refresh button, unfolding) asks
+  // for its own picture.
+  const [touched, setTouched] = useState(0)
+  const handsOn = touched > Date.now() - HANDS_ON_MS
+  const showing = on && !folded && (busy || handsOn)
   useEffect(() => {
     if (!showing) return
     agentMirror.showPixels(true)
-    // A pane that has just opened onto a still page asks for the picture as
-    // it is now rather than waiting for the page to move.
-    void api.agentRefresh().catch(() => {})
     return () => agentMirror.showPixels(false)
   }, [showing])
+  // A pane that has just opened, or a page that has just moved, is asked for
+  // the picture as it is now rather than waiting for the page to paint.
+  useEffect(() => {
+    if (!on || folded) return
+    void api.agentRefresh().catch(() => {})
+  }, [on, folded, url])
+  // The window closes on its own once the last touch is old enough; the
+  // frame it leaves behind is refreshed so nothing stale is left on screen.
+  useEffect(() => {
+    if (!handsOn) return
+    const until = setTimeout(() => {
+      setTouched(0)
+      void api.agentRefresh().catch(() => {})
+    }, HANDS_ON_MS)
+    return () => clearTimeout(until)
+  }, [handsOn, touched])
   useEffect(() => {
     if (!on) setWindowOut(false)
   }, [on])
   const drag = (down: React.MouseEvent) => {
     down.preventDefault()
     const fromX = down.clientX
-    const started = width || Math.round(window.innerWidth * 0.46)
+    const started = width || Math.round(window.innerWidth * DEFAULT_SHARE)
     const move = (e: MouseEvent) => {
       const next = Math.max(MIN_W, Math.min(window.innerWidth * MAX_SHARE, started + (fromX - e.clientX)))
       setWidth(next)
@@ -162,7 +186,16 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
             </button>
           )}
         </div>
-        <div className="web-pane-stage">
+        {/* The picture keeps the page's own shape: the stage is exactly as
+            tall as the frame is wide, so nothing is letterboxed inside a
+            field and the space left over is simply the pane. */}
+        <div
+          className="web-pane-stage"
+          style={{ aspectRatio: `${pageW} / ${pageH}` }}
+          onPointerDown={() => setTouched(Date.now())}
+          onWheel={() => setTouched(Date.now())}
+          onKeyDown={() => setTouched(Date.now())}
+        >
           <MirrorSurface live={on} hasFrame={frame} />
         </div>
         <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : ''}</div>

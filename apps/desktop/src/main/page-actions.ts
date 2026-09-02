@@ -31,6 +31,13 @@ function inspectControl(node: Element): PressTarget & { field: boolean; secret: 
     ['textbox', 'searchbox', 'combobox'].includes(el.getAttribute('role') ?? '') ||
     (tag === 'input' && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'hidden', 'image', 'range', 'color'].includes(type))
   const role = el.getAttribute('role') ?? ''
+  // Passage: something that takes the person somewhere or opens something,
+  // rather than acting for them.
+  const navigates =
+    (tag === 'a' && el.hasAttribute('href')) ||
+    ['link', 'menuitem', 'tab', 'treeitem'].includes(role) ||
+    el.hasAttribute('aria-haspopup') ||
+    el.closest('nav,[role="navigation"],[role="menu"],[role="menubar"],[role="tablist"]') !== null
   const shows =
     !submits &&
     (STATE_ROLES.includes(role) ||
@@ -45,6 +52,7 @@ function inspectControl(node: Element): PressTarget & { field: boolean; secret: 
     submits,
     words,
     shows,
+    navigates,
     field,
     secret: tag === 'input' && type === 'password',
     posts: form !== null && (form.getAttribute('method') ?? 'get').toLowerCase() === 'post',

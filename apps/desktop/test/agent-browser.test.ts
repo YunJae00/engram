@@ -17,10 +17,17 @@ describe('classifyWall', () => {
     expect(classifyWall('https://a.com/x', 'Just a moment', 'Cloudflare is checking your browser', false)).toBe('captcha')
   })
 
-  it('reads a login wall from a password field or an auth path', () => {
+  it('reads a login wall from a password field, or from a page asking for a credential', () => {
     expect(classifyWall('https://a.com/page', 'Welcome', 'enter your credentials', true)).toBe('login')
-    expect(classifyWall('https://a.com/login', 'Site', 'plain text', false)).toBe('login')
-    expect(classifyWall('https://sso.corp.com/sign-in?next=/wiki', 'SSO', '', false)).toBe('login')
+    expect(classifyWall('https://a.com/login', 'Sign in', 'Username\nPassword', false)).toBe('login')
+    expect(classifyWall('https://sso.corp.com/sign-in?next=/wiki', 'SSO', '인증번호를 입력하세요', false)).toBe('login')
+  })
+
+  // A sign-on bounce with one Continue button is passage, not a wall: making
+  // it one hands the person a browser and asks them to drive it.
+  it('carries on through an auth page that asks for nothing', () => {
+    expect(classifyWall('https://a.com/login', 'Site', 'plain text', false)).toBe(null)
+    expect(classifyWall('https://sso.corp.com/sso/redirect', 'Signing you in', 'Continue', false)).toBe(null)
   })
 
   it('lets an ordinary article through', () => {

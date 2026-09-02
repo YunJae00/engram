@@ -152,6 +152,13 @@ export function browserChoicePending(): boolean {
 }
 
 // A page a machine cannot pass. Pure so the heuristics have a unit test.
+//
+// Only a page asking for a SECRET is a wall. Sign-on flows are full of pages
+// whose address says /sso or /auth and whose whole content is one Continue
+// button - stopping at those hands the person a browser and asks them to
+// drive it, which is the opposite of the point. So the address alone is not
+// enough: a wall wants a password box, or a page plainly asking for a
+// credential to be typed.
 export function classifyWall(
   url: string,
   title: string,
@@ -162,8 +169,10 @@ export function classifyWall(
   if (/captcha|are you a robot|not a robot|unusual traffic|verify you are human|one last step|real person|cloudflare.{0,40}checking|비정상적인 트래픽|로봇이 아니|사람인지 확인/i.test(head))
     return 'captcha'
   if (hasPasswordField) return 'login'
-  if (/\/(login|signin|sign-in|sign_in|sso|auth)\b/i.test(new URL(url).pathname)) return 'login'
-  return null
+  const onAuthPath = /\/(login|signin|sign-in|sign_in|sso|auth)\b/i.test(new URL(url).pathname)
+  const asksForCredentials =
+    /\b(password|passcode|one[- ]time code|verification code|two[- ]factor|username|user id)\b|비밀번호|암호|인증번호|아이디/i.test(head)
+  return onAuthPath && asksForCredentials ? 'login' : null
 }
 
 let context: Ctx | null = null
@@ -283,8 +292,11 @@ async function ensureContext(): Promise<Ctx> {
       chromiumSandbox: true,
       // One frame for every page: a layout that does not depend on the
       // person's screen reads the same on every machine, and a taught
-      // procedure replays against the page it was shown.
-      viewport: { width: 1440, height: 900 },
+      // procedure replays against the page it was shown. A laptop's width,
+      // which is what sites are built for - and in a pane beside a
+      // conversation, the narrower the layout the larger its text reads,
+      // while the detail comes from the still being taken at twice this.
+      viewport: { width: 1280, height: 860 },
       // The page is laid out at 1280 CSS pixels and drawn at twice that, so
       // a still taken of it (what the person looks at when they open the
       // view) carries real detail instead of an enlarged blur. The live run
@@ -292,7 +304,7 @@ async function ensureContext(): Promise<Ctx> {
       // whatever this says - measured.
       deviceScaleFactor: 2,
       args: [
-        '--window-size=1440,900',
+        '--window-size=1280,860',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',

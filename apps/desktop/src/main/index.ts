@@ -151,10 +151,19 @@ function hardenWebContents(contents: WebContents): void {
 // Frameless, Claude-desktop-style window: the top bar IS the title bar.
 // Native window controls overlay it on Windows/macOS; Linux keeps its normal
 // frame since overlay support there is unreliable.
+// The one ground the app is painted on, per theme. Opening a window used to
+// cross four slightly different colours - the window's own background, the
+// title bar's, the boot screen's and the app's - and a person sees every one
+// of them as a flash. There is one value each now, and everything that can
+// paint before React does uses it.
+const GROUND = { dark: '#222329', light: '#ffffff' } as const
+
+export function appGround(): string {
+  return nativeTheme.shouldUseDarkColors ? GROUND.dark : GROUND.light
+}
+
 function titleBarColors(): { color: string; symbolColor: string } {
-  return nativeTheme.shouldUseDarkColors
-    ? { color: '#222329', symbolColor: '#9a9ba6' }
-    : { color: '#f9fafc', symbolColor: '#585a66' }
+  return nativeTheme.shouldUseDarkColors ? { color: GROUND.dark, symbolColor: '#9a9ba6' } : { color: GROUND.light, symbolColor: '#585a66' }
 }
 
 // A window with its own title bar is drawn by the desktop compositor, and on a
@@ -198,7 +207,7 @@ async function createMainWindow(hash?: string): Promise<void> {
     minWidth: 800,
     minHeight: 560,
     show: !isHidden,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#2e2f36' : '#ffffff',
+    backgroundColor: appGround(),
     title: 'Engram',
     ...(framelessOk
       ? {

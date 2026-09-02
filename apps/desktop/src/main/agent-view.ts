@@ -14,7 +14,11 @@ import { flog } from './flog.js'
 // pixel it was drawn with: the cap is set above that rather than below it,
 // where it would quietly halve the picture. Quality is what is left to spend,
 // and small text is exactly what loses first without it.
-const FRAME = { format: 'jpeg', quality: 90, maxWidth: 2560, maxHeight: 1600 } as const
+const FRAME = { format: 'jpeg', quality: 92, maxWidth: 2880, maxHeight: 1800 } as const
+// The still is what a person actually reads: it carries every device pixel
+// the page was drawn with, so it is worth more of the quality budget than
+// the run of frames, which only has to carry motion.
+const STILL_QUALITY = 88
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
@@ -58,7 +62,7 @@ async function shoot(m: Mirror, now = false): Promise<void> {
   if (m.shooting) return
   m.shooting = true
   try {
-    const shot = await m.page.screenshot({ type: 'jpeg', quality: 80, scale: 'device', fullPage: false, timeout: 6_000 })
+    const shot = await m.page.screenshot({ type: 'jpeg', quality: STILL_QUALITY, scale: 'device', fullPage: false, timeout: 6_000 })
     if (mirror !== m) return
     m.painted = Date.now()
     broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url() })
@@ -111,7 +115,7 @@ async function follow(page: Page): Promise<void> {
   } catch {
     return
   }
-  const size = page.viewportSize() ?? { width: 1440, height: 900 }
+  const size = page.viewportSize() ?? { width: 1280, height: 860 }
   const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false, painted: 0, shooting: false }
   mirror = m
   cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {

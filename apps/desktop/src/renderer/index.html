@@ -3,27 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Engram</title>
     <style>
       /* Painted before a single line of the app has run. A renderer process
          takes seconds to start on a machine whose endpoint protection
          inspects it (measured: the same bundle runs in 47ms once the process
-         is up), and for those seconds the window was blank white. This is
-         what stands there instead - the app's own ground and its name, in
-         both themes - and React replaces it the moment it mounts. */
+         is up), and for those seconds the window would be blank.
+
+         It paints NO ground of its own: the window is already the app's
+         colour, and a second colour here - however close - is a flash on the
+         way in. Only the name is drawn, in an ink that reads on both. */
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #fbfbfa;
-        color: #16161a;
-      }
-      @media (prefers-color-scheme: dark) {
-        html,
-        body {
-          background: #16161a;
-          color: #f4f4f6;
-        }
+        background: transparent;
       }
       .boot {
         display: flex;
@@ -33,21 +28,22 @@
         font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
         font-size: 15px;
         letter-spacing: 0.02em;
-        opacity: 0.42;
+        color: #8a8b95;
         animation: boot-breathe 1.9s ease-in-out infinite;
       }
       @keyframes boot-breathe {
         0%,
         100% {
-          opacity: 0.22;
+          opacity: 0.3;
         }
         50% {
-          opacity: 0.5;
+          opacity: 0.62;
         }
       }
       @media (prefers-reduced-motion: reduce) {
         .boot {
           animation: none;
+          opacity: 0.5;
         }
       }
     </style>
