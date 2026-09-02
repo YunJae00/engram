@@ -1,7 +1,7 @@
 {
   "name": "core",
   "private": true,
-  "version": "0.6.36",
+  "version": "0.6.37",
   "author": "YunJae Kwon",
   "license": "MIT",
   "type": "module",
