@@ -587,9 +587,9 @@ const en = {
   'settings.mcpConnected': 'Connected — {names}',
   'settings.mcpFailedList': 'Could not connect {names} — see Diagnostics',
   'settings.mcpNoClients': 'No Claude client found on this machine yet. Install Claude Desktop or Claude Code, then reconnect.',
-  'settings.watchTitle': 'Learning from your Claude sessions',
+  'settings.watchTitle': 'Learning from your AI CLI sessions',
   'settings.watchHint':
-    'While Engram is open, conversations you have in Claude Code are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Summaries run on the brain you chose. Close Engram and it stops. Anything in your private folder is never read.',
+    'While Engram is open, sessions from AI CLIs on this machine — Claude Code, Codex, and the like — are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Summaries run on the brain you chose. Close Engram and it stops. Anything in your private folder is never read.',
   'settings.semanticTitle': 'Semantic search',
   'settings.semanticIdle': 'Starts with the app',
   'settings.versionKey': 'Version',
