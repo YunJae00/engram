@@ -32,6 +32,8 @@ export function registerSettingsIpc(): void {
       ...settings,
       searchTemplate: settings.searchTemplate ?? held.searchTemplate,
       agentBrowser: settings.agentBrowser ?? held.agentBrowser,
+      claudeModel: settings.claudeModel ?? held.claudeModel,
+      codexModel: settings.codexModel ?? held.codexModel,
     })
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
     if (settings.defaultEngine !== held.defaultEngine) onBrainChoice?.()

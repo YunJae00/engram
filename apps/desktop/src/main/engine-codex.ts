@@ -1,6 +1,7 @@
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine } from './engine-cloud.js'
 import { flog } from './flog.js'
+import { loadSettings } from './settings.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow; each job here is
@@ -81,6 +82,7 @@ export class CodexEngine implements CloudEngine {
       return
     }
     const sdk = (await import('@openai/codex-sdk')) as unknown as CodexSdk
+    const codexModel = (await loadSettings()).codexModel.trim()
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
     const timer = setTimeout(() => abort.abort(), budget)
@@ -96,6 +98,9 @@ export class CodexEngine implements CloudEngine {
         webSearchMode: 'disabled',
         networkAccessEnabled: false,
         ...(job.modelHint === 'fast' ? { modelReasoningEffort: 'low' } : {}),
+        // The person's chosen model, if they named one; the runtime's own
+        // default - their plan's - otherwise.
+        ...(codexModel ? { model: codexModel } : {}),
       })
       const turn = await thread.run(job.prompt, {
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),

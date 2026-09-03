@@ -18,7 +18,7 @@ await createBot(paths, { name: 'morning report', purpose: 'the morning rounds' }
 
 const app = await electron.launch({
   args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
-  env: { ...process.env, ENGRAM_VAULT: VAULT, ENGRAM_USERDATA: USERDATA, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none' },
+  env: { ...process.env, ENGRAM_VAULT: VAULT, ENGRAM_USERDATA: USERDATA, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' },
 })
 const page = await app.firstWindow()
 await page.setViewportSize({ width: 1440, height: 900 })
@@ -28,6 +28,14 @@ await page.getByTestId('bots-view').waitFor({ state: 'visible', timeout: 20_000 
 await page.waitForTimeout(800)
 await page.locator('.bots-rail button', { hasText: 'reader' }).first().click().catch(() => {})
 await page.waitForTimeout(400)
+// The model picker, open, beside the composer - once the plan's list is in.
+for (let i = 0; i < 40; i++) {
+  const rows = (await page.evaluate(() => window.engram.modelsList())) as unknown[]
+  if (rows.length > 0) break
+  await page.waitForTimeout(1_000)
+}
+await page.getByTestId('model-picker').click().catch(() => {})
+await page.waitForTimeout(300)
 await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/icon-shot.png', import.meta.url)) })
 await app.close()
 console.log('icon-shot: DONE')

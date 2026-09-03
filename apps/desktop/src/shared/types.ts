@@ -340,6 +340,7 @@ export type EngramEvent =
   // the first engine detection after boot has finished — until this lands the
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
+  | { type: 'models:changed' }
   | { type: 'sweep:start' }
   | { type: 'sweep:job'; job: string; index: number; total: number }
   | { type: 'sweep:done'; report: SweepReportDto }
@@ -484,6 +485,9 @@ export interface EngramApi {
   agentRefresh(): Promise<void>
   // How tall the pages should lay themselves out, from the pane showing them.
   agentHeight(height: number): Promise<void>
+  // The models the signed-in plan offers, in the runtime's own words; empty
+  // until the runtime has been asked.
+  modelsList(): Promise<ModelChoiceDto[]>
   // Whether a window is being mirrored, without joining the watch.
   agentState(): Promise<{ on: boolean; url?: string }>
   // workspace registry/switcher (app-level vaults)
@@ -681,6 +685,18 @@ export interface AppSettingsDto {
   // Which installed browser the agent drives, by executable path. Empty means
   // the person has not picked and, where several are installed, is asked.
   agentBrowser?: string
+  // Which model each brain answers with. Empty means the runtime's own
+  // default, which follows the person's plan.
+  claudeModel?: string
+  codexModel?: string
+}
+
+// One model the plan offers: the id the runtime takes, the name it shows,
+// and its own line about what the model is for.
+export interface ModelChoiceDto {
+  value: string
+  label: string
+  detail: string
 }
 
 // One browser found on this machine, offered rather than assumed.

@@ -25,6 +25,7 @@ type SdkMessage =
 export interface SessionSdk {
   query(params: { prompt: AsyncIterable<SdkUserMessage>; options?: Record<string, unknown> }): AsyncIterable<SdkMessage> & {
     interrupt(): Promise<unknown>
+    supportedModels(): Promise<{ value: string; displayName: string; description: string; resolvedModel?: string }[]>
   }
   createSdkMcpServer(options: { name: string; tools: unknown[] }): unknown
   tool(
@@ -75,6 +76,10 @@ interface PartialEvent {
 
 export class WarmSession {
   readonly signature: string
+  // Which model this session was opened with - a change recycles it.
+  get model(): string {
+    return this.spec.model
+  }
   turns = 0
   lastUsed = Date.now()
   private readonly queue: SdkUserMessage[] = []
@@ -168,6 +173,13 @@ export class WarmSession {
           if (text && this.turn) this.turn.answer = text
           continue
         }
+        // The runtime says which model it actually opened with; worth one
+        // line in the field log, because "which model answered" is otherwise
+        // unanswerable after the fact.
+        if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
+          flog('engine-claude', `session running on ${(message as { model?: string }).model ?? 'an unnamed model'}`)
+          continue
+        }
         if (message.type !== 'result') continue
         const result = message as Extract<SdkMessage, { type: 'result' }>
         const spoken = this.turn?.answer ?? ''
@@ -238,6 +250,12 @@ export class SessionPool {
   run(job: ToolSessionJob, spec: SessionSpec): Promise<ToolSessionResult> {
     const key = job.sessionKey ?? 'default'
     let session = this.sessions.get(key)
+    // A changed model is a new session: the person switched in Settings, and
+    // their next turn answers with the model they chose, warm pool or not.
+    if (session && session.model !== spec.model) {
+      session.close()
+      session = undefined
+    }
     if (session && (session.stale || session.busy || session.signature !== signatureOf(job))) {
       session.close()
       session = undefined

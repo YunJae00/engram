@@ -2,6 +2,16 @@ import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobI
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine } from './engine-cloud.js'
 import { flog } from './flog.js'
+import { loadSettings } from './settings.js'
+
+// The person's chosen model, read per call so a change in Settings or from
+// the composer takes hold on the very next turn. Empty means the app's own
+// spread: the mid-size model for the work, the small one for chores.
+async function chosenModel(hint?: string): Promise<string> {
+  const picked = (await loadSettings()).claudeModel.trim()
+  if (picked) return picked
+  return hint === 'fast' ? 'haiku' : 'sonnet'
+}
 
 // Claude, through the vendor's agent runtime bundled with this app. The
 // runtime keeps the person's sign-in and does the billing; here every job is
@@ -35,6 +45,67 @@ export function readAuthStatus(out: string): EngineDetection {
     /* not the runtime's JSON */
   }
   return { installed: true, loggedIn: false, conclusive: false }
+}
+
+// The models the person's plan offers, in the runtime's own words - the
+// same list its own model menu shows, with the ids it takes. Asking means
+// opening a session and closing it again, which costs a cold start, so the
+// answer is kept for the life of the app and fetched once sign-in is known;
+// a picker shows the aliases until then.
+export interface ClaudeModelChoice {
+  value: string
+  label: string
+  detail: string
+}
+let knownModels: ClaudeModelChoice[] = []
+let fetchingModels: Promise<ClaudeModelChoice[]> | null = null
+const MODELS_TIMEOUT_MS = 60_000
+
+export function claudeModels(): ClaudeModelChoice[] {
+  return knownModels
+}
+
+export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
+  if (knownModels.length > 0) return Promise.resolve(knownModels)
+  if (fetchingModels) return fetchingModels
+  const binary = claudeBinary()
+  if (!binary) return Promise.resolve([])
+  fetchingModels = (async () => {
+    const abort = new AbortController()
+    const timer = setTimeout(() => abort.abort(), MODELS_TIMEOUT_MS)
+    try {
+      const sdk = await sdkModule()
+      // A session with nothing to say: the prompt never yields, the query
+      // is only there to be asked what it could run.
+      const silent = (async function* () {
+        await new Promise<never>(() => {})
+        yield undefined as never
+      })()
+      const handle = sdk.query({
+        prompt: silent,
+        options: { pathToClaudeCodeExecutable: binary, abortController: abort, tools: [], persistSession: false, settingSources: [], maxTurns: 1 },
+      })
+      const rows = await Promise.race([
+        handle.supportedModels(),
+        new Promise<never>((_, reject) => abort.signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true })),
+      ])
+      knownModels = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description }))
+      flog('engine-claude', `the plan offers ${knownModels.length} models: ${knownModels.map((m) => m.value).join(', ')}`)
+      return knownModels
+    } catch (err) {
+      flog('engine-claude', `could not list models: ${err instanceof Error ? err.message : String(err)}`)
+      return []
+    } finally {
+      clearTimeout(timer)
+      abort.abort()
+      fetchingModels = null
+    }
+  })()
+  return fetchingModels
+}
+
+export function forgetClaudeModels(): void {
+  knownModels = []
 }
 
 export class ClaudeEngine implements CloudEngine {
@@ -97,10 +168,10 @@ export class ClaudeEngine implements CloudEngine {
           persistSession: false,
           settingSources: [],
           ...(job.jsonSchema ? { outputFormat: { type: 'json_schema', schema: job.jsonSchema } } : {}),
-          // A chore is a few small decisions in a row; the mid-size model makes
-          // each one in seconds where the largest takes a minute, and the
-          // person's own default is theirs to keep for their own sessions.
-          model: job.modelHint === 'fast' ? 'haiku' : 'sonnet',
+          // A chore is a few small decisions in a row; the mid-size model
+          // makes each one in seconds where the largest takes a minute -
+          // unless the person picked a model, and then their pick answers.
+          model: await chosenModel(job.modelHint),
         },
       })
       for await (const message of stream) {
@@ -139,7 +210,7 @@ export class ClaudeEngine implements CloudEngine {
   runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'the Claude runtime is not part of this build' })
-    return sdkModule().then((sdk) => sessions.run(job, { sdk, binary, workdir: job.workdir, model: 'sonnet' }))
+    return Promise.all([sdkModule(), chosenModel()]).then(([sdk, model]) => sessions.run(job, { sdk, binary, workdir: job.workdir, model }))
   }
 }
 

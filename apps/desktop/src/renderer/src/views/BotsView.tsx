@@ -18,6 +18,7 @@ import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsL
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
 import { WebPane } from '../components/WebPane.js'
 import { PressGate } from '../components/PressGate.js'
+import { ModelPicker } from '../components/ModelPicker.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
 
@@ -328,6 +329,7 @@ export function BotsView() {
                   }
                 }}
               />
+              <ModelPicker />
               {busy ? (
                 <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>
                   <Square size={11} strokeWidth={2.5} aria-hidden />

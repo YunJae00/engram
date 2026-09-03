@@ -111,6 +111,7 @@ import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
+import { claudeModels, fetchClaudeModels, forgetClaudeModels } from './engine-claude.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2237,6 +2238,16 @@ export function registerEngineIpc(): void {
     return id
   }
   ipcMain.handle('engines:states', () => engineStates())
+  // The models the signed-in plan offers. Empty until the runtime has been
+  // asked, which starts here if it has not; the answer is announced.
+  ipcMain.handle('models:list', () => {
+    const known = claudeModels()
+    if (known.length === 0)
+      void fetchClaudeModels().then((rows) => {
+        if (rows.length > 0) broadcast({ type: 'models:changed' })
+      })
+    return known
+  })
   ipcMain.handle('engines:connect', async (_e, id: unknown) => {
     const result = await cloudEngine(cloudId(id)).login()
     await onEnginesChanged?.()
@@ -2244,6 +2255,7 @@ export function registerEngineIpc(): void {
   })
   ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
     await cloudEngine(cloudId(id)).logout()
+    if (id === 'claude') forgetClaudeModels()
     await onEnginesChanged?.()
   })
 }

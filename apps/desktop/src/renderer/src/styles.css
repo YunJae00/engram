@@ -1102,6 +1102,30 @@ body.bubble-host { background: transparent; }
   resize: none; overflow-y: auto;
 }
 .chat-write textarea:focus { border: none; box-shadow: none; outline: none; }
+/* Which model answers, beside the composer: quiet until wanted, and a plain
+   menu when it is. */
+.model-picker { position: relative; flex: none; }
+.model-picker-btn {
+  display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px;
+  border-radius: 999px; font-size: var(--fs-micro); font-weight: 600; color: var(--fg-faint);
+}
+.model-picker-btn:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg-dim); }
+.model-picker-btn:disabled { cursor: default; }
+.model-picker-menu {
+  position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 20; min-width: 200px;
+  display: flex; flex-direction: column; padding: 4px; gap: 1px;
+  background: var(--panel-bg); border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px var(--border-soft), var(--shadow-card);
+}
+.model-picker-item {
+  display: flex; align-items: flex-start; gap: 6px; padding: 6px 9px; border-radius: var(--radius-m);
+  font-size: var(--fs-small); color: var(--fg-dim); text-align: left;
+}
+.model-picker-item:hover { background: var(--hover-bg); color: var(--fg); }
+.model-picker-tick { display: inline-flex; width: 12px; flex: none; margin-top: 2px; }
+.model-picker-name { display: flex; flex-direction: column; gap: 1px; }
+.model-picker-detail { font-size: var(--fs-micro); font-weight: 400; color: var(--fg-faint); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-picker-note { padding: 6px 9px; font-size: var(--fs-micro); color: var(--fg-faint); }
 .chat-send-btn {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: var(--write-control, 32px); height: var(--write-control, 32px); border-radius: 999px;
@@ -1559,6 +1583,12 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-task-when { font-size: var(--fs-micro); color: var(--fg-faint); margin-left: 2px; }
 /* One pick among three, as a segmented control: the chosen one is lifted
    onto the page's white, the others rest on the strip. */
+/* A short free-form value beside a fact key (a model id). */
+.settings-input {
+  width: 220px; padding: 5px 10px; border-radius: var(--radius-m);
+  background: var(--rail-bg); border: 0; box-shadow: inset 0 0 0 1px var(--border-soft);
+  font-size: var(--fs-small); color: var(--fg);
+}
 .brain-pick { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; margin: 2px 0 10px; border-radius: 999px; background: var(--hover-bg); }
 .brain-pick .brain-choice { height: 30px; padding: 0 18px; border: none; background: transparent; color: var(--fg-dim); font-weight: 500; }
 .brain-pick .brain-choice:hover:not(.armed) { background: transparent; color: var(--fg); }

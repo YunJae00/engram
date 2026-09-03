@@ -47,6 +47,13 @@ const en = {
   'settings.brainConnect': 'Sign in',
   'settings.brainDisconnect': 'Sign out',
   'settings.brainConnectFailed': 'Sign-in did not complete',
+  'settings.modelClaude': 'Claude model',
+  'settings.modelChatGPT': 'ChatGPT model',
+  'settings.modelAuto': 'Auto',
+  'model.pick': 'Which model answers',
+  'model.pickChatGPT': 'Set the ChatGPT model in Settings',
+  'model.autoDetail': 'The runtime picks',
+  'model.listing': 'Asking your plan which models it offers…',
   'onboard.importing': 'Importing {done} / {total} notes…',
   // Second click confirms. The file is gigabytes and getting it back is a
   // fresh download, so the button asks once before it goes.

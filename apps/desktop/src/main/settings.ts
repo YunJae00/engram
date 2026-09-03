@@ -16,6 +16,11 @@ interface AppSettings {
   // where several are installed, picking one for them is picking their
   // working day for them.
   agentBrowser: string
+  // Which model each brain answers with, by the names the runtimes take -
+  // an alias like "opus" for Claude, a model id for ChatGPT. Empty means
+  // the runtime's own default, which follows the person's plan.
+  claudeModel: string
+  codexModel: string
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -24,6 +29,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   teamSync: 'auto',
   searchTemplate: '',
   agentBrowser: '',
+  claudeModel: '',
+  codexModel: '',
 }
 
 function settingsPath(): string {

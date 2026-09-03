@@ -4,6 +4,7 @@ import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
+import { useModelChoices } from '../components/ModelPicker.js'
 
 const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 // The sheet opens at once, empty, and its rows fill in together when every
@@ -27,6 +28,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   // their state off this, and the sign-in flows refresh it.
   const [brains, setBrains] = useState<EngineStatusDto[]>([])
   const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
+  const claudeChoices = useModelChoices()
   const [connectFail, setConnectFail] = useState<Record<string, string>>({})
   const refreshBrains = () => void api.engineStates().then(setBrains).catch(() => {})
   const connect = async (id: 'claude' | 'codex') => {
@@ -254,6 +256,44 @@ export function SettingsView({ onClose }: { onClose(): void }) {
               </div>
             )
           })}
+          {/* Which model each brain answers with. Claude names sizes; the
+              default follows the app's own spread (mid-size for the work,
+              small for chores). ChatGPT takes a model id, or its plan's own
+              default when left empty. */}
+          <div className="settings-fact">
+            <span className="settings-fact-key">{t('settings.modelClaude')}</span>
+            <span className="settings-fact-value">
+              <select className="settings-input" data-testid="model-claude" value={settings.claudeModel ?? ''} onChange={(e) => patch({ claudeModel: e.target.value })}>
+                <option value="">{t('settings.modelAuto')}</option>
+                {claudeChoices.map((row) => (
+                  <option key={row.value} value={row.value}>
+                    {row.label}
+                  </option>
+                ))}
+                {settings.claudeModel && !claudeChoices.some((row) => row.value === settings.claudeModel) && (
+                  <option value={settings.claudeModel}>{settings.claudeModel}</option>
+                )}
+              </select>
+            </span>
+          </div>
+          <div className="settings-fact">
+            <span className="settings-fact-key">{t('settings.modelChatGPT')}</span>
+            <span className="settings-fact-value">
+              <input
+                className="settings-input"
+                data-testid="model-codex"
+                placeholder={t('settings.modelAuto')}
+                defaultValue={settings.codexModel ?? ''}
+                onBlur={(e) => {
+                  const value = e.target.value.trim()
+                  if (value !== (settings.codexModel ?? '')) patch({ codexModel: value })
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                }}
+              />
+            </span>
+          </div>
         </div>
 
         <details className="settings-more" data-testid="settings-more">
