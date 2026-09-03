@@ -157,3 +157,18 @@ describe('words written before an action', () => {
     expect(store.thread(BOT).workLines).toHaveLength(1)
   })
 })
+
+describe('an offer that follows its answer', () => {
+  it('lands on the settled thread, and never on a stopped one', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'q')
+    store.handleEvent({ type: 'chat:done', channel, text: 'done' })
+    store.handleEvent({ type: 'chat:offer', channel, offer: { kind: 'keep', name: 'Morning check', goal: 'check it', does: 'opens the page' } })
+    expect(store.thread(BOT).offer).toEqual({ kind: 'keep', name: 'Morning check', goal: 'check it', does: 'opens the page' })
+
+    store.begin(BOT, 'q2')
+    store.stop(BOT, 'stopped')
+    store.handleEvent({ type: 'chat:offer', channel, offer: { kind: 'keep', name: 'x', goal: 'y', does: 'z' } })
+    expect(store.thread(BOT).offer).toBeNull()
+  })
+})

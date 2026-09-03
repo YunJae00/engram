@@ -381,6 +381,9 @@ export type EngramEvent =
   | { type: 'agent:live'; on: boolean; url?: string }
   // Where the comet's hand is about to land on the mirrored page, as fractions.
   | { type: 'agent:pointer'; x: number; y: number; kind: 'move' | 'press' }
+  // An offer written after the answer already went out; same shape the
+  // done event carries.
+  | { type: 'chat:offer'; channel: string; offer: NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']> }
   | { type: 'agent:frame'; data: string; width: number; height: number; url: string }
   | { type: 'comet:step'; channel: string; line: string }
   // The comet wrote something down about the person after a turn.

@@ -212,6 +212,14 @@ export function createCometThreads(initialSelected: string | null = null) {
       const id = cometOfChannel(event.channel)
       if (!id) return null
       const current = thread(id)
+      // The keep-offer follows its answer: by the time it lands the thread
+      // has settled, and it is patched in where the done event would have
+      // put it.
+      if (event.type === 'chat:offer') {
+        if (current.busy || current.stopped) return null
+        patch(id, { offer: event.offer })
+        return id
+      }
       if (!current.busy) return null
       if (event.type === 'comet:step') {
         patch(id, { workLines: [...current.workLines.slice(1 - WORK_LINES_KEPT), event.line] }, true)

@@ -2159,10 +2159,32 @@ export function registerIpc(ctx: VaultContext): void {
         // click next time. A quick answer offers nothing at all.
         const worked = result.steps.filter((step) => !step.seeded).length
         const keepable = !routine && !result.asked && worked >= KEEP_AFTER_STEPS
-        // The words they typed name this morning, not the work. Asked while
-        // the brain still has the turn in hand, it writes the button instead:
-        // a short label, the job as an instruction, and what pressing it
-        // would do. A brain that will not answer that leaves the offer off.
+        // The third morning of the same ask, and a read-only procedure with
+        // no blanks was just run for it: that one can run itself from now on.
+        const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
+        const ran = ranId ? (await listRoutines(paths)).find((r) => r.id === ranId) : undefined
+        const standing =
+          ran && !routineWrites(ran) && routineSlots(ran.steps).length === 0 && !(bot.declined ?? []).includes(askKey(request.message))
+            ? repeatedAsk(
+                (await readBotTranscript(paths, bot.id)).filter((turn) => turn.role === 'user'),
+                request.message,
+              )
+            : null
+        // The answer goes out the moment it exists. Writing the keep-offer
+        // takes the brain another spell, and a person reading their answer
+        // under a spinner for it read the whole turn as unfinished.
+        await deliverAnswer(
+          `${result.answer}${note}`,
+          result.asked && result.options?.length
+            ? { kind: 'asked', question: result.answer, options: result.options }
+            : standing && ran
+              ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
+              : routine
+                ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
+                : undefined,
+        )
+        // The words they typed name this morning, not the work. Asked after
+        // the answer is out, it writes the offer, which follows on its own.
         const proposal =
           keepable || handled
             ? await collectResult(engine, {
@@ -2184,32 +2206,8 @@ export function registerIpc(ctx: VaultContext): void {
                 .catch(() => null)
             : null
         if (keepable || handled) flog('comet', `a button for this turn: ${proposal ? proposal.name : 'not worth one'}`)
-        // The third morning of the same ask, and a read-only procedure with
-        // no blanks was just run for it: that one can run itself from now on.
-        const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
-        const ran = ranId ? (await listRoutines(paths)).find((r) => r.id === ranId) : undefined
-        const standing =
-          ran && !routineWrites(ran) && routineSlots(ran.steps).length === 0 && !(bot.declined ?? []).includes(askKey(request.message))
-            ? repeatedAsk(
-                (await readBotTranscript(paths, bot.id)).filter((turn) => turn.role === 'user'),
-                request.message,
-              )
-            : null
-        await deliverAnswer(
-          `${result.answer}${note}`,
-          // A job it was never shown is answered by being shown, whatever
-          // question it thought of on the way: the one press that moves this
-          // forward is the offer to watch, so it outranks the chips.
-          result.asked && result.options?.length
-              ? { kind: 'asked', question: result.answer, options: result.options }
-              : standing && ran
-                ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
-            : routine
-              ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
-              : (keepable || handled) && proposal
-                ? { kind: 'keep', name: proposal.name, goal: proposal.goal, does: proposal.does }
-                : undefined,
-        )
+        if (!result.asked && !standing && !routine && proposal)
+          broadcast({ type: 'chat:offer', channel, offer: { kind: 'keep', name: proposal.name, goal: proposal.goal, does: proposal.does } })
         // After the answer is out, while the model is still held: what of
         // this turn is worth keeping about the person.
         if (!result.asked)

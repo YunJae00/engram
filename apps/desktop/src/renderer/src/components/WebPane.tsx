@@ -24,6 +24,8 @@ const VIEW_WIDTH = 1280
 const SETTLE_MS = 260
 // How long the old picture takes to give way to the new comet's.
 const SWITCH_MS = 240
+// How long the pane takes to leave when folded away.
+const FOLD_MS = 170
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
@@ -66,6 +68,17 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // the old picture fades while the new tab's picture is fetched, instead
   // of one page being swapped for another between two frames.
   const [switching, setSwitching] = useState(false)
+  // Folding plays the pane out to the right edge before the tab takes its
+  // place, so the fold reads as the pane leaving, not vanishing.
+  const [closing, setClosing] = useState(false)
+  const fold = () => {
+    setClosing(true)
+    window.setTimeout(() => {
+      setClosing(false)
+      localStorage.setItem(FOLD_KEY, '1')
+      setFolded(true)
+    }, FOLD_MS)
+  }
   useEffect(() => {
     setSwitching(true)
     void api.agentLane(channel).catch(() => {})
@@ -191,7 +204,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   const host = hostOf(url)
   return (
     <aside
-      className={`web-pane${frozen ? ' frozen' : ''}`}
+      className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}`}
       data-testid="web-pane"
       style={width ? { width } : undefined}
     >
@@ -203,10 +216,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
             data-testid="web-pane-fold"
             aria-label={t('live.fold')}
             title={t('live.fold')}
-            onClick={() => {
-              localStorage.setItem(FOLD_KEY, '1')
-              setFolded(true)
-            }}
+            onClick={fold}
           >
             <ChevronsRight size={13} aria-hidden />
           </button>

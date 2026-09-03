@@ -8,7 +8,11 @@ import { HAND_MARK, placeOf, readDocument, readFrames } from './page-reader.js'
 // send or buy is looked at before it is touched, and refused.
 
 export const FIND_TIMEOUT_MS = 3_000
-const SETTLE_NETWORK_MS = 2_500
+// Short on purpose: a chatty page (analytics, polling) never goes network-
+// idle, so this cap is paid in full on every step of such a site. The
+// reader that follows sees the page as it is, and a read that landed a
+// beat early is simply read again.
+const SETTLE_NETWORK_MS = 900
 const SETTLE_MS = 300
 const KEYS = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Space'])
 

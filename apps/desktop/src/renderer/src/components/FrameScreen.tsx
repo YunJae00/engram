@@ -24,6 +24,10 @@ export function FrameScreen({ className }: { className?: string }) {
         surface.height = height
       }
       context.drawImage(source, 0, 0, width, height)
+      // An opaque canvas is black until something lands on it; it stays
+      // out of sight until this first drawImage, or opening the pane is a
+      // black rectangle for as long as the first frame takes.
+      surface.dataset['painted'] = ''
     }
     const read = (data: string): void => {
       if (busy) {
