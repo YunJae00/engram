@@ -1559,7 +1559,29 @@ body.bubble-host { background: transparent; }
 .mirror-surface { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: default; }
 /* The picture hangs from the top of its box the way a page does in a
    browser; the box's spare height stays below it. */
-.mirror-screen { display: flex; align-items: flex-start; justify-content: center; width: 100%; height: 100%; }
+.mirror-screen { position: relative; display: flex; align-items: flex-start; justify-content: center; width: 100%; height: 100%; }
+/* The comet's hand on the picture: a pointer that travels to the control it
+   is about to press and rings once when it does, then fades once it has
+   been still. Where the hand is, not what it is thinking. */
+.hand-ghost {
+  position: absolute; width: 0; height: 0; pointer-events: none; z-index: 3;
+  transition: left 260ms cubic-bezier(0.2, 0.8, 0.2, 1), top 260ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 400ms ease;
+}
+.hand-ghost.gone { opacity: 0; }
+.hand-ghost svg { position: absolute; left: -2px; top: -2px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35)); }
+.hand-ghost-ring {
+  position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--accent); opacity: 0; transform: scale(0.4);
+}
+.hand-ghost.press .hand-ghost-ring { animation: hand-ring 520ms ease-out; }
+@keyframes hand-ring {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hand-ghost { transition: opacity 200ms ease; }
+  .hand-ghost.press .hand-ghost-ring { animation: none; }
+}
 .mirror-screen canvas { width: 100%; height: 100%; object-fit: contain; }
 .mirror-waiting { position: absolute; inset: auto; }
 .bots-head {

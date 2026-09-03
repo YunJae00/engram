@@ -200,6 +200,30 @@ async function ambiguity(page: Page, target: string): Promise<PageMove> {
   }
 }
 
+// Where a hand is about to land, told to whoever shows the page: a person
+// watching sees the pointer travel to the control before it is pressed,
+// the way they would see a colleague's hand, instead of the page simply
+// changing. Fractions of the viewport, so the picture can place it.
+type PointerSink = (page: Page, x: number, y: number, kind: 'move' | 'press') => void
+let pointerSink: PointerSink | null = null
+
+export function setPointerSink(sink: PointerSink | null): void {
+  pointerSink = sink
+}
+
+async function showHand(page: Page, hand: Locator, kind: 'move' | 'press'): Promise<void> {
+  if (!pointerSink) return
+  try {
+    const box = await hand.boundingBox({ timeout: 1_000 })
+    const size = page.viewportSize()
+    if (!box || !size) return
+    pointerSink(page, (box.x + box.width / 2) / size.width, (box.y + box.height / 2) / size.height, kind)
+  } catch {
+    // A control that will not say where it is is still pressed; only the
+    // picture goes without the pointer.
+  }
+}
+
 export async function pressOn(page: Page, target: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   const aim = await handOn(page, target, signal)
   if ('many' in aim) return ambiguity(page, target)
@@ -215,6 +239,7 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
     const before = await signature(page)
     try {
       await hand.scrollIntoViewIfNeeded({ timeout: FIND_TIMEOUT_MS })
+      await showHand(page, hand, 'press')
       await hand.click({ timeout: FIND_TIMEOUT_MS })
     } catch {
       // Something sits over it (a sticky bar, a fade): the press is delivered
@@ -245,6 +270,7 @@ export async function typeText(page: Page, target: string, text: string, enter: 
     if (!control.field) return { ok: false, error: `"${target}" is not a field to type into` }
     if (enter && control.posts) return { ok: false, refused: `${control.words || target} - Enter here would post the form` }
     const before = enter ? await signature(page) : ''
+    await showHand(page, hand, 'move')
     await hand.fill(text, { timeout: FIND_TIMEOUT_MS })
     if (enter) await hand.press('Enter', { timeout: FIND_TIMEOUT_MS })
     await settle(page)
@@ -268,6 +294,7 @@ export async function chooseOption(page: Page, target: string, option: string, s
     if (!control) return missing(target)
     if (control.select) {
       try {
+        await showHand(page, hand, 'press')
         await hand.selectOption({ label: option }, { timeout: FIND_TIMEOUT_MS })
       } catch {
         await hand.selectOption(option, { timeout: FIND_TIMEOUT_MS })
@@ -340,6 +367,7 @@ export async function pressPoint(page: Page, x: number, y: number, ask?: Ask): P
       if (said !== 'yes') return { ok: false, refused: there.words || 'what is at that point', ...(said === 'theirs' ? { theirs: true } : {}) }
     }
     const before = await signature(page)
+    pointerSink?.(page, x, y, 'press')
     await page.mouse.click(at.x, at.y)
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before }
@@ -353,6 +381,7 @@ export async function hoverOn(page: Page, target: string, signal?: AbortSignal):
   if ('many' in aim) return ambiguity(page, target)
   if ('none' in aim) return missing(target)
   try {
+    await showHand(page, aim.hand, 'move')
     await aim.hand.hover({ timeout: FIND_TIMEOUT_MS })
     await page.waitForTimeout(SETTLE_MS * 2)
     return { ok: true }

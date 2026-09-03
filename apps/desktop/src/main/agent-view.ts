@@ -1,7 +1,8 @@
 import type { CDPSession, Page } from 'playwright-core'
 import type { AgentInputDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
-import { activeLaneName, ensureAgentPage, lanePage, resetLane, setActiveLane, watchAgentPages } from './agent-browser.js'
+import { activeLaneName, ensureAgentPage, lanePage, laneOf, resetLane, setActiveLane, watchAgentPages } from './agent-browser.js'
+import { setPointerSink } from './page-actions.js'
 import { flog } from './flog.js'
 
 // The agent's window stays out of sight. What it shows is mirrored into the
@@ -176,6 +177,19 @@ export function startAgentView(): void {
   watchAgentPages((page, lane) => {
     if (lane === activeLaneName()) void follow(page)
   })
+  // The comet's hand, shown on the picture of the page it is on.
+  setPointerSink((page, x, y, kind) => {
+    if (mirror?.page === page) broadcast({ type: 'agent:pointer', x, y, kind })
+  })
+}
+
+// When the person last put their own hands on a lane's page - a press or
+// a key, not a look or a scroll. A comet working on that page steps aside
+// while the hands are there, and carries on once they have been still.
+const touched = new Map<string, number>()
+
+export function touchedAt(lane: string): number {
+  return touched.get(lane) ?? 0
 }
 
 // The person looks at another comet: the mirror moves to that comet's tab,
@@ -237,6 +251,8 @@ const BUTTON = { left: 'left', right: 'right', middle: 'middle', none: 'none' } 
 export async function agentViewInput(input: AgentInputDto): Promise<void> {
   const m = mirror
   if (!m) return
+  const hands = input.kind === 'key' || input.kind === 'text' || (input.kind === 'mouse' && (input.type === 'pressed' || input.type === 'released'))
+  if (hands) touched.set(laneOf(m.page) ?? activeLaneName(), Date.now())
   try {
     if (input.kind === 'mouse') {
       const x = Math.round(Math.min(1, Math.max(0, input.x)) * m.width)

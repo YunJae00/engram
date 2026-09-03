@@ -379,6 +379,8 @@ export type EngramEvent =
   // The agent browser's mirror: whether there is a page to show, and each
   // frame of it while a view is open. Frames are shown and dropped.
   | { type: 'agent:live'; on: boolean; url?: string }
+  // Where the comet's hand is about to land on the mirrored page, as fractions.
+  | { type: 'agent:pointer'; x: number; y: number; kind: 'move' | 'press' }
   | { type: 'agent:frame'; data: string; width: number; height: number; url: string }
   | { type: 'comet:step'; channel: string; line: string }
   // The comet wrote something down about the person after a turn.

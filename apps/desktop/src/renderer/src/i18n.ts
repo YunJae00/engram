@@ -135,6 +135,8 @@ const en = {
   'bots.stepPressPoint': 'Pressing the point it can see ({arg})',
   'bots.stepReveal': 'Opening the folded part holding “{arg}”',
   'bots.stepLook': 'Looking at the page',
+  'bots.stepAside': 'Stepping aside — the page is yours for now',
+  'bots.stepResume': 'Carrying on, reading the page again first',
   'bots.workDone': 'What it did — {n} steps',
   'bots.new': 'New comet',
   'bots.untitled': 'New comet',

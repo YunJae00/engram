@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { AgentInputDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { FrameScreen } from './FrameScreen.js'
+import { HandGhost } from './HandGhost.js'
 import { useApp } from '../state.js'
 
 // The mirrored page as a surface a person can act on: every click, wheel and
@@ -94,6 +95,7 @@ export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boo
     >
       <div className="mirror-screen" hidden={!hasFrame}>
         <FrameScreen />
+        <HandGhost />
       </div>
       {!hasFrame && <span className="live-waiting mirror-waiting">{t('live.waiting')}</span>}
       <textarea

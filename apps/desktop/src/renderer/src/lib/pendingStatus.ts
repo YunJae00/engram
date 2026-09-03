@@ -24,6 +24,8 @@ const STEP_LABEL: Record<string, StringKey> = {
   press_point: 'bots.stepPressPoint',
   reveal: 'bots.stepReveal',
   look: 'bots.stepLook',
+  aside: 'bots.stepAside',
+  resume: 'bots.stepResume',
 }
 
 export function stepLabel(t: Translate, line: string): string {

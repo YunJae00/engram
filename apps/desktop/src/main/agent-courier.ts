@@ -4,6 +4,7 @@ import { routineDriver } from './routine-driver.js'
 import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
 import { revealText } from './page-reveal.js'
 import { maskSecrets } from './page-mask.js'
+import { touchedAt } from './agent-view.js'
 
 // What a comet is given when it can reach the web: one browser, one reused
 // tab, and the hands that move around a page without committing anything.
@@ -44,10 +45,31 @@ async function inTurnOn(url: string, work: () => Promise<PageMove>): Promise<Pag
 // One browser, one tab per lane. It knows how to open, read, type and click
 // - and nothing at all about search engines: where to go is the caller's
 // judgement, which is what lets it be sent somewhere new.
-export function agentCourier(deps: { askBeforePress?: Ask; lane?: string; onLook?: (url: string, covered: number) => void } = {}): WebCourier {
+// A colleague whose page you have just put your hands on does not keep
+// pressing things under them. Every hand below first waits for the person's
+// hands to have been still for a moment - reading never waits - and says
+// so once on the way in and once on the way back.
+const HANDS_STILL_MS = 4_000
+const ASIDE_AT_MOST_MS = 5 * 60_000
+
+async function stepAside(lane: string, signal: AbortSignal | undefined, say?: (phase: 'aside' | 'resume') => void): Promise<void> {
+  if (Date.now() - touchedAt(lane) >= HANDS_STILL_MS) return
+  say?.('aside')
+  const from = Date.now()
+  while (Date.now() - touchedAt(lane) < HANDS_STILL_MS && Date.now() - from < ASIDE_AT_MOST_MS) {
+    if (signal?.aborted) throw new Error('stopped')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  say?.('resume')
+}
+
+export function agentCourier(
+  deps: { askBeforePress?: Ask; lane?: string; onLook?: (url: string, covered: number) => void; onAside?: (phase: 'aside' | 'resume') => void } = {},
+): WebCourier {
   const ask = deps.askBeforePress
   const lane = deps.lane ?? DEFAULT_LANE
   const ensurePage = () => ensureAgentPage(lane)
+  const aside = (signal?: AbortSignal) => stepAside(lane, signal, deps.onAside)
   return {
     async readOpen(signal) {
       const page = await withAbort(ensurePage(), signal)
@@ -55,6 +77,7 @@ export function agentCourier(deps: { askBeforePress?: Ask; lane?: string; onLook
       return withAbort(readPage(page), signal)
     },
     async typeInto(field, text, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       const done = await routineDriver().type({ text: field }, text, signal)
@@ -62,6 +85,7 @@ export function agentCourier(deps: { askBeforePress?: Ask; lane?: string; onLook
       return { ok: done.ok }
     },
     async clickOn(target, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       const done = await routineDriver().click({ text: target }, signal)
@@ -69,41 +93,49 @@ export function agentCourier(deps: { askBeforePress?: Ask; lane?: string; onLook
       return { ok: done.ok }
     },
     async press(target, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, ask)))
     },
     async typeText(target, text, enter, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return inTurnOn(page.url(), () => withinBudget(typeText(page, target, text, enter, signal)))
     },
     async choose(target, option, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal)))
     },
     async scroll(to, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return withinBudget(scrollPage(page, to, signal))
     },
     async hover(target, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return withinBudget(hoverOn(page, target, signal))
     },
     async pressKey(key, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return withinBudget(pressKey(page, key))
     },
     async reveal(word, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return withinBudget(revealText(page, word))
     },
     async pressPoint(x, y, signal) {
+      await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask)))

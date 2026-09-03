@@ -2027,6 +2027,10 @@ export function registerIpc(ctx: VaultContext): void {
                     askBeforePress: askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
                     lane: channel,
                     onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
+                    onAside: (phase) => {
+                      broadcast({ type: 'comet:step', channel, line: `${phase}: ` })
+                      audit('step', { tool: phase })
+                    },
                   })
                 : null,
               // A wall met this turn keeps the window open past the answer,
