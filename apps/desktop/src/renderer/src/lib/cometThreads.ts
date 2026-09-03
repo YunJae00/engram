@@ -15,6 +15,10 @@ export type CometOffer = NonNullable<Extract<EngramEvent, { type: 'chat:done' }>
 
 export interface CometThread {
   messages: CometMessage[]
+  // Whether the transcript has been read from disk yet. Until it has, an
+  // empty list means "not read", not "nothing said" - and the two must not
+  // look the same on screen.
+  loaded: boolean
   busy: boolean
   workLines: string[]
   // The steps of the turn that just ended, kept so a person can look back at
@@ -45,7 +49,7 @@ export interface CometThreadsSnapshot {
 
 export type CometThreadsStore = ReturnType<typeof createCometThreads>
 
-const EMPTY: CometThread = { messages: [], busy: false, workLines: [], keptWork: [], offer: null, draft: '', adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
+const EMPTY: CometThread = { messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
 const CHANNEL_PREFIX = 'bot-'
 const WORK_LINES_KEPT = 64
 
@@ -134,7 +138,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     load(id: string, turns: ChatTurnDto[]): void {
       const current = thread(id)
       const tail = current.busy ? pendingTail(current.messages) : []
-      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text })), ...tail] })
+      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
       patch(id, { draft })

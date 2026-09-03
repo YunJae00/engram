@@ -17,6 +17,7 @@ import { cometChannel } from '../lib/cometThreads.js'
 import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
+import { ThinkingDots } from '../components/Thinking.js'
 import { WebPane } from '../components/WebPane.js'
 import { PressGate } from '../components/PressGate.js'
 import { ModelPicker } from '../components/ModelPicker.js'
@@ -53,7 +54,7 @@ export function BotsView() {
   const boxRef = useRef<HTMLTextAreaElement | null>(null)
   const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
   const selected = bots.find((b) => b.id === selectedId) ?? null
-  const { messages, busy, workLines, keptWork, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
+  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   useAutoGrow(boxRef, draft)
@@ -64,10 +65,15 @@ export function BotsView() {
   const latestStep = workLines[workLines.length - 1]
   const status = pendingStatus(t, latestStep)
 
+  // Until the first read comes back, an empty list means "not read yet",
+  // and the screen says nothing rather than "no comets" - a claim it cannot
+  // make - before turning into the list a moment later.
+  const [loaded, setLoaded] = useState(false)
   const reload = async (keepSelection = true) => {
     const [list, recs] = await Promise.all([api.botsList(), api.botsRecommend().catch(() => [])])
     setBots(list)
     setSuggestions(recs)
+    setLoaded(true)
     const current = cometThreads.getSnapshot().selectedId
     if (!keepSelection || !list.some((b) => b.id === current)) selectComet(list[0]?.id ?? null)
   }
@@ -249,7 +255,8 @@ export function BotsView() {
             </div>
             )}
             <div className="bots-thread" data-testid="bots-thread" ref={listRef}>
-              {messages.length === 0 && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
+              {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
+              {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               {messages.map((m, i) => (
                 <Fragment key={i}>
                   {/* The work sits above the words it leads to: every step
@@ -362,11 +369,15 @@ export function BotsView() {
             <PressGate />
           </WebPane>
           </>
-        ) : (
+        ) : loaded ? (
           <div className="bots-empty">
             <Comet size={30} />
             <div className="bots-empty-title">{t('bots.emptyTitle')}</div>
             <div className="bots-empty-hint">{t('bots.emptyHint')}</div>
+          </div>
+        ) : (
+          <div className="bots-empty bots-loading" data-testid="bots-loading" aria-busy="true">
+            <ThinkingDots />
           </div>
         )}
       </section>
