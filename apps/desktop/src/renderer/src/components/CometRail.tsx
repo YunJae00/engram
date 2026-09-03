@@ -74,7 +74,11 @@ export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSel
                 <Comet size={14} />
                 <span className="bots-row-initial">{initialOf(bot.name)}</span>
               </span>
-              <span className="bots-row-name">{bot.name}</span>
+              {/* Keyed by the name: a comet named by its first words
+                  breathes into its new name instead of snapping to it. */}
+              <span className="bots-row-name" key={bot.name}>
+                {bot.name}
+              </span>
             </button>
           </li>
         ))}

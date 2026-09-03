@@ -1341,7 +1341,12 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:height', async (_e, height: number) => {
     // A page laid out again is a page that has changed shape: the picture is
     // taken afresh, or the pane keeps showing the old one letterboxed.
-    if (await setViewHeight(Number(height) || 0)) await refreshAgentView()
+    if (await setViewHeight(Number(height) || 0)) {
+      // The page lays itself out again before it is photographed; a picture
+      // taken in the same instant shows the old shape.
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      await refreshAgentView()
+    }
   })
   ipcMain.handle('agent:state', () => agentViewState())
 

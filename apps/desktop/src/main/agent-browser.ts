@@ -50,9 +50,15 @@ export async function setViewHeight(height: number): Promise<boolean> {
   const wanted = Math.round(Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_MAX, height)))
   if (wanted === viewHeight) return false
   viewHeight = wanted
+  const pages = context?.pages() ?? []
   await Promise.all(
-    (context?.pages() ?? []).map((page) => page.setViewportSize({ width: VIEW_WIDTH, height: viewHeight }).catch(() => undefined)),
+    pages.map((page) =>
+      page.setViewportSize({ width: VIEW_WIDTH, height: viewHeight }).catch((err: unknown) => {
+        flog('agent-browser', `could not lay a page out at ${viewHeight}: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
+      }),
+    ),
   )
+  flog('agent-browser', `pages laid out at ${VIEW_WIDTH}x${viewHeight} (${pages.length})`)
   return true
 }
 

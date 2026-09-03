@@ -28,12 +28,21 @@ export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boo
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)
   const send = (input: AgentInputDto) => void api.agentInput(input).catch(() => {})
+  // The canvas box fills its stage and the picture sits inside it at its
+  // own shape (object-fit: contain), so the two differ by a band above and
+  // below or either side whenever the shapes do not match. A point is read
+  // against the picture, or it lands on the page a band's width off.
   const at = (e: { clientX: number; clientY: number }): { x: number; y: number } | null => {
     const canvas = box.current?.querySelector('canvas')
     const rect = canvas?.getBoundingClientRect()
-    if (!rect || rect.width === 0 || rect.height === 0) return null
-    const x = (e.clientX - rect.left) / rect.width
-    const y = (e.clientY - rect.top) / rect.height
+    if (!canvas || !rect || rect.width === 0 || rect.height === 0 || canvas.width === 0 || canvas.height === 0) return null
+    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height)
+    const drawnW = canvas.width * scale
+    const drawnH = canvas.height * scale
+    const left = rect.left + (rect.width - drawnW) / 2
+    const top = rect.top + (rect.height - drawnH) / 2
+    const x = (e.clientX - left) / drawnW
+    const y = (e.clientY - top) / drawnH
     if (x < 0 || x > 1 || y < 0 || y > 1) return null
     return { x, y }
   }

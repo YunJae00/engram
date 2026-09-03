@@ -22,6 +22,8 @@ const MAX_SHARE = 0.72
 const VIEW_WIDTH = 1280
 // A drag settles before the pages are asked to lay out again.
 const SETTLE_MS = 260
+// How long the old picture takes to give way to the new comet's.
+const SWITCH_MS = 240
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
@@ -60,9 +62,15 @@ function Address({ url }: { url?: string }) {
 }
 
 export function WebPane({ channel, busy, onStop, children }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode }) {
-  // The pane shows the tab of the comet being looked at, and moves with it.
+  // The pane shows the tab of the comet being looked at, and moves with it:
+  // the old picture fades while the new tab's picture is fetched, instead
+  // of one page being swapped for another between two frames.
+  const [switching, setSwitching] = useState(false)
   useEffect(() => {
+    setSwitching(true)
     void api.agentLane(channel).catch(() => {})
+    const settle = setTimeout(() => setSwitching(false), SWITCH_MS)
+    return () => clearTimeout(settle)
   }, [channel])
   const { t } = useApp()
   const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
@@ -174,7 +182,9 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
           <ChevronsLeft size={13} aria-hidden />
           <Globe size={14} strokeWidth={1.9} aria-hidden />
           {!frozen && <span className={`web-pane-live${busy ? ' working' : ''}`} aria-hidden />}
-          <span className="web-pane-tab-label">{frozen ? t('live.closed') : hostOf(url) || t('live.caption')}</span>
+          <span className="web-pane-tab-label" key={frozen ? '' : hostOf(url)}>
+            {frozen ? t('live.closed') : hostOf(url) || t('live.caption')}
+          </span>
         </button>
       </aside>
     )
@@ -223,7 +233,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
             tall as the frame is wide, so nothing is letterboxed inside a
             field and the space left over is simply the pane. */}
         <div
-          className="web-pane-stage"
+          className={`web-pane-stage${switching ? ' switching' : ''}`}
           ref={stage}
           onPointerDown={() => setTouched(Date.now())}
           onWheel={() => setTouched(Date.now())}

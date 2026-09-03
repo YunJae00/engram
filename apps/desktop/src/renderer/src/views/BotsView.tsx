@@ -198,7 +198,9 @@ export function BotsView() {
       <section className="bots-main">
         {selected ? (
           <>
-          <div className="bots-chat">
+          {/* Keyed by the comet: looking at another one brings its thread
+              in with a short rise, the way a page turns, not a swap. */}
+          <div className="bots-chat" key={selected.id}>
             <header className="bots-head">
               <div className="bots-head-id">
                 <span className="bots-head-name">{selected.name}</span>

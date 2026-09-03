@@ -28,6 +28,8 @@ interface Mirror {
   // When a frame last went out, and whether a photograph is being taken.
   painted: number
   shooting: boolean
+  // A picture asked for while one was being taken: taken again after.
+  again: boolean
   // The page's own size, which the frame is a scaled copy of; pointer
   // positions arrive as fractions and are mapped back onto it.
   width: number
@@ -59,18 +61,30 @@ let poke: ReturnType<typeof setInterval> | null = null
 // worth the cost.
 async function shoot(m: Mirror, now = false): Promise<void> {
   if (!now && Date.now() - m.painted < QUIET_MS) return
-  if (m.shooting) return
+  if (m.shooting) {
+    // A picture wanted now, while one is on its way, is not dropped: it is
+    // taken as soon as this one lands, or the page that just changed shape
+    // stays on screen in its old one.
+    if (now) m.again = true
+    return
+  }
   m.shooting = true
   try {
     const shot = await m.page.screenshot({ type: 'jpeg', quality: STILL_QUALITY, scale: 'device', fullPage: false, timeout: 6_000 })
     if (mirror !== m) return
     m.painted = Date.now()
     broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url() })
-  } catch {
+  } catch (err) {
     // A page that will not be photographed (navigating, closed) is left to
-    // the next round.
+    // the next round - but said, because a picture that never comes is
+    // otherwise indistinguishable from a page that never changed.
+    flog('agent-view', `still not taken: ${String(err instanceof Error ? err.message : err).slice(0, 140)}`)
   } finally {
     m.shooting = false
+    if (m.again) {
+      m.again = false
+      void shoot(m, true)
+    }
   }
 }
 
@@ -107,7 +121,16 @@ async function drop(): Promise<void> {
   await m.cdp.detach().catch(() => undefined)
 }
 
-async function follow(page: Page): Promise<void> {
+// The follow under way, so a caller that has just opened a page can wait
+// for its mirror instead of finding none there yet.
+let following: Promise<void> = Promise.resolve()
+
+function follow(page: Page): Promise<void> {
+  following = followNow(page)
+  return following
+}
+
+async function followNow(page: Page): Promise<void> {
   await drop()
   let cdp: CDPSession
   try {
@@ -116,7 +139,7 @@ async function follow(page: Page): Promise<void> {
     return
   }
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
-  const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false, painted: 0, shooting: false }
+  const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false, painted: 0, shooting: false, again: false }
   mirror = m
   cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
     void cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined)
@@ -254,7 +277,12 @@ export async function agentViewGo(url: string): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return
   // An address typed with no window behind it - the card frozen on the last
   // thing a closed browser showed - opens one and goes there.
-  const m = mirror ?? (await ensureAgentPage(activeLaneName()).then(() => mirror).catch(() => null))
+  // A page opened for this has its mirror attached a moment after it
+  // exists; going somewhere before that would go nowhere at all.
+  const page = await ensureAgentPage(activeLaneName()).catch(() => null)
+  if (!page) return
+  if (mirror?.page !== page) await following.catch(() => undefined)
+  const m = mirror?.page === page ? mirror : null
   if (!m) return
   await m.page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)

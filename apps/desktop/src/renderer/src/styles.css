@@ -343,7 +343,27 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
   .spin, .absorb-ring, .chat-warming-dot { animation: none; }
   .cosmos-chat, .bots-rail,
   .bots-row, .bots-row-name, .bots-row-mark > *, .bots-new, .bots-new-label { transition: none; }
+  .bots-row-name, .bots-chat, .canvas-slot, .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
+  .mirror-screen { transition: none; }
 }
+
+/* ── Motion: what changes on screen arrives, rather than appearing ────────
+   One vocabulary, short and eased: a name fades to its new words, a thread
+   or a tab rises in, a new work line fades in, a menu unfolds, a page
+   crossfades to the next comet's. Nothing bounces; nothing takes longer
+   than a glance. */
+@keyframes name-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes view-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.bots-row-name { animation: name-in 260ms ease; }
+.bots-chat { animation: view-in 180ms ease-out; }
+.canvas-slot:not([hidden]) { animation: view-in 180ms ease-out; }
+.comet-work-line { animation: fade-in 180ms ease; }
+.model-picker-menu { animation: menu-in 120ms ease-out; transform-origin: bottom right; }
+.web-pane-tab-label { animation: name-in 220ms ease; }
+.canvas-tab { transition: background 140ms ease, color 140ms ease; }
+.mirror-screen { transition: opacity 180ms ease; }
+.web-pane-stage.switching .mirror-screen { opacity: 0; }
 /* engine presence dot — a filled circle, ok-tinted halo when connected */
 .engine-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
 .engine-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
