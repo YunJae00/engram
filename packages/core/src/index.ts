@@ -101,3 +101,4 @@ export { answerLanguageLine, parseProposal, proposalPrompt, PROPOSAL_TOKENS, typ
 export { carriesSecret, secretsIn, withoutSecrets } from './secrets.js'
 export { parseRetryAfterMs } from './engine/classify.js'
 export type { ToolSessionCall, ToolSessionJob, ToolSessionResult } from './engine/types.js'
+export { appendAudit, auditDays, auditDir, readAudit, type AuditEntry, type AuditKind } from './audit-log.js'

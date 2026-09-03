@@ -1281,11 +1281,16 @@ body.bubble-host { background: transparent; }
 .switch:checked { background: var(--accent); }
 .switch:checked::after { transform: translateX(14px); }
 .switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.setting-row.column { flex-direction: column; align-items: stretch; }
-.setting-hint { font-family: var(--font); font-size: var(--fs-small); color: var(--fg-dim); line-height: 1.45; }
+/* A column row is a small paragraph: a title, a few lines under it, then
+   its buttons - with room between one and the next, and a measure the eye
+   can carry, so the section reads as items rather than as one grey block. */
+.setting-row.column { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 0 12px; }
+.setting-row.column + .setting-row.column { border-top: 1px solid var(--border-soft); }
+.setting-row.column > span:first-child { font-weight: 600; color: var(--fg-strong); }
+.setting-hint { font-family: var(--font); font-size: var(--fs-small); color: var(--fg-dim); line-height: 1.55; max-width: 62ch; }
 /* MCP connect row: compact left-aligned pills — a stretched grid treatment
    here once wrapped the labels onto two lines. */
-.mcp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mcp-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
 .mcp-actions button.secondary { white-space: nowrap; flex: 0 0 auto; }
 .setting-row.column > span:first-child { flex: none; }
 /* Bounded, not full-bleed: a 570px-wide box for one short value looked like a
@@ -1643,6 +1648,10 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .brain-pick .brain-choice { height: 30px; padding: 0 18px; border: none; background: transparent; color: var(--fg-dim); font-weight: 500; }
 .brain-pick .brain-choice:hover:not(.armed) { background: transparent; color: var(--fg); }
 .settings-more { margin: 4px 0; }
+.settings-more > summary { cursor: pointer; padding: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }
+.settings-more > summary:hover { color: var(--fg); }
+.settings-more[open] > summary { margin-bottom: 4px; }
+.settings-more .settings-group-head { margin-top: 14px; margin-bottom: 2px; }
 .settings-more > summary { cursor: pointer; font-size: var(--fs-body); color: var(--fg-dim); padding: 6px 0; list-style: none; }
 .settings-more > summary:hover { color: var(--fg); }
 .settings-more[open] > summary { margin-bottom: 8px; }

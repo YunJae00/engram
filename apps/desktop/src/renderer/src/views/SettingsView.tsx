@@ -316,6 +316,15 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             <span>{t('settings.watchTitle')}</span>
             <div className="setting-hint">{t('settings.watchHint')}</div>
           </div>
+          <div className="setting-row column" data-testid="setting-audit">
+            <span>{t('settings.auditTitle')}</span>
+            <div className="setting-hint">{t('settings.auditHint')}</div>
+            <div className="mcp-actions">
+              <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => undefined)}>
+                {t('settings.auditOpen')}
+              </button>
+            </div>
+          </div>
           <div className="setting-row column">
             <span>{t('settings.githubTitle')}</span>
             <div className="setting-hint">{t('settings.githubHint')}</div>

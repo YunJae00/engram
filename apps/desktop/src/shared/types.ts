@@ -488,6 +488,8 @@ export interface EngramApi {
   // Which comet's tab the pane shows; and a reset that closes that tab.
   agentLane(lane: string): Promise<{ on: boolean; url?: string }>
   agentReset(lane: string): Promise<void>
+  // The folder of daily logs of what the comets did, opened for the person.
+  auditOpen(): Promise<void>
   // The models the signed-in plan offers, in the runtime's own words; empty
   // until the runtime has been asked.
   modelsList(): Promise<ModelChoiceDto[]>

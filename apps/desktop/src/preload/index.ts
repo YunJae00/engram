@@ -121,6 +121,7 @@ const api: EngramApi = {
   agentHeight: (height: number) => ipcRenderer.invoke('agent:height', height),
   agentLane: (lane: string) => ipcRenderer.invoke('agent:lane', lane),
   agentReset: (lane: string) => ipcRenderer.invoke('agent:reset', lane),
+  auditOpen: () => ipcRenderer.invoke('audit:open'),
   modelsList: () => ipcRenderer.invoke('models:list'),
   agentState: () => ipcRenderer.invoke('agent:state'),
   browsersInstalled: () => ipcRenderer.invoke('browsers:installed'),

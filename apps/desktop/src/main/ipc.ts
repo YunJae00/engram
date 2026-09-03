@@ -103,7 +103,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
-} from 'core'
+ appendAudit, auditDir, type AuditKind } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -122,8 +122,8 @@ import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
-import { app, ipcMain } from 'electron'
-import { open, readdir, readFile } from 'node:fs/promises'
+import { app, ipcMain, shell } from 'electron'
+import { open, readdir, readFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   AgentInputDto,
@@ -601,12 +601,13 @@ const pressAskWaiters = new Map<string, (verdict: 'approve' | 'always' | 'cancel
 // A comet at a control that would commit: the person is shown the page and
 // says whether it goes. An answer they gave "for good" on this site is kept
 // and answers by itself next time.
-function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsStore>) {
+function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsStore>, note: (detail: string) => void) {
   return async (what: { words: string; url: string }): Promise<'approve' | 'always' | 'cancel'> => {
     const host = hostOf(what.url)
     const action: GatedAction | null = host ? { routineId: 'comet', kind: 'submit', host, fieldLabels: [what.words] } : null
     if (action && ruleCovers(await approvals.list(), action)) {
       flog('comet', `pressing "${what.words}" under a standing approval on ${host}`)
+      note(`"${what.words}" on ${host}: under a standing approval`)
       return 'approve'
     }
     // Whatever they answer, the window stays until they have answered: the
@@ -617,6 +618,7 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
         pressAskWaiters.delete(channel)
         keepOpen()
         if (verdict === 'always' && action) void approvals.add(ruleFor(action))
+        note(`"${what.words}" on ${host ?? 'this page'}: ${verdict}`)
         resolve(verdict)
       })
       broadcast({ type: 'press:ask', channel, words: what.words, host })
@@ -1357,6 +1359,13 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:lane', (_e, lane: string) => lookAtLane(String(lane)))
   // The page is reset: the lane's tab goes, and the next ask starts clean.
   ipcMain.handle('agent:reset', (_e, lane: string) => resetLaneView(String(lane)))
+  // The log itself, opened as a folder: plain files a person can read or
+  // hand to whoever asks what the comets did.
+  ipcMain.handle('audit:open', async () => {
+    const dir = auditDir(paths)
+    await mkdir(dir, { recursive: true })
+    await shell.openPath(dir)
+  })
 
   ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
     routineSubmitWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
@@ -1987,6 +1996,12 @@ export function registerIpc(ctx: VaultContext): void {
       // Read once per turn so every prompt of the turn carries the same bytes.
       const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
       const memory = renderMemory(await loadBotMemory(paths, bot.id))
+      // Everything the comet does on the person's behalf is written down
+      // in the vault, one line per event: what was pressed, what picture
+      // left for a brain, what was asked and answered, where it was stopped.
+      const audit = (kind: AuditKind, rest: { tool?: string; url?: string; detail?: string }): void => {
+        void appendAudit(paths, { kind, channel, bot: bot.name, ...rest }).catch((err) => flog('audit-failed', err))
+      }
       // The window this comet is working in, said at the top of the turn.
       const open = laneState(channel)
       const onScreen =
@@ -2007,11 +2022,18 @@ export function registerIpc(ctx: VaultContext): void {
               // telling the person it had no such tool (measured).
               // On its own tab: two comets at work never share a page, and
               // a new comet never inherits the page an old one left open.
-              courier: agentBrowserAvailable() ? agentCourier({ askBeforePress: askBeforePress(channel, approvals), lane: channel }) : null,
+              courier: agentBrowserAvailable()
+                ? agentCourier({
+                    askBeforePress: askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
+                    lane: channel,
+                    onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
+                  })
+                : null,
               // A wall met this turn keeps the window open past the answer,
               // so the person signs in where they were told to; the hold is
               // let go when they speak again, or after a while on its own.
-              wallMet: () => {
+              wallMet: (url) => {
+                audit('wall', { url })
                 if (wallHolds.has(channel)) return
                 const release = holdAgentBrowser()
                 wallHolds.set(channel, release)
@@ -2075,7 +2097,11 @@ export function registerIpc(ctx: VaultContext): void {
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
-            onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
+            onStep: (line) => {
+              broadcast({ type: 'comet:step', channel, line })
+              const said = /^([a-z_]+): ([^]*)$/.exec(line)
+              audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
+            },
             onToken: (text) => broadcast({ type: 'chat:token', channel, text }),
             onReset: () => broadcast({ type: 'chat:token', channel, text: '', reset: true }),
             // Probes only: what each tool actually said. A loop is fixed from

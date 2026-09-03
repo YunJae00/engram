@@ -371,6 +371,9 @@ const en = {
   'github.done': 'Done',
 
   // settings — GitHub backup entry (near the MCP section)
+  'settings.auditTitle': 'Activity log',
+  'settings.auditHint': 'Everything a comet does on your behalf is written down in your vault, one file per day: what it pressed, what picture it showed a brain (with secret fields covered), what you approved, where it was stopped.',
+  'settings.auditOpen': 'Open the log folder',
   'settings.githubTitle': 'GitHub backup',
   'settings.githubHint': 'Push this workspace to a private GitHub repo you own, so it is backed up and syncs across your machines. Opens a browser to sign in the first time.',
   'settings.githubButton': 'Back up to GitHub…',
@@ -569,7 +572,7 @@ const en = {
   'settings.sessionWatch': 'AI CLI sessions — harvest from Claude Code / Codex',
   'settings.feedback': 'Send feedback',
   'settings.mcpTitle': 'AI tools connection (MCP)',
-  'settings.mcpHint': 'Claude, Codex or any MCP-capable tool can capture into and recall from this brain. Claude clients connect automatically on launch; use Copy JSON to wire up anything else.',
+  'settings.mcpHint': 'Claude, Codex or any MCP-capable tool can capture into and recall from this brain. Claude Desktop is connected automatically on launch; for Claude Code, Codex or anything else, use Copy JSON and paste it into that tool\'s MCP settings.',
   'toast.mcpConnected': 'Claude connection refreshed — {targets}',
   'toast.semanticError': 'Semantic search is unavailable — results are keyword-only for now. Details in Settings.',
   'toast.deskJournalNotice': 'The desk journal records app + window titles for your Today view — turn it off anytime in Settings.',
@@ -584,7 +587,7 @@ const en = {
   'settings.mcpNoClients': 'No Claude client found on this machine yet. Install Claude Desktop or Claude Code, then reconnect.',
   'settings.watchTitle': 'Learning from your Claude sessions',
   'settings.watchHint':
-    'While Engram is open, conversations you have in Claude Code are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Summaries run on your local brain. Close Engram and it stops. Anything in your private folder is never read.',
+    'While Engram is open, conversations you have in Claude Code are read for conclusions worth keeping, and a short summary lands in your inbox — the transcript never does. Summaries run on the brain you chose. Close Engram and it stops. Anything in your private folder is never read.',
   'settings.semanticTitle': 'Semantic search',
   'settings.semanticIdle': 'Starts with the app',
   'settings.versionKey': 'Version',

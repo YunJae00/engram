@@ -3,6 +3,7 @@ import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPag
 import { routineDriver } from './routine-driver.js'
 import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
 import { revealText } from './page-reveal.js'
+import { maskSecrets } from './page-mask.js'
 
 // What a comet is given when it can reach the web: one browser, one reused
 // tab, and the hands that move around a page without committing anything.
@@ -43,7 +44,7 @@ async function inTurnOn(url: string, work: () => Promise<PageMove>): Promise<Pag
 // One browser, one tab per lane. It knows how to open, read, type and click
 // - and nothing at all about search engines: where to go is the caller's
 // judgement, which is what lets it be sent somewhere new.
-export function agentCourier(deps: { askBeforePress?: Ask; lane?: string } = {}): WebCourier {
+export function agentCourier(deps: { askBeforePress?: Ask; lane?: string; onLook?: (url: string, covered: number) => void } = {}): WebCourier {
   const ask = deps.askBeforePress
   const lane = deps.lane ?? DEFAULT_LANE
   const ensurePage = () => ensureAgentPage(lane)
@@ -112,7 +113,13 @@ export function agentCourier(deps: { askBeforePress?: Ask; lane?: string } = {})
       armIdleClose()
       // The visible part only, so a point on the picture is a point on the
       // page: the fractions a press is given mean the same thing to both.
+      // The fields the page declares secret are covered for the picture,
+      // and the picture is the one thing here that leaves for a brain, so
+      // it is written down: where, and how many fields were covered.
+      const masked = await maskSecrets(page).catch(() => null)
       const shot = await withAbort(page.screenshot({ type: 'jpeg', quality: 60, scale: 'css', fullPage: false }), signal).catch(() => null)
+      await masked?.uncover().catch(() => undefined)
+      if (shot) deps.onLook?.(page.url(), masked?.covered ?? 0)
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
     async fetchPage(url, signal) {
