@@ -11,6 +11,7 @@ import { CometWork } from '../components/CometWork.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
+import { Fragment } from 'react'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { scheduleLabel } from '../lib/schedule.js'
@@ -87,6 +88,8 @@ export function BotsView() {
   }, [selectedId])
 
   useStickToBottom(listRef, messages)
+  // The bubble the current work belongs to: the last one the comet wrote.
+  const lastAssistant = messages.reduce((found, m, i) => (m.role === 'assistant' ? i : found), -1)
 
   // One answer at a time across every comet: the local model does not share.
   const send = () => sendText(draft.trim())
@@ -113,11 +116,17 @@ export function BotsView() {
 
   // A task is the repeated work itself: saved on the comet, one click to run.
   // The errand pipeline is only the engine underneath.
+  const runTaskOf = (botId: string, task: { id: string; name: string; goal: string }) => {
+    if (errand.running) return
+    // Pressed from the rail, the routine's own comet comes to the front so
+    // the run is watched where it happens.
+    if (botId !== selectedId) selectComet(botId)
+    cometThreads.append(botId, { role: 'user', text: task.goal })
+    void api.botTaskRan(botId, task.id).catch(() => undefined)
+    void startErrand(task.goal, botId)
+  }
   const runTask = (task: { id: string; name: string; goal: string }) => {
-    if (!selected || errand.running) return
-    cometThreads.append(selected.id, { role: 'user', text: task.goal })
-    void api.botTaskRan(selected.id, task.id).catch(() => undefined)
-    void startErrand(task.goal, selected.id)
+    if (selected) runTaskOf(selected.id, task)
   }
 
   // What a chat answer leaves you wanting: the web, when the vault did not
@@ -174,6 +183,8 @@ export function BotsView() {
         onSelect={selectComet}
         onCreate={create}
         onDismiss={(name) => void dismiss(name)}
+        onRunTask={runTaskOf}
+        running={errand.running}
       />
 
       <section className="bots-main">
@@ -240,19 +251,26 @@ export function BotsView() {
             <div className="bots-thread" data-testid="bots-thread" ref={listRef}>
               {messages.length === 0 && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               {messages.map((m, i) => (
-                <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
-                  {m.role === 'assistant' ? (
-                    m.streaming && !m.text ? (
-                      // The wait, and everything it is doing, is the strip
-                      // below the thread: it stays put once words arrive.
-                      <span className="bots-pending" data-testid="bots-pending" />
+                <Fragment key={i}>
+                  {/* The work sits above the words it leads to: every step
+                      and every aside in order, then the answer under them.
+                      Words the comet writes between actions stay where
+                      they were written instead of leaping into a list
+                      below, and the foot of the thread - where the eye
+                      rests - is where it speaks. */}
+                  {i === lastAssistant && <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />}
+                  <div className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
+                    {m.role === 'assistant' ? (
+                      m.streaming && !m.text ? (
+                        <span className="bots-pending" data-testid="bots-pending" />
+                      ) : (
+                        <StreamingAnswer text={m.text} done={!m.streaming} />
+                      )
                     ) : (
-                      <StreamingAnswer text={m.text} done={!m.streaming} />
-                    )
-                  ) : (
-                    m.text
-                  )}
-                </div>
+                      m.text
+                    )}
+                  </div>
+                </Fragment>
               ))}
               {offer && offer.kind === 'asked' && !routine.running && (
                 <Choices
@@ -285,9 +303,6 @@ export function BotsView() {
                   onDismiss={() => cometThreads.clearOffer(selected.id)}
                 />
               )}
-              {/* What it is doing, under the answer it is writing: the
-                  work stays watchable while the words arrive. */}
-              <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />
               <SubmitGate />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">

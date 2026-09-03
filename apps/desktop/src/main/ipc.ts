@@ -1094,11 +1094,18 @@ export function registerIpc(ctx: VaultContext): void {
     broadcast({ type: 'bots:changed' })
   })
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
-  ipcMain.handle('bots:taskAdd', (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) =>
-    addBotTask(paths, botId, input),
-  )
+  // A routine kept or removed shows up wherever routines are listed - the
+  // rail as much as the comet's own row - so both say so.
+  ipcMain.handle('bots:taskAdd', async (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) => {
+    const task = await addBotTask(paths, botId, input)
+    broadcast({ type: 'bots:changed' })
+    return task
+  })
   ipcMain.handle('bots:standingDecline', (_e, botId: string, goal: string) => declineStanding(paths, botId, askKey(goal)))
-  ipcMain.handle('bots:taskRemove', (_e, botId: string, taskId: string) => removeBotTask(paths, botId, taskId))
+  ipcMain.handle('bots:taskRemove', async (_e, botId: string, taskId: string) => {
+    await removeBotTask(paths, botId, taskId)
+    broadcast({ type: 'bots:changed' })
+  })
   ipcMain.handle('bots:taskRan', (_e, botId: string, taskId: string) => markBotTaskRun(paths, botId, taskId))
   const suggestionsNow = async () => {
     const [existing, dismissed] = await Promise.all([

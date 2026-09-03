@@ -1405,6 +1405,12 @@ body.bubble-host { background: transparent; }
 .bots-rail.folded > .bots-new { order: 1; }
 .bots-rail.folded > .bots-list { order: 2; }
 .bots-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+/* Every routine the person kept, whichever comet keeps it: one press runs
+   it. The rail is where a person looks for the things they saved. */
+.bots-routines-head { font-size: var(--fs-small); font-weight: 650; color: var(--fg); padding: 10px 8px 2px; }
+.bots-routine { gap: 8px; }
+.bots-routine .bots-row-mark { color: var(--fg-faint); }
+.bots-routine-of { font-size: var(--fs-micro); color: var(--fg-faint); margin-left: auto; white-space: nowrap; }
 .bots-rail.folded .bots-list { gap: 6px; }
 .bots-row {
   width: 100%; display: flex; align-items: center; gap: 9px; overflow: hidden;
@@ -1490,12 +1496,13 @@ body.bubble-host { background: transparent; }
 /* Folded, the pane is one tab against the right edge: an icon, a light that
    says whether the page is being worked on, and the host in words a person
    can read without turning their head. */
-/* Folded, the tab sits low, beside the composer - where the hand already is
-   - not up by the comet's name. Both the pane and the tab slide in from the
-   edge they live on, so folding and unfolding read as one thing moving. */
+/* Folded, the tab sits just under the comet's header row: out of the way of
+   its buttons and clear of the thread. Both the pane and the tab slide in
+   from the edge they live on, so folding and unfolding read as one thing
+   moving. */
 .web-pane.folded {
-  width: auto; min-width: 0; flex: none; align-self: flex-end;
-  margin: 0 10px 20px 0; background: none; box-shadow: none; padding: 0;
+  width: auto; min-width: 0; flex: none; align-self: flex-start;
+  margin: 58px 10px 0 0; background: none; box-shadow: none; padding: 0;
   animation: pane-in 180ms ease-out;
 }
 .web-pane:not(.folded) { animation: pane-in 200ms ease-out; }
@@ -1988,7 +1995,9 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
    order they happened, and the page it is on. */
 /* The work sits at the foot of the thread whether the conversation is long
    or short: pushed down when there is room, stuck there when there is not. */
-.comet-work { display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: 100%; margin: auto 0 6px; }
+/* Above the answer it leads to, tight under the question: no room is made
+   for it beyond its own lines. */
+.comet-work { display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: 100%; margin: 0 0 2px; }
 /* Nothing to say and no page to show: the strip takes no room at all. */
 .comet-work:empty { display: none; }
 .comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }

@@ -26,6 +26,12 @@ await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 await page.keyboard.press('Control+l')
 await page.getByTestId('bots-view').waitFor({ state: 'visible', timeout: 20_000 })
 await page.waitForTimeout(800)
+// A kept routine, so the rail's own list of them is in the picture.
+await page.evaluate(async () => {
+  const bots = await window.engram.botsList()
+  if (bots[0]) await window.engram.botTaskAdd(bots[0].id, { name: 'Morning headlines', goal: 'Open the news front page and list the headlines' })
+})
+await page.waitForTimeout(400)
 await page.locator('.bots-rail button', { hasText: 'reader' }).first().click().catch(() => {})
 await page.waitForTimeout(400)
 // The model picker, open, beside the composer - once the plan's list is in.

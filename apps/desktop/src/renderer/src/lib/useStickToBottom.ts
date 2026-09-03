@@ -22,13 +22,20 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, changes: un
     list.addEventListener('scroll', watch, { passive: true })
     // Content that grows on its own (a picture arriving, a block folding
     // open) moves the foot without anyone scrolling.
-    const grew = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    const follow = (): void => {
       if (pinned.current) list.scrollTop = list.scrollHeight
-    }) : null
+    }
+    const grew = typeof ResizeObserver === 'function' ? new ResizeObserver(follow) : null
     grew?.observe(list)
+    // The list's own box does not change when its content grows; what grows
+    // is inside it. Every node added or word written under it moves the
+    // foot, and a pinned reader is taken along.
+    const changed = typeof MutationObserver === 'function' ? new MutationObserver(follow) : null
+    changed?.observe(list, { childList: true, subtree: true, characterData: true })
     return () => {
       list.removeEventListener('scroll', watch)
       grew?.disconnect()
+      changed?.disconnect()
     }
   }, [ref])
   useEffect(() => {

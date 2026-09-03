@@ -92,6 +92,7 @@ const en = {
   'bots.taskRemove': 'Remove this task',
   'bots.suggestionDismiss': 'Dismiss this suggestion',
   'bots.railTitle': 'Your comets',
+  'bots.routinesTitle': 'Routines',
   'bots.errandRunning': 'Errand {phase}',
   'live.caption': 'The browser, live',
   'live.expand': 'Open the live view',
