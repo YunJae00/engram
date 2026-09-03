@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight, Globe, RotateCw, Square } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Globe, RotateCw, Square, X } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -59,7 +59,11 @@ function Address({ url }: { url?: string }) {
   )
 }
 
-export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): void; children?: ReactNode }) {
+export function WebPane({ channel, busy, onStop, children }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode }) {
+  // The pane shows the tab of the comet being looked at, and moves with it.
+  useEffect(() => {
+    void api.agentLane(channel).catch(() => {})
+  }, [channel])
   const { t } = useApp()
   const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1')
@@ -198,9 +202,16 @@ export function WebPane({ busy, onStop, children }: { busy: boolean; onStop(): v
           </button>
           <Address url={url} />
           {!frozen && (
-            <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>
-              <RotateCw size={13} aria-hidden />
-            </button>
+            <>
+              <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>
+                <RotateCw size={13} aria-hidden />
+              </button>
+              {/* The page has got somewhere neither the person nor the comet
+                  can get back from: close it, and the next ask starts clean. */}
+              <button className="live-dock-act" data-testid="live-reset" aria-label={t('live.reset')} title={t('live.reset')} onClick={() => void api.agentReset(channel).catch(() => {})}>
+                <X size={13} aria-hidden />
+              </button>
+            </>
           )}
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>

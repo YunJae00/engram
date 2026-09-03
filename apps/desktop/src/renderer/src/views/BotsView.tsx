@@ -58,8 +58,10 @@ export function BotsView() {
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   useAutoGrow(boxRef, draft)
-  const busyElsewhere = !busy && cometThreads.anyBusy()
-  const locked = busyElsewhere || errand.running
+  // Each comet works on its own tab with its own brain session, so one
+  // being busy locks only itself. An errand run still takes the shared
+  // default lane and locks every composer while it runs.
+  const locked = errand.running
 
   // The wait, said from evidence - see pendingStatus for the order it trusts.
   const latestStep = workLines[workLines.length - 1]
@@ -103,7 +105,7 @@ export function BotsView() {
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
   const sendText = async (message: string) => {
-    if (!message || cometThreads.anyBusy() || errand.running || !selected) return
+    if (!message || busy || errand.running || !selected) return
     const id = selected.id
     const history = cometThreads.begin(id, message)
     try {
@@ -340,7 +342,7 @@ export function BotsView() {
                 value={draft}
                 rows={1}
                 placeholder={
-                  errand.running ? t('errands.busy') : busyElsewhere ? t('bots.busyElsewhere') : t('bots.placeholder', { name: selected.name })
+                  errand.running ? t('errands.busy') : t('bots.placeholder', { name: selected.name })
                 }
                 maxLength={2000}
                 onChange={(e) => cometThreads.setDraft(selected.id, e.target.value)}
@@ -365,8 +367,8 @@ export function BotsView() {
           </div>
           {/* The page the comet works on, beside the conversation: watched,
               acted in, and stoppable right where the work is. */}
-          <WebPane busy={busy} onStop={() => void stop()}>
-            <PressGate />
+          <WebPane channel={cometChannel(selected.id)} busy={busy} onStop={() => void stop()}>
+            <PressGate channel={cometChannel(selected.id)} />
           </WebPane>
           </>
         ) : loaded ? (

@@ -485,6 +485,9 @@ export interface EngramApi {
   agentRefresh(): Promise<void>
   // How tall the pages should lay themselves out, from the pane showing them.
   agentHeight(height: number): Promise<void>
+  // Which comet's tab the pane shows; and a reset that closes that tab.
+  agentLane(lane: string): Promise<{ on: boolean; url?: string }>
+  agentReset(lane: string): Promise<void>
   // The models the signed-in plan offers, in the runtime's own words; empty
   // until the runtime has been asked.
   modelsList(): Promise<ModelChoiceDto[]>
@@ -569,7 +572,7 @@ export interface EngramApi {
   routineSubmitDone(verdict: 'approve' | 'always' | 'cancel'): Promise<void>
   // The person's word on a press that would commit: it goes, it goes here
   // from now on, or they will do it themselves.
-  pressAskDone(verdict: 'approve' | 'always' | 'cancel'): Promise<void>
+  pressAskDone(channel: string, verdict: 'approve' | 'always' | 'cancel'): Promise<void>
   approvalsList(): Promise<ApprovalRuleDto[]>
   approvalForget(fingerprint: string): Promise<void>
   // Browsers whose sessions can be inherited, and the one-press inherit.

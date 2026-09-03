@@ -116,7 +116,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
-import { agentViewGo, agentViewInput, agentViewState, refreshAgentView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
+import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
@@ -248,13 +248,15 @@ export {
 
 export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 
-// How long a window met with a sign-in wall waits for the person.
+// How long a window met with a sign-in wall waits for the person. One hold
+// per channel: a comet parked at a wall keeps the window for itself, and
+// another comet finishing does not let go of it.
 const WALL_HOLD_MS = 10 * 60_000
-let wallHold: (() => void) | null = null
-function releaseWallHold(): void {
-  if (!wallHold) return
-  const release = wallHold
-  wallHold = null
+const wallHolds = new Map<string, () => void>()
+function releaseWallHold(channel: string): void {
+  const release = wallHolds.get(channel)
+  if (!release) return
+  wallHolds.delete(channel)
   release()
 }
 
@@ -592,7 +594,9 @@ let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 // routines:submitDone, and by an abort with 'cancel' so it cannot wedge.
 let routineSubmitWaiter: ((verdict: 'approve' | 'always' | 'cancel') => void) | null = null
 // The same, for a press the comet wants to make on a page it merely found.
-let pressAskWaiter: ((verdict: 'approve' | 'always' | 'cancel') => void) | null = null
+// One question in flight per channel: two comets at their own submit
+// buttons are two questions, each answered for its own page.
+const pressAskWaiters = new Map<string, (verdict: 'approve' | 'always' | 'cancel') => void>()
 
 // A comet at a control that would commit: the person is shown the page and
 // says whether it goes. An answer they gave "for good" on this site is kept
@@ -609,12 +613,12 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
     // page they are looking at is the question.
     const keepOpen = holdAgentBrowser()
     return new Promise((resolve) => {
-      pressAskWaiter = (verdict) => {
-        pressAskWaiter = null
+      pressAskWaiters.set(channel, (verdict) => {
+        pressAskWaiters.delete(channel)
         keepOpen()
         if (verdict === 'always' && action) void approvals.add(ruleFor(action))
         resolve(verdict)
-      }
+      })
       broadcast({ type: 'press:ask', channel, words: what.words, host })
     })
   }
@@ -1341,9 +1345,13 @@ export function registerIpc(ctx: VaultContext): void {
   })
   ipcMain.handle('agent:state', () => agentViewState())
 
-  ipcMain.handle('press:askDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
-    pressAskWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
+  ipcMain.handle('press:askDone', (_e, channel: string, verdict: 'approve' | 'always' | 'cancel') => {
+    pressAskWaiters.get(String(channel))?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
   })
+  // The person looks at a comet: its tab is what the pane shows.
+  ipcMain.handle('agent:lane', (_e, lane: string) => lookAtLane(String(lane)))
+  // The page is reset: the lane's tab goes, and the next ask starts clean.
+  ipcMain.handle('agent:reset', (_e, lane: string) => resetLaneView(String(lane)))
 
   ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
     routineSubmitWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
@@ -1956,7 +1964,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (bot) {
       // The person is back: whatever wall was left open for them is theirs
       // to have cleared, and the window is the turn's again.
-      releaseWallHold()
+      releaseWallHold(channel)
       // A results address pasted into the thread is the answer to "where
       // should I search": its shape is learned here, with nothing to press.
       const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null
@@ -1974,8 +1982,8 @@ export function registerIpc(ctx: VaultContext): void {
       // Read once per turn so every prompt of the turn carries the same bytes.
       const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
       const memory = renderMemory(await loadBotMemory(paths, bot.id))
-      // The window the person is watching, said at the top of the turn.
-      const open = agentViewState()
+      // The window this comet is working in, said at the top of the turn.
+      const open = laneState(channel)
       const onScreen =
         open.on && open.url && open.url !== 'about:blank'
           ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
@@ -1992,17 +2000,19 @@ export function registerIpc(ctx: VaultContext): void {
               // opening - where the model can step aside to make room - not
               // here, where a tight reading meant a comet with no web at all
               // telling the person it had no such tool (measured).
-              courier: agentBrowserAvailable() ? agentCourier({ askBeforePress: askBeforePress(channel, approvals) }) : null,
+              // On its own tab: two comets at work never share a page, and
+              // a new comet never inherits the page an old one left open.
+              courier: agentBrowserAvailable() ? agentCourier({ askBeforePress: askBeforePress(channel, approvals), lane: channel }) : null,
               // A wall met this turn keeps the window open past the answer,
               // so the person signs in where they were told to; the hold is
               // let go when they speak again, or after a while on its own.
               wallMet: () => {
-                if (wallHold) return
+                if (wallHolds.has(channel)) return
                 const release = holdAgentBrowser()
-                wallHold = release
+                wallHolds.set(channel, release)
                 setTimeout(() => {
-                  if (wallHold === release) {
-                    wallHold = null
+                  if (wallHolds.get(channel) === release) {
+                    wallHolds.delete(channel)
                     release()
                   }
                 }, WALL_HOLD_MS).unref()
@@ -2193,7 +2203,7 @@ export function registerIpc(ctx: VaultContext): void {
         // moment the answer lands takes the evidence away. It goes on its own
         // after a few quiet minutes, when the next question opens a fresh one,
         // or when the machine needs the memory.
-        if (!wallHold) armIdleClose()
+        if (!wallHolds.has(channel)) armIdleClose()
       }
       return
     }

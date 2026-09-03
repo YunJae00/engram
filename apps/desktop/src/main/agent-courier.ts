@@ -1,5 +1,5 @@
 import type { PageMove, WebCourier } from 'core'
-import { armIdleClose, agentAbortable as withAbort, ensureAgentPage as ensurePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
+import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
 import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
 import { revealText } from './page-reveal.js'
@@ -21,11 +21,32 @@ function withinBudget(work: Promise<PageMove>): Promise<PageMove> {
   ])
 }
 
-// One browser, one reused tab. It knows how to open, read, type and click —
-// and nothing at all about search engines: where to go is the caller's
+// Two comets sharing one browser share its sign-ins - and so, on one site,
+// its session. Reading side by side is fine; two hands changing the same
+// site's page at the same moment is how one of them ends up filling a form
+// the other just replaced. Changes on one host take turns; the host is all
+// the rule knows.
+const hostTurns = new Map<string, Promise<unknown>>()
+async function inTurnOn(url: string, work: () => Promise<PageMove>): Promise<PageMove> {
+  let host = ''
+  try {
+    host = new URL(url).host
+  } catch {
+    return work()
+  }
+  const before = hostTurns.get(host) ?? Promise.resolve()
+  const mine = before.then(work, work)
+  hostTurns.set(host, mine.catch(() => undefined))
+  return mine
+}
+
+// One browser, one tab per lane. It knows how to open, read, type and click
+// - and nothing at all about search engines: where to go is the caller's
 // judgement, which is what lets it be sent somewhere new.
-export function agentCourier(deps: { askBeforePress?: Ask } = {}): WebCourier {
+export function agentCourier(deps: { askBeforePress?: Ask; lane?: string } = {}): WebCourier {
   const ask = deps.askBeforePress
+  const lane = deps.lane ?? DEFAULT_LANE
+  const ensurePage = () => ensureAgentPage(lane)
   return {
     async readOpen(signal) {
       const page = await withAbort(ensurePage(), signal)
@@ -49,17 +70,17 @@ export function agentCourier(deps: { askBeforePress?: Ask } = {}): WebCourier {
     async press(target, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressOn(page, target, signal, ask))
+      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, ask)))
     },
     async typeText(target, text, enter, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(typeText(page, target, text, enter, signal))
+      return inTurnOn(page.url(), () => withinBudget(typeText(page, target, text, enter, signal)))
     },
     async choose(target, option, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(chooseOption(page, target, option, signal))
+      return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal)))
     },
     async scroll(to, signal) {
       const page = await withAbort(ensurePage(), signal)
@@ -84,7 +105,7 @@ export function agentCourier(deps: { askBeforePress?: Ask } = {}): WebCourier {
     async pressPoint(x, y, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressPoint(page, x, y, ask))
+      return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask)))
     },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)

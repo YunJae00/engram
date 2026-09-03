@@ -219,13 +219,53 @@ async function launchPatiently<T>(launch: () => Promise<T>): Promise<T> {
     }
   }
 }
-let workPage: Page | null = null
-// Whoever mirrors the window is told of every page as it opens.
-const pageWatchers = new Set<(page: Page) => void>()
+// One tab per lane. A lane is whoever is working - a comet's channel, or
+// the default for the errand and routine runs - and each keeps its own tab,
+// so two comets at once never take each other's page, and a new comet never
+// starts on a page an old one left open. The tabs share one browser and
+// one profile: a sign-in made in any of them holds in all of them.
+export const DEFAULT_LANE = 'default'
+const lanes = new Map<string, Page>()
+// The lane the person is looking at: the one the mirror follows, and the
+// one a tab opened by a link is handed to when its opener is not known.
+let activeLane = DEFAULT_LANE
+// Another tab is only worth opening when the machine can afford it.
+const LANE_MIN_FREE = 0.8e9
 
-export function watchAgentPages(watcher: (page: Page) => void): () => void {
+export function laneOf(page: Page): string | null {
+  for (const [lane, held] of lanes) if (held === page) return lane
+  return null
+}
+
+export function lanePage(lane: string): Page | null {
+  const page = lanes.get(lane)
+  return page && !page.isClosed() ? page : null
+}
+
+export function setActiveLane(lane: string): void {
+  activeLane = lane
+}
+
+export function activeLaneName(): string {
+  return activeLane
+}
+
+// The tab a lane holds is closed and forgotten: the next ask from that lane
+// starts on a blank page. What a person presses when the page has got into
+// a state neither they nor the comet can get out of.
+export async function resetLane(lane: string): Promise<void> {
+  const page = lanes.get(lane)
+  lanes.delete(lane)
+  if (page && !page.isClosed()) await page.close().catch(() => undefined)
+}
+
+// Whoever mirrors the window is told of every page as it opens, and which
+// lane it belongs to.
+const pageWatchers = new Set<(page: Page, lane: string | null) => void>()
+
+export function watchAgentPages(watcher: (page: Page, lane: string | null) => void): () => void {
   pageWatchers.add(watcher)
-  for (const page of context?.pages() ?? []) watcher(page)
+  for (const page of context?.pages() ?? []) watcher(page, laneOf(page))
   return () => {
     pageWatchers.delete(watcher)
   }
@@ -362,18 +402,24 @@ async function ensureContext(): Promise<Ctx> {
     ctx.on('close', () => {
       if (context === ctx) {
         context = null
-        workPage = null
+        lanes.clear()
       }
       flog('agent-browser', 'closed')
     })
     ctx.on('page', (page) => {
-      // A link that opened a new tab is followed there: the newest page is
-      // the one the person sees, and the one the next read means.
-      workPage = page
-      for (const watcher of pageWatchers) watcher(page)
+      // A link that opened a new tab is followed there, by the lane whose
+      // page opened it: the newest page is the one that lane now means.
+      void page
+        .opener()
+        .catch(() => null)
+        .then((opener) => {
+          const lane = (opener && laneOf(opener)) ?? activeLane
+          lanes.set(lane, page)
+          for (const watcher of pageWatchers) watcher(page, lane)
+        })
     })
     context = ctx
-    for (const page of ctx.pages()) for (const watcher of pageWatchers) watcher(page)
+    for (const page of ctx.pages()) for (const watcher of pageWatchers) watcher(page, laneOf(page))
     armPressureWatch()
     return ctx
   })().finally(() => {
@@ -383,11 +429,19 @@ async function ensureContext(): Promise<Ctx> {
   return opening
 }
 
-export async function ensureAgentPage(): Promise<Page> {
+export async function ensureAgentPage(lane = DEFAULT_LANE): Promise<Page> {
   const ctx = await ensureContext()
-  if (workPage && !workPage.isClosed()) return workPage
-  workPage = ctx.pages().at(-1) ?? (await ctx.newPage())
-  return workPage
+  const held = lanePage(lane)
+  if (held) return held
+  // The tab the browser opened with belongs to whoever asks first; after
+  // that every lane gets a tab of its own, if the machine has room for one.
+  const spare = ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null)
+  if (!spare && lanes.size > 0 && os.freemem() < LANE_MIN_FREE)
+    throw new Error(`not enough free memory for another page while other work is open (${(os.freemem() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
+  const page = spare ?? (await ctx.newPage())
+  lanes.set(lane, page)
+  for (const watcher of pageWatchers) watcher(page, lane)
+  return page
 }
 
 // What the page shows, through every frame and open shadow root, with its
@@ -436,8 +490,9 @@ export function agentPages(): Page[] {
   return context?.pages().filter((one) => !one.isClosed()) ?? []
 }
 
-export function agentWorkPage(): Page | null {
-  return workPage && !workPage.isClosed() ? workPage : null
+// The tab the person is looking at: the active lane's, or none.
+export function currentAgentPage(): Page | null {
+  return lanePage(activeLane)
 }
 
 export function agentBrowserAvailable(): boolean {
@@ -446,8 +501,8 @@ export function agentBrowserAvailable(): boolean {
 
 // Low-level access for the routine driver: same browser, same reused tab,
 // same idle and pressure lifecycle the courier lives under.
-export async function agentPage(signal?: AbortSignal): Promise<Page> {
-  const page = await withAbort(ensureAgentPage(), signal)
+export async function agentPage(signal?: AbortSignal, lane = DEFAULT_LANE): Promise<Page> {
+  const page = await withAbort(ensureAgentPage(lane), signal)
   armIdleClose()
   return page
 }
@@ -483,7 +538,7 @@ export async function closeAgentBrowser(options: { force?: boolean } = {}): Prom
   // erase the live one's handle and leave the session driving a ghost.
   if (held === context) {
     context = null
-    workPage = null
+    lanes.clear()
   }
   if (!held) return
   const done = held.close().catch(() => undefined)

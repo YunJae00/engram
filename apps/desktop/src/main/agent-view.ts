@@ -1,7 +1,7 @@
 import type { CDPSession, Page } from 'playwright-core'
 import type { AgentInputDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
-import { agentPages, ensureAgentPage, watchAgentPages } from './agent-browser.js'
+import { activeLaneName, ensureAgentPage, lanePage, resetLane, setActiveLane, watchAgentPages } from './agent-browser.js'
 import { flog } from './flog.js'
 
 // The agent's window stays out of sight. What it shows is mirrored into the
@@ -135,9 +135,8 @@ async function follow(page: Page): Promise<void> {
     if (mirror !== m) return
     void drop().then(() => {
       // The tab that closed may have been a popup over the one that opened
-      // it; the mirror falls back to the latest that is still there.
-      const rest = agentPages()
-      const next = rest[rest.length - 1]
+      // it; the mirror falls back to whatever the lane still holds.
+      const next = lanePage(activeLaneName())
       if (next) void follow(next)
       else say(false)
     })
@@ -149,7 +148,42 @@ async function follow(page: Page): Promise<void> {
 // Wired once at startup: every page the agent browser opens is mirrored as
 // it appears — the newest tab is the one the person needs to see.
 export function startAgentView(): void {
-  watchAgentPages((page) => void follow(page))
+  // Only the lane being looked at is mirrored: another comet's tab paints
+  // in the background and costs no frames until it is looked at.
+  watchAgentPages((page, lane) => {
+    if (lane === activeLaneName()) void follow(page)
+  })
+}
+
+// The person looks at another comet: the mirror moves to that comet's tab,
+// or shows nothing if it has none yet.
+export async function lookAtLane(lane: string): Promise<{ on: boolean; url?: string }> {
+  setActiveLane(lane)
+  const page = lanePage(lane)
+  if (mirror?.page === page && page) return { on: true, url: page.url() }
+  if (page) {
+    await follow(page)
+    if (viewers > 0) void shoot(mirror!, true)
+    return { on: true, url: page.url() }
+  }
+  await drop()
+  say(false)
+  return { on: false }
+}
+
+// The lane's tab is closed and the mirror goes dark; the next ask opens a
+// fresh page.
+export async function resetLaneView(lane: string): Promise<void> {
+  const page = lanePage(lane)
+  if (page && mirror?.page === page) await drop()
+  await resetLane(lane)
+  if (lane === activeLaneName()) say(false)
+}
+
+// What a lane's tab is showing, for a turn that starts on it.
+export function laneState(lane: string): { on: boolean; url?: string } {
+  const page = lanePage(lane)
+  return page ? { on: true, url: page.url() } : { on: false }
 }
 
 export async function watchAgentView(on: boolean): Promise<{ on: boolean; url?: string }> {
@@ -220,7 +254,7 @@ export async function agentViewGo(url: string): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return
   // An address typed with no window behind it - the card frozen on the last
   // thing a closed browser showed - opens one and goes there.
-  const m = mirror ?? (await ensureAgentPage().then(() => mirror).catch(() => null))
+  const m = mirror ?? (await ensureAgentPage(activeLaneName()).then(() => mirror).catch(() => null))
   if (!m) return
   await m.page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)

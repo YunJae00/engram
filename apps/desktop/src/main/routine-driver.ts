@@ -1,5 +1,5 @@
 import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } from 'core'
-import { agentAbortable, agentPage, readAgentPage, agentWorkPage } from './agent-browser.js'
+import { agentAbortable, agentPage, readAgentPage, currentAgentPage } from './agent-browser.js'
 
 // The routine's hands: the same agent Chrome the errand courier drives, so a
 // login the user performed for either survives for both. Every operation
@@ -92,7 +92,7 @@ async function act(
 
 export function routineDriver(): RoutineDriver {
   return {
-    location: () => agentWorkPage()?.url() ?? null,
+    location: () => currentAgentPage()?.url() ?? null,
     async open(url, signal): Promise<RoutineStepResult> {
       const page = await agentPage(signal)
       try {

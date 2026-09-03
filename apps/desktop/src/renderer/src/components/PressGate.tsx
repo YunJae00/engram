@@ -6,8 +6,9 @@ import { useApp } from '../state.js'
 // of what is about to happen - the person looks. They can let it go, let it
 // go on this site from now on, or take the press themselves in that view.
 
-export function PressGate() {
-  const { pressAsk, answerPressAsk, t } = useApp()
+export function PressGate({ channel }: { channel: string }) {
+  const { pressAsks, answerPressAsk, t } = useApp()
+  const pressAsk = pressAsks.find((ask) => ask.channel === channel)
   if (!pressAsk) return null
   return (
     <div className="routine-submit" data-testid="press-ask">
@@ -16,15 +17,15 @@ export function PressGate() {
       </div>
       <div className="routine-submit-hint">{t('press.askHint')}</div>
       <div className="dialog-actions">
-        <button className="secondary" data-testid="press-ask-mine" onClick={() => answerPressAsk('cancel')}>
+        <button className="secondary" data-testid="press-ask-mine" onClick={() => answerPressAsk(channel, 'cancel')}>
           {t('press.mine')}
         </button>
         {pressAsk.host && (
-          <button className="secondary" data-testid="press-ask-always" onClick={() => answerPressAsk('always')}>
+          <button className="secondary" data-testid="press-ask-always" onClick={() => answerPressAsk(channel, 'always')}>
             {t('press.always', { host: pressAsk.host })}
           </button>
         )}
-        <button className="primary" data-testid="press-ask-go" onClick={() => answerPressAsk('approve')}>
+        <button className="primary" data-testid="press-ask-go" onClick={() => answerPressAsk(channel, 'approve')}>
           {t('press.go')}
         </button>
       </div>
