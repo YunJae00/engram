@@ -29,3 +29,14 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 )
+
+// The boot word stays through React's first paint and fades on the next
+// frame, so opening reads as one dissolve instead of a swap.
+requestAnimationFrame(() =>
+  requestAnimationFrame(() => {
+    const boot = document.getElementById('boot')
+    if (!boot) return
+    boot.style.opacity = '0'
+    setTimeout(() => boot.remove(), 400)
+  }),
+)

@@ -205,7 +205,11 @@ async function createMainWindow(hash?: string): Promise<void> {
     height: 840,
     minWidth: 800,
     minHeight: 560,
-    show: !isHidden,
+    // Never shown empty: the window waits for its first paint. Shown at
+    // creation, the OS presents the bare frame - a black flash on Windows,
+    // then the ground colour, then the page: three states where the person
+    // should see one.
+    show: false,
     backgroundColor: appGround(),
     title: 'Engram',
     ...(framelessOk
@@ -229,6 +233,9 @@ async function createMainWindow(hash?: string): Promise<void> {
   if (!isHidden) {
     placeWindow(mainWin, await loadWindowState())
     keepWindowState(mainWin)
+    mainWin.once('ready-to-show', () => {
+      if (!quitting && mainWin && !mainWin.isDestroyed()) mainWin.show()
+    })
   }
   hardenWebContents(mainWin.webContents)
   // keep the overlay controls in step with the OS theme

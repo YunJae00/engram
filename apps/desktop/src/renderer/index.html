@@ -21,10 +21,13 @@
         background: transparent;
       }
       .boot {
+        position: fixed;
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 100vh;
+        pointer-events: none;
+        transition: opacity 260ms ease;
         font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
         font-size: 15px;
         letter-spacing: 0.02em;
@@ -49,7 +52,10 @@
     </style>
   </head>
   <body>
-    <div id="root"><div class="boot">Engram</div></div>
+    <div id="root"></div>
+    <!-- Beside the app, not inside it: React replacing #root must not be
+         the frame that removes this. It fades out when the app says so. -->
+    <div class="boot" id="boot">Engram</div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

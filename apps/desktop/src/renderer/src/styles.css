@@ -344,6 +344,7 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
   .cosmos-chat, .bots-rail,
   .bots-row, .bots-row-name, .bots-row-mark > *, .bots-new, .bots-new-label { transition: none; }
   .bots-row-name, .bots-chat, .canvas-slot, .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
+  .bots-memory, .comet-keep, .routine-submit, .bots-tasks, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
   .mirror-screen { transition: none; }
 }
 
@@ -358,6 +359,9 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .bots-row-name { animation: name-in 260ms ease; }
 .bots-chat { animation: view-in 180ms ease-out; }
 .canvas-slot:not([hidden]) { animation: view-in 180ms ease-out; }
+/* Surfaces that used to appear between two frames now arrive. */
+.bots-memory, .comet-keep, .routine-submit, .bots-tasks, .bots-offer { animation: view-in 160ms ease-out; }
+.note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: view-in 200ms ease-out; }
 .comet-work-line { animation: fade-in 180ms ease; }
 .model-picker-menu { animation: menu-in 120ms ease-out; transform-origin: bottom right; }
 .web-pane-tab-label { animation: name-in 220ms ease; }
