@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { Thinking } from './Thinking.js'
-import { stepLabel } from '../lib/pendingStatus.js'
+import { isSaidLine, stepLabel } from '../lib/pendingStatus.js'
 import { useApp } from '../state.js'
 
 // What the comet is doing, while it does it: every step of the turn in the
@@ -26,7 +26,9 @@ export function CometWork({ busy, status, since, lines, kept }: { busy: boolean;
       {(busy || open) && shown.length > 0 && (
         <ol className="comet-work-lines" data-testid="bots-work-lines">
           {shown.map((line, i) => (
-            <li key={`${i}-${line}`} className={busy && i === shown.length - 1 ? 'comet-work-line current' : 'comet-work-line'}>
+            // Keyed by place alone: the list only ever grows during a turn,
+            // so a line keeps its node and nothing re-enters on each step.
+            <li key={i} className={`comet-work-line${isSaidLine(line) ? ' said' : ''}${busy && i === shown.length - 1 ? ' current' : ''}`}>
               {stepLabel(t, line)}
             </li>
           ))}

@@ -165,6 +165,11 @@ export function openRuleLines(): string[] {
     // What a person does without thinking, and a loop will not do unless it
     // is told: read the thing that just appeared, deal with it, try again.
     'When a move does not go through, the page has usually just said why. A dialog standing open is answered first, by pressing one of ITS own controls. A field the page marks as wrong or missing is filled with what it asks for. Then the move that failed is made again - once the page has been answered, it is a fresh attempt, not a repeat. Only after that has failed too is another route taken, or the person asked.',
+    // Words between actions reach the person as a half-answer that then
+    // vanishes when the next action starts, and an answer followed by more
+    // checking is minutes of "still working" under words they have already
+    // read. So: act in silence, answer once.
+    'The person reads what you write as your answer. Do not write between actions - no progress notes, no "let me check", no partial findings; act, and when everything needed has been read, write the answer once, as the last thing. Never write an answer and then go on checking: check first, then answer, and the turn ends with it.',
     'Say first whether the source they named was read and had it. Every figure carries where it came from - the page asked for, another site, or your own inference - and a substitute is never passed off as what the asked-for source says. A source that does not exist or will not load is reported as that, in one line, before anything else.',
   ]
 }

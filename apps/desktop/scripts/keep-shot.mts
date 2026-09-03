@@ -51,6 +51,12 @@ for (let i = 0; i < 150 && !done; i++) {
 }
 await page.waitForTimeout(3_000)
 await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/keep-shot.png', import.meta.url)) })
+// Folded: where does the tab sit, and does the work list read as one thing?
+await page.getByTestId('web-pane-fold').click().catch(() => {})
+await page.getByTestId('comet-work-toggle').click().catch(() => {})
+await page.waitForTimeout(400)
+await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/keep-shot-folded.png', import.meta.url)) })
+await page.getByTestId('web-pane-unfold').click().catch(() => {})
 const offer = await page.getByTestId('bots-offer-keep-card').isVisible().catch(() => false)
 console.log(`the offer to keep it: ${offer ? 'shown' : 'not shown'}`)
 if (offer) {

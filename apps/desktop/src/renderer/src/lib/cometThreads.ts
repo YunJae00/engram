@@ -47,7 +47,7 @@ export type CometThreadsStore = ReturnType<typeof createCometThreads>
 
 const EMPTY: CometThread = { messages: [], busy: false, workLines: [], keptWork: [], offer: null, draft: '', adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
 const CHANNEL_PREFIX = 'bot-'
-const WORK_LINES_KEPT = 16
+const WORK_LINES_KEPT = 64
 
 export function cometChannel(botId: string): string {
   return `${CHANNEL_PREFIX}${botId}`
@@ -217,7 +217,18 @@ export function createCometThreads(initialSelected: string | null = null) {
         const at = streamingAt(current.messages)
         if (at < 0) return id
         const next = [...current.messages]
-        next[at] = { ...next[at]!, text: event.reset ? '' : next[at]!.text + event.text }
+        if (event.reset) {
+          // Words written before an action were thinking aloud, not the
+          // answer. They leave the bubble, but not the screen: what it said
+          // stays in the work as a note, so nothing a person has read
+          // simply vanishes.
+          const said = next[at]!.text.trim()
+          next[at] = { ...next[at]!, text: '' }
+          const lines = said ? [...current.workLines.slice(1 - WORK_LINES_KEPT), `said: ${said}`] : current.workLines
+          patch(id, { messages: next, workLines: lines }, true)
+          return id
+        }
+        next[at] = { ...next[at]!, text: next[at]!.text + event.text }
         patch(id, { messages: next }, true)
         return id
       }

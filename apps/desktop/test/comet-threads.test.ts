@@ -142,3 +142,18 @@ describe('what the turn did stays readable', () => {
     expect(store.thread(BOT).workLines).toHaveLength(12)
   })
 })
+
+describe('words written before an action', () => {
+  it('leave the bubble but stay in the work as what it said', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'q')
+    store.handleEvent({ type: 'chat:token', channel, text: 'Let me check the page.' })
+    store.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
+    const thread = store.thread(BOT)
+    expect(thread.messages.at(-1)?.text).toBe('')
+    expect(thread.workLines).toEqual(['said: Let me check the page.'])
+    // Nothing said, nothing noted.
+    store.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
+    expect(store.thread(BOT).workLines).toHaveLength(1)
+  })
+})

@@ -1487,9 +1487,21 @@ body.bubble-host { background: transparent; }
 /* Folded, the pane is one tab against the right edge: an icon, a light that
    says whether the page is being worked on, and the host in words a person
    can read without turning their head. */
+/* Folded, the tab sits low, beside the composer - where the hand already is
+   - not up by the comet's name. Both the pane and the tab slide in from the
+   edge they live on, so folding and unfolding read as one thing moving. */
 .web-pane.folded {
-  width: auto; min-width: 0; flex: none; align-items: flex-start;
-  margin: 8px 10px 10px 0; background: none; box-shadow: none; padding: 0;
+  width: auto; min-width: 0; flex: none; align-self: flex-end;
+  margin: 0 10px 20px 0; background: none; box-shadow: none; padding: 0;
+  animation: pane-in 180ms ease-out;
+}
+.web-pane:not(.folded) { animation: pane-in 200ms ease-out; }
+@keyframes pane-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .web-pane, .web-pane.folded { animation: none; }
 }
 .web-pane-tab {
   display: flex; align-items: center; gap: 7px; padding: 8px 12px 8px 9px;
@@ -1980,6 +1992,9 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .comet-work-line { font-size: var(--fs-small); color: var(--fg-faint); padding-left: 12px; position: relative; }
 .comet-work-line::before { content: '·'; position: absolute; left: 2px; }
 .comet-work-line.current { color: var(--fg-dim); }
+/* What it said between actions: its own words, kept, set apart from the steps. */
+.comet-work-line.said { font-style: italic; color: var(--fg-faint); white-space: pre-wrap; }
+.comet-work-line.said::before { content: '“'; }
 .comet-work.done { gap: 4px; }
 .comet-work-toggle {
   display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;

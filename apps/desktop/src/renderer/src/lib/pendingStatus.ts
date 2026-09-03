@@ -27,14 +27,21 @@ const STEP_LABEL: Record<string, StringKey> = {
 }
 
 export function stepLabel(t: Translate, line: string): string {
+  if (isSaidLine(line)) return line.slice(SAID.length)
   const match = /^([a-z_]+): ([^]*)$/.exec(line)
   const key = match ? STEP_LABEL[match[1]!] : undefined
   return key && match ? t(key, { arg: match[2]! }) : line
+}
+
+// Words the comet wrote between actions, kept in the work as what it said.
+const SAID = 'said: '
+export function isSaidLine(line: string): boolean {
+  return line.startsWith(SAID)
 }
 
 // One sentence for the wait: the last step line if there is one - that is
 // what the work is actually doing - and otherwise the generic word, which is
 // only ever shown before the first step lands.
 export function pendingStatus(t: Translate, latestStep: string | undefined): string {
-  return latestStep ? stepLabel(t, latestStep) : t('bots.thinking')
+  return latestStep && !isSaidLine(latestStep) ? stepLabel(t, latestStep) : t('bots.thinking')
 }
