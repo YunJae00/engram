@@ -366,10 +366,13 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
    whole workspace down whenever one appeared, and a banner that moves the
    thread and the composer is a banner nobody wanted. The stack takes no
    room and no pointer; each banner in it does. */
+/* Kept clear of both side rails at any window width: a notice that lands on
+   the rail's own controls is a notice in the way. */
 .notices {
-  position: absolute; top: 64px; left: 0; right: 0; z-index: 30;
+  position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 30;
+  width: max-content; max-width: min(720px, calc(100% - 2 * (260px + 24px)));
   display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 0 16px; pointer-events: none;
+  pointer-events: none;
 }
 .notices > * { pointer-events: auto; }
 .connect-banner {
