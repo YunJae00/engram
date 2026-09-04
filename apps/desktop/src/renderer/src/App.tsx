@@ -1,7 +1,6 @@
 import { Download, PlugZap } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from './api.js'
-import { AbsorbWidget } from './components/AbsorbWidget.js'
 import { HelpPanel } from './components/HelpPanel.js'
 import { CosmosChat } from './components/CosmosChat.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
@@ -370,7 +369,6 @@ function Shell() {
         {/* Hung from the top bar now, so it is available wherever the bar is. */}
         <HelpPanel />
       </div>
-      <AbsorbWidget />
 
       {/* Every one of these is off screen until something opens it, so a
           chunk still on its way shows nothing rather than a spinner. */}

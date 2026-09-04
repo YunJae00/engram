@@ -21,6 +21,7 @@ import { ThinkingDots } from '../components/Thinking.js'
 import { WebPane } from '../components/WebPane.js'
 import { PressGate } from '../components/PressGate.js'
 import { ModelPicker } from '../components/ModelPicker.js'
+import { WebPaneButton } from '../components/WebPaneButton.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { useApp } from '../state.js'
 
@@ -355,6 +356,7 @@ export function BotsView() {
                   }
                 }}
               />
+              <WebPaneButton busy={busy} />
               <ModelPicker />
               {busy ? (
                 <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>

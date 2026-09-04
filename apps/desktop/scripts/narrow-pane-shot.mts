@@ -31,12 +31,9 @@ const grid = (await page.evaluate(`(() => {
   return 'chat ' + r('.bots-chat') + ' · pane ' + r('.web-pane') + ' · stage ' + r('.web-pane-stage') + ' · canvas ' + r('.mirror-screen canvas')
 })()`)) as string
 console.log('open:', grid)
-await page.getByTestId('web-pane-fold').click()
+await page.getByTestId('composer-web').click()
 await page.waitForTimeout(600)
 await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/narrow-folded.png', import.meta.url)) })
-console.log('folded:', await page.evaluate(`(() => {
-  const b = document.querySelector('[data-testid="web-pane-folded"]')?.getBoundingClientRect()
-  return b ? Math.round(b.width) + 'x' + Math.round(b.height) + '@' + Math.round(b.x) + ',' + Math.round(b.y) : 'none'
-})()`))
+console.log('folded: pane gone =', await page.evaluate(`!document.querySelector('[data-testid="web-pane"]')`))
 await app.close()
 console.log('narrow-pane-shot: DONE')

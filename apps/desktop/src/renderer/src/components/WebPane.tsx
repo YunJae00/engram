@@ -1,7 +1,8 @@
-import { ChevronsLeft, ChevronsRight, Globe, RotateCw, Square, X } from 'lucide-react'
+import { ChevronsRight, RotateCw, Square, X } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
+import { webPane } from '../lib/webPane.js'
 import { MirrorSurface } from './MirrorSurface.js'
 import { useApp } from '../state.js'
 
@@ -13,7 +14,6 @@ import { useApp } from '../state.js'
 // dimmed, so the answer can still be read against it.
 
 const WIDTH_KEY = 'engram.webpane.width'
-const FOLD_KEY = 'engram.webpane.folded'
 const MIN_W = 380
 // How long a page keeps streaming after the person's last touch on it.
 const HANDS_ON_MS = 4_000
@@ -75,8 +75,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
     setClosing(true)
     window.setTimeout(() => {
       setClosing(false)
-      localStorage.setItem(FOLD_KEY, '1')
-      setFolded(true)
+      webPane.fold()
     }, FOLD_MS)
   }
   useEffect(() => {
@@ -87,7 +86,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   }, [channel])
   const { t } = useApp()
   const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
-  const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1')
+  const { folded, wanted } = useSyncExternalStore(webPane.subscribe, webPane.getSnapshot)
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
   // What is open, asked once when the pane first mounts: the last picture and
   // address survive a walk to another tab and back.
@@ -176,31 +175,12 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
       watch.disconnect()
     }
   }, [paneShown])
-  if (!on && !frozen) return null
-  // Folded, it is one button that says what it is holding: the same idiom
-  // as the comets rail, so it is obvious both what it is and how to get it
-  // back. Sideways text nobody can read is not a UI.
-  if (folded)
-    return (
-      <aside className="web-pane folded" data-testid="web-pane-folded">
-        <button
-          className="web-pane-tab"
-          data-testid="web-pane-unfold"
-          title={`${t('live.unfold')} — ${frozen ? t('live.closed') : hostOf(url) || t('live.caption')}`}
-          onClick={() => {
-            localStorage.setItem(FOLD_KEY, '0')
-            setFolded(false)
-          }}
-        >
-          <ChevronsLeft size={13} aria-hidden />
-          <Globe size={14} strokeWidth={1.9} aria-hidden />
-          {!frozen && <span className={`web-pane-live${busy ? ' working' : ''}`} aria-hidden />}
-          <span className="web-pane-tab-label" key={frozen ? '' : hostOf(url)}>
-            {frozen ? t('live.closed') : hostOf(url) || t('live.caption')}
-          </span>
-        </button>
-      </aside>
-    )
+  // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
+  // hand with nothing open, it stands with its address field - the way a
+  // browser opens on a blank tab - and folded it is simply gone; the globe
+  // by the composer is where it comes back.
+  if (!on && !frozen && !wanted) return null
+  if (folded) return null
   const host = hostOf(url)
   return (
     <aside
@@ -251,7 +231,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
         >
           <MirrorSurface live={on} hasFrame={frame} />
         </div>
-        <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : ''}</div>
+        <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : t('live.empty')}</div>
         {children}
       </div>
     </aside>
