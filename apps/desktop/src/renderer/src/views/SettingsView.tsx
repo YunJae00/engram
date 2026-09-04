@@ -158,7 +158,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
   return (
     <div className="brief-overlay" onClick={onClose}>
-      <div className="brief-box settings-box" onClick={(e) => e.stopPropagation()} data-testid="settings-view">
+      {/* settings-loaded: the skeleton gives way with a short rise instead
+          of the rows swapping between two frames. */}
+      <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view">
         <div className="brief-title">{t('settings.title')}</div>
 
         {/* ⑥ the quick-capture hotkey is fixed now, and ⑧ team sync moved into
