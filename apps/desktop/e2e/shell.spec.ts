@@ -109,6 +109,16 @@ test('no engine → connect banner shows', async () => {
   // every seeded note counts as not-yet-organized).
   const banner = page.getByTestId('connect-banner')
   await expect(banner).toBeVisible()
+  const [topbarBox, noticesBox, canvasBox] = await Promise.all([
+    page.getByTestId('topbar').boundingBox(),
+    page.locator('.notices').boundingBox(),
+    page.locator('.canvas').boundingBox(),
+  ])
+  expect(topbarBox).not.toBeNull()
+  expect(noticesBox).not.toBeNull()
+  expect(canvasBox).not.toBeNull()
+  expect(noticesBox!.y).toBeGreaterThanOrEqual(topbarBox!.y + topbarBox!.height - 1)
+  expect(canvasBox!.y).toBeGreaterThanOrEqual(noticesBox!.y + noticesBox!.height - 1)
   await banner.getByRole('button', { name: 'Connect a brain' }).click()
   await expect(page.getByTestId('settings-view')).toBeVisible()
   await page.keyboard.press('Escape')
@@ -206,8 +216,10 @@ test('help hangs from the top bar, beside settings', async () => {
 })
 
 test('the weekly digest reads on demand from the command palette', async () => {
+  await page.evaluate(() => window.scrollTo(0, 0))
   await page.keyboard.press('ControlOrMeta+Shift+p')
   await expect(page.getByTestId('palette-input')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(0)
   await page.getByTestId('palette-input').fill('weekly digest')
   await expect(page.getByRole('option', { name: 'Read the weekly digest' })).toBeVisible()
   await page.keyboard.press('Enter')

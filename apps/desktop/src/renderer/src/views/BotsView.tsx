@@ -1,6 +1,6 @@
-import { ArrowUp, Clock, Orbit, Play, Square, Trash2, X, MessageSquarePlus } from 'lucide-react'
+import { Clock, Orbit, Play, Trash2, X, MessageSquarePlus } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
@@ -9,7 +9,6 @@ import { CometMemory } from '../components/CometMemory.js'
 import { CometRail } from '../components/CometRail.js'
 import { CometWork } from '../components/CometWork.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
-import { useAutoGrow } from '../lib/useAutoGrow.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { Fragment } from 'react'
 import type { StringKey } from '../i18n.js'
@@ -20,10 +19,10 @@ import { StreamingAnswer } from '../components/StreamingAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { WebPane } from '../components/WebPane.js'
 import { PressGate } from '../components/PressGate.js'
-import { ModelPicker } from '../components/ModelPicker.js'
-import { WebPaneButton } from '../components/WebPaneButton.js'
 import { SubmitGate } from '../components/SubmitGate.js'
-import { useApp } from '../state.js'
+import { BotComposer } from '../components/BotComposer.js'
+import { useCometState } from '../state-slices.js'
+import { t } from '../i18n.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -41,8 +40,8 @@ const PHASE_LABEL: Record<string, StringKey> = {
 }
 
 
-export function BotsView() {
-  const { errand, routine, startRoutine, t } = useApp()
+export const BotsView = memo(function BotsView() {
+  const { errand, routine, startRoutine } = useCometState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
@@ -52,13 +51,11 @@ export function BotsView() {
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
   const listRef = useRef<HTMLDivElement | null>(null)
-  const boxRef = useRef<HTMLTextAreaElement | null>(null)
   const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
   const selected = bots.find((b) => b.id === selectedId) ?? null
   const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
-  useAutoGrow(boxRef, draft)
   // Each comet works on its own tab with its own brain session, so one
   // being busy locks only itself. An errand run still takes the shared
   // default lane and locks every composer while it runs.
@@ -99,9 +96,6 @@ export function BotsView() {
   useStickToBottom(listRef, messages)
   // The bubble the current work belongs to: the last one the comet wrote.
   const lastAssistant = messages.reduce((found, m, i) => (m.role === 'assistant' ? i : found), -1)
-
-  // One answer at a time across every comet: the local model does not share.
-  const send = () => sendText(draft.trim())
 
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
@@ -215,35 +209,38 @@ export function BotsView() {
                   </span>
                 )}
               </div>
-              <button
-                className="secondary"
-                data-testid="bots-fresh"
-                title={t('bots.freshHint')}
-                onClick={() => {
-                  cometThreads.fresh(selected.id)
-                  void api.chatFresh(selected.id).catch(() => undefined)
-                }}
-              >
-                <MessageSquarePlus size={13} strokeWidth={1.9} aria-hidden />
-                {t('bots.fresh')}
-              </button>
-              <button
-                className={`secondary bots-memory-toggle${memoryOpen ? ' armed' : ''}`}
-                data-testid="bots-memory-toggle"
-                title={t('bots.memory')}
-                onClick={() => setMemoryOpen(!memoryOpen)}
-              >
-                <Orbit size={12} strokeWidth={1.8} aria-hidden />
-                {t('bots.memory')}
-              </button>
-              <button
-                className={`secondary bots-delete${confirmingDelete === selected.id ? ' armed' : ''}`}
-                onBlur={() => setConfirmingDelete(null)}
-                onClick={() => (confirmingDelete === selected.id ? void remove(selected.id) : setConfirmingDelete(selected.id))}
-              >
-                <Trash2 size={12} strokeWidth={1.8} aria-hidden />
-                {confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
-              </button>
+              <div className="bots-head-actions">
+                <button
+                  className="bots-head-action"
+                  data-testid="bots-fresh"
+                  title={t('bots.freshHint')}
+                  aria-label={t('bots.fresh')}
+                  onClick={() => {
+                    cometThreads.fresh(selected.id)
+                    void api.chatFresh(selected.id).catch(() => undefined)
+                  }}
+                >
+                  <MessageSquarePlus size={16} strokeWidth={1.8} aria-hidden />
+                </button>
+                <button
+                  className={`bots-head-action bots-memory-toggle${memoryOpen ? ' armed' : ''}`}
+                  data-testid="bots-memory-toggle"
+                  title={t('bots.memory')}
+                  aria-label={t('bots.memory')}
+                  onClick={() => setMemoryOpen(!memoryOpen)}
+                >
+                  <Orbit size={16} strokeWidth={1.8} aria-hidden />
+                </button>
+                <button
+                  className={`bots-head-action bots-delete${confirmingDelete === selected.id ? ' armed' : ''}`}
+                  title={confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
+                  aria-label={confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
+                  onBlur={() => setConfirmingDelete(null)}
+                  onClick={() => (confirmingDelete === selected.id ? void remove(selected.id) : setConfirmingDelete(selected.id))}
+                >
+                  <Trash2 size={15} strokeWidth={1.8} aria-hidden />
+                </button>
+              </div>
             </header>
             {memoryOpen && <CometMemory botId={selected.id} name={selected.name} />}
             {(selected.tasks ?? []).length > 0 && (
@@ -355,35 +352,16 @@ export function BotsView() {
                 </div>
               )}
             </div>
-            <div className="bots-write chat-write">
-              <textarea
-                ref={boxRef}
-                value={draft}
-                rows={1}
-                placeholder={
-                  errand.running ? t('errands.busy') : t('bots.placeholder', { name: selected.name })
-                }
-                maxLength={2000}
-                onChange={(e) => cometThreads.setDraft(selected.id, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault()
-                    void send()
-                  }
-                }}
-              />
-              <WebPaneButton busy={busy} />
-              <ModelPicker />
-              {busy ? (
-                <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>
-                  <Square size={11} strokeWidth={2.5} aria-hidden />
-                </button>
-              ) : (
-                <button className="chat-send-btn armed" aria-label={t('chat.send')} disabled={locked || !draft.trim()} onClick={() => void send()}>
-                  <ArrowUp size={15} />
-                </button>
-              )}
-            </div>
+            <BotComposer
+              key={selected.id}
+              botId={selected.id}
+              botName={selected.name}
+              initialDraft={draft}
+              busy={busy}
+              locked={locked}
+              onSend={(message) => void sendText(message)}
+              onStop={() => void stop()}
+            />
           </div>
           {/* The page the comet works on, beside the conversation: watched,
               acted in, and stoppable right where the work is. */}
@@ -405,4 +383,4 @@ export function BotsView() {
       </section>
     </div>
   )
-}
+})

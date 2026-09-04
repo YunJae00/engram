@@ -6,6 +6,7 @@ import { api } from '../api.js'
 import type { StringKey } from '../i18n.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
+import { DialogHeader } from './DialogHeader.js'
 
 // The errand's home. The dialog this replaces could only START a run —
 // everything after the click was a one-line top-bar narration and a toast,
@@ -74,9 +75,13 @@ export function ErrandsSheet({ onClose }: { onClose(): void }) {
   return (
     <div className="brief-overlay" onClick={onClose}>
       <div className="brief-box errands-box" onClick={(e) => e.stopPropagation()} data-testid="errands-sheet">
-        <div className="brief-title errands-title">
-          <Comet size={16} /> {t('errands.title')}
-        </div>
+        <DialogHeader
+          closeLabel={t('topbar.close')}
+          icon={<Comet size={16} />}
+          onClose={onClose}
+        >
+          {t('errands.title')}
+        </DialogHeader>
         <div className="errands-hint">{t('errands.hint')}</div>
 
         <textarea

@@ -1,6 +1,6 @@
 import { PanelLeftClose, PanelLeftOpen, Play, Plus } from 'lucide-react'
 import type { BotDto, BotSuggestionDto, BotTaskDto } from '../../../shared/types.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 import { BotSuggestions } from './BotSuggestions.js'
 import { Comet } from './Icon.js'
 
@@ -31,7 +31,6 @@ function initialOf(name: string): string {
 
 export function CometRail({ bots, suggestions, selectedId, open, onToggle, onSelect, onCreate, onDismiss, onRunTask, running }: Props) {
   const routines = bots.flatMap((bot) => (bot.tasks ?? []).map((task) => ({ bot, task })))
-  const { t } = useApp()
 
   // One press, one comet: it takes its name from the first message. From the
   // strip the press also opens the rail so the new one can be seen.

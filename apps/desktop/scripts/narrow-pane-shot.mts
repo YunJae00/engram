@@ -31,6 +31,12 @@ const grid = (await page.evaluate(`(() => {
   return 'chat ' + r('.bots-chat') + ' · pane ' + r('.web-pane') + ' · stage ' + r('.web-pane-stage') + ' · canvas ' + r('.mirror-screen canvas')
 })()`)) as string
 console.log('open:', grid)
+const clearOfComposer = await page.evaluate(() => {
+  const pane = document.querySelector('[data-testid="web-pane"]')?.getBoundingClientRect()
+  const composer = document.querySelector('.bots-write')?.getBoundingClientRect()
+  return !!pane && !!composer && pane.bottom <= composer.top + 1
+})
+if (!clearOfComposer) throw new Error('web pane overlaps the composer')
 await page.getByTestId('composer-web').click()
 await page.waitForTimeout(600)
 await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/narrow-folded.png', import.meta.url)) })

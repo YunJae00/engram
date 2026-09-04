@@ -45,8 +45,9 @@ await sheet.screenshot({ path: join(OUT, 'settings-more.png') })
 // Every control should stop at one right edge, and no label should wrap.
 const rows = await page.evaluate(() => {
   const box = document.querySelector('[data-testid="settings-view"]') as HTMLElement
-  const style = getComputedStyle(box)
-  const inner = Math.round(box.getBoundingClientRect().right - parseFloat(style.paddingRight))
+  const scroll = box.querySelector('.settings-scroll') as HTMLElement
+  const style = getComputedStyle(scroll)
+  const inner = Math.round(scroll.getBoundingClientRect().right - parseFloat(style.paddingRight))
   return [...box.querySelectorAll('.setting-row:not(.column)')].map((row) => {
     const label = row.querySelector('span')
     const control = row.querySelector('input, select')

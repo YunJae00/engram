@@ -4,6 +4,7 @@ import type { SyncStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
+import { DialogHeader } from './DialogHeader.js'
 
 // One-click GitHub backup (browser-assisted, no OAuth app). Two steps in one
 // modal: (1) open GitHub's prefilled create-repo page, (2) paste the repo URL
@@ -88,9 +89,14 @@ export function GithubConnect({ onClose }: { onClose(): void }) {
   return (
     <div className="brief-overlay" onClick={() => !busy && onClose()}>
       <div className="brief-box github-connect" onClick={(e) => e.stopPropagation()} data-testid="github-connect">
-        <div className="brief-title">
-          <UploadCloud size={16} strokeWidth={1.8} aria-hidden /> {t('github.title')}
-        </div>
+        <DialogHeader
+          closeLabel={connected ? t('github.done') : t('github.cancel')}
+          icon={<UploadCloud size={16} strokeWidth={1.8} aria-hidden />}
+          disabled={busy}
+          onClose={onClose}
+        >
+          {t('github.title')}
+        </DialogHeader>
         {connected ? (
           <div className="github-connected" data-testid="github-connected">
             <div className="github-connected-head">

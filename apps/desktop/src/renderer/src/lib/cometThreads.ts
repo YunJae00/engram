@@ -146,7 +146,10 @@ export function createCometThreads(initialSelected: string | null = null) {
       patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
-      patch(id, { draft })
+      const current = thread(id)
+      if (current.draft === draft) return
+      // Preserve the draft without notifying the conversation tree per keystroke.
+      snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...current, draft } } }
     },
     append(id: string, message: CometMessage): void {
       patch(id, { messages: [...thread(id).messages, message] })

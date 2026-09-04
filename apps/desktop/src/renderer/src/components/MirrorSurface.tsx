@@ -3,7 +3,7 @@ import type { AgentInputDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { FrameScreen } from './FrameScreen.js'
 import { HandGhost } from './HandGhost.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 // The mirrored page as a surface a person can act on: every click, wheel and
 // key on the picture is played into the agent window as their own. One
@@ -24,7 +24,6 @@ function modifiersOf(e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; s
 }
 
 export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boolean }) {
-  const { t } = useApp()
   const box = useRef<HTMLDivElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)

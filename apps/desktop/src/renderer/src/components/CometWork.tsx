@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { Thinking } from './Thinking.js'
 import { isSaidLine, stepLabel } from '../lib/pendingStatus.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 // What the comet is doing, while it does it: every step of the turn in the
 // order it happened. It stays put while the answer is written above it -
@@ -11,7 +11,6 @@ import { useApp } from '../state.js'
 // sits below the conversation, where it never covers a word of it.
 
 export function CometWork({ busy, status, since, lines, kept }: { busy: boolean; status: string; since?: number; lines: string[]; kept: string[] }) {
-  const { t } = useApp()
   const [open, setOpen] = useState(false)
   const shown = busy ? lines : kept
   return (

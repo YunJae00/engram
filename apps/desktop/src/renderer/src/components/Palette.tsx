@@ -67,7 +67,7 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
   }
 
   return (
-    <Command.Dialog open onOpenChange={(open) => !open && onClose()} label={t('palette.label')} shouldFilter={mode === 'commands'} className="palette">
+    <Command.Dialog open modal={false} onOpenChange={(open) => !open && onClose()} label={t('palette.label')} shouldFilter={mode === 'commands'} className="palette">
       <Command.Input
         data-testid="palette-input"
         placeholder={mode === 'search' ? t('palette.searchPlaceholder') : t('palette.commandPlaceholder')}

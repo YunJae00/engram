@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import type { BotSuggestionDto } from '../../../shared/types.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 // The rail's offers, grown from the vault. Each can be taken or turned down;
 // a refusal is kept beside the comets so the same offer never comes back.
@@ -12,7 +12,6 @@ interface Props {
 }
 
 export function BotSuggestions({ suggestions, onCreate, onDismiss }: Props) {
-  const { t } = useApp()
   if (suggestions.length === 0) return null
   return (
     <div className="bots-suggested" data-testid="bots-suggested">

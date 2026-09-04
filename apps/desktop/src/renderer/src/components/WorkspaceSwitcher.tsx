@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 import { Logomark } from './Icon.js'
+import { DialogHeader } from './DialogHeader.js'
 
 // Top-bar vault selector: swaps between registered workspaces. Switching,
 // creating, or joining all relaunch the app into the chosen vault, so there is
@@ -13,7 +14,6 @@ type DialogMode = 'none' | 'new' | 'join'
 type Registry = { current: string | null; vaults: WorkspaceInfoDto[] }
 
 export function WorkspaceSwitcher() {
-  const { t } = useApp()
   // Empty registry is a valid state (e2e/onboarding run with ENGRAM_VAULT and no
   // registered workspaces) — the switcher still renders with the New/Join rows.
   const [registry, setRegistry] = useState<Registry>({ current: null, vaults: [] })
@@ -148,7 +148,9 @@ export function WorkspaceSwitcher() {
       {dialog !== 'none' && (
         <div className="brief-overlay" onClick={() => setDialog('none')}>
           <div className="brief-box" onClick={(e) => e.stopPropagation()}>
-            <div className="brief-title">{dialog === 'new' ? t('ws.newTitle') : t('ws.joinTitle')}</div>
+            <DialogHeader closeLabel={t('ws.cancel')} onClose={() => setDialog('none')}>
+              {dialog === 'new' ? t('ws.newTitle') : t('ws.joinTitle')}
+            </DialogHeader>
             <input
               autoFocus
               placeholder={t('ws.namePlaceholder')}
@@ -165,11 +167,11 @@ export function WorkspaceSwitcher() {
               />
             )}
             <div className="dialog-actions">
-              <button className="primary" disabled={busy} onClick={submit}>
-                {dialog === 'new' ? t('ws.create') : t('ws.joinAction')}
-              </button>
               <button className="secondary" onClick={() => setDialog('none')}>
                 {t('ws.cancel')}
+              </button>
+              <button className="primary" disabled={busy} onClick={submit}>
+                {dialog === 'new' ? t('ws.create') : t('ws.joinAction')}
               </button>
             </div>
           </div>

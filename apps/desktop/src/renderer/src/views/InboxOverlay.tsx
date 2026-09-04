@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useApp } from '../state.js'
 import { api } from '../api.js'
+import { DialogHeader } from '../components/DialogHeader.js'
 
 // The scrap pile, unfolded: unfiled captures + failed items with a retry.
 // A failed capture never disappears.
@@ -21,7 +22,7 @@ export function InboxOverlay() {
   return (
     <div className="sheet-overlay" onClick={closeInbox}>
       <div className="brief-box" onClick={(e) => e.stopPropagation()} data-testid="inbox-overlay">
-        <div className="brief-title">{t('inbox.title')}</div>
+        <DialogHeader closeLabel={t('inbox.close')} onClose={closeInbox}>{t('inbox.title')}</DialogHeader>
         <ul className="side-list" data-testid="inbox-list">
           {inbox.files.map((file) => (
             <li key={file.name} className="side-item static">

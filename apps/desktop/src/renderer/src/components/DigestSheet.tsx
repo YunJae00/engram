@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { useEscape } from '../lib/useEscape.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 export function DigestSheet({ onClose }: { onClose: () => void }) {
-  const { t } = useApp()
   const [digest, setDigest] = useState<string | null>(null)
   // Distinguishes "still reading the vault" from "no digest written yet", so
   // the empty line never flashes before the file has been looked for.

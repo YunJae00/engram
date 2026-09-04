@@ -1,12 +1,12 @@
-import { ArrowUp, MessageCircle, PanelRightClose, Square } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { MessageCircle, PanelRightClose } from 'lucide-react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
-import { useAutoGrow } from '../lib/useAutoGrow.js'
+import { t } from '../i18n.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
-import { useApp } from '../state.js'
 import { Thinking } from './Thinking.js'
+import { ChatComposer } from './ChatComposer.js'
 
 // The cosmos's right edge: ask the librarian, or just tell it something to
 // keep. There is no separate "Remember" verb — the librarian files whatever
@@ -28,8 +28,7 @@ function streamingAt(list: Message[]): number {
   return -1
 }
 
-export function CosmosChat() {
-  const { t } = useApp()
+export const CosmosChat = memo(function CosmosChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -37,7 +36,28 @@ export function CosmosChat() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const listRef = useRef<HTMLDivElement | null>(null)
   const boxRef = useRef<HTMLTextAreaElement | null>(null)
-  useAutoGrow(boxRef, text)
+  const tokenBuffer = useRef('')
+  const tokenFrame = useRef(0)
+
+  const flushTokens = () => {
+    tokenFrame.current = 0
+    const chunk = tokenBuffer.current
+    tokenBuffer.current = ''
+    if (!chunk) return
+    setMessages((prev) => {
+      const at = streamingAt(prev)
+      if (at < 0) return prev
+      const next = [...prev]
+      next[at] = { ...next[at]!, text: next[at]!.text + chunk }
+      return next
+    })
+  }
+
+  const clearTokenFrame = () => {
+    if (tokenFrame.current) cancelAnimationFrame(tokenFrame.current)
+    tokenFrame.current = 0
+    tokenBuffer.current = ''
+  }
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
@@ -56,17 +76,13 @@ export function CosmosChat() {
   }, [])
 
   useEffect(() => {
-    return api.onEvent((event) => {
+    const unsubscribe = api.onEvent((event) => {
       if (!busyRef.current) return
       if (event.type === 'chat:token' && event.channel === CHANNEL) {
-        setMessages((prev) => {
-          const at = streamingAt(prev)
-          if (at < 0) return prev
-          const next = [...prev]
-          next[at] = { ...next[at]!, text: next[at]!.text + event.text }
-          return next
-        })
+        tokenBuffer.current += event.text
+        if (!tokenFrame.current) tokenFrame.current = requestAnimationFrame(flushTokens)
       } else if (event.type === 'chat:done' && event.channel === CHANNEL) {
+        clearTokenFrame()
         busyRef.current = false
         setBusy(false)
         setMessages((prev) => {
@@ -77,6 +93,7 @@ export function CosmosChat() {
           return next
         })
       } else if (event.type === 'chat:error' && event.channel === CHANNEL) {
+        clearTokenFrame()
         busyRef.current = false
         setBusy(false)
         setMessages((prev) => [
@@ -85,6 +102,10 @@ export function CosmosChat() {
         ])
       }
     })
+    return () => {
+      unsubscribe()
+      clearTokenFrame()
+    }
   }, [])
 
   useStickToBottom(listRef, messages)
@@ -166,38 +187,19 @@ export function CosmosChat() {
           </div>
         ))}
       </div>
-      <div className="cosmos-chat-write chat-write">
-        <textarea
+      <div className="cosmos-chat-write">
+        <ChatComposer
           ref={boxRef}
-          data-testid="cosmos-chat-input"
-          rows={1}
+          testId="cosmos-chat-input"
           maxLength={4000}
           placeholder={t('cosmos.chatPlaceholder')}
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              void send()
-            }
-          }}
+          busy={busy}
+          onChange={setText}
+          onSend={() => void send()}
+          onStop={() => void stop()}
         />
-        {busy ? (
-          <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={() => void stop()}>
-            <Square size={11} strokeWidth={2.5} aria-hidden />
-          </button>
-        ) : (
-          <button
-            className="chat-send-btn armed"
-            data-testid="cosmos-chat-send"
-            aria-label={t('chat.send')}
-            disabled={!text.trim()}
-            onClick={() => void send()}
-          >
-            <ArrowUp size={15} />
-          </button>
-        )}
       </div>
     </aside>
   )
-}
+})

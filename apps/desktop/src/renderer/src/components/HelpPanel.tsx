@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { MessageCircle, Plus, Search, type LucideIcon } from 'lucide-react'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 import { MOD_LABEL, type StringKey } from '../i18n.js'
 
 // The cheatsheet — quick actions, the mental model, the legend and the
@@ -34,7 +34,6 @@ const shortcuts: Shortcut[] = [
 ]
 
 export function HelpPanel() {
-  const { t } = useApp()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 

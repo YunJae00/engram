@@ -86,13 +86,22 @@ if (process.platform === 'win32') {
   // The authenticity half: a signature the vendor controls, verified against
   // the OS trust store — independent of GitHub and of the hash above. This is
   // what makes MINGIT_SHA256 worth pinning rather than merely self-consistent.
+  const windowsPowerShell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0')
+  const powershellExe = join(windowsPowerShell, 'powershell.exe')
+  const securityModule = join(windowsPowerShell, 'Modules', 'Microsoft.PowerShell.Security', 'Microsoft.PowerShell.Security.psd1')
+  if (!existsSync(powershellExe) || !existsSync(securityModule)) {
+    throw new Error('Windows PowerShell security module not found — refusing to bundle')
+  }
+  const quotePowerShell = (value) => `'${value.replaceAll("'", "''")}'`
   const sig = execFileSync(
-    'powershell.exe',
+    powershellExe,
     [
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      `$s = Get-AuthenticodeSignature -LiteralPath '${gitExe}'; Write-Output "$($s.Status)|$($s.SignerCertificate.Subject)"`,
+      `$ErrorActionPreference = 'Stop'; Import-Module -Name ${quotePowerShell(securityModule)} -Force; ` +
+        `$s = Get-AuthenticodeSignature -LiteralPath ${quotePowerShell(gitExe)}; ` +
+        `Write-Output "$($s.Status)|$($s.SignerCertificate.Subject)"`,
     ],
     { encoding: 'utf8' },
   ).trim()

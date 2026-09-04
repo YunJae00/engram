@@ -7,6 +7,7 @@ import { SubmitGate } from './SubmitGate.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
+import { DialogHeader } from './DialogHeader.js'
 
 // The jobs a comet has learned to do on a website, and what it is allowed to
 // press there. Nothing is authored here: a comet does the job itself, and
@@ -60,9 +61,13 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
   return (
     <div className="brief-overlay" onClick={onClose}>
       <div className="brief-box errands-box" onClick={(e) => e.stopPropagation()} data-testid="routines-sheet">
-        <div className="brief-title errands-title">
-          <Repeat size={15} aria-hidden /> {t('routines.title')}
-        </div>
+        <DialogHeader
+          closeLabel={t('routines.cancel')}
+          icon={<Repeat size={15} aria-hidden />}
+          onClose={onClose}
+        >
+          {t('routines.title')}
+        </DialogHeader>
         <div className="errands-hint">{t('routines.hint')}</div>
 
         {routine.running && (

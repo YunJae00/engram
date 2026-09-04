@@ -28,7 +28,7 @@ await page.setViewportSize({ width: 1440, height: 900 })
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 30_000 })
 await page.waitForTimeout(1200)
 
-for (const tab of ['sky', 'brain', 'list', 'board']) {
+for (const tab of ['bots', 'sky', 'list']) {
   await page.getByTestId(`activity-${tab}`).click()
   await page.waitForTimeout(500)
   await page.screenshot({ path: join(OUT, `empty-${tab}.png`) })

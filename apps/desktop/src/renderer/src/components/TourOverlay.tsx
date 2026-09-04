@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useApp } from '../state.js'
-
-export const TOUR_DONE_KEY = 'engram.tour.done'
+import { t } from '../i18n.js'
+import { TOUR_DONE_KEY } from '../lib/tour.js'
 
 // `as const` keeps each key literal, so the `tour.${key}Title` template
 // resolves to exact i18n keys and stays compile-checked.
@@ -16,7 +15,6 @@ const PAD = 6
 const CARD_W = 320
 
 export function TourOverlay({ onClose }: { onClose: () => void }) {
-  const { t } = useApp()
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState<DOMRect | null>(null)
 

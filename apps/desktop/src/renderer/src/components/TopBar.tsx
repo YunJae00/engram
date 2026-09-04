@@ -4,11 +4,12 @@ import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import type { SweepStatus } from '../state.js'
-import type { StringKey, Translate } from '../i18n.js'
+import { t, type StringKey, type Translate } from '../i18n.js'
 import { api } from '../api.js'
-import { useApp } from '../state.js'
+import { useTopBarState } from '../state-slices.js'
 import { Icon } from './Icon.js'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
+import { DialogHeader } from './DialogHeader.js'
 
 function syncLabel(t: Translate, status: SyncStatusDto | null): string {
   if (!status || status.state === 'no-remote') return t('topbar.syncNone')
@@ -46,7 +47,7 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
   onOpenSettings(): void
   onOpenPalette(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady, t } = useApp()
+  const { activity, setActivity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   // Present but not usable — the dot must not claim otherwise.
@@ -166,21 +167,21 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
           data-testid="activity-bots"
           onClick={() => setActivity('bots')}
         >
-          <Comet size={14} /> {t('topbar.tabBots')}
+          <Comet size={14} /> <span className="canvas-tab-label">{t('topbar.tabBots')}</span>
         </button>
         <button
           className={`canvas-tab${activity === 'sky' ? ' active' : ''}`}
           data-testid="activity-sky"
           onClick={() => setActivity('sky')}
         >
-          <Orbit size={14} strokeWidth={1.8} aria-hidden /> {t('topbar.tabSky')}
+          <Orbit size={14} strokeWidth={1.8} aria-hidden /> <span className="canvas-tab-label">{t('topbar.tabSky')}</span>
         </button>
         <button
           className={`canvas-tab${activity === 'list' ? ' active' : ''}`}
           data-testid="activity-list"
           onClick={() => setActivity('list')}
         >
-          <List size={14} strokeWidth={1.8} aria-hidden /> {t('activity.list')}
+          <List size={14} strokeWidth={1.8} aria-hidden /> <span className="canvas-tab-label">{t('activity.list')}</span>
         </button>
       </nav>
 
@@ -261,7 +262,7 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
       {brief && (
         <div className="brief-overlay" onClick={() => setBrief(null)}>
           <div className="brief-box" onClick={(e) => e.stopPropagation()}>
-            <div className="brief-title">{t('topbar.teamChanges')}</div>
+            <DialogHeader closeLabel={t('topbar.close')} onClose={() => setBrief(null)}>{t('topbar.teamChanges')}</DialogHeader>
             <pre className="brief-text">{brief}</pre>
             <button className="primary" onClick={() => setBrief(null)}>
               {t('topbar.close')}

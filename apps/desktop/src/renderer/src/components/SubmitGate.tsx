@@ -1,10 +1,11 @@
 import { AlertTriangle } from 'lucide-react'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
+import { useCometState } from '../state-slices.js'
 
 // The last thing between a procedure and a post. It shows the actual words
 // that will go into the page, because "approve?" without them is not consent.
 export function SubmitGate() {
-  const { routineSubmit, answerRoutineSubmit, t } = useApp()
+  const { routineSubmit, answerRoutineSubmit } = useCometState()
   if (!routineSubmit) return null
   return (
     <div className="routine-submit" data-testid="routine-submit">

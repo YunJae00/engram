@@ -4,7 +4,7 @@ import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { webPane } from '../lib/webPane.js'
 import { MirrorSurface } from './MirrorSurface.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 // The page the comet works on, standing beside the conversation as its own
 // half of the screen. Trust comes from being able to SEE the work and stop
@@ -39,7 +39,6 @@ function hostOf(url: string | undefined): string {
 }
 
 function Address({ url }: { url?: string }) {
-  const { t } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
   return (
@@ -84,7 +83,6 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
     const settle = setTimeout(() => setSwitching(false), SWITCH_MS)
     return () => clearTimeout(settle)
   }, [channel])
-  const { t } = useApp()
   const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const { folded, wanted } = useSyncExternalStore(webPane.subscribe, webPane.getSnapshot)
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)

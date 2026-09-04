@@ -5,7 +5,7 @@ import type { AgentInputDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { FrameScreen } from './FrameScreen.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 // The agent browser, seen from inside the app: while a comet works, the page
 // sits at the foot of the thread, as wide as the conversation and stuck
@@ -39,7 +39,6 @@ function hostOf(url: string | undefined): string {
 }
 
 function Stage({ frame, size, live }: { frame: boolean; size: { width: number; height: number }; live: boolean }) {
-  const { t } = useApp()
   const image = useRef<HTMLDivElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)
@@ -119,7 +118,6 @@ function Stage({ frame, size, live }: { frame: boolean; size: { width: number; h
 }
 
 function Address({ url }: { url?: string }) {
-  const { t } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
   return (
@@ -149,7 +147,6 @@ function Address({ url }: { url?: string }) {
 // the turn runs, even between windows, so it does not blink in and out.
 // children: what belongs beside the page (the question, a wall's Continue).
 export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
-  const { t } = useApp()
   const { on, url, frame, width, height } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const size = { width, height }
   const [big, setBig] = useState(false)

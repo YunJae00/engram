@@ -1,9 +1,10 @@
-import { TriangleAlert } from 'lucide-react'
+import { Activity, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { DiagnosticsDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
+import { DialogHeader } from '../components/DialogHeader.js'
 
 export function DiagnosticsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
@@ -50,11 +51,13 @@ export function DiagnosticsView({ onClose }: { onClose(): void }) {
   return (
     <div className="brief-overlay" onClick={onClose}>
       <div
-        className="brief-box settings-box diagnostics-box"
+        className="brief-box diagnostics-box"
         onClick={(e) => e.stopPropagation()}
         data-testid="diagnostics-view"
       >
-        <div className="brief-title">{t('diag.title')}</div>
+        <DialogHeader closeLabel={t('diag.close')} icon={<Activity size={16} aria-hidden />} onClose={onClose}>
+          {t('diag.title')}
+        </DialogHeader>
 
         {!info && <p>{t('diag.checking')}</p>}
         {info && (

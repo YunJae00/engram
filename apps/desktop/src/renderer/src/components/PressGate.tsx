@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
+import { useCometState } from '../state-slices.js'
 
 // A comet at a control that would commit something: it stops and asks. The
 // page is on screen right above this, so the question needs no description
@@ -7,7 +8,7 @@ import { useApp } from '../state.js'
 // go on this site from now on, or take the press themselves in that view.
 
 export function PressGate({ channel }: { channel: string }) {
-  const { pressAsks, answerPressAsk, t } = useApp()
+  const { pressAsks, answerPressAsk } = useCometState()
   const pressAsk = pressAsks.find((ask) => ask.channel === channel)
   if (!pressAsk) return null
   return (

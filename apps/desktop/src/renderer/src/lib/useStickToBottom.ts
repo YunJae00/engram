@@ -16,6 +16,7 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, changes: un
   useEffect(() => {
     const list = ref.current
     if (!list) return
+    let frame = 0
     const watch = (): void => {
       pinned.current = list.scrollHeight - list.scrollTop - list.clientHeight <= AT_FOOT
     }
@@ -23,7 +24,11 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, changes: un
     // Content that grows on its own (a picture arriving, a block folding
     // open) moves the foot without anyone scrolling.
     const follow = (): void => {
-      if (pinned.current) list.scrollTop = list.scrollHeight
+      if (!pinned.current || frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        if (pinned.current) list.scrollTop = list.scrollHeight
+      })
     }
     const grew = typeof ResizeObserver === 'function' ? new ResizeObserver(follow) : null
     grew?.observe(list)
@@ -36,6 +41,7 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, changes: un
       list.removeEventListener('scroll', watch)
       grew?.disconnect()
       changed?.disconnect()
+      if (frame) cancelAnimationFrame(frame)
     }
   }, [ref])
   useEffect(() => {

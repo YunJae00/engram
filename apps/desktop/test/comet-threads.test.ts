@@ -18,6 +18,18 @@ describe('cometThreads', () => {
     expect(store.thread(BOT).draft).toBe('half a question')
   })
 
+  it('stores typing without notifying the conversation tree', () => {
+    const store = createCometThreads(BOT)
+    let notifications = 0
+    const unsubscribe = store.subscribe(() => notifications++)
+    store.setDraft(BOT, 'a')
+    store.setDraft(BOT, 'ab')
+    store.setDraft(BOT, 'abc')
+    expect(store.thread(BOT).draft).toBe('abc')
+    expect(notifications).toBe(0)
+    unsubscribe()
+  })
+
   it('keeps a turn in flight on top of a disk reload', () => {
     const store = createCometThreads(BOT)
     store.load(BOT, [{ role: 'user', text: 'old' }, { role: 'assistant', text: 'older answer' }])

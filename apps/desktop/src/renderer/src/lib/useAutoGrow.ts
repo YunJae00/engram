@@ -8,8 +8,9 @@ export function useAutoGrow(ref: RefObject<HTMLTextAreaElement | null>, value: s
   useLayoutEffect(() => {
     const box = ref.current
     if (!box) return
-    box.style.height = 'auto'
-    const border = box.offsetHeight - box.clientHeight
-    box.style.height = `${box.scrollHeight + border}px`
+    // Prefer native sizing to avoid a synchronous layout read per keystroke.
+    if (CSS.supports('field-sizing', 'content')) return
+    box.style.height = '0px'
+    box.style.height = `${box.scrollHeight}px`
   }, [ref, value])
 }

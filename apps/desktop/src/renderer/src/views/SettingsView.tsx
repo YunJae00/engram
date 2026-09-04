@@ -5,6 +5,8 @@ import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
 import { useModelChoices } from '../components/ModelPicker.js'
+import { SettingsStatus } from '../components/SettingsStatus.js'
+import { DialogHeader } from '../components/DialogHeader.js'
 
 const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 // The sheet opens at once, empty, and its rows fill in together when every
@@ -161,13 +163,14 @@ export function SettingsView({ onClose }: { onClose(): void }) {
       {/* settings-loaded: the skeleton gives way with a short rise instead
           of the rows swapping between two frames. */}
       <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view">
-        <div className="brief-title">{t('settings.title')}</div>
+        <DialogHeader closeLabel={t('settings.cancel')} onClose={onClose}>{t('settings.title')}</DialogHeader>
 
         {/* ⑥ the quick-capture hotkey is fixed now, and ⑧ team sync moved into
             the GitHub backup dialog — it decides whether to auto-push to a
             remote only that dialog can create, and with no remote it silently
             did nothing three sections away from what it depends on. */}
 
+        <div className="settings-scroll">
         <div className="settings-group">
           <label className="setting-row">
             <span>{t('settings.autoStart')}</span>
@@ -345,110 +348,14 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           </div>
         </details>
 
-        <div className="settings-facts">
-          <div className="settings-fact" title={t('settings.semanticHint')}>
-            <span className="settings-fact-key">{t('settings.semanticTitle')}</span>
-            <span className="settings-fact-value" data-testid="semantic-status">
-              {semantic && semantic.status !== 'off' ? (
-                <>
-                  {
-                    {
-                      loading: t('settings.semanticLoading'),
-                      indexing: t('settings.semanticIndexing'),
-                      ready: t('settings.semanticReady'),
-                      error: t('settings.semanticError'),
-                    }[semantic.status]
-                  }
-                  {semantic.detail ? ` — ${semantic.detail}` : ''}
-                  <span className="settings-fact-sub">{semantic.model}</span>
-                </>
-              ) : (
-                t('settings.semanticIdle')
-              )}
-            </span>
-          </div>
-          <div className="settings-fact">
-            <span className="settings-fact-key">{t('settings.versionKey')}</span>
-            <span className="settings-fact-value" data-testid="settings-version">
-              {version ?? '—'}
-            </span>
-          </div>
-          {/* The automatic check runs on a timer the user cannot see, and on an
-              unsigned macOS build it can only ever report — so the answer has
-              to be askable on demand. */}
-          <div className="settings-fact">
-            <span className="settings-fact-key">{t('settings.updateKey')}</span>
-            <span className="settings-fact-value" data-testid="settings-update">
-              {update?.state === 'downloading' ? (
-                // The bytes are still arriving: there is nothing to restart
-                // into yet, so the button says what is happening instead.
-                <>
-                  {t('settings.updateDownloading', {
-                    version: update.version ?? '',
-                    percent: update.percent ?? 0,
-                  })}
-                  <button
-                    className="secondary settings-fact-btn"
-                    data-testid="settings-update-refresh"
-                    disabled={checkingUpdate}
-                    onClick={() => {
-                      setCheckingUpdate(true)
-                      void api
-                        .updateCheck()
-                        .then(setUpdate)
-                        .catch(() => {})
-                        .finally(() => setCheckingUpdate(false))
-                    }}
-                  >
-                    {t('settings.updateCheck')}
-                  </button>
-                </>
-              ) : update?.state === 'ready' || update?.state === 'available' ? (
-                <>
-                  {t('settings.updateAvailable', { version: update.version ?? '' })}
-                  <button
-                    className="secondary settings-fact-btn"
-                    onClick={() => {
-                      void api.updateInstall().then((r) => {
-                        // Only reachable if the download finished between the
-                        // check and the click going the other way.
-                        if (!r.started) void api.updateCheck().then(setUpdate)
-                      })
-                    }}
-                  >
-                    {update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}
-                  </button>
-                </>
-              ) : (
-                <>
-                  {checkingUpdate
-                    ? t('settings.updateChecking')
-                    : update?.state === 'current'
-                      ? t('settings.updateCurrent')
-                      : update?.state === 'error'
-                        ? t('settings.updateError', { reason: update.message ?? '' })
-                        : update?.state === 'checking-unavailable'
-                          ? t('settings.updateDev')
-                          : ''}
-                  <button
-                    className="secondary settings-fact-btn"
-                    data-testid="settings-update-check"
-                    disabled={checkingUpdate}
-                    onClick={() => {
-                      setCheckingUpdate(true)
-                      void api
-                        .updateCheck()
-                        .then(setUpdate)
-                        .catch(() => {})
-                        .finally(() => setCheckingUpdate(false))
-                    }}
-                  >
-                    {t('settings.updateCheck')}
-                  </button>
-                </>
-              )}
-            </span>
-          </div>
+        <SettingsStatus
+          checkingUpdate={checkingUpdate}
+          semantic={semantic}
+          update={update}
+          version={version}
+          onCheckingUpdate={setCheckingUpdate}
+          onUpdate={setUpdate}
+        />
         </div>
 
         {/* Primary action sits rightmost — same order as diagnostics/onboarding. */}

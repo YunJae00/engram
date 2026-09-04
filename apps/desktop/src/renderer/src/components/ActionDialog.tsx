@@ -3,6 +3,7 @@ import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import type { PaletteAction } from './Palette.js'
+import { DialogHeader } from './DialogHeader.js'
 
 export function ActionDialog({ action, onClose }: { action: PaletteAction | null; onClose(): void }) {
   const { showToast, refresh, t } = useApp()
@@ -60,7 +61,7 @@ export function ActionDialog({ action, onClose }: { action: PaletteAction | null
       <div className="brief-box" onClick={(e) => e.stopPropagation()}>
         {action === 'import' ? (
           <>
-            <div className="brief-title">{t('palette.importTitle')}</div>
+            <DialogHeader closeLabel={t('palette.cancel')} onClose={onClose}>{t('palette.importTitle')}</DialogHeader>
             {phase === 'confirm' && scan ? (
               <>
                 <p>
@@ -70,11 +71,11 @@ export function ActionDialog({ action, onClose }: { action: PaletteAction | null
                 </p>
                 <p className="side-sub">{t('palette.importNote')}</p>
                 <div className="dialog-actions">
-                  <button className="primary" data-testid="import-confirm" onClick={() => void runImport()}>
-                    {t('palette.importAction')}
-                  </button>
                   <button className="secondary" onClick={onClose}>
                     {t('palette.cancel')}
+                  </button>
+                  <button className="primary" data-testid="import-confirm" onClick={() => void runImport()}>
+                    {t('palette.importAction')}
                   </button>
                 </div>
               </>
@@ -84,7 +85,7 @@ export function ActionDialog({ action, onClose }: { action: PaletteAction | null
           </>
         ) : (
           <>
-            <div className="brief-title">{t('palette.teamJoinTitle')}</div>
+            <DialogHeader closeLabel={t('palette.cancel')} onClose={onClose}>{t('palette.teamJoinTitle')}</DialogHeader>
             {phase === 'running' ? (
               <p>{t('palette.working')}</p>
             ) : (
@@ -97,11 +98,11 @@ export function ActionDialog({ action, onClose }: { action: PaletteAction | null
                   onKeyDown={(e) => e.key === 'Enter' && void submitTeam()}
                 />
                 <div className="dialog-actions">
-                  <button className="primary" onClick={() => void submitTeam()}>
-                    {t('palette.join')}
-                  </button>
                   <button className="secondary" onClick={onClose}>
                     {t('palette.cancel')}
+                  </button>
+                  <button className="primary" onClick={() => void submitTeam()}>
+                    {t('palette.join')}
                   </button>
                 </div>
               </>

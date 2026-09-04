@@ -2,7 +2,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ModelChoiceDto } from '../../../shared/types.js'
 import { api } from '../api.js'
-import { useApp } from '../state.js'
+import { t } from '../i18n.js'
 
 // Which model answers, changed where the asking happens. The brain itself is
 // chosen in Settings and stays chosen; this is which of its models, next to
@@ -32,7 +32,6 @@ export function useModelChoices(): ModelChoiceDto[] {
 }
 
 export function ModelPicker() {
-  const { t } = useApp()
   const [engine, setEngine] = useState<'claude' | 'codex' | null>(null)
   const [model, setModel] = useState(AUTO)
   const [open, setOpen] = useState(false)

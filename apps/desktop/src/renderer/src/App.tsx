@@ -1,13 +1,14 @@
-import { Download, PlugZap } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from './api.js'
+import { AppNotices } from './components/AppNotices.js'
 import { HelpPanel } from './components/HelpPanel.js'
-import { CosmosChat } from './components/CosmosChat.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
-import { TOUR_DONE_KEY } from './components/TourOverlay.js'
+import { TOUR_DONE_KEY } from './lib/tour.js'
 import { BotsView } from './views/BotsView.js'
-import { AppProvider, useApp } from './state.js'
+import { AppProvider } from './state.js'
+import { useShellState } from './state-slices.js'
+import { t } from './i18n.js'
 
 // Only what the first screen needs is in the first bundle. An editor, a sky
 // full of stars, a settings sheet and a walkthrough are all real weight, and
@@ -15,6 +16,7 @@ import { AppProvider, useApp } from './state.js'
 // first asked for, they cost nothing until then. Each is a local file, so
 // the wait is a frame, not a download.
 const DigestSheet = lazy(() => import('./components/DigestSheet.js').then((m) => ({ default: m.DigestSheet })))
+const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
 const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
@@ -32,7 +34,7 @@ const SettingsView = lazy(() => import('./views/SettingsView.js').then((m) => ({
 const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: m.SkyView })))
 
 function Shell() {
-  const { activity, setActivity, engines, pendingWork, toast, showToast, refresh, vaultReady, vaultError, t, enginesDetected, openNote } = useApp()
+  const { activity, setActivity, engines, pendingWork, toast, showToast, refresh, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
   const [palette, setPalette] = useState<PaletteMode>(null)
   const [dropping, setDropping] = useState(false)
   // Drag tracking: a dragenter/dragleave depth counter (enter and leave fire per
@@ -81,23 +83,7 @@ function Shell() {
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'brain:setup') setSettingsOpen(true)
     })
-  }, [showToast, t, openNote])
-
-  // Present but not usable. Read off the engine list (which carries the live
-  // health verdict and survives a renderer reload) rather than a local state
-  // fed only by live events — the onboarding→shell handoff reloads by design,
-  // and that used to discard the boot ping's verdict exactly when it mattered.
-  const unhealthy = engines.filter((engine) => engine.healthy === false)
-  const unhealthyIds = unhealthy.map((engine) => engine.id).join(', ')
-  const reason = unhealthy[0]?.healthReason
-  const unhealthyText =
-    reason === 'auth'
-      ? t('banner.loginExpired', { ids: unhealthyIds })
-      : reason === 'quota'
-        ? t('banner.quota', { ids: unhealthyIds })
-        : reason === 'network'
-          ? t('banner.offline', { ids: unhealthyIds })
-          : t('banner.notResponding', { ids: unhealthyIds })
+  }, [openNote])
 
   // First-run coach marks: once, after the first vault opens, real installs
   // only (the main process gates it so e2e clicks are never intercepted).
@@ -275,54 +261,15 @@ function Shell() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => setPalette('search')}
       />
-      {/* Notices sit in the flow between the bar and the canvas: a pill
-          that pushes the page down rather than floating over its header. */}
-      <div className="notices">
-        {vaultReady && enginesDetected && engines.length === 0 && (
-        <div className="connect-banner" data-testid="connect-banner">
-          <PlugZap size={14} strokeWidth={1.8} aria-hidden />
-          <span>
-            {t('banner.noBrain')}
-            {pendingWork.inbox + pendingWork.notes > 0 && ` · ${t('banner.waiting', { n: pendingWork.inbox + pendingWork.notes })}`}
-          </span>
-          <button className="connect-banner-btn" onClick={() => setSettingsOpen(true)}>
-            {t('banner.getBrain')}
-          </button>
-        </div>
-      )}
-      {/* Connected on paper, silent in practice: the engine is logged in but
-          the boot ping got nothing back (expired token, no network, quota).
-          Saying nothing here is what made this read as "it keeps
-          disconnecting" — the app looked fine while every call failed. */}
-      {unhealthy.length > 0 && (
-        <div className="connect-banner" data-testid="unhealthy-banner">
-          <PlugZap size={14} strokeWidth={1.8} aria-hidden />
-          <span>{unhealthyText}</span>
-          {/* Every warning gets an action that actually resolves it: for an
-              expired login that is the login terminal, which Diagnostics now
-              offers because it reads this same health verdict. */}
-          <button className="connect-banner-btn" onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}>
-            {reason === 'auth' ? t('banner.login') : t('banner.check')}
-          </button>
-        </div>
-      )}
-      {updateReady && (
-        <div
-          className="connect-banner update-banner"
-          data-testid="update-banner"
-        >
-          <Download size={14} strokeWidth={1.8} aria-hidden />
-          <span>
-            {updateSelfInstalls
-              ? t('banner.updateReady', { version: updateReady })
-              : t('banner.updateAvailable', { version: updateReady })}
-          </span>
-          <button className="connect-banner-btn" onClick={() => void api.updateInstall()}>
-            {updateSelfInstalls ? t('banner.updateRestart') : t('banner.updateDownload')}
-          </button>
-        </div>
-      )}
-      </div>
+      <AppNotices
+        engines={engines}
+        enginesDetected={enginesDetected}
+        pendingWork={pendingWork}
+        updateReady={updateReady}
+        updateSelfInstalls={updateSelfInstalls}
+        vaultReady={vaultReady}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <div className="canvas">
         {/* While a big vault is still being read the views would all claim
             "nothing here" — show the opening state until vault:ready. */}
@@ -363,7 +310,7 @@ function Shell() {
               <Suspense fallback={<div className="empty-view" />}>{listSeen && <ListView />}</Suspense>
             </div>
             {/* The launcher IS the panel at rest — never both on screen at once. */}
-            {activity === 'sky' && <CosmosChat />}
+            <Suspense fallback={null}>{activity === 'sky' && <CosmosChat />}</Suspense>
           </>
         )}
         {/* Hung from the top bar now, so it is available wherever the bar is. */}
