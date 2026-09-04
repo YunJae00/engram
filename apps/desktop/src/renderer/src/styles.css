@@ -399,6 +399,12 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   pointer-events: none;
 }
+/* A narrow window has no spare band at the top: the header's own name and
+   buttons live there. Notices drop to the foot, above the composer, where
+   a toast is expected and nothing is hidden behind it. */
+@media (max-width: 1180px) {
+  .notices { top: auto; bottom: 96px; max-width: calc(100% - 320px); }
+}
 .notices > * { pointer-events: auto; }
 .connect-banner {
   display: flex; align-items: center; gap: 8px;
@@ -1495,7 +1501,7 @@ body.bubble-host { background: transparent; }
 }
 .bots-suggestion-x:hover { opacity: 1; color: var(--clay); background: var(--hover-bg); }
 .bots-suggestion-reason { font-size: var(--fs-micro); color: var(--fg-faint); }
-.bots-main { flex: 1; min-width: 0; display: flex; flex-direction: row; }
+.bots-main { flex: 1; min-width: 0; display: flex; flex-direction: row; position: relative; }
 .bots-chat { flex: 1; min-width: 320px; display: flex; flex-direction: column; }
 /* The page as the other half of the screen: full height, its own bar, the
    picture as large as the pane allows. The grip on its left edge drags the
@@ -1503,6 +1509,22 @@ body.bubble-host { background: transparent; }
 .web-pane {
   position: relative; width: 52%; min-width: 380px; flex: none;
   display: flex; margin: 8px 10px 10px 0;
+  /* Above the floating notices: a banner must never cover the pane's own
+     controls. */
+  z-index: 31;
+}
+/* A window too small to hold a conversation and a page side by side holds
+   the conversation, and the page slides over it: the chat keeps its full
+   measure, the pane arrives as a sheet from the right edge, and the folded
+   tab is how it is called back. Nothing is squeezed into a blank sliver. */
+@media (max-width: 1180px) {
+  .web-pane:not(.folded) {
+    position: absolute; top: 0; right: 0; bottom: 0; margin: 8px 10px 10px 0;
+    width: min(560px, calc(100% - 48px)); min-width: 0;
+    background: var(--panel-bg); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-float), inset 0 0 0 1px var(--border-soft);
+  }
+  .web-pane-grip { display: none; }
 }
 .web-pane-grip { width: 7px; margin-right: -2px; cursor: ew-resize; flex: none; }
 .web-pane-inner {
