@@ -42,7 +42,7 @@ const PHASE_LABEL: Record<string, StringKey> = {
 
 
 export function BotsView() {
-  const { errand, startErrand, routine, startRoutine, t } = useApp()
+  const { errand, routine, startRoutine, t } = useApp()
   const [bots, setBots] = useState<BotDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
@@ -125,14 +125,18 @@ export function BotsView() {
 
   // A task is the repeated work itself: saved on the comet, one click to run.
   // The errand pipeline is only the engine underneath.
+  // A routine is the job done again IN ITS CHAT: the goal goes through the
+  // ordinary turn, where the comet finds the recorded procedure and replays
+  // the path that worked, filling in by hand only where the page differs.
+  // The person watches it in the thread like any other ask.
   const runTaskOf = (botId: string, task: { id: string; name: string; goal: string }) => {
-    if (errand.running) return
-    // Pressed from the rail, the routine's own comet comes to the front so
-    // the run is watched where it happens.
+    if (cometThreads.thread(botId).busy) return
     if (botId !== selectedId) selectComet(botId)
-    cometThreads.append(botId, { role: 'user', text: task.goal })
     void api.botTaskRan(botId, task.id).catch(() => undefined)
-    void startErrand(task.goal, botId)
+    const history = cometThreads.begin(botId, task.goal)
+    void api
+      .chatSend({ engineId: '', message: task.goal, history, channel: cometChannel(botId), botId })
+      .catch(() => cometThreads.fail?.(botId, 'the turn could not start'))
   }
   const runTask = (task: { id: string; name: string; goal: string }) => {
     if (selected) runTaskOf(selected.id, task)

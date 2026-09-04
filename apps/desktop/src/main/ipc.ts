@@ -103,7 +103,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, recordedSteps, type TurnStep } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -631,6 +631,9 @@ const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 // after that - what to remember from it, what to offer - and that work is
 // still cancellable, but it is not something to wait on.
 const answering = new Set<string>()
+// The last finished turn per comet: what was asked and what was done, held
+// so that keeping the job as a routine can record the path that worked.
+const lastTurns = new Map<string, { message: string; steps: TurnStep[] }>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
@@ -1115,7 +1118,23 @@ export function registerIpc(ctx: VaultContext): void {
   // A routine kept or removed shows up wherever routines are listed - the
   // rail as much as the comet's own row - so both say so.
   ipcMain.handle('bots:taskAdd', async (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) => {
-    const task = await addBotTask(paths, botId, input)
+    // Keeping a job that was just done on the web also writes down HOW it
+    // was done: the successful path of that turn, as a procedure the next
+    // run replays instead of working the job out again. The wandering -
+    // dead ends, retries, looks - is not recorded.
+    let routineId = input.routineId
+    if (!routineId) {
+      const last = lastTurns.get(botId)
+      const path = last ? recordedSteps(last.steps) : []
+      if (path.length > 0) {
+        const routine = await addRoutine(paths, { name: input.name, steps: path }).catch(() => null)
+        if (routine) {
+          routineId = routine.id
+          flog('comet', `recorded ${path.length} steps as "${input.name}"`)
+        }
+      }
+    }
+    const task = await addBotTask(paths, botId, { ...input, ...(routineId ? { routineId } : {}) })
     broadcast({ type: 'bots:changed' })
     return task
   })
@@ -2195,6 +2214,13 @@ export function registerIpc(ctx: VaultContext): void {
                 ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
                 : undefined,
         )
+        // What this turn did, held the moment the answer is out: a keep that
+        // follows right away must find the path to record, not wait out the
+        // offer-writing below.
+        lastTurns.set(bot.id, {
+          message: request.message,
+          steps: result.steps.map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
+        })
         // The words they typed name this morning, not the work. Asked after
         // the answer is out, it writes the offer, which follows on its own.
         const proposal =
