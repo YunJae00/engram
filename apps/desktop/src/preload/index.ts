@@ -122,6 +122,7 @@ const api: EngramApi = {
   agentLane: (lane: string) => ipcRenderer.invoke('agent:lane', lane),
   agentReset: (lane: string) => ipcRenderer.invoke('agent:reset', lane),
   auditOpen: () => ipcRenderer.invoke('audit:open'),
+  chatFresh: (botId: string) => ipcRenderer.invoke('chat:fresh', botId),
   modelsList: () => ipcRenderer.invoke('models:list'),
   agentState: () => ipcRenderer.invoke('agent:state'),
   browsersInstalled: () => ipcRenderer.invoke('browsers:installed'),

@@ -217,6 +217,10 @@ export class ClaudeEngine implements CloudEngine {
 const sessions = new SessionPool()
 setInterval(() => sessions.sweep(), 60_000).unref()
 
+export function closeClaudeSession(key: string): void {
+  sessions.closeOne(key)
+}
+
 export function closeClaudeSessions(): void {
   sessions.closeAll()
 }

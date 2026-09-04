@@ -271,6 +271,13 @@ export class SessionPool {
     return session.run(job)
   }
 
+  // The person started the conversation over: whatever this session
+  // remembers of it is stale, so it goes, and the next turn opens fresh.
+  closeOne(key: string): void {
+    this.sessions.get(key)?.close()
+    this.sessions.delete(key)
+  }
+
   closeAll(): void {
     for (const session of this.sessions.values()) session.close()
     this.sessions.clear()

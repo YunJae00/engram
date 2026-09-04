@@ -103,7 +103,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -111,7 +111,7 @@ import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
-import { claudeModels, fetchClaudeModels, forgetClaudeModels } from './engine-claude.js'
+import { claudeModels, fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -904,6 +904,18 @@ export function registerIpc(ctx: VaultContext): void {
   // Stopping a running answer is the difference between waiting and being
   // stuck; the plumbing existed, nothing ever called it from the UI.
   ipcMain.handle('chat:abort', (_e, channel?: string) => abortAllChat(channel))
+  // Start this conversation over: the running turn stops, what was said is
+  // put away (not deleted), the brain's warm session forgets it, and the
+  // comet's page closes so the next ask starts clean everywhere.
+  ipcMain.handle('chat:fresh', async (_e, botId: string) => {
+    const id = String(botId)
+    const channel = `bot-${id}`
+    abortAllChat(channel)
+    closeClaudeSession(id)
+    await archiveBotTranscript(paths, id)
+    await resetLaneView(channel)
+    broadcast({ type: 'bots:changed' })
+  })
   // Which surfaces have an answer running right now. A renderer that comes
   // up after the send (a reload mid-answer) asks this to take the seat back
   // before the done event arrives.

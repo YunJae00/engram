@@ -93,6 +93,8 @@ const en = {
   'bots.suggestionDismiss': 'Dismiss this suggestion',
   'bots.railTitle': 'Your comets',
   'bots.routinesTitle': 'Routines',
+  'bots.fresh': 'New chat',
+  'bots.freshHint': 'Start this conversation over — what was said is kept on disk, and the comet starts clean',
   'bots.errandRunning': 'Errand {phase}',
   'live.caption': 'The browser, live',
   'live.expand': 'Open the live view',

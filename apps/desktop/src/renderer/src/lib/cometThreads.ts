@@ -135,6 +135,11 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     // Disk truth for one comet. A turn still in flight is not on disk yet,
     // so the pending pair stays on top of whatever was read.
+    // The conversation was started over: the seat is emptied on the spot,
+    // without waiting for the disk to say so.
+    fresh(id: string): void {
+      patch(id, { ...EMPTY, loaded: true })
+    },
     load(id: string, turns: ChatTurnDto[]): void {
       const current = thread(id)
       const tail = current.busy ? pendingTail(current.messages) : []

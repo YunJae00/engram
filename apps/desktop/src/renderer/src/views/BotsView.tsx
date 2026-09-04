@@ -1,4 +1,4 @@
-import { ArrowUp, Clock, Orbit, Play, Square, Trash2, X } from 'lucide-react'
+import { ArrowUp, Clock, Orbit, Play, Square, Trash2, X, MessageSquarePlus } from 'lucide-react'
 import { Comet } from '../components/Icon.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
@@ -211,6 +211,18 @@ export function BotsView() {
                   </span>
                 )}
               </div>
+              <button
+                className="secondary"
+                data-testid="bots-fresh"
+                title={t('bots.freshHint')}
+                onClick={() => {
+                  cometThreads.fresh(selected.id)
+                  void api.chatFresh(selected.id).catch(() => undefined)
+                }}
+              >
+                <MessageSquarePlus size={13} strokeWidth={1.9} aria-hidden />
+                {t('bots.fresh')}
+              </button>
               <button
                 className={`secondary bots-memory-toggle${memoryOpen ? ' armed' : ''}`}
                 data-testid="bots-memory-toggle"

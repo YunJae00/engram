@@ -1524,9 +1524,8 @@ body.bubble-host { background: transparent; }
 .web-pane {
   position: relative; width: 52%; min-width: 380px; flex: none;
   display: flex; margin: 0;
-  /* One surface with the conversation: no card floating beside a card,
-     just a hairline where the page begins. */
-  border-left: 1px solid var(--border-soft);
+  /* One surface with the conversation: the gutter alone says where the
+     page begins - a drawn line collided with the header above it. */
   /* Above the floating notices: a banner must never cover the pane's own
      controls. */
   z-index: 31;

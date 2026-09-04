@@ -495,6 +495,8 @@ export interface EngramApi {
   agentReset(lane: string): Promise<void>
   // The folder of daily logs of what the comets did, opened for the person.
   auditOpen(): Promise<void>
+  // Start a comet's conversation over: stop, put the transcript away, forget.
+  chatFresh(botId: string): Promise<void>
   // The models the signed-in plan offers, in the runtime's own words; empty
   // until the runtime has been asked.
   modelsList(): Promise<ModelChoiceDto[]>

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 import { forgetBotMemory } from './bot-memory.js'
@@ -244,6 +244,18 @@ export async function appendBotTurn(paths: VaultPaths, botId: string, turn: BotT
   const rows = await readBotTranscript(paths, botId, TRANSCRIPT_CAP - 1)
   const next = [...rows, turn].slice(-TRANSCRIPT_CAP)
   await writeFile(chatPath(paths, botId), `${next.map((row) => JSON.stringify(row)).join('\n')}\n`)
+}
+
+// A fresh start: the transcript so far is put away beside the live file
+// (nothing a person said is deleted), and the conversation begins empty.
+export async function archiveBotTranscript(paths: VaultPaths, botId: string, now: Date = new Date()): Promise<void> {
+  const live = chatPath(paths, botId)
+  try {
+    const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    await rename(live, join(paths.cache, CHAT_DIR, `${botId}.${stamp}.jsonl`))
+  } catch {
+    // Nothing said yet: nothing to put away.
+  }
 }
 
 export async function readBotTranscript(paths: VaultPaths, botId: string, limit = TRANSCRIPT_CAP): Promise<BotTurn[]> {
