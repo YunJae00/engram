@@ -260,6 +260,8 @@ test('clicking a star in the cosmos opens the note sheet with editor and meta ba
   // The sky is home — every seeded memory renders as a clickable star.
   await page.getByTestId('activity-sky').click()
   await expect(page.getByTestId('sky-view')).toBeVisible()
+  await page.getByTestId('cosmos-chat-collapse').click()
+  await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
   await page.locator('[data-node-id="n-hello-0001"]').click()
   await expect(page.getByTestId('note-sheet')).toBeVisible()
   await expect(page.getByTestId('note-editor')).toBeVisible()
