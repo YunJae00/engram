@@ -38,7 +38,7 @@ function storedOpen(key: string): boolean {
 }
 
 export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOpenRoutines }: Props) {
-  const { activity, setActivity, vaultReady, showToast } = useShellState()
+  const { activity, engines, setActivity, vaultReady, showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
@@ -49,6 +49,13 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
   const [confirming, setConfirming] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
+  const engine = engines[0]
+  const engineName = engine?.id === 'codex' ? t('settings.brainChatGPT') : engine?.id === 'claude' ? t('settings.brainClaude') : engine?.id
+  const engineLabel = !engine
+    ? t('topbar.engineConnectShort')
+    : engine.healthy === false
+      ? t('sidebar.aiAttention', { name: engineName ?? engine.id })
+      : t('sidebar.aiConnected', { name: engineName ?? engine.id })
 
   const reload = async () => {
     if (!vaultReady) return
@@ -194,11 +201,6 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
         </button>
       </nav>
 
-      <button className="sidebar-new" data-testid="bots-new" disabled={!vaultReady} onClick={() => void createComet()}>
-        <Plus size={16} strokeWidth={1.9} aria-hidden />
-        <span>{t('bots.new')}</span>
-      </button>
-
       <div className="sidebar-scroll">
         <section className="sidebar-section">
           <div className="sidebar-section-head">
@@ -307,6 +309,10 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
                 ))}
                 {bots.length === 0 && <li className="sidebar-empty">{t('sidebar.noChats')}</li>}
               </ul>
+              <button className="sidebar-new" data-testid="bots-new" disabled={!vaultReady} onClick={() => void createComet()}>
+                <Plus size={15} strokeWidth={1.9} aria-hidden />
+                <span>{t('bots.new')}</span>
+              </button>
               <BotSuggestions
                 suggestions={suggestions}
                 onCreate={(name, purpose) => {
@@ -327,6 +333,15 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
         <button onClick={onOpenPalette} title={t('topbar.searchTitle')}><Search size={16} aria-hidden /><span>{t('sidebar.search')}</span></button>
         <button data-testid="help-button" onClick={() => window.dispatchEvent(new Event('engram:open-help'))}><CircleHelp size={16} aria-hidden /><span>{t('help.open')}</span></button>
         <button data-testid="activity-settings" onClick={onOpenSettings}><Settings size={16} aria-hidden /><span>{t('sidebar.settings')}</span></button>
+        <button
+          className="sidebar-engine-status"
+          data-testid="engine-status"
+          title={engineLabel}
+          onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}
+        >
+          <span className={`engine-dot${!engine ? '' : engine.healthy === false ? ' warn' : ' on'}`} />
+          <span>{engineLabel}</span>
+        </button>
       </footer>
     </aside>
   )

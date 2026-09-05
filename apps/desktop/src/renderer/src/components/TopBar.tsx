@@ -46,23 +46,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
   const { activity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
-  // Present but not usable — the dot must not claim otherwise.
-  const degradedEngine = engines.find((engine) => engine.healthy === false)
-  const degraded = degradedEngine !== undefined
-  const degradedTitle = degradedEngine
-    ? degradedEngine.healthReason === 'quota'
-      ? t('banner.quota', { ids: degradedEngine.id })
-      : degradedEngine.healthReason === 'auth'
-        ? t('banner.loginExpired', { ids: degradedEngine.id })
-        : degradedEngine.healthReason === 'network'
-          ? t('banner.offline', { ids: degradedEngine.id })
-          : degradedEngine.healthReason === 'timeout'
-            ? t('banner.tooSlow', { ids: degradedEngine.id })
-            : t('banner.notResponding', { ids: degradedEngine.id })
-    : ''
-  // The diagnostics/reconnect overlay is owned by the shell (so the chat panel
-  // can open it too); opening it is a shell-level window event.
-  const openDiagnostics = () => window.dispatchEvent(new Event('engram:open-diagnostics'))
   // Sweep/absorb progress now lives in shared state (single source); the TopBar
   // owns only sync status, which nothing else consumes.
   const job = sweepJob?.job ?? null
@@ -189,28 +172,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
           <span className="status-label">{absorbText}</span>
         </span>
       )}
-      {/* engine status — one click straight to connect/diagnose */}
-      {/* The most-seen engine claim in the app. It used to key off array length
-          alone, so it stayed green — and read "AI connected" — through an
-          expired token, a failed ping and a quota lockout, inches from a banner
-          saying the opposite. The amber state already had CSS; it just was
-          never wired to the verdict the app had all along. */}
-      <button
-        className={`topbar-status as-button engine-status${engines.length === 0 ? ' needs-engine' : ''}`}
-        data-testid="engine-status"
-        title={
-          engines.length === 0
-            ? t('topbar.engineConnect')
-            : degraded
-              ? degradedTitle
-              : t('topbar.engineConnected', { ids: engines.map((e) => e.id).join(', ') })
-        }
-        onClick={openDiagnostics}
-      >
-        <span className={`engine-dot${engines.length === 0 ? '' : degraded ? ' warn' : ' on'}`} />
-        {engines.length > 0 ? engines[0]!.id : t('topbar.engineConnectShort')}
-      </button>
-
       {/* Solo vaults have no remote — a "sync —" placeholder is chrome noise,
           so the button only exists once there is something to sync with. */}
       {sync && sync.state !== 'no-remote' && (

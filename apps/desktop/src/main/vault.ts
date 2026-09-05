@@ -50,10 +50,10 @@ export async function configuredVaultRoot(): Promise<string | null> {
   return currentWorkspaceRoot()
 }
 
-// Onboarding persists the first vault by registering it as the "Personal"
+// Onboarding persists the first vault by registering it as the Engram
 // workspace (which also sets it current).
 export async function saveVaultRoot(root: string): Promise<void> {
-  await registerWorkspace({ name: 'Personal', root, kind: 'personal' })
+  await registerWorkspace({ name: 'Engram', root, kind: 'personal' })
 }
 
 // The chosen brain, when it is usable now, and nothing else: the librarian

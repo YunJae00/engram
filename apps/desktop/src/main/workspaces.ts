@@ -41,18 +41,28 @@ function newId(): string {
 
 async function loadRegistry(): Promise<Registry> {
   try {
-    return JSON.parse(await readFile(registryPath(), 'utf8')) as Registry
+    const registry = JSON.parse(await readFile(registryPath(), 'utf8')) as Registry
+    let changed = false
+    for (const vault of registry.vaults) {
+      if (vault.kind !== 'personal' || vault.name !== 'Personal') continue
+      vault.name = 'Engram'
+      changed = true
+    }
+    if (changed) {
+      await saveRegistry(registry)
+    }
+    return registry
   } catch {
     // vaults.json missing/unreadable — fall through to legacy migration.
   }
-  // MIGRATION: adopt an older vault.json root as the first "Personal" workspace
+  // Adopt an older vault.json root as the first Engram workspace
   // and persist vaults.json as the new single source of truth.
   try {
     const legacy = JSON.parse(await readFile(legacyMarkerPath(), 'utf8')) as { root?: string }
     if (legacy.root) {
       const entry: WorkspaceInfo = {
         id: newId(),
-        name: 'Personal',
+        name: 'Engram',
         root: resolve(legacy.root),
         kind: 'personal',
         createdAt: new Date().toISOString(),

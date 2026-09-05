@@ -24,7 +24,7 @@ await page.setViewportSize({ width: 1440, height: 900 })
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 30_000 })
 await page.waitForTimeout(1000)
 
-// Open the "Personal ▾" switcher and take the "Back up to GitHub" row.
+// Open the "Engram ▾" switcher and take the "Back up to GitHub" row.
 await page.getByTestId('workspace-switcher').click()
 await page.getByTestId('workspace-github-backup').waitFor({ state: 'visible' })
 await page.getByTestId('workspace-github-backup').click()

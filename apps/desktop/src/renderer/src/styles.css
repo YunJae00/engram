@@ -326,6 +326,7 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .sidebar-nav-row svg, .sidebar-new svg { flex: none; }
 .sidebar-new { margin: 6px 10px 8px; width: calc(100% - 20px); color: var(--fg); font-weight: 550; }
 .sidebar-new:disabled { opacity: 0.45; cursor: default; }
+.sidebar-section .sidebar-new { width: 100%; margin: 4px 0 2px; padding-left: 9px; font-weight: 500; color: var(--fg-dim); }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 8px 12px; }
 .sidebar-section { display: flex; flex-direction: column; margin-top: 8px; }
 .sidebar-section-head { min-height: 30px; display: flex; align-items: center; gap: 2px; padding: 0 4px; }
@@ -365,6 +366,8 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .sidebar-footer { flex: none; padding: 8px 10px 11px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 1px; }
 .sidebar-footer button { min-height: 32px; padding: 5px 9px; display: flex; align-items: center; gap: 10px; color: var(--fg-dim); text-align: left; }
 .sidebar-footer button:hover { background: var(--hover-bg); color: var(--fg); }
+.sidebar-footer .sidebar-engine-status { margin-top: 5px; padding-top: 7px; border-top: 1px solid var(--border-soft); border-radius: 0; }
+.sidebar-engine-status .engine-dot { margin-left: 3px; margin-right: 3px; }
 .sidebar-scrim { display: none; }
 .sidebar-suggestions-head { padding: 8px 2px 1px; font-size: var(--fs-small); font-weight: 600; color: var(--fg-faint); }
 
@@ -453,7 +456,6 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .engine-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
 .engine-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
 .engine-dot.warn { background: var(--gild); }
-.engine-status { display: inline-flex; align-items: center; gap: 5px; }
 .topbar-action {
   position: relative; display: inline-flex; align-items: center; gap: 6px;
   height: 28px; padding: 0 12px; border-radius: 999px; flex-shrink: 0;
@@ -1368,7 +1370,7 @@ body.bubble-host { background: transparent; }
 .settings-box { width: min(880px, 92vw); gap: 0; padding: 0; overflow: hidden; }
 .settings-box[aria-busy='true'] { padding: 24px 28px; gap: 18px; }
 .settings-box .brief-title { margin-bottom: 2px; }
-.settings-scroll { min-height: 0; overflow-y: auto; padding: 20px 28px 24px; display: flex; flex-direction: column; gap: 18px; }
+.settings-scroll { min-height: 0; overflow-y: auto; padding: 20px 30px 26px; display: flex; flex-direction: column; gap: 8px; }
 /* diagnostics grows to fit the embedded terminal — no inner scrolling */
 .setting-row { display: flex; align-items: center; gap: 12px; min-height: 36px; font-size: var(--fs-body); }
 .setting-row > span:first-child { flex: 1 1 auto; min-width: 0; color: var(--fg); }
@@ -1422,9 +1424,14 @@ body.bubble-host { background: transparent; }
    sheet's own. */
 .settings-group-head {
   font-size: var(--fs-small); font-weight: 650; letter-spacing: 0.02em;
-  color: var(--fg-faint); margin-top: 6px;
+  color: var(--fg-faint); margin: 12px 2px 2px;
 }
-.settings-group { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border: 1px solid var(--border-soft); border-radius: var(--radius-card); background: var(--panel-bg); }
+.settings-scroll > .settings-group-head:first-child { margin-top: 0; }
+.settings-group {
+  display: flex; flex-direction: column; gap: 0; padding: 2px 2px 14px;
+  border: 0; border-bottom: 1px solid var(--border-soft); border-radius: 0; background: transparent;
+}
+.settings-group > .setting-row:not(.column), .settings-group > .settings-fact { padding: 4px 0; }
 /* Facts, not settings: what this install IS. Every row shares one grid -
    the name in a fixed column, the state and its one action beside it - so
    the sheet reads as a table rather than a set of ragged lines. */
@@ -1559,7 +1566,7 @@ body.bubble-host { background: transparent; }
    split; folded, it is a sliver that names the page it is holding. */
 .web-pane {
   position: relative; width: 52%; min-width: 380px; flex: none;
-  display: flex; margin: 0;
+  display: flex; margin: 0; border-left: 1px solid var(--border-soft);
   /* One surface with the conversation: the gutter alone says where the
      page begins - a drawn line collided with the header above it. */
   /* Above the floating notices: a banner must never cover the pane's own
@@ -1572,23 +1579,20 @@ body.bubble-host { background: transparent; }
    tab is how it is called back. Nothing is squeezed into a blank sliver. */
 @media (max-width: 1180px) {
   .web-pane {
-    /* Stops above the composer: the person can always speak, and the
-       globe that summons and dismisses this panel stays pressable. */
-    position: absolute; top: 0; right: 0; bottom: 110px; margin: 8px 10px 0 0;
-    width: min(560px, calc(100% - 48px)); min-width: 0; border-left: none;
-    background: var(--panel-bg); border-radius: var(--radius-card);
-    box-shadow: var(--shadow-float), inset 0 0 0 1px var(--border-soft);
+    position: absolute; top: 64px; right: 0; bottom: 112px; margin: 0;
+    width: min(640px, 100%); min-width: 0;
+    background: var(--panel-bg); border-top: 0; border-radius: 0;
+    box-shadow: -16px 0 32px -30px rgba(18, 18, 24, 0.5);
   }
   .web-pane-grip { display: none; }
 }
 .web-pane-grip { width: 7px; margin-right: -2px; cursor: ew-resize; flex: none; }
 .web-pane-inner {
   flex: 1; min-width: 0; display: flex; flex-direction: column;
-  background: var(--panel-bg); border-radius: var(--radius-card);
-  border: 1px solid var(--border-soft); box-shadow: 0 12px 34px -26px rgba(18, 18, 24, 0.5); overflow: hidden;
+  background: var(--panel-bg); border-radius: 0; border: 0; box-shadow: none; overflow: hidden;
 }
 .web-pane.frozen .web-pane-inner { opacity: 0.72; }
-.web-pane-bar { display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 7px 9px; flex: none; border-bottom: 1px solid var(--border-soft); }
+.web-pane-bar { display: flex; align-items: center; gap: 7px; min-height: 64px; padding: 10px 12px; flex: none; border-bottom: 1px solid var(--border-soft); }
 .web-pane-bar .live-address { flex: 1; min-width: 0; }
 .web-pane-stop {
   display: inline-flex; align-items: center; gap: 5px; flex: none;
@@ -1597,11 +1601,11 @@ body.bubble-host { background: transparent; }
 }
 .web-pane-stop:hover { filter: brightness(1.12); }
 .web-pane-stage {
-  flex: 1; min-height: 0; display: flex; margin: 0 8px;
-  border-radius: var(--radius-m); overflow: hidden; background: var(--rail-bg);
+  flex: 1; min-height: 0; display: flex; margin: 12px 12px 0;
+  border: 1px solid var(--border-soft); border-radius: var(--radius-m); overflow: hidden; background: var(--rail-bg);
 }
-.web-pane-note { flex: none; padding: 5px 10px 7px; font-size: var(--fs-micro); color: var(--fg-faint); min-height: 24px; }
-.web-pane .routine-submit, .web-pane .press-gate { margin: 0 8px 8px; }
+.web-pane-note { flex: none; padding: 6px 13px 8px; font-size: var(--fs-micro); color: var(--fg-faint); min-height: 26px; }
+.web-pane .routine-submit, .web-pane .press-gate { margin: 0 12px 10px; }
 /* The interactive picture: the canvas keeps its own shape centred in the
    box, and the invisible key sink covers the whole surface. */
 .mirror-surface { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: default; }
@@ -1641,11 +1645,6 @@ body.bubble-host { background: transparent; }
 .bots-head-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .bots-head-name { font-size: var(--fs-lead); font-weight: 650; color: var(--fg-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bots-head-purpose { font-size: var(--fs-small); color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bots-head-actions { display: flex; align-items: center; gap: 2px; }
-.bots-head-action { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; color: var(--fg-faint); transition: background 120ms ease, color 120ms ease, transform 120ms var(--ease-out); }
-.bots-head-action:hover { background: var(--hover-bg); color: var(--fg); }
-.bots-head-action:active { transform: scale(0.94); }
-.bots-delete.armed { background: var(--clay-soft); color: var(--clay); }
 .bots-tasks {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 6px 20px 4px;
@@ -1724,7 +1723,7 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .brain-pick { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; margin: 2px 0 10px; border-radius: 999px; background: var(--hover-bg); }
 .brain-pick .brain-choice { height: 30px; padding: 0 18px; border: none; background: transparent; color: var(--fg-dim); font-weight: 500; }
 .brain-pick .brain-choice:hover:not(.armed) { background: transparent; color: var(--fg); }
-.settings-more { margin: 4px 0; }
+.settings-more { order: 5; margin: 4px 0; }
 .settings-more .settings-group-head { margin-top: 14px; margin-bottom: 2px; }
 .settings-more > summary { cursor: pointer; font-size: var(--fs-body); color: var(--fg-dim); padding: 6px 0; list-style: none; }
 .settings-more > summary:hover { color: var(--fg); }
@@ -1732,8 +1731,16 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .settings-more > summary::before { content: '›'; display: inline-block; margin-right: 6px; transition: transform 120ms ease; }
 .settings-more[open] > summary::before { transform: rotate(90deg); }
 .brain-pick .brain-choice.armed { background: var(--panel-bg); color: var(--fg-strong); box-shadow: 0 1px 3px rgba(43, 43, 51, 0.14); }
-.bots-memory-toggle { flex: none; }
-.bots-memory-toggle.armed { background: var(--selected-soft); color: var(--fg); }
+.composer-cosmos {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px;
+  border-radius: 999px; color: var(--fg-faint); font-size: var(--fs-micro); font-weight: 600;
+}
+.composer-cosmos:hover, .composer-cosmos.armed { background: var(--selected-soft); color: var(--fg); }
+.bots-write .model-picker-menu { left: 0; right: auto; z-index: 90; transform-origin: bottom left; }
+.settings-app-section { padding: 2px 2px 0; }
+.settings-app-section .settings-facts { gap: 2px; }
+.settings-app-section .settings-fact { padding: 4px 0; }
+.settings-support-actions { display: flex; align-items: center; gap: 8px; padding: 3px 0 10px; }
 .bots-memory {
   margin: 4px 20px 0; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: var(--radius-card);
   font-size: var(--fs-small); max-height: 40vh; overflow: auto;
@@ -1947,6 +1954,26 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   .topbar-status.live { max-width: 160px; }
   .note-sheet, .review-sheet { width: calc(100vw - 32px); height: calc(100vh - 40px); }
   .review-list { width: 220px; }
+  .web-pane { width: 100%; border-left: 0; box-shadow: none; }
+}
+@media (max-width: 700px) {
+  .bots-chat { min-width: 0; }
+  .bots-head { min-height: 56px; padding: 7px 14px; }
+  .bots-head-purpose { max-width: calc(100vw - 64px); }
+  .bots-tasks { padding: 6px 14px 3px; overflow-x: auto; flex-wrap: nowrap; }
+  .bots-task { flex: none; }
+  .bots-thread { padding: 18px 14px 14px; gap: 15px; }
+  .bots-write { margin: 4px 10px 10px; }
+  .chat-write { padding: 9px 9px 8px 12px; border-radius: 21px; }
+  .web-pane { top: 56px; bottom: 104px; width: 100%; border-left: 0; box-shadow: none; }
+  .web-pane-bar { min-height: 52px; padding: 8px 10px; }
+  .web-pane-stage { margin: 9px 9px 0; }
+  .web-pane-note { padding-left: 10px; padding-right: 10px; }
+  .web-pane .routine-submit, .web-pane .press-gate { margin-left: 9px; margin-right: 9px; }
+  .settings-box, .brief-box.settings-box { width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+  .settings-scroll { padding: 16px 18px 20px; }
+  .settings-fact { grid-template-columns: minmax(118px, 0.7fr) minmax(0, 1fr); }
+  .settings-box > .dialog-actions { min-height: 58px; padding: 10px 18px; }
 }
 .workspace-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
@@ -1992,8 +2019,8 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
    Deliberately static — an infinite animation stalls hidden-window rendering
    (e2e runs under ENGRAM_HIDDEN) and would be noise anyway. */
 .help-panel {
-  position: fixed; top: 52px; right: 12px; z-index: 190; width: 340px;
-  max-height: calc(100vh - 64px); overflow-y: auto;
+  position: fixed; left: 12px; bottom: 116px; z-index: 190; width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 140px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 16px; padding: 16px;
   background: var(--widget-bg); border: 1px solid var(--border-soft);
   border-radius: var(--radius-panel); box-shadow: var(--shadow-float);

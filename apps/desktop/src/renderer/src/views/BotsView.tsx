@@ -1,4 +1,4 @@
-import { Clock, Orbit, Play, Trash2, X, MessageSquarePlus } from 'lucide-react'
+import { Clock, Play, X } from 'lucide-react'
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -41,7 +41,6 @@ const PHASE_LABEL: Record<string, StringKey> = {
 export const BotsView = memo(function BotsView() {
   const { errand, routine, startRoutine } = useCometState()
   const [bots, setBots] = useState<BotDto[]>([])
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const [memoryOpen, setMemoryOpen] = useState(false)
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
@@ -144,13 +143,6 @@ export const BotsView = memo(function BotsView() {
     await reload()
   }
 
-  const remove = async (id: string) => {
-    await api.botDelete(id).catch(() => undefined)
-    setConfirmingDelete(null)
-    cometThreads.forget(id)
-    await reload(false)
-  }
-
   return (
     <div className="bots-view" data-testid="bots-view">
       <section className="bots-main">
@@ -167,38 +159,6 @@ export const BotsView = memo(function BotsView() {
                     {selected.purpose}
                   </span>
                 )}
-              </div>
-              <div className="bots-head-actions">
-                <button
-                  className="bots-head-action"
-                  data-testid="bots-fresh"
-                  title={t('bots.freshHint')}
-                  aria-label={t('bots.fresh')}
-                  onClick={() => {
-                    cometThreads.fresh(selected.id)
-                    void api.chatFresh(selected.id).catch(() => undefined)
-                  }}
-                >
-                  <MessageSquarePlus size={16} strokeWidth={1.8} aria-hidden />
-                </button>
-                <button
-                  className={`bots-head-action bots-memory-toggle${memoryOpen ? ' armed' : ''}`}
-                  data-testid="bots-memory-toggle"
-                  title={t('bots.memory')}
-                  aria-label={t('bots.memory')}
-                  onClick={() => setMemoryOpen(!memoryOpen)}
-                >
-                  <Orbit size={16} strokeWidth={1.8} aria-hidden />
-                </button>
-                <button
-                  className={`bots-head-action bots-delete${confirmingDelete === selected.id ? ' armed' : ''}`}
-                  title={confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
-                  aria-label={confirmingDelete === selected.id ? t('bots.deleteArmed') : t('bots.delete')}
-                  onBlur={() => setConfirmingDelete(null)}
-                  onClick={() => (confirmingDelete === selected.id ? void remove(selected.id) : setConfirmingDelete(selected.id))}
-                >
-                  <Trash2 size={15} strokeWidth={1.8} aria-hidden />
-                </button>
               </div>
             </header>
             {memoryOpen && <CometMemory botId={selected.id} name={selected.name} />}
@@ -316,6 +276,8 @@ export const BotsView = memo(function BotsView() {
               initialDraft={draft}
               busy={busy}
               locked={locked}
+              memoryOpen={memoryOpen}
+              onToggleMemory={() => setMemoryOpen((value) => !value)}
               onSend={(message) => void sendText(message)}
               onStop={() => void stop()}
             />

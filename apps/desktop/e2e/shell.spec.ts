@@ -160,6 +160,8 @@ test('the cosmos chat collapses and comes back', async () => {
 test('the app sidebar groups chats and routines, renames them, and folds away', async () => {
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
+  await expect(page.getByTestId('app-sidebar')).toContainText('Search Cosmos')
+  await expect(page.getByTestId('app-sidebar').getByTestId('engine-status')).toBeVisible()
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await page.getByTestId('activity-bots').click()
   await expect(page.getByTestId('sidebar-chats')).toContainText('Scout')

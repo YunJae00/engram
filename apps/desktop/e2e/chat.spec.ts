@@ -83,6 +83,26 @@ test('the conversation survives leaving and re-entering the tab', async () => {
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 15_000 })
 })
 
+test('composer tools stay in the chat surface and open away from the sidebar', async () => {
+  await expect(page.locator('.bots-head button')).toHaveCount(0)
+  const memory = page.getByTestId('bots-memory-toggle')
+  await expect(memory).toBeVisible()
+  await expect(memory).toContainText('Cosmos')
+  await memory.click()
+  await expect(page.locator('.bots-memory')).toBeVisible()
+  await memory.click()
+
+  const picker = page.getByTestId('model-picker')
+  if (await picker.isEnabled()) {
+    await picker.click()
+    const menu = page.getByTestId('model-picker-menu')
+    await expect(menu).toBeVisible()
+    const [menuBox, sidebarBox] = await Promise.all([menu.boundingBox(), page.getByTestId('app-sidebar').boundingBox()])
+    expect(menuBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
+    await page.keyboard.press('Escape')
+  }
+})
+
 test('the selected comet is remembered across tabs', async () => {
   await page.getByTestId('bots-new').click()
   await expect(page.locator('.bots-row.active')).toContainText('New comet')

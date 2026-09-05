@@ -4,8 +4,8 @@ import { t } from '../i18n.js'
 import { MOD_LABEL, type StringKey } from '../i18n.js'
 
 // The cheatsheet — quick actions, the mental model, the legend and the
-// shortcuts. It hangs from the top bar beside Settings, where a person looks
-// for help. Everything routes through useApp().t so it tracks the active UI
+// shortcuts. It opens above the sidebar action, where a person looks for help.
+// Everything routes through useApp().t so it tracks the active UI
 // language, and quick actions fan out as window events so this stays a leaf.
 type QuickAction = { key: StringKey; Icon: LucideIcon; event: string }
 type LegendRow = { glyph: ReactNode; key: StringKey }
@@ -37,7 +37,7 @@ export function HelpPanel() {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // The top bar owns the door; this only listens for it being used.
+  // The sidebar owns the door; this only listens for it being used.
   useEffect(() => {
     const toggle = () => setOpen((v) => !v)
     window.addEventListener('engram:open-help', toggle)

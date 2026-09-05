@@ -51,7 +51,7 @@ export function GithubConnect({ onClose }: { onClose(): void }) {
     setBusy(false)
   }
 
-  // Derive a friendly default repo name from the current workspace ("Personal"
+  // Derive a friendly default repo name from the current workspace ("Engram"
   // → "engram-personal"). Empty registry (onboarding/e2e) falls back sensibly.
   useEffect(() => {
     void api

@@ -54,13 +54,15 @@ export function WorkspaceSwitcher() {
   }, [open, dialog])
 
   const current = registry.vaults.find((v) => v.id === registry.current)
-  const currentName = current?.name ?? 'Engram'
+  const displayName = (workspace: { name: string; kind: 'personal' | 'team' }) =>
+    workspace.kind === 'personal' && workspace.name === 'Personal' ? 'Engram' : workspace.name
+  const currentName = current ? displayName(current) : 'Engram'
 
   const onSwitch = (id: string) => {
     if (id === registry.current) return
     const target = registry.vaults.find((v) => v.id === id)
     setOpen(false)
-    setSwitching(target?.name ?? '')
+    setSwitching(target ? displayName(target) : '')
     // Let the notice paint before the main process tears the window down, so the
     // relaunch reads as a deliberate transition instead of a crash.
     window.setTimeout(() => void api.workspaceSwitch(id), 120)
@@ -110,7 +112,7 @@ export function WorkspaceSwitcher() {
               ) : (
                 <User size={13} strokeWidth={1.8} aria-hidden />
               )}
-              <span className="workspace-row-name">{v.name}</span>
+              <span className="workspace-row-name">{displayName(v)}</span>
               {v.id === registry.current && (
                 <Check className="workspace-check" size={13} strokeWidth={1.8} aria-hidden />
               )}

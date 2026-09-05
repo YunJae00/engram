@@ -171,6 +171,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             did nothing three sections away from what it depends on. */}
 
         <div className="settings-scroll">
+        <div className="settings-group-head">{t('settings.generalTitle')}</div>
         <div className="settings-group">
           <label className="setting-row">
             <span>{t('settings.autoStart')}</span>
@@ -348,24 +349,28 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           </div>
         </details>
 
-        <SettingsStatus
+        <div className="settings-group-head">{t('settings.appTitle')}</div>
+        <div className="settings-app-section">
+          <div className="settings-support-actions">
+            <button className="secondary" onClick={() => setShowDiagnostics(true)}>
+              {t('settings.diagnostics')}
+            </button>
+            <button className="secondary" data-testid="settings-feedback" onClick={() => void api.sendFeedback()}>
+              {t('settings.feedback')}
+            </button>
+          </div>
+          <SettingsStatus
           checkingUpdate={checkingUpdate}
           semantic={semantic}
           update={update}
           version={version}
           onCheckingUpdate={setCheckingUpdate}
           onUpdate={setUpdate}
-        />
+          />
+        </div>
         </div>
 
-        {/* Primary action sits rightmost — same order as diagnostics/onboarding. */}
         <div className="dialog-actions">
-          <button className="link-button" onClick={() => setShowDiagnostics(true)}>
-            {t('settings.diagnostics')}
-          </button>
-          <button className="link-button" data-testid="settings-feedback" onClick={() => void api.sendFeedback()}>
-            {t('settings.feedback')}
-          </button>
           <button className="secondary" onClick={onClose}>
             {t('settings.cancel')}
           </button>
