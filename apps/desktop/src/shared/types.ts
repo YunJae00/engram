@@ -577,10 +577,10 @@ export interface EngramApi {
     slots?: Record<string, string>,
   ): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
   routineAbort(): Promise<void>
-  routineWallDone(verdict: 'resolved' | 'skip'): Promise<void>
+  routineWallDone(routineId: string, verdict: 'resolved' | 'skip'): Promise<void>
   // The person's answer to "may this be posted?" — nothing is submitted
   // until this says approve.
-  routineSubmitDone(verdict: 'approve' | 'always' | 'cancel'): Promise<void>
+  routineSubmitDone(routineId: string, verdict: 'approve' | 'always' | 'cancel'): Promise<void>
   // The person's word on a press that would commit: it goes, it goes here
   // from now on, or they will do it themselves.
   pressAskDone(channel: string, verdict: 'approve' | 'always' | 'cancel'): Promise<void>

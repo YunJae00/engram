@@ -419,8 +419,13 @@ async function ensureContext(): Promise<Ctx> {
         .opener()
         .catch(() => null)
         .then((opener) => {
-          const lane = (opener && laneOf(opener)) ?? activeLane
-          lanes.set(lane, page)
+          // A page a lane already claimed for itself (ensureAgentPage sets
+          // the map before this async lookup lands) keeps its owner: falling
+          // back to the active lane here handed one comet's fresh tab to
+          // whichever comet the person happened to be looking at.
+          const claimed = laneOf(page)
+          const lane = claimed ?? (opener && laneOf(opener)) ?? activeLane
+          if (!claimed) lanes.set(lane, page)
           for (const watcher of pageWatchers) watcher(page, lane)
         })
     })

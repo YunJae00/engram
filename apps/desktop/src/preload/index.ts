@@ -110,8 +110,8 @@ const api: EngramApi = {
   routineRun: (id: string, force?: boolean, slots?: Record<string, string>) =>
     ipcRenderer.invoke('routines:run', id, force, slots),
   routineAbort: () => ipcRenderer.invoke('routines:abort'),
-  routineWallDone: (verdict: 'resolved' | 'skip') => ipcRenderer.invoke('routines:wallDone', verdict),
-  routineSubmitDone: (verdict: 'approve' | 'always' | 'cancel') => ipcRenderer.invoke('routines:submitDone', verdict),
+  routineWallDone: (routineId: string, verdict: 'resolved' | 'skip') => ipcRenderer.invoke('routines:wallDone', routineId, verdict),
+  routineSubmitDone: (routineId: string, verdict: 'approve' | 'always' | 'cancel') => ipcRenderer.invoke('routines:submitDone', routineId, verdict),
   pressAskDone: (channel: string, verdict: 'approve' | 'always' | 'cancel') => ipcRenderer.invoke('press:askDone', channel, verdict),
   approvalsList: () => ipcRenderer.invoke('approvals:list'),
   approvalForget: (fingerprint: string) => ipcRenderer.invoke('approvals:forget', fingerprint),

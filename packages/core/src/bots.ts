@@ -88,7 +88,14 @@ async function readBotsFile(paths: VaultPaths): Promise<BotsFile> {
 
 async function writeBotsFile(paths: VaultPaths, file: BotsFile): Promise<void> {
   await mkdir(paths.cache, { recursive: true })
-  await writeFile(botsPath(paths), JSON.stringify(file, null, 2))
+  // Written beside and renamed into place: a reader who arrives mid-write
+  // sees the old file whole, never a truncated half. A turn that read a
+  // half-written file here concluded the comet did not exist and answered
+  // as the wrong persona (measured).
+  const target = botsPath(paths)
+  const scratch = `${target}.${process.pid}.tmp`
+  await writeFile(scratch, JSON.stringify(file, null, 2))
+  await rename(scratch, target)
 }
 
 // Every change to the file is a read followed by a write, and two of those
@@ -106,10 +113,16 @@ export async function loadBots(paths: VaultPaths): Promise<Bot[]> {
   return (await readBotsFile(paths)).bots
 }
 
-function saveBots(paths: VaultPaths, bots: Bot[]): Promise<void> {
+// Read, change, write - as one turn of the queue. Two callers arriving
+// together each see the other's change; outside the queue the second
+// write silently dropped the first (measured: of two tasks added at once,
+// one vanished).
+function mutateBots<T>(paths: VaultPaths, work: (bots: Bot[]) => T): Promise<T> {
   return serialized(paths, async () => {
-    const { dismissed } = await readBotsFile(paths)
-    await writeBotsFile(paths, { bots, dismissed })
+    const file = await readBotsFile(paths)
+    const out = work(file.bots)
+    await writeBotsFile(paths, file)
+    return out
   })
 }
 
@@ -156,30 +169,32 @@ export async function createBot(
   // The charter is optional: most comets are a conversation, not a role.
   const purpose = (input.purpose ?? '').trim().slice(0, 500)
   if (!name) throw new Error('a bot needs a name')
-  const bots = await loadBots(paths)
   const bot: Bot = {
     id: `bot-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
     name,
     purpose,
     createdAt: now.toISOString(),
   }
-  await saveBots(paths, [...bots, bot])
+  await mutateBots(paths, (bots) => {
+    bots.push(bot)
+  })
   return bot
 }
 
 export async function renameBot(paths: VaultPaths, id: string, name: string): Promise<void> {
   const next = name.trim().slice(0, 60)
   if (!next) return
-  const bots = await loadBots(paths)
-  const bot = bots.find((b) => b.id === id)
-  if (!bot) return
-  bot.name = next
-  await saveBots(paths, bots)
+  await mutateBots(paths, (bots) => {
+    const bot = bots.find((b) => b.id === id)
+    if (bot) bot.name = next
+  })
 }
 
 export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
-  const bots = await loadBots(paths)
-  await saveBots(paths, bots.filter((b) => b.id !== id))
+  await mutateBots(paths, (bots) => {
+    const at = bots.findIndex((b) => b.id === id)
+    if (at >= 0) bots.splice(at, 1)
+  })
   // What it remembered of the person goes with it: that was its reading,
   // and deleting the comet is the person's word on it.
   await forgetBotMemory(paths, id)
@@ -200,9 +215,6 @@ export async function addBotTask(
   if (!goal) throw new Error('a task needs a goal — what should it do?')
   if (input.schedule !== undefined && !isSchedule(input.schedule)) throw new Error('a schedule needs days, an hour and a minute')
   if (input.schedule && !input.routineId) throw new Error('a standing task needs a procedure to replay')
-  const bots = await loadBots(paths)
-  const bot = bots.find((b) => b.id === botId)
-  if (!bot) throw new Error('no such comet')
   const task: BotTask = {
     id: `task-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
     name,
@@ -210,33 +222,34 @@ export async function addBotTask(
     ...(input.schedule ? { schedule: input.schedule } : {}),
     ...(input.routineId ? { routineId: input.routineId } : {}),
   }
-  bot.tasks = [...(bot.tasks ?? []), task]
-  await saveBots(paths, bots)
+  await mutateBots(paths, (bots) => {
+    const bot = bots.find((b) => b.id === botId)
+    if (!bot) throw new Error('no such comet')
+    bot.tasks = [...(bot.tasks ?? []), task]
+  })
   return task
 }
 
 export async function declineStanding(paths: VaultPaths, botId: string, key: string): Promise<void> {
-  const bots = await loadBots(paths)
-  const bot = bots.find((b) => b.id === botId)
-  if (!bot || !key) return
-  bot.declined = [...new Set([...(bot.declined ?? []), key])].slice(-100)
-  await saveBots(paths, bots)
+  if (!key) return
+  await mutateBots(paths, (bots) => {
+    const bot = bots.find((b) => b.id === botId)
+    if (bot) bot.declined = [...new Set([...(bot.declined ?? []), key])].slice(-100)
+  })
 }
 
 export async function removeBotTask(paths: VaultPaths, botId: string, taskId: string): Promise<void> {
-  const bots = await loadBots(paths)
-  const bot = bots.find((b) => b.id === botId)
-  if (!bot) return
-  bot.tasks = (bot.tasks ?? []).filter((x) => x.id !== taskId)
-  await saveBots(paths, bots)
+  await mutateBots(paths, (bots) => {
+    const bot = bots.find((b) => b.id === botId)
+    if (bot) bot.tasks = (bot.tasks ?? []).filter((x) => x.id !== taskId)
+  })
 }
 
 export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: string, now: Date = new Date()): Promise<void> {
-  const bots = await loadBots(paths)
-  const task = bots.find((b) => b.id === botId)?.tasks?.find((x) => x.id === taskId)
-  if (!task) return
-  task.lastRunAt = now.toISOString()
-  await saveBots(paths, bots)
+  await mutateBots(paths, (bots) => {
+    const task = bots.find((b) => b.id === botId)?.tasks?.find((x) => x.id === taskId)
+    if (task) task.lastRunAt = now.toISOString()
+  })
 }
 
 export async function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): Promise<void> {

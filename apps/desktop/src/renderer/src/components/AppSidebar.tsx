@@ -226,7 +226,16 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
                       }}
                     />
                   ) : (
-                    <button className="sidebar-item-main" title={routine.name} onClick={onOpenRoutines}>
+                    <button
+                      className="sidebar-item-main"
+                      title={routine.name}
+                      data-testid={`sidebar-routine-run-${routine.id}`}
+                      onClick={() =>
+                        // The comets view owns the run: it knows which comet
+                        // keeps this routine and runs it there as a turn.
+                        window.dispatchEvent(new CustomEvent('engram:run-routine', { detail: { routineId: routine.id } }))
+                      }
+                    >
                       <span>{routine.name}</span>
                     </button>
                   )}

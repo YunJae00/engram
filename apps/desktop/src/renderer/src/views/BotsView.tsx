@@ -50,10 +50,9 @@ export const BotsView = memo(function BotsView() {
   const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
-  // Each comet works on its own tab with its own brain session, so one
-  // being busy locks only itself. An errand run still takes the shared
-  // default lane and locks every composer while it runs.
-  const locked = errand.running
+  // Each comet works on its own tab with its own brain session: only this
+  // thread's own turn locks its composer.
+  const locked = false
 
   // The wait, said from evidence - see pendingStatus for the order it trusts.
   const latestStep = workLines[workLines.length - 1]
@@ -78,6 +77,28 @@ export const BotsView = memo(function BotsView() {
       if (event.type === 'bots:changed') void reload()
     })
   }, [])
+  // The sidebar asks for a routine by id; the comet that keeps it runs it
+  // as an ordinary turn in its own thread. A routine no comet keeps runs
+  // on the selected one.
+  useEffect(() => {
+    const run = (event: Event) => {
+      const routineId = (event as CustomEvent<{ routineId: string }>).detail?.routineId
+      if (!routineId) return
+      void api.botsList().then((list) => {
+        const owner = list.find((bot) => (bot.tasks ?? []).some((one) => one.routineId === routineId))
+        const task = owner ? (owner.tasks ?? []).find((one) => one.routineId === routineId) : undefined
+        const botId = owner?.id ?? cometThreads.getSnapshot().selectedId ?? list[0]?.id
+        if (!botId || cometThreads.thread(botId).busy) return
+        selectComet(botId)
+        const goal = task?.goal ?? `Run the saved procedure with id "${routineId}" and tell me what it found.`
+        if (task) void api.botTaskRan(botId, task.id).catch(() => undefined)
+        const history = cometThreads.begin(botId, goal)
+        void api.chatSend({ engineId: '', message: goal, history, channel: cometChannel(botId), botId }).catch(() => undefined)
+      })
+    }
+    window.addEventListener('engram:run-routine', run)
+    return () => window.removeEventListener('engram:run-routine', run)
+  }, [])
 
   // Selecting a comet shows what the store already holds and refreshes it
   // from disk underneath; a turn still streaming stays on top of the reload.
@@ -93,7 +114,7 @@ export const BotsView = memo(function BotsView() {
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
   const sendText = async (message: string) => {
-    if (!message || busy || errand.running || !selected) return
+    if (!message || busy || !selected) return
     const id = selected.id
     const history = cometThreads.begin(id, message)
     try {
@@ -167,7 +188,6 @@ export const BotsView = memo(function BotsView() {
                   key={task.id}
                   className="bots-task"
                   data-testid={`bot-task-${task.id}`}
-                  disabled={errand.running}
                   title={task.goal}
                   onClick={() => runTask(task)}
                 >

@@ -76,9 +76,10 @@ export interface AppState {
     step?: { index: number; total: number; label: string }
     steps: { label: string; at: number }[]
   }
-  routineWall: { wall: 'login' | 'captcha' } | null
+  routineWall: { routineId: string; wall: 'login' | 'captcha' } | null
   answerRoutineWall(verdict: 'resolved' | 'skip'): void
   routineSubmit: {
+    routineId: string
     name: string
     filled: { label: string; text: string }[]
     host: string | null

@@ -115,7 +115,7 @@ import { cloudEngine } from './engine-cloud.js'
 import { claudeModels, fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
-import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
+import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { titleFor } from './comet-title.js'
@@ -588,12 +588,15 @@ let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 
 // Routines share the agent browser with errands, so the two runs exclude
 // each other; same single-flight/abort/wall trio as the errand's.
-let routineRunning = false
-let routineAbort: AbortController | null = null
-let routineWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
+// One replay per lane: the sheet's Run holds the default lane, a comet's
+// run_procedure holds its own, and two comets replay side by side. Walls
+// and submit questions are held per running routine, so an answer reaches
+// the run that asked.
+const routineLanes = new Map<string, AbortController>()
+const routineWallWaiters = new Map<string, (verdict: 'resolved' | 'skip') => void>()
 // Set while a replay waits for permission to post; answered by
 // routines:submitDone, and by an abort with 'cancel' so it cannot wedge.
-let routineSubmitWaiter: ((verdict: 'approve' | 'always' | 'cancel') => void) | null = null
+const routineSubmitWaiters = new Map<string, (verdict: 'approve' | 'always' | 'cancel') => void>()
 // The same, for a press the comet wants to make on a page it merely found.
 // One question in flight per channel: two comets at their own submit
 // buttons are two questions, each answered for its own page.
@@ -944,10 +947,9 @@ export function registerIpc(ctx: VaultContext): void {
     botId?: string,
   ): Promise<{ ok: boolean; error?: string; done?: Promise<ErrandResult> }> {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
-    // Both drive the same Chrome tab, so the exclusion has to run both ways:
-    // an errand landing on top of a routine would type the routine's saved
-    // text into whatever page the errand had navigated to.
-    if (routineRunning) return { ok: false, error: 'A routine is using the browser right now — try again when it finishes.' }
+    // The errand drives the shared default lane; only a replay on that same
+    // lane collides with it. A comet's replay runs on its own tab.
+    if (routineLanes.has(DEFAULT_LANE)) return { ok: false, error: 'A routine is using the browser right now — try again when it finishes.' }
     if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
     // Claimed before the first await: two clicks a millisecond apart both
     // passed the check above while the floors were still being measured.
@@ -1208,14 +1210,17 @@ export function registerIpc(ctx: VaultContext): void {
   // again, so a caller can act on the result without racing the guard.
   async function beginRoutine(
     id: string,
-    opts: { force?: boolean; slots?: Record<string, string> } = {},
+    opts: { force?: boolean; slots?: Record<string, string>; lane?: string } = {},
   ): Promise<RoutineRunReply & { done?: Promise<RoutineRunResult> }> {
-    if (routineRunning) return { ok: false, error: 'A routine is already running.' }
-    if (errandRunning) return { ok: false, error: 'An errand is using the browser right now — try again when it finishes.' }
+    const lane = opts.lane ?? DEFAULT_LANE
+    if (routineLanes.has(lane)) return { ok: false, error: 'A routine is already running.' }
+    if (lane === DEFAULT_LANE && errandRunning)
+      return { ok: false, error: 'An errand is using the browser right now — try again when it finishes.' }
     // Claimed before the first await, or two fast clicks both get past this.
-    routineRunning = true
+    const claim = new AbortController()
+    routineLanes.set(lane, claim)
     const release = (): void => {
-      routineRunning = false
+      routineLanes.delete(lane)
     }
     if (!agentBrowserAvailable()) {
       release()
@@ -1245,10 +1250,9 @@ export function registerIpc(ctx: VaultContext): void {
     // The blanks are filled for this run only; the saved procedure keeps its
     // placeholders for tomorrow.
     const routine = opts.slots ? { ...saved, steps: fillSlots(saved.steps, opts.slots) } : saved
-    routineAbort = new AbortController()
-    const signal = routineAbort.signal
+    const signal = claim.signal
     let finished: Extract<EngramEvent, { type: 'routine:logged' }> | null = null
-    const done = runRoutine(paths, routineDriver(), routine, {
+    const done = runRoutine(paths, routineDriver(lane), routine, {
       signal,
       force: opts.force === true,
       onStep: (index, total, label) => broadcast({ type: 'routine:step', routineId: routine.id, index, total, label }),
@@ -1257,11 +1261,11 @@ export function registerIpc(ctx: VaultContext): void {
       onWall: (wall) =>
         new Promise((resolve) => {
           const keepOpen = holdAgentBrowser()
-          routineWallWaiter = (verdict) => {
-            routineWallWaiter = null
+          routineWallWaiters.set(routine.id, (verdict) => {
+            routineWallWaiters.delete(routine.id)
             keepOpen()
             resolve(verdict)
-          }
+          })
           broadcast({ type: 'routine:wall', routineId: routine.id, wall: wall.wall })
         }),
       // Nothing is posted until the person has read what would be posted -
@@ -1278,12 +1282,12 @@ export function registerIpc(ctx: VaultContext): void {
         }
         return new Promise((resolve) => {
           const keepOpen = holdAgentBrowser()
-          routineSubmitWaiter = (verdict) => {
-            routineSubmitWaiter = null
+          routineSubmitWaiters.set(routine.id, (verdict) => {
+            routineSubmitWaiters.delete(routine.id)
             keepOpen()
             if (verdict === 'always' && action) void approvals.add(ruleFor(action))
             resolve(verdict)
-          }
+          })
           broadcast({
             type: 'routine:submit',
             routineId: routine.id,
@@ -1314,13 +1318,13 @@ export function registerIpc(ctx: VaultContext): void {
           ...(result.error ? { error: result.error } : {}),
         }
         release()
-        routineAbort = null
-        routineWallWaiter = null
-        routineSubmitWaiter = null
+        routineWallWaiters.delete(routine.id)
+        routineSubmitWaiters.delete(routine.id)
         if (finished) broadcast(finished)
-        // The browser's gigabyte goes back to the machine as soon as the
-        // replay is over — the next run pays a relaunch, which is cheap.
-        void closeAgentBrowser()
+        // The browser is NOT closed here: another lane may be mid-work, and
+        // a comet whose turn continues past the replay still needs its page.
+        // The idle timer and the memory-pressure watch reclaim it.
+        armIdleClose()
         return result
       })
     return { ok: true, done }
@@ -1347,8 +1351,8 @@ export function registerIpc(ctx: VaultContext): void {
   // past this the offer is simply not made.
   const PROPOSAL_TIMEOUT_MS = 45_000
 
-  async function runProcedureForComet(id: string, slots: Record<string, string>, again = false): Promise<string> {
-    const started = await beginRoutine(id, { slots, force: again })
+  async function runProcedureForComet(id: string, slots: Record<string, string>, again: boolean, lane: string): Promise<string> {
+    const started = await beginRoutine(id, { slots, force: again, lane })
     if (started.blocked === 'already-ran-today')
       return 'that procedure already ran today and it posts to a page — ask the person whether to run it again; once they say yes, call run_procedure once more with "again": true'
     if (started.blocked === 'unfinished-write')
@@ -1370,9 +1374,9 @@ export function registerIpc(ctx: VaultContext): void {
   }
 
   ipcMain.handle('routines:abort', () => {
-    routineWallWaiter?.('skip')
-    routineSubmitWaiter?.('cancel')
-    routineAbort?.abort()
+    for (const waiter of routineWallWaiters.values()) waiter('skip')
+    for (const waiter of routineSubmitWaiters.values()) waiter('cancel')
+    for (const claim of routineLanes.values()) claim.abort()
   })
 
   // The agent browser mirrored into the app: frames while a view watches,
@@ -1412,8 +1416,8 @@ export function registerIpc(ctx: VaultContext): void {
     await shell.openPath(dir)
   })
 
-  ipcMain.handle('routines:submitDone', (_e, verdict: 'approve' | 'always' | 'cancel') => {
-    routineSubmitWaiter?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
+  ipcMain.handle('routines:submitDone', (_e, routineId: string, verdict: 'approve' | 'always' | 'cancel') => {
+    routineSubmitWaiters.get(String(routineId))?.(verdict === 'approve' || verdict === 'always' ? verdict : 'cancel')
   })
   ipcMain.handle('approvals:list', () => approvals.list())
   ipcMain.handle('approvals:forget', (_e, fingerprint: string) => approvals.forget(fingerprint))
@@ -1426,8 +1430,8 @@ export function registerIpc(ctx: VaultContext): void {
     },
   })
 
-  ipcMain.handle('routines:wallDone', (_e, verdict: 'resolved' | 'skip') => {
-    routineWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
+  ipcMain.handle('routines:wallDone', (_e, routineId: string, verdict: 'resolved' | 'skip') => {
+    routineWallWaiters.get(String(routineId))?.(verdict === 'resolved' ? 'resolved' : 'skip')
   })
 
   // Teach mode: open the agent Chrome and record what the person does, then
@@ -2094,7 +2098,7 @@ export function registerIpc(ctx: VaultContext): void {
                 }, WALL_HOLD_MS).unref()
               },
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
-              runProcedure: (id, slots, _signal, again) => runProcedureForComet(id, slots, again),
+              runProcedure: (id, slots, _signal, again) => runProcedureForComet(id, slots, again === true, channel),
               remembered: () => remembered,
               guided,
               learnSearch: async (template) => {

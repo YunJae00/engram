@@ -76,7 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [errand, setErrand] = useState<AppState['errand']>({ running: false, timeline: [] })
   const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
   const [routine, setRoutine] = useState<AppState['routine']>({ running: false, steps: [] })
-  const [routineWall, setRoutineWall] = useState<{ wall: 'login' | 'captcha' } | null>(null)
+  const [routineWall, setRoutineWall] = useState<{ routineId: string; wall: 'login' | 'captcha' } | null>(null)
   const [routineSubmit, setRoutineSubmit] = useState<AppState['routineSubmit']>(null)
   const [pressAsks, setPressAsks] = useState<AppState['pressAsks']>([])
   const [toast, setToast] = useState<string | null>(null)
@@ -223,20 +223,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void api.errandWallDone(verdict).catch(() => undefined)
   }, [])
 
-  const answerRoutineWall = useCallback((verdict: 'resolved' | 'skip') => {
-    setRoutineWall(null)
-    void api.routineWallDone(verdict).catch(() => undefined)
-  }, [])
+  const answerRoutineWall = useCallback(
+    (verdict: 'resolved' | 'skip') => {
+      if (routineWall) void api.routineWallDone(routineWall.routineId, verdict).catch(() => undefined)
+      setRoutineWall(null)
+    },
+    [routineWall],
+  )
 
   const answerPressAsk = useCallback((channel: string, verdict: 'approve' | 'always' | 'cancel') => {
     setPressAsks((held) => held.filter((ask) => ask.channel !== channel))
     void api.pressAskDone(channel, verdict).catch(() => undefined)
   }, [])
 
-  const answerRoutineSubmit = useCallback((verdict: 'approve' | 'always' | 'cancel') => {
-    setRoutineSubmit(null)
-    void api.routineSubmitDone(verdict).catch(() => undefined)
-  }, [])
+  const answerRoutineSubmit = useCallback(
+    (verdict: 'approve' | 'always' | 'cancel') => {
+      if (routineSubmit) void api.routineSubmitDone(routineSubmit.routineId, verdict).catch(() => undefined)
+      setRoutineSubmit(null)
+    },
+    [routineSubmit],
+  )
 
   // Kick off a routine replay. main runs it detached and reports back over
   // routine:* events — so this only surfaces the refusal (browser busy, tight).

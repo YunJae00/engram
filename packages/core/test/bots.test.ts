@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
+import { addBotTask, appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
@@ -70,5 +70,20 @@ describe('bots — named colleagues with charters and their own conversations', 
     const notes = Array.from({ length: 6 }, (_, i) => ({ context: 'deploys', title: `d${i}` }))
     const recs = recommendBots(notes, ['Release keeper'], await loadDismissedSuggestions(paths))
     expect(recs.map((r) => r.name)).toEqual(['deploys assistant'])
+  })
+})
+
+describe('two changes arriving together', () => {
+  it('keeps both tasks: the read-modify-write runs inside the queue', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-race'), { git: false })
+    const a = await createBot(paths, { name: 'alpha', purpose: 'x' })
+    const b = await createBot(paths, { name: 'beta', purpose: 'y' })
+    await Promise.all([
+      addBotTask(paths, a.id, { name: 'one', goal: 'do one' }),
+      addBotTask(paths, b.id, { name: 'two', goal: 'do two' }),
+    ])
+    const bots = await loadBots(paths)
+    expect(bots.find((x) => x.id === a.id)?.tasks).toHaveLength(1)
+    expect(bots.find((x) => x.id === b.id)?.tasks).toHaveLength(1)
   })
 })

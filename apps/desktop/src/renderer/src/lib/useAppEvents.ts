@@ -174,7 +174,7 @@ export function useAppEvents(options: AppEventsOptions): void {
           latest.current.showToast(latest.current.t('toast.errandFailed', { reason: event.error ?? '' }))
         }
       }
-      if (event.type === 'routine:wall') setters.routineWall({ wall: event.wall })
+      if (event.type === 'routine:wall') setters.routineWall({ routineId: event.routineId, wall: event.wall })
       if (event.type === 'press:ask') {
         setters.pressAsks((held) => [
           ...held.filter((ask) => ask.channel !== event.channel),
@@ -183,6 +183,7 @@ export function useAppEvents(options: AppEventsOptions): void {
       }
       if (event.type === 'routine:submit') {
         setters.routineSubmit({
+          routineId: event.routineId,
           name: event.name,
           filled: event.filled,
           host: event.host,

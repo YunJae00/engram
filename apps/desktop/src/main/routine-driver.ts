@@ -1,5 +1,5 @@
 import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } from 'core'
-import { agentAbortable, agentPage, readAgentPage, currentAgentPage } from './agent-browser.js'
+import { agentAbortable, agentPage, readAgentPage, DEFAULT_LANE, lanePage } from './agent-browser.js'
 
 // The routine's hands: the same agent Chrome the errand courier drives, so a
 // login the user performed for either survives for both. Every operation
@@ -90,11 +90,14 @@ async function act(
   return { ok: false, error: `could not find "${describeTarget(target)}" on the page` }
 }
 
-export function routineDriver(): RoutineDriver {
+// One driver per lane: a replay run for a comet drives that comet's own
+// tab, so two comets can each be mid-procedure without taking each other's
+// page - and the sheet's Run button keeps the shared default.
+export function routineDriver(lane: string = DEFAULT_LANE): RoutineDriver {
   return {
-    location: () => currentAgentPage()?.url() ?? null,
+    location: () => lanePage(lane)?.url() ?? null,
     async open(url, signal): Promise<RoutineStepResult> {
-      const page = await agentPage(signal)
+      const page = await agentPage(signal, lane)
       try {
         await agentAbortable(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
       } catch (err) {
@@ -112,15 +115,15 @@ export function routineDriver(): RoutineDriver {
       return wall ? { ok: true, wall } : { ok: true }
     },
     async click(target, signal): Promise<RoutineStepResult> {
-      const page = await agentPage(signal)
+      const page = await agentPage(signal, lane)
       return act(page, target, 'click', (locator) => locator.click({ timeout: FIND_TIMEOUT_MS }), signal)
     },
     async type(target, text, signal): Promise<RoutineStepResult> {
-      const page = await agentPage(signal)
+      const page = await agentPage(signal, lane)
       return act(page, target, 'type', (locator) => locator.fill(text, { timeout: FIND_TIMEOUT_MS }), signal)
     },
     async read(signal): Promise<RoutineReading & { wall?: 'login' | 'captcha' }> {
-      const page = await agentPage(signal)
+      const page = await agentPage(signal, lane)
       const reading = await readAgentPage(page, signal)
       return { url: reading.url, title: reading.title, text: reading.text, ...(reading.wall ? { wall: reading.wall } : {}) }
     },
