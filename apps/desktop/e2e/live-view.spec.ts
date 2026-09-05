@@ -107,6 +107,37 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`, { timeout: 15_000 })
 })
 
+test('mission control previews independent lanes and opens the chosen chat', async () => {
+  const bots = await page.evaluate(async () => {
+    const first = (await window.engram.botsList())[0]!
+    const second = await window.engram.botCreate({ name: 'Parallel watch', purpose: '' })
+    const third = await window.engram.botCreate({ name: 'Third watch', purpose: '' })
+    const fourth = await window.engram.botCreate({ name: 'Fourth watch', purpose: '' })
+    return [first, second, third, fourth]
+  })
+  await page.evaluate(async ({ url, ids }) => {
+    await Promise.all(ids.map((id, index) => window.engram.agentGo(`${url}typed?q=${index + 2}`, `bot-${id}`)))
+  }, { url: siteUrl, ids: bots.slice(1).map((bot) => bot.id) })
+  const before = await page.evaluate(() => window.engram.agentState())
+  const previews = await page.evaluate((ids) => window.engram.missionFrames(ids.map((id) => `bot-${id}`)), bots.map((bot) => bot.id))
+  expect(previews[0]!.url).toBe(`${siteUrl}clicked`)
+  expect(previews.slice(1).map((preview) => preview.url)).toEqual([2, 3, 4].map((index) => `${siteUrl}typed?q=${index}`))
+  await expect.poll(async () => {
+    const ready = await page.evaluate((ids) => window.engram.missionFrames(ids.map((id) => `bot-${id}`)), bots.map((bot) => bot.id))
+    return ready.every((preview) => Boolean(preview.data))
+  }, { timeout: 20000 }).toBe(true)
+  expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
+  await page.getByTestId('activity-mission').click()
+  await expect(page.locator('.mission-tile')).toHaveCount(4)
+  await expect(page.locator('.mission-preview img')).toHaveCount(4, { timeout: 15000 })
+  await page.screenshot({ path: join(REPO_TMP, 'mission-live.png') })
+  await page.getByTestId('mission-layout-2').click()
+  await expect(page.locator('.mission-tile')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).click()
+  await expect(page.locator('.bots-head-name')).toHaveText('Parallel watch')
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
+})
+
 test('a saved wide page panel stays inside the conversation on a compact window', async () => {
   await page.evaluate(() => localStorage.setItem('engram.webpane.width', '1200'))
   await page.reload()

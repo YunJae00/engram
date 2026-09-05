@@ -118,6 +118,7 @@ import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
+import { missionFrames } from './mission-control.js'
 import { titleFor } from './comet-title.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
@@ -1385,14 +1386,15 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
   ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
-  ipcMain.handle('agent:go', (_e, url: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048)))
+  ipcMain.handle('agent:go', (_e, url: string, lane?: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048), lane))
   ipcMain.handle('agent:refresh', () => refreshAgentView())
   // The pane says how tall it is; the pages lay themselves out to fit it, so
   // the picture fills the space instead of leaving half of it empty.
-  ipcMain.handle('agent:height', async (_e, height: number) => {
+  ipcMain.handle('mission:frames', (_e, lanes: string[]) => missionFrames(Array.isArray(lanes) ? lanes : []))
+  ipcMain.handle('agent:height', async (_e, height: number, lane?: string) => {
     // A page laid out again is a page that has changed shape: the picture is
     // taken afresh, or the pane keeps showing the old one letterboxed.
-    if (await setViewHeight(Number(height) || 0)) {
+    if (await setViewHeight(Number(height) || 0, lane)) {
       // The page lays itself out again before it is photographed; a picture
       // taken in the same instant shows the old shape.
       await new Promise((resolve) => setTimeout(resolve, 250))

@@ -84,8 +84,9 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
         // A window that went away leaves its last frame: the person can still
         // see where the work got to. A new one starts blank rather than
         // showing the page before it.
-        if (event.on) pixels = null
-        set(event.on ? { ...state, on: true, url: event.url, lane: event.lane ?? state.lane, frame: false } : { ...state, on: false })
+        const sameLane = Boolean(event.lane && event.lane === state.lane)
+        if (event.on && !sameLane) pixels = null
+        set(event.on ? { ...state, on: true, url: event.url, lane: event.lane ?? state.lane, frame: sameLane && state.frame } : { ...state, on: false })
       } else if (event.type === 'agent:frame') {
         pixels = event.data
         for (const watcher of watchers) watcher(event.data)

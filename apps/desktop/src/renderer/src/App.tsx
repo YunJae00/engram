@@ -18,6 +18,7 @@ import { t } from './i18n.js'
 // the wait is a frame, not a download.
 const DigestSheet = lazy(() => import('./components/DigestSheet.js').then((m) => ({ default: m.DigestSheet })))
 const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
+const MissionControl = lazy(() => import('./views/MissionControl.js').then((m) => ({ default: m.MissionControl })))
 const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
@@ -313,6 +314,7 @@ function Shell() {
             <div className="canvas-slot" hidden={activity !== 'bots'}>
               <BotsView />
             </div>
+            {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl /></Suspense>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
                 <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />

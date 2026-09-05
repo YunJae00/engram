@@ -1,4 +1,4 @@
-import type { CDPSession, Page } from 'playwright-core'
+import type { CDPSession, Frame, Page } from 'playwright-core'
 import type { AgentInputDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { activeLaneName, ensureAgentPage, lanePage, laneOf, resetLane, setActiveLane, watchAgentPages } from './agent-browser.js'
@@ -24,6 +24,7 @@ const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
 interface Mirror {
+  cleanup?: () => void
   page: Page
   cdp: CDPSession
   // When a frame last went out, and whether a photograph is being taken.
@@ -120,6 +121,7 @@ async function drop(): Promise<void> {
   const m = mirror
   if (!m) return
   mirror = null
+  m.cleanup?.()
   await stream(m, false)
   await m.cdp.detach().catch(() => undefined)
 }
@@ -127,18 +129,27 @@ async function drop(): Promise<void> {
 // The follow under way, so a caller that has just opened a page can wait
 // for its mirror instead of finding none there yet.
 let following: Promise<void> = Promise.resolve()
+let followGeneration = 0
 
 function follow(page: Page): Promise<void> {
-  following = followNow(page)
+  const generation = ++followGeneration
+  following = following.catch(() => undefined).then(async () => {
+    if (generation !== followGeneration || laneOf(page) !== activeLaneName() || page.isClosed()) return
+    await followNow(page, generation)
+  })
   return following
 }
 
-async function followNow(page: Page): Promise<void> {
+async function followNow(page: Page, generation: number): Promise<void> {
   await drop()
   let cdp: CDPSession
   try {
     cdp = await page.context().newCDPSession(page)
   } catch {
+    return
+  }
+  if (generation !== followGeneration || laneOf(page) !== activeLaneName() || page.isClosed()) {
+    await cdp.detach().catch(() => undefined)
     return
   }
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
@@ -154,10 +165,10 @@ async function followNow(page: Page): Promise<void> {
   })
   // Where the page has got to, said whether or not anyone wants frames: a
   // folded view shows the address alone, and it has to stay true.
-  page.on('framenavigated', (frame) => {
+  const navigated = (frame: Frame) => {
     if (mirror === m && frame === page.mainFrame()) say(true)
-  })
-  page.on('close', () => {
+  }
+  const closed = () => {
     if (mirror !== m) return
     void drop().then(() => {
       // The tab that closed may have been a popup over the one that opened
@@ -166,7 +177,13 @@ async function followNow(page: Page): Promise<void> {
       if (next) void follow(next)
       else say(false)
     })
-  })
+  }
+  page.on('framenavigated', navigated)
+  page.on('close', closed)
+  m.cleanup = () => {
+    page.off('framenavigated', navigated)
+    page.off('close', closed)
+  }
   say(true)
   if (viewers > 0) await stream(m, true)
 }
@@ -202,9 +219,10 @@ export async function lookAtLane(lane: string): Promise<{ on: boolean; url?: str
   if (mirror?.page === page && page) return { on: true, url: page.url() }
   if (page) {
     await follow(page)
-    if (viewers > 0) void shoot(mirror!, true)
+    if (mirror?.page === page) void shoot(mirror, true)
     return { on: true, url: page.url() }
   }
+  ++followGeneration
   await drop()
   say(false)
   return { on: false }
@@ -291,18 +309,15 @@ export async function agentViewInput(input: AgentInputDto): Promise<void> {
 
 // An address typed on the mirror: the page goes there as if it had been
 // typed in the window's own bar, so a lesson can begin from a blank tab.
-export async function agentViewGo(url: string): Promise<void> {
+export async function agentViewGo(url: string, lane = activeLaneName()): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return
   // An address typed with no window behind it - the card frozen on the last
   // thing a closed browser showed - opens one and goes there.
   // A page opened for this has its mirror attached a moment after it
   // exists; going somewhere before that would go nowhere at all.
-  const page = await ensureAgentPage(activeLaneName()).catch(() => null)
+  const page = await ensureAgentPage(lane).catch(() => null)
   if (!page) return
-  if (mirror?.page !== page) await following.catch(() => undefined)
-  const m = mirror?.page === page ? mirror : null
-  if (!m) return
-  await m.page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
+  await page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   })
 }

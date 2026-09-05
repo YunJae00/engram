@@ -5,6 +5,7 @@ import { agentMirror } from '../lib/agentMirrorLive.js'
 import { webPane } from '../lib/webPane.js'
 import { MirrorSurface } from './MirrorSurface.js'
 import { t } from '../i18n.js'
+import { useShellState } from '../state-slices.js'
 
 // The page the comet works on, standing beside the conversation as its own
 // half of the screen. Trust comes from being able to SEE the work and stop
@@ -38,7 +39,7 @@ function hostOf(url: string | undefined): string {
   }
 }
 
-function Address({ url }: { url?: string }) {
+function Address({ url, channel }: { url?: string; channel: string }) {
   const [draft, setDraft] = useState<string | null>(null)
   const field = useRef<HTMLInputElement>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
@@ -65,7 +66,7 @@ function Address({ url }: { url?: string }) {
         if (e.key !== 'Enter') return
         const typed = shown.trim()
         if (!typed) return
-        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`).catch(() => {})
+        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, channel).catch(() => {})
         setDraft(null)
         e.currentTarget.blur()
       }}
@@ -74,6 +75,7 @@ function Address({ url }: { url?: string }) {
 }
 
 export function WebPane({ channel, busy, onStop, children }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode }) {
+  const { activity } = useShellState()
   // The pane shows the tab of the comet being looked at, and moves with it:
   // the old picture fades while the new tab's picture is fetched, instead
   // of one page being swapped for another between two frames.
@@ -116,7 +118,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // for its own picture.
   const [touched, setTouched] = useState(0)
   const handsOn = touched > Date.now() - HANDS_ON_MS
-  const showing = on && !folded && (busy || handsOn)
+  const showing = liveHere && activity === 'bots' && !folded && (busy || handsOn)
   useEffect(() => {
     if (!showing) return
     agentMirror.showPixels(true)
@@ -177,7 +179,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
       const wanted = Math.round((VIEW_WIDTH * rect.height) / rect.width / 20) * 20
       if (wanted === asked) return
       asked = wanted
-      void api.agentHeight(wanted).catch(() => {})
+      void api.agentHeight(wanted, channel).catch(() => {})
     }
     const watch = new ResizeObserver(() => {
       if (timer) clearTimeout(timer)
@@ -189,7 +191,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
       if (timer) clearTimeout(timer)
       watch.disconnect()
     }
-  }, [paneShown])
+  }, [paneShown, channel])
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
@@ -215,7 +217,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
           >
             <ChevronsRight size={13} aria-hidden />
           </button>
-          <Address url={mine ? url : ''} />
+          <Address key={channel} channel={channel} url={mine ? url : ''} />
           {!frozen && (
             <>
               <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>

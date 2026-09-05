@@ -84,7 +84,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
         </button>
       )}
       <span className="topbar-title">
-        {activity === 'bots' ? t('topbar.tabBots') : activity === 'sky' ? t('topbar.tabSky') : t('activity.list')}
+        {activity === 'bots' ? t('topbar.tabBots') : activity === 'sky' ? t('topbar.tabSky') : activity === 'mission' ? t('mission.title') : t('activity.list')}
       </span>
 
       <div className="topbar-spacer" />

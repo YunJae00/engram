@@ -40,25 +40,19 @@ const BLOCKED_RESOURCES = new Set(['media'])
 
 // The page's own width, fixed for every machine and every pane.
 export const VIEW_WIDTH = 1280
-// How tall the pages are laid out. Set from the pane that shows them, within
-// bounds a real window could have; every page open at the time follows.
+// Each lane keeps the viewport requested by its own conversation pane.
 const VIEW_HEIGHT_MIN = 620
 const VIEW_HEIGHT_MAX = 2200
-let viewHeight = 860
+const viewHeight = 860
 
-export async function setViewHeight(height: number): Promise<boolean> {
+export async function setViewHeight(height: number, lane = activeLaneName()): Promise<boolean> {
   const wanted = Math.round(Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_MAX, height)))
-  if (wanted === viewHeight) return false
-  viewHeight = wanted
-  const pages = context?.pages() ?? []
-  await Promise.all(
-    pages.map((page) =>
-      page.setViewportSize({ width: VIEW_WIDTH, height: viewHeight }).catch((err: unknown) => {
-        flog('agent-browser', `could not lay a page out at ${viewHeight}: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
-      }),
-    ),
-  )
-  flog('agent-browser', `pages laid out at ${VIEW_WIDTH}x${viewHeight} (${pages.length})`)
+  const page = lanePage(lane)
+  if (!page || page.viewportSize()?.height === wanted) return false
+  await page.setViewportSize({ width: VIEW_WIDTH, height: wanted }).catch((err: unknown) => {
+    flog('agent-browser', `could not lay a page out at ${wanted}: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
+  })
+  flog('agent-browser', `lane ${lane} laid out at ${VIEW_WIDTH}x${wanted}`)
   return true
 }
 
@@ -232,6 +226,7 @@ async function launchPatiently<T>(launch: () => Promise<T>): Promise<T> {
 // one profile: a sign-in made in any of them holds in all of them.
 export const DEFAULT_LANE = 'default'
 const lanes = new Map<string, Page>()
+let allocatingLane: string | null = null
 // The lane the person is looking at: the one the mirror follows, and the
 // one a tab opened by a link is handed to when its opener is not known.
 let activeLane = DEFAULT_LANE
@@ -413,6 +408,7 @@ async function ensureContext(): Promise<Ctx> {
       flog('agent-browser', 'closed')
     })
     ctx.on('page', (page) => {
+      const requestedLane = allocatingLane
       // A link that opened a new tab is followed there, by the lane whose
       // page opened it: the newest page is the one that lane now means.
       void page
@@ -424,7 +420,7 @@ async function ensureContext(): Promise<Ctx> {
           // back to the active lane here handed one comet's fresh tab to
           // whichever comet the person happened to be looking at.
           const claimed = laneOf(page)
-          const lane = claimed ?? (opener && laneOf(opener)) ?? activeLane
+          const lane = claimed ?? (opener && laneOf(opener)) ?? requestedLane ?? activeLane
           if (!claimed) lanes.set(lane, page)
           for (const watcher of pageWatchers) watcher(page, lane)
         })
@@ -440,7 +436,17 @@ async function ensureContext(): Promise<Ctx> {
   return opening
 }
 
-export async function ensureAgentPage(lane = DEFAULT_LANE): Promise<Page> {
+let assigningPage: Promise<unknown> = Promise.resolve()
+
+export function ensureAgentPage(lane = DEFAULT_LANE): Promise<Page> {
+  const held = lanePage(lane)
+  if (held) return Promise.resolve(held)
+  const next = assigningPage.catch(() => undefined).then(() => assignAgentPage(lane))
+  assigningPage = next
+  return next
+}
+
+async function assignAgentPage(lane: string): Promise<Page> {
   const ctx = await ensureContext()
   const held = lanePage(lane)
   if (held) return held
@@ -449,7 +455,11 @@ export async function ensureAgentPage(lane = DEFAULT_LANE): Promise<Page> {
   const spare = ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null)
   if (!spare && lanes.size > 0 && os.freemem() < LANE_MIN_FREE)
     throw new Error(`not enough free memory for another page while other work is open (${(os.freemem() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
-  const page = spare ?? (await ctx.newPage())
+  let page = spare
+  if (!page) {
+    allocatingLane = lane
+    try { page = await ctx.newPage() } finally { allocatingLane = null }
+  }
   lanes.set(lane, page)
   for (const watcher of pageWatchers) watcher(page, lane)
   return page

@@ -4,6 +4,14 @@ import { createAgentMirror } from '../src/renderer/src/lib/agentMirror.js'
 const FRAME = { type: 'agent:frame' as const, data: 'aGk=', width: 1280, height: 800, url: 'https://x.example/one' }
 
 describe('the browser picture outlives the view that showed it', () => {
+  it('keeps a same-lane navigation painted and clears a different lane', () => {
+    const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
+    mirror.handleEvent({ ...FRAME, lane: 'bot-one' })
+    mirror.handleEvent({ type: 'agent:live', on: true, lane: 'bot-one', url: 'https://x.example/two' })
+    expect(mirror.getSnapshot().frame).toBe(true)
+    mirror.handleEvent({ type: 'agent:live', on: true, lane: 'bot-two', url: 'https://x.example/other' })
+    expect(mirror.getSnapshot().frame).toBe(false)
+  })
   it('asks for frames only while a view is showing them, once for however many', () => {
     const asked: boolean[] = []
     const mirror = createAgentMirror({ watch: (on) => asked.push(on), ask: async () => ({ on: false }) })

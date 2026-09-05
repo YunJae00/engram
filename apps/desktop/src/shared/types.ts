@@ -89,6 +89,14 @@ export interface InboxDto {
 // core's EngineErrorKind — spelled out here because this file is the
 // renderer's only vocabulary, and main asserts core's union into it, so a new
 // kind in core breaks the build instead of silently rendering nothing.
+export interface MissionFrameDto {
+  lane: string
+  on: boolean
+  url?: string
+  data?: string
+  at?: number
+}
+
 export type EngineHealthReason = 'auth' | 'quota' | 'network' | 'timeout' | 'crash' | 'unknown'
 
 export interface EngineHealthDto {
@@ -484,12 +492,13 @@ export interface EngramApi {
   agentWatch(on: boolean): Promise<{ on: boolean; url?: string }>
   agentInput(input: AgentInputDto): Promise<void>
   agentWindow(show: boolean): Promise<void>
-  agentGo(url: string): Promise<void>
+  agentGo(url: string, lane?: string): Promise<void>
   // Take the picture again now: for a view left on a page that went still
   // half-drawn. sharp asks for every device pixel, for a view being read.
   agentRefresh(): Promise<void>
   // How tall the pages should lay themselves out, from the pane showing them.
-  agentHeight(height: number): Promise<void>
+  agentHeight(height: number, lane?: string): Promise<void>
+  missionFrames(lanes: string[]): Promise<MissionFrameDto[]>
   // Which comet's tab the pane shows; and a reset that closes that tab.
   agentLane(lane: string): Promise<{ on: boolean; url?: string }>
   agentReset(lane: string): Promise<void>

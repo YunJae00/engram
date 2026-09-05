@@ -27,6 +27,7 @@ No Engram account. No Engram subscription.
 
 ## Surfaces
 
+- **Mission Control** — monitor parallel comet conversations and their web previews in one, two, or four panels. Choose a chat per panel, bring running work into view, and open any panel to continue in that conversation. Pausing previews does not pause the work.
 - **Comets** — small helpers, each with a charter and its own conversation over the same memory. Work you repeat is saved on a comet as a task and run with one press.
 - **Cosmos** — every memory a star; brightness is memory strength, constellations are topics, gold halos mark recent recall. Chat is docked on its right edge: ask your memory, with hybrid retrieval (lexical + semantic + spreading activation) and instant source cards.
 - **Brain** — topics as readable pages, warm topics first, with the librarian's synthesis on top.

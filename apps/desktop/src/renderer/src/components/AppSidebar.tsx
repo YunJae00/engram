@@ -3,6 +3,7 @@ import {
   ChevronRight,
   CircleHelp,
   List,
+  PanelsTopLeft,
   MoreHorizontal,
   Orbit,
   PanelLeftClose,
@@ -108,7 +109,7 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     }
   }, [menu])
 
-  const navigate = (next: 'bots' | 'sky' | 'list') => {
+  const navigate = (next: 'bots' | 'sky' | 'list' | 'mission') => {
     setActivity(next)
     if (window.innerWidth <= 900) onToggle()
   }
@@ -191,6 +192,10 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
         <button className={`sidebar-nav-row${activity === 'list' ? ' active' : ''}`} data-testid="activity-list" onClick={() => navigate('list')}>
           <List size={16} strokeWidth={1.8} aria-hidden />
           <span>{t('activity.list')}</span>
+        </button>
+        <button className={`sidebar-nav-row${activity === 'mission' ? ' active' : ''}`} data-testid="activity-mission" onClick={() => navigate('mission')}>
+          <PanelsTopLeft size={16} strokeWidth={1.8} aria-hidden />
+          <span>{t('mission.title')}</span>
         </button>
       </nav>
 

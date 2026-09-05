@@ -10,7 +10,7 @@ import type {
 } from '../../shared/types.js'
 import type { Translate } from './i18n.js'
 
-export type Activity = 'bots' | 'sky' | 'list'
+export type Activity = 'bots' | 'sky' | 'list' | 'mission'
 
 export type SweepStatus =
   | { running: boolean; kind: 'idle' }
