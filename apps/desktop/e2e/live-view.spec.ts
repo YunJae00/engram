@@ -1,7 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -129,11 +129,30 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
   await page.getByTestId('activity-mission').click()
   await expect(page.locator('.mission-tile')).toHaveCount(4)
-  await expect(page.locator('.mission-preview img')).toHaveCount(4, { timeout: 15000 })
-  await page.screenshot({ path: join(REPO_TMP, 'mission-live.png') })
+  // Nothing is running in this vault, so the seats are open pluses; seat
+  // two chats by hand and watch their pages arrive beside their chats.
+  await page.getByTestId('mission-add-0').click()
+  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Parallel watch' }).click()
+  await page.getByTestId('mission-add-1').click()
+  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Third watch' }).click()
+  await expect(page.locator('.mission-preview img')).toHaveCount(2, { timeout: 15000 })
+  await expect(page.locator('.mini-chat')).toHaveCount(2)
+  // The CDP screenshot stalls on a hidden window that repaints on a timer;
+  // the app's own capture path does not, so the picture is taken there. A
+  // hidden window stops presenting frames, and a capture returns the last
+  // presented one — so a first capture wakes the compositor and a second,
+  // after a beat, gets the current render.
+  const shot = await app.evaluate(async ({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows().find((one) => !one.isDestroyed() && one.webContents.getURL().includes('index.html'))
+    if (!win) throw new Error('no app window to photograph')
+    await win.webContents.capturePage()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    return (await win.webContents.capturePage()).toPNG().toString('base64')
+  })
+  await writeFile(join(REPO_TMP, 'mission-live.png'), Buffer.from(shot, 'base64'))
   await page.getByTestId('mission-layout-2').click()
   await expect(page.locator('.mission-tile')).toHaveCount(2)
-  await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).click()
+  await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
   await expect(page.locator('.bots-head-name')).toHaveText('Parallel watch')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
 })

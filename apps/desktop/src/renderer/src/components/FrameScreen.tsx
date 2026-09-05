@@ -8,7 +8,7 @@ import { agentMirror } from '../lib/agentMirrorLive.js'
 // time - a frame that arrives while the last is still being read replaces it,
 // so the picture stays current and the queue never grows.
 
-export function FrameScreen({ className }: { className?: string }) {
+export function FrameScreen({ className, lane }: { className?: string; lane?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const surface = canvas.current
@@ -67,11 +67,15 @@ export function FrameScreen({ className }: { className?: string }) {
       image.onerror = done
       image.src = url
     }
+    // Looking at another comet: its last picture goes up at once, and the
+    // fresh still replaces it when it lands.
+    const kept = lane ? agentMirror.heldFor(lane) : null
+    if (kept) read(kept.data)
     const off = agentMirror.onFrame(read)
     return () => {
       alive = false
       off()
     }
-  }, [])
+  }, [lane])
   return <canvas ref={canvas} className={className} />
 }

@@ -36,6 +36,9 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
   // The newest picture, kept as it arrived: a canvas that has just appeared
   // paints this rather than waiting for the page to move.
   let pixels: string | null = null
+  // The last picture each lane showed, so a switch paints from memory
+  // instead of a blank beat while the fresh still travels.
+  const held = new Map<string, { data: string; width: number; height: number; url: string }>()
   const listeners = new Set<() => void>()
   const watchers = new Set<(data: string) => void>()
   let showing = 0
@@ -89,9 +92,15 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
         set(event.on ? { ...state, on: true, url: event.url, lane: event.lane ?? state.lane, frame: sameLane && state.frame } : { ...state, on: false })
       } else if (event.type === 'agent:frame') {
         pixels = event.data
+        held.set(event.lane, { data: event.data, width: event.width, height: event.height, url: event.url })
+        if (held.size > 8) held.delete(held.keys().next().value!)
         for (const watcher of watchers) watcher(event.data)
         set({ on: true, url: event.url, lane: event.lane, frame: true, width: event.width, height: event.height })
       }
+    },
+    // The picture a lane last showed, if any.
+    heldFor(lane: string): { data: string; width: number; height: number; url: string } | null {
+      return held.get(lane) ?? null
     },
     forget(): void {
       pixels = null

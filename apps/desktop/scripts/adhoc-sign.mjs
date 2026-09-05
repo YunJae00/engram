@@ -21,11 +21,37 @@
 // Real self-updates and a silent first launch need a paid Developer ID. This
 // is everything available without one.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const ICON_NAME = 'AppIcon'
+
+// electron-builder's Arch enum, by number — the hook receives the number.
+const ARCH_NAMES = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal' }
+
+// The files list ships BOTH chips' engine runtimes, because electron-builder
+// strips the ${arch} macro out of files globs instead of expanding it — a
+// per-arch pattern there silently matches nothing. So the arch choice is
+// made here instead: drop the other chip's runtimes from the unpacked tree
+// before the bundle is sealed, and each disk image keeps only its own.
+function pruneOtherChip(context, app) {
+  const arch = ARCH_NAMES[context.arch]
+  if (arch !== 'x64' && arch !== 'arm64') return
+  const other = arch === 'x64' ? 'arm64' : 'x64'
+  const modules = join(app, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules')
+  for (const dir of [
+    join(modules, '@anthropic-ai', `claude-agent-sdk-darwin-${other}`),
+    join(modules, '@openai', `codex-darwin-${other}`),
+  ]) {
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true })
+      console.log(`adhoc-sign: pruned ${other} runtime ${dir}`)
+    }
+  }
+  const own = join(modules, '@anthropic-ai', `claude-agent-sdk-darwin-${arch}`)
+  if (!existsSync(own)) console.warn(`adhoc-sign: WARNING — no ${arch} engine runtime in the bundle`)
+}
 
 function which(tool) {
   try {
@@ -77,6 +103,7 @@ function compileIcon(context, app) {
 export default async function adhocSign(context) {
   if (context.electronPlatformName !== 'darwin') return
   const app = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+  pruneOtherChip(context, app)
   compileIcon(context, app)
   // --deep so the nested helpers and the unpacked runtimes (spawned from real
   // paths, outside the asar) are sealed too:

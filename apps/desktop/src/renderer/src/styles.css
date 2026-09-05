@@ -1968,15 +1968,58 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .mission-head h1 { font-size: 20px; font-weight: 650; letter-spacing: -0.025em; margin: 0 0 5px; }
 .mission-head p { margin: 0; color: var(--fg-faint); font-size: var(--fs-small); }
 .mission-actions { display: flex; align-items: center; gap: 10px; }
-.mission-follow { font-size: var(--fs-small); color: var(--fg-dim); padding: 7px 10px; }
-.mission-follow:hover { background: var(--hover-bg); }
 .mission-layout { display: flex; gap: 2px; padding: 3px; background: var(--selected-soft); border-radius: 10px; }
 .mission-layout button { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 7px; color: var(--fg-faint); }
 .mission-layout button[aria-pressed='true'] { color: var(--fg); background: var(--panel-bg); box-shadow: 0 1px 4px #0000000d; }
-.mission-pause { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--fg-dim); }
-.mission-pause:hover { background: var(--hover-bg); }
 .mission-grid { flex: 1; min-height: 0; display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(240px, 1fr); }
 .mission-grid-1 { grid-template-columns: minmax(0, 1fr); }
+/* Every seat is a working pair: in the 1- and 4-panel layouts the page sits
+   left and the conversation right; in the 2-panel layout each seat stacks
+   the page above its conversation. */
+.mission-tile-body { flex: 1; min-height: 0; display: flex; }
+.mission-grid-1 .mission-tile-body, .mission-grid-4 .mission-tile-body { flex-direction: row; }
+.mission-grid-2 .mission-tile-body { flex-direction: column; }
+.mission-grid-1 .mission-preview, .mission-grid-4 .mission-preview { flex: 3; min-width: 0; }
+.mission-grid-1 .mini-chat, .mission-grid-4 .mini-chat { flex: 2; min-width: 220px; border-left: 1px solid var(--border-soft); }
+.mission-grid-2 .mission-preview { flex: 3; min-height: 0; }
+.mission-grid-2 .mini-chat { flex: 2; min-height: 140px; border-top: 1px solid var(--border-soft); }
+.mission-name { font-size: var(--fs-small); font-weight: 650; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.mission-tile-head .mission-enter {
+  display: inline-flex; align-items: center; gap: 3px; flex: none;
+  font-size: var(--fs-micro); font-weight: 600; color: var(--fg-faint); padding: 4px 8px; border-radius: 999px;
+}
+.mission-tile-head .mission-enter:hover { background: var(--hover-bg); color: var(--fg); }
+/* The open seat: one plus, and the two ways to fill it. */
+.mission-open-seat { align-items: center; justify-content: center; }
+.mission-add {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: var(--fg-faint); font-size: var(--fs-small); font-weight: 600; padding: 30px; border-radius: var(--radius-card);
+}
+.mission-add:hover { color: var(--fg); background: var(--hover-bg); }
+.mission-add-menu { display: flex; flex-direction: column; gap: 2px; padding: 10px; max-height: 100%; overflow-y: auto; min-width: 200px; }
+.mission-add-menu button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--radius-m);
+  font-size: var(--fs-small); color: var(--fg-dim); text-align: left;
+}
+.mission-add-menu button:hover { background: var(--hover-bg); color: var(--fg); }
+.mission-add-menu .mission-add-new { font-weight: 650; color: var(--fg); }
+.mission-add-menu .mission-add-cancel { color: var(--fg-faint); }
+/* The tile's little conversation. */
+.mini-chat { display: flex; flex-direction: column; min-width: 0; background: var(--panel-bg); }
+.mini-chat-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
+.mini-chat-empty, .mini-chat-status { margin: 0; font-size: var(--fs-micro); color: var(--fg-faint); }
+.mini-msg { font-size: var(--fs-small); line-height: 1.5; max-width: 100%; overflow-wrap: anywhere; }
+.mini-msg.user { align-self: flex-end; background: var(--hover-bg); border-radius: 12px; padding: 5px 10px; max-width: 88%; }
+.mini-chat-write { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border-soft); }
+.mini-chat-write input {
+  flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: 999px;
+  background: var(--rail-bg); border: 0; box-shadow: inset 0 0 0 1px var(--border-soft); font-size: var(--fs-small); color: var(--fg);
+}
+.mini-chat-send, .mini-chat-stop {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 26px; height: 26px; border-radius: 50%; background: var(--selected-bg); color: var(--selected-fg);
+}
+.mini-chat-stop { background: var(--clay); }
 .mission-tile { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel-bg); border: 1px solid var(--border-soft); border-radius: 16px; box-shadow: 0 4px 16px -12px #00000026; }
 .mission-tile-head { height: 46px; flex: none; display: flex; align-items: center; gap: 9px; padding: 0 12px; border-bottom: 1px solid var(--border-soft); }
 .mission-number { font-family: var(--mono); font-size: 10px; color: var(--fg-faint); }
@@ -1990,8 +2033,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .mission-text svg { color: var(--fg-faint); }
 .mission-text strong { font-size: var(--fs-body); font-weight: 550; }
 .mission-text p { margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--fg-dim); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; white-space: pre-wrap; }
-.mission-enter { position: absolute; bottom: 10px; right: 10px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 9px; background: var(--widget-bg); box-shadow: var(--shadow-float); font-size: var(--fs-small); opacity: 0; transform: translateY(3px); transition: opacity 120ms ease, transform 120ms ease; }
-.mission-preview:hover .mission-enter, .mission-preview:focus-visible .mission-enter { opacity: 1; transform: none; }
 .mission-tile-foot { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; padding: 0 12px; border-top: 1px solid var(--border-soft); color: var(--fg-faint); font-size: 10px; }
 .mission-tile-foot > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mission-tile-foot small { flex: none; font-size: 10px; }
@@ -2004,7 +2045,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   .mission-number, .mission-status { display: none; }
   .mission-text { padding: 14px; }
 }
-@media (prefers-reduced-motion: reduce) { .mission-enter { transition: none; } }
 /* ── Workspace switcher (top-bar vault selector) ─────────────── */
 .workspace-switcher { position: relative; flex: none; -webkit-app-region: no-drag; }
 .workspace-trigger {
