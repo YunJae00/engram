@@ -10,6 +10,7 @@ interface Props {
   busy: boolean
   disabled?: boolean
   testId?: string
+  autoFocus?: boolean
   tools?: ReactNode
   onChange(value: string): void
   onSend(): void
@@ -18,7 +19,7 @@ interface Props {
 
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
-    { value, placeholder, maxLength, busy, disabled = false, testId, tools, onChange, onSend, onStop },
+    { value, placeholder, maxLength, busy, disabled = false, testId, autoFocus = false, tools, onChange, onSend, onStop },
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -36,6 +37,7 @@ export const ChatComposer = memo(
         <textarea
           ref={inputRef}
           data-testid={testId}
+          autoFocus={autoFocus}
           rows={1}
           maxLength={maxLength}
           placeholder={placeholder}

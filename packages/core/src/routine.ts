@@ -23,7 +23,7 @@ import {
 // keeps a 99-in-100 success rate reachable at all.
 
 export * from './routine-model.js'
-export { addRoutine, clearRoutinePendingWrite, listRoutines, markRoutineRun, removeRoutine } from './routine-store.js'
+export { addRoutine, clearRoutinePendingWrite, listRoutines, markRoutineRun, removeRoutine, renameRoutine } from './routine-store.js'
 
 // One card body: generous enough for a few portal pages, small enough that
 // review stays readable.

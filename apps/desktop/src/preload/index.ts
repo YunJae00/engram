@@ -90,6 +90,7 @@ const api: EngramApi = {
   errandJournal: () => ipcRenderer.invoke('errand:journal'),
   botsList: () => ipcRenderer.invoke('bots:list'),
   botCreate: (input: { name: string; purpose?: string }) => ipcRenderer.invoke('bots:create', input),
+  botRename: (id: string, name: string) => ipcRenderer.invoke('bots:rename', id, name),
   botDelete: (id: string) => ipcRenderer.invoke('bots:delete', id),
   botTranscript: (id: string) => ipcRenderer.invoke('bots:transcript', id),
   botTaskAdd: (botId: string, input: { name: string; goal: string; schedule?: { days: number[]; hour: number; minute: number }; routineId?: string }) =>
@@ -104,6 +105,7 @@ const api: EngramApi = {
   errandWallDone: (verdict: 'resolved' | 'skip') => ipcRenderer.invoke('errand:wallDone', verdict),
   routinesList: () => ipcRenderer.invoke('routines:list'),
   routineAdd: (input: { name: string; steps: RoutineStepDto[] }) => ipcRenderer.invoke('routines:add', input),
+  routineRename: (id: string, name: string) => ipcRenderer.invoke('routines:rename', id, name),
   routineRemove: (id: string) => ipcRenderer.invoke('routines:remove', id),
   routineRun: (id: string, force?: boolean, slots?: Record<string, string>) =>
     ipcRenderer.invoke('routines:run', id, force, slots),

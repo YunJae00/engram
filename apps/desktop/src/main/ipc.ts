@@ -77,6 +77,7 @@ import {
   loadBotMemory,
   renderMemory,
   removeRoutine,
+  renameRoutine,
   routineBlock,
   runRoutine,
   safeInboxName,
@@ -1110,6 +1111,10 @@ export function registerIpc(ctx: VaultContext): void {
     broadcast({ type: 'bots:changed' })
     return bot
   })
+  ipcMain.handle('bots:rename', async (_e, id: string, name: string) => {
+    await renameBot(paths, id, name)
+    broadcast({ type: 'bots:changed' })
+  })
   ipcMain.handle('bots:delete', async (_e, id: string) => {
     await deleteBot(paths, id)
     broadcast({ type: 'bots:changed' })
@@ -1181,11 +1186,20 @@ export function registerIpc(ctx: VaultContext): void {
 
   const approvals = approvalsStore(app.getPath('userData'))
   ipcMain.handle('routines:list', () => listRoutines(paths))
-  ipcMain.handle('routines:add', (_e, input: { name: string; steps: RoutineStep[] }) => addRoutine(paths, input))
+  ipcMain.handle('routines:add', async (_e, input: { name: string; steps: RoutineStep[] }) => {
+    const routine = await addRoutine(paths, input)
+    broadcast({ type: 'vault:changed' })
+    return routine
+  })
+  ipcMain.handle('routines:rename', async (_e, id: string, name: string) => {
+    await renameRoutine(paths, id, name)
+    broadcast({ type: 'vault:changed' })
+  })
   // A rule is about one procedure; the procedure going takes it along.
   ipcMain.handle('routines:remove', async (_e, id: string) => {
     await removeRoutine(paths, id)
     await approvals.retire(id)
+    broadcast({ type: 'vault:changed' })
   })
 
   // Starting a replay, guarded once for every caller: the Run button, which

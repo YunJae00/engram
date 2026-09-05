@@ -547,6 +547,7 @@ export interface EngramApi {
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
   botCreate(input: { name: string; purpose?: string }): Promise<BotDto>
+  botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
@@ -566,6 +567,7 @@ export interface EngramApi {
   errandWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   routinesList(): Promise<RoutineDto[]>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
+  routineRename(id: string, name: string): Promise<void>
   routineRemove(id: string): Promise<void>
   // Detached like errandStart: resolves once the replay has started (or was
   // refused); steps and the outcome arrive as routine:* events.

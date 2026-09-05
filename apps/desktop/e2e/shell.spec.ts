@@ -157,38 +157,41 @@ test('the cosmos chat collapses and comes back', async () => {
   await expect(page.getByTestId('cosmos-chat-input')).toBeVisible()
 })
 
-test('the comets rail folds away and returns', async () => {
-  // The vault may still be opening when this is the first test a fresh
-  // worker runs (a retry, or the worker after another test's failure) - and
-  // an invoke before the vault's handlers exist is an error, not a wait.
+test('the app sidebar groups chats and routines, renames them, and folds away', async () => {
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
-  // A comet to fold beside: the strip is judged by what it keeps reachable.
-  await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
+  if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
+  const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await page.getByTestId('activity-bots').click()
-  // The strip remembers being folded, and this machine may carry that choice
-  // from an earlier session: start from open, whatever it remembers.
-  if (await page.getByTestId('comets-rail-open').count()) await page.getByTestId('comets-rail-open').click()
-  await page.getByTestId('comets-rail-close').click()
-  // Folded, the rail keeps a strip of its own: the reopen control lives INSIDE
-  // the layout, so the thread beside it widens instead of hiding underneath a
-  // floating button.
-  await expect(page.getByTestId('comets-rail-folded')).toBeVisible()
-  await expect(page.getByTestId('comets-rail-open')).toBeVisible()
-  // Folded, every comet is still one click away as a chip, and the plus makes
-  // a new one and opens the rail to show it, instead of dead-ending in the strip.
-  const chip = page.locator('[data-testid^="bot-"]').first()
-  await expect(chip).toBeVisible()
-  await chip.click()
-  await expect(chip).toHaveClass(/active/)
+  await expect(page.getByTestId('sidebar-chats')).toContainText('Scout')
+
+  await page.getByTestId(`sidebar-chat-menu-${bot.id}`).click()
+  await page.getByTestId(`sidebar-chat-rename-${bot.id}`).click()
+  await page.getByTestId(`sidebar-chat-name-${bot.id}`).fill('Field Scout')
+  await page.getByTestId(`sidebar-chat-name-${bot.id}`).press('Enter')
+  await expect(page.getByTestId('sidebar-chats')).toContainText('Field Scout')
+  await expect.poll(async () => (await page.evaluate(() => window.engram.botsList())).some((item) => item.name === 'Field Scout')).toBe(true)
+
+  const routine = await page.evaluate(() => window.engram.routineAdd({ name: 'Portal notices', steps: [{ kind: 'open', url: 'https://example.com/notices' }] }))
+  await expect(page.getByTestId('sidebar-routines')).toContainText('Portal notices')
+  await page.getByTestId(`sidebar-routine-menu-${routine.id}`).click()
+  await page.getByTestId(`sidebar-routine-rename-${routine.id}`).click()
+  await page.getByTestId(`sidebar-routine-name-${routine.id}`).fill('Morning portal')
+  await page.getByTestId(`sidebar-routine-name-${routine.id}`).press('Enter')
+  await expect(page.getByTestId('sidebar-routines')).toContainText('Morning portal')
+
+  await page.getByTestId('sidebar-chats-toggle').click()
+  await expect(page.getByTestId('sidebar-chats')).toHaveCount(0)
+  await page.getByTestId('sidebar-chats-toggle').click()
+  await expect(page.getByTestId('sidebar-chats')).toBeVisible()
+
+  await page.getByTestId('app-sidebar-close').click()
+  await expect(page.getByTestId('app-sidebar')).not.toBeVisible()
+  await expect(page.getByTestId('app-sidebar-open')).toBeVisible()
+  await page.getByTestId('app-sidebar-open').click()
+  await expect(page.getByTestId('app-sidebar')).toBeVisible()
+
   await page.getByTestId('bots-new').click()
-  await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)
   await expect(page.locator('.bots-row.active')).toContainText('New comet')
-  await page.getByTestId('comets-rail-close').click()
-  await expect(page.getByTestId('comets-rail-open')).toBeVisible()
-  await page.getByTestId('comets-rail-open').click()
-  await expect(page.getByTestId('comets-rail-folded')).toHaveCount(0)
-  await expect(page.getByTestId('bots-new')).toBeVisible()
-  // A turned-down suggestion leaves the rail and does not return after a reload.
   const scout = page.getByTestId('bots-suggestion').filter({ hasText: 'Research scout' })
   await expect(scout).toBeVisible()
   await scout.getByTestId('bots-suggestion-dismiss').click()
@@ -201,7 +204,7 @@ test('the comets rail folds away and returns', async () => {
   await page.getByTestId('activity-sky').click()
 })
 
-test('help hangs from the top bar, beside settings', async () => {
+test('help is reachable from the sidebar on every view', async () => {
   await expect(page.getByTestId('help-panel')).toHaveCount(0)
   await page.getByTestId('help-button').click()
   await expect(page.getByTestId('help-panel')).toBeVisible()

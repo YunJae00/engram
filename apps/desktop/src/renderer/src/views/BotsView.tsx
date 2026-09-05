@@ -1,12 +1,10 @@
 import { Clock, Orbit, Play, Trash2, X, MessageSquarePlus } from 'lucide-react'
-import { Comet } from '../components/Icon.js'
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { BotDto, BotSuggestionDto } from '../../../shared/types.js'
+import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
 import { CometOffer } from '../components/CometOffer.js'
 import { CometMemory } from '../components/CometMemory.js'
-import { CometRail } from '../components/CometRail.js'
 import { CometWork } from '../components/CometWork.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
@@ -43,10 +41,8 @@ const PHASE_LABEL: Record<string, StringKey> = {
 export const BotsView = memo(function BotsView() {
   const { errand, routine, startRoutine } = useCometState()
   const [bots, setBots] = useState<BotDto[]>([])
-  const [suggestions, setSuggestions] = useState<BotSuggestionDto[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const [memoryOpen, setMemoryOpen] = useState(false)
-  const [railOpen, setRailOpen] = useState(() => localStorage.getItem('engram.comets.rail') !== '0')
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
@@ -70,9 +66,8 @@ export const BotsView = memo(function BotsView() {
   // make - before turning into the list a moment later.
   const [loaded, setLoaded] = useState(false)
   const reload = async (keepSelection = true) => {
-    const [list, recs] = await Promise.all([api.botsList(), api.botsRecommend().catch(() => [])])
+    const list = await api.botsList()
     setBots(list)
-    setSuggestions(recs)
     setLoaded(true)
     const current = cometThreads.getSnapshot().selectedId
     if (!keepSelection || !list.some((b) => b.id === current)) selectComet(list[0]?.id ?? null)
@@ -123,17 +118,13 @@ export const BotsView = memo(function BotsView() {
   // ordinary turn, where the comet finds the recorded procedure and replays
   // the path that worked, filling in by hand only where the page differs.
   // The person watches it in the thread like any other ask.
-  const runTaskOf = (botId: string, task: { id: string; name: string; goal: string }) => {
-    if (cometThreads.thread(botId).busy) return
-    if (botId !== selectedId) selectComet(botId)
-    void api.botTaskRan(botId, task.id).catch(() => undefined)
-    const history = cometThreads.begin(botId, task.goal)
-    void api
-      .chatSend({ engineId: '', message: task.goal, history, channel: cometChannel(botId), botId })
-      .catch(() => cometThreads.fail?.(botId, 'the turn could not start'))
-  }
   const runTask = (task: { id: string; name: string; goal: string }) => {
-    if (selected) runTaskOf(selected.id, task)
+    if (!selected || cometThreads.thread(selected.id).busy) return
+    void api.botTaskRan(selected.id, task.id).catch(() => undefined)
+    const history = cometThreads.begin(selected.id, task.goal)
+    void api
+      .chatSend({ engineId: '', message: task.goal, history, channel: cometChannel(selected.id), botId: selected.id })
+      .catch(() => cometThreads.fail?.(selected.id, 'the turn could not start'))
   }
 
   // What a chat answer leaves you wanting: the web, when the vault did not
@@ -153,14 +144,6 @@ export const BotsView = memo(function BotsView() {
     await reload()
   }
 
-  const create = async (name: string, purpose: string): Promise<boolean> => {
-    const bot = await api.botCreate({ name, purpose }).catch(() => null)
-    if (!bot) return false
-    await reload()
-    selectComet(bot.id)
-    return true
-  }
-
   const remove = async (id: string) => {
     await api.botDelete(id).catch(() => undefined)
     setConfirmingDelete(null)
@@ -168,32 +151,8 @@ export const BotsView = memo(function BotsView() {
     await reload(false)
   }
 
-  // The card leaves at once; the vault remembers the refusal so the next
-  // reload does not bring it back.
-  const dismiss = async (name: string) => {
-    setSuggestions((prev) => prev.filter((s) => s.name !== name))
-    await api.botSuggestionDismiss(name).catch(() => undefined)
-  }
-
-  useEffect(() => {
-    localStorage.setItem('engram.comets.rail', railOpen ? '1' : '0')
-  }, [railOpen])
-
   return (
     <div className="bots-view" data-testid="bots-view">
-      <CometRail
-        bots={bots}
-        suggestions={suggestions}
-        selectedId={selectedId}
-        open={railOpen}
-        onToggle={() => setRailOpen(!railOpen)}
-        onSelect={selectComet}
-        onCreate={create}
-        onDismiss={(name) => void dismiss(name)}
-        onRunTask={runTaskOf}
-        running={errand.running}
-      />
-
       <section className="bots-main">
         {selected ? (
           <>
@@ -331,9 +290,7 @@ export const BotsView = memo(function BotsView() {
               <SubmitGate />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
-                  <span className="bots-errand-pulse">
-                    <Comet size={14} />
-                  </span>
+                  <ThinkingDots />
                   <span className="bots-working-body">
                     <span className="bots-working-line">
                       {t('bots.errandRunning', {
@@ -371,7 +328,6 @@ export const BotsView = memo(function BotsView() {
           </>
         ) : loaded ? (
           <div className="bots-empty">
-            <Comet size={30} />
             <div className="bots-empty-title">{t('bots.emptyTitle')}</div>
             <div className="bots-empty-hint">{t('bots.emptyHint')}</div>
           </div>

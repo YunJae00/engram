@@ -33,7 +33,7 @@ const layout = async (name: string) => {
     bodyStyle: document.body.getAttribute('style'),
     shell: Math.round(document.querySelector('.shell')?.getBoundingClientRect().width ?? -1),
     workspace: Math.round(document.querySelector('.workspace-switcher')?.getBoundingClientRect().width ?? -1),
-    rail: Math.round(document.querySelector('.bots-rail')?.getBoundingClientRect().width ?? -1),
+    rail: Math.round(document.querySelector('.app-sidebar')?.getBoundingClientRect().width ?? -1),
   }))
   console.log(name, data)
 }
@@ -48,10 +48,10 @@ await page.locator('.bots-write textarea').fill('첫 줄\n둘째 줄\n셋째 줄
 await page.waitForTimeout(200)
 await shot('comets-composer-3-lines')
 await page.locator('.bots-write textarea').fill('')
-await page.getByTestId('comets-rail-close').click()
+await page.getByTestId('app-sidebar-close').click()
 await page.waitForTimeout(500)
 await shot('comets-folded')
-await page.getByTestId('comets-rail-open').click()
+await page.getByTestId('app-sidebar-open').click()
 await page.waitForTimeout(250)
 await page.getByTestId('activity-sky').click()
 await page.waitForTimeout(800)

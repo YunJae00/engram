@@ -3,7 +3,6 @@ import { Check, ChevronDown, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { Logomark } from './Icon.js'
 import { DialogHeader } from './DialogHeader.js'
 
 // Top-bar vault selector: swaps between registered workspaces. Switching,
@@ -98,7 +97,6 @@ export function WorkspaceSwitcher() {
         onClick={() => setOpen((v) => !v)}
         title={t('ws.switch')}
       >
-        <Logomark size={20} />
         <span className="workspace-name">{currentName}</span>
         <ChevronDown className="workspace-chevron" size={13} strokeWidth={1.8} aria-hidden />
       </button>
@@ -180,7 +178,6 @@ export function WorkspaceSwitcher() {
 
       {switching !== null && (
         <div className="workspace-switching" data-testid="workspace-switching">
-          <Logomark size={30} />
           <span className="workspace-switching-title">{t('ws.switching', { name: switching })}</span>
           <span className="workspace-switching-sub">{t('ws.switchingSub')}</span>
         </div>

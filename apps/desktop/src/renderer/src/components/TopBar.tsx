@@ -1,14 +1,11 @@
-import { CircleHelp, Globe, List, Orbit } from 'lucide-react'
+import { Globe, PanelLeftOpen } from 'lucide-react'
 import { ThinkingDots } from './Thinking.js'
-import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
 import { api } from '../api.js'
 import { useTopBarState } from '../state-slices.js'
-import { Icon } from './Icon.js'
-import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
 import { DialogHeader } from './DialogHeader.js'
 
 function syncLabel(t: Translate, status: SyncStatusDto | null): string {
@@ -41,13 +38,12 @@ function sweepLabel(t: Translate, status: SweepStatus): string {
   }
 }
 
-// The one chrome strip: canvas tabs on the left, actions + quiet status on
-// the right. Everything else lives on the canvas or in overlays.
-export function TopBar({ onOpenSettings, onOpenPalette }: {
-  onOpenSettings(): void
-  onOpenPalette(): void
+// The content header keeps the current view and live operational status visible.
+export function TopBar({ sidebarOpen, onToggleSidebar }: {
+  sidebarOpen: boolean
+  onToggleSidebar(): void
 }) {
-  const { activity, setActivity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
+  const { activity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   // Present but not usable — the dot must not claim otherwise.
@@ -159,31 +155,14 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
 
   return (
     <header className="topbar" data-testid="topbar">
-      <WorkspaceSwitcher />
-
-      <nav className="canvas-tabs" aria-label={t('topbar.canvas')}>
-        <button
-          className={`canvas-tab${activity === 'bots' ? ' active' : ''}`}
-          data-testid="activity-bots"
-          onClick={() => setActivity('bots')}
-        >
-          <Comet size={14} /> <span className="canvas-tab-label">{t('topbar.tabBots')}</span>
+      {!sidebarOpen && (
+        <button className="topbar-sidebar-toggle" data-testid="app-sidebar-open" title={t('rail.show')} onClick={onToggleSidebar}>
+          <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
         </button>
-        <button
-          className={`canvas-tab${activity === 'sky' ? ' active' : ''}`}
-          data-testid="activity-sky"
-          onClick={() => setActivity('sky')}
-        >
-          <Orbit size={14} strokeWidth={1.8} aria-hidden /> <span className="canvas-tab-label">{t('topbar.tabSky')}</span>
-        </button>
-        <button
-          className={`canvas-tab${activity === 'list' ? ' active' : ''}`}
-          data-testid="activity-list"
-          onClick={() => setActivity('list')}
-        >
-          <List size={14} strokeWidth={1.8} aria-hidden /> <span className="canvas-tab-label">{t('activity.list')}</span>
-        </button>
-      </nav>
+      )}
+      <span className="topbar-title">
+        {activity === 'bots' ? t('topbar.tabBots') : activity === 'sky' ? t('topbar.tabSky') : t('activity.list')}
+      </span>
 
       <div className="topbar-spacer" />
 
@@ -239,23 +218,6 @@ export function TopBar({ onOpenSettings, onOpenPalette }: {
           {syncLabel(t, sync)}
         </button>
       )}
-
-
-      <button className="topbar-action" onClick={onOpenPalette} title={t('topbar.searchTitle')}>
-        <Icon name="search" size={15} />
-      </button>
-      <button
-        className="topbar-action"
-        data-testid="help-button"
-        onClick={() => window.dispatchEvent(new Event('engram:open-help'))}
-        title={t('help.open')}
-      >
-        <CircleHelp size={15} strokeWidth={1.8} aria-hidden />
-      </button>
-      <button className="topbar-action" data-testid="activity-settings" onClick={onOpenSettings} title={t('topbar.settingsTitle')}>
-        <Icon name="settings" size={15} />
-      </button>
-
       {/* Today lives in TodayDock, floating inside the canvas — putting it in
           this bar sat it on top of the native window controls. */}
 

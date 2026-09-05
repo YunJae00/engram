@@ -43,6 +43,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, onSend
   return (
     <div className="bots-write">
       <ChatComposer
+        testId="bots-input"
+        autoFocus
         value={value}
         placeholder={locked ? t('errands.busy') : t('bots.placeholder', { name: botName })}
         maxLength={2000}

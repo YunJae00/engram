@@ -30,7 +30,6 @@ type CometState = Pick<
 type TopBarState = Pick<
   AppState,
   | 'activity'
-  | 'setActivity'
   | 'engines'
   | 'sweepStatus'
   | 'filing'
@@ -114,7 +113,6 @@ export function StateSlices({ state, children }: { state: AppState; children: Re
   const topBar = useMemo<TopBarState>(
     () => ({
       activity: state.activity,
-      setActivity: state.setActivity,
       engines: state.engines,
       sweepStatus: state.sweepStatus,
       filing: state.filing,

@@ -49,13 +49,3 @@ export function Comet({ size = 15 }: { size?: number }) {
     </svg>
   )
 }
-
-// The app wears the same little star the comets do: one face for the whole
-// product, in the corner and on the rail alike.
-export function Logomark({ size = 20 }: { size?: number }) {
-  return (
-    <span className="logomark" aria-hidden>
-      <Comet size={size} />
-    </span>
-  )
-}

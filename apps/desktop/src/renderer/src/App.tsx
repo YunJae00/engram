@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from './api.js'
 import { AppNotices } from './components/AppNotices.js'
+import { AppSidebar } from './components/AppSidebar.js'
 import { HelpPanel } from './components/HelpPanel.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
@@ -58,6 +59,8 @@ function Shell() {
   // "Delegate an errand…" from the command palette raises this one window intent.
   const [errandOpen, setErrandOpen] = useState(false)
   const [routinesOpen, setRoutinesOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
+  useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
@@ -120,6 +123,9 @@ function Shell() {
       } else if (key === 'l') {
         e.preventDefault()
         setActivity('bots')
+      } else if (key === 'b') {
+        e.preventDefault()
+        setSidebarOpen((open) => !open)
       }
     }
     window.addEventListener('keydown', handler)
@@ -239,7 +245,7 @@ function Shell() {
 
   return (
     <div
-      className="shell"
+      className={`shell sidebar-${sidebarOpen ? 'open' : 'closed'}`}
       data-testid="shell"
       onDragEnter={(e) => {
         e.preventDefault()
@@ -257,20 +263,26 @@ function Shell() {
       }}
       onDrop={(e) => void onDrop(e)}
     >
-      <TopBar
+      <AppSidebar
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen((value) => !value)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => setPalette('search')}
+        onOpenRoutines={() => setRoutinesOpen(true)}
       />
-      <AppNotices
-        engines={engines}
-        enginesDetected={enginesDetected}
-        pendingWork={pendingWork}
-        updateReady={updateReady}
-        updateSelfInstalls={updateSelfInstalls}
-        vaultReady={vaultReady}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-      <div className="canvas">
+      {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
+      <main className="app-main">
+        <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} />
+        <AppNotices
+          engines={engines}
+          enginesDetected={enginesDetected}
+          pendingWork={pendingWork}
+          updateReady={updateReady}
+          updateSelfInstalls={updateSelfInstalls}
+          vaultReady={vaultReady}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        <div className="canvas">
         {/* While a big vault is still being read the views would all claim
             "nothing here" — show the opening state until vault:ready. */}
         {vaultError ? (
@@ -313,9 +325,9 @@ function Shell() {
             <Suspense fallback={null}>{activity === 'sky' && <CosmosChat />}</Suspense>
           </>
         )}
-        {/* Hung from the top bar now, so it is available wherever the bar is. */}
-        <HelpPanel />
-      </div>
+          <HelpPanel />
+        </div>
+      </main>
 
       {/* Every one of these is off screen until something opens it, so a
           chunk still on its way shows nothing rather than a spinner. */}

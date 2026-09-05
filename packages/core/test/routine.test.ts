@@ -7,6 +7,7 @@ import {
   addRoutine,
   listRoutines,
   removeRoutine,
+  renameRoutine,
   fillSlots,
   routineSlots,
   routineStepLabel,
@@ -67,6 +68,16 @@ describe('routine CRUD', () => {
     expect((await listRoutines(paths)).map((r) => r.name)).toEqual(['Portal notices'])
     await removeRoutine(paths, saved.id)
     expect(await listRoutines(paths)).toEqual([])
+  })
+
+  it('renames a routine without changing its steps', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-rename'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Portal notices', steps: [OPEN, READ] })
+    await renameRoutine(paths, saved.id, 'Morning portal')
+    const [renamed] = await listRoutines(paths)
+    expect(renamed?.name).toBe('Morning portal')
+    expect(renamed?.steps).toEqual([OPEN, READ])
+    await expect(renameRoutine(paths, saved.id, '  ')).rejects.toThrow('needs a name')
   })
 
   it('rejects a nameless routine and invalid steps with human words', async () => {

@@ -1,5 +1,4 @@
 import { Square } from 'lucide-react'
-import { Comet } from './Icon.js'
 import { useEffect, useState } from 'react'
 import type { ErrandRunDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -77,7 +76,6 @@ export function ErrandsSheet({ onClose }: { onClose(): void }) {
       <div className="brief-box errands-box" onClick={(e) => e.stopPropagation()} data-testid="errands-sheet">
         <DialogHeader
           closeLabel={t('topbar.close')}
-          icon={<Comet size={16} />}
           onClose={onClose}
         >
           {t('errands.title')}

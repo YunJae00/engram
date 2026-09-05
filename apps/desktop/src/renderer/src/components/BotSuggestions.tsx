@@ -15,7 +15,7 @@ export function BotSuggestions({ suggestions, onCreate, onDismiss }: Props) {
   if (suggestions.length === 0) return null
   return (
     <div className="bots-suggested" data-testid="bots-suggested">
-      <div className="bots-rail-head">{t('bots.suggestedTitle')}</div>
+      <div className="sidebar-suggestions-head">{t('bots.suggestedTitle')}</div>
       {suggestions.map((rec) => (
         <div key={rec.name} className="bots-suggestion" data-testid="bots-suggestion">
           <div className="bots-suggestion-head">

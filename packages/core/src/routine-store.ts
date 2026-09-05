@@ -113,6 +113,17 @@ export async function addRoutine(
   return toRoutine(note)!
 }
 
+export async function renameRoutine(paths: VaultPaths, id: string, nextName: string, now: Date = new Date()): Promise<void> {
+  const name = nextName.trim().slice(0, ROUTINE_NAME_CAP)
+  if (!name) throw new Error('a routine needs a name')
+  const note = await readNote(paths, id)
+  const routine = toRoutine(note)
+  if (!routine) throw new Error('no such routine')
+  note.body = routineBody(name, routine.steps)
+  note.front.updated = now.toISOString()
+  await writeNote(paths, note)
+}
+
 // Archive, not delete: the note keeps its history and leaves the list.
 export async function removeRoutine(paths: VaultPaths, id: string, now: Date = new Date()): Promise<void> {
   try {

@@ -32,7 +32,7 @@ await page.evaluate(async () => {
   if (bots[0]) await window.engram.botTaskAdd(bots[0].id, { name: 'Morning headlines', goal: 'Open the news front page and list the headlines' })
 })
 await page.waitForTimeout(400)
-await page.locator('.bots-rail button', { hasText: 'reader' }).first().click().catch(() => {})
+await page.locator('.app-sidebar button', { hasText: 'reader' }).first().click().catch(() => {})
 await page.waitForTimeout(400)
 // The model picker, open, beside the composer - once the plan's list is in.
 for (let i = 0; i < 40; i++) {
