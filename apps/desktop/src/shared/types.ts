@@ -378,13 +378,13 @@ export type EngramEvent =
   // The comet's tool loop narrating one step of its work on this channel.
   // The agent browser's mirror: whether there is a page to show, and each
   // frame of it while a view is open. Frames are shown and dropped.
-  | { type: 'agent:live'; on: boolean; url?: string }
+  | { type: 'agent:live'; on: boolean; url?: string; lane?: string }
   // Where the comet's hand is about to land on the mirrored page, as fractions.
   | { type: 'agent:pointer'; x: number; y: number; kind: 'move' | 'press' }
   // An offer written after the answer already went out; same shape the
   // done event carries.
   | { type: 'chat:offer'; channel: string; offer: NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']> }
-  | { type: 'agent:frame'; data: string; width: number; height: number; url: string }
+  | { type: 'agent:frame'; data: string; width: number; height: number; url: string; lane: string }
   | { type: 'comet:step'; channel: string; line: string }
   // The comet wrote something down about the person after a turn.
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
@@ -501,7 +501,7 @@ export interface EngramApi {
   // until the runtime has been asked.
   modelsList(): Promise<ModelChoiceDto[]>
   // Whether a window is being mirrored, without joining the watch.
-  agentState(): Promise<{ on: boolean; url?: string }>
+  agentState(): Promise<{ on: boolean; url?: string; lane?: string }>
   // workspace registry/switcher (app-level vaults)
   workspaceList(): Promise<{ current: string | null; vaults: WorkspaceInfoDto[] }>
   workspaceCreate(name: string): Promise<void>

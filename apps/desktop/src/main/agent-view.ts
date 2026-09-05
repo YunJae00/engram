@@ -29,6 +29,8 @@ interface Mirror {
   // When a frame last went out, and whether a photograph is being taken.
   painted: number
   shooting: boolean
+  // Whose picture this is: the lane the mirrored page belongs to.
+  lane: string
   // A picture asked for while one was being taken: taken again after.
   again: boolean
   // The page's own size, which the frame is a scaled copy of; pointer
@@ -74,7 +76,7 @@ async function shoot(m: Mirror, now = false): Promise<void> {
     const shot = await m.page.screenshot({ type: 'jpeg', quality: STILL_QUALITY, scale: 'device', fullPage: false, timeout: 6_000 })
     if (mirror !== m) return
     m.painted = Date.now()
-    broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url() })
+    broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url(), lane: m.lane })
   } catch (err) {
     // A page that will not be photographed (navigating, closed) is left to
     // the next round - but said, because a picture that never comes is
@@ -105,7 +107,7 @@ function stopWatchingForStillness(): void {
 }
 
 function say(on: boolean): void {
-  broadcast({ type: 'agent:live', on, ...(on && mirror ? { url: mirror.page.url() } : {}) })
+  broadcast({ type: 'agent:live', on, ...(on && mirror ? { url: mirror.page.url(), lane: mirror.lane } : {}) })
 }
 
 async function stream(m: Mirror, on: boolean): Promise<void> {
@@ -140,7 +142,7 @@ async function followNow(page: Page): Promise<void> {
     return
   }
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
-  const m: Mirror = { page, cdp, width: size.width, height: size.height, streaming: false, painted: 0, shooting: false, again: false }
+  const m: Mirror = { page, cdp, lane: laneOf(page) ?? activeLaneName(), width: size.width, height: size.height, streaming: false, painted: 0, shooting: false, again: false }
   mirror = m
   cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
     void cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined)
@@ -148,7 +150,7 @@ async function followNow(page: Page): Promise<void> {
     m.width = frame.metadata.deviceWidth || m.width
     m.height = frame.metadata.deviceHeight || m.height
     m.painted = Date.now()
-    broadcast({ type: 'agent:frame', data: frame.data, width: m.width, height: m.height, url: page.url() })
+    broadcast({ type: 'agent:frame', data: frame.data, width: m.width, height: m.height, url: page.url(), lane: m.lane })
   })
   // Where the page has got to, said whether or not anyone wants frames: a
   // folded view shows the address alone, and it has to stay true.
@@ -242,8 +244,8 @@ export async function refreshAgentView(): Promise<void> {
 
 // Whether a window is being mirrored, asked without joining the watch: a
 // view that shows only the address needs this and no frames at all.
-export function agentViewState(): { on: boolean; url?: string } {
-  return mirror ? { on: true, url: mirror.page.url() } : { on: false }
+export function agentViewState(): { on: boolean; url?: string; lane?: string } {
+  return mirror ? { on: true, url: mirror.page.url(), lane: mirror.lane } : { on: false }
 }
 
 const BUTTON = { left: 'left', right: 'right', middle: 'middle', none: 'none' } as const

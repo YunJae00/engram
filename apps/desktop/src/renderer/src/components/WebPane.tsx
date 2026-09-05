@@ -94,7 +94,13 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
     const settle = setTimeout(() => setSwitching(false), SWITCH_MS)
     return () => clearTimeout(settle)
   }, [channel])
-  const { on, url, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  // What the store holds is whoever was mirrored last; it belongs on this
+  // pane only when it is this comet's own. Another comet's page must never
+  // stand in for an empty one here.
+  const mine = lane === channel
+  const liveHere = on && mine
+  const frameHere = frame && mine
   const { folded, wanted } = useSyncExternalStore(webPane.subscribe, webPane.getSnapshot)
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
   // What is open, asked once when the pane first mounts: the last picture and
@@ -156,8 +162,8 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // height travels - the width is fixed, or a narrow pane would drop sites to
   // their phone layout and a taught procedure would meet a page it never saw.
   const stage = useRef<HTMLDivElement>(null)
-  const frozen = !on && frame
-  const paneShown = (on || frozen) && !folded
+  const frozen = !on && frameHere
+  const paneShown = (liveHere || frozen) && !folded
   useEffect(() => {
     const box = stage.current
     if (!box || !paneShown) return
@@ -188,9 +194,9 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
   // by the composer is where it comes back.
-  if (!on && !frozen && !wanted) return null
+  if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
   if (folded) return null
-  const host = hostOf(url)
+  const host = mine ? hostOf(url) : ''
   return (
     <aside
       className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}`}
@@ -209,7 +215,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
           >
             <ChevronsRight size={13} aria-hidden />
           </button>
-          <Address url={url} />
+          <Address url={mine ? url : ''} />
           {!frozen && (
             <>
               <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>
@@ -238,7 +244,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
           onWheel={() => setTouched(Date.now())}
           onKeyDown={() => setTouched(Date.now())}
         >
-          <MirrorSurface live={on} hasFrame={frame} />
+          <MirrorSurface live={liveHere} hasFrame={frameHere} />
         </div>
         <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : t('live.empty')}</div>
         {children}

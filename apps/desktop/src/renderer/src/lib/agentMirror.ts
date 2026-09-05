@@ -18,6 +18,9 @@ import type { EngramEvent } from '../../../shared/types.js'
 export interface MirrorState {
   // A window is open and being mirrored.
   on: boolean
+  // Whose page the picture and address belong to; a pane looking at another
+  // comet must not show them.
+  lane: string
   url?: string
   // Whether there is a picture to paint at all - the state a view needs to
   // decide between the screen and the waiting line.
@@ -26,9 +29,9 @@ export interface MirrorState {
   height: number
 }
 
-const EMPTY: MirrorState = { on: false, frame: false, width: 1280, height: 800 }
+const EMPTY: MirrorState = { on: false, lane: '', frame: false, width: 1280, height: 800 }
 
-export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promise<{ on: boolean; url?: string }> }) {
+export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promise<{ on: boolean; url?: string; lane?: string }> }) {
   let state: MirrorState = EMPTY
   // The newest picture, kept as it arrived: a canvas that has just appeared
   // paints this rather than waiting for the page to move.
@@ -40,7 +43,7 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
     for (const listener of listeners) listener()
   }
   const set = (next: MirrorState): void => {
-    if (next.on === state.on && next.url === state.url && next.frame === state.frame && next.width === state.width && next.height === state.height) return
+    if (next.on === state.on && next.lane === state.lane && next.url === state.url && next.frame === state.frame && next.width === state.width && next.height === state.height) return
     state = next
     emit()
   }
@@ -74,7 +77,7 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
     async ask(): Promise<void> {
       const now = await deps.ask().catch(() => null)
       if (!now) return
-      set({ ...state, on: now.on, ...(now.url ? { url: now.url } : {}) })
+      set({ ...state, on: now.on, ...(now.url ? { url: now.url } : {}), ...(now.lane ? { lane: now.lane } : {}) })
     },
     handleEvent(event: EngramEvent): void {
       if (event.type === 'agent:live') {
@@ -82,11 +85,11 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
         // see where the work got to. A new one starts blank rather than
         // showing the page before it.
         if (event.on) pixels = null
-        set(event.on ? { ...state, on: true, url: event.url, frame: false } : { ...state, on: false })
+        set(event.on ? { ...state, on: true, url: event.url, lane: event.lane ?? state.lane, frame: false } : { ...state, on: false })
       } else if (event.type === 'agent:frame') {
         pixels = event.data
         for (const watcher of watchers) watcher(event.data)
-        set({ on: true, url: event.url, frame: true, width: event.width, height: event.height })
+        set({ on: true, url: event.url, lane: event.lane, frame: true, width: event.width, height: event.height })
       }
     },
     forget(): void {
