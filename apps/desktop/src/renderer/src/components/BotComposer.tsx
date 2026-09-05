@@ -3,6 +3,7 @@ import { Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
+import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { WebPaneButton } from './WebPaneButton.js'
 
@@ -21,12 +22,29 @@ interface Props {
 export function BotComposer({ botId, botName, initialDraft, busy, locked, memoryOpen, onToggleMemory, onSend, onStop }: Props) {
   const [value, setValue] = useState(initialDraft)
   const valueRef = useRef(value)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (initialDraft === valueRef.current) return
     valueRef.current = initialDraft
     setValue(initialDraft)
   }, [initialDraft])
+
+  useEffect(() => {
+    if (!memoryOpen) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) onToggleMemory()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onToggleMemory()
+    }
+    window.addEventListener('pointerdown', closeOutside)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', closeOutside)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [memoryOpen, onToggleMemory])
 
   const change = (next: string) => {
     valueRef.current = next
@@ -44,7 +62,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   }
 
   return (
-    <div className="bots-write">
+    <div className="bots-write" ref={rootRef}>
+      {memoryOpen && <CometMemory botId={botId} name={botName} />}
       <ChatComposer
         testId="bots-input"
         autoFocus

@@ -4,7 +4,6 @@ import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
 import { CometOffer } from '../components/CometOffer.js'
-import { CometMemory } from '../components/CometMemory.js'
 import { CometWork } from '../components/CometWork.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
@@ -161,7 +160,6 @@ export const BotsView = memo(function BotsView() {
                 )}
               </div>
             </header>
-            {memoryOpen && <CometMemory botId={selected.id} name={selected.name} />}
             {(selected.tasks ?? []).length > 0 && (
             <div className="bots-tasks">
               {(selected.tasks ?? []).map((task) => (

@@ -1,4 +1,4 @@
-import { MessageCircle, PanelRightClose } from 'lucide-react'
+import { Orbit, PanelRightClose } from 'lucide-react'
 import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -19,6 +19,7 @@ interface Message extends ChatTurnDto {
 
 const CHANNEL = 'cosmos'
 const COLLAPSED_KEY = 'engram.cosmos-chat.collapsed'
+const CLOSE_MS = 160
 
 function streamingAt(list: Message[]): number {
   for (let i = list.length - 1; i >= 0; i--) {
@@ -34,10 +35,29 @@ export const CosmosChat = memo(function CosmosChat() {
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
+  const [closing, setClosing] = useState(false)
+  const closeTimer = useRef<number | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const boxRef = useRef<HTMLTextAreaElement | null>(null)
   const tokenBuffer = useRef('')
   const tokenFrame = useRef(0)
+
+  const openChat = () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
+    closeTimer.current = null
+    setClosing(false)
+    setCollapsed(false)
+  }
+
+  const closeChat = () => {
+    if (closing) return
+    setClosing(true)
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null
+      setClosing(false)
+      setCollapsed(true)
+    }, CLOSE_MS)
+  }
 
   const flushTokens = () => {
     tokenFrame.current = 0
@@ -63,11 +83,15 @@ export const CosmosChat = memo(function CosmosChat() {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
   }, [collapsed])
 
+  useEffect(() => () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
+  }, [])
+
   // The starter chips and the help panel both aim here.
   useEffect(() => {
     const focus = (event: Event) => {
       const seed = (event as CustomEvent<{ seed?: string }>).detail?.seed
-      setCollapsed(false)
+      openChat()
       if (seed) setText(seed)
       setTimeout(() => boxRef.current?.focus(), 80)
     }
@@ -139,9 +163,8 @@ export const CosmosChat = memo(function CosmosChat() {
     )
   }
 
-  // Folded, the panel leaves the row entirely and one round launcher floats
-  // over the sky's corner; the thread lives in this component's state, so
-  // opening again restores it as it was. The graph gets the whole width back.
+  // The conversation floats over the map so opening it never relayouts the
+  // graph or moves the point the person was looking at.
   if (collapsed) {
     return (
       <div className="cosmos-chat-launcher" data-testid="cosmos-chat-folded">
@@ -150,23 +173,30 @@ export const CosmosChat = memo(function CosmosChat() {
           data-testid="cosmos-chat-open"
           title={t('cosmos.chatOpen')}
           aria-label={t('cosmos.chatOpen')}
-          onClick={() => setCollapsed(false)}
+          onClick={openChat}
         >
-          <MessageCircle size={18} strokeWidth={1.8} aria-hidden />
+          <Orbit size={15} strokeWidth={1.8} aria-hidden />
+          <span>{t('cosmos.chatOpen')}</span>
         </button>
       </div>
     )
   }
 
   return (
-    <aside className="cosmos-chat" data-testid="cosmos-chat">
+    <aside className={`cosmos-chat${closing ? ' closing' : ''}`} data-testid="cosmos-chat">
       <div className="cosmos-chat-head">
-        <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>
+        <div className="cosmos-chat-identity">
+          <span className="cosmos-chat-mark"><Orbit size={15} strokeWidth={1.8} aria-hidden /></span>
+          <span className="cosmos-chat-labels">
+            <span className="cosmos-chat-name">{t('cosmos.chatName')}</span>
+            <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>
+          </span>
+        </div>
         <button
           className="rail-toggle"
           data-testid="cosmos-chat-collapse"
           title={t('cosmos.chatCollapse')}
-          onClick={() => setCollapsed(true)}
+          onClick={closeChat}
         >
           <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
         </button>

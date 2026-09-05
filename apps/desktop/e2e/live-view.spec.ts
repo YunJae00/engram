@@ -106,3 +106,24 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await screen.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`, { timeout: 15_000 })
 })
+
+test('a saved wide page panel stays inside the conversation on a compact window', async () => {
+  await page.evaluate(() => localStorage.setItem('engram.webpane.width', '1200'))
+  await page.reload()
+  await page.setViewportSize({ width: 948, height: 760 })
+  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
+  if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
+  await page.getByTestId('activity-bots').click()
+  await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 30_000 })
+
+  const [mainBox, paneBox, foldBox, addressBox] = await Promise.all([
+    page.locator('.bots-main').boundingBox(),
+    page.getByTestId('web-pane').boundingBox(),
+    page.getByTestId('web-pane-fold').boundingBox(),
+    page.getByTestId('live-address').boundingBox(),
+  ])
+  expect(paneBox!.x).toBeGreaterThanOrEqual(mainBox!.x)
+  expect(paneBox!.x + paneBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1)
+  expect(foldBox!.x).toBeGreaterThanOrEqual(paneBox!.x)
+  expect(addressBox!.x).toBeGreaterThan(foldBox!.x + foldBox!.width)
+})

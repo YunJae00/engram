@@ -76,6 +76,7 @@ const en = {
   'sidebar.settings': 'Settings',
   'bots.needName': 'Give it a name first.',
   'bots.needPurpose': 'Say what it is for \u2014 that charter is how it answers.',
+  'cosmos.chatName': 'Cosmos',
   'cosmos.chatTitle': 'Ask your memory',
   'cosmos.chatCollapse': 'Hide',
   'cosmos.chatOpen': 'Ask your memory',

@@ -89,7 +89,10 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
   await expect(memory).toBeVisible()
   await expect(memory).toContainText('Cosmos')
   await memory.click()
-  await expect(page.locator('.bots-memory')).toBeVisible()
+  const memoryPanel = page.locator('.bots-memory')
+  await expect(memoryPanel).toBeVisible()
+  const [memoryBox, composerBox] = await Promise.all([memoryPanel.boundingBox(), page.locator('.bots-write > .chat-write').boundingBox()])
+  expect(memoryBox!.y + memoryBox!.height).toBeLessThanOrEqual(composerBox!.y)
   await memory.click()
 
   const picker = page.getByTestId('model-picker')

@@ -1,9 +1,7 @@
 import { Globe, PanelLeftOpen } from 'lucide-react'
-import { ThinkingDots } from './Thinking.js'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
-import type { SweepStatus } from '../state.js'
-import { t, type StringKey, type Translate } from '../i18n.js'
+import { t, type Translate } from '../i18n.js'
 import { api } from '../api.js'
 import { useTopBarState } from '../state-slices.js'
 import { DialogHeader } from './DialogHeader.js'
@@ -18,38 +16,15 @@ function syncLabel(t: Translate, status: SyncStatusDto | null): string {
   return parts.join(' ')
 }
 
-// The sweep status is rendered here from its data so it follows the language.
-// The 'error' variant is main-process text and is shown verbatim.
-function sweepLabel(t: Translate, status: SweepStatus): string {
-  switch (status.kind) {
-    case 'running':
-      return t('topbar.sweepRunning')
-    case 'done':
-      // A finished-filing line over 40 items the librarian never touched is the lie
-      // this bar told every time a run halted. Say what stopped it.
-      if (status.haltReason === 'quota') return t('topbar.sweepQuota', { n: status.deferred })
-      if (status.haltReason === 'auth') return t('topbar.sweepAuth', { n: status.deferred })
-      if (status.deferred > 0) return t('topbar.sweepDeferred', { n: status.deferred })
-      return t('topbar.sweepDone', { executed: status.executed, skipped: status.skipped })
-    case 'error':
-      return status.message
-    default:
-      return ''
-  }
-}
-
-// The content header keeps the current view and live operational status visible.
+// The title strip keeps the current view visible without competing with its
+// content header. Ongoing work is grouped with the engine in the sidebar.
 export function TopBar({ sidebarOpen, onToggleSidebar }: {
   sidebarOpen: boolean
   onToggleSidebar(): void
 }) {
-  const { activity, engines, sweepStatus, filing, absorb, sweepJob, errand, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
+  const { activity, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
-  // Sweep/absorb progress now lives in shared state (single source); the TopBar
-  // owns only sync status, which nothing else consumes.
-  const job = sweepJob?.job ?? null
-
   useEffect(() => {
     // The window now paints BEFORE the vault finishes opening (deliberately —
     // see openVaultContext), and sync:status only exists once registerTeamIpc
@@ -101,41 +76,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
     }
   }
 
-  // Map the live job code onto its label; anything unexpected is dropped.
-  const jobKey: StringKey | null = job && /^J[1-8]$/.test(job) ? (`topbar.job${job}` as StringKey) : null
-  const jobSuffix = jobKey ? ` · ${t(jobKey)}` : ''
-  // While a sweep is draining the absorb queue, that bar owns the description;
-  // the sweep line is then just the spinner.
-  const absorbing = absorb.pending > 0 && sweepStatus.running
-  // A capture being filed (realtime J1) shows as its own live line whenever a
-  // sweep isn't already narrating — otherwise a first capture organizes in
-  // total silence for a minute and the app reads as broken.
-  const filingOnly = filing && !sweepStatus.running
-  const sweepText = filingOnly
-    ? t('topbar.filing')
-    : absorbing
-      ? ''
-      : sweepLabel(t, sweepStatus) + (sweepStatus.running ? jobSuffix : '')
-  // A delegated errand narrates in this same slot — one parameterized line
-  // ("Errand: gathering…"). It takes the slot while running because it is the
-  // user's own foreground request; only the four working phases have a label.
-  const errandPhaseKey: Record<string, StringKey> = {
-    plan: 'topbar.errandPlan',
-    gather: 'topbar.errandGather',
-    web: 'topbar.errandWeb',
-    distill: 'topbar.errandDistill',
-    compose: 'topbar.errandCompose',
-  }
-  const errandKey = errand.phase ? errandPhaseKey[errand.phase] : undefined
-  const errandText = errand.running && errandKey ? t('topbar.errand', { phase: t(errandKey) }) : ''
-  // No engine = nothing is absorbing — say what the queue is actually
-  // waiting for instead of a frozen "absorbing 0/N".
-  const absorbText =
-    (engines.length === 0
-      ? t('absorb.waitingEngine', { n: absorb.pending })
-      : t('topbar.absorbing', { done: absorb.total - absorb.pending, total: absorb.total })) +
-    (sweepStatus.running ? jobSuffix : '')
-
   return (
     <header className="topbar" data-testid="topbar">
       {!sidebarOpen && (
@@ -149,10 +89,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
 
       <div className="topbar-spacer" />
 
-      <span className="topbar-status live" data-testid="sweep-status" title={(errandText || sweepText) || undefined}>
-        {(errand.running || sweepStatus.running || filingOnly) && <ThinkingDots />}
-        <span className="status-label">{errandText || sweepText}</span>
-      </span>
       {errandWall && (
         <span className="topbar-status live errand-wall" data-testid="errand-wall" title={errandWall.url}>
           <Globe size={12} strokeWidth={1.8} aria-hidden />
@@ -165,11 +101,6 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
           <button className="errand-wall-skip" data-testid="errand-wall-skip" onClick={() => answerErrandWall('skip')}>
             {t('errand.wallSkip')}
           </button>
-        </span>
-      )}
-      {absorb.pending > 0 && (
-        <span className="topbar-status live" data-testid="absorb-status" title={absorbText}>
-          <span className="status-label">{absorbText}</span>
         </span>
       )}
       {/* Solo vaults have no remote — a "sync —" placeholder is chrome noise,

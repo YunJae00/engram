@@ -1,5 +1,5 @@
 import { ChevronsRight, RotateCw, Square, X } from 'lucide-react'
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { webPane } from '../lib/webPane.js'
@@ -40,16 +40,27 @@ function hostOf(url: string | undefined): string {
 
 function Address({ url }: { url?: string }) {
   const [draft, setDraft] = useState<string | null>(null)
+  const field = useRef<HTMLInputElement>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
+  useEffect(() => {
+    if (document.activeElement !== field.current && field.current) field.current.scrollLeft = 0
+  }, [url])
   return (
     <input
+      ref={field}
       className="live-address"
       data-testid="live-address"
       placeholder={t('live.address')}
       value={shown}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
-      onBlur={() => setDraft(null)}
+      onBlur={(event) => {
+        const input = event.currentTarget
+        setDraft(null)
+        requestAnimationFrame(() => {
+          input.scrollLeft = 0
+        })
+      }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter') return
         const typed = shown.trim()
@@ -184,7 +195,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
     <aside
       className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}`}
       data-testid="web-pane"
-      style={width ? { width } : undefined}
+      style={width ? ({ '--web-pane-width': `${width}px` } as CSSProperties) : undefined}
     >
       <div className="web-pane-grip" onMouseDown={drag} aria-hidden />
       <div className="web-pane-inner">

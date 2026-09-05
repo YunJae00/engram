@@ -151,8 +151,12 @@ test('help panel opens with quick actions and legend', async () => {
 test('the cosmos chat collapses and comes back', async () => {
   await page.getByTestId('activity-sky').click()
   await expect(page.getByTestId('cosmos-chat')).toBeVisible()
+  const openSkyWidth = (await page.getByTestId('sky-view').boundingBox())!.width
   await page.getByTitle('Hide', { exact: true }).click()
   await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
+  await expect(page.getByTestId('cosmos-chat-open')).toContainText('Ask your memory')
+  const foldedSkyWidth = (await page.getByTestId('sky-view').boundingBox())!.width
+  expect(Math.abs(openSkyWidth - foldedSkyWidth)).toBeLessThanOrEqual(1)
   await page.getByTestId('cosmos-chat-open').click()
   await expect(page.getByTestId('cosmos-chat-input')).toBeVisible()
 })
@@ -161,7 +165,16 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
   await expect(page.getByTestId('app-sidebar')).toContainText('Search Cosmos')
-  await expect(page.getByTestId('app-sidebar').getByTestId('engine-status')).toBeVisible()
+  const sidebar = page.getByTestId('app-sidebar')
+  const engineStatus = sidebar.getByTestId('engine-status')
+  await expect(engineStatus).toBeVisible()
+  const [navBox, engineBox, footerBox] = await Promise.all([
+    sidebar.locator('.sidebar-nav').boundingBox(),
+    engineStatus.boundingBox(),
+    sidebar.locator('.sidebar-footer').boundingBox(),
+  ])
+  expect(engineBox!.y).toBeGreaterThanOrEqual(navBox!.y + navBox!.height)
+  expect(engineBox!.y).toBeLessThan(footerBox!.y)
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await page.getByTestId('activity-bots').click()
   await expect(page.getByTestId('sidebar-chats')).toContainText('Scout')
