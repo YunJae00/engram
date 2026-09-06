@@ -1,5 +1,7 @@
 const en = {
   'mission.title': 'Mission Control',
+  'mission.change': 'Replace this panel',
+  'mission.choose': 'Chat for panel {count}',
   'mission.add': 'Add a chat',
   'mission.new': 'New chat',
   'mission.say': 'Message\u2026',

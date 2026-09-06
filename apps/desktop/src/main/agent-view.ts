@@ -4,6 +4,7 @@ import { broadcast } from './engine-health.js'
 import { activeLaneName, ensureAgentPage, lanePage, laneOf, resetLane, setActiveLane, watchAgentPages } from './agent-browser.js'
 import { setPointerSink } from './page-actions.js'
 import { flog } from './flog.js'
+import { captureSharpFrame, startPagePreview } from './page-preview.js'
 
 // The agent's window stays out of sight. What it shows is mirrored into the
 // app as a run of small frames, and what the person does on the mirror —
@@ -11,19 +12,11 @@ import { flog } from './flog.js'
 // their own clicks and keys. Frames go to the screen and nowhere else: none
 // is written, logged or kept past the next one.
 
-// The page is drawn at twice its CSS size, so a frame can carry every device
-// pixel it was drawn with: the cap is set above that rather than below it,
-// where it would quietly halve the picture. Quality is what is left to spend,
-// and small text is exactly what loses first without it.
-const FRAME = { format: 'jpeg', quality: 92, maxWidth: 2880, maxHeight: 1800 } as const
-// The still is what a person actually reads: it carries every device pixel
-// the page was drawn with, so it is worth more of the quality budget than
-// the run of frames, which only has to carry motion.
-const STILL_QUALITY = 88
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
 
 interface Mirror {
+  previewStop?: () => void
   cleanup?: () => void
   page: Page
   cdp: CDPSession
@@ -45,18 +38,7 @@ let mirror: Mirror | null = null
 // How many views in the app are showing frames right now; the stream runs
 // only while someone is looking.
 let viewers = 0
-// A screencast sends a frame when the page paints and nothing when it is
-// still, and every frame it sends carries one pixel per CSS pixel however
-// the cap is set - a page drawn at twice that size still arrives halved
-// (measured). A page mid-render also sends its half-drawn state and then
-// goes quiet, which leaves that half-drawn state on screen looking dead.
-// Both are answered the same way: while someone is watching, a page that has
-// gone still is photographed at every pixel it was drawn with and that
-// picture goes out as a frame like any other. Motion is smooth because the
-// screencast carries it; what a person actually reads is sharp because
-// nothing that stands still stays halved.
 const QUIET_MS = 1_500
-let poke: ReturnType<typeof setInterval> | null = null
 
 // A photograph of the page as it stands, at every pixel it was drawn with.
 // `now` takes one whether or not the page has settled - what a person asks
@@ -74,10 +56,13 @@ async function shoot(m: Mirror, now = false): Promise<void> {
   }
   m.shooting = true
   try {
-    const shot = await m.page.screenshot({ type: 'jpeg', quality: STILL_QUALITY, scale: 'device', fullPage: false, timeout: 6_000 })
-    if (mirror !== m) return
+    const revision = m.painted
+    const shot = await captureSharpFrame(m.page, m.cdp)
+    if (mirror !== m || revision !== m.painted) return
     m.painted = Date.now()
-    broadcast({ type: 'agent:frame', data: shot.toString('base64'), width: m.width, height: m.height, url: m.page.url(), lane: m.lane })
+    m.width = shot.width
+    m.height = shot.height
+    broadcast({ type: 'agent:frame', ...shot, url: m.page.url(), lane: m.lane })
   } catch (err) {
     // A page that will not be photographed (navigating, closed) is left to
     // the next round - but said, because a picture that never comes is
@@ -92,21 +77,6 @@ async function shoot(m: Mirror, now = false): Promise<void> {
   }
 }
 
-function watchForStillness(): void {
-  if (poke) return
-  poke = setInterval(() => {
-    const m = mirror
-    if (!m || viewers === 0) return
-    void shoot(m)
-  }, QUIET_MS).unref()
-}
-
-function stopWatchingForStillness(): void {
-  if (!poke) return
-  clearInterval(poke)
-  poke = null
-}
-
 function say(on: boolean): void {
   broadcast({ type: 'agent:live', on, ...(on && mirror ? { url: mirror.page.url(), lane: mirror.lane } : {}) })
 }
@@ -114,7 +84,21 @@ function say(on: boolean): void {
 async function stream(m: Mirror, on: boolean): Promise<void> {
   if (m.streaming === on) return
   m.streaming = on
-  await m.cdp.send(on ? 'Page.startScreencast' : 'Page.stopScreencast', on ? { ...FRAME } : {}).catch(() => undefined)
+  if (!on) { m.previewStop?.(); m.previewStop = undefined; return }
+  try {
+    const stop = await startPagePreview(m.page, (frame) => {
+      if (mirror !== m || !m.streaming) return
+      m.width = frame.width
+      m.height = frame.height
+      m.painted = Date.now()
+      broadcast({ type: 'agent:frame', ...frame, url: m.page.url(), lane: m.lane })
+    })
+    if (mirror !== m || !m.streaming) stop()
+    else m.previewStop = stop
+  } catch (err) {
+    flog('agent-view', `stream failed on ${m.page.url()}: ${err instanceof Error ? err.message : String(err)}`)
+    m.streaming = false
+  }
 }
 
 async function drop(): Promise<void> {
@@ -155,14 +139,6 @@ async function followNow(page: Page, generation: number): Promise<void> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
   const m: Mirror = { page, cdp, lane: laneOf(page) ?? activeLaneName(), width: size.width, height: size.height, streaming: false, painted: 0, shooting: false, again: false }
   mirror = m
-  cdp.on('Page.screencastFrame', (frame: { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }) => {
-    void cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined)
-    if (mirror !== m) return
-    m.width = frame.metadata.deviceWidth || m.width
-    m.height = frame.metadata.deviceHeight || m.height
-    m.painted = Date.now()
-    broadcast({ type: 'agent:frame', data: frame.data, width: m.width, height: m.height, url: page.url(), lane: m.lane })
-  })
   // Where the page has got to, said whether or not anyone wants frames: a
   // folded view shows the address alone, and it has to stay true.
   const navigated = (frame: Frame) => {
@@ -245,8 +221,6 @@ export function laneState(lane: string): { on: boolean; url?: string } {
 
 export async function watchAgentView(on: boolean): Promise<{ on: boolean; url?: string }> {
   viewers = Math.max(0, viewers + (on ? 1 : -1))
-  if (viewers > 0) watchForStillness()
-  else stopWatchingForStillness()
   if (mirror) await stream(mirror, viewers > 0)
   return mirror ? { on: true, url: mirror.page.url() } : { on: false }
 }

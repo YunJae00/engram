@@ -38,6 +38,8 @@ test.beforeAll(async () => {
           '<a href="/clicked" style="position:fixed;left:0;top:0;width:100%;height:40%;display:block;background:#dfe">Back</a>' +
           '<main style="margin-top:45%"><h1>Typed</h1></main></body></html>',
       )
+    else if (req.url === '/scroll') res.end('<html><body style="margin:0"><div style="height:3000px;background:rgb(240,40,40)"></div><div style="height:6000px;background:rgb(30,80,220)"></div></body></html>')
+    else if (req.url === '/motion') res.end('<html><body><h1>Sharp moving page</h1><div id="box" style="width:200px;height:200px;background:#3478f6"></div><script>function move(t){document.getElementById("box").style.transform="translateX("+(t/5%500)+"px)";requestAnimationFrame(move)}requestAnimationFrame(move)</script></body></html>')
     else if (req.url === '/clicked') res.end('<html><head><title>Clicked</title></head><body><main><h1>Clicked</h1></main></body></html>')
     else
       res.end(
@@ -91,7 +93,9 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await page.getByTestId('live-address').press('Enter')
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 20_000 })
   const stage = page.getByTestId('web-pane').locator('.mirror-surface')
-  await expect(stage.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  // A person clicks what they can see: a canvas nothing has landed on yet
+  // drops the click, so the picture has to be there first.
+  await expect(stage.locator('canvas[data-painted]')).toBeVisible({ timeout: 15_000 })
 
   // Clicks are measured against the picture itself, so the test clicks the
   // canvas the way a person does.
@@ -125,7 +129,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect.poll(async () => {
     const ready = await page.evaluate((ids) => window.engram.missionFrames(ids.map((id) => `bot-${id}`)), bots.map((bot) => bot.id))
     return ready.every((preview) => Boolean(preview.data))
-  }, { timeout: 20000 }).toBe(true)
+  }, { timeout: 30000 }).toBe(true)
   expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
   await page.getByTestId('activity-mission').click()
   await expect(page.locator('.mission-tile')).toHaveCount(4)
@@ -135,8 +139,15 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Parallel watch' }).click()
   await page.getByTestId('mission-add-1').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Third watch' }).click()
-  await expect(page.locator('.mission-preview img')).toHaveCount(2, { timeout: 15000 })
+  await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2, { timeout: 15000 })
+  await expect.poll(() => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width)), { timeout: 15000 }).toEqual([2560, 2560])
   await expect(page.locator('.mini-chat')).toHaveCount(2)
+  await page.getByTestId('mission-add-2').click()
+  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Watching', exact: true }).click()
+  await page.getByTestId('mission-add-3').click()
+  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
+  await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(4, { timeout: 20000 })
+  await expect.poll(() => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width)), { timeout: 20000 }).toEqual([2560, 2560, 2560, 2560])
   // The CDP screenshot stalls on a hidden window that repaints on a timer;
   // the app's own capture path does not, so the picture is taken there. A
   // hidden window stops presenting frames, and a capture returns the last
@@ -152,8 +163,38 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await writeFile(join(REPO_TMP, 'mission-live.png'), Buffer.from(shot, 'base64'))
   await page.getByTestId('mission-layout-2').click()
   await expect(page.locator('.mission-tile')).toHaveCount(2)
+  // A title picker replaces this exact seat, not the first available one.
+  await page.getByRole('button', { name: 'Chat for panel 2', exact: true }).click()
+  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
+  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
+  const motion = await page.evaluate(async ({ url, id }) => {
+    let count = 0
+    const off = window.engram.onEvent((event) => { if (event.type === 'mission:frame' && event.frame.lane === `bot-${id}` && event.frame.data) count++ })
+    await window.engram.agentGo(`${url}motion`, `bot-${id}`)
+    await new Promise((resolve) => setTimeout(resolve, 2500))
+    off()
+    return count
+  }, { url: siteUrl, id: bots[3]!.id })
+  expect(motion).toBeGreaterThan(10)
   await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
   await expect(page.locator('.bots-head-name')).toHaveText('Parallel watch')
+  await page.getByTestId('activity-mission').click()
+  await expect(page.getByTestId('mission-tile-0').locator('.mission-name')).toHaveText('Parallel watch')
+  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
+  await page.getByTestId('activity-mission').click()
+  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
+  await page.getByRole('button', { name: 'Open Fourth watch', exact: true }).first().click()
+  await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
+  await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)
+  await page.evaluate(() => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }))
+  await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
+    const canvas = node as HTMLCanvasElement
+    const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
+    return canvas.dataset.format === 'png' && canvas.width >= 2560 && pixel[2]! > 180 && pixel[0]! < 60
+  }), { timeout: 20000 }).toBe(true)
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
 })
 

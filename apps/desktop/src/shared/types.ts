@@ -393,6 +393,7 @@ export type EngramEvent =
   // done event carries.
   | { type: 'chat:offer'; channel: string; offer: NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']> }
   | { type: 'agent:frame'; data: string; width: number; height: number; url: string; lane: string }
+  | { type: 'mission:frame'; frame: MissionFrameDto }
   | { type: 'comet:step'; channel: string; line: string }
   // The comet wrote something down about the person after a turn.
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
@@ -499,6 +500,7 @@ export interface EngramApi {
   // How tall the pages should lay themselves out, from the pane showing them.
   agentHeight(height: number, lane?: string): Promise<void>
   missionFrames(lanes: string[]): Promise<MissionFrameDto[]>
+  missionWatch(lanes: string[]): Promise<void>
   // Which comet's tab the pane shows; and a reset that closes that tab.
   agentLane(lane: string): Promise<{ on: boolean; url?: string }>
   agentReset(lane: string): Promise<void>

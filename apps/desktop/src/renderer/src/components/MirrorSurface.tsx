@@ -15,7 +15,7 @@ import { t } from '../i18n.js'
 
 const MODIFIER = { alt: 1, ctrl: 2, meta: 4, shift: 8 } as const
 const BUTTON: Record<number, 'left' | 'middle' | 'right'> = { 0: 'left', 1: 'middle', 2: 'right' }
-const MOVE_EVERY_MS = 40
+const MOVE_EVERY_MS = 16
 // Keys that mean something to a page beyond a character.
 const PRESSED_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 
@@ -71,13 +71,22 @@ export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boo
   useEffect(() => {
     const el = box.current
     if (!el) return
+    let scheduled = 0
+    let pending: Extract<AgentInputDto, { kind: 'mouse' }> | null = null
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
       const p = at(e)
-      if (p && live) send({ kind: 'mouse', type: 'wheel', ...p, deltaX: e.deltaX, deltaY: e.deltaY, modifiers: modifiersOf(e) })
+      if (!p || !live) return
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1
+      pending = { kind: 'mouse', type: 'wheel', ...p, deltaX: (pending?.deltaX ?? 0) + e.deltaX * unit, deltaY: (pending?.deltaY ?? 0) + e.deltaY * unit, modifiers: modifiersOf(e) }
+      if (!scheduled) scheduled = requestAnimationFrame(() => {
+        scheduled = 0
+        if (pending) send(pending)
+        pending = null
+      })
     }
     el.addEventListener('wheel', wheel, { passive: false })
-    return () => el.removeEventListener('wheel', wheel)
+    return () => { el.removeEventListener('wheel', wheel); cancelAnimationFrame(scheduled) }
   }, [live])
   return (
     <div

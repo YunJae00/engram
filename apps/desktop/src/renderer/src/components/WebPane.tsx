@@ -16,8 +16,6 @@ import { useShellState } from '../state-slices.js'
 
 const WIDTH_KEY = 'engram.webpane.width'
 const MIN_W = 380
-// How long a page keeps streaming after the person's last touch on it.
-const HANDS_ON_MS = 4_000
 const MAX_SHARE = 0.72
 // The page's own width, fixed - the pane only ever changes its height.
 const VIEW_WIDTH = 1280
@@ -76,6 +74,12 @@ function Address({ url, channel }: { url?: string; channel: string }) {
 
 export function WebPane({ channel, busy, onStop, children }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode }) {
   const { activity } = useShellState()
+  const [visible, setVisible] = useState(document.visibilityState === 'visible')
+  useEffect(() => {
+    const changed = () => setVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', changed)
+    return () => document.removeEventListener('visibilitychange', changed)
+  }, [])
   // The pane shows the tab of the comet being looked at, and moves with it:
   // the old picture fades while the new tab's picture is fetched, instead
   // of one page being swapped for another between two frames.
@@ -110,15 +114,9 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   useEffect(() => {
     void agentMirror.ask()
   }, [])
-  // A run of frames is a video encoder running: cheap for a moment, not
-  // cheap all afternoon. The pane is on screen the whole time now, so frames
-  // flow only while there is motion to carry - the comet working, or the
-  // person's own hands on the page - and a still page is simply photographed
-  // once. Everything else (a navigation, the refresh button, unfolding) asks
-  // for its own picture.
-  const [touched, setTouched] = useState(0)
-  const handsOn = touched > Date.now() - HANDS_ON_MS
-  const showing = liveHere && activity === 'bots' && !folded && (busy || handsOn)
+  // Visible pages remain responsive even after the assistant finishes.
+  // The compositor only streams changes; hidden panes have no encoder.
+  const showing = liveHere && visible && activity === 'bots' && !folded
   useEffect(() => {
     if (!showing) return
     agentMirror.showPixels(true)
@@ -127,19 +125,9 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // A pane that has just opened, or a page that has just moved, is asked for
   // the picture as it is now rather than waiting for the page to paint.
   useEffect(() => {
-    if (!on || folded) return
+    if (!showing) return
     void api.agentRefresh().catch(() => {})
-  }, [on, folded, url])
-  // The window closes on its own once the last touch is old enough; the
-  // frame it leaves behind is refreshed so nothing stale is left on screen.
-  useEffect(() => {
-    if (!handsOn) return
-    const until = setTimeout(() => {
-      setTouched(0)
-      void api.agentRefresh().catch(() => {})
-    }, HANDS_ON_MS)
-    return () => clearTimeout(until)
-  }, [handsOn, touched])
+  }, [showing, url])
   const drag = (down: React.MouseEvent) => {
     down.preventDefault()
     const fromX = down.clientX
@@ -242,9 +230,6 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
         <div
           className={`web-pane-stage${switching ? ' switching' : ''}`}
           ref={stage}
-          onPointerDown={() => setTouched(Date.now())}
-          onWheel={() => setTouched(Date.now())}
-          onKeyDown={() => setTouched(Date.now())}
         >
           <MirrorSurface live={liveHere} hasFrame={frameHere} />
         </div>

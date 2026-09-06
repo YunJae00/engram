@@ -122,6 +122,7 @@ const api: EngramApi = {
   agentRefresh: () => ipcRenderer.invoke('agent:refresh'),
   agentHeight: (height: number, lane?: string) => ipcRenderer.invoke('agent:height', height, lane),
   missionFrames: (lanes: string[]) => ipcRenderer.invoke('mission:frames', lanes),
+  missionWatch: (lanes: string[]) => ipcRenderer.invoke('mission:watch', lanes),
   agentLane: (lane: string) => ipcRenderer.invoke('agent:lane', lane),
   agentReset: (lane: string) => ipcRenderer.invoke('agent:reset', lane),
   auditOpen: () => ipcRenderer.invoke('audit:open'),

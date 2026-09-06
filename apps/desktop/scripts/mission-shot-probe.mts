@@ -56,7 +56,7 @@ await page.getByTestId('mission-add-0').click()
 await page.getByTestId('mission-add-menu').getByRole('button', { name: 'A', exact: true }).click()
 await page.getByTestId('mission-add-1').click()
 await page.getByTestId('mission-add-menu').getByRole('button', { name: 'B', exact: true }).click()
-if (withLanes) await page.locator('.mission-preview img').nth(1).waitFor({ timeout: 20000 })
+if (withLanes) await page.locator('.mission-preview canvas[data-painted]').nth(1).waitFor({ timeout: 20000 })
 else await new Promise((r) => setTimeout(r, 2500))
 const capturePage = async () => {
   const size = await app.evaluate(async ({ BrowserWindow }) => {
