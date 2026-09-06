@@ -25,6 +25,22 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    const composer = rootRef.current
+    const host = composer?.closest<HTMLElement>('.bots-main')
+    if (!composer || !host) return
+    // The compact web sheet ends above the actual draft, including multiline input.
+    const measure = () => {
+      const style = getComputedStyle(composer)
+      const space = composer.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
+      host.style.setProperty('--composer-space', `${space}px`)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(composer)
+    measure()
+    return () => { observer.disconnect(); host.style.removeProperty('--composer-space') }
+  }, [])
+
+  useEffect(() => {
     if (initialDraft === valueRef.current) return
     valueRef.current = initialDraft
     setValue(initialDraft)
