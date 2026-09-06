@@ -1,16 +1,15 @@
 // Screenshots of the surfaces the polish touched, for a human look.
 import { launchApp } from './launch-app.mts'
 import { createCard, createNote, initVault } from 'core'
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const RUN = Date.now().toString(36)
 const VAULT = fileURLToPath(new URL(`../../../tmp/shots-${RUN}-vault/`, import.meta.url))
 const USERDATA = fileURLToPath(new URL(`../../../tmp/shots-${RUN}-userdata/`, import.meta.url))
-const OUT = fileURLToPath(new URL('../../../tmp/ui-review/', import.meta.url))
+const OUT = fileURLToPath(new URL(`../../../tmp/ui-review-${RUN}/`, import.meta.url))
 const paths = await initVault(VAULT, { git: false })
 await mkdir(USERDATA, { recursive: true })
-await rm(OUT, { recursive: true, force: true })
 await mkdir(OUT, { recursive: true })
 const deploy = await createNote(paths, { body: '# Deploy decision\n\nThursday afternoons, helm charts.' })
 await createNote(paths, { body: '# Team contacts\n\nDeploys: Jiwoo (x4192).' })
@@ -22,10 +21,24 @@ await createCard(paths, {
 })
 
 const app = await launchApp({ ENGRAM_VAULT: VAULT, ENGRAM_USERDATA: USERDATA, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none' })
+try {
 const page = app.page
 await page.setViewportSize({ width: 1280, height: 840 })
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })
-const shot = (name: string) => page.screenshot({ path: `${OUT}${name}.png` })
+const shot = async (name: string) => {
+  const offset = await page.evaluate(() => ({
+    x: scrollX, shell: document.querySelector('.shell')?.scrollLeft,
+    body: document.body.scrollLeft,
+    shellX: document.querySelector('.shell')?.getBoundingClientRect().x,
+    railX: document.querySelector('.app-sidebar')?.getBoundingClientRect().x,
+    railWidth: document.querySelector('.app-sidebar')?.getBoundingClientRect().width,
+    shellWidth: document.querySelector('.shell')?.getBoundingClientRect().width,
+    bar: document.querySelector('.topbar')?.getBoundingClientRect().width,
+    main: document.querySelector('.app-main')?.getBoundingClientRect().width,
+  }))
+  if (offset.x !== 0 || offset.shell !== 0 || offset.body !== 0 || (offset.bar ?? 0) > (offset.main ?? 0)) console.log('offset', name, offset)
+  return page.screenshot({ path: `${OUT}${name}.png`, animations: 'disabled' })
+}
 const layout = async (name: string) => {
   const data = await page.evaluate(() => ({
     width: window.innerWidth,
@@ -40,6 +53,11 @@ const layout = async (name: string) => {
 
 await page.evaluate(() => window.engram.botCreate({ name: 'Research scout', purpose: 'runs web errands' }))
 await page.evaluate(() => window.engram.botCreate({ name: 'ai', purpose: 'ai research' }))
+await page.evaluate(async () => {
+  await window.engram.botCreate({ name: 'Release planning', purpose: 'Track milestones' })
+  await window.engram.botCreate({ name: '팀 리서치와 제품 디자인 상세 검토', purpose: 'Review the latest findings' })
+  localStorage.setItem('engram.mission.slots', JSON.stringify((await window.engram.botsList()).map((bot) => bot.id)))
+})
 await page.getByTestId('activity-bots').click()
 await page.waitForTimeout(600)
 await layout('comets-open')
@@ -80,6 +98,10 @@ await shot('web-medium')
 await page.setViewportSize({ width: 620, height: 720 })
 await page.waitForTimeout(250)
 await shot('web-narrow')
+await page.locator('.bots-write textarea').fill('First line\nSecond line\nThird line\nFourth line')
+await page.waitForTimeout(250)
+await shot('web-narrow-multiline')
+await page.locator('.bots-write textarea').fill('')
 await page.getByTestId('web-pane-fold').click()
 await page.waitForTimeout(500)
 console.log('narrow-folded', await page.evaluate(() => ({
@@ -99,6 +121,18 @@ await page.getByTestId('cosmos-chat-collapse').click()
 await page.waitForTimeout(500)
 await shot('cosmos-folded')
 await page.getByTestId('cosmos-chat-open').click()
+await page.getByTestId('activity-mission').click()
+await page.waitForTimeout(600)
+await shot('mission-wide')
+await page.setViewportSize({ width: 948, height: 760 })
+await page.waitForTimeout(250)
+await shot('mission-compact')
+await page.getByTestId('app-sidebar-close').click()
+await page.setViewportSize({ width: 620, height: 720 })
+await page.waitForTimeout(250)
+await shot('mission-narrow')
+await page.setViewportSize({ width: 1280, height: 840 })
+await page.getByTestId('app-sidebar-open').click()
 await page.getByTestId('activity-list').click()
 await page.waitForTimeout(600)
 await shot('list')
@@ -109,9 +143,13 @@ await page.keyboard.press('Escape')
 await page.getByTestId('activity-settings').click()
 await page.waitForTimeout(600)
 await shot('settings')
+await page.setViewportSize({ width: 620, height: 720 })
+await page.waitForTimeout(250)
+await shot('settings-narrow')
+await page.setViewportSize({ width: 1280, height: 840 })
 await page.getByRole('button', { name: 'Diagnostics' }).click()
 await page.getByTestId('diagnostics-view').waitFor({ state: 'visible' })
-await page.waitForTimeout(500)
+await page.locator('.diagnostics-box .engine-lights').waitFor({ state: 'visible', timeout: 60_000 })
 await shot('diagnostics')
 await page.keyboard.press('Escape')
 await page.keyboard.press('Escape')
@@ -159,6 +197,17 @@ await layout('palette-closed')
 await page.emulateMedia({ colorScheme: 'dark' })
 await page.waitForTimeout(400)
 await shot('comets-dark')
-await app.close()
+await page.getByTestId('activity-sky').click()
+await page.waitForTimeout(300)
+await shot('cosmos-dark')
+await page.getByTestId('activity-mission').click()
+await page.waitForTimeout(300)
+await shot('mission-dark')
+await page.getByTestId('activity-settings').click()
+await page.getByTestId('setting-desk-journal').waitFor({ state: 'visible' })
+await shot('settings-dark')
+} finally {
+  await app.close()
+}
 console.log('shots in', OUT)
 process.exit(0)
