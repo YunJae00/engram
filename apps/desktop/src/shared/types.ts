@@ -491,7 +491,7 @@ export interface EngramApi {
   // The agent browser's mirror: watch (frames flow while at least one view
   // is open), act on it, and call the real window onto the desk or away.
   agentWatch(on: boolean): Promise<{ on: boolean; url?: string }>
-  agentInput(input: AgentInputDto): Promise<void>
+  agentInput(input: AgentInputDto, lane: string): Promise<void>
   agentWindow(show: boolean): Promise<void>
   agentGo(url: string, lane?: string): Promise<void>
   // Take the picture again now: for a view left on a page that went still

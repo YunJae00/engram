@@ -68,8 +68,9 @@ const afterClick = ((await page.evaluate(() => window.engram.agentState())) as {
 console.log(`a click on the picture: ${afterClick.endsWith('/clicked') ? 'landed' : 'MISSED'} (${afterClick})`)
 if (!afterClick.endsWith('/clicked')) {
   // The same press sent straight down the wire, past the canvas.
-  await page.evaluate(() => window.engram.agentInput({ kind: 'mouse', type: 'pressed', x: 0.5, y: 0.5, button: 'left', clicks: 1, modifiers: 0 }))
-  await page.evaluate(() => window.engram.agentInput({ kind: 'mouse', type: 'released', x: 0.5, y: 0.5, button: 'left', clicks: 1, modifiers: 0 }))
+  const lane = await page.evaluate(async () => (await window.engram.agentState()).lane ?? '')
+  await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'pressed', x: 0.5, y: 0.5, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)
+  await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'released', x: 0.5, y: 0.5, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)
   await page.waitForTimeout(1_500)
   const direct = ((await page.evaluate(() => window.engram.agentState())) as { url?: string }).url ?? ''
   console.log(`the same press sent directly: ${direct.endsWith('/clicked') ? 'landed' : 'MISSED'} (${direct})`)

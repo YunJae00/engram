@@ -4,6 +4,35 @@ import { createAgentMirror } from '../src/renderer/src/lib/agentMirror.js'
 const FRAME = { type: 'agent:frame' as const, data: 'aGk=', width: 1280, height: 800, url: 'https://x.example/one' }
 
 describe('the browser picture outlives the view that showed it', () => {
+  it('holds late frames without letting them replace the selected chat', () => {
+    const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
+    mirror.handleEvent({ ...FRAME, lane: 'bot-one' })
+    mirror.select('bot-two')
+    mirror.handleEvent({ ...FRAME, lane: 'bot-one', data: 'late' })
+    mirror.handleEvent({ type: 'agent:live', on: false, lane: 'bot-one' })
+    expect(mirror.getSnapshot()).toMatchObject({ lane: 'bot-two', frame: false })
+    mirror.handleEvent({ type: 'agent:live', on: true, lane: 'bot-two' })
+    mirror.handleEvent({ ...FRAME, lane: 'bot-two', data: 'current' })
+    const painted: string[] = []
+    mirror.onFrame((data) => painted.push(data))
+    mirror.handleEvent({ ...FRAME, lane: 'bot-one', data: 'later' })
+    expect(painted).toEqual(['current'])
+    mirror.select('bot-one')
+    expect(mirror.getSnapshot()).toMatchObject({ lane: 'bot-one', frame: true })
+    expect(mirror.heldFor('bot-one')?.data).toBe('later')
+  })
+
+  it('ignores a state request overtaken by a newer lane or live event', async () => {
+    let respond!: (state: { on: boolean; lane: string }) => void
+    const mirror = createAgentMirror({ watch: () => {}, ask: () => new Promise((resolve) => { respond = resolve }) })
+    const asking = mirror.ask()
+    mirror.select('bot-two')
+    mirror.handleEvent({ type: 'agent:live', on: true, lane: 'bot-two' })
+    respond({ on: false, lane: 'bot-one' })
+    await asking
+    expect(mirror.getSnapshot()).toMatchObject({ lane: 'bot-two', on: true })
+  })
+
   it('keeps a same-lane navigation painted and clears a different lane', () => {
     const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
     mirror.handleEvent({ ...FRAME, lane: 'bot-one' })

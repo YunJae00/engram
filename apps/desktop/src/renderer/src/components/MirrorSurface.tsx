@@ -23,11 +23,11 @@ function modifiersOf(e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; s
   return (e.altKey ? MODIFIER.alt : 0) | (e.ctrlKey ? MODIFIER.ctrl : 0) | (e.metaKey ? MODIFIER.meta : 0) | (e.shiftKey ? MODIFIER.shift : 0)
 }
 
-export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boolean }) {
+export function MirrorSurface({ live, hasFrame, lane }: { live: boolean; hasFrame: boolean; lane: string }) {
   const box = useRef<HTMLDivElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)
-  const send = (input: AgentInputDto) => void api.agentInput(input).catch(() => {})
+  const send = (input: AgentInputDto) => void api.agentInput(input, lane).catch(() => {})
   // The canvas box fills its stage and the picture sits inside it at its
   // own shape (object-fit: contain), so the two differ by a band above and
   // below or either side whenever the shapes do not match. A point is read
@@ -87,7 +87,7 @@ export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boo
     }
     el.addEventListener('wheel', wheel, { passive: false })
     return () => { el.removeEventListener('wheel', wheel); cancelAnimationFrame(scheduled) }
-  }, [live])
+  }, [live, lane])
   return (
     <div
       ref={box}
@@ -102,7 +102,7 @@ export function MirrorSurface({ live, hasFrame }: { live: boolean; hasFrame: boo
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="mirror-screen" hidden={!hasFrame}>
-        <FrameScreen />
+        <FrameScreen lane={lane} />
         <HandGhost />
       </div>
       {!hasFrame && <span className="live-waiting mirror-waiting">{t('live.waiting')}</span>}

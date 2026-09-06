@@ -21,8 +21,6 @@ const MAX_SHARE = 0.72
 const VIEW_WIDTH = 1280
 // A drag settles before the pages are asked to lay out again.
 const SETTLE_MS = 260
-// How long the old picture takes to give way to the new comet's.
-const SWITCH_MS = 240
 // How long the pane takes to leave when folded away.
 const FOLD_MS = 170
 // What the page gets of the window before anyone drags the divider.
@@ -80,25 +78,23 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
     document.addEventListener('visibilitychange', changed)
     return () => document.removeEventListener('visibilitychange', changed)
   }, [])
-  // The pane shows the tab of the comet being looked at, and moves with it:
-  // the old picture fades while the new tab's picture is fetched, instead
-  // of one page being swapped for another between two frames.
-  const [switching, setSwitching] = useState(false)
   // Folding plays the pane out to the right edge before the tab takes its
   // place, so the fold reads as the pane leaving, not vanishing.
   const [closing, setClosing] = useState(false)
+  const foldTimer = useRef<ReturnType<typeof setTimeout>>()
   const fold = () => {
+    clearTimeout(foldTimer.current)
     setClosing(true)
-    window.setTimeout(() => {
+    foldTimer.current = setTimeout(() => {
       setClosing(false)
       webPane.fold()
     }, FOLD_MS)
   }
   useEffect(() => {
-    setSwitching(true)
+    setClosing(false)
+    agentMirror.select(channel)
     void api.agentLane(channel).catch(() => {})
-    const settle = setTimeout(() => setSwitching(false), SWITCH_MS)
-    return () => clearTimeout(settle)
+    return () => clearTimeout(foldTimer.current)
   }, [channel])
   const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   // What the store holds is whoever was mirrored last; it belongs on this
@@ -228,10 +224,10 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
             tall as the frame is wide, so nothing is letterboxed inside a
             field and the space left over is simply the pane. */}
         <div
-          className={`web-pane-stage${switching ? ' switching' : ''}`}
+          className="web-pane-stage"
           ref={stage}
         >
-          <MirrorSurface live={liveHere} hasFrame={frameHere} />
+          <MirrorSurface key={channel} lane={channel} live={liveHere} hasFrame={frameHere} />
         </div>
         <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : t('live.empty')}</div>
         {children}

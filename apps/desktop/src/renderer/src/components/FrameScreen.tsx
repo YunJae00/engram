@@ -17,6 +17,9 @@ export function FrameScreen({ className, lane, source }: { className?: string; l
     if (!surface) return
     const context = surface.getContext('2d', { alpha: false })
     if (!context) return
+    delete surface.dataset['painted']
+    delete surface.dataset['format']
+    context.clearRect(0, 0, surface.width, surface.height)
     let alive = true
     let busy = false
     let waiting: string | null = null

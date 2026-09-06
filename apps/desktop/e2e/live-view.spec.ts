@@ -1,4 +1,4 @@
-import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, chromium, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
@@ -19,6 +19,7 @@ let app: ElectronApplication
 let page: Page
 let server: Server
 let siteUrl: string
+let browserPort: number
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -40,17 +41,24 @@ test.beforeAll(async () => {
       )
     else if (req.url === '/scroll') res.end('<html><body style="margin:0"><div style="height:3000px;background:rgb(240,40,40)"></div><div style="height:6000px;background:rgb(30,80,220)"></div></body></html>')
     else if (req.url === '/motion') res.end('<html><body><h1>Sharp moving page</h1><div id="box" style="width:200px;height:200px;background:#3478f6"></div><script>function move(t){document.getElementById("box").style.transform="translateX("+(t/5%500)+"px)";requestAnimationFrame(move)}requestAnimationFrame(move)</script></body></html>')
-    else if (req.url === '/clicked') res.end('<html><head><title>Clicked</title></head><body><main><h1>Clicked</h1></main></body></html>')
+    else if (req.url === '/clicked' || req.url === '/popup') res.end('<html><head><title>Clicked</title></head><body><main><h1>Clicked</h1></main></body></html>')
     else
       res.end(
         '<html><head><title>Form</title></head><body><main><h1>Form</h1>' +
-          '<form action="/typed"><input name="q" aria-label="Query" style="position:fixed;left:0;top:0;width:100%;height:40%;font-size:40px"/></form></main></body></html>',
+          '<form action="/typed"><input name="q" aria-label="Query" style="position:fixed;left:0;top:0;width:100%;height:40%;font-size:40px"/></form>' +
+          '<a href="/popup" target="_blank" style="position:fixed;left:0;top:50%;width:100%;height:30%;display:block">Open popup</a></main></body></html>',
       )
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('the local site did not start')
   siteUrl = `http://127.0.0.1:${address.port}/`
+  const portProbe = createServer()
+  await new Promise<void>((resolve) => portProbe.listen(0, '127.0.0.1', resolve))
+  const probeAddress = portProbe.address()
+  if (!probeAddress || typeof probeAddress === 'string') throw new Error('no browser test port')
+  browserPort = probeAddress.port
+  await new Promise<void>((resolve) => portProbe.close(() => resolve()))
 
   app = await electron.launch({
     args: [MAIN_ENTRY, '--no-sandbox'],
@@ -62,6 +70,7 @@ test.beforeAll(async () => {
       ENGRAM_NO_AUTOTIDY: '1',
       ENGRAM_ENGINE: 'none',
       ENGRAM_HIDDEN: '1',
+      ENGRAM_AGENT_CDP: String(browserPort),
     },
   })
   page = await app.firstWindow()
@@ -75,6 +84,7 @@ test.afterAll(async () => {
 
 test('the mirror is watchable and acted in: the address, the keys and the clicks all reach the window', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.engram.browsersInstalled().then((items) => items.length).catch(() => 0))).toBeGreaterThan(0)
   await page.evaluate(async () => {
     const installed = (await window.engram.browsersInstalled()) as { path: string }[]
     if (installed[0]) await window.engram.browserChoose(installed[0].path)
@@ -148,6 +158,28 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(4, { timeout: 20000 })
   await expect.poll(() => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width)), { timeout: 20000 }).toEqual([2560, 2560, 2560, 2560])
+  const simultaneous = await page.evaluate(async ({ url, ids }) => {
+    const lanes = ids.map((id) => `bot-${id}`)
+    const counts = lanes.map(() => 0)
+    let measuring = false
+    const off = window.engram.onEvent((event) => {
+      if (!measuring || event.type !== 'mission:frame' || !event.frame.data) return
+      const index = lanes.indexOf(event.frame.lane)
+      if (index >= 0) counts[index]!++
+    })
+    try {
+      await Promise.all(lanes.map((lane) => window.engram.agentGo(`${url}motion`, lane)))
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      measuring = true
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      return counts
+    } finally {
+      off()
+      await Promise.all(lanes.map((lane, index) => window.engram.agentGo(`${url}typed?q=${index}`, lane)))
+    }
+  }, { url: siteUrl, ids: bots.map((bot) => bot.id) })
+  console.log('simultaneous motion frames in 3s:', simultaneous)
+  expect(simultaneous.every((count) => count > 15)).toBe(true)
   // The CDP screenshot stalls on a hidden window that repaints on a timer;
   // the app's own capture path does not, so the picture is taken there. A
   // hidden window stops presenting frames, and a capture returns the last
@@ -189,7 +221,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
   await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)
-  await page.evaluate(() => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }))
+  await page.evaluate((id) => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }, `bot-${id}`), bots[3]!.id)
   await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
     const canvas = node as HTMLCanvasElement
     const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
@@ -217,4 +249,78 @@ test('a saved wide page panel stays inside the conversation on a compact window'
   expect(paneBox!.x + paneBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1)
   expect(foldBox!.x).toBeGreaterThanOrEqual(paneBox!.x)
   expect(addressBox!.x).toBeGreaterThan(foldBox!.x + foldBox!.width)
+})
+
+test('window and chat handoffs preserve independent input, composition and monitoring', async () => {
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${browserPort}`)
+  try {
+    const context = browser.contexts()[0]!
+    const pages = context.pages().filter((one) => one.url().startsWith(siteUrl))
+    expect(pages).toHaveLength(4)
+    const windowIds = await Promise.all(pages.map(async (one) => {
+      const cdp = await context.newCDPSession(one)
+      try { return (await cdp.send('Browser.getWindowForTarget')).windowId } finally { await cdp.detach() }
+    }))
+    expect(new Set(windowIds).size).toBe(4)
+    const bots = await page.evaluate(() => window.engram.botsList())
+    const first = bots.find((bot) => bot.name === 'Watching')!
+    const second = bots.find((bot) => bot.name === 'Parallel watch')!
+    await page.evaluate(async ({ url, first, second }) => {
+      await Promise.all([
+        window.engram.agentGo(`${url}?lane=first`, `bot-${first}`),
+        window.engram.agentGo(`${url}?lane=second`, `bot-${second}`),
+      ])
+    }, { url: siteUrl, first: first.id, second: second.id })
+    const firstPage = context.pages().find((one) => one.url() === `${siteUrl}?lane=first`)!
+    const secondPage = context.pages().find((one) => one.url() === `${siteUrl}?lane=second`)!
+    const clickInput = async () => {
+      const canvas = page.getByTestId('web-pane').locator('canvas[data-painted]')
+      await expect(canvas).toBeVisible()
+      const point = await canvas.evaluate((node) => {
+        const surface = node as HTMLCanvasElement, box = surface.getBoundingClientRect()
+        const scale = Math.min(box.width / surface.width, box.height / surface.height)
+        return { x: box.width / 2, y: (box.height - surface.height * scale) / 2 + surface.height * scale * 0.2 }
+      })
+      await canvas.click({ position: point })
+    }
+    await page.locator('.bots-row', { hasText: 'Watching' }).click()
+    await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
+    await clickInput()
+    const keys = page.getByTestId('web-pane').locator('.live-keys')
+    await keys.evaluate((node) => {
+      node.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }))
+      node.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: '한글' }))
+      node.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '한글' }))
+    })
+    await page.keyboard.insertText(' 입력 123')
+    await expect(firstPage.locator('input')).toHaveValue('한글 입력 123')
+    for (let turn = 0; turn < 3; turn++) {
+      await page.locator('.bots-row', { hasText: 'Parallel watch' }).click()
+      await page.locator('.bots-row', { hasText: 'Watching' }).click()
+    }
+    await page.locator('.bots-row', { hasText: 'Parallel watch' }).click()
+    await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
+    await clickInput()
+    await page.evaluate((id) => window.engram.agentInput({ kind: 'text', text: 'stale' }, `bot-${id}`), first.id)
+    await page.keyboard.type('second')
+    await expect(secondPage.locator('input')).toHaveValue('second')
+    await expect(firstPage.locator('input')).toHaveValue('한글 입력 123')
+    for (let turn = 0; turn < 3; turn++) {
+      await page.getByTestId('activity-mission').click()
+      await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2)
+      await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
+      await expect(page.getByTestId('web-pane').locator('canvas[data-painted]')).toBeVisible()
+    }
+    await clickInput()
+    await page.keyboard.press('End')
+    await page.keyboard.insertText(' 유지')
+    await expect(secondPage.locator('input')).toHaveValue('second 유지')
+    const opened = secondPage.waitForEvent('popup')
+    await secondPage.getByRole('link', { name: 'Open popup' }).click()
+    const popup = await opened
+    await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}popup`)
+    await popup.close()
+    await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
+    await expect(secondPage.locator('input')).toHaveValue('second 유지')
+  } finally { await browser.close() }
 })

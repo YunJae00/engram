@@ -51,8 +51,9 @@ for (let i = 0; i < 150 && !done; i++) {
     shot = true
     // The person puts a hand on the page mid-turn: a press on the page's
     // margin. The comet should step aside, then carry on once still.
-    await page.evaluate(() => window.engram.agentInput({ kind: 'mouse', type: 'pressed', x: 0.985, y: 0.985, button: 'left', clicks: 1, modifiers: 0 }))
-    await page.evaluate(() => window.engram.agentInput({ kind: 'mouse', type: 'released', x: 0.985, y: 0.985, button: 'left', clicks: 1, modifiers: 0 }))
+    const lane = await page.evaluate(async () => (await window.engram.agentState()).lane ?? '')
+    await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'pressed', x: 0.985, y: 0.985, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)
+    await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'released', x: 0.985, y: 0.985, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)
   }
   await page.waitForTimeout(1_000)
 }

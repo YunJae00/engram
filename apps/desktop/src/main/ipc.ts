@@ -1384,7 +1384,7 @@ export function registerIpc(ctx: VaultContext): void {
   // the moves a person makes on that view, and the real window on call.
   startAgentView()
   ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
-  ipcMain.handle('agent:input', (_e, input: AgentInputDto) => agentViewInput(input))
+  ipcMain.handle('agent:input', (_e, input: AgentInputDto, lane: string) => agentViewInput(input, lane))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
   ipcMain.handle('agent:go', (_e, url: string, lane?: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048), lane))
   ipcMain.handle('agent:refresh', () => refreshAgentView())

@@ -33,6 +33,8 @@ const EMPTY: MirrorState = { on: false, lane: '', frame: false, width: 1280, hei
 
 export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promise<{ on: boolean; url?: string; lane?: string }> }) {
   let state: MirrorState = EMPTY
+  let requestedLane: string | null = null
+  let revision = 0
   // The newest picture, kept as it arrived: a canvas that has just appeared
   // paints this rather than waiting for the page to move.
   let pixels: string | null = null
@@ -51,6 +53,14 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
     emit()
   }
   return {
+    select(lane: string): void {
+      requestedLane = lane
+      ++revision
+      if (state.lane === lane) return
+      const saved = held.get(lane)
+      pixels = saved?.data ?? null
+      set({ ...EMPTY, lane, frame: Boolean(saved), ...(saved ? { width: saved.width, height: saved.height, url: saved.url } : {}) })
+    },
     subscribe(listener: () => void): () => void {
       listeners.add(listener)
       return () => {
@@ -78,12 +88,15 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
     },
     // What is open right now, for a view that has just appeared.
     async ask(): Promise<void> {
+      const askedAt = revision
       const now = await deps.ask().catch(() => null)
-      if (!now) return
+      if (!now || askedAt !== revision || (requestedLane && now.lane !== requestedLane)) return
       set({ ...state, on: now.on, ...(now.url ? { url: now.url } : {}), ...(now.lane ? { lane: now.lane } : {}) })
     },
     handleEvent(event: EngramEvent): void {
       if (event.type === 'agent:live') {
+        if (requestedLane && event.lane !== requestedLane) return
+        ++revision
         // A window that went away leaves its last frame: the person can still
         // see where the work got to. A new one starts blank rather than
         // showing the page before it.
@@ -91,9 +104,11 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
         if (event.on && !sameLane) pixels = null
         set(event.on ? { ...state, on: true, url: event.url, lane: event.lane ?? state.lane, frame: sameLane && state.frame } : { ...state, on: false })
       } else if (event.type === 'agent:frame') {
-        pixels = event.data
         held.set(event.lane, { data: event.data, width: event.width, height: event.height, url: event.url })
         if (held.size > 8) held.delete(held.keys().next().value!)
+        if (requestedLane && event.lane !== requestedLane) return
+        ++revision
+        pixels = event.data
         for (const watcher of watchers) watcher(event.data)
         set({ on: true, url: event.url, lane: event.lane, frame: true, width: event.width, height: event.height })
       }
@@ -103,6 +118,8 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
       return held.get(lane) ?? null
     },
     forget(): void {
+      requestedLane = null
+      ++revision
       pixels = null
       state = EMPTY
       emit()

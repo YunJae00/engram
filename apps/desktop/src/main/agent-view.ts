@@ -32,6 +32,7 @@ interface Mirror {
   width: number
   height: number
   streaming: boolean
+  streamRevision: number
 }
 
 let mirror: Mirror | null = null
@@ -78,26 +79,27 @@ async function shoot(m: Mirror, now = false): Promise<void> {
 }
 
 function say(on: boolean): void {
-  broadcast({ type: 'agent:live', on, ...(on && mirror ? { url: mirror.page.url(), lane: mirror.lane } : {}) })
+  broadcast({ type: 'agent:live', on, lane: activeLaneName(), ...(on && mirror ? { url: mirror.page.url(), lane: mirror.lane } : {}) })
 }
 
 async function stream(m: Mirror, on: boolean): Promise<void> {
   if (m.streaming === on) return
   m.streaming = on
+  const revision = ++m.streamRevision
   if (!on) { m.previewStop?.(); m.previewStop = undefined; return }
   try {
     const stop = await startPagePreview(m.page, (frame) => {
-      if (mirror !== m || !m.streaming) return
+      if (mirror !== m || !m.streaming || revision !== m.streamRevision) return
       m.width = frame.width
       m.height = frame.height
       m.painted = Date.now()
       broadcast({ type: 'agent:frame', ...frame, url: m.page.url(), lane: m.lane })
     })
-    if (mirror !== m || !m.streaming) stop()
+    if (mirror !== m || !m.streaming || revision !== m.streamRevision) stop()
     else m.previewStop = stop
   } catch (err) {
     flog('agent-view', `stream failed on ${m.page.url()}: ${err instanceof Error ? err.message : String(err)}`)
-    m.streaming = false
+    if (revision === m.streamRevision) m.streaming = false
   }
 }
 
@@ -137,7 +139,7 @@ async function followNow(page: Page, generation: number): Promise<void> {
     return
   }
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
-  const m: Mirror = { page, cdp, lane: laneOf(page) ?? activeLaneName(), width: size.width, height: size.height, streaming: false, painted: 0, shooting: false, again: false }
+  const m: Mirror = { page, cdp, lane: laneOf(page) ?? activeLaneName(), width: size.width, height: size.height, streaming: false, streamRevision: 0, painted: 0, shooting: false, again: false }
   mirror = m
   // Where the page has got to, said whether or not anyone wants frames: a
   // folded view shows the address alone, and it has to stay true.
@@ -242,9 +244,9 @@ export function agentViewState(): { on: boolean; url?: string; lane?: string } {
 
 const BUTTON = { left: 'left', right: 'right', middle: 'middle', none: 'none' } as const
 
-export async function agentViewInput(input: AgentInputDto): Promise<void> {
+export async function agentViewInput(input: AgentInputDto, lane: string): Promise<void> {
   const m = mirror
-  if (!m) return
+  if (!m || m.lane !== lane || activeLaneName() !== lane) return
   const hands = input.kind === 'key' || input.kind === 'text' || (input.kind === 'mouse' && (input.type === 'pressed' || input.type === 'released'))
   if (hands) touched.set(laneOf(m.page) ?? activeLaneName(), Date.now())
   try {

@@ -452,7 +452,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .model-picker-menu { animation: menu-in 120ms ease-out; transform-origin: bottom right; }
 .web-pane-tab-label { animation: name-in 220ms ease; }
 .mirror-screen { transition: opacity 180ms ease; }
-.web-pane-stage.switching .mirror-screen { opacity: 0; }
 /* The pane leaves to the right edge when folded, and arrives from it. */
 .web-pane { animation: pane-in 180ms ease-out; }
 .web-pane.closing { animation: pane-out 170ms ease-in forwards; }

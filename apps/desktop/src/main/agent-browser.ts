@@ -9,6 +9,8 @@ import { flog } from './flog.js'
 import { markAgentProfile } from './agent-profile.js'
 import { reserveRoom } from './memory-plan.js'
 import { readFrames } from './page-reader.js'
+import { createWindowPage } from './browser-window-page.js'
+import { BrowserLanes } from './browser-lanes.js'
 
 // The errand's hands: the user's own Chrome, driven over CDP by
 // playwright-core. Its window is an ordinary window — park it on another
@@ -225,7 +227,9 @@ async function launchPatiently<T>(launch: () => Promise<T>): Promise<T> {
 // starts on a page an old one left open. The tabs share one browser and
 // one profile: a sign-in made in any of them holds in all of them.
 export const DEFAULT_LANE = 'default'
-const lanes = new Map<string, Page>()
+const lanes = new BrowserLanes((page, lane) => {
+  for (const watcher of pageWatchers) watcher(page, lane)
+})
 let allocatingLane: string | null = null
 // The lane the person is looking at: the one the mirror follows, and the
 // one a tab opened by a link is handed to when its opener is not known.
@@ -234,8 +238,7 @@ let activeLane = DEFAULT_LANE
 const LANE_MIN_FREE = 0.8e9
 
 export function laneOf(page: Page): string | null {
-  for (const [lane, held] of lanes) if (held === page) return lane
-  return null
+  return lanes.owner(page)
 }
 
 export function lanePage(lane: string): Page | null {
@@ -255,9 +258,9 @@ export function activeLaneName(): string {
 // starts on a blank page. What a person presses when the page has got into
 // a state neither they nor the comet can get out of.
 export async function resetLane(lane: string): Promise<void> {
-  const page = lanes.get(lane)
+  const pages = lanes.pages(lane)
   lanes.delete(lane)
-  if (page && !page.isClosed()) await page.close().catch(() => undefined)
+  await Promise.all(pages.filter((page) => !page.isClosed()).map((page) => page.close().catch(() => undefined)))
 }
 
 // Whoever mirrors the window is told of every page as it opens, and which
@@ -452,13 +455,13 @@ async function assignAgentPage(lane: string): Promise<Page> {
   if (held) return held
   // The tab the browser opened with belongs to whoever asks first; after
   // that every lane gets a tab of its own, if the machine has room for one.
-  const spare = ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null)
+  const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
   if (!spare && lanes.size > 0 && os.freemem() < LANE_MIN_FREE)
     throw new Error(`not enough free memory for another page while other work is open (${(os.freemem() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
   let page = spare
   if (!page) {
     allocatingLane = lane
-    try { page = await ctx.newPage() } finally { allocatingLane = null }
+    try { page = await createWindowPage(ctx, { width: VIEW_WIDTH, height: viewHeight }) } finally { allocatingLane = null }
   }
   lanes.set(lane, page)
   for (const watcher of pageWatchers) watcher(page, lane)

@@ -38,11 +38,11 @@ function hostOf(url: string | undefined): string {
   }
 }
 
-function Stage({ frame, size, live }: { frame: boolean; size: { width: number; height: number }; live: boolean }) {
+function Stage({ frame, size, live, lane }: { frame: boolean; size: { width: number; height: number }; live: boolean; lane: string }) {
   const image = useRef<HTMLDivElement>(null)
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)
-  const send = (input: AgentInputDto) => void api.agentInput(input).catch(() => {})
+  const send = (input: AgentInputDto) => void api.agentInput(input, lane).catch(() => {})
   const at = (e: React.MouseEvent): { x: number; y: number } | null => {
     const rect = image.current?.getBoundingClientRect()
     if (!rect || rect.width === 0) return null
@@ -86,7 +86,7 @@ function Stage({ frame, size, live }: { frame: boolean; size: { width: number; h
       }}
     >
       <div className="live-screen" ref={image} hidden={!frame}>
-        <FrameScreen />
+        <FrameScreen lane={lane} />
       </div>
       {!frame && <span className="live-waiting">{t('live.waiting')}</span>}
       <textarea
@@ -147,7 +147,7 @@ function Address({ url }: { url?: string }) {
 // the turn runs, even between windows, so it does not blink in and out.
 // children: what belongs beside the page (the question, a wall's Continue).
 export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
-  const { on, url, frame, width, height } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame, width, height, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const size = { width, height }
   const [big, setBig] = useState(false)
   const [windowOut, setWindowOut] = useState(false)
@@ -288,7 +288,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
                   <X size={14} aria-hidden />
                 </button>
               </div>
-              <Stage frame={frame} size={size} live={on} />
+              <Stage key={lane} lane={lane} frame={frame} size={size} live={on} />
               <div className="live-panel-foot">
                 <span className="live-panel-hint">{t('live.hint')}</span>
                 {children}
