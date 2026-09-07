@@ -33,7 +33,9 @@ const dead = (pid: number): boolean => {
   }
 }
 
-async function until(check: () => boolean, ms = 3000): Promise<boolean> {
+// Endpoint inspection can delay process startup and exit notifications.
+// Still require the child to exit and leave the registry before passing.
+async function until(check: () => boolean, ms = 15_000): Promise<boolean> {
   const start = Date.now()
   while (Date.now() - start < ms) {
     if (check()) return true
@@ -93,7 +95,7 @@ describe('engine child registry', () => {
     const pids = liveEnginePids()
     const killed = killAllEngineChildrenSync()
     expect(killed).toBeGreaterThanOrEqual(2)
-    expect(await until(() => pids.every(dead), 2_000)).toBe(true)
+    expect(await until(() => pids.every(dead))).toBe(true)
   })
 
   it('a timed-out probe answers null and leaves no live child behind', async () => {
@@ -102,6 +104,6 @@ describe('engine child registry', () => {
     expect(verdict).toBeNull()
     // The probe's own child (the shim on win32) must be gone from the
     // registry — the grandchild's death rides taskkill /T.
-    expect(await until(() => liveEnginePids().length === 0, 2_000)).toBe(true)
+    expect(await until(() => liveEnginePids().length === 0)).toBe(true)
   })
 })

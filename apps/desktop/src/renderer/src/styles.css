@@ -1,5 +1,6 @@
 @import './assets/fonts/fonts.css';
 @import './native-browser.css';
+@import './activity-motion.css';
 
 :root {
   /* Type scale: every font-size in this file resolves to one of these. */
@@ -1395,7 +1396,6 @@ body.bubble-host { background: transparent; }
 
 /* ── Settings & diagnostics ──────────────────────────────────── */
 .settings-box { width: min(880px, 92vw); gap: 0; padding: 0; overflow: hidden; }
-.settings-box[aria-busy='true'] { padding: 24px 28px; gap: 18px; }
 .settings-box .brief-title { margin-bottom: 2px; }
 .settings-scroll { min-height: 0; overflow-y: auto; padding: var(--space-4) var(--dialog-gutter); display: flex; flex-direction: column; gap: var(--space-2); }
 /* diagnostics grows to fit the embedded terminal — no inner scrolling */
@@ -2039,7 +2039,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .mission-tile-head select { min-width: 0; flex: 1; background: transparent; border: 0; box-shadow: none; color: var(--fg); font-size: var(--fs-small); font-weight: 550; padding: 5px; }
 .mission-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--fg-faint); white-space: nowrap; }
 .mission-status i { width: 5px; height: 5px; border-radius: 50%; background: var(--fg-faint); }
-.mission-tile.working .mission-status i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .mission-preview { position: relative; flex: 1; min-height: 140px; width: 100%; padding: 0; overflow: hidden; border-radius: 0; text-align: left; color: var(--fg); background: var(--panel-bg); }
 .mission-preview canvas { position: absolute; width: 100%; height: 100%; inset: 0; object-fit: contain; visibility: hidden; }
 .mission-preview canvas[data-painted] { visibility: visible; }
@@ -2213,8 +2212,11 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 
 /* Settings opens at once and empty: rows in outline, breathing, until every
    one knows its state and the real rows take their place. */
-.settings-skeleton { display: flex; flex-direction: column; gap: 22px; padding: 6px 0 18px; }
-.settings-skeleton-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.settings-skeleton { display: flex; flex-direction: column; padding: 0; }
+.settings-skeleton-row { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border-soft); }
+.settings-skeleton-row:last-child { border-bottom: 0; }
+.settings-load-error { padding: var(--space-4) 0; color: var(--fg-dim); }
+.settings-load-error p { margin: 0 0 var(--space-4); }
 .skeleton-line {
   display: block; height: 12px; border-radius: 999px; background: var(--selected-soft);
   animation: skeleton-breathe 1.4s ease-in-out infinite;

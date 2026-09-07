@@ -27,6 +27,9 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
+          // Bound the resident workers while vault tests create files and processes.
+          maxWorkers: 2,
+          minWorkers: 1,
           // Vault-heavy tests hit real filesystem I/O (init, watch, git) —
           // generous timeouts keep them stable on slower/AV-scanned disks.
           testTimeout: 120_000,

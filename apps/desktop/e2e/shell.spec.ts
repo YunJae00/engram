@@ -195,7 +195,8 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect(page.getByTestId('sidebar-routines')).toContainText('Morning portal')
 
   await page.getByTestId('sidebar-chats-toggle').click()
-  await expect(page.getByTestId('sidebar-chats')).toHaveCount(0)
+  await expect(page.getByTestId('sidebar-chats')).not.toBeVisible()
+  await expect(page.getByTestId('sidebar-chats-toggle')).toHaveAttribute('aria-expanded', 'false')
   await page.getByTestId('sidebar-chats-toggle').click()
   await expect(page.getByTestId('sidebar-chats')).toBeVisible()
 

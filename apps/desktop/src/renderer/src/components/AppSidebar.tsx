@@ -1,6 +1,5 @@
 import {
   ChevronDown,
-  ChevronRight,
   CircleHelp,
   List,
   PanelsTopLeft,
@@ -17,11 +16,15 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, BotSuggestionDto, RoutineDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { cometThreads, selectComet } from '../lib/cometThreadsLive.js'
+import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
+import { cometOfChannel } from '../lib/cometThreads.js'
+import { useCometActivity } from '../lib/useCometActivity.js'
 import { useShellState } from '../state-slices.js'
 import { BotSuggestions } from './BotSuggestions.js'
 import { Comet } from './Icon.js'
 import { SidebarStatus } from './SidebarStatus.js'
+import { SidebarDisclosure } from './SidebarDisclosure.js'
+import { CometActivityIndicator } from './CometActivityIndicator.js'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
 
 type Menu = { kind: 'chat' | 'routine'; id: string } | null
@@ -50,7 +53,8 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
   const [editing, setEditing] = useState<Editing>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
+  const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
+  const activityOf = useCometActivity()
   const reload = async () => {
     if (!vaultReady) return
     const [nextBots, nextRoutines, nextSuggestions] = await Promise.all([
@@ -68,6 +72,10 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
   useEffect(() => {
     void reload()
     if (!vaultReady) return
+    void api.chatActive().then((channels) => Promise.all(channels.map((channel) => {
+      const id = cometOfChannel(channel)
+      return id ? loadCometThread(id).catch(() => undefined) : undefined
+    }))).catch(() => undefined)
     let debounce: number | null = null
     const unsubscribe = api.onEvent((event) => {
       if (event.type === 'bots:changed') void reload()
@@ -204,15 +212,15 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
       <div className="sidebar-scroll">
         <section className="sidebar-section">
           <div className="sidebar-section-head">
-            <button className="sidebar-section-toggle" data-testid="sidebar-routines-toggle" onClick={() => setRoutinesOpen(!routinesOpen)}>
-              {routinesOpen ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+            <button className="sidebar-section-toggle" data-testid="sidebar-routines-toggle" aria-expanded={routinesOpen} aria-controls="sidebar-routines-content" onClick={() => { setRoutinesOpen(!routinesOpen); setMenu(null) }}>
+              <ChevronDown size={14} aria-hidden />
               <span>{t('bots.routinesTitle')}</span>
             </button>
             <button className="sidebar-section-open" title={t('sidebar.openRoutines')} onClick={onOpenRoutines}>
               <Play size={13} strokeWidth={1.9} aria-hidden />
             </button>
           </div>
-          {routinesOpen && (
+          <SidebarDisclosure id="sidebar-routines-content" open={routinesOpen}>
             <ul className="sidebar-list" data-testid="sidebar-routines">
               {routines.map((routine) => (
                 <li className="sidebar-item" key={routine.id}>
@@ -260,18 +268,17 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
               ))}
               {routines.length === 0 && <li className="sidebar-empty">{t('sidebar.noRoutines')}</li>}
             </ul>
-          )}
+          </SidebarDisclosure>
         </section>
 
         <section className="sidebar-section">
           <div className="sidebar-section-head">
-            <button className="sidebar-section-toggle" data-testid="sidebar-chats-toggle" onClick={() => setChatsOpen(!chatsOpen)}>
-              {chatsOpen ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+            <button className="sidebar-section-toggle" data-testid="sidebar-chats-toggle" aria-expanded={chatsOpen} aria-controls="sidebar-chats-content" onClick={() => { setChatsOpen(!chatsOpen); setMenu(null) }}>
+              <ChevronDown size={14} aria-hidden />
               <span>{t('sidebar.chats')}</span>
             </button>
           </div>
-          {chatsOpen && (
-            <>
+          <SidebarDisclosure id="sidebar-chats-content" open={chatsOpen}>
               <ul className="sidebar-list" data-testid="sidebar-chats">
                 {bots.map((bot) => (
                   <li className={`sidebar-item${bot.id === selectedId && activity === 'bots' ? ' active' : ''}`} key={bot.id}>
@@ -299,6 +306,7 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
                           navigate('bots')
                         }}
                       >
+                        <CometActivityIndicator state={activityOf(bot)} />
                         <span>{bot.name}</span>
                       </button>
                     )}
@@ -333,8 +341,7 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
                 }}
                 onDismiss={(name) => void dismissSuggestion(name)}
               />
-            </>
-          )}
+          </SidebarDisclosure>
         </section>
       </div>
 

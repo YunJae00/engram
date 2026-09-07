@@ -91,6 +91,9 @@ export function useAppEvents(options: AppEventsOptions): void {
       .catch(() => undefined)
 
     const unsub = api.onEvent((event: EngramEvent) => {
+      if (event.type === 'chat:done' || event.type === 'chat:error') {
+        setters.pressAsks((held) => held.some((ask) => ask.channel === event.channel) ? held.filter((ask) => ask.channel !== event.channel) : held)
+      }
       if (event.type === 'vault:ready') loadVault()
       if (event.type === 'vault:error') setters.vaultError({ message: event.message, root: event.root })
       if (event.type === 'vault:changed') refreshCardsInboxSoon()

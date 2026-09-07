@@ -235,7 +235,7 @@ let allocatingLane: string | null = null
 // one a tab opened by a link is handed to when its opener is not known.
 let activeLane = DEFAULT_LANE
 // Another tab is only worth opening when the machine can afford it.
-const LANE_MIN_FREE = 0.8e9
+const LANE_MIN_FREE = LAUNCH_MIN_FREE
 
 export function laneOf(page: Page): string | null {
   return lanes.owner(page)
@@ -336,6 +336,8 @@ async function ensureContext(): Promise<Ctx> {
   const spokenFor = reserveRoom(LAUNCH_FOOTPRINT)
   opening = (async () => {
     if (closing) await closing.catch(() => undefined)
+    if (os.freemem() < LAUNCH_MIN_FREE)
+      throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
     if (nativeBrowserEnabled()) {
       const ctx = await openNativeBrowser()
       context = ctx
@@ -353,8 +355,6 @@ async function ensureContext(): Promise<Ctx> {
     }
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
-    if (os.freemem() < LAUNCH_MIN_FREE)
-      throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
     const { chromium } = await import('playwright-core')
     // One more chance for the person's sign-ins to follow them in, right
     // before the window they would need them in. Costs nothing when their

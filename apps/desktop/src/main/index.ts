@@ -20,6 +20,7 @@ import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
+import { logResponsiveness, watchResponsiveness } from './performance-health.js'
 import { keepWindowState, loadWindowState, placeWindow } from './window-state.js'
 import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
@@ -261,7 +262,8 @@ async function createMainWindow(hash?: string): Promise<void> {
       void loadRenderer(mainWin)
     }
   })
-  mainWin.webContents.on('unresponsive', () => console.error('renderer unresponsive'))
+  mainWin.webContents.on('unresponsive', () => logResponsiveness('renderer-unresponsive'))
+  mainWin.webContents.on('responsive', () => logResponsiveness('renderer-responsive'))
   // macOS fullscreen hides the traffic lights — tell the renderer so the top
   // bar can drop the left padding it reserves for them (and restore on exit).
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
@@ -586,6 +588,7 @@ app.whenReady().then(async () => {
   // Lost the single-instance race: quit was already requested above, so boot
   // nothing — no window, no vault, no watchers on a vault another process owns.
   if (!singleInstance) return
+  watchResponsiveness()
   // Engine child bookkeeping, before anything can spawn one: every spawn is
   // ledgered as it happens, and whatever a CRASHED previous run left listed
   // gets adjudicated now (kill only on full agreement — see reaper.ts; the

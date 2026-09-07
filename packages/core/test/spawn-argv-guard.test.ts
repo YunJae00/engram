@@ -25,7 +25,7 @@ describe('shell-mode argv cannot carry shell metacharacters', () => {
       ['-m', 'ggml-base.bin', '--language', 'auto'],
     ]) {
       // resolves false (no such CLI in CI) rather than throwing on the guard
-      await expect(probeCli('definitely-not-a-real-binary-xyz', args, 2_000)).resolves.toBe(false)
+      await expect(probeCli('definitely-not-a-real-binary-xyz', args, 15_000)).resolves.toBe(false)
     }
   })
 })

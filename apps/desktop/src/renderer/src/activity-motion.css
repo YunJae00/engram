@@ -1,0 +1,45 @@
+:root {
+  --work-running: #3c7cce;
+  --work-waiting: #b96e22;
+  --work-error: #ce767a;
+}
+[data-theme='dark'] {
+  --work-running: #77aff5;
+  --work-waiting: #edac66;
+  --work-error: #e9959a;
+}
+.sidebar-section-toggle > svg { transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+.sidebar-section-toggle[aria-expanded='false'] > svg { transform: rotate(-90deg); }
+.sidebar-disclosure {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 220ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms ease, visibility 0s;
+}
+.sidebar-disclosure[data-open='false'] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 220ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms ease, visibility 0s 220ms;
+}
+.sidebar-disclosure-content { min-height: 0; overflow: hidden; }
+.sidebar-disclosure[data-open='true'][data-settled='true'] > .sidebar-disclosure-content { overflow: visible; }
+.comet-activity-icon { flex: none; width: 14px; height: 14px; }
+.comet-activity-icon[data-state='running'] { color: var(--work-running); animation: comet-working 1.2s linear infinite; }
+.comet-activity-icon[data-state='waiting'] { color: var(--work-waiting); }
+.comet-activity-icon[data-state='error'] { color: var(--work-error); }
+.sidebar-item-main > .comet-activity-icon { margin-right: 7px; }
+.mission-tile[data-state] { transition: border-color 200ms ease, box-shadow 200ms ease; }
+.mission-tile[data-state='running'] { --work-color: var(--work-running); }
+.mission-tile[data-state='waiting'] { --work-color: var(--work-waiting); }
+.mission-tile[data-state='error'] { --work-color: var(--work-error); }
+.mission-tile[data-state='running'], .mission-tile[data-state='waiting'], .mission-tile[data-state='error'] {
+  border-color: var(--work-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--work-color) 45%, transparent), 0 3px 12px color-mix(in srgb, var(--work-color) 9%, transparent);
+}
+.mission-tile[data-state]:not([data-state='ready']) .mission-status { color: var(--work-color); }
+@keyframes comet-working { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-section-toggle > svg, .sidebar-disclosure, .sidebar-disclosure[data-open='false'], .mission-tile[data-state] { transition: none; }
+  .comet-activity-icon[data-state='running'] { animation: none; }
+}

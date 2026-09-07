@@ -13,8 +13,7 @@ import { useStickToBottom } from '../lib/useStickToBottom.js'
 // seat as the full view, so words typed here land in the same transcript
 // and the same turn machinery. Opening the full view is the tile's job.
 export function MiniChat({ botId }: { botId: string }) {
-  useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
-  const thread = cometThreads.thread(botId)
+  const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId))
   const listRef = useRef<HTMLDivElement>(null)
   useStickToBottom(listRef, thread.messages)
   // A comet seated here may never have been opened in the full view, so its

@@ -1,12 +1,14 @@
 import { ArrowUpRight, ChevronDown, Columns2, Grid2X2, Monitor, Plus } from 'lucide-react'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { MiniChat } from '../components/MiniChat.js'
+import { CometActivityIndicator, cometActivityLabel } from '../components/CometActivityIndicator.js'
 import { MissionPreview } from '../components/MissionPreview.js'
 import { cometChannel } from '../lib/cometThreads.js'
-import { cometThreads, selectComet } from '../lib/cometThreadsLive.js'
+import { selectComet } from '../lib/cometThreadsLive.js'
+import { useCometActivity } from '../lib/useCometActivity.js'
 import { fillSeats, readSeats, replaceSeat } from '../lib/missionSeats.js'
 import { useShellState } from '../state-slices.js'
 
@@ -15,7 +17,7 @@ const SEATS_KEY = 'engram.mission.slots'
 
 export function MissionControl() {
   const { setActivity } = useShellState()
-  const { threads } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
+  const activityOf = useCometActivity()
   const [bots, setBots] = useState<BotDto[]>([])
   const [active, setActive] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -47,8 +49,8 @@ export function MissionControl() {
   }, [])
   useEffect(() => localStorage.setItem('engram.mission.layout', String(layout)), [layout])
   useEffect(() => localStorage.setItem(SEATS_KEY, JSON.stringify(seats)), [seats])
-  const isRunning = (id: string) => Boolean(threads[id]?.busy) || active.includes(cometChannel(id))
-  const running = bots.filter((bot) => isRunning(bot.id)).map((bot) => bot.id)
+  const statusOf = (bot: BotDto) => activityOf(bot, active.includes(cometChannel(bot.id)))
+  const running = bots.filter((bot) => ['running', 'waiting'].includes(statusOf(bot))).map((bot) => bot.id)
   const runningKey = running.join('|')
   useEffect(() => {
     if (loaded) setSeats((previous) => fillSeats(previous, bots.map((bot) => bot.id), runningKey.split('|')))
@@ -106,11 +108,11 @@ export function MissionControl() {
             </article>
           )
           return (
-            <article className={`mission-tile${isRunning(bot.id) ? ' working' : ''}`} key={index} data-testid={`mission-tile-${index}`}>
+            <article className="mission-tile" data-state={statusOf(bot)} key={index} data-testid={`mission-tile-${index}`}>
               <header className="mission-tile-head">
                 <span className="mission-number">{String(index + 1).padStart(2, '0')}</span>
                 <button className="mission-name mission-change" title={t('mission.change')} aria-label={t('mission.choose', { count: index + 1 })} aria-expanded={adding === index} onClick={() => setAdding(adding === index ? null : index)}><span>{bot.name}</span><ChevronDown size={13} /></button>
-                <span className="mission-status"><i />{t(isRunning(bot.id) ? 'mission.working' : 'mission.ready')}</span>
+                <span className="mission-status" role="status"><CometActivityIndicator state={statusOf(bot)} />{cometActivityLabel(statusOf(bot))}</span>
                 <button className="mission-enter" aria-label={t('mission.open', { name: bot.name })} onClick={() => open(bot.id)}>{t('mission.enter')}<ArrowUpRight size={14} aria-hidden /></button>
               </header>
               {adding === index && chooser(index)}

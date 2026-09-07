@@ -7,13 +7,13 @@ import { DiagnosticsView } from './DiagnosticsView.js'
 import { useModelChoices } from '../components/ModelPicker.js'
 import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
+import { SettingsLoading } from '../components/SettingsLoading.js'
 
 const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 // The sheet opens at once, empty, and its rows fill in together when every
 // one of them knows its state - none of them is shown half-known. A load
 // that hangs does not keep the rows blank for good.
 const READY_WAIT_MS = 8_000
-const SKELETON_ROWS = 7
 
 export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
@@ -46,10 +46,12 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     refreshBrains()
   }
   const [ready, setReady] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    let alive = true
     const loads = [
-      api.settingsGet().then(setSettings),
+      api.settingsGet().then((value) => { if (alive) setSettings(value) }),
       api.appVersion().then(setVersion),
       api.engineStates().then(setBrains),
       api.activityGet().then(setDeskJournal),
@@ -59,7 +61,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
       api.updateState().then(setUpdate),
       api.semanticStatus().then(setSemantic),
     ]
-    void Promise.allSettled(loads).then(() => setReady(true))
+    void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
       if (event.type === 'update:ready') {
@@ -67,10 +69,11 @@ export function SettingsView({ onClose }: { onClose(): void }) {
       }
     })
     return () => {
+      alive = false
       clearTimeout(fallback)
       off()
     }
-  }, [])
+  }, [attempt])
 
   // While the download runs, the percent moves — follow it, and catch the
   // flip to ready even if the broadcast landed before this sheet opened.
@@ -130,21 +133,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   useEscape(onClose, !showDiagnostics)
 
   if (!settings || !ready)
-    return (
-      <div className="brief-overlay" onClick={onClose}>
-        <div className="brief-box settings-box" data-testid="settings-loading" onClick={(e) => e.stopPropagation()} aria-busy>
-          <div className="brief-title">{t('settings.title')}</div>
-          <div className="settings-skeleton">
-            {Array.from({ length: SKELETON_ROWS }, (_, i) => (
-              <div key={i} className="settings-skeleton-row">
-                <span className="skeleton-line" style={{ width: `${28 + ((i * 17) % 30)}%` }} />
-                <span className="skeleton-line short" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
+    return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
   const patch = (p: Partial<AppSettingsDto>) => setSettings({ ...settings, ...p })
 
   const save = async () => {
