@@ -24,6 +24,17 @@ export function Icon({ name, size = 16 }: { name: keyof typeof ICONS | string; s
   return <Component size={size} strokeWidth={1.8} aria-hidden />
 }
 
+export function OrbitMark({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" data-icon="orbit" aria-hidden>
+      <ellipse cx="12" cy="12" rx="10" ry="6.3" transform="rotate(-35 12 12)" />
+      <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+      <circle cx="20.2" cy="6.3" r="2" fill="currentColor" stroke="none" />
+      <circle cx="3.8" cy="17.7" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 // A little star with a face: five pillowy limbs (nothing on it is sharp -
 // even the smile's corners are round caps), leaning a few degrees so it
 // reads as alive rather than stamped. Eyes and mouth are holes in the body

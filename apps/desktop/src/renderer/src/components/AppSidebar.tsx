@@ -2,7 +2,6 @@ import {
   ChevronDown,
   CircleHelp,
   List,
-  PanelsTopLeft,
   MoreHorizontal,
   Orbit,
   PanelLeftClose,
@@ -21,7 +20,7 @@ import { cometOfChannel } from '../lib/cometThreads.js'
 import { useCometActivity } from '../lib/useCometActivity.js'
 import { useShellState } from '../state-slices.js'
 import { BotSuggestions } from './BotSuggestions.js'
-import { Comet } from './Icon.js'
+import { Comet, OrbitMark } from './Icon.js'
 import { SidebarStatus } from './SidebarStatus.js'
 import { SidebarDisclosure } from './SidebarDisclosure.js'
 import { CometActivityIndicator } from './CometActivityIndicator.js'
@@ -202,7 +201,7 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
           <span>{t('activity.list')}</span>
         </button>
         <button className={`sidebar-nav-row${activity === 'mission' ? ' active' : ''}`} data-testid="activity-mission" onClick={() => navigate('mission')}>
-          <PanelsTopLeft size={16} strokeWidth={1.8} aria-hidden />
+          <OrbitMark size={16} />
           <span>{t('mission.title')}</span>
         </button>
       </nav>

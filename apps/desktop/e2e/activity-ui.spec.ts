@@ -62,6 +62,11 @@ test('low memory rejects a new embedded browser without blocking the app', async
 })
 
 test('sidebar navigation and activity indicators share the same icon and label columns', async () => {
+  const orbitIcon = page.getByTestId('activity-mission').locator('svg')
+  await expect(orbitIcon).toHaveAttribute('data-icon', 'orbit')
+  await expect(orbitIcon).toHaveAttribute('viewBox', '0 0 24 24')
+  await expect(orbitIcon).toHaveAttribute('aria-hidden', 'true')
+  expect(await orbitIcon.innerHTML()).not.toBe(await page.getByTestId('activity-sky').locator('svg').innerHTML())
   await emit({ type: 'filing:start' })
   await expect(page.getByTestId('sweep-status')).toBeVisible()
   const positions = await page.evaluate(() => {

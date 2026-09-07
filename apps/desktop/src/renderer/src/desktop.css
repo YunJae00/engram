@@ -1,0 +1,29 @@
+.orbit-surface { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.desktop-chat-pane .orbit-surface { flex: 1; }
+.desktop-surface-toolbar { flex: none; min-height: 30px; display: flex; align-items: center; gap: 4px; padding: 2px 10px; color: var(--fg-faint); }
+.desktop-surface-toolbar button { display: flex; align-items: center; gap: 5px; padding: 4px; border-radius: 6px; font-size: var(--fs-micro); min-width: 0; }
+.desktop-surface-toolbar button:first-child { margin-right: auto; overflow: hidden; }
+.desktop-surface-toolbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-surface-toolbar svg { flex: none; }
+.desktop-surface-toolbar button:hover { background: var(--hover-bg); color: var(--fg); }
+.desktop-access-toggle { white-space: nowrap; }
+.desktop-access-toggle[aria-pressed='true'] { color: var(--fg); background: var(--hover-bg); }
+.desktop-surface-content { position: relative; min-width: 0; min-height: 0; flex: 1; display: flex; }
+.desktop-source-picker, .desktop-controls { position: absolute; inset: 4px; z-index: 4; padding: 12px; border-radius: 12px; background: var(--panel-bg); border: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.desktop-source-picker header, .desktop-controls header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-small); font-weight: 550; }
+.desktop-source-picker p, .desktop-controls p { font-size: var(--fs-micro); line-height: 1.5; color: var(--fg-faint); margin: 0; }
+.desktop-text-button { display: flex; align-items: center; gap: 4px; font-size: var(--fs-small); align-self: flex-start; padding: 4px 0; }
+.desktop-window-list { display: flex; flex-direction: column; gap: 3px; }
+.desktop-window-list button { display: flex; gap: 8px; align-items: center; text-align: left; font-size: var(--fs-small); padding: 8px; border-radius: 8px; }
+.desktop-window-list button:hover { background: var(--hover-bg); }
+.desktop-window-list span { overflow-wrap: anywhere; }
+.desktop-window-list svg { flex: none; }
+.desktop-video { flex: 1; min-width: 0; min-height: 0; position: relative; background: var(--canvas-bg); }
+.desktop-video video { position: absolute; inset: 0; height: 100%; width: 100%; object-fit: contain; }
+.desktop-video-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 16px; gap: 8px; background: var(--panel-bg); font-size: var(--fs-small); text-align: center; overflow-wrap: anywhere; }
+.desktop-video-status p { margin: 0; color: var(--fg-faint); }
+.desktop-video-caption { position: absolute; bottom: 5px; left: 5px; max-width: calc(100% - 10px); padding: 3px 5px; border-radius: 4px; background: var(--panel-bg); color: var(--fg-faint); font-size: var(--fs-badge); pointer-events: none; }
+.desktop-surface-error { position: absolute; inset: auto 8px 8px; z-index: 5; background: var(--panel-bg); padding: 8px; margin: 0; border-radius: 8px; color: var(--clay); font-size: var(--fs-micro); overflow-wrap: anywhere; }
+.desktop-control-list { display: flex; flex-direction: column; gap: 10px; }
+.desktop-control-row { font-size: var(--fs-small); overflow-wrap: anywhere; }
+.desktop-control-row p { white-space: pre-wrap; margin-top: 4px; }

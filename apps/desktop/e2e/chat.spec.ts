@@ -125,6 +125,7 @@ test('the selected comet is remembered across tabs', async () => {
 
 test('a question just sent and a draft not yet sent both survive a tab switch', async () => {
   const composer = page.locator('.bots-write textarea')
+  await expect(composer).toHaveCount(1)
   await composer.fill('Where do we deploy from?')
   await composer.press('Enter')
   // Leave at once - before main has written anything to disk.

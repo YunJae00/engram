@@ -5,7 +5,7 @@ import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { MiniChat } from '../components/MiniChat.js'
 import { CometActivityIndicator, cometActivityLabel } from '../components/CometActivityIndicator.js'
-import { MissionPreview } from '../components/MissionPreview.js'
+import { OrbitSurface } from '../components/OrbitSurface.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { selectComet } from '../lib/cometThreadsLive.js'
 import { useCometActivity } from '../lib/useCometActivity.js'
@@ -153,7 +153,7 @@ export function MissionControl() {
               </header>
               {chooser(index)}
               <div className="mission-tile-body" key={bot.id} data-chat-open={!foldedChats.has(bot.id)}>
-                <MissionPreview lane={cometChannel(bot.id)} name={bot.name} open={() => open(bot.id)} />
+                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} open={() => open(bot.id)} />
                 <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={foldedChats.has(bot.id)} ref={(node) => { if (node) node.inert = foldedChats.has(bot.id) }}><MiniChat botId={bot.id} /></div>
               </div>
             </article>

@@ -16,6 +16,8 @@ import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic 
 import { syncSessionContext } from './session-context.js'
 import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { attachNativeLayout } from './native-layout.js'
+import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
+import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
 import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
 import { autoImportSession } from './browser-import.js'
@@ -228,6 +230,7 @@ async function createMainWindow(hash?: string): Promise<void> {
     webPreferences,
   })
   attachNativeLayout(mainWin)
+  setDesktopOwner(mainWin)
   // The window exists: the compositor came back, so the note comes down.
   try {
     rmSync(FRAME_ATTEMPT(), { force: true })
@@ -613,13 +616,10 @@ app.whenReady().then(async () => {
       })
     })
   }
-  // Deny every renderer permission request. Engram needs none of them — no
-  // camera, microphone, geolocation, notifications, clipboard-read or
-  // pointer-lock — and Electron's default is to ASK, which would put a real
-  // OS prompt in front of the user if anything in the renderer ever requested
-  // one. Audio capture goes through the main process, never getUserMedia.
-  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
-  session.defaultSession.setPermissionCheckHandler(() => false)
+  // Only a one-use, main-window display grant can capture a selected app.
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(allowDesktopCapture(wc, permission, details)))
+  session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => allowDesktopCapture(wc, permission, details))
+  registerDesktopIpc()
 
   registerBaseIpc()
   registerEngineIpc()
@@ -694,6 +694,7 @@ app.on('before-quit', (event) => {
 })
 
 app.on('will-quit', () => {
+  closeDesktopAccess()
   void closeAgentBrowser({ force: true })
   closeClaudeSessions()
   globalShortcut.unregisterAll()

@@ -14,7 +14,7 @@ import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
-import { WebPane } from '../components/WebPane.js'
+import { CometSurface } from '../components/CometSurface.js'
 import { PressGate } from '../components/PressGate.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { BotComposer } from '../components/BotComposer.js'
@@ -292,9 +292,9 @@ export const BotsView = memo(function BotsView() {
           </div>
           {/* The page the comet works on, beside the conversation: watched,
               acted in, and stoppable right where the work is. */}
-          <WebPane channel={cometChannel(selected.id)} busy={busy} onStop={() => void stop()}>
+          <CometSurface key={`surface-${selected.id}`} channel={cometChannel(selected.id)} name={selected.name} busy={busy} onStop={() => void stop()}>
             <PressGate channel={cometChannel(selected.id)} />
-          </WebPane>
+          </CometSurface>
           </>
         ) : loaded ? (
           <div className="bots-empty">
