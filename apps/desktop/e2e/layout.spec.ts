@@ -216,3 +216,22 @@ test('the last answer stays above the composer and its soft scroll edge as the d
   await navigate('sky')
   await screenshot('cosmos-compact.png')
 })
+
+test('long chat pickers scroll inside the tile and leave the last choice reachable', async () => {
+  await page.evaluate(async () => {
+    for (let i = 1; i <= 12; i++) await window.engram.botCreate({ name: `Extra project ${i}`, purpose: '' })
+  })
+  await page.setViewportSize({ width: 948, height: 720 })
+  await navigate('mission')
+  const tile = page.getByTestId('mission-tile-0')
+  await tile.locator('.mission-change').click()
+  const menu = page.getByTestId('mission-add-menu')
+  await expect(menu.getByRole('button', { name: 'Extra project 12', exact: true })).toHaveCount(1)
+  await expect.poll(() => menu.evaluate((node) => {
+    const tile = node.closest('.mission-tile')!.getBoundingClientRect()
+    const box = node.getBoundingClientRect()
+    return node.scrollHeight > node.clientHeight && box.bottom <= tile.bottom - 8 && box.left >= tile.left
+  })).toBe(true)
+  await menu.getByRole('button', { name: 'Extra project 12', exact: true }).click()
+  await expect(tile.locator('.mission-name')).toHaveText('Extra project 12')
+})
