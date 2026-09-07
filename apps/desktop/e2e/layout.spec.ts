@@ -194,15 +194,24 @@ test('the last answer stays above the composer and its soft scroll edge as the d
   await expect(page.locator('.bots-thread')).toContainText('Final visible line.')
   for (const draft of ['', 'One\nTwo\nThree\nFour\nFive\nSix']) {
     await input.fill(draft)
+    await screenshot(draft ? 'conversation-growing.png' : 'conversation-answer.png')
     await expect.poll(() => page.locator('.bots-thread').evaluate((node) => {
       const last = node.querySelector('.bubble-msg.assistant:last-of-type p:last-child')!
       const line = last.getBoundingClientRect()
       const thread = node.getBoundingClientRect()
       const composer = node.closest('.bots-chat')!.querySelector('.bots-write')!.getBoundingClientRect()
-      return line.bottom <= thread.bottom - 18 && line.bottom < composer.top && line.top >= thread.top
-    })).toBe(true)
+      return {
+        aboveFade: line.bottom <= thread.bottom - 18, aboveComposer: line.bottom < composer.top, insideThread: line.top >= thread.top,
+        line: { top: line.top, bottom: line.bottom }, thread: { top: thread.top, bottom: thread.bottom },
+        scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight,
+      }
+    })).toMatchObject({ aboveFade: true, aboveComposer: true, insideThread: true })
   }
   await screenshot('conversation-compact.png')
+  await page.locator('.bots-thread').evaluate((node) => { node.scrollTop = 0 })
+  await expect.poll(() => page.locator('.bots-thread').evaluate((node) => node.scrollTop)).toBe(0)
+  await input.fill('Reading an earlier answer')
+  await expect.poll(() => page.locator('.bots-thread').evaluate((node) => node.scrollTop)).toBe(0)
   await input.fill('')
   await navigate('sky')
   await screenshot('cosmos-compact.png')

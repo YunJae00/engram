@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 
 // A conversation follows its newest line unless the person has gone looking
 // at an older one. Deciding that from the distance to the bottom AFTER the
@@ -13,9 +13,18 @@ const AT_FOOT = 48
 
 export function useStickToBottom(ref: RefObject<HTMLElement | null>, changes: unknown): void {
   const pinned = useRef(true)
-  useEffect(() => {
+  const observed = useRef<HTMLElement | null>(null)
+  const disconnect = useRef<(() => void) | null>(null)
+  // A thread can mount after its data loads, or replace the previous chat.
+  // The ref object stays the same even when the element it points to changes.
+  useLayoutEffect(() => {
     const list = ref.current
+    if (observed.current === list) return
+    disconnect.current?.()
+    disconnect.current = null
+    observed.current = list
     if (!list) return
+    pinned.current = true
     let frame = 0
     const watch = (): void => {
       pinned.current = list.scrollHeight - list.scrollTop - list.clientHeight <= AT_FOOT
@@ -37,14 +46,20 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, changes: un
     // foot, and a pinned reader is taken along.
     const changed = typeof MutationObserver === 'function' ? new MutationObserver(follow) : null
     changed?.observe(list, { childList: true, subtree: true, characterData: true })
-    return () => {
+    follow()
+    disconnect.current = () => {
       list.removeEventListener('scroll', watch)
       grew?.disconnect()
       changed?.disconnect()
       if (frame) cancelAnimationFrame(frame)
     }
+  })
+  useEffect(() => () => {
+    disconnect.current?.()
+    disconnect.current = null
+    observed.current = null
   }, [ref])
-  useEffect(() => {
+  useLayoutEffect(() => {
     const list = ref.current
     if (!list || !pinned.current) return
     list.scrollTop = list.scrollHeight
