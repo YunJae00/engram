@@ -46,21 +46,25 @@ test.beforeAll(async () => {
   const compiler = join(process.env['WINDIR'] ?? 'C:/Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe')
   execFileSync(compiler, ['/nologo', '/target:exe', '/platform:x64', `/out:${fixture}`,
     ...['System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll', 'System.Web.Extensions.dll'].map((name) => `/reference:${name}`),
-    ...['DesktopFixture.cs', 'FixturePrivilege.cs'].map((name) => fileURLToPath(new URL(`./fixtures/desktop/${name}`, import.meta.url)))], { windowsHide: true })
+    ...['DesktopFixture.cs', 'FixturePrivilege.cs', 'FixtureTokenSecurity.cs'].map((name) => fileURLToPath(new URL(`./fixtures/desktop/${name}`, import.meta.url)))], { windowsHide: true })
   titles = await Promise.all([1, 2, 3, 4].map(async (index) => {
-    const child = spawn(fixture, [`Orbit ${index}`, '--visible'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn(fixture, [`Orbit ${index}`, '--visible', '--restricted-fixture'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     children.push(child)
     child.stderr.resume()
     return new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Capture fixture did not start')), 15000)
-      createInterface({ input: child.stdout }).on('line', (line) => {
-        const event = JSON.parse(line) as { type?: string; title?: string; captureWidth: number; captureHeight: number }
+      const reader = createInterface({ input: child.stdout })
+      const fail = (error: Error) => { clearTimeout(timer); reader.close(); reject(error) }
+      const timer = setTimeout(() => fail(new Error(`Capture fixture ${index} did not start`)), 15000)
+      reader.on('line', (line) => {
+        const event = JSON.parse(line) as { type?: string; title?: string; error?: string; captureWidth: number; captureHeight: number }
+        if (event.type === 'fatal') { fail(new Error(`Capture fixture ${index}: ${event.error}`)); return }
         if (event.type === 'ready' && event.title) {
           captureSizes[index - 1] = { width: event.captureWidth, height: event.captureHeight }
-          clearTimeout(timer); resolve(event.title)
+          clearTimeout(timer); reader.close(); resolve(event.title)
         }
       })
-      child.once('error', reject)
+      child.once('error', fail)
+      child.once('exit', (code) => fail(new Error(`Capture fixture ${index} exited: ${code === null ? 'terminated' : `0x${(code >>> 0).toString(16)}`}`)))
     })
   }))
   const vault = await mkdtemp(join(TMP, 'desktop-orbit-vault-'))

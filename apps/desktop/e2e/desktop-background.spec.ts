@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdir, mkdtemp } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -32,14 +32,16 @@ class Lines {
   private pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>()
 
   constructor(executable: string, args: string[] = []) {
+    const name = basename(executable)
     this.child = spawn(executable, args, { windowsHide: true, stdio: 'pipe' })
+    this.child.stderr.resume()
     this.ready = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Desktop test process did not become ready')), 20_000)
+      const timer = setTimeout(() => reject(new Error(`${name} did not become ready`)), 20_000)
       const reader = createInterface({ input: this.child.stdout })
       reader.on('line', (line) => {
         const message = JSON.parse(line) as { type?: string; id?: number; result?: unknown; error?: string }
         if (message.type === 'ready') { clearTimeout(timer); resolve(message as Record<string, unknown>); return }
-        if (message.type === 'fatal') { clearTimeout(timer); reject(new Error(message.error)); return }
+        if (message.type === 'fatal') { clearTimeout(timer); reject(new Error(`${name}: ${message.error}`)); return }
         if (typeof message.id !== 'number') return
         const pending = this.pending.get(message.id)
         if (!pending) return
@@ -51,7 +53,7 @@ class Lines {
       this.child.on('error', (error) => { clearTimeout(timer); reject(error) })
       this.child.on('exit', (code) => {
         clearTimeout(timer)
-        reject(new Error(`Desktop test process exited: ${code}`))
+        reject(new Error(`${name} exited: ${code === null ? 'terminated' : `0x${(code >>> 0).toString(16)}`}`))
         for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('Desktop process closed')) }
         this.pending.clear()
         reader.close()
@@ -92,12 +94,13 @@ test.beforeAll(async () => {
     ...['System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll', 'System.Web.Extensions.dll'].map((name) => `/reference:${name}`),
     join(desktop, 'e2e', 'fixtures', 'desktop', 'DesktopFixture.cs'),
     join(desktop, 'e2e', 'fixtures', 'desktop', 'FixturePrivilege.cs'),
+    join(desktop, 'e2e', 'fixtures', 'desktop', 'FixtureTokenSecurity.cs'),
   ], { windowsHide: true })
   await run(process.execPath, [join(desktop, 'scripts', 'build-desktop.mjs')], { windowsHide: true })
   helper = new Lines(join(desktop, 'native-bin', 'desktop', 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
   await helper.ready
   for (let lane = 0; lane < 4; lane++) {
-    const fixture = new Lines(fixturePath, [String(lane + 1)])
+    const fixture = new Lines(fixturePath, [String(lane + 1), '--restricted-fixture'])
     fixtures.push(fixture)
     await fixture.ready
     const state = await fixture.request<State>('state')

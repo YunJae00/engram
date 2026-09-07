@@ -52,7 +52,7 @@ internal static class FixturePrivilege
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool CreateRestrictedToken(IntPtr token, uint flags, uint disabledCount, IntPtr disabled, uint deletedCount, IntPtr deleted, uint restrictedCount, IntPtr restricted, out IntPtr result);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool ConvertStringSidToSid(string text, out IntPtr sid);
     [DllImport("advapi32.dll")] private static extern uint GetLengthSid(IntPtr sid);
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcessAsUser(IntPtr token, string application, StringBuilder command, IntPtr processAttributes, IntPtr threadAttributes, bool inherit, uint flags, IntPtr environment, string directory, ref StartupInfoEx startup, out ProcessInfo process);
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcessAsUser(IntPtr token, string application, StringBuilder command, ref FixtureTokenSecurity.Attributes processAttributes, ref FixtureTokenSecurity.Attributes threadAttributes, bool inherit, uint flags, IntPtr environment, string directory, ref StartupInfoEx startup, out ProcessInfo process);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetInformationJobObject(IntPtr job, int kind, ref ExtendedLimits limits, int size);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
@@ -88,7 +88,7 @@ internal static class FixturePrivilege
             var facts = ReadFacts(token);
             if (Array.IndexOf(args, ChildMarker) >= 0) { facts.VerifyMedium(); return null; }
             if (facts.UiAccess != 0) throw new InvalidOperationException("UI-access fixture tokens are unsupported");
-            if (facts.Elevation == 0 && facts.Integrity == MediumIntegrity) return null;
+            if (facts.Elevation == 0 && facts.Integrity == MediumIntegrity && Array.IndexOf(args, "--restricted-fixture") < 0) return null;
             if (facts.Elevation == 0 && facts.Integrity < MediumIntegrity)
                 throw new InvalidOperationException("The fixture launcher cannot increase integrity");
         }
@@ -173,7 +173,13 @@ internal static class FixturePrivilege
             Check(job != IntPtr.Zero, "Create fixture lifetime job");
             var limits = new ExtendedLimits { Basic = new BasicLimits { Flags = 0x2000 } };
             Check(SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf(typeof(ExtendedLimits))), "Configure fixture lifetime job");
-            process = StartChild(token, args);
+            using (var security = new FixtureTokenSecurity(reduced.User))
+            {
+                var secured = security.CopyWithDefaults(token);
+                CloseHandle(token);
+                token = secured;
+                process = StartChild(token, args, security);
+            }
             Check(AssignProcessToJobObject(job, process.Process), "Attach fixture lifetime job");
             IntPtr actual;
             Check(OpenProcessToken(process.Process, 8, out actual), "Verify fixture child token");
@@ -188,6 +194,7 @@ internal static class FixturePrivilege
             Check(WaitForSingleObject(process.Process, uint.MaxValue) == 0, "Wait for reduced fixture");
             uint exitCode;
             Check(GetExitCodeProcess(process.Process, out exitCode), "Read fixture exit code");
+            if (exitCode != 0) throw new InvalidOperationException("Reduced fixture exited: 0x" + exitCode.ToString("X8"));
             return unchecked((int)exitCode);
         }
         finally
@@ -200,7 +207,7 @@ internal static class FixturePrivilege
         }
     }
 
-    private static ProcessInfo StartChild(IntPtr token, string[] args)
+    private static ProcessInfo StartChild(IntPtr token, string[] args, FixtureTokenSecurity security)
     {
         var handles = new[] { GetStdHandle(-10), GetStdHandle(-11), GetStdHandle(-12) };
         var oldFlags = new uint[3];
@@ -233,7 +240,9 @@ internal static class FixturePrivilege
             foreach (var argument in args) command.Append(' ').Append(Quote(argument));
             command.Append(' ').Append(ChildMarker);
             ProcessInfo process;
-            Check(CreateProcessAsUser(token, executable, command, IntPtr.Zero, IntPtr.Zero, true, 0x08080004,
+            var processSecurity = security.ForChild();
+            var threadSecurity = security.ForChild();
+            Check(CreateProcessAsUser(token, executable, command, ref processSecurity, ref threadSecurity, true, 0x08080004,
                 IntPtr.Zero, Path.GetDirectoryName(executable), ref startup, out process), "Launch reduced fixture");
             return process;
         }
