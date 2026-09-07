@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { initVault } from 'core'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { EngramEvent } from '../src/shared/types.js'
@@ -138,8 +138,12 @@ test('sidebar groups animate height, remain interruptible and remove collapsed c
 
 test('settings loading uses the same padded header and content on compact and wide screens', async () => {
   const settings = await page.evaluate(() => window.engram.settingsGet())
-  await page.clock.install()
-  await page.clock.pauseAt(new Date(Date.now() + 1000))
+  await page.evaluate(() => {
+    const original = window.setTimeout
+    const control = window as typeof window & { restoreSettingsTimer?: () => void }
+    control.restoreSettingsTimer = () => { window.setTimeout = original }
+    window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) => original(handler, delay === 8000 ? 120_000 : delay, ...args)) as typeof window.setTimeout
+  })
   await app.evaluate(({ ipcMain }, value) => {
     ipcMain.removeHandler('settings:get')
     ipcMain.handle('settings:get', () => new Promise((resolve) => {
@@ -159,16 +163,7 @@ test('settings loading uses the same padded header and content on compact and wi
       const row = node.querySelector('.settings-skeleton-row')!.getBoundingClientRect()
       return { aligned: Math.abs(title.left - row.left) <= 1, padded: row.left - box.left >= 16 && box.right - row.right >= 16, fits: box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight }
     })).toEqual({ aligned: true, padded: true, fits: true })
-    await page.evaluate(() => {
-      for (const animation of document.getAnimations()) {
-        if (animation.effect?.getTiming().iterations !== Infinity) animation.finish()
-      }
-    })
-    const screenshot = await app.evaluate(async ({ BrowserWindow }) => {
-      const image = await BrowserWindow.getAllWindows()[0]!.webContents.capturePage()
-      return image.toPNG().toString('base64')
-    })
-    await writeFile(join(TMP, `settings-loading-${width}.png`), Buffer.from(screenshot, 'base64'))
+    await page.screenshot({ path: join(TMP, `settings-loading-${width}.png`) })
     await app.evaluate(() => {
       const control = globalThis as typeof globalThis & { engramSettingsRelease?: () => void }
       control.engramSettingsRelease?.()
@@ -177,7 +172,11 @@ test('settings loading uses the same padded header and content on compact and wi
     await expect(page.getByTestId('settings-view')).toBeVisible()
     await page.keyboard.press('Escape')
   }
-  await page.clock.resume()
+  await page.evaluate(() => {
+    const control = window as typeof window & { restoreSettingsTimer?: () => void }
+    control.restoreSettingsTimer?.()
+    delete control.restoreSettingsTimer
+  })
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('settings:get')
     ipcMain.handle('settings:get', () => { throw new Error('Settings unavailable') })
