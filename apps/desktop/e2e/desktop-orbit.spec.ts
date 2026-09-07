@@ -11,6 +11,7 @@ test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
+let closing = false
 const children: ChildProcessWithoutNullStreams[] = []
 let lanes: string[] = []
 let titles: string[] = []
@@ -73,6 +74,9 @@ test.beforeAll(async () => {
     args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
     env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'desktop-orbit-userdata-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' },
   })
+  app.process().once('exit', (code, signal) => {
+    if (!closing) process.stderr.write(`Capture app exited: code=${code}, signal=${signal}\n`)
+  })
   page = await app.firstWindow()
   await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!
@@ -90,6 +94,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  closing = true
   await app?.close()
   for (const child of children) { child.stdin.end(); if (child.exitCode === null) child.kill() }
 })
@@ -105,7 +110,14 @@ test('Orbit renders four real app streams and keeps capture scoped to chosen win
   await page.getByTestId('activity-mission').click()
   await expect(page.locator('.desktop-video video')).toHaveCount(4)
   await expect.poll(videoSizes, { timeout: 30000 }).toEqual(expectedVideoSizes())
-  captureSizes[0] = await resizeFixture(0, 1152, 900)
+  const resize = await app.evaluate(({ screen }) => {
+    const { workAreaSize, scaleFactor } = screen.getPrimaryDisplay()
+    // Keep the fixture inside the physical work area on small virtual displays.
+    return { width: Math.min(1152, Math.floor(workAreaSize.width * scaleFactor) - 96), height: Math.min(900, Math.floor(workAreaSize.height * scaleFactor) - 96) }
+  })
+  const initialSize = captureSizes[0]!
+  captureSizes[0] = await resizeFixture(0, resize.width, resize.height)
+  expect(captureSizes[0]).not.toEqual(initialSize)
   await expect.poll(videoSizes).toEqual(expectedVideoSizes())
   await expect(page.getByRole('button', { name: 'View only', exact: true })).toHaveCount(4)
   expect(await page.evaluate(async (lane) => {
