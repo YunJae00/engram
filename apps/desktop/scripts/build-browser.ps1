@@ -4,6 +4,7 @@ $ProgressPreference = 'SilentlyContinue'
 $desktopRoot = Split-Path $PSScriptRoot -Parent
 $sdkVersion = '1.0.4191.47'
 $sdkRoot = Join-Path $desktopRoot 'native-bin/sdk'
+New-Item -ItemType Directory -Force -Path (Split-Path $sdkRoot -Parent) | Out-Null
 $outputRoot = if ($OutputPath) { [IO.Path]::GetFullPath($OutputPath) } else { Join-Path $desktopRoot 'native-bin/browser' }
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 if (!(Test-Path "$sdkRoot/lib/net462/Microsoft.Web.WebView2.Core.dll")) {
