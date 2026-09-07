@@ -4,8 +4,11 @@ import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { webPane } from '../lib/webPane.js'
 import { MirrorSurface } from './MirrorSurface.js'
+import { NativeSurface } from './NativeSurface.js'
+import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { t } from '../i18n.js'
 import { useShellState } from '../state-slices.js'
+import { useApp } from '../state.js'
 
 // The page the comet works on, standing beside the conversation as its own
 // half of the screen. Trust comes from being able to SEE the work and stop
@@ -36,6 +39,7 @@ function hostOf(url: string | undefined): string {
 }
 
 function Address({ url, channel }: { url?: string; channel: string }) {
+  const { showToast } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const field = useRef<HTMLInputElement>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
@@ -62,7 +66,7 @@ function Address({ url, channel }: { url?: string; channel: string }) {
         if (e.key !== 'Enter') return
         const typed = shown.trim()
         if (!typed) return
-        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, channel).catch(() => {})
+        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, channel).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website'))
         setDraft(null)
         e.currentTarget.blur()
       }}
@@ -71,6 +75,7 @@ function Address({ url, channel }: { url?: string; channel: string }) {
 }
 
 export function WebPane({ channel, busy, onStop, children }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode }) {
+  const native = useNativeBrowser()
   const { activity } = useShellState()
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
   useEffect(() => {
@@ -121,9 +126,9 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // A pane that has just opened, or a page that has just moved, is asked for
   // the picture as it is now rather than waiting for the page to paint.
   useEffect(() => {
-    if (!showing) return
+    if (!showing || native) return
     void api.agentRefresh().catch(() => {})
-  }, [showing, url])
+  }, [showing, url, native])
   const drag = (down: React.MouseEvent) => {
     down.preventDefault()
     const fromX = down.clientX
@@ -152,7 +157,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   const paneShown = (liveHere || frozen) && !folded
   useEffect(() => {
     const box = stage.current
-    if (!box || !paneShown) return
+    if (!box || !paneShown || native) return
     let asked = 0
     let timer: ReturnType<typeof setTimeout> | null = null
     const tell = () => {
@@ -175,7 +180,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
       if (timer) clearTimeout(timer)
       watch.disconnect()
     }
-  }, [paneShown, channel])
+  }, [paneShown, channel, native])
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
@@ -227,7 +232,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
           className="web-pane-stage"
           ref={stage}
         >
-          <MirrorSurface key={channel} lane={channel} live={liveHere} hasFrame={frameHere} />
+          {native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere} hasFrame={frameHere} />}
         </div>
         <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : t('live.empty')}</div>
         {children}

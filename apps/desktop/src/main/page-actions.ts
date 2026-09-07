@@ -320,7 +320,7 @@ export async function chooseOption(page: Page, target: string, option: string, s
 // Further down (or up) the page, or to where some words are, so a long or
 // endless list brings the next of itself in.
 export async function scrollPage(page: Page, to: string, signal?: AbortSignal): Promise<PageMove> {
-  const size = page.viewportSize() ?? { width: 1280, height: 800 }
+  const size = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   const step = Math.round(size.height * 0.8)
   try {
     const where = to.trim().toLowerCase()
@@ -349,7 +349,7 @@ export async function scrollPage(page: Page, to: string, signal?: AbortSignal): 
 // sits there is inspected exactly as a named control would be - so this is
 // a way to reach a thing, never a way around the guard.
 export async function pressPoint(page: Page, x: number, y: number, ask?: Ask): Promise<PageMove> {
-  const size = page.viewportSize() ?? { width: 1280, height: 800 }
+  const size = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return { ok: false, error: 'a point is given in fractions of the picture, between 0 and 1' }
   const at = { x: Math.round(x * size.width), y: Math.round(y * size.height) }
   try {

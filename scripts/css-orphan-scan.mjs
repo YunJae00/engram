@@ -18,7 +18,7 @@
 // exactly what happened to the banner. So: sole unstyled class → error;
 // unstyled modifier alongside a styled base → reported, exit 0.
 import { readdirSync, readFileSync } from 'node:fs'
-import { extname, join, relative } from 'node:path'
+import { dirname, extname, join, relative, resolve } from 'node:path'
 
 const RENDERER = join('apps', 'desktop', 'src', 'renderer', 'src')
 const STYLESHEET = join(RENDERER, 'styles.css')
@@ -73,7 +73,16 @@ function walk(dir, files) {
   return files
 }
 
-const defined = definedClasses(readFileSync(STYLESHEET, 'utf8'))
+function stylesheetText(file, seen = new Set()) {
+  const absolute = resolve(file)
+  if (seen.has(absolute)) return ''
+  seen.add(absolute)
+  const text = readFileSync(absolute, 'utf8')
+  return text + [...text.matchAll(/@import\s+['"](\.[^'"]+\.css)['"];?/g)]
+    .map((match) => stylesheetText(resolve(dirname(absolute), match[1]), seen)).join('\n')
+}
+
+const defined = definedClasses(stylesheetText(STYLESHEET))
 const fatal = []
 const modifiers = new Map()
 

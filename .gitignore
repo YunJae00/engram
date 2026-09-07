@@ -22,3 +22,5 @@ CLAUDE.md
 KICKOFF.md
 apps/desktop/bundle-cache/
 .claude/worktrees/
+# Native browser build output and SDK cache
+apps/desktop/native-bin/

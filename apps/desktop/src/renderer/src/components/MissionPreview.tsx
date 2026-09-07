@@ -1,10 +1,25 @@
 import { Monitor } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { FrameScreen } from './FrameScreen.js'
 import { onMissionFrame } from '../lib/missionFramesLive.js'
 import { t } from '../i18n.js'
+import { NativeSurface } from './NativeSurface.js'
+import { useNativeBrowser } from '../lib/nativeSurfaces.js'
+import { api } from '../api.js'
 
 export function MissionPreview({ lane, name, open }: { lane: string; name: string; open(): void }) {
+  const native = useNativeBrowser()
+  const [live, setLive] = useState(false)
+  const [address, setAddress] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (!native) return
+    let alive = true
+    const update = () => { void api.missionFrames([lane]).then(([frame]) => { if (alive) setLive(Boolean(frame?.on)) }).catch(() => undefined) }
+    update()
+    const timer = setInterval(update, 1000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [lane, native])
   const [painted, setPainted] = useState(false)
   const source = useCallback((paint: (data: string) => void) => {
     let started = false
@@ -14,6 +29,22 @@ export function MissionPreview({ lane, name, open }: { lane: string; name: strin
       if (!started) { started = true; setPainted(true) }
     })
   }, [lane])
+  if (native) return (
+    <div className="mission-preview native-mission-preview">
+      {live ? <NativeSurface lane={lane} /> : <form className="native-browser-empty" onSubmit={(event) => {
+        event.preventDefault()
+        const typed = address.trim()
+        if (!typed) return
+        setError('')
+        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, lane).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not open the website'))
+      }}>
+        <Monitor size={24} aria-hidden />
+        <label>Open a website<input aria-label="Website address" placeholder="https://example.com" value={address} onChange={(event) => setAddress(event.target.value)} /></label>
+        <button className="secondary" type="submit">Open</button>
+        {error && <p role="alert">{error}</p>}
+      </form>}
+    </div>
+  )
   return (
     <button className="mission-preview" aria-label={t('mission.open', { name })} onClick={open}>
       <FrameScreen source={source} />

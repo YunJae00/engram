@@ -6,6 +6,8 @@ import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { FrameScreen } from './FrameScreen.js'
 import { t } from '../i18n.js'
+import { NativeSurface } from './NativeSurface.js'
+import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 
 // The agent browser, seen from inside the app: while a comet works, the page
 // sits at the foot of the thread, as wide as the conversation and stuck
@@ -147,6 +149,7 @@ function Address({ url }: { url?: string }) {
 // the turn runs, even between windows, so it does not blink in and out.
 // children: what belongs beside the page (the question, a wall's Continue).
 export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
+  const native = useNativeBrowser()
   const { on, url, frame, width, height, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const size = { width, height }
   const [big, setBig] = useState(false)
@@ -192,12 +195,12 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
     // A screencast sends a frame when the page paints. A dock that has just
     // been unfolded onto a still page would wait for one, so it asks for the
     // picture as it is now.
-    void api.agentRefresh().catch(() => {})
+    if (!native) void api.agentRefresh().catch(() => {})
     return () => agentMirror.showPixels(false)
-  }, [showingPixels])
+  }, [showingPixels, native])
   useEffect(() => {
-    if (big) void api.agentRefresh().catch(() => {})
-  }, [big])
+    if (big && !native) void api.agentRefresh().catch(() => {})
+  }, [big, native])
   // The dock's height is dragged from its top edge, and kept for next time.
   const drag = (down: React.MouseEvent) => {
     down.preventDefault()
@@ -260,7 +263,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
         </div>
         {!folded && (
           <div className="live-dock-body">
-            {frame ? <FrameScreen /> : <span className="live-waiting">{t('live.waiting')}</span>}
+            {native ? <NativeSurface lane={lane} active={!big} /> : frame ? <FrameScreen /> : <span className="live-waiting">{t('live.waiting')}</span>}
           </div>
         )}
         {/* The controls live in one place at a time: in the large view when
@@ -281,14 +284,14 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
                 <button className="secondary live-panel-window" onClick={() => void api.agentRefresh().catch(() => {})}>
                   <RotateCw size={12} aria-hidden /> {t('live.refresh')}
                 </button>
-                <button className="secondary live-panel-window" onClick={callWindow}>
+                {!native && <button className="secondary live-panel-window" onClick={callWindow}>
                   <AppWindow size={12} aria-hidden /> {t(windowOut ? 'live.hideWindow' : 'live.openWindow')}
-                </button>
+                </button>}
                 <button className="sheet-close" aria-label={t('live.close')} onClick={() => setBig(false)}>
                   <X size={14} aria-hidden />
                 </button>
               </div>
-              <Stage key={lane} lane={lane} frame={frame} size={size} live={on} />
+              {native ? <div className="native-browser-expanded"><NativeSurface key={lane} lane={lane} /></div> : <Stage key={lane} lane={lane} frame={frame} size={size} live={on} />}
               <div className="live-panel-foot">
                 <span className="live-panel-hint">{t('live.hint')}</span>
                 {children}

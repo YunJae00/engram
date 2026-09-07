@@ -5,12 +5,14 @@ import { activeLaneName, ensureAgentPage, lanePage, laneOf, resetLane, setActive
 import { setPointerSink } from './page-actions.js'
 import { flog } from './flog.js'
 import { captureSharpFrame, startPagePreview } from './page-preview.js'
+import { isNativePage, setNativeInputSink } from './native-browser.js'
 
-// The agent's window stays out of sight. What it shows is mirrored into the
+// External browser windows stay out of sight. Their contents are mirrored into the
 // app as a run of small frames, and what the person does on the mirror —
 // a sign-in, a robot check, a lesson — is played back into the window as
 // their own clicks and keys. Frames go to the screen and nowhere else: none
-// is written, logged or kept past the next one.
+// is written, logged or kept past the next one. Native pages use these lane
+// events but render directly without a frame stream.
 
 const ON_SCREEN = { left: 120, top: 80 }
 const OFF_SCREEN = { left: -4000, top: -4000 }
@@ -47,6 +49,7 @@ const QUIET_MS = 1_500
 // picture is only taken of a page that has been quiet long enough to be
 // worth the cost.
 async function shoot(m: Mirror, now = false): Promise<void> {
+  if (isNativePage(m.page)) return
   if (!now && Date.now() - m.painted < QUIET_MS) return
   if (m.shooting) {
     // A picture wanted now, while one is on its way, is not dropped: it is
@@ -83,6 +86,7 @@ function say(on: boolean): void {
 }
 
 async function stream(m: Mirror, on: boolean): Promise<void> {
+  if (isNativePage(m.page)) return
   if (m.streaming === on) return
   m.streaming = on
   const revision = ++m.streamRevision
@@ -169,6 +173,10 @@ async function followNow(page: Page, generation: number): Promise<void> {
 // Wired once at startup: every page the agent browser opens is mirrored as
 // it appears — the newest tab is the one the person needs to see.
 export function startAgentView(): void {
+  setNativeInputSink((page) => {
+    const lane = laneOf(page)
+    if (lane) touched.set(lane, Date.now())
+  })
   // Only the lane being looked at is mirrored: another comet's tab paints
   // in the background and costs no frames until it is looked at.
   watchAgentPages((page, lane) => {
@@ -233,6 +241,7 @@ export async function watchAgentView(on: boolean): Promise<{ on: boolean; url?: 
 export async function refreshAgentView(): Promise<void> {
   const m = mirror
   if (!m) return
+  if (isNativePage(m.page)) { await m.page.reload({ waitUntil: 'commit' }); return }
   await shoot(m, true)
 }
 
@@ -291,8 +300,7 @@ export async function agentViewGo(url: string, lane = activeLaneName()): Promise
   // thing a closed browser showed - opens one and goes there.
   // A page opened for this has its mirror attached a moment after it
   // exists; going somewhere before that would go nowhere at all.
-  const page = await ensureAgentPage(lane).catch(() => null)
-  if (!page) return
+  const page = await ensureAgentPage(lane)
   await page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   })
@@ -304,6 +312,7 @@ export async function agentViewGo(url: string, lane = activeLaneName()): Promise
 export async function showAgentWindow(show: boolean): Promise<void> {
   const m = mirror
   if (!m) return
+  if (isNativePage(m.page)) return
   try {
     const { windowId } = (await m.cdp.send('Browser.getWindowForTarget')) as { windowId: number }
     await m.cdp.send('Browser.setWindowBounds', { windowId, bounds: { ...(show ? ON_SCREEN : OFF_SCREEN), windowState: 'normal' } })

@@ -71,6 +71,7 @@ test.beforeAll(async () => {
       ENGRAM_ENGINE: 'none',
       ENGRAM_HIDDEN: '1',
       ENGRAM_AGENT_CDP: String(browserPort),
+      ENGRAM_BROWSER_EXTERNAL: '1',
     },
   })
   page = await app.firstWindow()
@@ -239,6 +240,7 @@ test('a saved wide page panel stays inside the conversation on a compact window'
   await page.getByTestId('activity-bots').click()
   await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 30_000 })
 
+  await expect(page.getByTestId('web-pane')).toHaveCSS('transform', 'none')
   const [mainBox, paneBox, foldBox, addressBox] = await Promise.all([
     page.locator('.bots-main').boundingBox(),
     page.getByTestId('web-pane').boundingBox(),

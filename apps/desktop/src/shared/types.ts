@@ -487,7 +487,11 @@ export type AgentInputDto =
   | { kind: 'key'; type: 'down' | 'up'; key: string; code: string; keyCode: number; text?: string; modifiers?: number }
   | { kind: 'text'; text: string }
 
+export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number }
+
 export interface EngramApi {
+  nativeEnabled(): Promise<boolean>
+  nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
   // The agent browser's mirror: watch (frames flow while at least one view
   // is open), act on it, and call the real window onto the desk or away.
   agentWatch(on: boolean): Promise<{ on: boolean; url?: string }>

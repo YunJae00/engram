@@ -4,6 +4,7 @@ import type { MissionFrameDto } from '../shared/types.js'
 import { captureSharpFrame, startPagePreview } from './page-preview.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
+import { isNativePage } from './native-browser.js'
 
 const pending = new Map<Page, Promise<MissionFrameDto>>()
 
@@ -14,6 +15,7 @@ export async function missionFrames(requested: string[]): Promise<MissionFrameDt
   return Promise.all(lanes.map(async (lane) => {
     const page = lanePage(lane)
     if (!page) return { lane, on: false }
+    if (isNativePage(page)) return { lane, on: true, url: page.url() }
     const held = pending.get(page)
     if (held) return held
     const capture = (async (): Promise<MissionFrameDto> => {
@@ -61,6 +63,13 @@ function reconcile(): void {
     if (!page || streams.has(lane)) continue
     const entry: { page: Page; stop?: () => void } = { page }
     streams.set(lane, entry)
+    if (isNativePage(page)) {
+      const update = () => broadcast({ type: 'mission:frame', frame: { lane, on: true, url: page.url(), at: Date.now() } })
+      page.on('framenavigated', update)
+      entry.stop = () => { page.off('framenavigated', update) }
+      update()
+      continue
+    }
     void startPagePreview(page, (frame) => {
       if (streams.get(lane) !== entry) return
       broadcast({ type: 'mission:frame', frame: { lane, on: true, data: frame.data, url: page.url(), at: Date.now() } })

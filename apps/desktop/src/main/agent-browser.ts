@@ -11,13 +11,12 @@ import { reserveRoom } from './memory-plan.js'
 import { readFrames } from './page-reader.js'
 import { createWindowPage } from './browser-window-page.js'
 import { BrowserLanes } from './browser-lanes.js'
+import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
+import { nativePagesVisible } from './native-layout.js'
 
-// The errand's hands: the user's own Chrome, driven over CDP by
-// playwright-core. Its window is an ordinary window — park it on another
-// desktop and it works there alone; it never touches the user's mouse,
-// keyboard or focus. A dedicated profile under userData keeps any login the
-// user performs in that window across errands, which is the whole answer to
-// SSO: the human logs in once, the agent browses logged-in after.
+// Native and external browser pages share the same CDP automation and lane
+// ownership. Each backend keeps its own persistent profile under userData.
+// Automation targets page contents without injecting OS mouse or key input.
 
 // Long enough for a slow portal, short enough that a page that will not
 // come does not take the turn with it (measured: two waits at 25s were the
@@ -50,7 +49,7 @@ const viewHeight = 860
 export async function setViewHeight(height: number, lane = activeLaneName()): Promise<boolean> {
   const wanted = Math.round(Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_MAX, height)))
   const page = lanePage(lane)
-  if (!page || page.viewportSize()?.height === wanted) return false
+  if (!page || isNativePage(page) || page.viewportSize()?.height === wanted) return false
   await page.setViewportSize({ width: VIEW_WIDTH, height: wanted }).catch((err: unknown) => {
     flog('agent-browser', `could not lay a page out at ${wanted}: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   })
@@ -171,6 +170,7 @@ export function findChrome(): string | null {
 
 // Whether a choice is still open: only when nothing at all is installed.
 export function browserChoicePending(): boolean {
+  if (nativeBrowserEnabled()) return false
   return installedBrowsers().length === 0
 }
 
@@ -336,6 +336,21 @@ async function ensureContext(): Promise<Ctx> {
   const spokenFor = reserveRoom(LAUNCH_FOOTPRINT)
   opening = (async () => {
     if (closing) await closing.catch(() => undefined)
+    if (nativeBrowserEnabled()) {
+      const ctx = await openNativeBrowser()
+      context = ctx
+      ctx.on('close', () => { if (context === ctx) { context = null; lanes.clear() } })
+      ctx.on('page', (page) => {
+        const requestedLane = allocatingLane
+        void nativeOpener(page).catch(() => null).then((opener) => {
+          const lane = laneOf(page) ?? (opener && laneOf(opener)) ?? requestedLane ?? activeLane
+          if (!laneOf(page)) lanes.set(lane, page)
+          for (const watcher of pageWatchers) watcher(page, lane)
+        })
+      })
+      armPressureWatch()
+      return ctx
+    }
     const executablePath = findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
     if (os.freemem() < LAUNCH_MIN_FREE)
@@ -461,7 +476,7 @@ async function assignAgentPage(lane: string): Promise<Page> {
   let page = spare
   if (!page) {
     allocatingLane = lane
-    try { page = await createWindowPage(ctx, { width: VIEW_WIDTH, height: viewHeight }) } finally { allocatingLane = null }
+    try { page = isNativeContext(ctx) ? await createNativePage(ctx) : await createWindowPage(ctx, { width: VIEW_WIDTH, height: viewHeight }) } finally { allocatingLane = null }
   }
   lanes.set(lane, page)
   for (const watcher of pageWatchers) watcher(page, lane)
@@ -520,6 +535,7 @@ export function currentAgentPage(): Page | null {
 }
 
 export function agentBrowserAvailable(): boolean {
+  if (nativeBrowserEnabled()) return true
   return (chosenPath !== null && existsSync(chosenPath)) || installedBrowsers().length > 0
 }
 
@@ -544,6 +560,7 @@ export { withAbort as agentAbortable }
 // the person is being recorded in. A recording session owns the browser, so
 // an unforced close steps aside; memory pressure and quit pass force.
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
+  if (nativePagesVisible() && !options.force) return
   // Somebody is standing at the window - a recording, or a person typing their
   // password into a login wall. An unforced close waits for them; memory
   // pressure and app quit pass force and take it anyway.
@@ -564,8 +581,8 @@ export async function closeAgentBrowser(options: { force?: boolean } = {}): Prom
     context = null
     lanes.clear()
   }
-  if (!held) return
-  const done = held.close().catch(() => undefined)
+  if (!held) { await closeNativeBrowser(); return }
+  const done = isNativeContext(held) ? closeNativeBrowser() : held.close().catch(() => undefined)
   closing = done
   try {
     await done

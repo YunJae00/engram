@@ -15,6 +15,8 @@ import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
+import { attachNativeLayout } from './native-layout.js'
+import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
@@ -224,6 +226,7 @@ async function createMainWindow(hash?: string): Promise<void> {
       : {}),
     webPreferences,
   })
+  attachNativeLayout(mainWin)
   // The window exists: the compositor came back, so the note comes down.
   try {
     rmSync(FRAME_ATTEMPT(), { force: true })
@@ -641,7 +644,7 @@ app.whenReady().then(async () => {
     setAgentBrowser(settings.agentBrowser || null)
     // Their sign-ins follow them in whenever their browser happens to be
     // closed - at boot it often is, which makes this the best moment.
-    void autoImportSession(settings.agentBrowser || null).catch(() => undefined)
+    if (!nativeBrowserEnabled()) void autoImportSession(settings.agentBrowser || null).catch(() => undefined)
   })
   const root = await configuredVaultRoot()
   if (root) {
@@ -678,8 +681,13 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   quitting = true
+  if (nativeBrowserRunning()) {
+    event.preventDefault()
+    abortAllChat()
+    void closeAgentBrowser({ force: true }).finally(() => app.quit())
+  }
 })
 
 app.on('will-quit', () => {
