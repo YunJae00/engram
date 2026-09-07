@@ -78,13 +78,13 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   }
 
   return (
-    <div className="bots-write" ref={rootRef}>
+    <div className="bots-write conversation-dock" ref={rootRef}>
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
       <ChatComposer
         testId="bots-input"
         autoFocus
         value={value}
-        placeholder={locked ? t('errands.busy') : t('bots.placeholder', { name: botName })}
+        placeholder={locked ? t('errands.busy') : t('bots.placeholder')}
         maxLength={2000}
         busy={busy}
         disabled={locked}

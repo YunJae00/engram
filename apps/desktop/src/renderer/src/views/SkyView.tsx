@@ -52,13 +52,6 @@ export function SkyView({
               </button>
             ))}
           </div>
-          <button
-            className="starter-import"
-            data-testid="sky-import"
-            onClick={() => window.dispatchEvent(new Event('engram:open-import'))}
-          >
-            {t('starter.import')}
-          </button>
         </div>
       )}
       {live.length > 0 && (

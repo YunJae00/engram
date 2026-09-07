@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { api } from './api.js'
 import { AppNotices } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
@@ -36,15 +36,8 @@ const SettingsView = lazy(() => import('./views/SettingsView.js').then((m) => ({
 const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: m.SkyView })))
 
 function Shell() {
-  const { activity, setActivity, engines, pendingWork, toast, showToast, refresh, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
+  const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
   const [palette, setPalette] = useState<PaletteMode>(null)
-  const [dropping, setDropping] = useState(false)
-  // Drag tracking: a dragenter/dragleave depth counter (enter and leave fire per
-  // child crossed, so a boolean flickers). The overlay clears on drop, window
-  // dragend, Escape, and a watchdog if dragover goes quiet — so a drag cancelled
-  // outside the window can never leave the scrim stuck over the app.
-  const dragDepth = useRef(0)
-  const lastOverRef = useRef(0)
   // What the panel should open with — a question to send outright, or a
   // scaffold to write into. Held here because the panel is unmounted while it
   // rests: a window event fired at a closed panel has nobody listening.
@@ -139,7 +132,6 @@ function Shell() {
     const toggleChat = () => setActivity('bots')
     const openPalette = () => setPalette('search')
     const openDiag = () => setDiagOpen(true)
-    const openImport = () => setAction('import')
     const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
@@ -160,7 +152,6 @@ function Shell() {
     const openBrainSetup = () => setSettingsOpen(true)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
-    window.addEventListener('engram:open-import', openImport)
     window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:open-digest', openDigest)
     window.addEventListener('engram:open-errand', openErrand)
@@ -172,7 +163,6 @@ function Shell() {
       window.removeEventListener('engram:open-palette', openPalette)
       window.removeEventListener('engram:open-brain-setup', openBrainSetup)
       window.removeEventListener('engram:open-diagnostics', openDiag)
-      window.removeEventListener('engram:open-import', openImport)
       window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:open-digest', openDigest)
       window.removeEventListener('engram:open-errand', openErrand)
@@ -182,87 +172,12 @@ function Shell() {
     }
   }, [])
 
-  // Escape hatches for a drag that never drops on us (cancelled outside the
-  // window, dropped elsewhere, or the source vanished). Listeners live only
-  // while the overlay is up. The watchdog hides it if no dragover was seen for
-  // 1200ms — the browser stops firing dragover once the pointer leaves.
-  useEffect(() => {
-    if (!dropping) return
-    const clear = () => {
-      dragDepth.current = 0
-      setDropping(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') clear()
-    }
-    window.addEventListener('dragend', clear)
-    window.addEventListener('keydown', onKey)
-    const watchdog = window.setInterval(() => {
-      if (Date.now() - lastOverRef.current > 1200) clear()
-    }, 400)
-    return () => {
-      window.removeEventListener('dragend', clear)
-      window.removeEventListener('keydown', onKey)
-      window.clearInterval(watchdog)
-    }
-  }, [dropping])
-
-  const onDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    dragDepth.current = 0
-    setDropping(false)
-    // Per-file try/catch: one unreadable file must not abort the rest of the
-    // batch. Partial failure counts what landed and says what did not.
-    let captured = 0
-    let failed = 0
-    for (const file of Array.from(e.dataTransfer.files)) {
-      const path = api.pathForFile(file)
-      if (!path) continue
-      try {
-        await api.captureFile(path)
-        captured++
-      } catch {
-        failed++
-      }
-    }
-    const text = e.dataTransfer.getData('text/plain')
-    if (text.trim()) {
-      try {
-        await api.capture(text.trim())
-        captured++
-      } catch {
-        failed++
-      }
-    }
-    if (captured > 0 || failed > 0) {
-      showToast(
-        failed > 0
-          ? `Captured ${captured} item${captured === 1 ? '' : 's'} — ${failed} failed to save`
-          : `Captured ${captured} item${captured > 1 ? 's' : ''}`,
-      )
-      if (captured > 0) await refresh()
-    }
-  }
-
   return (
     <div
       className={`shell sidebar-${sidebarOpen ? 'open' : 'closed'}`}
       data-testid="shell"
-      onDragEnter={(e) => {
-        e.preventDefault()
-        dragDepth.current += 1
-        lastOverRef.current = Date.now()
-        setDropping(true)
-      }}
-      onDragOver={(e) => {
-        e.preventDefault() // required so the drop event fires
-        lastOverRef.current = Date.now()
-      }}
-      onDragLeave={() => {
-        dragDepth.current = Math.max(0, dragDepth.current - 1)
-        if (dragDepth.current === 0) setDropping(false)
-      }}
-      onDrop={(e) => void onDrop(e)}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }}
+      onDrop={(event) => event.preventDefault()}
     >
       <AppSidebar
         open={sidebarOpen}
@@ -348,14 +263,6 @@ function Shell() {
         {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
       </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
-      {dropping && (
-        <div className="drop-overlay" data-testid="drop-overlay">
-          <div className="drop-frame">
-            <div className="drop-title">{t('capture.dropTitle')}</div>
-            <div className="drop-sub">{t('capture.dropSub')}</div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

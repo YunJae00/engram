@@ -218,11 +218,11 @@ async function createMainWindow(hash?: string): Promise<void> {
     ...(framelessOk
       ? {
           titleBarStyle: 'hidden' as const,
-          titleBarOverlay: { ...titleBarColors(), height: 52 },
+          titleBarOverlay: { ...titleBarColors(), height: 44 },
           // macOS puts its window controls on the LEFT — pin them centred in
-          // the 52px bar; the renderer reserves matching left padding
+          // the compact title bar; the renderer reserves matching left padding
           // (see `:root[data-platform="darwin"] .topbar` in styles.css).
-          ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 18, y: 18 } } : {}),
+          ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 18, y: 14 } } : {}),
         }
       : {}),
     webPreferences,
@@ -246,7 +246,7 @@ async function createMainWindow(hash?: string): Promise<void> {
   nativeTheme.on('updated', () => {
     if (framelessOk && mainWin && !mainWin.isDestroyed()) {
       try {
-        mainWin.setTitleBarOverlay({ ...titleBarColors(), height: 52 })
+        mainWin.setTitleBarOverlay({ ...titleBarColors(), height: 44 })
       } catch {
         /* not supported on this platform/version */
       }

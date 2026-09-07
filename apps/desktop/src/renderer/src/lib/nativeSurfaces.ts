@@ -37,6 +37,7 @@ function measure(): void {
     if (element.closest('[hidden], [inert]')) continue
     if (overlays.some((overlay) => {
       if (overlay.contains(element)) return false
+      if (getComputedStyle(overlay).visibility === 'hidden') return false
       const box = overlay.getBoundingClientRect()
       return box.width > 0 && box.height > 0 && box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top
     })) continue

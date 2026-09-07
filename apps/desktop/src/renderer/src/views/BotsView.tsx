@@ -171,16 +171,6 @@ export const BotsView = memo(function BotsView() {
           {/* Keyed by the comet: looking at another one brings its thread
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
-            <header className="bots-head">
-              <div className="bots-head-id">
-                <span className="bots-head-name">{selected.name}</span>
-                {selected.purpose && (
-                  <span className="bots-head-purpose" title={selected.purpose}>
-                    {selected.purpose}
-                  </span>
-                )}
-              </div>
-            </header>
             {(selected.tasks ?? []).length > 0 && (
             <div className="bots-tasks">
               {(selected.tasks ?? []).map((task) => (
@@ -209,7 +199,7 @@ export const BotsView = memo(function BotsView() {
               ))}
             </div>
             )}
-            <div className="bots-thread" data-testid="bots-thread" ref={listRef}>
+            <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               {messages.map((m, i) => (

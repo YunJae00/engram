@@ -8,7 +8,7 @@ import { cometThreads, loadCometThread } from '../lib/cometThreadsLive.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 
-// A conversation small enough to sit inside a Mission Control tile: the
+// A conversation small enough to sit inside a parallel tile: the
 // thread, what the comet is doing right now, and a composer - the same
 // seat as the full view, so words typed here land in the same transcript
 // and the same turn machinery. Opening the full view is the tile's job.
@@ -35,7 +35,7 @@ export function MiniChat({ botId }: { botId: string }) {
   const status = thread.busy ? pendingStatus(t, thread.workLines[thread.workLines.length - 1]) : ''
   return (
     <div className="mini-chat" data-testid={`mini-chat-${botId}`}>
-      <div className="mini-chat-thread" ref={listRef}>
+      <div className="mini-chat-thread conversation-thread" ref={listRef}>
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
         {thread.messages.slice(-12).map((m, i) => (
           <div key={i} className={`mini-msg ${m.role}`}>
@@ -53,7 +53,7 @@ export function MiniChat({ botId }: { botId: string }) {
           box.value = ''
         }}
       >
-        <input name="say" placeholder={t('mission.say')} disabled={thread.busy} autoComplete="off" />
+        <input name="say" placeholder={t('mission.say')} defaultValue={thread.draft} onChange={(event) => cometThreads.setDraft(botId, event.target.value)} disabled={thread.busy} autoComplete="off" />
         {thread.busy ? (
           <button type="button" className="mini-chat-stop" aria-label={t('bubble.stop')} onClick={stop}>
             <Square size={10} strokeWidth={2.5} aria-hidden />

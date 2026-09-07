@@ -1,0 +1,21 @@
+/* Scroll padding leaves the final line above the fade and the composer. */
+.bots-thread.conversation-thread, .cosmos-chat-thread.conversation-thread, .mini-chat-thread.conversation-thread {
+  padding-bottom: 24px;
+  scroll-padding-bottom: 24px;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+}
+.conversation-thread > * { flex-shrink: 0; }
+.conversation-dock { background: var(--panel-bg); }
+.cosmos-chat-write.conversation-dock { flex: none; }
+.conversation-dock .model-picker-menu {
+  left: 0; right: auto; transform-origin: bottom left;
+  max-height: min(360px, 50vh); max-width: min(300px, calc(100vw - 64px)); overflow-y: auto;
+}
+.web-pane-empty {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; text-align: center; color: var(--fg-faint);
+  background: var(--canvas-bg);
+}
+.web-pane-empty p { margin: 0; font-size: var(--fs-body); color: var(--fg-dim); }
+.web-pane-empty span { font-size: var(--fs-small); line-height: 1.5; }

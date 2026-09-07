@@ -34,8 +34,8 @@
 .mission-tile[data-state='waiting'] { --work-color: var(--work-waiting); }
 .mission-tile[data-state='error'] { --work-color: var(--work-error); }
 .mission-tile[data-state='running'], .mission-tile[data-state='waiting'], .mission-tile[data-state='error'] {
-  border-color: var(--work-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--work-color) 45%, transparent), 0 3px 12px color-mix(in srgb, var(--work-color) 9%, transparent);
+  border-color: color-mix(in srgb, var(--work-color) 72%, var(--panel-bg));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--work-color) 16%, transparent), 0 3px 12px color-mix(in srgb, var(--work-color) 6%, transparent);
 }
 .mission-tile[data-state]:not([data-state='ready']) .mission-status { color: var(--work-color); }
 @keyframes comet-working { to { transform: rotate(360deg); } }

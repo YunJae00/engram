@@ -7,6 +7,7 @@ import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
 import { Thinking } from './Thinking.js'
 import { ChatComposer } from './ChatComposer.js'
+import { ModelPicker } from './ModelPicker.js'
 
 // The cosmos's right edge: ask the librarian, or just tell it something to
 // keep. There is no separate "Remember" verb — the librarian files whatever
@@ -185,13 +186,7 @@ export const CosmosChat = memo(function CosmosChat() {
   return (
     <aside className={`cosmos-chat${closing ? ' closing' : ''}`} data-testid="cosmos-chat">
       <div className="cosmos-chat-head">
-        <div className="cosmos-chat-identity">
-          <span className="cosmos-chat-mark"><Orbit size={15} strokeWidth={1.8} aria-hidden /></span>
-          <span className="cosmos-chat-labels">
-            <span className="cosmos-chat-name">{t('cosmos.chatName')}</span>
-            <span className="cosmos-chat-title">{t('cosmos.chatTitle')}</span>
-          </span>
-        </div>
+        <span className="cosmos-chat-name" title={t('cosmos.chatTitle')}>{t('cosmos.chatName')}</span>
         <button
           className="rail-toggle"
           data-testid="cosmos-chat-collapse"
@@ -201,7 +196,7 @@ export const CosmosChat = memo(function CosmosChat() {
           <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
         </button>
       </div>
-      <div className="cosmos-chat-thread" ref={listRef}>
+      <div className="cosmos-chat-thread conversation-thread" ref={listRef}>
         {messages.length === 0 && <div className="cosmos-chat-hint">{t('cosmos.chatHint')}</div>}
         {messages.map((m, i) => (
           <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
@@ -217,7 +212,7 @@ export const CosmosChat = memo(function CosmosChat() {
           </div>
         ))}
       </div>
-      <div className="cosmos-chat-write">
+      <div className="cosmos-chat-write conversation-dock">
         <ChatComposer
           ref={boxRef}
           testId="cosmos-chat-input"
@@ -228,6 +223,7 @@ export const CosmosChat = memo(function CosmosChat() {
           onChange={setText}
           onSend={() => void send()}
           onStop={() => void stop()}
+          tools={<ModelPicker />}
         />
       </div>
     </aside>

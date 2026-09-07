@@ -5,6 +5,7 @@ import { t, type Translate } from '../i18n.js'
 import { api } from '../api.js'
 import { useTopBarState } from '../state-slices.js'
 import { DialogHeader } from './DialogHeader.js'
+import { CometTitle } from './CometTitle.js'
 
 function syncLabel(t: Translate, status: SyncStatusDto | null): string {
   if (!status || status.state === 'no-remote') return t('topbar.syncNone')
@@ -84,7 +85,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
         </button>
       )}
       <span className="topbar-title">
-        {activity === 'bots' ? t('topbar.tabBots') : activity === 'sky' ? t('topbar.tabSky') : activity === 'mission' ? t('mission.title') : t('activity.list')}
+        {activity === 'bots' ? <CometTitle ready={vaultReady} /> : activity === 'sky' ? t('topbar.tabSky') : activity === 'mission' ? t('mission.title') : t('activity.list')}
       </span>
 
       <div className="topbar-spacer" />

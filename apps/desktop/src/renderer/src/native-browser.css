@@ -27,14 +27,29 @@
   padding: var(--space-4, 16px);
   box-sizing: border-box;
 }
-.native-browser-empty label {
-  display: grid;
-  gap: var(--space-2, 8px);
+.native-browser-empty-title { margin: 0; color: var(--fg-faint); font-size: var(--fs-small); }
+.native-browser-address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: min(100%, 320px);
-  font-size: var(--fs-body);
+  padding: 4px 6px;
+  border-radius: 12px;
+  background: var(--hover-bg);
+  border: 1px solid transparent;
 }
-.native-browser-empty input {
+.native-browser-address:focus-within { border-color: var(--border); }
+.native-browser-address input {
+  flex: 1;
   min-width: 0;
   width: 100%;
-  box-sizing: border-box;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--fs-small);
 }
+.native-browser-address input:focus { box-shadow: none; outline: none; }
+.native-browser-address button { flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--fg-dim); border-radius: 8px; }
+.native-browser-address button:hover { background: var(--hover-bg); color: var(--fg); }

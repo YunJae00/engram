@@ -1,5 +1,5 @@
 const en = {
-  'mission.title': 'Mission Control',
+  'mission.title': 'Orbit',
   'mission.change': 'Replace this panel',
   'mission.choose': 'Chat for panel {count}',
   'mission.add': 'Add a chat',
@@ -28,8 +28,6 @@ const en = {
   // non-native speakers do not know. Everything says REMEMBER now — including
   // the floating launcher that opens the composer.
   'capture.submit': 'Remember',
-  'capture.dropTitle': 'Drop to capture',
-  'capture.dropSub': 'md · txt · pdf · png/jpg · mp3/wav/m4a · .url — anything else waits in the inbox',
   // Which verb Enter is loaded with, in the hint slot, live as the text
   // changes. One box for two verbs is only an improvement if the box admits
   // which one it is about to fire.
@@ -189,7 +187,7 @@ const en = {
   'bots.create': 'Create comet',
   'bots.delete': 'Delete',
   'bots.deleteArmed': 'Really delete?',
-  'bots.placeholder': 'Message {name}\u2026',
+  'bots.placeholder': 'Message your comet\u2026',
   'bots.threadEmpty': 'Ask {name} anything — it looks in your memory first, and goes to the web when the answer is not there.',
   'bots.emptyTeach': 'Show it a job',
   'bots.emptyTeachHint': 'Walk through something you do every week — a portal, a form — and {name} can repeat it for you afterwards.',
@@ -315,7 +313,6 @@ const en = {
   'starter.ex2Seed': 'I keep forgetting: ',
   'starter.ex3': 'Something coming up next week',
   'starter.ex3Seed': 'Next week: ',
-  'starter.import': 'Already have notes? Import a folder (md/txt)',
 
   // librarian activity feed (under the briefing)
 
@@ -436,7 +433,6 @@ const en = {
   'palette.copyPack': 'Copy context pack for an external AI',
   'palette.teamCreate': 'Team: create a shared vault…',
   'palette.teamJoin': 'Team: join via invite URL…',
-  'palette.import': 'Import a folder of notes…',
   'palette.errand': 'Delegate an errand…',
 
   // errand dialog + top-bar progress (a delegated goal run on-device)
@@ -702,18 +698,12 @@ const en = {
   'quick.title': 'Quick capture',
   'quick.lockedPrivate': 'private',
   'quick.lockedWorkspace': 'workspace',
-  'quick.placeholder': 'Remember anything — text, a screenshot (Ctrl+V), or drag a file. Enter to save.',
+  'quick.placeholder': 'What would you like to remember? Enter to save.',
   'quick.hint': 'Enter to capture · Shift+Enter for a new line · Esc to dismiss',
   'quick.saveFailed': 'Could not save — your text is kept here. Check the vault folder and press Enter to retry.',
 
-  // action dialogs (palette-launched team / import flows)
-  'palette.importTitle': 'Import a folder',
-  'palette.importCount': '{count} file(s) · {kb} KB from',
-  'palette.importNote': 'Originals are copied, never modified. Notes are searchable immediately and absorbed gradually.',
-  'palette.importAction': 'Import',
+  // Palette-launched team dialog.
   'palette.cancel': 'Cancel',
-  'palette.importing': 'Importing…',
-  'palette.choosingFolder': 'Choosing folder…',
   'palette.teamJoinTitle': 'Join a team vault',
   'palette.working': 'Working…',
   'palette.invitePlaceholder': 'Invite URL (git remote)',

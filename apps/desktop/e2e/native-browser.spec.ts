@@ -150,3 +150,27 @@ test('script popups retain their opener and can close themselves', async () => {
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Callback received')
   await expect.poll(async () => (await shell.evaluate((id) => window.engram.missionFrames([`bot-${id}`]), ids[0]!))[0]?.url).toBe(`${url}/?pane=0`)
 })
+
+test('folding a tile conversation and dismissing its picker keep the native page interactive', async () => {
+  const tile = shell.getByTestId('mission-tile-0')
+  const first = browser.contexts()[0]!.pages().find((page) => page.url() === `${url}/?pane=0`)!
+  const before = await first.evaluate(() => innerHeight)
+  const draft = tile.locator('.mini-chat-write input')
+  await draft.fill('Keep the conversation draft')
+  await shell.getByTestId('mission-chat-toggle-0').click()
+  await expect(tile.locator('.mission-chat-slot')).toBeHidden()
+  await expect.poll(() => first.evaluate(() => innerHeight)).toBeGreaterThan(before + 30)
+  await shell.getByTestId('mission-chat-toggle-0').click()
+  await expect(draft).toHaveValue('Keep the conversation draft')
+  await expect.poll(() => first.evaluate(() => innerHeight)).toBeLessThanOrEqual(before + 2)
+  await tile.locator('.mission-change').click()
+  await expect(shell.getByTestId('mission-add-menu')).toBeVisible()
+  await shell.keyboard.press('Escape')
+  await expect(tile.locator('.mission-add-menu')).toBeHidden()
+  await first.getByRole('textbox', { name: 'Entry' }).fill('Still interactive 한글')
+  await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Still interactive 한글')
+  await expect.poll(() => tile.getByTestId('native-browser-surface').evaluate((node) => {
+    const box = node.getBoundingClientRect()
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === node
+  })).toBe(true)
+})

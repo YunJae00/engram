@@ -1,4 +1,4 @@
-import { ChevronsRight, RotateCw, Square, X } from 'lucide-react'
+import { ChevronsRight, Globe, RotateCw, Square, X } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -28,15 +28,6 @@ const SETTLE_MS = 260
 const FOLD_MS = 170
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
-
-function hostOf(url: string | undefined): string {
-  if (!url || url === 'about:blank') return ''
-  try {
-    return new URL(url).host
-  } catch {
-    return url
-  }
-}
 
 function Address({ url, channel }: { url?: string; channel: string }) {
   const { showToast } = useApp()
@@ -187,7 +178,6 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
   // by the composer is where it comes back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
   if (folded) return null
-  const host = mine ? hostOf(url) : ''
   return (
     <aside
       className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}`}
@@ -232,9 +222,9 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
           className="web-pane-stage"
           ref={stage}
         >
-          {native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere} hasFrame={frameHere} />}
+          {!liveHere && !frameHere ? <div className="web-pane-empty"><Globe size={24} strokeWidth={1.4} aria-hidden /><p>Where would you like to go?</p><span>Enter a website above to get started.</span></div> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere} hasFrame={frameHere} />}
         </div>
-        <div className="web-pane-note">{frozen ? t('live.closed') : host ? t('live.hint') : t('live.empty')}</div>
+        {frozen && <div className="web-pane-note">{t('live.closed')}</div>}
         {children}
       </div>
     </aside>

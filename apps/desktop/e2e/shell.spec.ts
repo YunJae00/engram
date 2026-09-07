@@ -300,30 +300,29 @@ test('quick-open palette (Ctrl+P) opens a note', async () => {
   await page.keyboard.press('Escape')
 })
 
-test('drop zone round trip: dropped text lands in the inbox (scrap pile)', async () => {
+test('file and text drops do not capture memories or navigate the app', async () => {
   const before = (await readdir(paths.inbox)).filter((f) => f.endsWith('.md')).length
-  // page.evaluate has none of the auto-waiting expect() has, so querySelector
-  // ran against whatever was mounted at that instant and threw "Cannot read
-  // properties of null" when the previous test's view was still settling.
   await expect(page.getByTestId('shell')).toBeVisible()
-  await page.evaluate(() => {
-    const dt = new DataTransfer()
-    dt.setData('text/plain', 'dropped e2e memo')
+  const url = page.url()
+  const prevented = await page.evaluate(() => {
     const target = document.querySelector('[data-testid="shell"]')!
-    target.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    return ['text', 'file'].map((kind) => {
+      const data = new DataTransfer()
+      if (kind === 'text') data.setData('text/plain', 'dropped e2e memo')
+      else data.items.add(new File(['fixture'], 'attachment.txt', { type: 'text/plain' }))
+      const event = new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    })
   })
-  await expect
-    .poll(async () => (await readdir(paths.inbox)).filter((f) => f.endsWith('.md')).length, { timeout: 20_000 })
-    .toBe(before + 1)
-  // the command palette's "Open scrap pile (inbox)" unfolds the overlay
+  expect(prevented).toEqual([true, true])
+  await expect(page.locator('.drop-overlay')).toHaveCount(0)
   await page.keyboard.press('ControlOrMeta+Shift+p')
-  await expect(page.getByTestId('palette-input')).toBeVisible()
-  await page.getByTestId('palette-input').fill('scrap')
-  await expect(page.getByRole('option', { name: 'Open scrap pile (inbox)' })).toBeVisible()
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('inbox-list')).toContainText('dropped e2e memo')
+  await page.getByTestId('palette-input').fill('Import')
+  await expect(page.getByRole('option', { name: /Import/i })).toHaveCount(0)
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('inbox-overlay')).toHaveCount(0)
+  expect(page.url()).toBe(url)
+  expect((await readdir(paths.inbox)).filter((f) => f.endsWith('.md')).length).toBe(before)
 })
 
 test('list view: rows render chronologically, the filter narrows them, a row opens the note sheet', async () => {

@@ -2,12 +2,10 @@ import { Lock, LockOpen } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { blobBytes, imageFromPaste, PASTE_IMAGE_MAX_BYTES } from '../lib/paste.js'
 
 export function QuickCapture() {
   const [text, setText] = useState('')
   const [locked, setLocked] = useState(false)
-  const [dragging, setDragging] = useState(false)
   const [error, setError] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -34,59 +32,12 @@ export function QuickCapture() {
     }
   }
 
-  // Screenshot paste behaves like a file drop: capture and dismiss.
-  const onPaste = (e: React.ClipboardEvent) => {
-    const blob = imageFromPaste(e)
-    if (!blob) return
-    e.preventDefault()
-    if (blob.size > PASTE_IMAGE_MAX_BYTES) return // silently refuse; window stays open
-    void (async () => {
-      try {
-        await api.captureImage(await blobBytes(blob), locked)
-        finish()
-      } catch {
-        setError(true)
-      }
-    })()
-  }
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
-    void (async () => {
-      let failed = false
-      for (const file of Array.from(e.dataTransfer.files)) {
-        const path = api.pathForFile(file)
-        if (!path) continue
-        try {
-          await api.captureFile(path)
-        } catch {
-          failed = true
-        }
-      }
-      const dropped = e.dataTransfer.getData('text/plain')
-      if (dropped) {
-        try {
-          await (locked ? api.capturePrivate(dropped) : api.capture(dropped))
-        } catch {
-          failed = true
-        }
-      }
-      if (failed) setError(true)
-      else if (e.dataTransfer.files.length > 0 || dropped) finish()
-    })()
-  }
-
   return (
     <div
-      className={`quick-capture${dragging ? ' dragging' : ''}`}
+      className="quick-capture"
       data-testid="quick-capture"
-      onDragOver={(e) => {
-        e.preventDefault()
-        setDragging(true)
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={onDrop}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }}
+      onDrop={(event) => event.preventDefault()}
     >
       <div className="quick-header">
         <span className="quick-title">{t('quick.title')}</span>
@@ -110,7 +61,6 @@ export function QuickCapture() {
         placeholder={t('quick.placeholder')}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onPaste={onPaste}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()

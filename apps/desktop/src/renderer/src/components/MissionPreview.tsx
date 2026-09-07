@@ -1,4 +1,4 @@
-import { Monitor } from 'lucide-react'
+import { ArrowRight, Monitor } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { FrameScreen } from './FrameScreen.js'
 import { onMissionFrame } from '../lib/missionFramesLive.js'
@@ -38,9 +38,8 @@ export function MissionPreview({ lane, name, open }: { lane: string; name: strin
         setError('')
         void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, lane).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not open the website'))
       }}>
-        <Monitor size={24} aria-hidden />
-        <label>Open a website<input aria-label="Website address" placeholder="https://example.com" value={address} onChange={(event) => setAddress(event.target.value)} /></label>
-        <button className="secondary" type="submit">Open</button>
+        <p className="native-browser-empty-title">Open a website</p>
+        <div className="native-browser-address"><input aria-label="Website address" placeholder="Enter a website" value={address} onChange={(event) => setAddress(event.target.value)} /><button type="submit" aria-label="Open" title="Open"><ArrowRight size={15} aria-hidden /></button></div>
         {error && <p role="alert">{error}</p>}
       </form>}
     </div>

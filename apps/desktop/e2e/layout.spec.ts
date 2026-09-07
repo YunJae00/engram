@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { createNote, initVault } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -33,6 +33,17 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await app?.close() })
 
+async function screenshot(name: string) {
+  const png = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find((one) => one.webContents.getURL().includes('index.html'))!
+    // Wake a hidden window's compositor before capturing the resized frame.
+    await window.webContents.capturePage()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    return (await window.webContents.capturePage()).toPNG().toString('base64')
+  })
+  await writeFile(join(TMP, name), Buffer.from(png, 'base64'))
+}
+
 async function navigate(view: string) {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`activity-${view}`).click()
@@ -52,7 +63,9 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     const input = page.getByTestId('bots-input')
     await expect(input).toBeVisible()
     await input.fill('First line\nSecond line\nThird line')
-    await expect(page.locator('.bots-head')).toHaveCSS('height', '56px')
+    await expect(page.locator('.bots-head')).toHaveCount(0)
+    await expect(page.locator('.topbar')).toHaveCSS('height', '44px')
+    await expect(page.locator('.topbar .bots-head-name')).toBeVisible()
     await expect(page.locator('.bots-write .chat-write')).toHaveCSS('border-radius', '22px')
     await expect.poll(() => page.locator('.bots-write').evaluate((node) => {
       const box = node.getBoundingClientRect()
@@ -61,21 +74,21 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     })).toBeLessThanOrEqual(1)
     await page.getByTestId('composer-web').click()
     await expect(page.getByTestId('web-pane')).toBeVisible()
-    await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '56px')
+    await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')
     if (width <= 1180) {
       await expect.poll(() => page.getByTestId('web-pane').evaluate((node) => {
         const pane = node.getBoundingClientRect()
         const host = node.closest('.bots-main')!
         const input = host.querySelector('.bots-write')!.getBoundingClientRect()
-        const head = host.querySelector('.bots-head')!.getBoundingClientRect()
-        return pane.bottom <= input.top && pane.top >= head.bottom - 1 && pane.width > 300
+        const head = host.getBoundingClientRect()
+        return pane.bottom <= input.top && pane.top >= head.top && pane.width > 300
       })).toBe(true)
     }
     await page.getByTestId('web-pane-fold').click()
     await expect(page.getByTestId('web-pane')).toHaveCount(0)
     await input.fill('')
     await navigate('sky')
-    await expect(page.locator('.cosmos-chat-head')).toHaveCSS('min-height', '56px')
+    await expect(page.locator('.cosmos-chat-head')).toHaveCSS('min-height', '44px')
     await expect(page.locator('.cosmos-chat .chat-write')).toHaveCSS('border-radius', '22px')
     await navigate('list')
     await expect(page.locator('.view-filter-bar')).toHaveCSS('min-height', '56px')
@@ -123,5 +136,74 @@ test('mission tiles preserve usable previews and inputs instead of clipping at n
       return preview.width >= 140 && input.width >= 120 && input.left >= bounds.left && input.right <= bounds.right
         && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight + 1
     }))).toBe(true)
+    await screenshot(`orbit-layout-${width}.png`)
   }
+})
+
+test('tile conversations and chat pickers unfold without losing the draft', async () => {
+  for (const width of [1600, 948, 620]) {
+    await page.setViewportSize({ width, height: 840 })
+    await navigate('mission')
+    const tile = page.getByTestId('mission-tile-0')
+    const toggle = page.getByTestId('mission-chat-toggle-0')
+    const input = tile.locator('.mini-chat-write input')
+    await input.fill('Keep this draft 한글')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(tile.locator('.mission-chat-slot')).toBeHidden()
+    expect(await tile.locator('.mission-chat-slot').evaluate((node) => (node as HTMLElement).inert)).toBe(true)
+    await toggle.click()
+    await expect(input).toBeVisible()
+    await expect(input).toHaveValue('Keep this draft 한글')
+    const choose = tile.locator('.mission-change')
+    await choose.click()
+    await expect(page.getByTestId('mission-add-menu')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(choose).toBeFocused()
+    await expect(tile.locator('.mission-add-menu')).toBeHidden()
+    await choose.click()
+    await page.locator('.mission-head').click({ position: { x: 10, y: 10 } })
+    await expect(tile.locator('.mission-add-menu')).toBeHidden()
+    await expect(input).toHaveValue('Keep this draft 한글')
+    await input.fill('')
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(page.getByTestId('mission-tile-0').locator('.mission-tile-body')).toHaveCSS('transition-duration', '0s')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+})
+
+test('the last answer stays above the composer and its soft scroll edge as the draft grows', async () => {
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('chat:send')
+    ipcMain.handle('chat:send', () => ({ ok: true }))
+  })
+  await page.setViewportSize({ width: 620, height: 720 })
+  await navigate('bots')
+  const title = await page.locator('.bots-head-name').textContent()
+  const id = await page.evaluate(async (name) => (await window.engram.botsList()).find((bot) => bot.name === name)!.id, title)
+  const input = page.getByTestId('bots-input')
+  await input.fill('Show a detailed review')
+  await input.press('Enter')
+  await expect(page.locator('.bots-write .bubble-stop')).toBeVisible()
+  await app.evaluate(({ BrowserWindow }, botId) => {
+    BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
+      type: 'chat:done', channel: `bot-${botId}`,
+      text: Array.from({ length: 28 }, (_, i) => `Review item ${i + 1}: spacing, typography and page alignment.`).join('\n\n') + '\n\nFinal visible line.',
+    })
+  }, id)
+  await expect(page.locator('.bots-thread')).toContainText('Final visible line.')
+  for (const draft of ['', 'One\nTwo\nThree\nFour\nFive\nSix']) {
+    await input.fill(draft)
+    await expect.poll(() => page.locator('.bots-thread').evaluate((node) => {
+      const last = node.querySelector('.bubble-msg.assistant:last-of-type p:last-child')!
+      const line = last.getBoundingClientRect()
+      const thread = node.getBoundingClientRect()
+      const composer = node.closest('.bots-chat')!.querySelector('.bots-write')!.getBoundingClientRect()
+      return line.bottom <= thread.bottom - 18 && line.bottom < composer.top && line.top >= thread.top
+    })).toBe(true)
+  }
+  await screenshot('conversation-compact.png')
+  await input.fill('')
+  await navigate('sky')
+  await screenshot('cosmos-compact.png')
 })
