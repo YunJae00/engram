@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { normalizeNativeSurfaces } from '../src/main/native-layout.js'
 
 describe('native surface bounds', () => {
+  it('preserves the page viewport while cropping a partially visible native surface', () => {
+    expect(normalizeNativeSurfaces([{ lane: 'a', x: -10, y: -30, width: 200, height: 300, clip: { x: 10, y: 50, width: 100, height: 100 } }], 100, 200)).toEqual([
+      { lane: 'a', x: -10, y: -30, width: 200, height: 300, clip: { x: 10, y: 50, width: 100, height: 100 } },
+    ])
+    expect(normalizeNativeSurfaces([{ lane: 'a', x: 0, y: 0, width: 100, height: 100, clip: { x: NaN, y: 0, width: 50, height: 50 } }], 100, 100)).toEqual([])
+  })
   it('clips rectangles to the renderer without accepting nonfinite dimensions', () => {
     expect(normalizeNativeSurfaces([
       { lane: 'a', x: -10, y: 20, width: 200, height: 300 },

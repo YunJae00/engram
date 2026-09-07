@@ -112,8 +112,13 @@ internal static class Program
                     if (!Views.TryGetValue(target, out view)) continue;
                     int x = Convert.ToInt32(item["x"]), y = Convert.ToInt32(item["y"]);
                     int width = Convert.ToInt32(item["width"]), height = Convert.ToInt32(item["height"]);
-                    if (x < 0 || y < 0 || width < 1 || height < 1 || x + width > 32768 || y + height > 32768) continue;
-                    view.Place(x, y, width, height, true);
+                    if (x < -32768 || y < -32768 || width < 1 || height < 1 || width > 32768 || height > 32768 || x + width > 32768 || y + height > 32768) continue;
+                    System.Drawing.Rectangle? clip = null;
+                    if (item.ContainsKey("clip")) {
+                        var crop = (Dictionary<string, object>)item["clip"];
+                        clip = System.Drawing.Rectangle.Intersect(new System.Drawing.Rectangle(0, 0, width, height), new System.Drawing.Rectangle(Convert.ToInt32(crop["x"]), Convert.ToInt32(crop["y"]), Convert.ToInt32(crop["width"]), Convert.ToInt32(crop["height"])));
+                    }
+                    view.Place(x, y, width, height, true, clip);
                     shown.Add(target);
                 }
                 foreach (var pair in Views) if (!shown.Contains(pair.Key)) pair.Value.Place(0, 0, 0, 0, false);

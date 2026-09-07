@@ -61,6 +61,22 @@ test('low memory rejects a new embedded browser without blocking the app', async
   expect(await page.evaluate(() => window.engram.botsList())).toHaveLength(4)
 })
 
+test('sidebar navigation and activity indicators share the same icon and label columns', async () => {
+  await emit({ type: 'filing:start' })
+  await expect(page.getByTestId('sweep-status')).toBeVisible()
+  const positions = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.sidebar-nav-row, .sidebar-status-row')]
+    return rows.map((row) => {
+      const icon = row.firstElementChild!.getBoundingClientRect()
+      return { center: icon.left + icon.width / 2, label: row.lastElementChild!.getBoundingClientRect().left }
+    })
+  })
+  expect(positions).toHaveLength(6)
+  expect(Math.max(...positions.map((p) => p.center)) - Math.min(...positions.map((p) => p.center))).toBeLessThanOrEqual(1)
+  expect(Math.max(...positions.map((p) => p.label)) - Math.min(...positions.map((p) => p.label))).toBeLessThanOrEqual(1)
+  await emit({ type: 'filing:done' })
+})
+
 test('each chat and mission border tracks running, input needed, error and completion independently', async () => {
   await page.getByTestId('activity-mission').click()
   await expect(page.locator('.mission-tile .mini-chat')).toHaveCount(4)

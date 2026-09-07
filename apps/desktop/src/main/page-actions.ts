@@ -1,6 +1,7 @@
 import type { Frame, Locator, Page } from 'playwright-core'
 import { pressCommits, type PageMove, type PressTarget } from 'core'
 import { HAND_MARK, placeOf, readDocument, readFrames } from './page-reader.js'
+import { scrollDirection } from './page-scroll.js'
 
 // The hands a reader has on a page: press, type into a search box, choose
 // from a list, scroll, hover, a key. Each moves around the page the way a
@@ -324,7 +325,14 @@ export async function scrollPage(page: Page, to: string, signal?: AbortSignal): 
   const step = Math.round(size.height * 0.8)
   try {
     const where = to.trim().toLowerCase()
-    if (where === 'down' || where === 'up') {
+    const moved = ['down', 'up', 'left', 'right', 'bottom', 'top'].includes(where) ? await scrollDirection(page, where) : null
+    if (moved !== null) {
+      await settle(page)
+      return { ok: true, changed: moved }
+    } else if (where === 'left' || where === 'right') {
+      await page.mouse.move(Math.round(size.width / 2), Math.round(size.height / 2))
+      await page.mouse.wheel(where === 'right' ? size.width * 0.8 : -size.width * 0.8, 0)
+    } else if (where === 'down' || where === 'up') {
       await page.mouse.move(Math.round(size.width / 2), Math.round(size.height / 2))
       await page.mouse.wheel(0, where === 'down' ? step : -step)
     } else if (where === 'bottom' || where === 'top') {

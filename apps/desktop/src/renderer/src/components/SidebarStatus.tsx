@@ -60,12 +60,12 @@ export function SidebarStatus() {
         title={engineLabel}
         onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}
       >
-        <span className={`engine-dot${!engine ? '' : engine.healthy === false ? ' warn' : ' on'}`} />
+        <span className="sidebar-status-icon"><span className={`engine-dot${!engine ? '' : engine.healthy === false ? ' warn' : ' on'}`} /></span>
         <span>{engineLabel}</span>
       </button>
       {activityText && (
         <div className={`sidebar-status-row sidebar-work-status${working ? ' working' : ''}`} data-testid="sweep-status" role="status" title={activityText}>
-          {working ? <LoaderCircle size={12} strokeWidth={1.8} aria-hidden /> : <Check size={12} strokeWidth={2} aria-hidden />}
+          <span className="sidebar-status-icon">{working ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
           <span>{activityText}</span>
         </div>
       )}

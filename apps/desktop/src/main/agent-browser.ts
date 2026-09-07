@@ -22,7 +22,7 @@ import { nativePagesVisible } from './native-layout.js'
 // come does not take the turn with it (measured: two waits at 25s were the
 // whole of a three-minute answer).
 export const NAV_TIMEOUT_MS = 15_000
-const PAGE_TEXT_CAP = 12_000
+const PAGE_TEXT_CAP = 64_000
 // The browser is heavyweight company for an 8GB machine, so it leaves when
 // nobody is using it. Long enough, though, that a person reading an answer
 // and typing a follow-up still finds the page they were just shown: a window
@@ -494,7 +494,7 @@ export async function readPage(page: Page): Promise<WebPage> {
   return {
     url,
     title,
-    text: text.slice(0, PAGE_TEXT_CAP),
+    text: text.slice(0, PAGE_TEXT_CAP) + (text.length > PAGE_TEXT_CAP ? '\n[Page extract truncated; absence from this extract does not establish absence from the page.]' : ''),
     links: reading?.links ?? [],
     controls: reading?.lines ?? [],
     ...(reading?.hidden ? { hidden: reading.hidden } : {}),

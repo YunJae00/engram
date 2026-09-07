@@ -100,7 +100,7 @@ describe('a long page is read in parts', () => {
     expect(last).toContain('CCC')
   })
 
-  it('a word to find jumps to the part that holds it, or says the page has not got it', async () => {
+  it('a word to find jumps to its part without treating an extract miss as a missing record', async () => {
     const { cometTools } = await import('../src/comet-tools.js')
     const { initVault } = await import('../src/vault.js')
     const { tmpVaultRoot } = await import('./helpers.js')
@@ -116,7 +116,8 @@ describe('a long page is read in parts', () => {
     expect(found).toContain('"Price" is in part 3')
     expect(found).toContain('price 12 won')
     const missing = await read.run({ find: 'shipping' }, { task: 'read it' })
-    expect(missing).toContain('not in any of its 3 parts')
+    expect(missing).toContain('current readable extract (3 parts)')
+    expect(missing).toContain('does not establish that the page or saved record lacks it')
     expect(missing).not.toContain('AAAA')
   })
 })

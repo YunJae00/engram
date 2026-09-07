@@ -52,7 +52,7 @@ export async function nativeTarget(page: Page): Promise<string> {
   return held
 }
 
-export interface NativeBounds { target: string; x: number; y: number; width: number; height: number }
+export interface NativeBounds { target: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
 export async function placeNativePages(views: NativeBounds[]): Promise<void> {
   if (running) await running.request('layout', { views })

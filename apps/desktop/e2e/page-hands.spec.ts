@@ -80,6 +80,31 @@ test.afterEach(async () => {
   await page.close()
 })
 
+test('reads current off-screen form values beyond the control cap without disclosing secrets', async () => {
+  await page.setContent(`<div style="width:1600px">${'<button>Record</button>'.repeat(260)}<label for="remarks">Remarks</label><textarea id="remarks" style="margin-left:1400px;width:80px">old text</textarea><label for="activity">Activity</label><input id="activity" placeholder="Default label"><input type="password" value="private-password"><input autocomplete="one-time-code" value="123456"></div>`)
+  await page.locator('#remarks').evaluate((node) => { (node as HTMLTextAreaElement).value = 'Full saved report including the entire clipped ending.' })
+  const reading = await readFrames(page)
+  expect(reading.text).toContain('Remarks: "Full saved report including the entire clipped ending."')
+  expect(reading.text).toContain('saved record value not established')
+  expect(reading.text).not.toContain('private-password')
+  expect(reading.text).not.toContain('123456')
+  expect(reading.controls).toHaveLength(250)
+})
+
+test('scrolls both axes inside a modal without moving the page underneath', async () => {
+  await page.setContent('<div style="height:3000px">Background</div><div role="dialog" style="position:fixed;top:40px;left:40px;width:440px;height:240px;overflow:auto"><div style="width:1800px;height:1800px">Form details</div></div>')
+  expect(await scrollPage(page, 'right')).toMatchObject({ ok: true })
+  expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBeGreaterThan(0)
+  expect(await scrollPage(page, 'down')).toMatchObject({ ok: true })
+  expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
+  expect(await page.evaluate(() => scrollY)).toBe(0)
+  expect(await scrollPage(page, 'left')).toMatchObject({ ok: true })
+  expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBe(0)
+  expect(await scrollPage(page, 'bottom')).toMatchObject({ ok: true, changed: true })
+  expect(await scrollPage(page, 'bottom')).toMatchObject({ ok: true, changed: false })
+  expect(await page.evaluate(() => scrollY)).toBe(0)
+})
+
 test('the reader sees through shadow roots and frames, numbers every control, and keeps folded words apart', async () => {
   const reading = await readFrames(page)
   expect(reading.text).toContain('shadow words here')

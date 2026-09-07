@@ -487,7 +487,7 @@ export type AgentInputDto =
   | { kind: 'key'; type: 'down' | 'up'; key: string; code: string; keyCode: number; text?: string; modifiers?: number }
   | { kind: 'text'; text: string }
 
-export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number }
+export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
 export interface EngramApi {
   nativeEnabled(): Promise<boolean>

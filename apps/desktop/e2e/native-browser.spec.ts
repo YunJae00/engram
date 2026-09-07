@@ -117,6 +117,27 @@ test('popup closure restores the original page', async () => {
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Pane 0 한글')
 })
 
+test('partially clipped native surfaces retain their full viewport and stay inside the tile border', async () => {
+  const surface = shell.locator('.mission-preview').getByTestId('native-browser-surface').first()
+  const inset = await surface.evaluate((node) => {
+    const box = node.getBoundingClientRect(), parent = node.parentElement!.getBoundingClientRect()
+    return { left: box.left - parent.left, bottom: parent.bottom - box.bottom }
+  })
+  expect(inset.left).toBeGreaterThanOrEqual(9)
+  expect(inset.bottom).toBeGreaterThanOrEqual(9)
+  const first = browser.contexts()[0]!.pages().find((page) => page.url() === `${url}/?pane=0`)!
+  const previous = await surface.getAttribute('style')
+  try {
+    await surface.evaluate((node) => { node.setAttribute('style', 'position:absolute;left:10px;top:10px;width:240px;height:1200px;flex:none') })
+    await expect.poll(() => first.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width: 240, height: 1200 })
+    await first.getByRole('textbox', { name: 'Entry' }).fill('Clipped viewport input')
+    await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Clipped viewport input')
+  } finally {
+    await surface.evaluate((node, style) => { if (style === null) node.removeAttribute('style'); else node.setAttribute('style', style) }, previous)
+    await first.getByRole('textbox', { name: 'Entry' }).fill('Pane 0 한글')
+  }
+})
+
 test('script popups retain their opener and can close themselves', async () => {
   const context = browser.contexts()[0]!
   const first = context.pages().find((page) => page.url() === `${url}/?pane=0`)!

@@ -88,9 +88,9 @@ export function MissionControl() {
   )
 
   return (
-    <section className="mission-control" data-testid="mission-control">
+    <section className="mission-control" data-testid="mission-control" aria-label={t('mission.title')}>
       <header className="mission-head">
-        <div><h1>{t('mission.title')}</h1><p>{t('mission.summary', { count: running.length })}</p></div>
+        <div><p>{t('mission.summary', { count: running.length })}</p></div>
         <div className="mission-actions"><div className="mission-layout" aria-label={t('mission.layout')}>
           {([1, 2, 4] as const).map((count) => {
             const Icon = count === 1 ? Monitor : count === 2 ? Columns2 : Grid2X2

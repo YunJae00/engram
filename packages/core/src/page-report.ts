@@ -47,7 +47,7 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
     if (hits.length === 0) {
       if (page.hidden && page.hidden.toLowerCase().includes(find.toLowerCase()))
         return `page "${page.title}": "${find}" is not in what the page shows - it is in a part the page keeps folded; call reveal with {"find": "${find}"} to open that part, or press one of the controls below\nControls (press by number, e.g. {"target": "#12"}):\n${(page.controls ?? []).slice(0, CONTROLS_SHOWN).join('\n')}`
-      return `page "${page.title}": "${find}" is not in any of its ${parts} part${parts === 1 ? '' : 's'} - it is not on this page as written; try another wording once, or another page`
+      return `page "${page.title}": "${find}" was not found in the current readable extract (${parts} part${parts === 1 ? '' : 's'}). This does not establish that the page or saved record lacks it. Check another field label, reveal folded content, scroll the relevant panel, or inspect with look before reporting it missing.`
     }
     at = hits.find((hit) => hit >= at) ?? hits[0]!
     where = ` ("${find}" is in part${hits.length === 1 ? '' : 's'} ${hits.join(', ')})`

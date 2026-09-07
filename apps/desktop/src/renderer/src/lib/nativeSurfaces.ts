@@ -23,8 +23,17 @@ function measure(): void {
   const result: NativeSurfaceDto[] = []
   const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay')]
   if (document.visibilityState === 'visible') for (const [element, lane] of surfaces) {
-    const rect = element.getBoundingClientRect()
-    if (rect.width < 16 || rect.height < 16 || rect.x < 0 || rect.y < 0 || rect.right > window.innerWidth + 1 || rect.bottom > window.innerHeight + 1) continue
+    const full = element.getBoundingClientRect()
+    let left = Math.max(0, full.left), top = Math.max(0, full.top)
+    let right = Math.min(innerWidth, full.right), bottom = Math.min(innerHeight, full.bottom)
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent)
+      const box = parent.getBoundingClientRect()
+      if (/hidden|clip|auto|scroll/.test(style.overflowX)) { left = Math.max(left, box.left + parent.clientLeft); right = Math.min(right, box.left + parent.clientLeft + parent.clientWidth) }
+      if (/hidden|clip|auto|scroll/.test(style.overflowY)) { top = Math.max(top, box.top + parent.clientTop); bottom = Math.min(bottom, box.top + parent.clientTop + parent.clientHeight) }
+    }
+    const rect = { x: left, y: top, left, top, right, bottom, width: right - left, height: bottom - top }
+    if (rect.width < 16 || rect.height < 16) continue
     if (element.closest('[hidden], [inert]')) continue
     if (overlays.some((overlay) => {
       if (overlay.contains(element)) return false
@@ -36,7 +45,7 @@ function measure(): void {
       const top = document.elementFromPoint(rect.x + rect.width * fx, rect.y + rect.height * fy)
       return top === element || (top !== null && element.contains(top))
     }))
-    if (clear) result.push({ lane, x: rect.x, y: rect.y, width: rect.width, height: rect.height })
+    if (clear) result.push({ lane, x: full.x, y: full.y, width: full.width, height: full.height, clip: { x: left - full.x, y: top - full.y, width: rect.width, height: rect.height } })
   }
   const next = JSON.stringify(result)
   if (next === last && Date.now() - sent < 1000) return

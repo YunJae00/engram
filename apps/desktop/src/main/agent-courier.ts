@@ -5,6 +5,7 @@ import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeT
 import { revealText } from './page-reveal.js'
 import { maskSecrets } from './page-mask.js'
 import { touchedAt } from './agent-view.js'
+import { readWhenReady } from './page-ready.js'
 
 // What a comet is given when it can reach the web: one browser, one reused
 // tab, and the hands that move around a page without committing anything.
@@ -74,7 +75,7 @@ export function agentCourier(
     async readOpen(signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withAbort(readPage(page), signal)
+      return withAbort(readWhenReady(page, () => readPage(page), signal), signal)
     },
     async typeInto(field, text, signal) {
       await aside(signal)
@@ -158,15 +159,7 @@ export function agentCourier(
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
-      // JS-rendered pages paint just after domcontentloaded; a short settle
-      // beats waiting for 'load' on ad-heavy pages that never finish.
-      await page.waitForTimeout(800)
-      let result = await withAbort(readPage(page), signal)
-      // A page that draws itself after loading is given one more moment.
-      if (result.text.trim().length < 40) {
-        await page.waitForTimeout(2_000)
-        result = await withAbort(readPage(page), signal)
-      }
+      const result = await withAbort(readWhenReady(page, () => readPage(page), signal), signal)
       armIdleClose()
       return result
     },

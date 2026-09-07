@@ -87,7 +87,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     const scroll = courier.scroll
     tools.push({
       name: 'scroll',
-      description: 'scroll the open page - "down", "up", "bottom", "top", or to some words on it - so a long or endless list brings the next of itself in; then read - args: {"to": "down"}',
+      description: 'scroll the open page or its open dialog - "down", "up", "left", "right", "bottom", "top", or to words or a control number (#12). For clipped form text, read_open_page with find reads current field values without changing them - args: {"to": "down"}',
       argsSchema: { type: 'object', properties: { to: { type: 'string' }, find: { type: 'string' } }, required: ['to'] },
       async run(args, context) {
         const to = str(args, 'to') || 'down'

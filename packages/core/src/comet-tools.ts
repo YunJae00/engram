@@ -504,7 +504,7 @@ ${note.body.slice(0, 2_000)}`
         // The page in front of it, after typing or clicking changed it.
         name: 'read_open_page',
         description:
-          'read the page that is currently open; a long page comes in parts, "part" picks one and "find" jumps to the part holding a word — args: {"part": 1, "find": "..."}',
+            'read the currently open page, including current form values outside the viewport; use "find" with a field label before asking the person to resize or concluding a saved value is empty. A long page comes in parts; "part" picks one and "find" jumps to matching text. Distinguish an empty current field from a verified empty saved record — args: {"part": 1, "find": "..."}',
         argsSchema: { type: 'object', properties: { part: { type: 'integer' }, find: { type: 'string' } } },
         async run(args, context) {
           if (!courier.readOpen) return 'nothing is open — use open_page first'

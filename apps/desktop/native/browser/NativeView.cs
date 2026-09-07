@@ -10,6 +10,7 @@ internal sealed class NativeView : WebView2
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     private bool placed;
     private bool showing;
+    private Rectangle visibleRegion;
 
     protected override CreateParams CreateParams
     {
@@ -22,7 +23,7 @@ internal sealed class NativeView : WebView2
         }
     }
 
-    internal void Place(int x, int y, int width, int height, bool visible)
+    internal void Place(int x, int y, int width, int height, bool visible, Rectangle? clip = null)
     {
         if (!visible)
         {
@@ -36,11 +37,17 @@ internal sealed class NativeView : WebView2
             showing = false;
             return;
         }
-        if (placed && showing && Bounds == new Rectangle(x, y, width, height)) return;
+        var region = clip ?? new Rectangle(0, 0, width, height);
+        if (placed && showing && Bounds == new Rectangle(x, y, width, height) && visibleRegion == region) return;
+        var previous = Region;
+        Region = new Region(region);
+        if (previous != null) previous.Dispose();
+        visibleRegion = region;
         Bounds = new Rectangle(x, y, width, height);
         Show();
         SetWindowPos(Handle, IntPtr.Zero, x, y, width, height, 0x0050);
         placed = true;
         showing = true;
+        Invalidate(true);
     }
 }

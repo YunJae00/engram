@@ -22,6 +22,7 @@ const WENT_NOWHERE = [
   'needs a person',
   'did not answer that in time',
   'is not in any of its',
+  'was not found in the current readable extract',
 ]
 
 function worked(observation: string): boolean {

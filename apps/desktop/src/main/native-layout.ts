@@ -22,7 +22,14 @@ export function normalizeNativeSurfaces(value: unknown, width: number, height: n
     const x = Math.max(0, rect.x), y = Math.max(0, rect.y)
     const right = Math.min(width, rect.x + rect.width), bottom = Math.min(height, rect.y + rect.height)
     if (right - x < 16 || bottom - y < 16) continue
-    found.set(rect.lane, { lane: rect.lane, x, y, width: right - x, height: bottom - y })
+    if (rect.clip) {
+      const clip = rect.clip
+      if (![clip.x, clip.y, clip.width, clip.height].every(Number.isFinite) || rect.width > 16000 || rect.height > 16000) continue
+      const left = Math.max(x, rect.x + Math.max(0, clip.x)), top = Math.max(y, rect.y + Math.max(0, clip.y))
+      const end = Math.min(right, rect.x + clip.x + clip.width), foot = Math.min(bottom, rect.y + clip.y + clip.height)
+      if (end - left < 16 || foot - top < 16) continue
+      found.set(rect.lane, { lane: rect.lane, x: rect.x, y: rect.y, width: rect.width, height: rect.height, clip: { x: left - rect.x, y: top - rect.y, width: end - left, height: foot - top } })
+    } else found.set(rect.lane, { lane: rect.lane, x, y, width: right - x, height: bottom - y })
   }
   return [...found.values()].slice(-4)
 }
@@ -44,7 +51,8 @@ async function layout(requested: unknown): Promise<void> {
     if (!page || !isNativePage(page)) return null
     const target = await nativeTarget(page).catch(() => null)
     if (!target || page.isClosed()) return null
-    return { target, x: Math.round(rect.x * scale), y: Math.round(rect.y * scale), width: Math.round(rect.width * scale), height: Math.round(rect.height * scale) }
+    const clip = rect.clip ? Object.fromEntries(Object.entries(rect.clip).map(([key, value]) => [key, Math.round(value * scale)])) as NonNullable<NativeSurfaceDto['clip']> : undefined
+    return { target, x: Math.round(rect.x * scale), y: Math.round(rect.y * scale), width: Math.round(rect.width * scale), height: Math.round(rect.height * scale), ...(clip ? { clip } : {}) }
   }))
   if (generation !== revision) return
   visible = views.some(Boolean)
