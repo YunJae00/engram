@@ -15,7 +15,7 @@ internal sealed class DesktopRequest
 
 internal static class Program
 {
-    private static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 262144, RecursionLimit = 16 };
+    private static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 524288, RecursionLimit = 16 };
     private static readonly object OutputLock = new object();
     private static long StopEpoch;
     private static int Closed;
@@ -90,6 +90,19 @@ internal static class Program
                 var observation = automation.Observe(target, state);
                 if (state != null) lease.Require(state);
                 Send(new { id = id, result = observation });
+                return;
+            }
+            if (method == "capture")
+            {
+                var observed = Text(request, "snapshot", 100);
+                automation.RequireCapture(observed, target);
+                var captured = DesktopCapture.Read(target, delegate
+                {
+                    return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch)
+                        && (state == null || lease.Valid(state));
+                });
+                automation.RequireCapture(observed, target);
+                Send(new { id = id, result = captured });
                 return;
             }
             if (!mutation || state == null) throw new ArgumentException("A valid desktop control lease is required for this method");

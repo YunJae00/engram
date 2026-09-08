@@ -31,7 +31,7 @@ internal sealed class InputDispatcher
             if (Dispatch(inputs) != inputs.Length) throw new InvalidOperationException("Desktop input was not fully accepted");
             var watch = Stopwatch.StartNew();
             while (Volatile.Read(ref packet.Seen) < inputs.Length && watch.ElapsedMilliseconds < 500) Thread.Sleep(1);
-            if (Volatile.Read(ref packet.Seen) < inputs.Length) throw new InvalidOperationException("Desktop input hook acknowledgement is missing");
+            if (Volatile.Read(ref packet.Seen) < inputs.Length) throw new InvalidOperationException("Desktop input hook acknowledgement is missing (" + packet.Seen + "/" + inputs.Length + ", active=" + Lease.Valid(state) + ")");
             Lease.Require(state);
         }
         catch { Lease.Revoke("Desktop input was interrupted or could not be verified"); throw; }

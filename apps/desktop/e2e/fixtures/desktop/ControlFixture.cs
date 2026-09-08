@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -36,6 +37,7 @@ internal sealed class ControlFixture : Form
     private readonly TextBox Secret = new TextBox { AccessibleName = "Password", UseSystemPasswordChar = true, Bounds = new Rectangle(18, 60, 230, 30), Visible = false };
     private readonly Button Counter = new Button { AccessibleName = "Count click", Text = "Count click", Bounds = new Rectangle(480, 18, 130, 32) };
     private readonly FixtureScroll Scroller = new FixtureScroll { Bounds = new Rectangle(18, 100, 592, 280) };
+    private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
     private int Clicks;
 
     internal ControlFixture()
@@ -46,7 +48,7 @@ internal sealed class ControlFixture : Form
         Location = new Point(80, 80);
         ClientSize = new Size(630, 420);
         Counter.Click += delegate { Clicks++; };
-        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller });
+        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker });
         Shown += delegate
         {
             BeginInvoke((Action)delegate
@@ -79,6 +81,22 @@ internal sealed class ControlFixture : Form
         try
         {
             var method = (string)request["method"];
+            if (method == "verifyCapture")
+            {
+                var captured = (Dictionary<string, object>)request["capture"];
+                var bounds = (Dictionary<string, object>)captured["bounds"];
+                using (var stream = new MemoryStream(Convert.FromBase64String((string)captured["data"])))
+                using (var image = new Bitmap(stream))
+                {
+                    var center = Marker.PointToScreen(new Point(Marker.Width / 2, Marker.Height / 2));
+                    var x = (int)Math.Floor((center.X - Convert.ToDouble(bounds["x"])) / Convert.ToDouble(bounds["width"]) * image.Width);
+                    var y = (int)Math.Floor((center.Y - Convert.ToDouble(bounds["y"])) / Convert.ToDouble(bounds["height"]) * image.Height);
+                    var color = image.GetPixel(x, y);
+                    if (color.R < 230 || color.G > 25 || color.B < 230) throw new InvalidOperationException("Client capture does not align with the owned marker");
+                    Send(new { id = id, result = new { aligned = true, width = image.Width, height = image.Height } });
+                    return;
+                }
+            }
             if (method == "focus") { Activate(); Entry.Focus(); }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "foreignInput")

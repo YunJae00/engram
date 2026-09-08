@@ -112,6 +112,12 @@ try {
   const readOnly = await helper.request('observe', target)
   assert.ok(readOnly.nodes.some(node => node.name === 'Worker input'))
   result.readOnlyPassed = true
+  result.stage = 'client-capture'
+  const capture = await helper.request('capture', { ...target, snapshot: readOnly.snapshot })
+  assert.equal(capture.basis, 'client-physical')
+  assert.deepEqual(capture.bounds, readOnly.captureBounds)
+  assert.equal((await fixture.request('verifyCapture', { capture })).aligned, true)
+  result.captureAlignmentPassed = true
   result.stage = 'bind'
   await fixture.request('focus')
   const active = await helper.request('bind', { ...target, grant: randomUUID() })
@@ -166,6 +172,8 @@ try {
   console.log('Native desktop CI fixture integration passed')
 } catch (error) {
   result.error = error instanceof Error ? error.message : String(error)
+  result.events = helper?.events
+  try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error
 } finally {
   if (helper) await helper.close()

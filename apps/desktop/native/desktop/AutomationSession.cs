@@ -21,6 +21,7 @@ internal sealed class DesktopObservation
     internal DesktopTarget Target;
     internal Rect Bounds;
     internal long Created;
+    internal Rect CaptureBounds;
     internal long Epoch;
     internal string FocusedRuntime;
     internal readonly Dictionary<string, ObservedElement> Elements = new Dictionary<string, ObservedElement>();
@@ -85,7 +86,7 @@ internal sealed class AutomationSession
         var root = AutomationElement.FromHandle(target.Handle);
         var rootId = RuntimeId(root);
         var observation = new DesktopObservation { Id = Guid.NewGuid().ToString("N"), Target = target,
-            Bounds = DesktopNative.Bounds(target.Handle), Created = Stopwatch.GetTimestamp(), Epoch = lease == null ? 0 : lease.Epoch };
+            Bounds = DesktopNative.Bounds(target.Handle), CaptureBounds = DesktopCapture.Bounds(target.Handle), Created = Stopwatch.GetTimestamp(), Epoch = lease == null ? 0 : lease.Epoch };
         var nodes = new List<object>();
         var protectedBounds = new List<object>();
         var pending = new Queue<Tuple<AutomationElement, int>>();
@@ -134,10 +135,20 @@ internal sealed class AutomationSession
         return new
         {
             window = target.Id, pid = target.Pid, title = target.Title, snapshot = observation.Id,
-            expiresInMs = 15000, bounds = Bounds(observation.Bounds), nodes = nodes, protectedBounds = protectedBounds,
+            expiresInMs = 15000, bounds = Bounds(observation.Bounds), captureBounds = Bounds(observation.CaptureBounds), nodes = nodes, protectedBounds = protectedBounds,
             focusedEditable = focusedEditable,
             truncated = limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs
         };
+    }
+    internal void RequireCapture(string snapshot, DesktopTarget target)
+    {
+        var value = Observation;
+        if (value == null || value.Id != snapshot || value.Target.Id != target.Id || value.Target.Pid != target.Pid
+            || (Stopwatch.GetTimestamp() - value.Created) * 1000.0 / Stopwatch.Frequency > 15000)
+            throw new InvalidOperationException("Observe this app before requesting an image");
+        Guard.Same(target);
+        if (DesktopNative.Bounds(target.Handle) != value.Bounds || DesktopCapture.Bounds(target.Handle) != value.CaptureBounds)
+            throw new InvalidOperationException("The app geometry changed. Observe it again");
     }
     private static bool Inside(AutomationElement element, string rootId)
     {
@@ -163,7 +174,7 @@ internal sealed class AutomationSession
             || value.Target.Pid != lease.Target.Pid || (Stopwatch.GetTimestamp() - value.Created) * 1000.0 / Stopwatch.Frequency > 15000)
             throw new InvalidOperationException("Observe this application again before sending input");
         Validate(lease.Target);
-        if (DesktopNative.Bounds(lease.Target.Handle) != value.Bounds)
+        if (DesktopNative.Bounds(lease.Target.Handle) != value.Bounds || DesktopCapture.Bounds(lease.Target.Handle) != value.CaptureBounds)
             throw new InvalidOperationException("The window moved or resized. Observe it again before sending input");
         return value;
     }
