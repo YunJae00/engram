@@ -171,6 +171,11 @@ internal sealed class RdpSession : IDisposable
         SetRequired(extended, "EnableLocationRedirection", false);
         startupStage = "configure.Server";
         client.Server = "localhost";
+        startupStage = "configure.current-user-identity";
+        client.UserName = Environment.UserName;
+        client.Domain = Environment.UserDomainName;
+        if (client.UserName != Environment.UserName || client.Domain != Environment.UserDomainName)
+            throw new InvalidOperationException("The current-user connection identity was not accepted.");
         startupStage = "configure.DesktopWidth";
         client.DesktopWidth = window.ClientSize.Width;
         startupStage = "configure.DesktopHeight";
