@@ -132,7 +132,8 @@ internal sealed class InputMonitor : IDisposable
                 if (!current()) throw new InvalidOperationException("Desktop approval was cancelled before focus changed");
                 if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
                     throw new InvalidOperationException("Bring the chosen application to the foreground and grant control again");
-                DesktopNative.Foreground(target);
+                DesktopNative.AwaitForeground(target);
+                if (!current()) throw new InvalidOperationException("User input changed while the app was becoming active");
                 state = Lease.Bind(target, grant, current);
                 Indicator.Start(target);
                 if (!Indicator.Visible) throw new InvalidOperationException("The desktop stop control could not be displayed");

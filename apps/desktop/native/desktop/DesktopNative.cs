@@ -25,6 +25,7 @@ internal static class DesktopNative
     [DllImport("user32.dll", SetLastError = true)] internal static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, UIntPtr wparam, IntPtr lparam, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr hwnd, out Rectangle rect);
@@ -52,6 +53,14 @@ internal static class DesktopNative
     internal static void Foreground(DesktopTarget target)
     {
         if (GetForegroundWindow() != target.Handle) throw new InvalidOperationException("The selected application is no longer in the foreground");
+    }
+    internal static void AwaitForeground(DesktopTarget target)
+    {
+        UIntPtr result;
+        // Cross-thread activation completes when the target services its queue.
+        if (SendMessageTimeout(target.Handle, 0, UIntPtr.Zero, IntPtr.Zero, 2, 250, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("The app did not acknowledge foreground activation");
+        Foreground(target);
     }
     internal static void IdleKeys()
     {
