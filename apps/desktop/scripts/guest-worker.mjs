@@ -69,7 +69,7 @@ export class GuestWorker {
     let greet
     let failGreeting
     const greeting = new Promise((resolve, reject) => { greet = resolve; failGreeting = reject })
-    const timer = setTimeout(() => failGreeting(new Error('QMP greeting timed out')), 15000)
+    const timer = setTimeout(() => failGreeting(new Error('QMP greeting timed out')), 90000)
     this.child.once('error', error => { failGreeting(error); this.rejectPending(error) })
     this.child.stdin.on('error', error => this.rejectPending(error))
     this.lines = createInterface({ input: this.child.stdout })

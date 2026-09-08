@@ -8,6 +8,7 @@ on:
       - 'apps/desktop/e2e/fixtures/guest/**'
       - 'apps/desktop/scripts/test-worker-guest.mjs'
       - 'apps/desktop/scripts/guest-worker.mjs'
+      - 'apps/desktop/scripts/guest-resources.mjs'
   workflow_dispatch:
 
 permissions:

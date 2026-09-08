@@ -30,6 +30,8 @@ class Fixture:
         self.requests = queue.Queue(maxsize=16)
         self.closed = False
         self.key_events = 0
+        self.recent_keys = []
+        self.last_type_diagnostic = None
         self.pointer_events = 0
         self.click_count = 0
         self.wheel_events = 0
@@ -70,8 +72,10 @@ class Fixture:
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(15, self.pump)
 
-    def key_pressed(self, _event):
+    def key_pressed(self, event):
         self.key_events += 1
+        self.recent_keys = (self.recent_keys + [{"keycode": event.keycode,
+                            "keysym": event.keysym, "char": event.char}])[-16:]
 
     def pointer_pressed(self, _event):
         self.pointer_events += 1
@@ -112,6 +116,10 @@ class Fixture:
         return {
             "workerId": WORKER_ID, "bootId": BOOT_ID, "pid": os.getpid(),
             "text": self.entry.get(), "keyEvents": self.key_events,
+            "entryCursor": self.entry.index("insert"),
+            "entrySelection": [self.entry.index("sel.first"), self.entry.index("sel.last")]
+            if self.entry.selection_present() else None,
+            "recentKeys": self.recent_keys, "lastTypeDiagnostic": self.last_type_diagnostic,
             "pointerEvents": self.pointer_events, "clickCount": self.click_count,
             "wheelEvents": self.wheel_events, "wheelDelta": self.wheel_delta,
             "scrollY": first, "scrollEnd": last, "resizeCount": self.resize_count,
@@ -123,13 +131,13 @@ class Fixture:
                        "canvas": self.bounds(self.canvas), "resize": self.bounds(self.resize_button)},
         }
 
-    def call(self, action):
+    def call(self, action, timeout=2):
         if self.closed:
             raise RuntimeError("Guest fixture is closing")
         future = concurrent.futures.Future()
         self.requests.put_nowait((future, action))
         try:
-            return future.result(timeout=2)
+            return future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
             future.cancel()
             raise RuntimeError("Guest UI request timed out")
@@ -161,17 +169,75 @@ class Fixture:
         self.root.destroy()
 
 
-def guest_command(arguments):
+def guest_command(arguments, timeout=4):
     environment = os.environ.copy()
     environment["DISPLAY"] = ":0"
     result = subprocess.run(arguments, env=environment, shell=False, check=False,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=4,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout,
                             encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise RuntimeError("Guest display command failed")
     if len(result.stdout) > 16384:
         raise RuntimeError("Guest display response exceeded its limit")
     return result.stdout
+
+
+class NativeInputError(RuntimeError):
+    def __init__(self, diagnostic):
+        super().__init__("Native typing was not confirmed")
+        self.diagnostic = diagnostic
+
+
+def type_text(fixture, text):
+    deadline = time.monotonic() + 12
+    def ui(action):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("Native typing deadline exceeded")
+        return fixture.call(action, timeout=min(1, remaining))
+    state = ui(fixture.state)
+    confirmed = 0
+    try:
+        for character in text:
+            if not state["entryFocused"] or time.monotonic() >= deadline:
+                raise RuntimeError("Input focus changed or typing timed out")
+            start, end = state["entrySelection"] or [state["entryCursor"]] * 2
+            before, keys_before = state["text"], state["keyEvents"]
+            expected = before[:start] + character + before[end:]
+            # Confirm each key before reusing the temporary Unicode key mapping.
+            guest_command(["/usr/bin/xdotool", "type", "--clearmodifiers", "--delay", "100", "--", character],
+                          timeout=max(0.01, min(3, deadline - time.monotonic())))
+            key_deadline = min(deadline, time.monotonic() + 1)
+            while time.monotonic() < key_deadline:
+                state = ui(fixture.state)
+                if not state["entryFocused"]:
+                    raise RuntimeError("Input focus changed")
+                if state["text"] == expected and state["keyEvents"] > keys_before:
+                    confirmed += 1
+                    break
+                if state["text"] != before:
+                    raise RuntimeError("Native input produced unexpected text")
+                time.sleep(0.03)
+            else:
+                raise RuntimeError("Native key was not observed")
+        ui(lambda: setattr(fixture, "last_type_diagnostic",
+                           {"completed": True, "confirmedCodepoints": confirmed}))
+    except (RuntimeError, queue.Full, subprocess.SubprocessError, OSError) as error:
+        snapshot_fresh = True
+        try:
+            state = fixture.call(fixture.state, timeout=0.25)
+        except (RuntimeError, queue.Full):
+            snapshot_fresh = False
+        diagnostic = {"completed": False, "confirmedCodepoints": confirmed,
+                      "failedCodepoint": "U+%04X" % ord(text[min(confirmed, len(text) - 1)]),
+                      "observedText": state["text"][:512], "observedKeyEvents": state["keyEvents"],
+                      "snapshotFresh": snapshot_fresh, "observedTextTruncated": len(state["text"]) > 512,
+                      "recentKeys": state["recentKeys"], "error": "Native typing was not confirmed"}
+        try:
+            fixture.call(lambda: setattr(fixture, "last_type_diagnostic", diagnostic), timeout=0.25)
+        except (RuntimeError, queue.Full):
+            diagnostic["uiUnavailable"] = True
+        raise NativeInputError(diagnostic) from error
 
 
 def resize_display(fixture, width, height):
@@ -277,7 +343,7 @@ def handler_for(fixture):
                         if not fixture.call(fixture.state)["entryFocused"]:
                             self.reply(409, {"error": "Focus the fixture text field first"})
                             return
-                        guest_command(["/usr/bin/xdotool", "type", "--clearmodifiers", "--delay", "15", "--", text])
+                        type_text(fixture, text)
                     else:
                         width, height = data.get("width"), data.get("height")
                         if (set(data) != {"width", "height"} or type(width) is not int or type(height) is not int
@@ -289,6 +355,8 @@ def handler_for(fixture):
                     mutation.release()
             except (ValueError, UnicodeError):
                 self.reply(400, {"error": "Invalid guest request"})
+            except NativeInputError as error:
+                self.reply(503, error.diagnostic)
             except (RuntimeError, queue.Full, subprocess.SubprocessError, OSError):
                 self.reply(503, {"error": "Guest operation failed; inspect state before retrying"})
 

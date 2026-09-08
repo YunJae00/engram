@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { GuestWorker } from './guest-worker.mjs'
+import { sampleGuestResources } from './guest-resources.mjs'
 
 const { values } = parseArgs({ options: {
   qemu: { type: 'string' }, image: { type: 'string' }, output: { type: 'string' },
@@ -93,6 +94,7 @@ try {
     assert.deepEqual(final.screen, expected.screen)
     result.workers[index].finalState = final
   }
+  result.idleResources = await sampleGuestResources(guests)
   if (count === 2) {
     const [a, b] = result.workers
     assert(Math.max(a.startedMs, b.startedMs) < Math.min(a.endedMs, b.endedMs), 'Input runs did not overlap')
@@ -123,7 +125,12 @@ try {
 } catch (error) {
   result.error = error.message
   console.error(error.message)
-  await Promise.allSettled(guests.filter(guest => !guest.closed).map(guest => guest.screenshot('failure')))
+  const live = guests.filter(guest => !guest.closed)
+  result.failureStates = await Promise.all(live.map(async guest => {
+    try { return await guest.state() } catch { return { workerId: guest.id, stateUnavailable: true } }
+  }))
+  await Promise.allSettled(live.map(guest => guest.screenshot('failure')))
+  if (live.length) result.idleResources = await sampleGuestResources(live)
   process.exitCode = 1
 } finally {
   await cleanup()
