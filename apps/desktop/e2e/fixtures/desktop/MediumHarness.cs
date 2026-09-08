@@ -235,7 +235,10 @@ internal static class MediumHarness
             if (current.Standard)
                 Native(CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessW");
             else if (requiredDeniedGroups != null)
-                Native(CreateProcessAsUserW(primary, executable, command, IntPtr.Zero, IntPtr.Zero, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessAsUserW(restricted caller)");
+            {
+                using (var security = new FixtureProcessSecurity(current.Sid))
+                    Native(CreateProcessAsUserW(primary, executable, command, security.Pointer, security.Pointer, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessAsUserW(restricted caller)");
+            }
             else
                 Native(CreateProcessWithTokenW(primary, 0, executable, command, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessWithTokenW");
             FixtureAccessProbe.Stage(logs, "created-suspended", created.Pid, null);
@@ -251,7 +254,7 @@ internal static class MediumHarness
             }
             finally { CloseHandle(childToken); }
             FixtureAccessProbe.Stage(logs, "token-verified", created.Pid, null);
-            if (primary != IntPtr.Zero) FixtureAccessProbe.OwnedProcess(created.Process, currentToken, primary, logs);
+            if (primary != IntPtr.Zero) FixtureAccessProbe.OwnedProcess(created.Process, created.Thread, currentToken, primary, logs, requiredDeniedGroups != null);
             Native(ResumeThread(created.Thread) != uint.MaxValue, "ResumeThread");
             FixtureAccessProbe.Stage(logs, "resumed", created.Pid, null);
             Require(WaitForSingleObject(created.Process, LimitMs + 15000) == 0, "The limited fixture launcher timed out");

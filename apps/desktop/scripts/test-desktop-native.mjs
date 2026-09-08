@@ -19,7 +19,8 @@ if (process.env.ENGRAM_DESKTOP_MEDIUM_CHILD !== 'true') {
   execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',
     `/out:${launcher}`, path.join(desktop, 'e2e/fixtures/desktop/MediumHarness.cs'),
     path.join(desktop, 'e2e/fixtures/desktop/RestrictedFixtureToken.cs'),
-    path.join(desktop, 'e2e/fixtures/desktop/FixtureAccessProbe.cs')], { stdio: 'inherit', windowsHide: true })
+    path.join(desktop, 'e2e/fixtures/desktop/FixtureAccessProbe.cs'),
+    path.join(desktop, 'e2e/fixtures/desktop/FixtureProcessSecurity.cs')], { stdio: 'inherit', windowsHide: true })
   execFileSync(launcher, [process.execPath, repository], { stdio: 'inherit', windowsHide: true, timeout: 210000 })
   process.exit(0)
 }

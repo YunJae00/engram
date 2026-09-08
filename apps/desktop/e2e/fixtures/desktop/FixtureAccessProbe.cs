@@ -56,10 +56,11 @@ internal static class FixtureAccessProbe
         var result = "{\"scope\":\"discretionary-access-only\",\"includesMandatoryIntegrityPolicy\":false,\"windowStationName\":" + Quote(Name(station)) + ",\"desktopName\":" + Quote(Name(desktop)) + ",\"windowStation\":" + ObjectAccess(station, 7, current, restricted, stationMap, 0x37F) + ",\"desktop\":" + ObjectAccess(desktop, 7, current, restricted, desktopMap, 0x1FF) + "}\n";
         File.WriteAllText(Path.Combine(logs, "surface-access.json"), result, new UTF8Encoding(false));
     }
-    internal static void OwnedProcess(IntPtr process, IntPtr current, IntPtr restricted, string logs)
+    internal static void OwnedProcess(IntPtr process, IntPtr thread, IntPtr current, IntPtr restricted, string logs, bool explicitOwnedSecurity)
     {
         var mapping = new Mapping { Read = 0x20410, Write = 0x20BEB, Execute = 0x120000, All = 0x1FFFFF };
-        var result = "{\"scope\":\"discretionary-access-only\",\"includesMandatoryIntegrityPolicy\":false,\"ownedProcess\":" + ObjectAccess(process, 6, current, restricted, mapping, 0x1410) + "}\n";
+        var threadMapping = new Mapping { Read = 0x20048, Write = 0x203B3, Execute = 0x120000, All = 0x1FFFFF };
+        var result = "{\"scope\":\"discretionary-access-only\",\"includesMandatoryIntegrityPolicy\":false,\"explicitOwnedObjectSecurity\":" + Bool(explicitOwnedSecurity) + ",\"ownedProcess\":" + ObjectAccess(process, 6, current, restricted, mapping, 0x1410) + ",\"ownedThread\":" + ObjectAccess(thread, 6, current, restricted, threadMapping, 0x848) + "}\n";
         File.WriteAllText(Path.Combine(logs, "process-access.json"), result, new UTF8Encoding(false));
     }
     internal static void Stage(string logs, string stage, uint pid, uint? exit)
