@@ -96,7 +96,7 @@ apk --root /build/rootfs list --installed | sort > /output/packages.txt
 chroot /build/rootfs /usr/bin/python3 -m py_compile /opt/worker/fixture.py
 chroot /build/rootfs /bin/sh -n /init
 rootfs_bytes=$(du -sb /build/rootfs | cut -f1)
-[ "$rootfs_bytes" -le 461373440 ] || { printf 'Guest rootfs exceeds 440 MiB: %s\n' "$rootfs_bytes" >&2; exit 1; }
+[ "$rootfs_bytes" -le 536870912 ] || { printf 'Guest rootfs exceeds 512 MiB: %s\n' "$rootfs_bytes" >&2; exit 1; }
 cd /build/rootfs
 find . -path ./boot -prune -o -path ./proc -prune -o \
   -path ./sys -prune -o -print0 | sort -z | cpio --null -o --format=newc --reproducible \

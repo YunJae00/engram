@@ -26,14 +26,17 @@ export class GuestWorker {
     this.pending = new Map()
     this.sequence = 0
     this.closed = false
+    this.closing = false
     this.directory = path.join(options.output, id)
   }
 
   async start() {
+    if (this.closing) throw new Error('Guest channel closed')
     await mkdir(this.directory, { recursive: false })
     this.port = await reservePort()
+    if (this.closing) throw new Error('Guest channel closed')
     const args = [
-      '-name', this.id, '-machine', 'q35', '-accel', 'tcg', '-smp', '1', '-m', '768',
+      '-name', this.id, '-machine', 'q35', '-accel', 'tcg', '-smp', '1', '-m', '1024',
       '-display', 'none', '-monitor', 'none', '-qmp', 'stdio', '-no-reboot',
       ...(process.platform === 'win32' ? ['-L', path.join(path.dirname(this.options.qemu), 'share')] : []),
       '-kernel', path.join(this.options.image, 'kernel'),
@@ -200,6 +203,7 @@ export class GuestWorker {
   }
 
   async stop() {
+    this.closing = true
     if (!this.child) return
     if (!this.closed) await this.qmp('quit').catch(() => {})
     const result = await Promise.race([this.exited, delay(3000).then(() => null)])

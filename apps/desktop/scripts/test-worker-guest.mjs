@@ -15,7 +15,7 @@ const count = Number(values.count)
 const bootTimeout = Number(values['boot-timeout'])
 assert([1, 2].includes(count), 'Only one or two bounded guest workers are supported')
 assert(bootTimeout >= 30000 && bootTimeout <= 600000, 'Invalid boot deadline')
-assert(os.freemem() > (count * 768 + 768) * 1024 * 1024, 'Insufficient free RAM for isolated guests')
+assert(os.freemem() > (count * 1024 + 1024) * 1024 * 1024, 'Insufficient free RAM for isolated guests')
 const options = { qemu: await realpath(values.qemu), image: await realpath(values.image),
   output: path.resolve(values.output), bootTimeout }
 const temporaryRoot = await realpath(path.resolve('tmp'))
@@ -82,9 +82,17 @@ try {
     console.log(`${guest.id}: starting owned guest without a host display`)
     await guest.start()
     console.log(`${guest.id}: display ready (${guest.bootMs}ms)`)
+    assert(!interrupted, 'Validation interrupted')
   }
   if (count === 2) assert.notEqual(guests[0].bootId, guests[1].bootId, 'Guests share a boot identity')
   result.workers = await Promise.all(guests.map(exercise))
+  for (let index = 0; index < count; index++) {
+    const final = await guests[index].state()
+    const expected = result.workers[index].state
+    for (const key of ['text', 'clickCount', 'wheelEvents', 'bootId']) assert.equal(final[key], expected[key])
+    assert.deepEqual(final.screen, expected.screen)
+    result.workers[index].finalState = final
+  }
   if (count === 2) {
     const [a, b] = result.workers
     assert(Math.max(a.startedMs, b.startedMs) < Math.min(a.endedMs, b.endedMs), 'Input runs did not overlap')
