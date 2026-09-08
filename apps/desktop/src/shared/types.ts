@@ -1,6 +1,9 @@
 // DTOs crossing the IPC boundary. The renderer never sees core objects or
 // the filesystem — only these.
 // MCP hookup (satellites): the generated client config + connect outcomes.
+import type { DesktopApi } from './desktop.js'
+export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
+
 export interface McpInfoDto {
   configJson: string
   desktopConfigPath: string
@@ -334,6 +337,8 @@ export interface PendingWorkDto {
 }
 
 export type EngramEvent =
+  | { type: 'desktop:changed' }
+  | { type: 'desktop:visibility'; visible: boolean }
   | { type: 'vault:changed' }
   | { type: 'notes:delta'; upserts: NoteDto[]; removed: string[] }
   // realtime capture pipeline (J1 filing) — distinct from a Tidy sweep so the
@@ -489,7 +494,7 @@ export type AgentInputDto =
 
 export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
-export interface EngramApi {
+export interface EngramApi extends DesktopApi {
   nativeEnabled(): Promise<boolean>
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
   // The agent browser's mirror: watch (frames flow while at least one view

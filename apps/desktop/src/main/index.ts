@@ -33,6 +33,9 @@ import { createTray, type TrayHandle } from './tray.js'
 import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
 import { configuredVaultRoot, engineStates, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
 import { registerWorkspaceIpc } from './workspaces.js'
+import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
+import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
+import { stopDesktopControl } from './desktop-control.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -228,6 +231,7 @@ async function createMainWindow(hash?: string): Promise<void> {
     webPreferences,
   })
   attachNativeLayout(mainWin)
+  setDesktopOwner(mainWin)
   // The window exists: the compositor came back, so the note comes down.
   try {
     rmSync(FRAME_ATTEMPT(), { force: true })
@@ -262,13 +266,17 @@ async function createMainWindow(hash?: string): Promise<void> {
       void loadRenderer(mainWin)
     }
   })
-  mainWin.webContents.on('unresponsive', () => logResponsiveness('renderer-unresponsive'))
+  mainWin.webContents.on('unresponsive', () => {
+    stopDesktopControl('Engram stopped responding. Computer control was stopped.')
+    logResponsiveness('renderer-unresponsive')
+  })
   mainWin.webContents.on('responsive', () => logResponsiveness('renderer-responsive'))
   // macOS fullscreen hides the traffic lights — tell the renderer so the top
   // bar can drop the left padding it reserves for them (and restore on exit).
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
   mainWin.on('leave-full-screen', () => broadcast({ type: 'window:fullscreen', value: false }))
   mainWin.on('close', (event) => {
+    stopDesktopControl('Engram was closed.')
     abortAllChat('panel')
     if (!quitting && !isHidden) {
       event.preventDefault()
@@ -613,15 +621,16 @@ app.whenReady().then(async () => {
       })
     })
   }
-  // Deny every renderer permission request. Engram needs none of them — no
-  // camera, microphone, geolocation, notifications, clipboard-read or
-  // pointer-lock — and Electron's default is to ASK, which would put a real
-  // OS prompt in front of the user if anything in the renderer ever requested
-  // one. Audio capture goes through the main process, never getUserMedia.
-  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
-  session.defaultSession.setPermissionCheckHandler(() => false)
+  // Only one-use, selected-window display capture is allowed. Physical
+  // devices and other renderer permissions remain denied. Audio capture
+  // goes through the main process, never getUserMedia.
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(allowDesktopCapture(wc, permission, details)))
+  session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => allowDesktopCapture(wc, permission, details))
 
   registerBaseIpc()
+  registerDesktopIpc()
+  powerMonitor.on('lock-screen', () => stopDesktopControl('The computer was locked.'))
+  powerMonitor.on('suspend', () => stopDesktopControl('The computer is sleeping.'))
   registerEngineIpc()
   registerActivityIpc()
   registerSessionWatchIpc()
@@ -685,6 +694,8 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', (event) => {
+  stopDesktopControl('Engram is closing.')
+  closeDesktopAccess()
   quitting = true
   if (nativeBrowserRunning()) {
     event.preventDefault()

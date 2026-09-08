@@ -8,6 +8,7 @@ import { useModelChoices } from '../components/ModelPicker.js'
 import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
+import { ComputerSettings } from '../components/ComputerSettings.js'
 
 const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 // The sheet opens at once, empty, and its rows fill in together when every
@@ -160,6 +161,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             did nothing three sections away from what it depends on. */}
 
         <div className="settings-scroll">
+        <ComputerSettings />
         <div className="settings-group-head">{t('settings.generalTitle')}</div>
         <div className="settings-group">
           <label className="setting-row">

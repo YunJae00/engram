@@ -116,6 +116,9 @@ import { claudeModels, fetchClaudeModels, forgetClaudeModels, closeClaudeSession
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
+import { desktopAgentTools, desktopContext } from './desktop-agent.js'
+import { stopDesktopControl, stopDesktopForLane } from './desktop-control.js'
+import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { missionFrames, watchMission } from './mission-control.js'
@@ -643,6 +646,8 @@ const lastTurns = new Map<string, { message: string; steps: TurnStep[] }>()
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
 export function abortAllChat(channel?: string): void {
+  if (channel) stopDesktopForLane(channel)
+  else stopDesktopControl('All chat work was stopped.')
   for (const entry of chatAborts) {
     if (channel !== undefined && entry.channel !== channel) continue
     entry.controller.abort()
@@ -919,6 +924,7 @@ export function registerIpc(ctx: VaultContext): void {
     const id = String(botId)
     const channel = `bot-${id}`
     abortAllChat(channel)
+    releaseDesktop(channel)
     closeClaudeSession(id)
     await archiveBotTranscript(paths, id)
     await resetLaneView(channel)
@@ -1119,6 +1125,8 @@ export function registerIpc(ctx: VaultContext): void {
     broadcast({ type: 'bots:changed' })
   })
   ipcMain.handle('bots:delete', async (_e, id: string) => {
+    abortAllChat(`bot-${id}`)
+    releaseDesktop(`bot-${id}`)
     await deleteBot(paths, id)
     broadcast({ type: 'bots:changed' })
   })
@@ -2056,16 +2064,17 @@ export function registerIpc(ctx: VaultContext): void {
       }
       // The window this comet is working in, said at the top of the turn.
       const open = laneState(channel)
-      const onScreen =
+      const browserScreen =
         open.on && open.url && open.url !== 'about:blank'
           ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
           : ''
+      const onScreen = [desktopContext(channel), browserScreen].filter(Boolean).join('\n')
       try {
         const result = await runComet(
           {
             engine,
             workdir: engineCwd(paths),
-            tools: cometTools({
+            tools: [...cometTools({
               paths,
               // The web is on the menu whenever a browser is installed. Whether
               // the machine can afford to open it is decided at the moment of
@@ -2136,7 +2145,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }),
+            }), ...desktopAgentTools(channel)],
           },
           request.message,
           {
@@ -2290,6 +2299,7 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
+        stopDesktopForLane(channel, 'This chat finished. Allow control again for another task.')
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the
         // moment the answer lands takes the evidence away. It goes on its own

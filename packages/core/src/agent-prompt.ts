@@ -1,5 +1,6 @@
 import type { AgentLoopOptions, AgentLoopStep, AgentTool } from './agent-loop.js'
 import { namesSubject } from './search-template.js'
+import { isDesktopTool } from './desktop-tools.js'
 
 // What the loop says to the model, and in what order. The prompt is two
 // parts. The first reads the same from one step to the next, in a fixed
@@ -90,6 +91,7 @@ export function suggestedMove(steps: AgentLoopStep[]): string | null {
   // outstanding after it, and looking only at the last observation forgot the
   // procedure the moment the model searched for what to put in it (measured).
   for (let i = steps.length - 1; i >= 0; i--) {
+    if (isDesktopTool(steps[i]!.tool)) continue
     const match = /call ([a-z_]+) with (\{.*\})/i.exec(steps[i]!.observation)
     if (!match) continue
     // Already carried out — nothing outstanding.

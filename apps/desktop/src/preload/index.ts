@@ -12,6 +12,19 @@ import type {
 } from '../shared/types.js'
 
 const api: EngramApi = {
+  desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
+  desktopVisible: () => ipcRenderer.invoke('desktop:visible'),
+  desktopWindows: () => ipcRenderer.invoke('desktop:windows'),
+  desktopBindings: () => ipcRenderer.invoke('desktop:bindings'),
+  desktopChoose: (lane, source) => ipcRenderer.invoke('desktop:choose', lane, source),
+  desktopRelease: (lane) => ipcRenderer.invoke('desktop:release', lane),
+  desktopReadAccess: (lane, enabled) => ipcRenderer.invoke('desktop:readAccess', lane, enabled),
+  desktopPrepareCapture: (lane) => ipcRenderer.invoke('desktop:prepare', lane),
+  desktopCancelCapture: (token) => ipcRenderer.invoke('desktop:cancelCapture', token),
+  desktopObserve: (lane) => ipcRenderer.invoke('desktop:observe', lane),
+  desktopControlStatus: () => ipcRenderer.invoke('desktop:controlStatus'),
+  desktopControlStart: (lane) => ipcRenderer.invoke('desktop:controlStart', lane),
+  desktopControlStop: () => ipcRenderer.invoke('desktop:controlStop'),
   capturePrivate: (text: string) => ipcRenderer.invoke('capture:private', text),
   captureFile: (path: string) => ipcRenderer.invoke('capture:file', path),
   captureImage: (data: Uint8Array, locked: boolean) => ipcRenderer.invoke('capture:image', data, locked),

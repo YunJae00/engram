@@ -65,7 +65,7 @@ function Address({ url, channel }: { url?: string; channel: string }) {
   )
 }
 
-export function WebPane({ channel, busy, onStop, children }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode }) {
+export function WebPane({ channel, busy, onStop, children, toolbar }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode; toolbar?: ReactNode }) {
   const native = useNativeBrowser()
   const { activity } = useShellState()
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
@@ -186,6 +186,7 @@ export function WebPane({ channel, busy, onStop, children }: { channel: string; 
     >
       <div className="web-pane-grip" onMouseDown={drag} aria-hidden />
       <div className="web-pane-inner">
+        {toolbar}
         <div className="web-pane-bar">
           <button
             className="live-dock-act"

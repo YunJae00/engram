@@ -2,6 +2,7 @@ import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, sugge
 import { choiceQuestion, parseAsk } from './ask.js'
 import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
+import { desktopStepArgs, desktopStepSummary } from './desktop-tools.js'
 import { collectResult, extractJson, type Engine, type EngineCwd } from './engine/types.js'
 
 // The comet's working loop: think → pick ONE tool → run it → look at what
@@ -407,7 +408,7 @@ export async function runAgentLoop(
     const looped = detectLoop(keys)
     if (looped) return wrapUp(looped)
     const tool = tools.find((t) => t.name === parsed.tool)!
-    options.onStep?.(`${tool.name}: ${summarizeArgs(parsed.args)}`)
+    options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, parsed.args) ?? summarizeArgs(parsed.args)}`)
     let observation: string
     try {
       observation = await tool.run(parsed.args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
@@ -415,7 +416,7 @@ export async function runAgentLoop(
       // guessing at exactly the thing it just said it does not know.
       const ask = parseAsk(observation)
       if (ask) {
-        steps.push({ tool: parsed.tool, args: parsed.args, observation })
+        steps.push({ tool: parsed.tool, args: desktopStepArgs(parsed.tool, parsed.args), observation })
         return { answer: withoutSecrets(ask.question, task), steps, fellBack: false, asked: true, options: ask.options }
       }
     } catch (err) {
@@ -423,7 +424,7 @@ export async function runAgentLoop(
       observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`.slice(0, OBSERVATION_CAP)
     }
     options.onObservation?.(parsed.tool, observation)
-    steps.push({ tool: parsed.tool, args: parsed.args, observation })
+    steps.push({ tool: parsed.tool, args: desktopStepArgs(parsed.tool, parsed.args), observation })
     await followRead(deps, task, steps, options, followed)
   }
   return wrapUp('calls')

@@ -42,7 +42,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Native desktop control fixture
+        run: node apps/desktop/scripts/test-desktop-native.mjs
+        env:
+          CI: 'true'
       - run: pnpm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-desktop-results
+          path: tmp/desktop-native-ci-*/result.json
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
