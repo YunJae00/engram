@@ -1,12 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
 import { runComet, runToolSession } from '../src/agent-session.js'
-import { desktopTools } from '../src/desktop-tools.js'
+import { desktopScopeTools, desktopTools } from '../src/desktop-tools.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type Engine, type EngineCwd, type ToolSessionJob } from '../src/engine/types.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 const routes = [{ name: 'direct tool session', run: runToolSession }, { name: 'comet warm route', run: runComet }]
 
 describe.each(routes)('$name desktop capability boundary', ({ run }) => {
+  it('does not expose alternate input or filesystem routes during selected-app work', async () => {
+    const tools = ['search_web', 'open_page', 'type_text', 'run_procedure', 'read_note', 'ask_person', 'read_desktop', 'desktop_action']
+      .map((name) => ({ name, description: name, argsSchema: {}, run: vi.fn(async () => 'result') }))
+    const runTools = vi.fn(async (job: ToolSessionJob) => {
+      expect(job.tools.map((tool) => tool.name)).toEqual(['ask_person', 'read_desktop', 'desktop_action'])
+      return { answer: 'Selected app only.' }
+    })
+    const engine: Engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }),
+      run: async function* () { yield { type: 'result', text: 'unused' } }, runTools }
+    await run({ engine, workdir: WORKDIR, tools }, 'Use the selected app', { guided: false })
+    expect(desktopScopeTools(tools).map((tool) => tool.name)).toEqual(['ask_person', 'read_desktop', 'desktop_action'])
+    expect(tools.every((tool) => tool.run.mock.calls.length === 0)).toBe(true)
+  })
   it.each(['false', 'absent'])('rejects %s isolation before runtime startup or any tool observation', async (capability) => {
     const read = vi.fn(async () => 'must not read')
     const look = vi.fn(async () => ({ text: 'must not capture' }))

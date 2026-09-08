@@ -2,7 +2,7 @@ import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, sugge
 import { choiceQuestion, parseAsk } from './ask.js'
 import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
-import { desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
+import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { screenPrompt, textStepTools } from './agent-screen.js'
 import { collectResult, DESKTOP_TOOL_ISOLATION_MESSAGE, extractJson, type Engine, type EngineCwd } from './engine/types.js'
 
@@ -295,6 +295,7 @@ export async function runAgentLoop(
   options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
   if (deps.tools.some((tool) => isDesktopTool(tool.name)) && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
+  deps = { ...deps, tools: desktopScopeTools(deps.tools) }
   // Chosen per step, not once: an empty vault search is what earns the web
   // tools their place on the menu.
   const conversed = (options.history?.length ?? 0) > 0

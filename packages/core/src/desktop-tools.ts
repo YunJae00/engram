@@ -72,6 +72,10 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
 }
 
 export function isDesktopTool(name: string): boolean { return DESKTOP_TOOLS.has(name) }
+export function desktopScopeTools(tools: AgentTool[]): AgentTool[] {
+  return tools.some((tool) => isDesktopTool(tool.name))
+    ? tools.filter((tool) => isDesktopTool(tool.name) || tool.name === 'ask_person') : tools
+}
 
 export function desktopStepArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
   if (name !== 'desktop_action') return args

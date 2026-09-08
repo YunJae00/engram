@@ -5,7 +5,7 @@ import { parseAsk } from './ask.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
 import { withoutSecrets } from './secrets.js'
 import { answerLanguageLine } from './task-proposal.js'
-import { desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
+import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
 // the whole turn in one session: every step then costs one exchange instead
@@ -37,6 +37,7 @@ function summarizeArgs(args: Record<string, unknown>): string {
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   if (desktop && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
+  deps = { ...deps, tools: desktopScopeTools(deps.tools) }
   const runTools = deps.engine.runTools
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
