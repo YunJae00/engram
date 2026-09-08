@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
-export type DesktopMethod = 'inspectWindow' | 'observe' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
-const METHODS = new Set<DesktopMethod>(['inspectWindow', 'observe', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
+export type DesktopMethod = 'inspectWindow' | 'observe' | 'capture' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
+const METHODS = new Set<DesktopMethod>(['inspectWindow', 'observe', 'capture', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
 
 interface PendingRequest {
   method: DesktopMethod

@@ -1,4 +1,4 @@
-import { desktopCapturer, nativeImage } from 'electron'
+import { nativeImage } from 'electron'
 import { desktopTools, type AgentTool, type ToolOutcome } from 'core'
 import type { DesktopObservationDto } from '../shared/desktop.js'
 import { desktopBinding } from './desktop-access.js'
@@ -6,10 +6,10 @@ import { actOnDesktop, readControlledDesktop } from './desktop-control.js'
 
 function imageGeometry(observation: DesktopObservationDto): string {
   if (observation.truncated !== false) throw new Error('This window\'s accessibility scan was incomplete. Use read_desktop for available text, or choose a simpler window before requesting a screenshot.')
-  const rectangles = [observation.bounds, ...(observation.protectedBounds ?? [])]
+  const rectangles = [observation.bounds, observation.captureBounds, ...(observation.protectedBounds ?? [])]
   if (rectangles.some((rect) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('This app did not provide safe screenshot geometry.')
   const values = (rect: DesktopObservationDto['bounds']) => [rect.x, rect.y, rect.width, rect.height]
-  return JSON.stringify([values(observation.bounds), (observation.protectedBounds ?? []).map(values).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))])
+  return JSON.stringify([values(observation.bounds), values(observation.captureBounds!), (observation.protectedBounds ?? []).map(values).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))])
 }
 
 async function lookDesktop(lane: string, signal?: AbortSignal): Promise<ToolOutcome> {
@@ -18,26 +18,27 @@ async function lookDesktop(lane: string, signal?: AbortSignal): Promise<ToolOutc
   const revision = binding.revision
   const before = await readControlledDesktop(lane, signal, true)
   const geometry = imageGeometry(before)
-  const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 1600, height: 1000 } })
+  const captured = await binding.host.request<{ basis: string; bounds: DesktopObservationDto['bounds']; width: number; height: number; data: string }>('capture', { window: binding.window, pid: binding.pid, snapshot: before.snapshot })
   signal?.throwIfAborted()
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('AI access ended before the screenshot was ready.')
-  const source = sources.find((item) => item.id === binding.source)
-  if (!source || source.thumbnail.isEmpty()) throw new Error('This window did not provide a screenshot. Keep it open and observe again.')
+  if (!captured || captured.basis !== 'client-physical' || JSON.stringify(captured.bounds) !== JSON.stringify(before.captureBounds)
+    || typeof captured.data !== 'string' || captured.data.length > 470000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(captured.data)) throw new Error('This window did not provide verified screenshot geometry.')
   // Capture and accessibility are separate operations. Revalidate the native
   // window identity and geometry before using either as evidence for input.
   const observation = await readControlledDesktop(lane, signal, true)
   signal?.throwIfAborted()
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('AI access ended before the screenshot could be verified.')
   if (imageGeometry(observation) !== geometry) throw new Error('The window changed while capturing it. Observe it again before acting.')
-  const size = source.thumbnail.getSize()
-  const bitmap = source.thumbnail.toBitmap()
-  if (![size.width, size.height].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 4096) || bitmap.length !== size.width * size.height * 4) throw new Error('This window returned an invalid screenshot.')
-  const bounds = observation.bounds
+  const source = nativeImage.createFromBuffer(Buffer.from(captured.data, 'base64'))
+  const size = source.getSize()
+  const bitmap = source.toBitmap()
+  if (source.isEmpty() || size.width !== captured.width || size.height !== captured.height || ![size.width, size.height].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 4096) || bitmap.length !== size.width * size.height * 4) throw new Error('This window returned an invalid screenshot.')
+  const bounds = observation.captureBounds!
   for (const rect of observation.protectedBounds ?? []) {
-    const left = Math.max(0, Math.floor((rect.x - bounds.x) / bounds.width * size.width))
-    const top = Math.max(0, Math.floor((rect.y - bounds.y) / bounds.height * size.height))
-    const right = Math.min(size.width, Math.ceil((rect.x + rect.width - bounds.x) / bounds.width * size.width))
-    const bottom = Math.min(size.height, Math.ceil((rect.y + rect.height - bounds.y) / bounds.height * size.height))
+    const left = Math.max(0, Math.floor((rect.x - bounds.x) / bounds.width * size.width) - 8)
+    const top = Math.max(0, Math.floor((rect.y - bounds.y) / bounds.height * size.height) - 8)
+    const right = Math.min(size.width, Math.ceil((rect.x + rect.width - bounds.x) / bounds.width * size.width) + 8)
+    const bottom = Math.min(size.height, Math.ceil((rect.y + rect.height - bounds.y) / bounds.height * size.height) + 8)
     for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
       const offset = (y * size.width + x) * 4
       bitmap[offset] = 32; bitmap[offset + 1] = 32; bitmap[offset + 2] = 32; bitmap[offset + 3] = 255

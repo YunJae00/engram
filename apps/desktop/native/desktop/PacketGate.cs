@@ -38,6 +38,12 @@ internal sealed class PacketGate
         return packet;
     }
     internal bool Own(ulong marker) { return (marker & 0xffffffff00000000UL) == Prefix; }
+    internal string MarkerState(ulong marker)
+    {
+        var lowMatch = false;
+        foreach (var item in Pending.Keys) if ((uint)item == (uint)marker) lowMatch = true;
+        return "zero=" + (marker == 0) + ", upperZero=" + ((marker >> 32) == 0) + ", pendingLow=" + lowMatch;
+    }
     internal bool Admit(ulong marker, uint identity, bool release, bool tracked)
     {
         InputPacket packet;

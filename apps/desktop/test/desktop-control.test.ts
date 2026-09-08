@@ -22,7 +22,7 @@ const other = 'bot-second'
 let control: typeof import('../src/main/desktop-control.js')
 
 function observation(snapshot = 'snapshot-1'): DesktopObservationDto {
-  return { snapshot, nodes: [{ id: 'e0', name: 'Editor', controlType: 'Edit', bounds: { x: -1000, y: 20, width: 200, height: 100 } }], bounds: { x: -1000, y: 20, width: 200, height: 100 } }
+  return { snapshot, nodes: [{ id: 'e0', name: 'Editor', controlType: 'Edit', bounds: { x: -1000, y: 20, width: 200, height: 100 } }], bounds: { x: -1000, y: 20, width: 200, height: 100 }, captureBounds: { x: -992, y: 44, width: 184, height: 68 } }
 }
 
 function binding(owner = lane, window = '100') {
@@ -287,12 +287,12 @@ describe('foreground desktop actions', () => {
     expect(host.request.mock.calls.filter(([method]) => method === 'click')).toHaveLength(1)
   })
 
-  it('maps normalized coordinates into the selected window bounds on a negative-origin monitor', async () => {
+  it('maps normalized coordinates into client bounds on a negative-origin monitor', async () => {
     const host = binding()
     await control.startDesktopControl(lane)
     const read = await control.readControlledDesktop(lane, undefined, true)
     await control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, x: 1, y: 0 })
-    expect(host.request).toHaveBeenCalledWith('click', { window: '100', pid: 200, lease: 'native-100', snapshot: read.snapshot, x: -801, y: 20 })
+    expect(host.request).toHaveBeenCalledWith('click', { window: '100', pid: 200, lease: 'native-100', snapshot: read.snapshot, x: -809, y: 44 })
   })
 
   it('does not expose typing text through its result, status or change notifications', async () => {

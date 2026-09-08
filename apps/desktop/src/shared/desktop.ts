@@ -11,6 +11,7 @@ export interface DesktopObservationDto {
   snapshot: string
   nodes: DesktopNodeDto[]
   bounds: { x: number; y: number; width: number; height: number }
+  captureBounds?: { x: number; y: number; width: number; height: number }
   protectedBounds?: { x: number; y: number; width: number; height: number }[]
   focusedEditable?: boolean
   truncated?: boolean
