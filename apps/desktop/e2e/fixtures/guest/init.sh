@@ -6,6 +6,25 @@ umask 077
 fail() {
   trap - EXIT
   printf 'Guest initialization failed: %s\n' "$1" >&2
+  for log_file in /var/log/Xorg.0.log /run/xorg.log /run/worker.log /run/openbox.log \
+    /run/dhcp.log /run/xauth.log /run/xrandr.log; do
+    [ -f "$log_file" ] || continue
+    printf 'Guest log: %s\n' "$log_file" >&2
+    tail -n 40 "$log_file" | ENGRAM_LOG_TOKEN="${ENGRAM_GUEST_TOKEN:-}" \
+      ENGRAM_LOG_COOKIE="${cookie:-}" awk '
+      function redact(line, secret, prefix, position) {
+        if (secret == "") return line;
+        prefix = "";
+        while ((position = index(line, secret)) > 0) {
+          prefix = prefix substr(line, 1, position - 1) "[redacted]";
+          line = substr(line, position + length(secret));
+        }
+        return prefix line;
+      }
+      { print substr(redact(redact($0, ENVIRON["ENGRAM_LOG_TOKEN"]), ENVIRON["ENGRAM_LOG_COOKIE"]), 1, 512); }
+      ' | head -c 8192 >&2 || true
+    printf '\n' >&2
+  done
   poweroff -f
   exit 1
 }

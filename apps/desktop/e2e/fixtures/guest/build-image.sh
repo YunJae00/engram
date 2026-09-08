@@ -39,7 +39,7 @@ printf '%s\n' \
   > /build/rootfs/etc/apk/repositories
 apk --root /build/rootfs --initdb --no-cache --no-scripts add \
   alpine-base linux-virt kmod eudev xorg-server xf86-input-libinput xrandr \
-  xdotool xauth python3 py3-tkinter font-dejavu font-noto-cjk openbox
+  xdotool xauth python3 python3-tkinter font-dejavu font-noto-cjk openbox
 chroot /build/rootfs /bin/busybox --install -s
 chroot /build/rootfs /usr/sbin/adduser -D -u 1000 -h /home/worker worker
 mkdir -p /build/rootfs/opt/worker /build/rootfs/etc/X11/xorg.conf.d
