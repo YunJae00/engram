@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 import { forgetBotMemory } from './bot-memory.js'
 import { isSchedule, type Schedule } from './schedule.js'
+import { renameWithRetry } from './rename-with-retry.js'
 
 // Bots are named colleagues inside the vault: each carries a charter (what it
 // is for), keeps its own conversation, and can dispatch errands. The heart of
@@ -95,7 +96,7 @@ async function writeBotsFile(paths: VaultPaths, file: BotsFile): Promise<void> {
   const target = botsPath(paths)
   const scratch = `${target}.${process.pid}.tmp`
   await writeFile(scratch, JSON.stringify(file, null, 2))
-  await rename(scratch, target)
+  await renameWithRetry(scratch, target)
 }
 
 // Every change to the file is a read followed by a write, and two of those

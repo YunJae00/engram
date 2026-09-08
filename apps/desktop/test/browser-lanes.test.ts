@@ -42,4 +42,20 @@ describe('browser lane ownership', () => {
     expect(lanes.size).toBe(0)
     expect(lanes.owner(first)).toBeNull()
   })
+
+  it.each([false, true])('keeps the opener when a closed popup is adopted late (previously adopted: %s)', async (adopted) => {
+    const restored = vi.fn(), lanes = new BrowserLanes(restored)
+    const first = page(), popup = page()
+    lanes.set('one', first)
+    if (adopted) lanes.set('one', popup)
+    await popup.close()
+    restored.mockClear()
+
+    lanes.set('one', popup)
+
+    expect(lanes.get('one')).toBe(first)
+    expect(lanes.pages('one')).toEqual([first])
+    expect(lanes.owner(popup)).toBeNull()
+    expect(restored).not.toHaveBeenCalled()
+  })
 })

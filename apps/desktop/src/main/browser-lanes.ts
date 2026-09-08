@@ -13,6 +13,7 @@ export class BrowserLanes {
   pages(lane: string): Page[] { return [...(this.members.get(lane) ?? [])] }
 
   set(lane: string, page: Page): void {
+    if (page.isClosed()) return
     this.current.set(lane, page)
     if (this.owners.has(page)) return
     this.owners.set(page, lane)
