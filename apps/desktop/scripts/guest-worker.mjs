@@ -42,7 +42,8 @@ export class GuestWorker {
       ...(process.platform === 'win32' ? ['-L', path.join(path.dirname(this.options.qemu), 'share')] : []),
       '-kernel', path.join(this.options.image, 'kernel'),
       '-initrd', path.join(this.options.image, 'initramfs.cpio.gz'),
-      '-append', 'console=ttyS0,115200 rdinit=/init rootfstype=ramfs panic=1',
+      // Single-vCPU software guests use legacy interrupt routing.
+      '-append', 'console=ttyS0,115200 rdinit=/init rootfstype=ramfs noapic panic=1',
       '-chardev', `file,id=serial0,path=${path.join(this.directory, 'serial.log')}`,
       '-serial', 'chardev:serial0',
       '-device', 'virtio-vga,id=display0', '-device', 'qemu-xhci',

@@ -136,7 +136,7 @@ try {
     try { return await guest.state() } catch { return { workerId: guest.id, stateUnavailable: true } }
   }))
   await Promise.allSettled(live.map(guest => guest.screenshot('failure')))
-  if (live.length) result.idleResources = await sampleGuestResources(live)
+  if (live.length) result.failureIdleResources = await sampleGuestResources(live)
   process.exitCode = 1
 } finally {
   await cleanup()
