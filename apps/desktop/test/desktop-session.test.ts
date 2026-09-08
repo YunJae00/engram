@@ -1,18 +1,55 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const fake = vi.hoisted(() => ({ settings: vi.fn(), engines: vi.fn() }))
+const fake = vi.hoisted(() => ({ settings: vi.fn(), engines: vi.fn(), bindings: vi.fn(), access: vi.fn() }))
 vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }))
 vi.mock('../src/renderer/src/api.js', () => ({ api: {
-  desktopAvailable: async () => true, desktopBindings: async () => [], desktopControlStatus: async () => ({ state: 'idle' }),
+  desktopAvailable: async () => true, desktopBindings: fake.bindings, desktopReadAccess: fake.access, desktopControlStatus: async () => ({ state: 'idle' }),
   settingsGet: fake.settings, engines: fake.engines,
 } }))
-import { refreshDesktop, useDesktopSession } from '../src/renderer/src/lib/desktopSession.js'
+import { refreshDesktop, selectDesktopSurface, useDesktopSession } from '../src/renderer/src/lib/desktopSession.js'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  fake.bindings.mockResolvedValue([])
+  fake.access.mockResolvedValue({})
   fake.settings.mockResolvedValue({ defaultEngine: 'claude' })
   fake.engines.mockResolvedValue([{ id: 'claude', installed: true, loggedIn: true, desktopToolIsolation: true }])
 })
 describe('selected connection desktop capability', () => {
+  it('ends app access before switching to browser work', async () => {
+    const lane = 'switch-browser'
+    fake.bindings.mockResolvedValue([{ lane, readable: true }])
+    await refreshDesktop()
+    selectDesktopSurface(lane, 'computer')
+    let resolve!: () => void
+    fake.access.mockReturnValueOnce(new Promise<void>((done) => { resolve = done }))
+    selectDesktopSurface(lane, 'browser')
+    expect(fake.access).toHaveBeenCalledWith(lane, false)
+    expect(useDesktopSession().surfaces[lane]).toBe('computer')
+    resolve()
+    await vi.waitFor(() => expect(useDesktopSession().surfaces[lane]).toBe('browser'))
+  })
+  it('keeps the selected surface when revocation fails', async () => {
+    const lane = 'switch-fails'
+    fake.bindings.mockResolvedValue([{ lane, readable: true }])
+    await refreshDesktop()
+    selectDesktopSurface(lane, 'computer')
+    fake.access.mockRejectedValueOnce(new Error('Access could not stop'))
+    selectDesktopSurface(lane, 'browser')
+    await vi.waitFor(() => expect(useDesktopSession().error).toBe('Access could not stop'))
+    expect(useDesktopSession().surfaces[lane]).toBe('computer')
+  })
+  it('does not overwrite a newer surface choice after delayed revocation', async () => {
+    const lane = 'switch-race'
+    fake.bindings.mockResolvedValue([{ lane, readable: true }])
+    await refreshDesktop()
+    let resolve!: () => void
+    fake.access.mockReturnValueOnce(new Promise<void>((done) => { resolve = done }))
+    selectDesktopSurface(lane, 'browser')
+    selectDesktopSurface(lane, 'computer')
+    resolve()
+    await new Promise((done) => setTimeout(done, 0))
+    expect(useDesktopSession().surfaces[lane]).toBe('computer')
+  })
   it('enables control only for the explicitly supported selected connection', async () => {
     await refreshDesktop()
     expect(useDesktopSession().controlSupported).toBe(true)

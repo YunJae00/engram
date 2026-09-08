@@ -19,6 +19,7 @@ const listeners = new Set<() => void>()
 let unlisten: (() => void) | undefined
 let polling: ReturnType<typeof setInterval> | undefined
 let revision = 0
+const surfaceRequests = new Map<string, number>()
 
 function publish(next: Partial<Snapshot>): void {
   snapshot = { ...snapshot, ...next }
@@ -60,7 +61,17 @@ function subscribe(listener: () => void): () => void {
 }
 export function useDesktopSession(): Snapshot { return useSyncExternalStore(subscribe, () => snapshot) }
 export function selectDesktopSurface(lane: string, surface: DesktopSurface): void {
-  if (snapshot.surfaces[lane] !== surface) publish({ surfaces: { ...snapshot.surfaces, [lane]: surface } })
+  const request = (surfaceRequests.get(lane) ?? 0) + 1
+  surfaceRequests.set(lane, request)
+  const apply = () => {
+    if (surfaceRequests.get(lane) === request && snapshot.surfaces[lane] !== surface) publish({ surfaces: { ...snapshot.surfaces, [lane]: surface } })
+  }
+  const binding = snapshot.bindings.find((item) => item.lane === lane)
+  if (surface === 'browser' && binding && (binding.readable || (snapshot.control?.lane === lane && hasDesktopGrant(snapshot.control)))) {
+    void api.desktopReadAccess(lane, false).then(() => { apply(); void refreshDesktop() }).catch((error: unknown) => {
+      if (surfaceRequests.get(lane) === request) publish({ error: desktopError(error) })
+    })
+  } else apply()
 }
 export function useDesktopSurface(lane: string): DesktopSurface {
   const state = useDesktopSession()
