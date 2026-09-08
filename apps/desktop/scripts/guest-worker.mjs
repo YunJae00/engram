@@ -199,6 +199,11 @@ export class GuestWorker {
     try {
       await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down: true, button: 'left' } }] })
       await this.until(state => state.pointerEvents > before.pointerEvents, 'Virtual button press was not received')
+    } catch (error) {
+      error.inputDiagnostic = { workerId: this.id, widget, before,
+        pointerWhilePressed: await this.request('/pointer-state').catch(() => ({ unavailable: true })),
+        stateWhilePressed: await this.state().catch(() => ({ unavailable: true })) }
+      throw error
     } finally {
       await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down: false, button: 'left' } }] })
     }

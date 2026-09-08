@@ -8,6 +8,7 @@ import time
 
 _x11 = None
 _xtst = None
+_input_failed = False
 
 
 class XErrorEvent(c.Structure):
@@ -34,6 +35,9 @@ def initialize_native_input():
         "XGetKeyboardMapping": (keysyms, [display, c.c_ubyte, integer, c.POINTER(integer)]),
         "XChangeKeyboardMapping": (integer, [display, integer, integer, keysyms, integer]),
         "XQueryKeymap": (integer, [display, c.POINTER(c.c_ubyte)]),
+        "XDefaultRootWindow": (c.c_ulong, [display]),
+        "XQueryPointer": (integer, [display, c.c_ulong, c.POINTER(c.c_ulong), c.POINTER(c.c_ulong)]
+                          + [c.POINTER(integer)] * 4 + [c.POINTER(c.c_uint)]),
         "XFree": (integer, [display]), "XSetErrorHandler": (display, [display]),
     }
     for name, (result, arguments) in signatures.items():
@@ -48,14 +52,37 @@ def initialize_native_input():
     _x11, _xtst = x11, xtst
 
 
+def query_pointer_state():
+    if _x11 is None or sys.platform != "linux" or os.environ.get("DISPLAY") != ":0":
+        raise RuntimeError("Guest native input was not initialized")
+    display = _x11.XOpenDisplay(b":0")
+    if not display:
+        raise RuntimeError("Dedicated guest display could not be opened")
+    try:
+        root, child, mask = c.c_ulong(), c.c_ulong(), c.c_uint()
+        root_x, root_y, window_x, window_y = (c.c_int() for _ in range(4))
+        same_screen = _x11.XQueryPointer(display, _x11.XDefaultRootWindow(display),
+                                       c.byref(root), c.byref(child), c.byref(root_x), c.byref(root_y),
+                                       c.byref(window_x), c.byref(window_y), c.byref(mask))
+        if not same_screen:
+            raise RuntimeError("Guest pointer is not on its dedicated screen")
+        return {"mask": mask.value, "rootX": root_x.value, "rootY": root_y.value,
+                "rootWindowId": root.value, "childWindowId": child.value}
+    finally:
+        _x11.XCloseDisplay(display)
+
+
 class NativeKeyboard:
     def __enter__(self):
         if _x11 is None or sys.platform != "linux" or os.environ.get("DISPLAY") != ":0":
             raise RuntimeError("Guest native input was not initialized")
+        if _input_failed:
+            raise RuntimeError("Guest native input requires a fresh session after failed cleanup")
         self.display = _x11.XOpenDisplay(b":0")
         if not self.display:
             raise RuntimeError("Dedicated guest display could not be opened")
         self.errors, self.changed, self.down, self.previous = [], False, False, None
+        self.cleanup_failed = False
         self.handler = ERROR_HANDLER(self.handle_error)
         self.previous = _x11.XSetErrorHandler(c.cast(self.handler, c.c_void_p))
         try:
@@ -77,13 +104,18 @@ class NativeKeyboard:
                 if not _x11.XQueryKeymap(self.display, held):
                     raise RuntimeError("Guest held keys could not be read")
                 self.sync()
+                self.code, self.ascii_codes = None, {}
                 for code in range(low.value, high.value + 1):
                     original = [mapping[(code - low.value) * slots.value + slot] for slot in range(slots.value)]
-                    if not any(original) and not held[code // 8] & (1 << (code % 8)):
+                    if held[code // 8] & (1 << (code % 8)):
+                        continue
+                    primary = original[0]
+                    if primary == 32 or 48 <= primary <= 57 or 97 <= primary <= 122:
+                        self.ascii_codes.setdefault(primary, code)
+                    if self.code is None and not any(original):
                         self.code, self.slots = code, slots.value
                         self.original = (c.c_ulong * self.slots)(*original)
-                        break
-                else:
+                if self.code is None:
                     raise RuntimeError("No unused guest keycode is available")
             finally:
                 _x11.XFree(mapping)
@@ -107,33 +139,50 @@ class NativeKeyboard:
         if self.changed:
             raise RuntimeError("Previous native key mapping was not restored")
         codepoint = ord(character)
-        symbol = codepoint if codepoint <= 255 else 0x01000000 | codepoint
-        mapping = (c.c_ulong * self.slots)(symbol, *([0] * (self.slots - 1)))
-        self.changed = True
-        _x11.XChangeKeyboardMapping(self.display, self.code, self.slots, mapping, 1)
+        self.active_code = self.ascii_codes.get(codepoint, self.code)
+        if query_pointer_state()["mask"] & 255:
+            raise RuntimeError("Guest modifier keys must be released before typing")
+        held = (c.c_ubyte * 32)()
+        if not _x11.XQueryKeymap(self.display, held):
+            raise RuntimeError("Guest held keys could not be read")
         self.sync()
+        if held[self.active_code // 8] & (1 << (self.active_code % 8)):
+            raise RuntimeError("Guest input key is already held")
+        if self.active_code == self.code:
+            symbol = codepoint if codepoint <= 255 else 0x01000000 | codepoint
+            mapping = (c.c_ulong * 1)(symbol)
+            self.changed = True
+            _x11.XChangeKeyboardMapping(self.display, self.code, 1, mapping, 1)
+            self.sync()
         self.down = True
-        if not _xtst.XTestFakeKeyEvent(self.display, self.code, 1, 0):
+        if not _xtst.XTestFakeKeyEvent(self.display, self.active_code, 1, 0):
             raise RuntimeError("Guest native key press failed")
         self.sync()
-        if not _xtst.XTestFakeKeyEvent(self.display, self.code, 0, 0):
+        if not _xtst.XTestFakeKeyEvent(self.display, self.active_code, 0, 0):
             raise RuntimeError("Guest native key release failed")
         self.sync()
         self.down = False
 
     def restore(self):
+        global _input_failed
+        if self.cleanup_failed:
+            raise RuntimeError("Guest native input cleanup already failed")
         try:
-            if self.down:
-                released = _xtst.XTestFakeKeyEvent(self.display, self.code, 0, 0)
-                self.down = False
-                self.sync()
-                if not released:
-                    raise RuntimeError("Guest native key cleanup failed")
-        finally:
-            if self.changed:
-                _x11.XChangeKeyboardMapping(self.display, self.code, self.slots, self.original, 1)
-                self.changed = False
-                self.sync()
+            try:
+                if self.down:
+                    released = _xtst.XTestFakeKeyEvent(self.display, self.active_code, 0, 0)
+                    self.sync()
+                    if not released:
+                        raise RuntimeError("Guest native key cleanup failed")
+                    self.down = False
+            finally:
+                if self.changed:
+                    _x11.XChangeKeyboardMapping(self.display, self.code, 1, self.original, 1)
+                    self.sync()
+                    self.changed = False
+        except Exception:
+            self.cleanup_failed, _input_failed = True, True
+            raise
 
     def __exit__(self, _kind, _value, _traceback):
         try:
@@ -211,6 +260,7 @@ def type_text(fixture, text):
                       "failedCodepoint": "U+%04X" % ord(text[min(confirmed, len(text) - 1)]),
                       "observedText": state["text"][:512], "observedKeyEvents": state["keyEvents"],
                       "observedKeyReleaseEvents": state["keyReleaseEvents"],
+                      "cleanupFailed": _input_failed,
                       "snapshotFresh": snapshot_fresh, "observedTextTruncated": len(state["text"]) > 512,
                       "recentKeys": state["recentKeys"], "error": "Native typing was not confirmed"}
         try:

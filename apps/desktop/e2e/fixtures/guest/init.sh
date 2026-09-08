@@ -106,13 +106,33 @@ done
 grep -q '^Virtual-1 connected' /run/xrandr.log || fail "unexpected display output"
 xrandr --output Virtual-1 --mode 1280x800 || fail "initial display mode unavailable"
 export HOME=/home/worker USER=worker LOGNAME=worker
-su -s /bin/sh -p worker -c 'exec openbox' >/run/openbox.log 2>&1 &
+# Transient text mappings must not rebuild the fixed worker shortcut bindings.
+[ "$(grep -c '<keyboard>' /etc/xdg/openbox/rc.xml)" -eq 1 ] || fail "window manager configuration unavailable"
+sed '/<rebindOnMappingNotify>/d; s#<keyboard>#<keyboard><rebindOnMappingNotify>no</rebindOnMappingNotify>#' \
+  /etc/xdg/openbox/rc.xml > /run/worker/openbox.xml
+chown 1000:1000 /run/worker/openbox.xml
+chmod 0600 /run/worker/openbox.xml
+python3 -c 'import xml.etree.ElementTree as E; n=E.parse("/run/worker/openbox.xml").findall(".//{*}keyboard/{*}rebindOnMappingNotify"); assert len(n)==1 and n[0].text=="no"' \
+  || fail "invalid window manager configuration"
+su -s /bin/sh -p worker -c 'exec openbox --config-file /run/worker/openbox.xml' >/run/openbox.log 2>&1 &
 openbox_pid=$!
+window_manager_ready=0
+for attempt in $(seq 1 40); do
+  kill -0 "$openbox_pid" 2>/dev/null || fail "window manager exited"
+  if xdotool get_desktop >/run/window-manager-desktop 2>/dev/null \
+    && grep -Eq '^[0-9]+$' /run/window-manager-desktop; then
+    window_manager_ready=1
+    break
+  fi
+  sleep 0.25
+done
+[ "$window_manager_ready" -eq 1 ] || fail "window manager initialization timed out"
 su -s /bin/sh -p worker -c 'exec python3 /opt/worker/fixture.py' >/run/worker.log 2>&1 &
 worker_pid=$!
 printf 'Guest worker ready: %s\n' "$ENGRAM_WORKER_ID"
 trap 'kill "$worker_pid" "$openbox_pid" "$xorg_pid" 2>/dev/null || true; poweroff -f' TERM INT
-while kill -0 "$worker_pid" 2>/dev/null && kill -0 "$xorg_pid" 2>/dev/null; do
+while kill -0 "$worker_pid" 2>/dev/null && kill -0 "$xorg_pid" 2>/dev/null \
+  && kill -0 "$openbox_pid" 2>/dev/null; do
   sleep 1
 done
-fail "worker or display process exited"
+fail "worker, window manager or display process exited"

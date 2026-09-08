@@ -11,7 +11,7 @@ import threading
 import time
 import tkinter as tk
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from native_input import NativeInputError, guest_command, initialize_native_input, type_text
+from native_input import NativeInputError, guest_command, initialize_native_input, query_pointer_state, type_text
 
 
 RESOLUTIONS = {(800, 600), (960, 720), (1024, 768), (1280, 720), (1280, 800)}
@@ -234,6 +234,8 @@ def resize_display(fixture, width, height):
         if (state["screen"] == {"width": width, "height": height}
                 and state["window"]["width"] == width - 40
                 and state["window"]["height"] == height - 60):
+            fixture.call(fixture.root.update_idletasks, timeout=min(1, remaining()))
+            fixture.call(fixture.root.winfo_pointerxy, timeout=min(1, remaining()))
             return
         time.sleep(0.05)
     raise RuntimeError("Guest display or window resize did not settle")
@@ -275,6 +277,8 @@ def handler_for(fixture):
                     self.reply(200, {"ok": True, "workerId": WORKER_ID, "bootId": BOOT_ID})
                 elif self.path == "/state":
                     self.reply(200, fixture.call(fixture.state))
+                elif self.path == "/pointer-state":
+                    self.reply(200, {"workerId": WORKER_ID, "bootId": BOOT_ID, **query_pointer_state()})
                 else:
                     self.reply(404, {"error": "Unknown guest endpoint"})
             except (RuntimeError, queue.Full):
@@ -303,7 +307,8 @@ def handler_for(fixture):
                     if self.path == "/type":
                         text = data.get("text")
                         if (set(data) != {"text"} or not isinstance(text, str) or not 1 <= len(text) <= 128
-                                or any(ord(character) < 32 or 0xD800 <= ord(character) <= 0xDFFF for character in text)):
+                                or any(ord(character) < 32 or ord(character) > 0xFFFF
+                                       or 0xD800 <= ord(character) <= 0xDFFF for character in text)):
                             raise ValueError("Expected 1 to 128 printable characters")
                         if not fixture.call(fixture.state)["entryFocused"]:
                             self.reply(409, {"error": "Focus the fixture text field first"})

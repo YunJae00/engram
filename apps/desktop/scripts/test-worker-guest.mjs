@@ -45,6 +45,7 @@ async function exercise(guest, index) {
   await guest.until(state => state.text === prefix && state.keyEvents >= prefix.length, 'QMP keyboard input missing')
   await guest.request('/type', { text: ` 한글 ${index + 1}` })
   await guest.until(state => state.text === text, 'Guest Unicode key injection missing')
+  console.log(`${guest.id}: independent keyboard input verified`)
   const clicks = index ? 5 : 3
   for (let i = 0; i < clicks; i++) await guest.click('button')
   await guest.until(state => state.clickCount === clicks, 'Virtual clicks did not reach the button')
@@ -128,6 +129,7 @@ try {
   result.passed = true
 } catch (error) {
   result.error = error.message
+  if (error.inputDiagnostic) result.inputDiagnostic = error.inputDiagnostic
   console.error(error.message)
   const live = guests.filter(guest => !guest.closed)
   result.failureStates = await Promise.all(live.map(async guest => {
