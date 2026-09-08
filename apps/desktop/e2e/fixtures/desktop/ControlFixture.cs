@@ -31,6 +31,7 @@ internal sealed class ControlFixture : Form
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint pid);
     private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     private static readonly object Output = new object();
     private readonly TextBox Entry = new TextBox { AccessibleName = "Worker input", Bounds = new Rectangle(18, 20, 450, 30) };
@@ -99,6 +100,17 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "grantForeground")
+            {
+                var pid = Convert.ToInt32(request["pid"]);
+                using (var process = System.Diagnostics.Process.GetProcessById(pid))
+                {
+                    var expected = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "EngramDesktop.exe");
+                    if (!string.Equals(process.MainModule.FileName, expected, StringComparison.OrdinalIgnoreCase)
+                        || GetForegroundWindow() != Handle || !AllowSetForegroundWindow((uint)pid))
+                        throw new InvalidOperationException("The owned consent fixture could not grant foreground activation");
+                }
+            }
             else if (method == "away")
             {
                 if (Away == null) Away = new Form { Text = "Owned foreground fixture", StartPosition = FormStartPosition.Manual, Bounds = new Rectangle(760, 100, 300, 200) };
