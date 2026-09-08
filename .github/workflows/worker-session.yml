@@ -1,0 +1,27 @@
+name: Isolated worker validation
+
+on:
+  push:
+    branches: [codex/isolated-worker]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  session:
+    name: Separate Windows input session
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and validate the owned fixture
+        shell: powershell
+        run: ./apps/desktop/scripts/test-worker-session.ps1 -Run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: worker-session-result
+          path: tmp/worker-session/**/results/*
+          retention-days: 3
+          if-no-files-found: warn
