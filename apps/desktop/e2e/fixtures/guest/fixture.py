@@ -11,7 +11,7 @@ import threading
 import time
 import tkinter as tk
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from native_input import NativeInputError, guest_command, type_text
+from native_input import NativeInputError, guest_command, initialize_native_input, type_text
 
 
 RESOLUTIONS = {(800, 600), (960, 720), (1024, 768), (1280, 720), (1280, 800)}
@@ -32,6 +32,7 @@ class Fixture:
         self.requests = queue.Queue(maxsize=16)
         self.closed = False
         self.key_events = 0
+        self.key_release_events = 0
         self.recent_keys = []
         self.last_type_diagnostic = None
         self.pointer_events = 0
@@ -72,6 +73,7 @@ class Fixture:
         self.canvas.bind("<Button-5>", lambda event: self.scrolled(event, 1))
         self.canvas.bind("<MouseWheel>", self.mouse_wheel)
         self.root.bind_all("<KeyPress>", self.key_pressed, add="+")
+        self.root.bind_all("<KeyRelease>", self.key_released, add="+")
         self.root.bind_all("<ButtonPress-1>", self.pointer_pressed, add="+")
         self.root.bind_all("<ButtonRelease-1>", lambda _event: setattr(self, "release_events", self.release_events + 1), add="+")
         self.root.bind_all("<Motion>", self.pointer_moved, add="+")
@@ -87,6 +89,9 @@ class Fixture:
     def pointer_pressed(self, event):
         self.pointer_events += 1
         self.last_pointer_event = {"x": event.x_root, "y": event.y_root, "state": event.state}
+
+    def key_released(self, _event):
+        self.key_release_events += 1
 
     def pointer_moved(self, event):
         self.motion_events += 1
@@ -129,6 +134,7 @@ class Fixture:
         return {
             "workerId": WORKER_ID, "bootId": BOOT_ID, "pid": os.getpid(),
             "text": self.entry.get(), "keyEvents": self.key_events,
+            "keyReleaseEvents": self.key_release_events,
             "entryCursor": self.entry.index("insert"),
             "entrySelection": [self.entry.index("sel.first"), self.entry.index("sel.last")]
             if self.entry.selection_present() else None,
@@ -325,6 +331,7 @@ def handler_for(fixture):
 def main():
     if sys.platform != "linux" or os.environ.get("DISPLAY") != ":0":
         raise RuntimeError("The guest fixture requires its dedicated display")
+    initialize_native_input()
     fixture = Fixture()
     server = None
     if 32 <= len(TOKEN) <= 512 and WORKER_ID and BOOT_ID:
