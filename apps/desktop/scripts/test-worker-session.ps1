@@ -31,9 +31,27 @@ Write-Host "Fixture built: $output"
 if ($Run -and $PreflightOnly) { throw 'Select either Run or PreflightOnly.' }
 if ($Run -or $PreflightOnly) {
     $mode = if ($Run) { '--run-hosted' } else { '--preflight' }
+    $started = Get-Date
     & $executable $mode
     $result = $LASTEXITCODE
     $report = Join-Path $output 'results/parent-result.json'
     if (Test-Path -LiteralPath $report) { Get-Content -LiteralPath $report }
-    if ($result -ne 0) { throw "Worker session validation failed ($result)." }
+    if ($result -ne 0) {
+        if ($env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted') {
+            try {
+                $events = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4625; StartTime = $started } -MaxEvents 5 -ErrorAction Stop
+                foreach ($event in $events) {
+                    $data = ([xml]$event.ToXml()).Event.EventData.Data
+                    $diagnostic = @{ event = 4625 }
+                    foreach ($item in $data) {
+                        if ($item.Name -in @('Status', 'SubStatus', 'FailureReason', 'AuthenticationPackageName', 'LogonType')) {
+                            $diagnostic[$item.Name] = $item.'#text'
+                        }
+                    }
+                    Write-Host ($diagnostic | ConvertTo-Json -Compress)
+                }
+            } catch { Write-Host ('Authentication event details unavailable: ' + $_.Exception.Message) }
+        }
+        throw "Worker session validation failed ($result)."
+    }
 }

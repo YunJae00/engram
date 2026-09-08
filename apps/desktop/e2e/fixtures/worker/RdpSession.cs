@@ -54,7 +54,7 @@ internal sealed class RdpSession : IDisposable
         ((ISupportInitialize)host).EndInit();
         disconnected = delegate(int reason)
         {
-            if (!disconnecting && !disposed) Fail("The worker session disconnected (" + reason + ").");
+            if (!disconnecting && !disposed) Fail(DescribeDisconnection(reason));
         };
         fatalError = delegate(int code) { Fail("The session control reported a fatal error (" + code + ")."); };
         authenticationWarning = delegate { Fail("The connection requires interactive authentication."); };
@@ -246,6 +246,23 @@ internal sealed class RdpSession : IDisposable
         try { if (client != null && client.Connected != 0) client.Disconnect(); }
         catch (COMException error) { RecordError("Disconnecting the worker session failed: " + ErrorCode(error)); }
         finally { window.Hide(); }
+    }
+
+    private string DescribeDisconnection(int reason)
+    {
+        string message = "The worker session disconnected (reason=" + reason + ", stage=" + startupStage + ").";
+        if (client == null) return message + " The client interface is unavailable.";
+        try
+        {
+            var extended = client.ExtendedDisconnectReason;
+            message += " ExtendedDisconnectReason=" + (uint)extended + " (" + extended + ").";
+            string description = client.GetErrorDescription((uint)reason, (uint)extended);
+            return message + Environment.NewLine + description;
+        }
+        catch (Exception error)
+        {
+            return message + " Disconnect diagnostics failed: " + ErrorCode(error);
+        }
     }
 
     private void Fail(string message)
