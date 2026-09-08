@@ -134,6 +134,11 @@ internal sealed class RdpSession : IDisposable
         advanced.AudioCaptureRedirectionMode = false;
         startupStage = "configure.AudioRedirectionMode";
         advanced.AudioRedirectionMode = 2;
+        startupStage = "configure.EnableCredSspSupport";
+        advanced.EnableCredSspSupport = true;
+        startupStage = "configure.EnableCredSspSupport-readback";
+        if (!advanced.EnableCredSspSupport)
+            throw new InvalidOperationException("Connection-level CredSSP support was not accepted.");
         startupStage = "configure.EnableAutoReconnect";
         advanced.EnableAutoReconnect = false;
         startupStage = "configure.DisplayConnectionBar";
