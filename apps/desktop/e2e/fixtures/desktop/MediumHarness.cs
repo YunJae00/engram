@@ -232,6 +232,7 @@ internal static class MediumHarness
             values.Sort(StringComparer.OrdinalIgnoreCase);
             environment = Marshal.StringToHGlobalUni(string.Join("\0", values.ToArray()) + "\0\0");
             var startup = new StartupInfo { Size = Marshal.SizeOf(typeof(StartupInfo)), Desktop = "WinSta0\\Default" };
+            var started = DateTime.UtcNow;
             if (current.Standard)
                 Native(CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessW");
             else if (requiredDeniedGroups != null)
@@ -255,12 +256,14 @@ internal static class MediumHarness
             finally { CloseHandle(childToken); }
             FixtureAccessProbe.Stage(logs, "token-verified", created.Pid, null);
             if (primary != IntPtr.Zero) FixtureAccessProbe.OwnedProcess(created.Process, created.Thread, currentToken, primary, logs, requiredDeniedGroups != null);
+            if (primary != IntPtr.Zero) FixtureInitializationProbe.MandatoryLabels(created.Process, created.Thread, currentToken, primary, logs);
             Native(ResumeThread(created.Thread) != uint.MaxValue, "ResumeThread");
             FixtureAccessProbe.Stage(logs, "resumed", created.Pid, null);
             Require(WaitForSingleObject(created.Process, LimitMs + 15000) == 0, "The limited fixture launcher timed out");
             uint code;
             Native(GetExitCodeProcess(created.Process, out code), "GetExitCodeProcess");
             FixtureAccessProbe.Stage(logs, "exited", created.Pid, code);
+            if (code != 0) FixtureInitializationProbe.OwnedEvents(created.Pid, executable, started, logs);
             return unchecked((int)code);
         }
         finally

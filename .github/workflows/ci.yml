@@ -81,5 +81,6 @@ jobs:
             tmp/desktop-medium-ci-*/*-token.json
             tmp/desktop-medium-ci-*/*-access.json
             tmp/desktop-medium-ci-*/child-launch.json
+            tmp/desktop-medium-ci-*/child-events.json
           if-no-files-found: ignore
           retention-days: 7

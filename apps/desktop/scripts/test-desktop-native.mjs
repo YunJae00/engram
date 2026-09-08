@@ -16,11 +16,12 @@ mkdirSync(output, { recursive: true })
 const framework = path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319')
 if (process.env.ENGRAM_DESKTOP_MEDIUM_CHILD !== 'true') {
   const launcher = path.join(output, 'MediumHarness.exe')
-  execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',
+  execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Xml.dll',
     `/out:${launcher}`, path.join(desktop, 'e2e/fixtures/desktop/MediumHarness.cs'),
     path.join(desktop, 'e2e/fixtures/desktop/RestrictedFixtureToken.cs'),
     path.join(desktop, 'e2e/fixtures/desktop/FixtureAccessProbe.cs'),
-    path.join(desktop, 'e2e/fixtures/desktop/FixtureProcessSecurity.cs')], { stdio: 'inherit', windowsHide: true })
+    path.join(desktop, 'e2e/fixtures/desktop/FixtureProcessSecurity.cs'),
+    path.join(desktop, 'e2e/fixtures/desktop/FixtureInitializationProbe.cs')], { stdio: 'inherit', windowsHide: true })
   execFileSync(launcher, [process.execPath, repository], { stdio: 'inherit', windowsHide: true, timeout: 210000 })
   process.exit(0)
 }
