@@ -97,17 +97,20 @@ internal static class WorkerSession
                 bool started = false;
                 bool resized = false;
                 bool finished = false;
+                bool ticking = false;
                 timer.Tick += delegate
                 {
+                    if (ticking) return;
+                    ticking = true;
                     try
                     {
                         if (elapsed.ElapsedMilliseconds > 90000)
                             throw new TimeoutException("The child fixture did not complete within 90 seconds.");
                         if (!started)
                         {
+                            started = true;
                             canary.Arm();
                             rdp.Start();
-                            started = true;
                             return;
                         }
                         if (rdp.RuntimeError != null) throw new InvalidOperationException(rdp.RuntimeError);
@@ -164,6 +167,7 @@ internal static class WorkerSession
                         timer.Stop();
                         context.ExitThread();
                     }
+                    finally { ticking = false; }
                 };
                 timer.Start();
                 Application.Run(context);
