@@ -32,6 +32,7 @@ No Engram account. No Engram subscription.
 - **Cosmos** — every memory a star; brightness is memory strength, constellations are topics, gold halos mark recent recall. Chat is docked on its right edge: ask your memory, with hybrid retrieval (lexical + semantic + spreading activation) and instant source cards.
 - **Brain** — topics as readable pages, warm topics first, with the librarian's synthesis on top.
 - **List / Timeline** — the raw memories, filterable.
+- **Computer** (Windows, Claude connection) — enable computer use in Settings to let a comet work in an open app with your real mouse and keyboard. A screen glow and status pill identify the active connection; moving the mouse or typing pauses control, and work can resume after your hands are still. Esc or Stop ends control for the turn. Sign-in pages, passwords and security settings require manual interaction.
 - **Routines** — the pages and clicks you walk every day, saved once and replayed verbatim in a dedicated browser profile. No model runs, so a routine works on a machine too busy for inference; what it reads comes back as a review card, and one that types into a page asks before it repeats itself.
 - **MCP server** — connect AI tools to your memory: context injection, search, capture, and graph traversal over the Model Context Protocol.
 

@@ -5,8 +5,10 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
-export type DesktopMethod = 'inspectWindow' | 'observe' | 'capture' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
-const METHODS = new Set<DesktopMethod>(['inspectWindow', 'observe', 'capture', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
+export type DesktopMethod = 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
+const METHODS = new Set<DesktopMethod>(['inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
+// Everything else names one window; these two speak about the session.
+const UNSCOPED = new Set<DesktopMethod>(['inputState', 'listWindows', 'stop'])
 
 interface PendingRequest {
   method: DesktopMethod
@@ -133,7 +135,7 @@ export class DesktopHost {
   async request<T>(method: DesktopMethod, args: Record<string, unknown>): Promise<T> {
     if (!METHODS.has(method)) throw new Error('Unsupported computer action.')
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid computer action.')
-    if (method !== 'stop' && (typeof args['window'] !== 'string' || !/^\d{1,20}$/.test(args['window']) || !Number.isSafeInteger(args['pid']) || Number(args['pid']) < 0)) throw new Error('Choose a valid app window.')
+    if (!UNSCOPED.has(method) && (typeof args['window'] !== 'string' || !/^\d{1,20}$/.test(args['window']) || !Number.isSafeInteger(args['pid']) || Number(args['pid']) < 0)) throw new Error('Choose a valid app window.')
     if (method === 'stop') this.invalidate('Computer action was cancelled by Stop.')
     if (this.ended) throw new Error('Computer access ended. Reconnect the window to continue.')
     if (this.pending.size >= 32) throw new Error('Too many desktop requests are in flight.')

@@ -1,7 +1,7 @@
 // DTOs crossing the IPC boundary. The renderer never sees core objects or
 // the filesystem — only these.
 // MCP hookup (satellites): the generated client config + connect outcomes.
-import type { DesktopApi } from './desktop.js'
+import type { DesktopApi, DesktopControlStatusDto } from './desktop.js'
 export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
 
 export interface McpInfoDto {
@@ -340,6 +340,12 @@ export interface PendingWorkDto {
 export type EngramEvent =
   | { type: 'desktop:changed' }
   | { type: 'desktop:visibility'; visible: boolean }
+  // The computer changed hands: the on-screen overlay and the in-app banner
+  // both read this one event.
+  | { type: 'desktop:control'; control: DesktopControlStatusDto }
+  // Where the comet's hand is on a display, in that overlay window's own
+  // coordinates. Sent only to the overlay windows, never broadcast.
+  | { type: 'desktop:pointer'; x: number; y: number; press?: boolean }
   | { type: 'vault:changed' }
   | { type: 'notes:delta'; upserts: NoteDto[]; removed: string[] }
   // realtime capture pipeline (J1 filing) — distinct from a Tidy sweep so the
@@ -724,6 +730,9 @@ export interface AppSettingsDto {
   // default, which follows the person's plan.
   claudeModel?: string
   codexModel?: string
+  // Comets may use the apps on this computer. Off means the desktop tools
+  // are never offered.
+  computerUse?: boolean
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,

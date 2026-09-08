@@ -23,6 +23,8 @@ const MissionControl = lazy(() => import('./views/MissionControl.js').then((m) =
 const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
+const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
+const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
 const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
 const RoutinesSheet = lazy(() => import('./components/RoutinesSheet.js').then((m) => ({ default: m.RoutinesSheet })))
 const GithubConnect = lazy(() => import('./components/GithubConnect.js').then((m) => ({ default: m.GithubConnect })))
@@ -281,6 +283,19 @@ export function App() {
     return (
       <Suspense fallback={null}>
         <Onboarding />
+      </Suspense>
+    )
+  // The computer-control overlay: one glow window per display, one pill.
+  if (window.location.hash === '#overlay')
+    return (
+      <Suspense fallback={null}>
+        <ControlOverlay />
+      </Suspense>
+    )
+  if (window.location.hash === '#overlay-pill')
+    return (
+      <Suspense fallback={null}>
+        <ControlPill />
       </Suspense>
     )
   return (

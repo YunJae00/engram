@@ -2,10 +2,16 @@ import { ipcMain, session, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopHost } from './desktop-host.js'
 import { captureSource, chooseDesktop, desktopBindings, desktopOwner, desktopVisible, desktopWindows, releaseDesktop, setDesktopReadAccess } from './desktop-access.js'
-import { desktopControlStatus, readControlledDesktop, startDesktopControl, stopDesktopFromUi } from './desktop-control.js'
+import { desktopControlStatus, readControlledDesktop, resumeDesktopControl, startDesktopControl, stopDesktopFromUi } from './desktop-control.js'
+import { overlayStatus, overlayWindowIds } from './desktop-overlay.js'
 
 const requests = new Map<number, { lane: string; source: string; token: string; expires: number; capturing?: boolean }>()
 function allowed(sender: WebContents): boolean { return desktopOwner()?.webContents === sender }
+// The on-screen pill may stop or resume control; nothing else reaches it.
+const FROM_OVERLAY = new Set(['desktop:controlStop', 'desktop:controlResume', 'desktop:controlStatus', 'desktop:overlayStatus'])
+function allowedFrom(sender: WebContents, channel: string): boolean {
+  return allowed(sender) || (FROM_OVERLAY.has(channel) && overlayWindowIds().includes(sender.id))
+}
 export function allowDesktopCapture(sender: WebContents | null, permission: string, details: { isMainFrame?: boolean; mediaTypes?: unknown } = {}): boolean {
   const request = sender && requests.get(sender.id)
   if (!sender || !allowed(sender) || !desktopVisible() || details.isMainFrame !== true || !request || request.expires <= Date.now()) return false
@@ -15,7 +21,7 @@ export function allowDesktopCapture(sender: WebContents | null, permission: stri
 export function registerDesktopIpc(): void {
   const handle = <Args extends unknown[]>(name: string, fn: (...args: Args) => unknown) => {
     ipcMain.handle(name, (event, ...args: unknown[]) => {
-      if (!allowed(event.sender) || event.senderFrame !== event.sender.mainFrame) throw new Error('App access is only available from the main window.')
+      if (!allowedFrom(event.sender, name) || event.senderFrame !== event.sender.mainFrame) throw new Error('App access is only available from the main window.')
       return fn(...args as Args)
     })
   }
@@ -30,6 +36,8 @@ export function registerDesktopIpc(): void {
   handle('desktop:controlStatus', desktopControlStatus)
   handle('desktop:controlStart', startDesktopControl)
   handle('desktop:controlStop', stopDesktopFromUi)
+  handle('desktop:controlResume', resumeDesktopControl)
+  handle('desktop:overlayStatus', overlayStatus)
   handle('desktop:prepare', (lane: string) => {
     if (!desktopVisible()) throw new Error('Show Engram before starting a window view.')
     const sender = desktopOwner()!.webContents

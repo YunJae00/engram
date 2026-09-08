@@ -21,6 +21,8 @@ interface AppSettings {
   // the runtime's own default, which follows the person's plan.
   claudeModel: string
   codexModel: string
+  // Foreground input is opt-in and remains separate from browser access.
+  computerUse: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -31,6 +33,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   agentBrowser: '',
   claudeModel: '',
   codexModel: '',
+  computerUse: false,
 }
 
 function settingsPath(): string {
@@ -44,6 +47,7 @@ export async function loadSettings(): Promise<AppSettings> {
     // An old file may name a brain this build does not carry; the one on
     // this disk is the safe reading.
     if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
+    merged.computerUse = merged.computerUse === true
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }

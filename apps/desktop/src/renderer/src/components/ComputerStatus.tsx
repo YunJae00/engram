@@ -1,9 +1,24 @@
 import { Monitor, Pause, ShieldCheck, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import type { DesktopControlStatusDto } from '../../../shared/desktop.js'
 import { desktopError, stopComputerControl, useDesktopSession } from '../lib/desktopSession.js'
 
-export function computerStateLabel(state: string): string {
-  return state === 'ready' ? 'Ready for your next task' : state === 'running' ? 'Computer control is on' : state === 'needs-person' ? 'Your attention is needed' : 'Computer control is paused'
+// The in-app counterpart of the on-screen banner: the same words, so what the
+// person reads over the app and what they read in Engram never disagree.
+export function computerStateLabel(control: DesktopControlStatusDto): string {
+  const who = control.engineLabel ?? 'The comet'
+  if (control.state === 'running') return `${who} is controlling your computer`
+  if (control.state === 'ready') return `${who} is about to use your computer`
+  if (control.state === 'needs-person') return 'Your attention is needed'
+  return control.resumable ? 'You took over' : 'Computer control is off'
+}
+
+export function computerStateDetail(control: DesktopControlStatusDto): string {
+  const who = control.engineLabel ?? 'The comet'
+  if (control.state === 'running') return `Using your mouse and keyboard${control.name ? ` · ${control.name}` : ''} · Esc to take over`
+  if (control.state === 'ready') return 'Your mouse and keyboard stay yours until it starts.'
+  if (control.state === 'needs-person') return control.reason || 'Check the request, or stop to cancel it.'
+  return control.resumable ? `${who} continues once your hands have been still for a moment.` : control.reason || 'Send the next task when you are ready.'
 }
 
 export function ComputerStatus() {
@@ -12,7 +27,7 @@ export function ComputerStatus() {
   const active = Boolean(control && control.state !== 'idle')
   const stop = () => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }
   useEffect(() => {
-    if (!active || control?.state === 'paused') return
+    if (!active || (control?.state === 'paused' && !control.resumable)) return
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault(); event.stopImmediatePropagation()
@@ -20,16 +35,16 @@ export function ComputerStatus() {
     }
     window.addEventListener('keydown', escape, true)
     return () => window.removeEventListener('keydown', escape, true)
-  }, [active, control?.state])
+  }, [active, control?.state, control?.resumable])
   if (!active || !control) return null
   const Icon = control.state === 'ready' ? ShieldCheck : control.state === 'running' ? Monitor : Pause
-  const StopIcon = control.state === 'paused' ? X : Square
-  return <section className="computer-status" data-state={control.state} data-testid="computer-control-status" aria-label="Computer control">
+  const dismiss = control.state === 'paused' && !control.resumable
+  return <section className="computer-status" data-state={control.state} data-resumable={control.resumable === true ? 'true' : undefined} data-testid="computer-control-status" aria-label="Computer control">
     <Icon size={16} aria-hidden />
     <div className="computer-status-copy" role="status">
-      <strong>{computerStateLabel(control.state)}</strong>
-      <span>{error || statusError || control.reason || (control.state === 'ready' ? 'Send this chat a task. Your mouse and keyboard stay yours until it starts.' : control.state === 'running' ? `Using your mouse and keyboard${control.name ? ` · ${control.name}` : ''}` : 'You have control. Resume only when you are ready.')}</span>
+      <strong>{computerStateLabel(control)}</strong>
+      <span>{error || statusError || computerStateDetail(control)}</span>
     </div>
-    <button className="computer-stop" data-testid="computer-control-stop" onClick={stop}><StopIcon size={11} aria-hidden /><span>{control.state === 'paused' ? 'Dismiss' : 'Stop'}</span>{control.state !== 'paused' && <kbd>Esc</kbd>}</button>
+    <button className="computer-stop" data-testid="computer-control-stop" onClick={stop}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}<span>{dismiss ? 'Dismiss' : 'Stop'}</span>{!dismiss && <kbd>Esc</kbd>}</button>
   </section>
 }

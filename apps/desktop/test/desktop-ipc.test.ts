@@ -24,8 +24,9 @@ vi.mock('../src/main/desktop-access.js', () => ({
 }))
 vi.mock('../src/main/desktop-control.js', () => ({
   desktopControlStatus: () => ({ state: 'idle' }), readControlledDesktop: deps.read,
-  startDesktopControl: deps.start, stopDesktopFromUi: deps.stop,
+  startDesktopControl: deps.start, stopDesktopFromUi: deps.stop, resumeDesktopControl: vi.fn(),
 }))
+vi.mock('../src/main/desktop-overlay.js', () => ({ overlayWindowIds: () => [], overlayStatus: () => ({ state: 'idle' }) }))
 
 const lane = 'bot-first'
 const source = { id: 'window:100:0', name: 'Editor' }

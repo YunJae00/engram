@@ -48,6 +48,8 @@ function subscribe(listener: () => void): () => void {
     unlisten = api.onEvent((event) => {
       if (event.type === 'settings:changed' || event.type === 'engines:changed' || event.type === 'engines:detected') { publish({ controlSupported: null }); void refreshDesktop() }
       else if (event.type === 'desktop:changed') void refreshDesktop()
+      // The banner follows the hand-over itself, not the next poll.
+      else if (event.type === 'desktop:control') publish({ control: event.control })
     })
     void refreshDesktop()
     polling = setInterval(() => {

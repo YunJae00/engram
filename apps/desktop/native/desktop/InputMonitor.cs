@@ -21,6 +21,8 @@ internal sealed class InputMonitor : IDisposable
     private long Beat;
     private int Disposed;
     private long InterventionCount;
+    private long LastInput = Environment.TickCount;
+    private int EscapeSeen;
     private readonly System.Threading.Timer Watchdog;
     private readonly WindowGuard Guard;
 
@@ -114,6 +116,11 @@ internal sealed class InputMonitor : IDisposable
     }
 
     internal long Intervention { get { return Interlocked.Read(ref InterventionCount); } }
+    internal uint IdleMilliseconds { get { return unchecked((uint)Environment.TickCount - (uint)Interlocked.Read(ref LastInput)); } }
+    internal bool Escaped { get { return Volatile.Read(ref EscapeSeen) != 0; } }
+
+    // Native Stop remains available independently of the renderer overlay.
+    private bool Armed;
 
     internal LeaseState Bind(DesktopTarget target, string grant, long intervention, Func<bool> permitted)
     {
@@ -140,15 +147,17 @@ internal sealed class InputMonitor : IDisposable
                 if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while control started");
                 Interlocked.Exchange(ref Beat, Environment.TickCount);
                 state = Lease.Bind(target, grant, current);
+                Interlocked.Exchange(ref EscapeSeen, 0);
+                Armed = true;
             }
-            catch { Lease.Revoke("Desktop control could not start"); Indicator.Paused(); if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; } throw; }
+            catch { Armed = false; Lease.Revoke("Desktop control could not start"); Indicator.Paused(); if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; } throw; }
         });
         return state;
     }
 
     internal void BeforeInput(LeaseState state)
     {
-        OnLoop(delegate { Lease.Require(state); Rearm(); if (!Indicator.Visible) throw new InvalidOperationException("The desktop stop control is not visible"); });
+        OnLoop(delegate { Lease.Require(state); Rearm(); if (!Armed || !Indicator.Visible) throw new InvalidOperationException("The desktop stop control is not visible"); });
         Lease.Require(state);
     }
 
@@ -159,6 +168,7 @@ internal sealed class InputMonitor : IDisposable
         {
             Indicator.BeginInvoke((Action)delegate
             {
+                Armed = false;
                 if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; }
                 Indicator.Paused();
             });
@@ -177,7 +187,13 @@ internal sealed class InputMonitor : IDisposable
                 var identity = value.Key == 0xe7 ? 0x10000U | value.Scan : value.Key;
                 if (!Packets.Admit(marker, identity, (value.Flags & 0x80) != 0, true)) return new IntPtr(1);
             }
-            else { Interlocked.Increment(ref InterventionCount); Lease.Revoke(value.Key == 27 ? "Escape pressed" : "Keyboard input returned control to the user"); }
+            else
+            {
+                Interlocked.Exchange(ref LastInput, Environment.TickCount);
+                if (value.Key == 27) Interlocked.Exchange(ref EscapeSeen, 1);
+                Interlocked.Increment(ref InterventionCount);
+                Lease.Revoke(value.Key == 27 ? "Escape pressed" : "Keyboard input returned control to the user");
+            }
         }
         return DesktopNative.CallNextHookEx(Keyboard, code, message, data);
     }
@@ -198,7 +214,7 @@ internal sealed class InputMonitor : IDisposable
                 { Lease.Revoke("The pointer target changed"); return new IntPtr(1); }
                 if (!Packets.Admit(marker, 0x20001, release, down)) return new IntPtr(1);
             }
-            else { Interlocked.Increment(ref InterventionCount); Lease.Revoke("Mouse input returned control to the user"); }
+            else { Interlocked.Exchange(ref LastInput, Environment.TickCount); Interlocked.Increment(ref InterventionCount); Lease.Revoke("Mouse input returned control to the user"); }
         }
         return DesktopNative.CallNextHookEx(Mouse, code, message, data);
     }

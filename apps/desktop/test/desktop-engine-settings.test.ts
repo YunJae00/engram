@@ -26,6 +26,11 @@ beforeEach(() => {
 })
 
 describe('desktop grant lifetime when choosing an AI connection', () => {
+  it('turning computer use off stops input before settings are persisted', async () => {
+    await fake.handlers.get('settings:set')!(null, { ...settings, computerUse: false })
+    expect(fake.stop).toHaveBeenCalledExactlyOnceWith('Computer use was turned off in Settings.')
+    expect(fake.stop.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
+  })
   it('stops desktop control before refreshing the newly chosen connection', async () => {
     await fake.handlers.get('settings:set')!(null, { ...settings, defaultEngine: 'codex' })
     expect(fake.stop).toHaveBeenCalledExactlyOnceWith('The AI connection changed. Allow computer control again for the selected connection.')

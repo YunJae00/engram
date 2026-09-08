@@ -1,4 +1,4 @@
-export interface DesktopWindowDto { id: string; name: string }
+export interface DesktopWindowDto { id: string; name: string; foreground?: boolean }
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {
   id: string
@@ -16,12 +16,20 @@ export interface DesktopObservationDto {
   focusedEditable?: boolean
   truncated?: boolean
 }
+// The brain that holds the computer, named for the person: the banner on the
+// screen says who is moving the mouse.
+export type DesktopEngineId = 'claude' | 'codex'
 export interface DesktopControlStatusDto {
   state: 'idle' | 'ready' | 'running' | 'paused' | 'needs-person'
   lane?: string
   name?: string
   reason?: string
   expiresAt?: number
+  engine?: DesktopEngineId
+  engineLabel?: string
+  // Paused because a hand touched the mouse or keyboard: the comet carries on
+  // once that hand has been still for a moment. Esc and Stop are not resumable.
+  resumable?: boolean
 }
 export interface DesktopApi {
   desktopAvailable(): Promise<boolean>
@@ -37,4 +45,8 @@ export interface DesktopApi {
   desktopControlStatus(): Promise<DesktopControlStatusDto>
   desktopControlStart(lane: string): Promise<DesktopControlStatusDto>
   desktopControlStop(): Promise<void>
+  // Ends a hands-on pause early, from the on-screen pill.
+  desktopControlResume(): Promise<void>
+  // What the on-screen overlay is showing; the overlay windows prime from it.
+  desktopOverlayStatus(): Promise<DesktopControlStatusDto>
 }

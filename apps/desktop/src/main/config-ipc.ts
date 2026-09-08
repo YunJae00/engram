@@ -25,6 +25,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
 
   ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
+    if (settings.computerUse === false) stopDesktopControl('Computer use was turned off in Settings.')
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()

@@ -4,18 +4,23 @@ import type { DesktopHost, DesktopMethod } from '../src/main/desktop-host.js'
 import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const deps = vi.hoisted(() => ({
-  bindings: new Map<string, unknown>(), owner: undefined as object | undefined,
-  dialog: vi.fn(), changed: vi.fn(), broadcast: vi.fn(),
+  bindings: new Map<string, unknown>(),
+  bind: vi.fn(), changed: vi.fn(), broadcast: vi.fn(),
+  overlay: { show: vi.fn(), update: vi.fn(), hide: vi.fn(), pointer: vi.fn() },
+  cursor: { x: 10, y: 10 },
   release: undefined as ((lane: string, reason: string) => void) | undefined,
 }))
-vi.mock('electron', () => ({ dialog: { showMessageBox: deps.dialog } }))
+vi.mock('electron', () => ({ screen: { getCursorScreenPoint: () => ({ ...deps.cursor }), screenToDipPoint: (point: { x: number; y: number }) => point } }))
 vi.mock('../src/main/desktop-access.js', () => ({
   desktopBinding: (lane: string) => deps.bindings.get(lane),
-  desktopOwner: () => deps.owner,
+  bindDesktopForLane: deps.bind,
   desktopChanged: deps.changed,
   setDesktopReleaseHook: (hook: typeof deps.release) => { deps.release = hook },
 }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
+vi.mock('../src/main/desktop-overlay.js', () => ({
+  showControlOverlay: deps.overlay.show, updateControlOverlay: deps.overlay.update, hideControlOverlay: deps.overlay.hide, overlayPointer: deps.overlay.pointer,
+}))
 
 const lane = 'bot-first'
 const other = 'bot-second'
@@ -25,35 +30,44 @@ function observation(snapshot = 'snapshot-1'): DesktopObservationDto {
   return { snapshot, nodes: [{ id: 'e0', name: 'Editor', controlType: 'Edit', bounds: { x: -1000, y: 20, width: 200, height: 100 } }], bounds: { x: -1000, y: 20, width: 200, height: 100 }, captureBounds: { x: -992, y: 44, width: 184, height: 68 } }
 }
 
-function binding(owner = lane, window = '100') {
+function binding(owner = lane, window = '100', name = 'Editor') {
   let serial = 0
   const request = vi.fn<(method: DesktopMethod, args: Record<string, unknown>) => Promise<unknown>>(async (method) => {
     if (method === 'bind') return { lease: `native-${window}` }
     if (method === 'observe') return observation(`snapshot-${++serial}`)
+    if (method === 'inputState') return { idleMs: 5000, escaped: false }
     return { ok: true }
   })
   const close = vi.fn()
-  const value: DesktopBinding = { lane: owner, source: `window:${window}:0`, name: 'Editor', window, pid: 200, readable: false, stopped: false, revision: 0, host: { request, close } as unknown as DesktopHost }
+  const value: DesktopBinding = { lane: owner, source: `window:${window}:0`, name, window, pid: 200, readable: false, stopped: false, revision: 0, host: { request, close, closed: false } as unknown as DesktopHost }
   deps.bindings.set(owner, value)
   return { value, request, close }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (error: Error) => void
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
-  return { promise, resolve, reject }
-}
+const binds = () => deps.bind.mock.calls.length
+const grants = (request: ReturnType<typeof binding>['request']) => request.mock.calls.filter(([method]) => method === 'bind').map(([, args]) => args['grant'])
+const status = () => deps.broadcast.mock.calls.map(([event]) => event).filter((event) => event.type === 'desktop:control').at(-1)?.control
 
 beforeEach(async () => {
   vi.resetModules()
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
   deps.bindings.clear()
-  deps.owner = { id: 'main-window' }
-  deps.dialog.mockReset().mockResolvedValue({ response: 1 })
+  deps.cursor = { x: 10, y: 10 }
+  deps.bind.mockReset().mockImplementation(async (owner: string, pick: { app?: string }) => {
+    const held = deps.bindings.get(owner) as DesktopBinding | undefined
+    if (!held) throw new Error('No app window is in front to work in.')
+    if (pick.app && !held.name.toLowerCase().includes(pick.app.toLowerCase())) {
+      const next = binding(owner, '101', pick.app)
+      next.value.readable = true
+      return next.value
+    }
+    held.readable = true
+    return held
+  })
   deps.changed.mockReset()
   deps.broadcast.mockReset()
+  for (const spy of Object.values(deps.overlay)) spy.mockReset()
   deps.release = undefined
   control = await import('../src/main/desktop-control.js')
   control.setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: true }))
@@ -64,240 +78,209 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('foreground control consent', () => {
-  it('requires a selected window and a live owner', async () => {
-    await expect(control.startDesktopControl(lane)).rejects.toThrow('Choose an app window')
+describe('taking the computer', () => {
+  it('the first reading takes control: no dialog, the overlay is told who holds it', async () => {
     const host = binding()
-    deps.owner = undefined
-    await expect(control.startDesktopControl(lane)).rejects.toThrow('Choose an app window')
-    expect(deps.dialog).not.toHaveBeenCalled()
-    expect(host.request).not.toHaveBeenCalled()
-  })
-
-  it('does not grant access or native input when the person cancels', async () => {
-    const host = binding()
-    deps.dialog.mockResolvedValue({ response: 0 })
-    await expect(control.startDesktopControl(lane)).rejects.toThrow('not allowed')
-    expect(control.desktopControlStatus().state).toBe('paused')
-    expect(host.value.readable).toBe(false)
-    expect(host.request).not.toHaveBeenCalled()
-  })
-
-  it.each(['binding', 'host'] as const)('requires reconnect instead of granting a terminal %s connection', async (closed) => {
-    const host = binding()
-    if (closed === 'binding') host.value.stopped = true
-    else Object.defineProperty(host.value.host, 'closed', { value: true })
-    await expect(control.startDesktopControl(lane)).rejects.toThrow('Reconnect the app window to continue.')
-    expect(control.desktopControlStatus().state).toBe('idle')
-    expect(deps.dialog).not.toHaveBeenCalled()
-    expect(host.request).not.toHaveBeenCalled()
-    expect(host.value.readable).toBe(false)
-  })
-
-  it('allows a fresh grant after ordinary user takeover without reconnecting', async () => {
-    const host = binding()
-    await control.startDesktopControl(lane)
-    await control.readControlledDesktop(lane, undefined, true)
-    deps.release!(lane, 'Mouse input returned control to the user')
-    expect(host.value.stopped).toBe(false)
-    expect(await control.startDesktopControl(lane)).toMatchObject({ state: 'ready', lane })
-    expect(host.close).not.toHaveBeenCalled()
-  })
-
-  it('arms a ready grant without binding native input while the person writes their task', async () => {
-    const host = binding()
-    expect(await control.startDesktopControl(lane)).toMatchObject({ state: 'ready', lane, name: 'Editor' })
-    expect(host.value.readable).toBe(true)
-    expect(host.request).not.toHaveBeenCalled()
-    expect(host.close).not.toHaveBeenCalled()
-    expect(deps.dialog.mock.calls[0]![1]).toMatchObject({ defaultId: 0, cancelId: 0 })
-    expect(deps.dialog.mock.calls[0]![1].detail).toContain('real desktop')
-    expect(deps.dialog.mock.calls[0]![1].detail).toContain('screenshots')
-  })
-
-  it.each([false, true])('allows only one global pending or ready owner, ready=%s', async (ready) => {
-    binding()
-    binding(other, '101')
-    const answer = deferred<{ response: number }>()
-    deps.dialog.mockReturnValue(answer.promise)
-    const first = control.startDesktopControl(lane)
-    if (ready) { answer.resolve({ response: 1 }); await first }
-    await expect(control.startDesktopControl(other)).rejects.toThrow('pending or running')
-    await expect(control.startDesktopControl(lane)).rejects.toThrow('pending or running')
-    expect(deps.dialog).toHaveBeenCalledOnce()
-    if (!ready) { answer.resolve({ response: 1 }); await first }
-  })
-
-  it('does not accept permission delivered after Stop', async () => {
-    const host = binding()
-    const answer = deferred<{ response: number }>()
-    deps.dialog.mockReturnValue(answer.promise)
-    const request = control.startDesktopControl(lane)
-    const rejected = expect(request).rejects.toThrow('cancelled')
-    await vi.waitFor(() => expect(deps.dialog).toHaveBeenCalled())
-    control.stopDesktopControl()
-    answer.resolve({ response: 1 })
-    await rejected
-    expect(host.request).not.toHaveBeenCalled()
-    expect(control.desktopControlStatus().state).toBe('paused')
-  })
-
-  it('does not let a stale same-lane approval cancel a newer pending grant', async () => {
-    binding()
-    const old = deferred<{ response: number }>(), fresh = deferred<{ response: number }>()
-    deps.dialog.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
-    const first = control.startDesktopControl(lane)
-    const rejected = expect(first).rejects.toThrow('cancelled')
-    await vi.waitFor(() => expect(deps.dialog).toHaveBeenCalled())
-    control.stopDesktopControl()
-    const next = control.startDesktopControl(lane)
-    old.resolve({ response: 1 })
-    await rejected
-    expect(control.desktopControlStatus().state).toBe('needs-person')
-    fresh.resolve({ response: 1 })
-    expect(await next).toMatchObject({ state: 'ready', lane })
-  })
-
-  it.each(['source', 'owner'] as const)('rejects permission if the %s was replaced while the dialog was open', async (replacement) => {
-    const host = binding()
-    const answer = deferred<{ response: number }>()
-    deps.dialog.mockReturnValue(answer.promise)
-    const request = control.startDesktopControl(lane)
-    const rejected = expect(request).rejects.toThrow('cancelled')
-    if (replacement === 'source') binding(lane, '102')
-    else deps.owner = { id: 'replacement-window' }
-    answer.resolve({ response: 1 })
-    await rejected
-    expect(host.request).not.toHaveBeenCalled()
-  })
-})
-
-describe('desktop observation and lazy native binding', () => {
-  it('allows an authorized UI read without binding or foreground takeover', async () => {
-    const host = binding()
-    await control.startDesktopControl(lane)
-    await control.readControlledDesktop(lane, undefined, false)
-    expect(host.request).toHaveBeenCalledExactlyOnceWith('observe', { window: '100', pid: 200 })
-    expect(control.desktopControlStatus().state).toBe('ready')
-  })
-
-  it('allows read-only consent without ever creating a control grant', async () => {
-    const host = binding()
-    host.value.readable = true
-    await control.readControlledDesktop(lane, undefined, true)
-    expect(host.request).toHaveBeenCalledExactlyOnceWith('observe', { window: '100', pid: 200 })
-    expect(control.desktopControlStatus().state).toBe('idle')
-  })
-
-  it('binds on the first agent read, carries the native token and reuses only that binding', async () => {
-    const host = binding()
-    await control.startDesktopControl(lane)
-    await control.readControlledDesktop(lane, undefined, true)
+    const read = await control.readControlledDesktop(lane, undefined, true)
+    expect(read.snapshot).toBe('snapshot-1')
     expect(host.request).toHaveBeenNthCalledWith(1, 'bind', { window: '100', pid: 200, grant: expect.any(String) })
     expect(host.request).toHaveBeenNthCalledWith(2, 'observe', { window: '100', pid: 200, lease: 'native-100' })
-    expect(control.desktopControlStatus().state).toBe('running')
+    expect(host.value.readable).toBe(true)
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', lane, name: 'Editor', engine: 'claude', engineLabel: 'Claude' })
+    expect(deps.overlay.show).toHaveBeenCalledOnce()
+    expect(status()).toMatchObject({ state: 'running', engineLabel: 'Claude' })
+  })
+
+  it('refuses a brain without an isolated tool session before touching anything', async () => {
+    const host = binding()
+    control.setDesktopEngineResolver(async () => ({ id: 'codex', desktopToolIsolation: false }))
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('isolated tool session')
+    expect(host.request).not.toHaveBeenCalled()
+    expect(binds()).toBe(0)
+    expect(control.desktopControlStatus().state).toBe('idle')
+  })
+
+  it('one chat holds the computer at a time', async () => {
+    binding()
+    binding(other, '101')
     await control.readControlledDesktop(lane, undefined, true)
-    expect(host.request.mock.calls.filter(([method]) => method === 'bind')).toHaveLength(1)
+    await expect(control.readControlledDesktop(other, undefined, true)).rejects.toThrow('Another chat is using the computer')
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', lane })
   })
 
-  it('stops an in-flight bind and refuses to issue observation afterward', async () => {
+  it('naming another app re-takes control there and releases the first hold', async () => {
     const host = binding()
-    const gate = deferred<unknown>()
-    await control.startDesktopControl(lane)
-    host.request.mockReturnValueOnce(gate.promise)
-    const read = control.readControlledDesktop(lane, undefined, true)
-    const rejected = expect(read).rejects.toThrow()
-    control.stopDesktopControl()
-    expect(host.close).toHaveBeenCalledOnce()
-    gate.resolve({ lease: 'too-late' })
-    await rejected
-    expect(host.request.mock.calls.map(([method]) => method)).toEqual(['bind'])
-  })
-
-  it('revokes immediately when cancellation arrives during lazy bind', async () => {
-    const host = binding()
-    const gate = deferred<unknown>()
-    const signal = new AbortController()
-    await control.startDesktopControl(lane)
-    host.request.mockReturnValueOnce(gate.promise)
-    const read = control.readControlledDesktop(lane, signal.signal, true)
-    const rejected = expect(read).rejects.toThrow()
-    signal.abort(new Error('Chat cancelled'))
-    const stoppedImmediately = host.close.mock.calls.length > 0 && control.desktopControlStatus().state === 'paused'
-    gate.resolve({ lease: 'too-late' })
-    await rejected
-    expect(stoppedImmediately).toBe(true)
-    expect(host.request.mock.calls.map(([method]) => method)).toEqual(['bind'])
-  })
-
-  it('revokes the native grant immediately when an agent observation is cancelled', async () => {
-    const host = binding()
-    await control.startDesktopControl(lane)
     await control.readControlledDesktop(lane, undefined, true)
-    const gate = deferred<unknown>(), signal = new AbortController()
-    host.request.mockReturnValueOnce(gate.promise)
-    const read = control.readControlledDesktop(lane, signal.signal, true)
-    const rejected = expect(read).rejects.toThrow()
-    signal.abort(new Error('Chat cancelled'))
-    const stoppedImmediately = control.desktopControlStatus().state === 'paused'
-    gate.resolve(observation('late'))
-    await rejected
-    expect(stoppedImmediately).toBe(true)
+    const read = await control.readControlledDesktop(lane, undefined, true, 'Sheet')
+    expect(deps.bind).toHaveBeenLastCalledWith(lane, { app: 'Sheet' })
     expect(host.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
+    expect(read.snapshot).toBe('snapshot-1')
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', name: 'Sheet' })
   })
 
-  it('discards results after a source replacement and its release hook', async () => {
+  it('a manual read without agent intent never binds', async () => {
     const host = binding()
-    await control.startDesktopControl(lane)
-    await control.readControlledDesktop(lane, undefined, true)
-    const gate = deferred<unknown>()
-    host.request.mockReturnValueOnce(gate.promise)
-    const read = control.readControlledDesktop(lane, undefined, true)
-    const rejected = expect(read).rejects.toThrow()
-    deps.release!(lane, 'Source replaced')
-    binding(lane, '101')
-    gate.resolve(observation('late'))
-    await rejected
-    expect(control.desktopControlStatus().state).toBe('paused')
-  })
-
-  it('stops native control after an agent read fails', async () => {
-    const host = binding()
-    await control.startDesktopControl(lane)
-    await control.readControlledDesktop(lane, undefined, true)
-    host.request.mockRejectedValueOnce(new Error('UIA read failed'))
-    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('UIA read failed')
-    expect(control.desktopControlStatus().state).toBe('paused')
-    expect(host.value.readable).toBe(false)
-    expect(host.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
+    host.value.readable = true
+    await control.readControlledDesktop(lane, undefined, false)
+    expect(host.request).toHaveBeenCalledExactlyOnceWith('observe', { window: '100', pid: 200 })
+    expect(control.desktopControlStatus().state).toBe('idle')
   })
 })
 
-describe('foreground desktop actions', () => {
-  it('requires a bound native lease and the latest unconsumed snapshot', async () => {
+describe('the person\'s hands', () => {
+  it('Stop cancels an already waiting automatic resume', async () => {
     const host = binding()
-    await control.startDesktopControl(lane)
-    const action = { kind: 'click' as const, snapshot: 'snapshot-1', element: 'e0' }
-    await expect(control.actOnDesktop(lane, action)).rejects.toThrow('not active')
     await control.readControlledDesktop(lane, undefined, true)
-    const latest = await control.readControlledDesktop(lane, undefined, true)
-    await expect(control.actOnDesktop(lane, action)).rejects.toThrow('stale')
-    await control.actOnDesktop(lane, { ...action, snapshot: latest.snapshot })
-    await expect(control.actOnDesktop(lane, { ...action, snapshot: latest.snapshot })).rejects.toThrow('stale')
-    expect(host.request.mock.calls.filter(([method]) => method === 'click')).toHaveLength(1)
+    deps.release!(lane, 'Mouse input returned control to the user')
+    const pending = control.readControlledDesktop(lane, undefined, true)
+    const rejected = expect(pending).rejects.toThrow('cancelled')
+    await vi.advanceTimersByTimeAsync(500)
+    control.stopDesktopFromUi()
+    await vi.advanceTimersByTimeAsync(5000)
+    await rejected
+    expect(grants(host.request)).toHaveLength(1)
   })
 
-  it('maps normalized coordinates into client bounds on a negative-origin monitor', async () => {
+  it('keyboard activity prevents resume even when the pointer is still', async () => {
     const host = binding()
-    await control.startDesktopControl(lane)
-    const read = await control.readControlledDesktop(lane, undefined, true)
-    await control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, x: 1, y: 0 })
-    expect(host.request).toHaveBeenCalledWith('click', { window: '100', pid: 200, lease: 'native-100', snapshot: read.snapshot, x: -809, y: 44 })
+    await control.readControlledDesktop(lane, undefined, true)
+    deps.release!(lane, 'Keyboard input returned control to the user')
+    const original = host.request.getMockImplementation()!
+    host.request.mockImplementation((method, args) => method === 'inputState' ? Promise.resolve({ idleMs: 100, escaped: false }) : original(method, args))
+    const abort = new AbortController()
+    const pending = control.readControlledDesktop(lane, abort.signal, true)
+    const rejected = expect(pending).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(grants(host.request)).toHaveLength(1)
+    abort.abort()
+    await vi.advanceTimersByTimeAsync(500)
+    await rejected
+  })
+
+  it('Escape during a hands-on pause prevents rearming', async () => {
+    const host = binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    deps.release!(lane, 'Mouse input returned control to the user')
+    const original = host.request.getMockImplementation()!
+    host.request.mockImplementation((method, args) => method === 'inputState' ? Promise.resolve({ idleMs: 5000, escaped: true }) : original(method, args))
+    const pending = control.readControlledDesktop(lane, undefined, true)
+    const rejected = expect(pending).rejects.toThrow('took the computer back')
+    await vi.advanceTimersByTimeAsync(500)
+    await rejected
+    expect(grants(host.request)).toHaveLength(1)
+  })
+
+  it('Stop while choosing the app prevents a late native bind', async () => {
+    const host = binding()
+    let resolve!: (value: DesktopBinding) => void
+    deps.bind.mockReturnValueOnce(new Promise<DesktopBinding>((done) => { resolve = done }))
+    const pending = control.readControlledDesktop(lane, undefined, true)
+    const rejected = expect(pending).rejects.toThrow('cancelled')
+    await vi.advanceTimersByTimeAsync(1)
+    control.stopDesktopFromUi()
+    resolve(host.value)
+    await rejected
+    expect(grants(host.request)).toHaveLength(0)
+  })
+
+  it('a hand on the mouse pauses; the comet resumes with a fresh grant once the mouse is still', async () => {
+    const host = binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    deps.release!(lane, 'Mouse input returned control to the user')
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: true, engineLabel: 'Claude' })
+    expect(deps.overlay.update).toHaveBeenCalled()
+    expect(host.value.readable).toBe(true)
+    const next = control.readControlledDesktop(lane, undefined, true)
+    deps.cursor = { x: 40, y: 40 }
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(grants(host.request)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(4_500)
+    await expect(next).resolves.toMatchObject({ snapshot: 'snapshot-2' })
+    const issued = grants(host.request)
+    expect(issued).toHaveLength(2)
+    expect(issued[0]).not.toBe(issued[1])
+    expect(control.desktopControlStatus().state).toBe('running')
+  })
+
+  it('a moving mouse keeps the comet waiting, and Resume now ends the wait', async () => {
+    const host = binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    deps.release!(lane, 'Keyboard input returned control to the user')
+    const next = control.readControlledDesktop(lane, undefined, true)
+    for (let step = 0; step < 20; step++) { deps.cursor = { x: step, y: step }; await vi.advanceTimersByTimeAsync(250) }
+    expect(grants(host.request)).toHaveLength(1)
+    control.resumeDesktopControl()
+    await vi.advanceTimersByTimeAsync(300)
+    await expect(next).resolves.toBeDefined()
+    expect(grants(host.request)).toHaveLength(2)
+  })
+
+  it('Esc ends control for the turn: the next call asks instead of resuming', async () => {
+    const host = binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    deps.release!(lane, 'Escape pressed')
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: false })
+    expect(deps.overlay.hide).toHaveBeenCalled()
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('took the computer back')
+    expect(grants(host.request)).toHaveLength(1)
+  })
+
+  it('repeated Stop never clears the turn cancellation', async () => {
+    binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    control.stopDesktopFromUi()
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: false })
+    control.stopDesktopFromUi()
+    expect(control.desktopControlStatus().state).toBe('idle')
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('took the computer back')
+  })
+
+  it('a bind refused while a key is held is retried after stillness, not reported as failure', async () => {
+    const host = binding()
+    host.request.mockImplementationOnce(async () => { throw new Error('Release your keyboard and mouse before allowing control') })
+    const read = control.readControlledDesktop(lane, undefined, true)
+    await vi.advanceTimersByTimeAsync(4_600)
+    await expect(read).resolves.toMatchObject({ snapshot: 'snapshot-1' })
+    expect(grants(host.request)).toHaveLength(2)
+  })
+})
+
+describe('the turn', () => {
+  it('ending the turn drops the native hold and the overlay but keeps the app connected', async () => {
+    const host = binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    control.endDesktopTurn(lane)
+    expect(host.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
+    expect(host.close).not.toHaveBeenCalled()
+    expect(host.value.readable).toBe(true)
+    expect(control.desktopControlStatus().state).toBe('idle')
+    expect(deps.overlay.hide).toHaveBeenCalled()
+    await control.readControlledDesktop(lane, undefined, true)
+    expect(grants(host.request)).toHaveLength(2)
+  })
+
+  it('ending another lane\'s turn leaves the holder alone', async () => {
+    binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    control.endDesktopTurn(other)
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', lane })
+  })
+})
+
+describe('acting', () => {
+  it('requires the latest unconsumed snapshot and reports where the hand went', async () => {
+    const host = binding()
+    const first = await control.readControlledDesktop(lane, undefined, true)
+    const latest = await control.readControlledDesktop(lane, undefined, true)
+    await expect(control.actOnDesktop(lane, { kind: 'click', snapshot: first.snapshot, element: 'e0' })).rejects.toThrow('stale')
+    await control.actOnDesktop(lane, { kind: 'click', snapshot: latest.snapshot, x: 1, y: 0 })
+    expect(host.request).toHaveBeenCalledWith('click', { window: '100', pid: 200, lease: 'native-100', snapshot: latest.snapshot, x: -809, y: 44 })
+    expect(deps.overlay.pointer).toHaveBeenCalledWith({ x: -809, y: 44 }, true)
+    await expect(control.actOnDesktop(lane, { kind: 'click', snapshot: latest.snapshot, x: 1, y: 0 })).rejects.toThrow('stale')
   })
 
   it('does not expose typing text through its result, status or change notifications', async () => {
     const host = binding()
-    await control.startDesktopControl(lane)
     const read = await control.readControlledDesktop(lane, undefined, true)
     const text = 'private document content'
     const result = await control.actOnDesktop(lane, { kind: 'type', snapshot: read.snapshot, text })
@@ -306,42 +289,26 @@ describe('foreground desktop actions', () => {
     expect(JSON.stringify([result, control.desktopControlStatus(), deps.changed.mock.calls, deps.broadcast.mock.calls])).not.toContain(text)
   })
 
-  it('revokes and requests native stop when an action fails', async () => {
+  it('an action that fails ends control without a resume', async () => {
     const host = binding()
-    await control.startDesktopControl(lane)
     const read = await control.readControlledDesktop(lane, undefined, true)
     host.request.mockRejectedValueOnce(new Error('Native failure'))
     await expect(control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, element: 'e0' })).rejects.toThrow('Native failure')
-    expect(control.desktopControlStatus().state).toBe('paused')
-    expect(host.value.readable).toBe(false)
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: false })
     expect(host.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
   })
 
-  it.each(['failure', 'abort'] as const)('does not let an old action %s revoke a new same-lane grant', async (cause) => {
+  it('a cancelled turn releases the native hold at once', async () => {
     const host = binding()
-    await control.startDesktopControl(lane)
-    const read = await control.readControlledDesktop(lane, undefined, true)
-    const gate = deferred<unknown>(), signal = new AbortController()
-    host.request.mockReturnValueOnce(gate.promise)
-    const action = control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, element: 'e0' }, signal.signal)
-    const rejected = expect(action).rejects.toThrow()
-    control.stopDesktopControl()
-    await control.startDesktopControl(lane)
-    if (cause === 'abort') { signal.abort(new Error('Old turn cancelled')); gate.resolve({ ok: true }) }
-    else gate.reject(new Error('Old action failed'))
-    await rejected
-    expect(control.desktopControlStatus()).toMatchObject({ state: 'ready', lane })
-    expect(host.value.readable).toBe(true)
-  })
-
-  it('expires a native grant without another call and stops only the owning lane', async () => {
-    const host = binding()
-    await control.startDesktopControl(lane)
     await control.readControlledDesktop(lane, undefined, true)
-    deps.release!(other, 'Other chat ended')
-    expect(control.desktopControlStatus().state).toBe('running')
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    const gate = new Promise<unknown>(() => undefined)
+    const signal = new AbortController()
+    host.request.mockReturnValueOnce(gate)
+    const read = control.readControlledDesktop(lane, signal.signal, true)
+    const rejected = expect(read).rejects.toThrow()
+    signal.abort(new Error('Chat cancelled'))
     expect(control.desktopControlStatus().state).toBe('paused')
     expect(host.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
+    await rejected
   })
 })

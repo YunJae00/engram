@@ -7,8 +7,11 @@ const fake = vi.hoisted(() => ({ binding: undefined as DesktopBinding | undefine
 vi.mock('electron', () => ({ dialog: { showMessageBox: fake.dialog } }))
 vi.mock('../src/main/desktop-access.js', () => ({
   desktopBinding: () => fake.binding, desktopOwner: () => 'main-owner', desktopChanged: fake.changed,
+  bindDesktopForLane: async () => { fake.binding!.readable = true; return fake.binding },
   setDesktopReleaseHook: vi.fn(),
 }))
+vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
+vi.mock('../src/main/desktop-overlay.js', () => ({ showControlOverlay: vi.fn(), updateControlOverlay: vi.fn(), hideControlOverlay: vi.fn(), overlayPointer: vi.fn() }))
 let control: typeof import('../src/main/desktop-control.js')
 const good: Choice = { id: 'claude', desktopToolIsolation: true }
 const unsupported: Choice = { id: 'codex', desktopToolIsolation: false }
@@ -39,16 +42,14 @@ describe('desktop connection isolation capability gate', () => {
     expect(fake.binding!.readable).toBe(false)
   })
 
-  it('rejects a connection switch while consent is open', async () => {
-    const answer = deferred<{ response: number }>()
-    fake.dialog.mockReturnValueOnce(answer.promise)
+  it('rejects a connection that becomes unsupported during resolution', async () => {
+    const answer = deferred<Choice>()
+    fake.engine.mockReturnValueOnce(answer.promise)
     const pending = control.startDesktopControl('bot-one')
     const rejected = expect(pending).rejects.toThrow('cannot safely run selected-app tools')
-    await vi.waitFor(() => expect(fake.dialog).toHaveBeenCalled())
-    fake.engine.mockResolvedValue(unsupported)
-    answer.resolve({ response: 1 })
+    answer.resolve(unsupported)
     await rejected
-    expect(control.desktopControlStatus().state).toBe('paused')
+    expect(control.desktopControlStatus().state).toBe('idle')
     expect(fake.binding!.host.request).not.toHaveBeenCalled()
     expect(fake.binding!.readable).toBe(false)
   })
@@ -71,18 +72,17 @@ describe('desktop connection isolation capability gate', () => {
     const pending = control.startDesktopControl('bot-one')
     const rejected = expect(pending).rejects.toThrow('cancelled')
     control.stopDesktopForLane('bot-one')
-    await control.startDesktopControl('bot-one')
     engine.resolve(good)
     await rejected
-    expect(control.desktopControlStatus().state).toBe('ready')
+    await control.startDesktopControl('bot-one')
+    expect(control.desktopControlStatus().state).toBe('running')
   })
 
   it.each([unsupported, { id: 'mock', desktopToolIsolation: true }])('rejects a turn with a different connection %# before native binding', async (engine) => {
     await control.startDesktopControl('bot-one')
     expect(() => control.assertDesktopChatEngine('bot-one', engine as Choice)).toThrow('cannot safely run selected-app tools')
     expect(control.desktopControlStatus().state).toBe('paused')
-    expect(fake.binding!.host.request).not.toHaveBeenCalled()
-    expect(fake.binding!.readable).toBe(false)
+    expect(fake.binding!.host.request).toHaveBeenCalledWith('stop', { lease: 'native' })
   })
 
   it('revokes a bound native lease when an unsupported turn attempts to use it', async () => {
@@ -104,6 +104,6 @@ describe('desktop connection isolation capability gate', () => {
   it('allows the explicitly supported connection for the granted turn', async () => {
     await control.startDesktopControl('bot-one')
     expect(() => control.assertDesktopChatEngine('bot-one', good)).not.toThrow()
-    expect(control.desktopControlStatus().state).toBe('ready')
+    expect(control.desktopControlStatus().state).toBe('running')
   })
 })

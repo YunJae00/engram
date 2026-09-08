@@ -1,12 +1,10 @@
-import { useDesktopSurface } from '../lib/desktopSession.js'
-import { ComputerSurface } from './ComputerSurface.js'
 import { MissionPreview } from './MissionPreview.js'
-import { SurfaceTabs } from './SurfaceTabs.js'
 
+// One surface per tile: the comet's page. The computer has no pane of its
+// own - when a comet uses an app, the app itself is on the screen, under the
+// overlay's banner, and this tile keeps showing the conversation's page.
 export function OrbitSurface({ lane, name, open }: { lane: string; name: string; open(): void }) {
-  const surface = useDesktopSurface(lane)
   return <div className="orbit-surface" data-testid="orbit-surface">
-    <SurfaceTabs lane={lane} />
-    {surface === 'computer' ? <ComputerSurface key={lane} lane={lane} /> : <MissionPreview lane={lane} name={name} open={open} />}
+    <MissionPreview lane={lane} name={name} open={open} />
   </div>
 }

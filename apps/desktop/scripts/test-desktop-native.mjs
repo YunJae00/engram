@@ -177,6 +177,11 @@ try {
   await until(async () => helper.events, events => events.some(event => event.type === 'revoked' && event.lease === second.lease), 'Independent input did not revoke desktop control')
   await assert.rejects(helper.request('observe', { ...target, lease: second.lease }))
   result.foreignInjectedRevocationPassed = true
+  const input = await helper.request('inputState')
+  assert.ok(Number.isFinite(input.idleMs) && input.idleMs >= 0)
+  await fixture.request('foreignEscape')
+  await until(() => helper.request('inputState'), state => state.escaped === true, 'Escape during pause was not recorded')
+  result.pausedEscapePassed = true
   result.stage = 'password'
   await fixture.request('password')
   const protectedView = await helper.request('observe', target)

@@ -117,7 +117,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
-import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane } from './desktop-control.js'
+import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -899,7 +899,9 @@ let onEnginesChanged: (() => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
   setDesktopEngineResolver(async () => {
-    const wanted = (await loadSettings()).defaultEngine
+    const current = await loadSettings()
+    if (current.computerUse !== true) throw new Error('Enable computer use in Settings before using an app.')
+    const wanted = current.defaultEngine
     return ctx.engines.find((engine) => engine.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
   })
   onEnginesChanged = async () => {
@@ -1866,7 +1868,8 @@ export function registerIpc(ctx: VaultContext): void {
     const channel = request.channel ?? 'panel'
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
-    const wanted = request.engineId || (await loadSettings()).defaultEngine
+    const settings = await loadSettings()
+    const wanted = request.engineId || settings.defaultEngine
     const engine = ctx.engines.find((e2) => e2.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
     try { assertDesktopChatEngine(channel, engine) }
     catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
@@ -2074,7 +2077,7 @@ export function registerIpc(ctx: VaultContext): void {
         open.on && open.url && open.url !== 'about:blank'
           ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
           : ''
-      const onScreen = [desktopContext(channel), browserScreen].filter(Boolean).join('\n')
+      const onScreen = [engine.desktopToolIsolation === true && settings.computerUse !== false ? desktopContext() : '', browserScreen].filter(Boolean).join('\n')
       try {
         assertDesktopChatEngine(channel, engine)
         const result = await runComet(
@@ -2152,7 +2155,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...desktopAgentTools(channel)],
+            }), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? desktopAgentTools(channel) : [])],
           },
           request.message,
           {
@@ -2306,7 +2309,7 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
-        stopDesktopForLane(channel, 'This chat finished. Allow control again for another task.')
+        endDesktopTurn(channel)
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the
         // moment the answer lands takes the evidence away. It goes on its own

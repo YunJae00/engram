@@ -43,7 +43,7 @@ describe('desktop tool capabilities', () => {
 
   it.each([null, [], { window: '100' }, { enabled: true }, new Date(), { [Symbol('extra')]: true }])('rejects nonempty or nonplain read arguments %#', async (args) => {
     const { tools, read } = setup()
-    expect(await tools[0]!.run(args as Record<string, unknown>, CONTEXT)).toContain('takes no arguments')
+    expect(await tools[0]!.run(args as Record<string, unknown>, CONTEXT)).toContain('optional app')
     expect(read).not.toHaveBeenCalled()
   })
 
@@ -54,7 +54,7 @@ describe('desktop tool capabilities', () => {
     expect(look).not.toHaveBeenCalled()
     await expect(tool.runRich!({}, CONTEXT)).resolves.toEqual({ text: 'App image', image: { data: 'aW1hZ2U=', mimeType: 'image/png' } })
     expect(look).toHaveBeenCalledOnce()
-    expect(await tool.runRich!({ source: 'screen:0' }, CONTEXT)).toEqual({ text: 'look_desktop takes no arguments.' })
+    expect((await tool.runRich!({ source: 'screen:0' }, CONTEXT)).text).toContain('optional app')
     expect(look).toHaveBeenCalledOnce()
   })
 
@@ -95,8 +95,31 @@ describe('desktop tool capabilities', () => {
       expect(tool.description).toContain('Never handle passwords, authentication, terminals or security settings')
       expect(tool.description).toContain('do not claim success from input delivery alone')
     }
-    expect(tools[2]!.description).toContain('never automatic resume')
-    expect(tools[2]!.description).toContain('Escape stops the control session')
+    expect(tools[2]!.description).toContain('resumes once their hands are still')
+    expect(tools[2]!.description).toContain('Esc or Stop')
+    expect(tools[2]!.description).toContain('Escape key ends control')
+  })
+})
+
+describe('choosing the app', () => {
+  it('passes a trimmed app name through to the courier and lists windows without taking control', async () => {
+    const { tools, read, look } = setup()
+    await tools.find((one) => one.name === 'read_desktop')!.run({ app: '  Excel ' }, CONTEXT)
+    expect(read).toHaveBeenCalledWith(undefined, 'Excel')
+    await tools.find((one) => one.name === 'look_desktop')!.runRich!({ app: 'Notes' }, CONTEXT)
+    expect(look).toHaveBeenCalledWith(undefined, 'Notes')
+    const windows = vi.fn(async () => '- Excel (in front)')
+    const listed = desktopTools({ read, windows })
+    expect(listed.map((tool) => tool.name)).toEqual(['list_windows', 'read_desktop'])
+    expect(await listed[0]!.run({}, CONTEXT)).toBe('- Excel (in front)')
+    expect(await listed[0]!.run({ app: 'x' }, CONTEXT)).toContain('takes no arguments')
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['', ' ', 'x'.repeat(81), 'a' + String.fromCharCode(10) + 'b', 7])('refuses an app name that is not a short printable word (%#)', async (app) => {
+    const { tools, read } = setup()
+    expect(await tools[0]!.run({ app }, CONTEXT)).toContain('optional app')
+    expect(read).not.toHaveBeenCalled()
   })
 })
 
@@ -205,7 +228,9 @@ describe('desktop observations and private step records', () => {
     const args = { text: 'private document content', kind: 'type', snapshot: SNAPSHOT }
     expect(desktopStepArgs('desktop_action', args)).toEqual({ ...args, text: '[redacted]' })
     expect(desktopStepArgs('desktop_action', { ...args, kind: 'invalid' })['text']).toBe('[redacted]')
-    expect(desktopStepSummary('desktop_action', args)).toBe('type in selected app')
+    expect(desktopStepSummary('desktop_action', args)).toBe('type on the desktop')
+    expect(desktopStepSummary('read_desktop', { app: 'Excel' })).toBe('Excel on the desktop')
+    expect(desktopStepSummary('list_windows', {})).toBe('open windows')
     expect(desktopStepSummary('desktop_action', { kind: args.text })).toBe('invalid desktop action')
     expect(args.text).toBe('private document content')
     expect(desktopStepArgs('type_text', args)).toBe(args)
@@ -224,7 +249,7 @@ describe('desktop observations and private step records', () => {
     const onStep = vi.fn()
     const result = await runAgentLoop({ engine, tools, workdir: WORKDIR }, CONTEXT.task, { guided: false, onStep })
     expect(act.mock.calls[0]![0]).toEqual(action)
-    expect(onStep).toHaveBeenCalledWith('desktop_action: type in selected app')
+    expect(onStep).toHaveBeenCalledWith('desktop_action: type on the desktop')
     expect(JSON.stringify(result.steps)).not.toContain(payload)
     expect(prompts[1]).not.toContain(payload)
     expect(result.steps[0]!.args['text']).toBe('[redacted]')

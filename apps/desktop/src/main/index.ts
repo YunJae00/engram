@@ -1,5 +1,5 @@
 import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setSpawnObserver, sweepStaleEnginePids } from 'core'
-import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeTheme, powerMonitor, session, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeTheme, powerMonitor, screen, session, shell, type WebContents } from 'electron'
 import { rmSync, statSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -35,6 +35,7 @@ import { configuredVaultRoot, engineStates, openVaultContext, saveVaultRoot, typ
 import { registerWorkspaceIpc } from './workspaces.js'
 import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
+import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
 import { stopDesktopControl } from './desktop-control.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
@@ -629,6 +630,24 @@ app.whenReady().then(async () => {
 
   registerBaseIpc()
   registerDesktopIpc()
+  // A design check needs the overlay without a real hold: the preview flag
+  // shows it over the desk with a stand-in status. Development builds only.
+  const preview = process.env['ENGRAM_OVERLAY_PREVIEW']
+  if (preview && !app.isPackaged) setTimeout(() => {
+    const engine = preview.startsWith('codex') ? 'codex' : 'claude'
+    const paused = preview.endsWith('paused')
+    showControlOverlay({ state: paused ? 'paused' : 'running', lane: 'bot-preview', name: 'Book1 - Excel', engine, engineLabel: engine === 'codex' ? 'ChatGPT' : 'Claude', ...(paused ? { resumable: true } : {}) })
+    // The companion rests when the pointer is still; in a preview it keeps
+    // making small rounds so a photograph catches it awake.
+    const { workArea } = screen.getPrimaryDisplay()
+    const centre = { x: workArea.x + Math.round(workArea.width * 0.62), y: workArea.y + Math.round(workArea.height * 0.55) }
+    let tick = 0
+    const wander = setInterval(() => {
+      const angle = (tick++ % 12) * (Math.PI / 6)
+      overlayPointer({ x: centre.x + Math.round(Math.cos(angle) * 18), y: centre.y + Math.round(Math.sin(angle) * 18) }, tick % 6 === 0)
+    }, 700)
+    wander.unref()
+  }, 1_500)
   powerMonitor.on('lock-screen', () => stopDesktopControl('The computer was locked.'))
   powerMonitor.on('suspend', () => stopDesktopControl('The computer is sleeping.'))
   registerEngineIpc()

@@ -3,11 +3,12 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
-  lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(),
+  lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true,
 }))
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
-vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup }))
-vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act }))
+vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup, desktopWindows: fake.windows }))
+vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act, ensureDesktopControl: fake.ensure }))
+vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -22,17 +23,31 @@ beforeEach(() => {
   vi.clearAllMocks()
   fake.binding = { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn().mockResolvedValue(captured()) } }
   fake.lookup.mockImplementation(() => fake.binding)
+  fake.available = true
+  fake.ensure.mockImplementation(async () => fake.binding)
+  fake.windows.mockResolvedValue([{ id: 'window:42:0', name: 'Fixture', foreground: true }, { id: 'window:43:0', name: 'Notes' }])
   fake.read.mockResolvedValue(observation())
   fake.bitmap.mockImplementation(() => Buffer.alloc(32 * 32 * 4, 255))
   fake.decode.mockReturnValue({ isEmpty: () => false, getSize: () => ({ width: 32, height: 32 }), toBitmap: fake.bitmap })
   fake.image.mockReturnValue({ toJPEG: () => Buffer.from('fixture-image') })
 })
 describe('desktop image consent and capture validation', () => {
-  it('exposes no tools or context without read permission', () => {
-    fake.binding.readable = false
+  it('offers the computer whenever this build can drive it, and never without the helper', async () => {
+    fake.available = false
     expect(desktopAgentTools('bot-one')).toEqual([])
-    expect(desktopContext('bot-one')).toBe('')
+    expect(desktopContext()).toBe('')
+    fake.available = true
+    const tools = desktopAgentTools('bot-one')
+    expect(tools.map((tool) => tool.name)).toEqual(['list_windows', 'read_desktop', 'look_desktop', 'desktop_action'])
+    expect(desktopContext()).toContain('that is what takes control')
+    expect(await tools[0]!.run({}, { task: 'Inspect the fixture' })).toBe('- Fixture (in front)' + String.fromCharCode(10) + '- Notes')
     expect(fake.binding.host.request).not.toHaveBeenCalled()
+  })
+  it('a look names the app to bring forward and takes control before capturing', async () => {
+    fake.read.mockResolvedValueOnce(observation('before')).mockResolvedValueOnce(observation('after'))
+    await desktopAgentTools('bot-one').find((item) => item.name === 'look_desktop')!.runRich!({ app: 'Fixture' }, { task: 'Inspect the fixture' })
+    expect(fake.ensure).toHaveBeenCalledWith('bot-one', { app: 'Fixture' })
+    expect(fake.read).toHaveBeenCalledWith('bot-one', undefined, true)
   })
   it('masks using client coordinates and returns the latest snapshot', async () => {
     fake.read.mockResolvedValueOnce(observation('before')).mockResolvedValueOnce(observation('after'))

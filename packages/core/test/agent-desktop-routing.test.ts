@@ -60,7 +60,7 @@ describe('selected desktop routing in a bounded tool menu', () => {
     const tools = pickTools(supplied(), 'do it', [])
     const prompt = stepPrompt('do it', tools, [])
     expect(prompt).toContain(DESKTOP_TASK_RULE)
-    expect(prompt).toContain('Suggested next move: observe the selected app with read_desktop')
+    expect(prompt).toContain('Suggested next move: observe the app with read_desktop')
     expect(prompt).not.toContain('Suggested next move: the notebook first')
     expect(prompt).not.toContain('the request names nothing to work on')
     const seeded = [{ tool: 'find_procedure', args: {}, observation: 'found procedure: call run_procedure with {}', seeded: true }]
@@ -70,18 +70,21 @@ describe('selected desktop routing in a bounded tool menu', () => {
   it('never invents a read capability when only screenshot observation is supplied', () => {
     const tools = pickTools(supplied(['look_desktop']), 'Inspect the chart', [])
     expect(tools[0]?.name).toBe('look_desktop')
-    expect(stepPrompt('Inspect the chart', tools, [])).toContain('observe the selected app with look_desktop')
+    expect(stepPrompt('Inspect the chart', tools, [])).toContain('observe the app with look_desktop')
     expect(tools.some((one) => one.name === 'read_desktop')).toBe(false)
     expect(stepPrompt('Inspect the chart', supplied([]), [])).not.toContain(DESKTOP_TASK_RULE)
   })
 })
 
 describe('desktop consent questions in a tool session', () => {
-  it('allows a permission question before searching and does not turn that question into input authority', async () => {
+  it('allows a question after looking at the app without a search detour, and does not turn it into input authority', async () => {
     let searches = 0
     let actions = 0
     const engine = sessionBrain(async (job) => {
       expect(job.system).toContain(DESKTOP_TASK_RULE)
+      // Looking at the app first is what earns the question its place: a
+      // question raised after a desktop observation is never sent to search.
+      await job.tools.find((one) => one.name === 'read_desktop')!.run({})
       const answer = await job.tools.find((one) => one.name === 'ask_person')!.run({ question: 'May I submit this change in the selected app?' })
       expect(answer).toContain('The question is with the person')
       const blocked = await job.tools.find((one) => one.name === 'desktop_action')!.run({ kind: 'click' })
@@ -96,7 +99,7 @@ describe('desktop consent questions in a tool session', () => {
     ] }, 'Submit the selected app change', { guided: false })
     expect(result.asked).toBe(true)
     expect(result.answer).toBe('May I submit this change in the selected app?')
-    expect(result.steps.map((step) => step.tool)).toEqual(['ask_person'])
+    expect(result.steps.map((step) => step.tool)).toEqual(['read_desktop', 'ask_person'])
     expect(searches).toBe(0)
     expect(actions).toBe(0)
   })

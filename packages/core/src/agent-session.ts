@@ -60,7 +60,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // Looking comes before asking: the first question of a turn, put
       // before the person's own search page was tried, is sent to the
       // search instead. Asked again after looking, it goes through.
-      if (tool.name === 'ask_person' && canSearch && !desktop && !lookedFirst && !steps.some((step) => step.tool === 'search_web' || step.tool === 'open_page')) {
+      if (tool.name === 'ask_person' && canSearch && !lookedFirst && !steps.some((step) => step.tool === 'search_web' || step.tool === 'open_page' || isDesktopTool(step.tool))) {
         lookedFirst = true
         return `Look before you ask: call search_web with {"query": "${task.slice(0, 80).replace(/"/g, "'")}"} first. Ask only if that comes back with nothing, or if the ask names no job at all.`
       }

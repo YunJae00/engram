@@ -121,13 +121,14 @@ internal sealed class ControlFixture : Form
             else if (method == "maximize") { WindowState = FormWindowState.Maximized; Marker.Top = ClientSize.Height - 30; }
             else if (method == "restore") { WindowState = FormWindowState.Normal; ClientSize = new Size(630, 420); Marker.Top = 390; }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
-            else if (method == "foreignInput")
+            else if (method == "foreignInput" || method == "foreignEscape")
             {
                 if (GetForegroundWindow() != Handle) throw new InvalidOperationException("Only the owned foreground fixture can receive this input");
                 var marker = new UIntPtr(0x454e4752414dUL);
+                ushort key = method == "foreignEscape" ? (ushort)27 : (ushort)0x87;
                 var inputs = new[] {
-                    new Input { Type = 1, Data = new Data { Key = new KeyData { Key = 0x87, Extra = marker } } },
-                    new Input { Type = 1, Data = new Data { Key = new KeyData { Key = 0x87, Flags = 2, Extra = marker } } }
+                    new Input { Type = 1, Data = new Data { Key = new KeyData { Key = key, Extra = marker } } },
+                    new Input { Type = 1, Data = new Data { Key = new KeyData { Key = key, Flags = 2, Extra = marker } } }
                 };
                 if (SendInput(2, inputs, Marshal.SizeOf(typeof(Input))) != 2) throw new InvalidOperationException("Fixture input was not accepted");
             }

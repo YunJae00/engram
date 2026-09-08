@@ -61,6 +61,7 @@ internal static class Program
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
+            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped } }); return; }
             var window = Text(request, "window", 32);
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             var target = guard.Resolve(window, pid);
