@@ -203,6 +203,7 @@ internal static class WorkerSession
         string path = Path.Combine(Output, name);
         string temporary = path + ".partial";
         File.WriteAllText(temporary, Json.Serialize(value));
-        File.Move(temporary, path);
+        if (File.Exists(path)) File.Replace(temporary, path, null);
+        else File.Move(temporary, path);
     }
 }

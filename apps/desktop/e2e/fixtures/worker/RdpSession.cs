@@ -24,6 +24,7 @@ internal sealed class RdpSession : IDisposable
     private bool disposed;
     private bool disconnecting;
     private int eventMask;
+    private string startupStage;
 
     public string RuntimeError { get; private set; }
 
@@ -77,79 +78,123 @@ internal sealed class RdpSession : IDisposable
         started = true;
         try
         {
+            startupStage = "window.show";
             window.Show();
+            startupStage = "window.create-control";
             host.CreateControl();
+            startupStage = "COM.control-object";
             control = host.ControlObject;
+            startupStage = "COM.client-interface";
             client = (IMsRdpClient9)control;
+            startupStage = "configure";
             Configure();
+            startupStage = "events.disconnected";
             ComEventsHelper.Combine(control, EventsId, 4, disconnected);
             eventMask |= 1;
+            startupStage = "events.fatal-error";
             ComEventsHelper.Combine(control, EventsId, 10, fatalError);
             eventMask |= 2;
+            startupStage = "events.authentication-warning";
             ComEventsHelper.Combine(control, EventsId, 18, authenticationWarning);
             eventMask |= 4;
+            startupStage = "connect";
             client.Connect();
+            startupStage = "connect.requested";
         }
         catch (Exception error)
         {
-            Fail("Starting the protected worker session failed: " + ErrorCode(error));
+            Fail("Starting the protected worker session failed at " + startupStage + ": " + ErrorCode(error));
         }
     }
 
     private void Configure()
     {
+        startupStage = "configure.secured-settings-enabled";
         if (client.SecuredSettingsEnabled == 0)
             throw new InvalidOperationException("The initial-program settings are unavailable.");
+        startupStage = "configure.advanced-settings-interface";
         var advanced = client.AdvancedSettings9;
+        startupStage = "configure.GrabFocusOnConnect";
         advanced.GrabFocusOnConnect = false;
+        startupStage = "configure.RedirectClipboard";
         advanced.RedirectClipboard = false;
+        startupStage = "configure.RedirectDrives";
         advanced.RedirectDrives = false;
+        startupStage = "configure.RedirectPrinters";
         advanced.RedirectPrinters = false;
+        startupStage = "configure.RedirectPorts";
         advanced.RedirectPorts = false;
+        startupStage = "configure.RedirectSmartCards";
         advanced.RedirectSmartCards = false;
+        startupStage = "configure.RedirectDevices";
         advanced.RedirectDevices = false;
+        startupStage = "configure.RedirectPOSDevices";
         advanced.RedirectPOSDevices = false;
+        startupStage = "configure.AudioCaptureRedirectionMode";
         advanced.AudioCaptureRedirectionMode = false;
+        startupStage = "configure.AudioRedirectionMode";
         advanced.AudioRedirectionMode = 2;
+        startupStage = "configure.EnableAutoReconnect";
         advanced.EnableAutoReconnect = false;
+        startupStage = "configure.DisplayConnectionBar";
         advanced.DisplayConnectionBar = false;
+        startupStage = "configure.SmartSizing";
         advanced.SmartSizing = false;
+        startupStage = "configure.advanced-settings-readback";
         if (advanced.GrabFocusOnConnect || advanced.RedirectClipboard || advanced.RedirectDrives
             || advanced.RedirectPrinters || advanced.RedirectPorts || advanced.RedirectSmartCards
             || advanced.RedirectDevices || advanced.RedirectPOSDevices || advanced.AudioCaptureRedirectionMode
             || advanced.AudioRedirectionMode != 2 || advanced.EnableAutoReconnect)
             throw new InvalidOperationException("The required input and device protections were rejected.");
 
+        startupStage = "configure.credentials-interface";
         var credentials = (IMsRdpClientNonScriptable5)control;
+        startupStage = "configure.AllowPromptingForCredentials";
         credentials.AllowPromptingForCredentials = false;
+        startupStage = "configure.AllowCredentialSaving";
         credentials.AllowCredentialSaving = false;
+        startupStage = "configure.credentials-readback";
         if (credentials.AllowPromptingForCredentials || credentials.AllowCredentialSaving)
             throw new InvalidOperationException("Credential prompting could not be disabled.");
         DisableCameras();
 
+        startupStage = "configure.extended-settings-interface";
         var extended = (SessionSettings)control;
+        startupStage = "configure.extended-settings";
         SetRequired(extended, "ConnectToChildSession", true);
         SetRequired(extended, "IgnoreServerGeneratedMouseMoves", true);
         SetRequired(extended, "EnableLocationRedirection", false);
+        startupStage = "configure.Server";
         client.Server = "localhost";
+        startupStage = "configure.DesktopWidth";
         client.DesktopWidth = window.ClientSize.Width;
+        startupStage = "configure.DesktopHeight";
         client.DesktopHeight = window.ClientSize.Height;
+        startupStage = "configure.ColorDepth";
         client.ColorDepth = 32;
+        startupStage = "configure.StartProgram";
         client.SecuredSettings.StartProgram = command;
+        startupStage = "configure.WorkDir";
         client.SecuredSettings.WorkDir = directory;
+        startupStage = "configure.initial-program-readback";
         if (client.SecuredSettings.StartProgram != command || client.SecuredSettings.WorkDir != directory)
             throw new InvalidOperationException("The fixture initial program was not accepted.");
     }
 
     private void DisableCameras()
     {
+        startupStage = "configure.camera-collection";
         var cameras = ((IMsRdpClientNonScriptable7)control).CameraRedirConfigCollection;
+        startupStage = "configure.camera-default-redirection";
         cameras.RedirectByDefault = false;
+        startupStage = "configure.camera-rescan";
         cameras.Rescan();
+        startupStage = "configure.camera-default-readback";
         if (cameras.RedirectByDefault)
             throw new InvalidOperationException("Default camera redirection could not be disabled.");
         for (uint index = 0; index < cameras.Count; index++)
         {
+            startupStage = "configure.camera-" + index;
             var camera = cameras.get_ByIndex(index);
             camera.Redirected = false;
             if (camera.Redirected)
@@ -159,10 +204,19 @@ internal sealed class RdpSession : IDisposable
 
     private static void SetRequired(SessionSettings settings, string name, bool enabled)
     {
-        object value = enabled;
-        settings.PutProperty(name, ref value);
-        if (!Object.Equals(settings.GetProperty(name), enabled))
-            throw new InvalidOperationException("The required session setting was rejected: " + name + ".");
+        string operation = "write";
+        try
+        {
+            object value = enabled;
+            settings.PutProperty(name, ref value);
+            operation = "readback";
+            if (!Object.Equals(settings.GetProperty(name), enabled))
+                throw new InvalidOperationException("The required session setting value was rejected.");
+        }
+        catch (Exception error)
+        {
+            throw new InvalidOperationException("Required extended setting " + name + " failed during " + operation + ".", error);
+        }
     }
 
     public void Resize(int width, int height)
@@ -204,7 +258,7 @@ internal sealed class RdpSession : IDisposable
 
     private static string ErrorCode(Exception error)
     {
-        return error.GetType().Name + " (0x" + Marshal.GetHRForException(error).ToString("X8") + "): " + error.Message;
+        return "0x" + Marshal.GetHRForException(error).ToString("X8") + Environment.NewLine + error.ToString();
     }
 
     private void CheckThread()
