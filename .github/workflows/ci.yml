@@ -10,9 +10,14 @@ on:
         description: Run only the owned Windows desktop fixture
         type: boolean
         default: false
+      native_runner:
+        description: Windows image for the owned desktop fixture
+        type: choice
+        options: [windows-latest, windows-2022]
+        default: windows-latest
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ inputs.native_only || false }}
+  group: ci-${{ github.ref }}-${{ inputs.native_only || false }}-${{ inputs.native_runner || 'windows-latest' }}
   cancel-in-progress: true
 
 jobs:
@@ -54,7 +59,7 @@ jobs:
 
   desktop-native:
     name: native desktop control (owned fixture)
-    runs-on: windows-latest
+    runs-on: ${{ inputs.native_runner || 'windows-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
