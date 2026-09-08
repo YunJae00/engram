@@ -1,4 +1,3 @@
-import type { DesktopApi } from './desktop.js'
 // DTOs crossing the IPC boundary. The renderer never sees core objects or
 // the filesystem — only these.
 // MCP hookup (satellites): the generated client config + connect outcomes.
@@ -350,8 +349,6 @@ export type EngramEvent =
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
   | { type: 'models:changed' }
-  | { type: 'desktop:changed' }
-  | { type: 'desktop:visibility'; visible: boolean }
   | { type: 'sweep:start' }
   | { type: 'sweep:job'; job: string; index: number; total: number }
   | { type: 'sweep:done'; report: SweepReportDto }
@@ -492,7 +489,7 @@ export type AgentInputDto =
 
 export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
-export interface EngramApi extends DesktopApi {
+export interface EngramApi {
   nativeEnabled(): Promise<boolean>
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
   // The agent browser's mirror: watch (frames flow while at least one view

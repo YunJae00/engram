@@ -9,12 +9,12 @@
   "main": "out/main/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "dev": "node scripts/build-browser.mjs && node scripts/build-desktop.mjs && electron-vite dev",
-    "build": "node scripts/build-browser.mjs && node scripts/build-desktop.mjs && electron-vite build",
+    "dev": "node scripts/build-browser.mjs && electron-vite dev",
+    "build": "node scripts/build-browser.mjs && electron-vite build",
     "bundle:binaries": "node scripts/bundle-binaries.mjs",
-    "dist": "electron-vite build && node scripts/bundle-binaries.mjs && node scripts/build-browser.mjs -OutputPath bundle/browser && node scripts/build-desktop.mjs -OutputPath bundle/desktop && electron-builder --publish never && node scripts/verify-feed.mjs",
+    "dist": "electron-vite build && node scripts/bundle-binaries.mjs && node scripts/build-browser.mjs -OutputPath bundle/browser && electron-builder --publish never && node scripts/verify-feed.mjs",
     "smoke:clean-env": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-clean-env.ps1",
-    "test:e2e": "node scripts/build-browser.mjs && node scripts/build-desktop.mjs && electron-vite build && playwright test"
+    "test:e2e": "node scripts/build-browser.mjs && electron-vite build && playwright test"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.250",
