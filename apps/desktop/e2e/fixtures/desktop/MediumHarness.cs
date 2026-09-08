@@ -17,6 +17,7 @@ internal static class MediumHarness
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool GetTokenInformation(IntPtr token, int kind, IntPtr value, int length, out int needed);
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool DuplicateTokenEx(IntPtr token, uint access, IntPtr attributes, int level, int type, out IntPtr duplicate);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcessWithTokenW(IntPtr token, uint logonFlags, string application, StringBuilder arguments, uint creationFlags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInfo process);
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcessAsUserW(IntPtr token, string application, StringBuilder arguments, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInfo process);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcessW(string application, StringBuilder arguments, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInfo process);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
@@ -232,6 +233,8 @@ internal static class MediumHarness
             var startup = new StartupInfo { Size = Marshal.SizeOf(typeof(StartupInfo)), Desktop = "WinSta0\\Default" };
             if (current.Standard)
                 Native(CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessW");
+            else if (requiredDeniedGroups != null)
+                Native(CreateProcessAsUserW(primary, executable, command, IntPtr.Zero, IntPtr.Zero, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessAsUserW(restricted caller)");
             else
                 Native(CreateProcessWithTokenW(primary, 0, executable, command, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessWithTokenW");
             Native(AssignProcessToJobObject(job, created.Process), "AssignProcessToJobObject");
