@@ -30,7 +30,8 @@ for (const name of ['kernel', 'initramfs.cpio.gz']) {
 await mkdir(options.output, { recursive: false })
 const guests = []
 const result = { passed: false, hostInputUsed: false, hostDisplayOpened: false,
-  scope: 'Two Linux guest input domains; not host Windows applications, enterprise SSO or browser performance',
+  scope: 'Independent Linux guest input domains; not host Windows applications, enterprise SSO or browser performance',
+  workerCount: count,
   startedAt: new Date().toISOString(), workers: [], cleanupCompleted: false }
 
 async function exercise(guest, index) {
@@ -62,6 +63,7 @@ async function exercise(guest, index) {
   assert.equal(frame.height, size.height)
   assert.equal(state.text, text)
   return { startedMs: Math.round(started), endedMs: Math.round(performance.now()), bootMs: guest.bootMs,
+    startupMs: guest.startupMs, channelReadyMs: guest.channelReadyMs,
     state, frame, qmpAsciiPassed: true, unicodeInjectionPassed: true, imeCompositionTested: false }
 }
 
@@ -118,6 +120,8 @@ try {
     result.restartIsolationPassed = true
     result.staleChannelRejected = true
     result.staleTokenRejected = true
+    result.survivorState = await surviving.state()
+    assert.equal(result.survivorState.text, 'bravo 한글 2 alive')
     result.survivorFrame = await surviving.screenshot('survived-restart')
   }
   assert(!interrupted, 'Validation interrupted')

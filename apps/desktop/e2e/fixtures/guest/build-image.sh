@@ -9,7 +9,7 @@ fi
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 mkdir -p -- "$1"
 output_dir=$(cd -- "$1" && pwd -P)
-for source_file in init.sh fixture.py; do
+for source_file in init.sh fixture.py native_input.py; do
   [[ -f "$source_dir/$source_file" ]] || { printf 'Missing %s\n' "$source_file" >&2; exit 1; }
 done
 [[ "$output_dir" != / && "$output_dir" != "$source_dir" ]] || exit 2
@@ -45,8 +45,10 @@ chroot /build/rootfs /usr/sbin/adduser -D -u 1000 -h /home/worker worker
 mkdir -p /build/rootfs/opt/worker /build/rootfs/etc/X11/xorg.conf.d
 cp /source/init.sh /build/rootfs/init
 cp /source/fixture.py /build/rootfs/opt/worker/fixture.py
+cp /source/native_input.py /build/rootfs/opt/worker/native_input.py
 chmod 0755 /build/rootfs/init
 chmod 0644 /build/rootfs/opt/worker/fixture.py
+chmod 0644 /build/rootfs/opt/worker/native_input.py
 chown -R 1000:1000 /build/rootfs/home/worker
 mknod -m 0600 /build/rootfs/dev/console c 5 1
 mknod -m 0666 /build/rootfs/dev/null c 1 3

@@ -11,7 +11,7 @@ fail() {
     [ -f "$log_file" ] || continue
     printf 'Guest log: %s\n' "$log_file" >&2
     tail -n 40 "$log_file" | ENGRAM_LOG_TOKEN="${ENGRAM_GUEST_TOKEN:-}" \
-      ENGRAM_LOG_COOKIE="${cookie:-}" awk '
+      ENGRAM_LOG_COOKIE="${display_cookie_mask:-${cookie:-}}" awk '
       function redact(line, secret, prefix, position) {
         if (secret == "") return line;
         prefix = "";
@@ -85,6 +85,7 @@ udhcpc -i eth0 -n -q -t 5 -T 2 -s /run/dhcp-script >/run/dhcp.log 2>&1 \
 cookie=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
 [ "${#cookie}" -eq 32 ] || fail "display authorization unavailable"
 xauth -f "$XAUTHORITY" add :0 MIT-MAGIC-COOKIE-1 "$cookie" >/run/xauth.log 2>&1
+display_cookie_mask=$cookie
 unset cookie
 chown -R 1000:1000 /run/worker
 chmod 0700 /run/worker

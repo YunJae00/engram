@@ -9,6 +9,7 @@ on:
       - 'apps/desktop/scripts/test-worker-guest.mjs'
       - 'apps/desktop/scripts/guest-worker.mjs'
       - 'apps/desktop/scripts/guest-resources.mjs'
+      - 'apps/desktop/scripts/build-guest-overlay.mjs'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Validate guest overlay archive format
+        run: node apps/desktop/scripts/build-guest-overlay.mjs --self-test
       - name: Build signed-package guest filesystem
         run: bash apps/desktop/e2e/fixtures/guest/build-image.sh "$RUNNER_TEMP/engram-guest-image"
       - uses: actions/upload-artifact@v4

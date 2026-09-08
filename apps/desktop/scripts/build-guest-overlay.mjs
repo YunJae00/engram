@@ -97,7 +97,8 @@ export async function buildOverlay(baseArgument, outputArgument) {
   }
   const sources = [];
   const sourceMetadata = [];
-  for (const [filename, name, mode] of [['init.sh', 'init', 0o100755], ['fixture.py', 'opt/worker/fixture.py', 0o100644]]) {
+  for (const [filename, name, mode] of [['init.sh', 'init', 0o100755],
+    ['fixture.py', 'opt/worker/fixture.py', 0o100644], ['native_input.py', 'opt/worker/native_input.py', 0o100644]]) {
     const original = await boundedRead(join(repository, 'apps/desktop/e2e/fixtures/guest', filename), 1048576);
     const data = Buffer.from(original.toString('utf8').replace(/\r\n/g, '\n'));
     if (!data.length || data.includes(0) || data.includes(13)) throw new Error(`Invalid guest source: ${filename}`);

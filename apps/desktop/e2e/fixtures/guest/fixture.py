@@ -11,6 +11,7 @@ import threading
 import time
 import tkinter as tk
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from native_input import NativeInputError, guest_command, type_text
 
 
 RESOLUTIONS = {(800, 600), (960, 720), (1024, 768), (1280, 720), (1280, 800)}
@@ -24,6 +25,7 @@ BOOT_ID = os.environ.get("ENGRAM_BOOT_ID", "")[:128]
 class Fixture:
     def __init__(self):
         self.root = tk.Tk()
+        self.display_size = {"width": self.root.winfo_screenwidth(), "height": self.root.winfo_screenheight()}
         self.root.title("Engram guest fixture")
         self.root.geometry("760x520+20+20")
         self.root.minsize(400, 300)
@@ -33,6 +35,9 @@ class Fixture:
         self.recent_keys = []
         self.last_type_diagnostic = None
         self.pointer_events = 0
+        self.release_events = 0
+        self.motion_events = 0
+        self.last_pointer_event = None
         self.click_count = 0
         self.wheel_events = 0
         self.wheel_delta = 0
@@ -68,6 +73,8 @@ class Fixture:
         self.canvas.bind("<MouseWheel>", self.mouse_wheel)
         self.root.bind_all("<KeyPress>", self.key_pressed, add="+")
         self.root.bind_all("<ButtonPress-1>", self.pointer_pressed, add="+")
+        self.root.bind_all("<ButtonRelease-1>", lambda _event: setattr(self, "release_events", self.release_events + 1), add="+")
+        self.root.bind_all("<Motion>", self.pointer_moved, add="+")
         self.root.bind("<Configure>", self.configured, add="+")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(15, self.pump)
@@ -77,8 +84,13 @@ class Fixture:
         self.recent_keys = (self.recent_keys + [{"keycode": event.keycode,
                             "keysym": event.keysym, "char": event.char}])[-16:]
 
-    def pointer_pressed(self, _event):
+    def pointer_pressed(self, event):
         self.pointer_events += 1
+        self.last_pointer_event = {"x": event.x_root, "y": event.y_root, "state": event.state}
+
+    def pointer_moved(self, event):
+        self.motion_events += 1
+        self.last_pointer_event = {"x": event.x_root, "y": event.y_root, "state": event.state}
 
     def configured(self, event):
         if event.widget is self.root:
@@ -99,12 +111,13 @@ class Fixture:
 
     def resize_window(self):
         self.resize_count += 1
-        width = min(self.root.winfo_screenwidth() - 40, 640 if self.resize_count % 2 else 720)
-        height = min(self.root.winfo_screenheight() - 60, 420 if self.resize_count % 2 else 480)
+        width = min(self.display_size["width"] - 40, 640 if self.resize_count % 2 else 720)
+        height = min(self.display_size["height"] - 60, 420 if self.resize_count % 2 else 480)
         self.root.geometry("%dx%d+20+20" % (width, height))
 
-    def fit_display(self, width, height):
-        self.root.geometry("%dx%d+20+20" % (width - 40, height - 60))
+    def fit_display(self, observed_width, observed_height):
+        self.display_size = {"width": observed_width, "height": observed_height}
+        self.root.geometry("%dx%d+20+20" % (observed_width - 40, observed_height - 60))
 
     @staticmethod
     def bounds(widget):
@@ -121,11 +134,14 @@ class Fixture:
             if self.entry.selection_present() else None,
             "recentKeys": self.recent_keys, "lastTypeDiagnostic": self.last_type_diagnostic,
             "pointerEvents": self.pointer_events, "clickCount": self.click_count,
+            "releaseEvents": self.release_events,
+            "pointer": {"x": self.root.winfo_pointerx(), "y": self.root.winfo_pointery()},
+            "motionEvents": self.motion_events, "lastPointerEvent": self.last_pointer_event,
             "wheelEvents": self.wheel_events, "wheelDelta": self.wheel_delta,
             "scrollY": first, "scrollEnd": last, "resizeCount": self.resize_count,
             "geometryEvents": self.geometry_events,
             "entryFocused": self.root.focus_displayof() is self.entry,
-            "screen": {"width": self.root.winfo_screenwidth(), "height": self.root.winfo_screenheight()},
+            "screen": dict(self.display_size),
             "window": self.bounds(self.root),
             "bounds": {"entry": self.bounds(self.entry), "button": self.bounds(self.button),
                        "canvas": self.bounds(self.canvas), "resize": self.bounds(self.resize_button)},
@@ -169,79 +185,16 @@ class Fixture:
         self.root.destroy()
 
 
-def guest_command(arguments, timeout=4):
-    environment = os.environ.copy()
-    environment["DISPLAY"] = ":0"
-    result = subprocess.run(arguments, env=environment, shell=False, check=False,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout,
-                            encoding="utf-8", errors="replace")
-    if result.returncode != 0:
-        raise RuntimeError("Guest display command failed")
-    if len(result.stdout) > 16384:
-        raise RuntimeError("Guest display response exceeded its limit")
-    return result.stdout
-
-
-class NativeInputError(RuntimeError):
-    def __init__(self, diagnostic):
-        super().__init__("Native typing was not confirmed")
-        self.diagnostic = diagnostic
-
-
-def type_text(fixture, text):
-    deadline = time.monotonic() + 12
-    def ui(action):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise RuntimeError("Native typing deadline exceeded")
-        return fixture.call(action, timeout=min(1, remaining))
-    state = ui(fixture.state)
-    confirmed = 0
-    try:
-        for character in text:
-            if not state["entryFocused"] or time.monotonic() >= deadline:
-                raise RuntimeError("Input focus changed or typing timed out")
-            start, end = state["entrySelection"] or [state["entryCursor"]] * 2
-            before, keys_before = state["text"], state["keyEvents"]
-            expected = before[:start] + character + before[end:]
-            # Confirm each key before reusing the temporary Unicode key mapping.
-            guest_command(["/usr/bin/xdotool", "type", "--clearmodifiers", "--delay", "100", "--", character],
-                          timeout=max(0.01, min(3, deadline - time.monotonic())))
-            key_deadline = min(deadline, time.monotonic() + 1)
-            while time.monotonic() < key_deadline:
-                state = ui(fixture.state)
-                if not state["entryFocused"]:
-                    raise RuntimeError("Input focus changed")
-                if state["text"] == expected and state["keyEvents"] > keys_before:
-                    confirmed += 1
-                    break
-                if state["text"] != before:
-                    raise RuntimeError("Native input produced unexpected text")
-                time.sleep(0.03)
-            else:
-                raise RuntimeError("Native key was not observed")
-        ui(lambda: setattr(fixture, "last_type_diagnostic",
-                           {"completed": True, "confirmedCodepoints": confirmed}))
-    except (RuntimeError, queue.Full, subprocess.SubprocessError, OSError) as error:
-        snapshot_fresh = True
-        try:
-            state = fixture.call(fixture.state, timeout=0.25)
-        except (RuntimeError, queue.Full):
-            snapshot_fresh = False
-        diagnostic = {"completed": False, "confirmedCodepoints": confirmed,
-                      "failedCodepoint": "U+%04X" % ord(text[min(confirmed, len(text) - 1)]),
-                      "observedText": state["text"][:512], "observedKeyEvents": state["keyEvents"],
-                      "snapshotFresh": snapshot_fresh, "observedTextTruncated": len(state["text"]) > 512,
-                      "recentKeys": state["recentKeys"], "error": "Native typing was not confirmed"}
-        try:
-            fixture.call(lambda: setattr(fixture, "last_type_diagnostic", diagnostic), timeout=0.25)
-        except (RuntimeError, queue.Full):
-            diagnostic["uiUnavailable"] = True
-        raise NativeInputError(diagnostic) from error
-
-
 def resize_display(fixture, width, height):
-    query = guest_command(["/usr/bin/xrandr", "--query"])
+    deadline = time.monotonic() + 12
+    def remaining():
+        seconds = deadline - time.monotonic()
+        if seconds <= 0:
+            raise RuntimeError("Guest display resize deadline exceeded")
+        return seconds
+    def command(arguments):
+        return guest_command(arguments, timeout=min(3, remaining()))
+    query = command(["/usr/bin/xrandr", "--query"])
     connected = []
     modes = {}
     current = None
@@ -261,11 +214,17 @@ def resize_display(fixture, width, height):
     wanted = "%dx%d" % (width, height)
     if selected is None or wanted not in modes[selected]:
         raise RuntimeError("Requested guest display mode is unavailable")
-    guest_command(["/usr/bin/xrandr", "--output", selected, "--mode", wanted])
-    fixture.call(lambda: fixture.fit_display(width, height))
-    deadline = time.monotonic() + 4
+    command(["/usr/bin/xrandr", "--output", selected, "--mode", wanted])
+    observed = command(["/usr/bin/xrandr", "--query"])
+    dimensions = re.search(r"^Screen \d+:[^\n]*\bcurrent (\d+) x (\d+),", observed, re.MULTILINE)
+    if dimensions is None:
+        raise RuntimeError("Native display dimensions could not be observed")
+    observed_width, observed_height = map(int, dimensions.groups())
+    if (observed_width, observed_height) != (width, height):
+        raise RuntimeError("Native display dimensions did not match the requested size")
+    fixture.call(lambda: fixture.fit_display(observed_width, observed_height), timeout=min(1, remaining()))
     while time.monotonic() < deadline:
-        state = fixture.call(fixture.state)
+        state = fixture.call(fixture.state, timeout=min(1, remaining()))
         if (state["screen"] == {"width": width, "height": height}
                 and state["window"]["width"] == width - 40
                 and state["window"]["height"] == height - 60):

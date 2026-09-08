@@ -74,16 +74,24 @@ export async function sampleGuestResources(guests, durationMs = 10000) {
   if (process.platform !== 'win32') return unavailable(guests, 'Resource sampling is supported on Windows only')
 
   let records
+  let outputBytes = 0
   try {
     const { stdout } = await execute('powershell.exe', [
       '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', samplerScript(pids, durationMs),
     ], { windowsHide: true, timeout: durationMs + 45000, maxBuffer: 32768, encoding: 'utf8' })
+    outputBytes = Buffer.byteLength(stdout)
     records = JSON.parse(stdout.replace(/^\uFEFF/, '').trim())
     if (!Array.isArray(records) || records.length !== pids.length * 5) {
       return unavailable(guests, 'Resource sampler returned incomplete observations')
     }
-  } catch {
-    return unavailable(guests, 'Resource sampler could not complete bounded process observations')
+  } catch (error) {
+    if (error instanceof SyntaxError) return unavailable(guests, `Resource sampler returned invalid JSON (${outputBytes} bytes)`)
+    const code = String(error.code ?? 'unknown').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)
+    const detail = String(error.stderr ?? '').split(/\r?\n/).find(line => line.trim())?.trim()
+      .split('').filter(character => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127)
+      .join('').slice(0, 240)
+    const reason = error.killed ? 'Resource sampler exceeded its deadline' : `Resource sampler failed (${code})`
+    return unavailable(guests, detail ? `${reason}: ${detail}` : reason)
   }
 
   return guests.map((guest, index) => {

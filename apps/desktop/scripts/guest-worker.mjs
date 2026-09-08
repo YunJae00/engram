@@ -32,6 +32,7 @@ export class GuestWorker {
 
   async start() {
     if (this.closing) throw new Error('Guest channel closed')
+    const launched = performance.now()
     await mkdir(this.directory, { recursive: false })
     this.port = await reservePort()
     if (this.closing) throw new Error('Guest channel closed')
@@ -44,7 +45,8 @@ export class GuestWorker {
       '-append', 'console=ttyS0,115200 rdinit=/init rootfstype=ramfs panic=1',
       '-chardev', `file,id=serial0,path=${path.join(this.directory, 'serial.log')}`,
       '-serial', 'chardev:serial0',
-      '-device', 'virtio-vga', '-device', 'qemu-xhci', '-device', 'usb-tablet',
+      '-device', 'virtio-vga,id=display0', '-device', 'qemu-xhci',
+      '-device', 'usb-tablet,id=pointer0,display=display0',
       '-netdev', `user,id=net0,restrict=on,ipv6=off,hostfwd=tcp:127.0.0.1:${this.port}-:8080`,
       '-device', 'virtio-net-pci,netdev=net0',
       '-fw_cfg', `name=opt/engram/worker-id,string=${this.id}`,
@@ -86,6 +88,7 @@ export class GuestWorker {
     })
     try { this.version = await greeting } finally { clearTimeout(timer) }
     await this.qmp('qmp_capabilities')
+    this.channelReadyMs = Math.round(performance.now() - launched)
     const started = performance.now()
     const deadline = started + this.options.bootTimeout
     let lastProgress = started
@@ -99,6 +102,7 @@ export class GuestWorker {
         if (state.bounds.entry.width > 100 && state.screen.width >= 800) {
           this.bootId = health.bootId
           this.bootMs = Math.round(performance.now() - started)
+          this.startupMs = Math.round(performance.now() - launched)
           return state
         }
       } catch (error) {
@@ -130,7 +134,8 @@ export class GuestWorker {
         reject(new Error(`${execute}: QMP deadline exceeded`))
       }, 10000)
       this.pending.set(id, { resolve, reject, timer })
-      this.child.stdin.write(JSON.stringify({ execute, arguments: args, id }) + '\n')
+      const parameters = execute === 'input-send-event' ? { device: 'display0', ...args } : args
+      this.child.stdin.write(JSON.stringify({ execute, arguments: parameters, id }) + '\n')
     })
   }
 
@@ -174,17 +179,31 @@ export class GuestWorker {
     await this.qmp('input-send-event', { events: ['x', 'y'].map((axis, index) => ({
       type: 'abs', data: { axis, value: Math.round(values[index] * 32767 / (limits[index] - 1)) },
     })) })
-    await delay(60)
+    await this.until(current => Math.abs(current.pointer.x - values[0]) <= 3
+      && Math.abs(current.pointer.y - values[1]) <= 3, 'Virtual pointer did not reach its target')
   }
 
   async button(button) {
-    for (const down of [true, false]) {
-      await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down, button } }] })
-      await delay(40)
+    const before = await this.state()
+    try {
+      await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down: true, button } }] })
+      await this.until(state => state.wheelEvents > before.wheelEvents, 'Virtual wheel event was not received')
+    } finally {
+      await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down: false, button } }] })
     }
   }
 
-  async click(widget) { await this.point(widget); await this.button('left') }
+  async click(widget) {
+    await this.point(widget)
+    const before = await this.state()
+    try {
+      await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down: true, button: 'left' } }] })
+      await this.until(state => state.pointerEvents > before.pointerEvents, 'Virtual button press was not received')
+    } finally {
+      await this.qmp('input-send-event', { events: [{ type: 'btn', data: { down: false, button: 'left' } }] })
+    }
+    await this.until(state => state.releaseEvents > before.releaseEvents, 'Virtual button release was not received')
+  }
 
   async typeAscii(text) {
     if (!/^[a-z0-9 ]+$/.test(text)) throw new Error('ASCII test accepts lower-case letters, digits and spaces')
@@ -202,7 +221,7 @@ export class GuestWorker {
     if (!/^[a-z0-9-]+$/.test(name)) throw new Error('Invalid screenshot name')
     const filename = path.join(this.directory, `${name}.png`)
     const start = performance.now()
-    await this.qmp('screendump', { filename, format: 'png' })
+    await this.qmp('screendump', { filename, device: 'display0', format: 'png' })
     const png = await readFile(filename)
     if (png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error('Invalid guest frame')
     return { filename, width: png.readUInt32BE(16), height: png.readUInt32BE(20), bytes: png.length,
