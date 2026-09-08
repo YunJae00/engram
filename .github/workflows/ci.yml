@@ -42,21 +42,35 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Native desktop control fixture
-        run: node apps/desktop/scripts/test-desktop-native.mjs
-        env:
-          CI: 'true'
       - run: pnpm run test:e2e
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: native-desktop-results
-          path: tmp/desktop-native-ci-*/result.json
-          if-no-files-found: ignore
-          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
           path: apps/desktop/test-results
+          retention-days: 7
+
+  desktop-native:
+    name: native desktop control (owned fixture)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Native desktop control fixture
+        run: node apps/desktop/scripts/test-desktop-native.mjs
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-desktop-results
+          path: |
+            tmp/desktop-native-ci-*/result.json
+            tmp/desktop-medium-ci-*/harness.log
+            tmp/desktop-medium-ci-*/launcher-error.txt
+            tmp/desktop-medium-ci-*/*-token.json
+          if-no-files-found: ignore
           retention-days: 7

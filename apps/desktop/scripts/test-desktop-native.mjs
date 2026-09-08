@@ -14,6 +14,13 @@ const repository = path.resolve(desktop, '../..')
 const output = path.join(repository, 'tmp', `desktop-native-ci-${randomUUID()}`)
 mkdirSync(output, { recursive: true })
 const framework = path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319')
+if (process.env.ENGRAM_DESKTOP_MEDIUM_CHILD !== 'true') {
+  const launcher = path.join(output, 'MediumHarness.exe')
+  execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',
+    `/out:${launcher}`, path.join(desktop, 'e2e/fixtures/desktop/MediumHarness.cs')], { stdio: 'inherit', windowsHide: true })
+  execFileSync(launcher, [process.execPath, repository], { stdio: 'inherit', windowsHide: true, timeout: 210000 })
+  process.exit(0)
+}
 execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(desktop, 'scripts/build-desktop.ps1'), '-OutputPath', output], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(output, 'EngramDesktop.exe'), ['--self-test'], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',
