@@ -203,7 +203,10 @@ internal static class MediumHarness
             if (!current.Standard)
             {
                 if (current.ElevationType == 1)
+                {
                     primary = RestrictedFixtureToken.Create(currentToken, logs, out requiredDeniedGroups);
+                    FixtureDefaultDacl.EnsureOwnedDefaults(currentToken, primary, current.Sid, requiredDeniedGroups, logs);
+                }
                 else
                 {
                     Require(current.ElevationType == 2, "No supported limited CI token is available");
