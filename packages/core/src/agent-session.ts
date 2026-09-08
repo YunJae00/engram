@@ -2,7 +2,7 @@ import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } 
 import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, DESKTOP_TASK_RULE, openRuleLines, personaLines } from './agent-prompt.js'
 import { parseAsk } from './ask.js'
-import type { ToolSessionCall } from './engine/types.js'
+import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
 import { withoutSecrets } from './secrets.js'
 import { answerLanguageLine } from './task-proposal.js'
 import { desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
@@ -35,12 +35,13 @@ function summarizeArgs(args: Record<string, unknown>): string {
 }
 
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
+  const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
+  if (desktop && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   const runTools = deps.engine.runTools
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
   const started = Date.now()
   let asked: { question: string; options: string[] } | null = null
-  const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const canSearch = deps.tools.some((tool) => tool.name === 'search_web')
   let lookedFirst = false
   const calls: ToolSessionCall[] = deps.tools.map((tool) => ({

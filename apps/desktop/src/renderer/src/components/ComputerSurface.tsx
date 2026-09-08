@@ -7,8 +7,9 @@ import { DesktopControls } from './DesktopControls.js'
 import { DesktopVideo } from './DesktopVideo.js'
 
 export function ComputerSurface({ lane }: { lane: string }) {
-  const { available, bindings, control, error: statusError } = useDesktopSession()
+  const { available, controlSupported, bindings, control, error: statusError } = useDesktopSession()
   const binding = bindings.find((item) => item.lane === lane)
+  const reconnect = Boolean(binding?.stopped)
   const owner = control && control.state !== 'idle' ? control : null
   const reserved = hasDesktopGrant(control)
   const mine = owner?.lane === lane
@@ -88,21 +89,22 @@ export function ComputerSurface({ lane }: { lane: string }) {
       {textOpen && binding?.readable && <DesktopControls key={binding.source} lane={lane} close={() => setTextOpen(false)} />}
     </div>
     {(error || statusError) && <p className="computer-error" role="alert">{error || statusError}</p>}
+    {binding && controlSupported === false && <p className="computer-owner-note" role="status">This AI connection does not support computer control yet. Choose a supported connection in Settings. Preview and manual window-text reading remain available.</p>}
     {ownedElsewhere && <p className="computer-owner-note" role="status"><Pause size={13} aria-hidden />Another chat has computer control. Stop that session before starting here.</p>}
     {binding && <footer className="computer-access">
       <div className="computer-access-heading">
         {mine ? owner.state === 'running' ? <LoaderCircle className="computer-spinner" size={14} aria-hidden /> : owner.state === 'ready' ? <ShieldCheck size={14} aria-hidden /> : <Pause size={14} aria-hidden /> : binding.readable ? <ShieldCheck size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
-        <strong>{mine ? owner.state === 'ready' ? 'Ready for your next task' : owner.state === 'running' ? 'This chat can control your computer' : owner.state === 'needs-person' ? 'Your attention is needed' : 'Control paused' : binding.readable ? 'AI can read this window' : 'Preview only'}</strong>
+        <strong>{reconnect ? 'App connection ended' : mine ? owner.state === 'ready' ? 'Ready for your next task' : owner.state === 'running' ? 'This chat can control your computer' : owner.state === 'needs-person' ? 'Your attention is needed' : 'Control paused' : binding.readable ? controlSupported === true ? 'AI can read this window' : 'Window text access is enabled' : 'Preview only'}</strong>
         {binding.readable && <button className="computer-icon" aria-label="Read window text" aria-pressed={textOpen} title="Read window text" onClick={() => setTextOpen(!textOpen)}><TextSearch size={14} aria-hidden /></button>}
       </div>
-      <p>{mine ? owner.reason || (owner.state === 'ready' ? 'Send this chat a task. Your mouse and keyboard stay yours until it starts.' : owner.state === 'paused' ? 'Your mouse and keyboard are yours. Allow access again when you are ready.' : owner.state === 'needs-person' ? 'Check the permission request, or stop to cancel it.' : 'Your real mouse and keyboard are shared. Press Esc to stop.') : 'Control uses your real mouse and keyboard. You can stop it at any time.'}</p>
+      <p>{reconnect ? 'Reconnect the app window to continue. Reading and control remain off until you allow them again.' : mine ? owner.reason || (owner.state === 'ready' ? 'Send this chat a task. Your mouse and keyboard stay yours until it starts.' : owner.state === 'paused' ? 'Your mouse and keyboard are yours. Allow access again when you are ready.' : owner.state === 'needs-person' ? 'Check the permission request, or stop to cancel it.' : 'Your real mouse and keyboard are shared. Press Esc to stop.') : 'Control uses your real mouse and keyboard. You can stop it at any time.'}</p>
       <div className="computer-access-actions">
         {mine ? <>
-          {owner.state === 'paused' && <button className="computer-primary" disabled={busy || Boolean(statusError)} onClick={() => void run(() => api.desktopControlStart(lane))}>Allow control again</button>}
+          {owner.state === 'paused' && <button className="computer-primary" disabled={busy || Boolean(statusError) || (!reconnect && controlSupported !== true)} onClick={reconnect ? pick : () => void run(() => api.desktopControlStart(lane))}>{reconnect ? 'Reconnect app window' : 'Allow control again'}</button>}
           <button className="computer-stop" onClick={() => void run(stopComputerControl)}>{owner.state === 'paused' ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{owner.state === 'paused' ? 'Dismiss' : 'Stop'}{owner.state !== 'paused' && <kbd>Esc</kbd>}</button>
         </> : <>
-          <button className="computer-secondary" disabled={busy || ownedElsewhere} onClick={() => void run(async () => { await api.desktopReadAccess(lane, !binding.readable); if (alive.current) setTextOpen(false) })}>{binding.readable ? 'Turn off reading' : 'Allow reading'}</button>
-          <button className="computer-primary" data-testid="computer-control-start" disabled={busy || ownedElsewhere || !control || Boolean(statusError)} onClick={() => void run(() => api.desktopControlStart(lane))}>{busy ? 'Please wait…' : 'Allow control for this session'}</button>
+          <button className="computer-secondary" disabled={busy || ownedElsewhere || reconnect} onClick={() => void run(async () => { await api.desktopReadAccess(lane, !binding.readable); if (alive.current) setTextOpen(false) })}>{binding.readable ? 'Turn off reading' : 'Allow reading'}</button>
+          <button className="computer-primary" data-testid="computer-control-start" disabled={busy || ownedElsewhere || !control || Boolean(statusError) || (!reconnect && controlSupported !== true)} onClick={reconnect ? pick : () => void run(() => api.desktopControlStart(lane))}>{busy ? 'Please wait…' : reconnect ? 'Reconnect app window' : 'Allow control for this session'}</button>
         </>}
       </div>
     </footer>}

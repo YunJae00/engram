@@ -84,9 +84,11 @@ describe('desktop native readiness and request lifetime', () => {
   })
 
   it('rejects readiness waiters immediately when the helper is explicitly closed', async () => {
+    expect(host.closed).toBe(false)
     const request = host.request('bind', target)
     const rejected = expect(request).rejects.toThrow('access ended')
     host.close()
+    expect(host.closed).toBe(true)
     await rejected
     await ready()
     expect(child.stdin.write).not.toHaveBeenCalled()
@@ -160,6 +162,9 @@ describe('native revocation correlation', () => {
     await expect(request).resolves.toBe('new session')
     respond({ type: 'revoked', lease: 'native-new', epoch: 2, reason: 'Physical input' })
     expect(revoked).toHaveBeenCalledExactlyOnceWith('Physical input')
+    expect(host.closed).toBe(false)
+    await bind('native-after-takeover')
+    expect(host.closed).toBe(false)
   })
 
   it('invalidates pending native work when the current lease is revoked', async () => {
@@ -254,6 +259,7 @@ describe('desktop transport failures', () => {
     await rejected
     expect(revoked).toHaveBeenCalledOnce()
     expect(child.kill).toHaveBeenCalledOnce()
+    expect(host.closed).toBe(true)
   })
 
   it('closes if native bind fails after dispatch and never automatically restarts', async () => {

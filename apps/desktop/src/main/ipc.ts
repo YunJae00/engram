@@ -117,7 +117,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
-import { stopDesktopControl, stopDesktopForLane } from './desktop-control.js'
+import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane } from './desktop-control.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -898,6 +898,10 @@ function buildVaultMap(store: VaultContext['store']): string | null {
 let onEnginesChanged: (() => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
+  setDesktopEngineResolver(async () => {
+    const wanted = (await loadSettings()).defaultEngine
+    return ctx.engines.find((engine) => engine.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
+  })
   onEnginesChanged = async () => {
     await revalidateEngines(ctx)
   }
@@ -1864,6 +1868,8 @@ export function registerIpc(ctx: VaultContext): void {
     // signed in is said so, never quietly swapped for the one on this disk.
     const wanted = request.engineId || (await loadSettings()).defaultEngine
     const engine = ctx.engines.find((e2) => e2.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
+    try { assertDesktopChatEngine(channel, engine) }
+    catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
     if (!engine) {
       broadcast({
         type: 'chat:error',
@@ -2070,6 +2076,7 @@ export function registerIpc(ctx: VaultContext): void {
           : ''
       const onScreen = [desktopContext(channel), browserScreen].filter(Boolean).join('\n')
       try {
+        assertDesktopChatEngine(channel, engine)
         const result = await runComet(
           {
             engine,

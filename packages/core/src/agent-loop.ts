@@ -2,8 +2,9 @@ import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, sugge
 import { choiceQuestion, parseAsk } from './ask.js'
 import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
-import { desktopStepArgs, desktopStepSummary } from './desktop-tools.js'
-import { collectResult, extractJson, type Engine, type EngineCwd } from './engine/types.js'
+import { desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
+import { screenPrompt, textStepTools } from './agent-screen.js'
+import { collectResult, DESKTOP_TOOL_ISOLATION_MESSAGE, extractJson, type Engine, type EngineCwd } from './engine/types.js'
 
 // The comet's working loop: think → pick ONE tool → run it → look at what
 // came back, a handful of times, then answer. Open-ended agent loops drift,
@@ -217,9 +218,10 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false),
+    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false), options.onScreen, deps.tools),
     workdir: deps.workdir,
     disallowTools: true,
+    ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),
     timeoutMs: CALL_TIMEOUT_MS,
     modelHint: 'fast',
     maxTokens: options.guided === false ? OPEN_TOKENS : ANSWER_TOKENS,
@@ -292,11 +294,13 @@ export async function runAgentLoop(
   task: string,
   options: AgentLoopOptions = {},
 ): Promise<AgentLoopResult> {
+  if (deps.tools.some((tool) => isDesktopTool(tool.name)) && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   // Chosen per step, not once: an empty vault search is what earns the web
   // tools their place on the menu.
   const conversed = (options.history?.length ?? 0) > 0
   const guided = options.guided !== false
-  const menu = (steps: AgentLoopStep[]): AgentTool[] => (guided ? pickTools(deps.tools, task, steps, conversed) : deps.tools)
+  const available = textStepTools(deps.tools)
+  const menu = (steps: AgentLoopStep[]): AgentTool[] => (guided ? pickTools(available, task, steps, conversed) : available)
   let tools = menu([])
   const maxCalls = options.maxCalls ?? (guided ? MAX_CALLS : OPEN_MAX_CALLS)
   const steps: AgentLoopStep[] = []
@@ -339,9 +343,10 @@ export async function runAgentLoop(
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
-        prompt: stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided),
+        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided), options.onScreen, deps.tools),
         workdir: deps.workdir,
         disallowTools: true,
+        ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),
         timeoutMs: CALL_TIMEOUT_MS,
         modelHint: 'fast',
         maxTokens: guided ? stepBudget(tools) : OPEN_TOKENS,

@@ -218,6 +218,7 @@ export interface EngineStatusDto {
   id: string
   installed: boolean
   loggedIn: boolean
+  desktopToolIsolation?: boolean
   // live health verdict (boot ping + periodic auth re-check); undefined = not
   // measured yet. Carried on every engines list/change so a renderer reload
   // does not throw the verdict away and repaint a green dot.

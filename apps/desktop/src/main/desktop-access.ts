@@ -28,7 +28,7 @@ export function desktopOwner(): BrowserWindow | undefined { return owner && !own
 export function desktopVisible(): boolean { const window = desktopOwner(); return Boolean(window?.isVisible() && !window.isMinimized()) }
 const changed = () => broadcast({ type: 'desktop:changed' })
 export function desktopBindings(): DesktopBindingDto[] {
-  return [...bindings.values()].map(({ lane, source, name, readable }) => ({ lane, source, name, readable }))
+  return [...bindings.values()].map(({ lane, source, name, readable, stopped }) => ({ lane, source, name, readable, stopped }))
 }
 export function closeDesktopAccess(): void { generation++; for (const key of [...bindings.keys()]) releaseDesktop(key) }
 export function releaseDesktop(lane: string): void {
@@ -71,12 +71,14 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
       releaseControl(lane, reason)
       const binding = bindings.get(lane)!
       binding.readable = false
+      binding.stopped = host.closed
       binding.revision++
       changed()
     }
   })
   try {
     const identity = await host.request<{ pid: number; title: string }>('inspectWindow', { window, pid: 0 })
+    if (host.closed) throw new Error('This app connection ended. Reconnect the app window to continue.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     // Recheck after enumeration so concurrent selections cannot share a window.
     if ([...bindings.values()].some((binding) => binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
@@ -94,7 +96,7 @@ export async function setDesktopReadAccess(lane: string, enabled: boolean): Prom
   const binding = bound(lane)
   if (!enabled) releaseControl(lane, 'AI access was turned off.')
   const revision = ++binding.revision
-  if (enabled && binding.stopped) throw new Error('Choose the app window again to start a new access session.')
+  if (enabled && (binding.stopped || binding.host.closed)) throw new Error('This app connection ended. Reconnect the app window to continue.')
   if (enabled && !binding.readable) {
     const window = desktopOwner()
     if (!window) throw new Error('Open Engram to allow AI read access.')

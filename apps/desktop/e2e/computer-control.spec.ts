@@ -35,6 +35,8 @@ test.beforeAll(async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const state: DesktopMock = { available: true, bindings: [], control: { state: 'idle' }, starts: 0, stops: 0, observations: 0, captures: 0 }
+    ipcMain.removeHandler('engines:list')
+    ipcMain.handle('engines:list', () => [{ id: 'claude', installed: true, loggedIn: true, desktopToolIsolation: true }])
     ;(globalThis as MockGlobal).desktopMock = state
     const changed = () => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'desktop:changed' }) }
     const install = (name: string, handler: (...args: unknown[]) => unknown) => {

@@ -10,8 +10,8 @@ vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup })
 vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
-const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
-  snapshot, nodes: [], bounds: { x: -10, y: 20, width: 4, height: 4 },
+const observation = (snapshot = 'fresh'): DesktopObservationDto & { truncated: boolean } => ({
+  snapshot, truncated: false, nodes: [], bounds: { x: -10, y: 20, width: 4, height: 4 },
   protectedBounds: [{ x: -9, y: 21, width: 1, height: 1 }],
 })
 function deferred<T>() {
@@ -52,6 +52,22 @@ describe('desktop image consent and capture validation', () => {
     const pixels = fake.image.mock.calls[0]![0] as Buffer
     expect([...pixels.subarray(20, 24)]).toEqual([32, 32, 32, 255])
     expect([...pixels.subarray(0, 4)]).toEqual([255, 255, 255, 255])
+  })
+
+  it.each([true, undefined, 'false', 0])('does not capture without explicit complete accessibility coverage (%s)', async (truncated) => {
+    fake.read.mockResolvedValueOnce({ ...observation(), truncated, protectedBounds: [] })
+    await expect(look()).rejects.toThrow('Use read_desktop for available text, or choose a simpler window')
+    expect(fake.sources).not.toHaveBeenCalled()
+    expect(fake.bitmap).not.toHaveBeenCalled()
+    expect(fake.image).not.toHaveBeenCalled()
+  })
+
+  it.each([true, undefined, 'false', 0])('discards captured pixels if the follow-up scan is incomplete (%s)', async (truncated) => {
+    fake.read.mockResolvedValueOnce(observation()).mockResolvedValueOnce({ ...observation(), truncated })
+    await expect(look()).rejects.toThrow('accessibility scan was incomplete')
+    expect(fake.sources).toHaveBeenCalledTimes(1)
+    expect(fake.bitmap).not.toHaveBeenCalled()
+    expect(fake.image).not.toHaveBeenCalled()
   })
 
   it.each(['bounds', 'protectedBounds'] as const)('rejects changed %s between observation and capture', async (field) => {

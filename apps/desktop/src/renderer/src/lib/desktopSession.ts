@@ -8,12 +8,13 @@ export function hasDesktopGrant(control: DesktopControlStatusDto | null): boolea
 }
 interface Snapshot {
   available: boolean | null
+  controlSupported: boolean | null
   bindings: DesktopBindingDto[]
   control: DesktopControlStatusDto | null
   error: string
   surfaces: Record<string, DesktopSurface>
 }
-let snapshot: Snapshot = { available: null, bindings: [], control: null, error: '', surfaces: {} }
+let snapshot: Snapshot = { available: null, controlSupported: null, bindings: [], control: null, error: '', surfaces: {} }
 const listeners = new Set<() => void>()
 let unlisten: (() => void) | undefined
 let polling: ReturnType<typeof setInterval> | undefined
@@ -31,17 +32,22 @@ export async function refreshDesktop(): Promise<void> {
   try {
     const available = await api.desktopAvailable()
     if (request !== revision) return
-    if (!available) { publish({ available: false, bindings: [], control: { state: 'idle' }, error: '' }); return }
-    const [bindings, control] = await Promise.all([api.desktopBindings(), api.desktopControlStatus()])
-    if (request === revision) publish({ available, bindings, control, error: '' })
+    if (!available) { publish({ available: false, controlSupported: false, bindings: [], control: { state: 'idle' }, error: '' }); return }
+    const [bindings, control, settings, engines] = await Promise.all([api.desktopBindings(), api.desktopControlStatus(), api.settingsGet(), api.engines()])
+    const engine = engines.find((item) => item.id === settings.defaultEngine) ?? (engines.length === 1 && engines[0]?.id === 'mock' ? engines[0] : undefined)
+    const controlSupported = Boolean(engine?.installed && engine.loggedIn && engine.desktopToolIsolation === true)
+    if (request === revision) publish({ available, controlSupported, bindings, control, error: '' })
   } catch (error) {
-    if (request === revision) publish({ error: desktopError(error) })
+    if (request === revision) publish({ controlSupported: false, error: desktopError(error) })
   }
 }
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
   if (listeners.size === 1) {
-    unlisten = api.onEvent((event) => { if (event.type === 'desktop:changed') void refreshDesktop() })
+    unlisten = api.onEvent((event) => {
+      if (event.type === 'settings:changed' || event.type === 'engines:changed' || event.type === 'engines:detected') { publish({ controlSupported: null }); void refreshDesktop() }
+      else if (event.type === 'desktop:changed') void refreshDesktop()
+    })
     void refreshDesktop()
     polling = setInterval(() => {
       if (snapshot.control && snapshot.control.state !== 'idle') void refreshDesktop()

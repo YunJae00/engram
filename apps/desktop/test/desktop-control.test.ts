@@ -56,6 +56,7 @@ beforeEach(async () => {
   deps.broadcast.mockReset()
   deps.release = undefined
   control = await import('../src/main/desktop-control.js')
+  control.setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: true }))
 })
 afterEach(() => {
   control.stopDesktopControl('Test cleanup')
@@ -80,6 +81,27 @@ describe('foreground control consent', () => {
     expect(control.desktopControlStatus().state).toBe('paused')
     expect(host.value.readable).toBe(false)
     expect(host.request).not.toHaveBeenCalled()
+  })
+
+  it.each(['binding', 'host'] as const)('requires reconnect instead of granting a terminal %s connection', async (closed) => {
+    const host = binding()
+    if (closed === 'binding') host.value.stopped = true
+    else Object.defineProperty(host.value.host, 'closed', { value: true })
+    await expect(control.startDesktopControl(lane)).rejects.toThrow('Reconnect the app window to continue.')
+    expect(control.desktopControlStatus().state).toBe('idle')
+    expect(deps.dialog).not.toHaveBeenCalled()
+    expect(host.request).not.toHaveBeenCalled()
+    expect(host.value.readable).toBe(false)
+  })
+
+  it('allows a fresh grant after ordinary user takeover without reconnecting', async () => {
+    const host = binding()
+    await control.startDesktopControl(lane)
+    await control.readControlledDesktop(lane, undefined, true)
+    deps.release!(lane, 'Mouse input returned control to the user')
+    expect(host.value.stopped).toBe(false)
+    expect(await control.startDesktopControl(lane)).toMatchObject({ state: 'ready', lane })
+    expect(host.close).not.toHaveBeenCalled()
   })
 
   it('arms a ready grant without binding native input while the person writes their task', async () => {
@@ -112,6 +134,7 @@ describe('foreground control consent', () => {
     deps.dialog.mockReturnValue(answer.promise)
     const request = control.startDesktopControl(lane)
     const rejected = expect(request).rejects.toThrow('cancelled')
+    await vi.waitFor(() => expect(deps.dialog).toHaveBeenCalled())
     control.stopDesktopControl()
     answer.resolve({ response: 1 })
     await rejected
@@ -125,6 +148,7 @@ describe('foreground control consent', () => {
     deps.dialog.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
     const first = control.startDesktopControl(lane)
     const rejected = expect(first).rejects.toThrow('cancelled')
+    await vi.waitFor(() => expect(deps.dialog).toHaveBeenCalled())
     control.stopDesktopControl()
     const next = control.startDesktopControl(lane)
     old.resolve({ response: 1 })

@@ -15,7 +15,7 @@ function supplied(desktop = ['read_desktop', 'look_desktop', 'desktop_action']):
 }
 function sessionBrain(script: (job: ToolSessionJob) => Promise<ToolSessionResult>): Engine {
   return {
-    id: 'mock', detect: async () => ({ installed: true, loggedIn: true }),
+    id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }),
     run: async function* () { yield { type: 'result', text: 'fixture answer' } },
     runTools: script,
   } as unknown as Engine

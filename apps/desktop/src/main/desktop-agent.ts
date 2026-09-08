@@ -5,6 +5,7 @@ import { desktopBinding } from './desktop-access.js'
 import { actOnDesktop, readControlledDesktop } from './desktop-control.js'
 
 function imageGeometry(observation: DesktopObservationDto): string {
+  if (observation.truncated !== false) throw new Error('This window\'s accessibility scan was incomplete. Use read_desktop for available text, or choose a simpler window before requesting a screenshot.')
   const rectangles = [observation.bounds, ...(observation.protectedBounds ?? [])]
   if (rectangles.some((rect) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('This app did not provide safe screenshot geometry.')
   const values = (rect: DesktopObservationDto['bounds']) => [rect.x, rect.y, rect.width, rect.height]

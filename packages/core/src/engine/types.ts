@@ -3,6 +3,7 @@ import { classifyEngineError, type EngineErrorKind } from './classify.js'
 export { classifyEngineError, type EngineErrorKind } from './classify.js'
 
 export type EngineId = 'claude' | 'codex' | 'mock'
+export const DESKTOP_TOOL_ISOLATION_MESSAGE = 'This connection cannot safely run selected-app tools yet. Use a connection with an isolated tool session, or turn off Computer access for this chat.'
 
 export interface EngineDetection {
   installed: boolean
@@ -65,6 +66,9 @@ export interface EngineJobInput {
   // answers only from the material embedded in the prompt (structural safety +
   // token savings). Adapters with no tool concept (mock) ignore it.
   disallowTools?: boolean
+  // Selected-app jobs require a verified boundary against inherited runtime
+  // tools. An adapter without that boundary must reject before starting.
+  requireToolIsolation?: boolean
   // Read-only jobs (image transcription) may read workspace files but must
   // never write or execute. Ignored when disallowTools is set.
   readOnly?: boolean
@@ -94,6 +98,8 @@ export type EngineEvent =
 
 export interface Engine {
   readonly id: EngineId
+  // True only when selected-app jobs cannot call inherited runtime tools.
+  readonly desktopToolIsolation?: boolean
   // Multimodal CLI: can read an image file in the workspace and transcribe it.
   // Ingest prefers such an engine over local OCR (hybrid image pipeline).
   readonly vision?: boolean

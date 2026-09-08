@@ -1,16 +1,28 @@
 import { dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { DesktopControlLease, type DesktopAction } from 'core'
+import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type Engine } from 'core'
 import type { DesktopControlStatusDto, DesktopObservationDto } from '../shared/desktop.js'
 import { desktopBinding, desktopChanged, desktopOwner, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
 
 const lease = new DesktopControlLease({ onChange: desktopChanged })
-let active: { binding: DesktopBinding; token: string; nativeGrant: string; native?: string; bindingNative?: boolean } | undefined
+type DesktopEngine = Pick<Engine, 'id' | 'desktopToolIsolation'>
+let engineForControl: () => Promise<DesktopEngine | undefined> = async () => undefined
+let checking: { binding: DesktopBinding } | undefined
+let active: { binding: DesktopBinding; token: string; engineId: string; nativeGrant: string; native?: string; bindingNative?: boolean } | undefined
 let requested: { binding: DesktopBinding; token: string } | undefined
 let expiry: ReturnType<typeof setTimeout> | undefined
 const observations = new Map<string, DesktopObservationDto>()
 
 setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason))
+
+export function setDesktopEngineResolver(resolve: typeof engineForControl): void { engineForControl = resolve }
+export function assertDesktopChatEngine(lane: string, engine: DesktopEngine | undefined): void {
+  if (!desktopBinding(lane)?.readable) return
+  const held = active?.binding.lane === lane ? active : undefined
+  if (engine?.desktopToolIsolation === true && (!held || held.engineId === engine.id)) return
+  stopDesktopForLane(lane, DESKTOP_TOOL_ISOLATION_MESSAGE)
+  throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
+}
 
 export function desktopControlStatus(): DesktopControlStatusDto {
   const state = lease.state()
@@ -21,6 +33,7 @@ export function stopDesktopControl(reason = 'You stopped computer control.'): vo
   const held = active
   active = undefined
   requested = undefined
+  checking = undefined
   clearTimeout(expiry)
   expiry = undefined
   observations.clear()
@@ -34,30 +47,41 @@ export function stopDesktopControl(reason = 'You stopped computer control.'): vo
 }
 
 export function stopDesktopFromUi(): void {
-  if (lease.state().state === 'paused' && !active && !requested) lease.reset()
+  if (lease.state().state === 'paused' && !active && !requested && !checking) lease.reset()
   else stopDesktopControl()
 }
 
 export function stopDesktopForLane(lane: string, reason = 'This chat stopped.'): void {
-  if (lease.state().lane === lane || active?.binding.lane === lane) stopDesktopControl(reason)
+  if (lease.state().lane === lane || active?.binding.lane === lane || checking?.binding.lane === lane) stopDesktopControl(reason)
 }
 
 export async function startDesktopControl(lane: string): Promise<DesktopControlStatusDto> {
   const binding = desktopBinding(lane)
   const owner = desktopOwner()
-  if (!binding || binding.stopped || !owner) throw new Error('Choose an app window before allowing control.')
-  const token = lease.reserve(lane, binding.name)
-  requested = { binding, token }
-  const revision = ++binding.revision
+  if (!binding || !owner) throw new Error('Choose an app window before allowing control.')
+  if (binding.stopped || binding.host.closed) throw new Error('This app connection ended. Reconnect the app window to continue.')
+  if (checking) throw new Error('Computer control is already pending or running.')
+  const check = { binding }
+  checking = check
+  let token: string | undefined
   try {
+    const engine = await engineForControl()
+    if (checking !== check || desktopBinding(lane) !== binding || desktopOwner() !== owner || binding.stopped || binding.host.closed) throw new Error('This control request was cancelled.')
+    if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
+    token = lease.reserve(lane, binding.name)
+    requested = { binding, token }
+    checking = undefined
+    const revision = ++binding.revision
     const answer = await dialog.showMessageBox(owner, {
       type: 'question', title: 'Computer control', message: `Allow this chat to control ${binding.name}?`,
       detail: 'Engram may bring this window forward, move the pointer, click, scroll, and type. Text and screenshots from this window may be sent to your connected AI. This uses your real desktop, not a separate background computer. Move your mouse, press a key, or use Stop to end control. Press Esc to stop immediately. Access is limited to this session and ends when this chat finishes or after 10 minutes. Do not use this for passwords, authentication, or sensitive transactions.',
       buttons: ['Cancel', 'Allow for this session'], defaultId: 0, cancelId: 0, noLink: true,
     })
     if (answer.response !== 1) throw new Error('Computer control was not allowed.')
+    const currentEngine = await engineForControl()
+    if (currentEngine?.desktopToolIsolation !== true || currentEngine.id !== engine.id) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
     if (requested?.token !== token || desktopBinding(lane) !== binding || revision !== binding.revision || desktopOwner() !== owner || lease.state().state !== 'needs-person') throw new Error('This control request was cancelled.')
-    active = { binding, token, nativeGrant: randomUUID() }
+    active = { binding, token, engineId: engine.id, nativeGrant: randomUUID() }
     lease.activate(token)
     requested = undefined
     binding.readable = true
@@ -67,7 +91,8 @@ export async function startDesktopControl(lane: string): Promise<DesktopControlS
     desktopChanged()
     return desktopControlStatus()
   } catch (error) {
-    if (active?.token === token || requested?.token === token) stopDesktopControl(error instanceof Error ? error.message : 'Computer control did not start.')
+    if (checking === check) checking = undefined
+    if (token && (active?.token === token || requested?.token === token)) stopDesktopControl(error instanceof Error ? error.message : 'Computer control did not start.')
     throw error
   }
 }

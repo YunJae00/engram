@@ -111,6 +111,7 @@ export function forgetClaudeModels(): void {
 export class ClaudeEngine implements CloudEngine {
   readonly id = 'claude' as const
   readonly label = 'Claude'
+  readonly desktopToolIsolation = true
   private readonly status = new StatusCache()
 
   detect(): Promise<EngineDetection> {
@@ -162,6 +163,7 @@ export class ClaudeEngine implements CloudEngine {
           // One answer, from the words alone: no files, no commands, and none
           // of the person's own runtime configuration riding along.
           tools: [],
+          strictMcpConfig: true,
           // A fixed shape is delivered through one more exchange when the
           // first answer came as prose; one turn leaves no room for it.
           maxTurns: job.jsonSchema ? 3 : 1,

@@ -33,6 +33,7 @@ export class DesktopHost {
   private pending = new Map<number, PendingRequest>()
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
+  get closed(): boolean { return this.ended }
   static available(): boolean { return process.platform === 'win32' && existsSync(DesktopHost.path()) }
   private static path(): string {
     return app.isPackaged ? join(process.resourcesPath, 'bin', 'desktop', 'EngramDesktop.exe')
