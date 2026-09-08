@@ -3,7 +3,6 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 
@@ -49,12 +48,11 @@ internal static class DesktopCapture
             using (var image = new Bitmap(width, height, PixelFormat.Format24bppRgb))
             using (var graphics = Graphics.FromImage(image))
             using (var stream = new MemoryStream())
-            using (var quality = new EncoderParameters(1))
             {
                 graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 graphics.DrawImage(full, new Rectangle(0, 0, width, height));
-                quality.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 80L);
-                image.Save(stream, ImageCodecInfo.GetImageEncoders().First(codec => codec.FormatID == ImageFormat.Jpeg.Guid), quality);
+                // Keep protected pixels lossless until the owner applies masking.
+                image.Save(stream, ImageFormat.Png);
                 if (stream.Length > 350000) throw new InvalidOperationException("The screenshot exceeded its safe size limit. Use accessibility text instead");
                 return new { basis = "client-physical", bounds = AutomationSession.Bounds(bounds), width = width, height = height,
                     data = Convert.ToBase64String(stream.ToArray()) };

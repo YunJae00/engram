@@ -39,6 +39,7 @@ internal sealed class ControlFixture : Form
     private readonly FixtureScroll Scroller = new FixtureScroll { Bounds = new Rectangle(18, 100, 592, 280) };
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
     private int Clicks;
+    private Form Away;
 
     internal ControlFixture()
     {
@@ -98,6 +99,15 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "away")
+            {
+                if (Away == null) Away = new Form { Text = "Owned foreground fixture", StartPosition = FormStartPosition.Manual, Bounds = new Rectangle(760, 100, 300, 200) };
+                Away.Show(); Away.Activate();
+                if (GetForegroundWindow() != Away.Handle) throw new InvalidOperationException("The owned handoff window did not receive focus");
+            }
+            else if (method == "resize") { ClientSize = new Size(900, 600); Marker.Top = ClientSize.Height - 30; }
+            else if (method == "maximize") { WindowState = FormWindowState.Maximized; Marker.Top = ClientSize.Height - 30; }
+            else if (method == "restore") { WindowState = FormWindowState.Normal; ClientSize = new Size(630, 420); Marker.Top = 390; }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "foreignInput")
             {
@@ -111,7 +121,7 @@ internal sealed class ControlFixture : Form
             }
             else if (method != "state") throw new ArgumentException("Unsupported fixture request");
             Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, wheelEvents = Scroller.Wheels,
-                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, passwordVisible = Secret.Visible } });
+                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible } });
         }
         catch (Exception error) { Send(new { id = id, error = error.Message }); }
     }

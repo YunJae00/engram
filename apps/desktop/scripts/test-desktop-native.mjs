@@ -118,9 +118,20 @@ try {
   assert.deepEqual(capture.bounds, readOnly.captureBounds)
   assert.equal((await fixture.request('verifyCapture', { capture })).aligned, true)
   result.captureAlignmentPassed = true
+  for (const layout of ['resize', 'maximize', 'restore']) {
+    result.stage = `capture-${layout}`
+    await fixture.request(layout)
+    const view = await helper.request('observe', target)
+    const frame = await helper.request('capture', { ...target, snapshot: view.snapshot })
+    assert.deepEqual(frame.bounds, view.captureBounds)
+    assert.equal((await fixture.request('verifyCapture', { capture: frame })).aligned, true)
+  }
+  result.captureResizePassed = true
   result.stage = 'bind'
-  await fixture.request('focus')
+  assert.equal((await fixture.request('away')).foreground, false)
   const active = await helper.request('bind', { ...target, grant: randomUUID() })
+  assert.equal((await fixture.request('state')).foreground, true)
+  result.foregroundHandoffPassed = true
   const bound = { ...target, lease: active.lease }
   const observe = () => helper.request('observe', bound)
   let snapshot = await observe()
@@ -138,7 +149,11 @@ try {
   snapshot = await observe()
   const button = snapshot.nodes.find(node => node.name === 'Count click')
   assert.ok(button)
-  await helper.request('click', { ...bound, snapshot: snapshot.snapshot, element: button.id })
+  const x = (button.bounds.x + button.bounds.width / 2 - snapshot.captureBounds.x) / (snapshot.captureBounds.width - 1)
+  const y = (button.bounds.y + button.bounds.height / 2 - snapshot.captureBounds.y) / (snapshot.captureBounds.height - 1)
+  await helper.request('click', { ...bound, snapshot: snapshot.snapshot,
+    x: Math.round(snapshot.captureBounds.x + x * (snapshot.captureBounds.width - 1)),
+    y: Math.round(snapshot.captureBounds.y + y * (snapshot.captureBounds.height - 1)) })
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Native click did not reach the fixture')
   result.clickPassed = true
   result.stage = 'scroll'

@@ -41,6 +41,8 @@ internal static class DesktopSelfTest
             var gate = new PacketGate(lease, delegate { return current; });
             var packet = gate.Begin(state);
             Check(gate.Own(packet.Marker), "Own packet must be recognizable");
+            Check(packet.Marker > 0 && packet.Marker <= uint.MaxValue, "Input markers must survive 32-bit mouse transport");
+            Check(!gate.Own(packet.Marker | 0x100000000UL), "Unrelated high bits cannot match an owned marker");
             Check(!gate.Own(0), "Foreign packet cannot be treated as owned");
             Check(gate.Admit(packet.Marker, 65, false, true), "Active press must be admitted");
             lease.Revoke("Physical input");

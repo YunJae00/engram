@@ -17,33 +17,36 @@ internal sealed class PacketGate
     private readonly ConcurrentDictionary<ulong, InputPacket> Pending = new ConcurrentDictionary<ulong, InputPacket>();
     private readonly ControlLease Lease;
     private readonly Func<DesktopTarget, bool> TargetCurrent;
-    private readonly ulong Prefix;
-    private int Sequence;
+    private readonly HashSet<ulong> Issued = new HashSet<ulong>();
 
     internal PacketGate(ControlLease lease, Func<DesktopTarget, bool> targetCurrent)
     {
         Lease = lease;
         TargetCurrent = targetCurrent;
-        var bytes = new byte[4];
-        using (var random = RandomNumberGenerator.Create()) random.GetBytes(bytes);
-        Prefix = ((ulong)(BitConverter.ToUInt32(bytes, 0) | 0x80000000U)) << 32;
     }
     internal InputPacket Begin(LeaseState state)
     {
         Lease.Require(state);
-        var sequence = Interlocked.Increment(ref Sequence);
-        if (sequence <= 0 || Pending.Count >= 16) throw new InvalidOperationException("Input packet capacity reached");
-        var packet = new InputPacket { Lease = state, Marker = Prefix | (uint)sequence };
+        if (Pending.Count >= 16) throw new InvalidOperationException("Input packet capacity reached");
+        ulong marker;
+        lock (Issued)
+        {
+            if (Issued.Count >= 65536) throw new InvalidOperationException("Reconnect computer access before sending more input");
+            var bytes = new byte[4];
+            using (var random = RandomNumberGenerator.Create())
+            {
+                do { random.GetBytes(bytes); marker = BitConverter.ToUInt32(bytes, 0); }
+                while (marker == 0 || Issued.Contains(marker));
+            }
+            Issued.Add(marker);
+        }
+        // Mouse input may preserve only 32 bits of extra information. Each
+        // packet still requires an exact, private, never-reused random marker.
+        var packet = new InputPacket { Lease = state, Marker = marker };
         if (!Pending.TryAdd(packet.Marker, packet)) throw new InvalidOperationException("Input packet collision");
         return packet;
     }
-    internal bool Own(ulong marker) { return (marker & 0xffffffff00000000UL) == Prefix; }
-    internal string MarkerState(ulong marker)
-    {
-        var lowMatch = false;
-        foreach (var item in Pending.Keys) if ((uint)item == (uint)marker) lowMatch = true;
-        return "zero=" + (marker == 0) + ", upperZero=" + ((marker >> 32) == 0) + ", pendingLow=" + lowMatch;
-    }
+    internal bool Own(ulong marker) { lock (Issued) return Issued.Contains(marker); }
     internal bool Admit(ulong marker, uint identity, bool release, bool tracked)
     {
         InputPacket packet;
