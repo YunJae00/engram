@@ -288,7 +288,7 @@ describe('rerunning a routine that writes', () => {
     expect(second.ok).toBe(false)
 
     const forced = await runRoutine(paths, fakeDriver({}), saved, { now: NINE_AM, force: true, onSubmit: APPROVE })
-    expect(forced.ok).toBe(true)
+    expect(forced, forced.error).toMatchObject({ ok: true })
   })
 
   it('a read-only routine never asks — repeating it costs nothing', async () => {
