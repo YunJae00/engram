@@ -103,7 +103,7 @@ for attempt in $(seq 1 40); do
 done
 [ "$display_ready" -eq 1 ] || fail "display initialization timed out"
 grep -q '^Virtual-1 connected' /run/xrandr.log || fail "unexpected display output"
-xrandr --output Virtual-1 --mode 1280x720 || fail "initial display mode unavailable"
+xrandr --output Virtual-1 --mode 1280x800 || fail "initial display mode unavailable"
 export HOME=/home/worker USER=worker LOGNAME=worker
 su -s /bin/sh -p worker -c 'exec openbox' >/run/openbox.log 2>&1 &
 openbox_pid=$!
