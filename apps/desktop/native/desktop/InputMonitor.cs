@@ -38,9 +38,10 @@ internal sealed class InputMonitor : IDisposable
             throw new InvalidOperationException("Desktop stop monitoring is unavailable", StartupError);
         Watchdog = new System.Threading.Timer(delegate
         {
+            var state = Lease.State;
+            if (state == null) return;
             if (unchecked((uint)Environment.TickCount - (uint)Interlocked.Read(ref Beat)) > 500) Lease.Revoke("Desktop stop monitoring stalled");
             if (!Guard.OwnerAlive()) Lease.Revoke("The desktop owner exited");
-            var state = Lease.State;
             if (state != null && !Lease.Valid(state)) Lease.Revoke("Desktop control expired");
             if (Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke("The selected window or desktop changed");
         }, null, 100, 100);
@@ -103,9 +104,9 @@ internal sealed class InputMonitor : IDisposable
         var cancelled = 0;
         Indicator.BeginInvoke((Action)delegate
         {
-            try { if (Volatile.Read(ref cancelled) == 0) action(); }
+            try { Interlocked.Exchange(ref Beat, Environment.TickCount); if (Volatile.Read(ref cancelled) == 0) action(); }
             catch (Exception caught) { error = caught; }
-            finally { if (Volatile.Read(ref cancelled) != 0) Lease.Revoke("Desktop input monitor timed out"); done.Set(); }
+            finally { Interlocked.Exchange(ref Beat, Environment.TickCount); if (Volatile.Read(ref cancelled) != 0) Lease.Revoke("Desktop input monitor timed out"); done.Set(); }
         });
         if (!done.Wait(1500)) { Interlocked.Exchange(ref cancelled, 1); Lease.Revoke("Desktop input monitor timed out"); throw new InvalidOperationException("Desktop input monitor timed out"); }
         done.Dispose();
@@ -134,12 +135,13 @@ internal sealed class InputMonitor : IDisposable
                     throw new InvalidOperationException("Bring the chosen application to the foreground and grant control again");
                 DesktopNative.AwaitForeground(target);
                 if (!current()) throw new InvalidOperationException("User input changed while the app was becoming active");
-                state = Lease.Bind(target, grant, current);
                 Indicator.Start(target);
                 if (!Indicator.Visible) throw new InvalidOperationException("The desktop stop control could not be displayed");
                 if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while control started");
+                Interlocked.Exchange(ref Beat, Environment.TickCount);
+                state = Lease.Bind(target, grant, current);
             }
-            catch { Lease.Revoke("Desktop control could not start"); if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; } throw; }
+            catch { Lease.Revoke("Desktop control could not start"); Indicator.Paused(); if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; } throw; }
         });
         return state;
     }
