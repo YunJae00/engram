@@ -1,0 +1,29 @@
+name: Isolated guest validation
+
+on:
+  push:
+    branches: [codex/isolated-worker]
+    paths:
+      - '.github/workflows/worker-guest.yml'
+      - 'apps/desktop/e2e/fixtures/guest/**'
+      - 'apps/desktop/scripts/test-worker-guest.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Build disposable guest image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build signed-package guest filesystem
+        run: bash apps/desktop/e2e/fixtures/guest/build-image.sh "$RUNNER_TEMP/engram-guest-image"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolated-guest-image
+          path: ${{ runner.temp }}/engram-guest-image/*
+          retention-days: 3
+          if-no-files-found: error

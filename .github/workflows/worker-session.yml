@@ -3,6 +3,10 @@ name: Isolated worker validation
 on:
   push:
     branches: [codex/isolated-worker]
+    paths:
+      - '.github/workflows/worker-session.yml'
+      - 'apps/desktop/e2e/fixtures/worker/**'
+      - 'apps/desktop/scripts/test-worker-session.ps1'
   workflow_dispatch:
 
 permissions:
