@@ -9,7 +9,7 @@ using System.Text;
 internal static class MediumHarness
 {
     private const int LimitMs = 180000;
-    private const uint TokenRights = 0x000B;
+    private const uint TokenRights = 0x008B;
     private const uint Suspended = 0x00000004;
     private const uint UnicodeEnvironment = 0x00000400;
     private const uint NoWindow = 0x08000000;
@@ -196,19 +196,25 @@ internal static class MediumHarness
         IntPtr linked = IntPtr.Zero, primary = IntPtr.Zero, job = IntPtr.Zero, environment = IntPtr.Zero;
         var created = new ProcessInfo();
         var assigned = false;
+        string[] requiredDeniedGroups = null;
         try
         {
             if (!current.Standard)
             {
-                Require(current.ElevationType == 2, "No existing linked limited token is available; fixture setup is unsupported");
-                var linkedInfo = Information(currentToken, 19);
-                linked = Marshal.ReadIntPtr(linkedInfo);
-                Marshal.FreeHGlobal(linkedInfo);
-                Require(linked != IntPtr.Zero, "No existing linked limited token is available");
-                var state = Inspect(linked);
-                SameUser(current, state);
-                Require(state.ElevationType == 3, "The linked token is not a limited token");
-                Native(DuplicateTokenEx(linked, TokenRights, IntPtr.Zero, 2, 1, out primary), "DuplicateTokenEx");
+                if (current.ElevationType == 1)
+                    primary = RestrictedFixtureToken.Create(currentToken, logs, out requiredDeniedGroups);
+                else
+                {
+                    Require(current.ElevationType == 2, "No supported limited CI token is available");
+                    var linkedInfo = Information(currentToken, 19);
+                    linked = Marshal.ReadIntPtr(linkedInfo);
+                    Marshal.FreeHGlobal(linkedInfo);
+                    Require(linked != IntPtr.Zero, "No existing linked limited token is available");
+                    var state = Inspect(linked);
+                    SameUser(current, state);
+                    Require(state.ElevationType == 3, "The linked token is not a limited token");
+                    Native(DuplicateTokenEx(linked, TokenRights, IntPtr.Zero, 2, 1, out primary), "DuplicateTokenEx");
+                }
                 SameUser(current, Inspect(primary));
             }
             var jobName = "Local\\EngramDesktopFixture-" + current.Session + "-" + Guid.NewGuid().ToString("D");
@@ -232,7 +238,11 @@ internal static class MediumHarness
             assigned = true;
             IntPtr childToken;
             Native(OpenProcessToken(created.Process, 8, out childToken), "OpenProcessToken(child)");
-            try { SameUser(current, Inspect(childToken)); }
+            try
+            {
+                SameUser(current, Inspect(childToken));
+                if (requiredDeniedGroups != null) RestrictedFixtureToken.Verify(childToken, requiredDeniedGroups);
+            }
             finally { CloseHandle(childToken); }
             Native(ResumeThread(created.Thread) != uint.MaxValue, "ResumeThread");
             Require(WaitForSingleObject(created.Process, LimitMs + 15000) == 0, "The limited fixture launcher timed out");
