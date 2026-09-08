@@ -7,11 +7,14 @@ import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/e
 // what the tool said. Counts how many processes were started.
 function fakeSdk(log: string[]) {
   let processes = 0
+  const optionsSeen: Record<string, unknown>[] = []
+  const outcomes: unknown[] = []
   const sdk: SessionSdk = {
     createSdkMcpServer: (options) => options,
     tool: (name, description, shape, handler) => ({ name, description, shape, handler }),
     query: ({ prompt, options }) => {
       processes++
+      optionsSeen.push(options ?? {})
       const server = (options?.['mcpServers'] as Record<string, { tools: { name: string; handler(args: unknown): Promise<{ content: { text: string }[] }> }[] }>)['engram']!
       let interrupted = false
       async function* run(): AsyncGenerator<{ type: string; [key: string]: unknown }> {
@@ -19,6 +22,7 @@ function fakeSdk(log: string[]) {
           log.push(`user: ${message.message.content}`)
           const first = server.tools[0]!
           const said = await first.handler({ query: message.message.content })
+          outcomes.push(said)
           yield { type: 'assistant', message: { content: [{ type: 'text', text: `the tool said ${said.content[0]!.text}` }] } }
           yield { type: 'result', subtype: interrupted ? 'error_during_execution' : 'success', result: `the tool said ${said.content[0]!.text}` }
         }
@@ -30,7 +34,7 @@ function fakeSdk(log: string[]) {
       return stream
     },
   }
-  return { sdk, processes: () => processes }
+  return { sdk, processes: () => processes, optionsSeen, outcomes }
 }
 
 function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJob {
@@ -45,6 +49,33 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
+  it('isolates supplied desktop tools and rich observations, recycling when access is removed', async () => {
+    const { sdk, processes, optionsSeen, outcomes } = fakeSdk([])
+    const pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
+    const tools: ToolSessionJob['tools'] = [
+      { name: 'look_desktop', description: 'Look at selected app', argsSchema: {}, run: async () => ({ text: 'snapshot: lane-a', image: { data: 'fixture-image', mimeType: 'image/png' } }) },
+      { name: 'read_desktop', description: 'Read selected app', argsSchema: {}, run: async () => 'selected text' },
+      { name: 'desktop_action', description: 'Act in selected app', argsSchema: {}, run: async () => 'selected action' },
+    ]
+    try {
+      await pool.run(job('Inspect A', { sessionKey: 'lane-a', tools }), spec)
+      expect(optionsSeen[0]).toMatchObject({
+        tools: [], strictMcpConfig: true, settingSources: [], permissionMode: 'dontAsk',
+        allowedTools: ['mcp__engram__look_desktop', 'mcp__engram__read_desktop', 'mcp__engram__desktop_action'],
+      })
+      expect(Object.keys(optionsSeen[0]!['mcpServers'] as object)).toEqual(['engram'])
+      expect(outcomes[0]).toEqual({ content: [
+        { type: 'text', text: 'snapshot: lane-a' },
+        { type: 'image', data: 'fixture-image', mimeType: 'image/png' },
+      ] })
+      await pool.run(job('Inspect A without input', { sessionKey: 'lane-a', tools: tools.filter((tool) => tool.name === 'read_desktop') }), spec)
+      expect(processes()).toBe(2)
+      expect(optionsSeen[1]!['allowedTools']).toEqual(['mcp__engram__read_desktop'])
+      expect(optionsSeen[1]!['strictMcpConfig']).toBe(true)
+    } finally { pool.closeAll() }
+  })
+
   it('two turns under one key share a process, and the conversation opens only the first', async () => {
     const log: string[] = []
     const { sdk, processes } = fakeSdk(log)

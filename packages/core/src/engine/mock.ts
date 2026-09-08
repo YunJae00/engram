@@ -9,6 +9,7 @@ type MockResponse = string | ((prompt: string) => string)
 
 export class MockEngine implements Engine {
   readonly id = 'mock' as const
+  readonly desktopToolIsolation = true
 
   constructor(
     private responses: Record<string, MockResponse> = {},

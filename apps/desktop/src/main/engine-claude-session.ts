@@ -123,6 +123,7 @@ export class WarmSession {
         systemPrompt: job.system,
         tools: [],
         mcpServers: { [TOOL_SERVER]: server },
+        strictMcpConfig: true,
         allowedTools: allowedToolNames(job.tools),
         permissionMode: 'dontAsk',
         includePartialMessages: true,

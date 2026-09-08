@@ -1,12 +1,12 @@
-import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
+import { DESKTOP_TOOL_ISOLATION_MESSAGE, ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine } from './engine-cloud.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow; each job here is
-// one read-only turn with no network, no commands, and the answer's shape
-// fixed by a schema when the caller asks for one.
+// one read-only turn with web search disabled. This is not an isolated
+// tool session: inherited runtime tools are a separate boundary.
 
 interface CodexSdk {
   Codex: new (options: { codexPathOverride?: string; env?: Record<string, string> }) => {
@@ -47,6 +47,7 @@ export function readLoginStatus(out: string, code: number | null): EngineDetecti
 export class CodexEngine implements CloudEngine {
   readonly id = 'codex' as const
   readonly label = 'ChatGPT'
+  readonly desktopToolIsolation = false
   private readonly status = new StatusCache()
 
   detect(): Promise<EngineDetection> {
@@ -76,6 +77,10 @@ export class CodexEngine implements CloudEngine {
   }
 
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
+    if (job.requireToolIsolation) {
+      yield { type: 'error', kind: 'crash', message: DESKTOP_TOOL_ISOLATION_MESSAGE }
+      return
+    }
     const binary = codexBinary()
     if (!binary) {
       yield { type: 'error', message: 'the ChatGPT runtime is not part of this build', kind: 'crash' }

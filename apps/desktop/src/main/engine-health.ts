@@ -189,6 +189,7 @@ export function engineDto(engine: Engine): EngineStatusDto {
     id: engine.id,
     installed: true,
     loggedIn: true,
+    desktopToolIsolation: engine.desktopToolIsolation === true,
     ...(health ? { healthy: health.healthy, ...(health.reason ? { healthReason: health.reason } : {}) } : {}),
   }
 }

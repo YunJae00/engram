@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Owned browser fixture</title>
+<style>body{font:18px sans-serif;padding:24px;margin:0;background:#fff}input,button{font:inherit;padding:12px;margin:12px}main{height:2200px;background:linear-gradient(#eef5ff,#fff)}#state{position:fixed;right:12px;bottom:12px;background:white;padding:12px}</style>
+<label>Browser entry <input aria-label="Browser entry" id="entry"></label>
+<button id="counter">Browser count 0</button>
+<main>Owned browser input surface</main>
+<div id="state" role="status">Browser scroll 0</div>
+<script>
+document.title = 'Owned browser fixture ' + location.hash.slice(1)
+let count = 0
+document.getElementById('counter').onclick = event => { event.target.textContent = 'Browser count ' + ++count }
+addEventListener('scroll', () => { document.getElementById('state').textContent = 'Browser scroll ' + Math.round(scrollY) })
+</script>
+</html>

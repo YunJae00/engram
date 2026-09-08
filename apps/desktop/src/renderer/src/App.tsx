@@ -5,6 +5,7 @@ import { AppSidebar } from './components/AppSidebar.js'
 import { HelpPanel } from './components/HelpPanel.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
+import { ComputerStatus } from './components/ComputerStatus.js'
 import { TOUR_DONE_KEY } from './lib/tour.js'
 import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
@@ -263,6 +264,7 @@ function Shell() {
         {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
       </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
+      <ComputerStatus />
     </div>
   )
 }

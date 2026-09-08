@@ -9,6 +9,7 @@ import { detectApiKeyEnv } from './installer.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { getSyncStatus } from './team.js'
 import { binaryProvider, type VaultContext } from './vault.js'
+import { stopDesktopControl } from './desktop-control.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
@@ -36,7 +37,10 @@ export function registerSettingsIpc(): void {
       codexModel: settings.codexModel ?? held.codexModel,
     })
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
-    if (settings.defaultEngine !== held.defaultEngine) onBrainChoice?.()
+    if (settings.defaultEngine !== held.defaultEngine) {
+      stopDesktopControl('The AI connection changed. Allow computer control again for the selected connection.')
+      onBrainChoice?.()
+    }
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
     // Live surfaces (the agent terminal's colours) restyle immediately.
     broadcast({ type: 'settings:changed', settings })

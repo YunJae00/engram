@@ -6,6 +6,8 @@ import { ChatComposer } from './ChatComposer.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { WebPaneButton } from './WebPaneButton.js'
+import { ComputerButton } from './ComputerButton.js'
+import { cometChannel } from '../lib/cometThreads.js'
 
 interface Props {
   botId: string
@@ -103,7 +105,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
               <Orbit size={14} strokeWidth={1.8} aria-hidden />
               <span>{t('topbar.tabSky')}</span>
             </button>
-            <WebPaneButton busy={busy} />
+            <WebPaneButton busy={busy} lane={cometChannel(botId)} />
+            <ComputerButton lane={cometChannel(botId)} />
             <ModelPicker />
           </>
         }

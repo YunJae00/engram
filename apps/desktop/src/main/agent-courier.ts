@@ -81,7 +81,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      const done = await routineDriver().type({ text: field }, text, signal)
+      const done = await routineDriver(lane).type({ text: field }, text, signal)
       void page
       return { ok: done.ok }
     },
@@ -89,7 +89,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      const done = await routineDriver().click({ text: target }, signal)
+      const done = await routineDriver(lane).click({ text: target }, signal)
       void page
       return { ok: done.ok }
     },

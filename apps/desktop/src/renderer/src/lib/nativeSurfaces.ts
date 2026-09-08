@@ -21,7 +21,7 @@ let sent = 0
 
 function measure(): void {
   const result: NativeSurfaceDto[] = []
-  const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay')]
+  const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay, .computer-status')]
   if (document.visibilityState === 'visible') for (const [element, lane] of surfaces) {
     const full = element.getBoundingClientRect()
     let left = Math.max(0, full.left), top = Math.max(0, full.top)
