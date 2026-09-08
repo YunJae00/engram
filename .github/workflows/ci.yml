@@ -22,12 +22,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run typecheck
-      - run: pnpm run lint
-      - run: pnpm exec vitest run --project unit --reporter=default --reporter=github-actions
-      - run: pnpm exec vitest run --project timing --reporter=default --reporter=github-actions
-      - run: pnpm run todo-scan
-      - run: pnpm run css-scan
+      - run: npm run check
       # The model catalogue points at someone else's server; a renamed file
       # there is a 404 the first user with that much RAM discovers.
 
@@ -42,7 +37,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run test:e2e
+      - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
