@@ -27,6 +27,9 @@ internal sealed class ControlFixture : Form
     [StructLayout(LayoutKind.Sequential)] private struct Input { internal uint Type; internal Data Data; }
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     private static readonly object Output = new object();
     private readonly TextBox Entry = new TextBox { AccessibleName = "Worker input", Bounds = new Rectangle(18, 20, 450, 30) };
@@ -46,10 +49,17 @@ internal sealed class ControlFixture : Form
         Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller });
         Shown += delegate
         {
-            Entry.Focus();
-            Send(new { type = "ready", window = Handle.ToInt64().ToString(), pid = System.Diagnostics.Process.GetCurrentProcess().Id });
-            var reader = new Thread(Read) { IsBackground = true };
-            reader.Start();
+            BeginInvoke((Action)delegate
+            {
+                // A hidden console launch must not hide the owned test surface.
+                ShowWindow(Handle, 4);
+                if (!IsWindowVisible(Handle) || GetAncestor(Handle, 2) != Handle)
+                { Send(new { type = "fatal", error = "Owned fixture surface is not visible and top-level" }); Close(); return; }
+                Entry.Focus();
+                Send(new { type = "ready", window = Handle.ToInt64().ToString(), pid = System.Diagnostics.Process.GetCurrentProcess().Id, visible = true });
+                var reader = new Thread(Read) { IsBackground = true };
+                reader.Start();
+            });
         };
     }
     private static void Send(object value) { lock (Output) { Console.WriteLine(Json.Serialize(value)); Console.Out.Flush(); } }

@@ -99,14 +99,20 @@ const fixture = new Channel(path.join(output, 'ControlFixture.exe'), ['--ci-fixt
 let helper
 let result = { passed: false, physicalHardwareInterruptionTested: false }
 try {
+  result.stage = 'fixture-ready'
   const ready = await Promise.race([fixture.ready, wait(10000).then(() => { throw new Error('Owned fixture did not start') })])
+  assert.equal(ready.visible, true)
+  result.stage = 'helper-ready'
   helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
   const capability = await Promise.race([helper.ready, wait(10000).then(() => { throw new Error('Desktop helper did not start') })])
   assert.equal(capability.protocol, 2)
   const target = { window: ready.window, pid: ready.pid }
+  result.stage = 'inspect-window'
   await helper.request('inspectWindow', { window: ready.window, pid: 0 })
   const readOnly = await helper.request('observe', target)
   assert.ok(readOnly.nodes.some(node => node.name === 'Worker input'))
+  result.readOnlyPassed = true
+  result.stage = 'bind'
   await fixture.request('focus')
   const active = await helper.request('bind', { ...target, grant: randomUUID() })
   const bound = { ...target, lease: active.lease }
@@ -114,36 +120,48 @@ try {
   let snapshot = await observe()
   const entry = snapshot.nodes.find(node => node.name === 'Worker input')
   assert.ok(entry)
+  result.stage = 'click-entry'
   await helper.request('click', { ...bound, snapshot: snapshot.snapshot, element: entry.id })
   snapshot = await observe()
   assert.equal(snapshot.focusedEditable, true)
+  result.stage = 'unicode-entry'
   await helper.request('type', { ...bound, snapshot: snapshot.snapshot, text: 'alpha 한글 🚀' })
   await until(() => fixture.request('state'), state => state.text === 'alpha 한글 🚀', 'Native Unicode entry did not reach the fixture')
+  result.unicodePassed = true
+  result.stage = 'click-button'
   snapshot = await observe()
   const button = snapshot.nodes.find(node => node.name === 'Count click')
   assert.ok(button)
   await helper.request('click', { ...bound, snapshot: snapshot.snapshot, element: button.id })
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Native click did not reach the fixture')
+  result.clickPassed = true
+  result.stage = 'scroll'
   snapshot = await observe()
   await helper.request('scroll', { ...bound, snapshot: snapshot.snapshot, delta: -3 })
   await until(() => fixture.request('state'), state => state.wheelEvents >= 3 && state.scrollY > 0, 'Native scrolling did not move the fixture content')
+  result.scrollPassed = true
+  result.stage = 'key-and-stop'
   snapshot = await observe()
   await helper.request('key', { ...bound, snapshot: snapshot.snapshot, key: 'Tab' })
   snapshot = await observe()
   await helper.request('stop')
   await assert.rejects(helper.request('key', { ...bound, snapshot: snapshot.snapshot, key: 'Enter' }))
+  result.stopRevocationPassed = true
+  result.stage = 'foreign-input'
   await fixture.request('focus')
   const second = await helper.request('bind', { ...target, grant: randomUUID() })
   await helper.request('observe', { ...target, lease: second.lease })
   await fixture.request('foreignInput')
   await until(async () => helper.events, events => events.some(event => event.type === 'revoked' && event.lease === second.lease), 'Independent input did not revoke desktop control')
   await assert.rejects(helper.request('observe', { ...target, lease: second.lease }))
+  result.foreignInjectedRevocationPassed = true
+  result.stage = 'password'
   await fixture.request('password')
   const protectedView = await helper.request('observe', target)
   assert.ok(protectedView.protectedBounds.length > 0)
   assert.equal(protectedView.focusedEditable, false)
   await assert.rejects(helper.request('bind', { ...target, grant: randomUUID() }))
-  result = { ...result, passed: true, unicodePassed: true, clickPassed: true, scrollPassed: true, keyPassed: true,
+  result = { ...result, stage: 'complete', passed: true, unicodePassed: true, clickPassed: true, scrollPassed: true, keyPassed: true,
     stopRevocationPassed: true, foreignInjectedRevocationPassed: true, passwordRejectionPassed: true, readOnlyPassed: true }
   console.log('Native desktop CI fixture integration passed')
 } catch (error) {
