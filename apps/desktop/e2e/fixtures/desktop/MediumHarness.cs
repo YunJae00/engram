@@ -217,6 +217,7 @@ internal static class MediumHarness
                     Native(DuplicateTokenEx(linked, TokenRights, IntPtr.Zero, 2, 1, out primary), "DuplicateTokenEx");
                 }
                 SameUser(current, Inspect(primary));
+                FixtureAccessProbe.Surfaces(currentToken, primary, logs);
             }
             var jobName = "Local\\EngramDesktopFixture-" + current.Session + "-" + Guid.NewGuid().ToString("D");
             job = CreateJobObject(IntPtr.Zero, jobName);
@@ -237,8 +238,10 @@ internal static class MediumHarness
                 Native(CreateProcessAsUserW(primary, executable, command, IntPtr.Zero, IntPtr.Zero, false, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessAsUserW(restricted caller)");
             else
                 Native(CreateProcessWithTokenW(primary, 0, executable, command, Suspended | UnicodeEnvironment | NoWindow, environment, repository, ref startup, out created), "CreateProcessWithTokenW");
+            FixtureAccessProbe.Stage(logs, "created-suspended", created.Pid, null);
             Native(AssignProcessToJobObject(job, created.Process), "AssignProcessToJobObject");
             assigned = true;
+            FixtureAccessProbe.Stage(logs, "job-assigned", created.Pid, null);
             IntPtr childToken;
             Native(OpenProcessToken(created.Process, 8, out childToken), "OpenProcessToken(child)");
             try
@@ -247,10 +250,14 @@ internal static class MediumHarness
                 if (requiredDeniedGroups != null) RestrictedFixtureToken.Verify(childToken, requiredDeniedGroups);
             }
             finally { CloseHandle(childToken); }
+            FixtureAccessProbe.Stage(logs, "token-verified", created.Pid, null);
+            if (primary != IntPtr.Zero) FixtureAccessProbe.OwnedProcess(created.Process, currentToken, primary, logs);
             Native(ResumeThread(created.Thread) != uint.MaxValue, "ResumeThread");
+            FixtureAccessProbe.Stage(logs, "resumed", created.Pid, null);
             Require(WaitForSingleObject(created.Process, LimitMs + 15000) == 0, "The limited fixture launcher timed out");
             uint code;
             Native(GetExitCodeProcess(created.Process, out code), "GetExitCodeProcess");
+            FixtureAccessProbe.Stage(logs, "exited", created.Pid, code);
             return unchecked((int)code);
         }
         finally

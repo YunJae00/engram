@@ -74,5 +74,7 @@ jobs:
             tmp/desktop-medium-ci-*/harness.log
             tmp/desktop-medium-ci-*/launcher-error.txt
             tmp/desktop-medium-ci-*/*-token.json
+            tmp/desktop-medium-ci-*/*-access.json
+            tmp/desktop-medium-ci-*/child-launch.json
           if-no-files-found: ignore
           retention-days: 7
