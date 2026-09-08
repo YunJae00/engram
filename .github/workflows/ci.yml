@@ -5,13 +5,19 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      native_only:
+        description: Run only the owned Windows desktop fixture
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ inputs.native_only || false }}
   cancel-in-progress: true
 
 jobs:
   check:
+    if: ${{ !inputs.native_only }}
     name: typecheck · lint · unit
     runs-on: ubuntu-latest
     steps:
@@ -27,6 +33,7 @@ jobs:
       # there is a 404 the first user with that much RAM discovers.
 
   e2e:
+    if: ${{ !inputs.native_only }}
     name: end-to-end (Electron)
     runs-on: windows-latest
     steps:
