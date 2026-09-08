@@ -41,7 +41,7 @@ export class GuestWorker {
       ...(process.platform === 'win32' ? ['-L', path.join(path.dirname(this.options.qemu), 'share')] : []),
       '-kernel', path.join(this.options.image, 'kernel'),
       '-initrd', path.join(this.options.image, 'initramfs.cpio.gz'),
-      '-append', 'console=ttyS0,115200 rdinit=/init panic=1',
+      '-append', 'console=ttyS0,115200 rdinit=/init rootfstype=ramfs panic=1',
       '-chardev', `file,id=serial0,path=${path.join(this.directory, 'serial.log')}`,
       '-serial', 'chardev:serial0',
       '-device', 'virtio-vga', '-device', 'qemu-xhci', '-device', 'usb-tablet',
@@ -51,6 +51,12 @@ export class GuestWorker {
       '-fw_cfg', `name=opt/engram/token,string=${this.token}`,
     ]
     const log = createWriteStream(path.join(this.directory, 'qemu.log'), { flags: 'wx' })
+    await new Promise((resolve, reject) => { log.once('open', resolve); log.once('error', reject) })
+    if (this.closing) { log.end(); throw new Error('Guest channel closed') }
+    log.on('error', error => {
+      this.rejectPending(error)
+      if (this.child && !this.closed) this.child.kill()
+    })
     this.child = spawn(this.options.qemu, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
     this.child.stderr.pipe(log)
     this.exited = new Promise(resolve => this.child.once('close', (code, signal) => {
@@ -89,6 +95,7 @@ export class GuestWorker {
         const health = await this.request('/health')
         if (health.workerId !== this.id || !health.bootId) throw new Error('Guest identity mismatch')
         const state = await this.state()
+        if (state.bootId !== health.bootId) throw new Error('Guest identity mismatch')
         if (state.bounds.entry.width > 100 && state.screen.width >= 800) {
           this.bootId = health.bootId
           this.bootMs = Math.round(performance.now() - started)

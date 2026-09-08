@@ -76,7 +76,7 @@ kernel_version=${module_dir##*/}
 case "$module_dir" in /build/rootfs/lib/modules/*) ;; *) exit 1 ;; esac
 depmod -b /build/rootfs "$kernel_version"
 : > /build/module-files
-for module in virtio_pci virtio_gpu virtio_net qemu_fw_cfg psmouse usbhid xhci_pci hid_generic evdev; do
+for module in virtio_pci virtio_gpu virtio_net qemu_fw_cfg psmouse usbhid xhci_pci hid_generic evdev af_packet; do
   modprobe --dirname /build/rootfs --set-version "$kernel_version" --show-depends "$module" \
     | awk '$1 == "insmod" {print $2}' >> /build/module-files
 done
@@ -87,7 +87,7 @@ find "$module_dir" -type f -name '*.ko*' | while IFS= read -r module_file; do
   fi
 done
 depmod -b /build/rootfs "$kernel_version"
-for module in virtio_pci virtio_gpu virtio_net qemu_fw_cfg psmouse usbhid xhci_pci hid_generic evdev; do
+for module in virtio_pci virtio_gpu virtio_net qemu_fw_cfg psmouse usbhid xhci_pci hid_generic evdev af_packet; do
   modprobe --dirname /build/rootfs --set-version "$kernel_version" --show-depends "$module" >/dev/null
 done
 

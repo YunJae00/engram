@@ -102,12 +102,12 @@ try {
     await assert.rejects(old.qmp('query-status'), /closed/)
     const replacement = new GuestWorker(options, 'worker-1-restarted')
     guests.push(replacement)
-    const restarted = replacement.start()
     const surviving = guests[1]
-    await surviving.click('entry')
-    await surviving.typeAscii(' alive')
-    await surviving.until(state => state.text === 'bravo 한글 2 alive', 'Surviving worker lost input during another restart')
-    await restarted
+    await Promise.all([replacement.start(), (async () => {
+      await surviving.click('entry')
+      await surviving.typeAscii(' alive')
+      await surviving.until(state => state.text === 'bravo 한글 2 alive', 'Surviving worker lost input during another restart')
+    })()])
     assert.notEqual(replacement.bootId, old.bootId)
     await replacement.request('/health', undefined, old.token, 401)
     const fresh = await replacement.state()

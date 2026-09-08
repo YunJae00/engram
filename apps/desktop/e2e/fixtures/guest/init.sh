@@ -35,6 +35,9 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 exec </dev/console >/dev/console 2>&1
+if dmesg | grep -q 'Initramfs unpacking failed'; then
+  fail "root filesystem extraction incomplete"
+fi
 mkdir -p /dev/pts
 mount -t devpts -o mode=0620,gid=5 devpts /dev/pts
 mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
@@ -42,7 +45,7 @@ mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
 mkdir -p /run/udev /run/worker /tmp/.X11-unix
 chmod 1777 /tmp/.X11-unix
 hostname engram-worker
-for module in virtio_pci virtio_gpu virtio_net qemu_fw_cfg psmouse usbhid xhci_pci hid_generic evdev; do
+for module in virtio_pci virtio_gpu virtio_net qemu_fw_cfg psmouse usbhid xhci_pci hid_generic evdev af_packet; do
   modprobe "$module" || fail "required virtual device unavailable"
 done
 udevd --daemon
