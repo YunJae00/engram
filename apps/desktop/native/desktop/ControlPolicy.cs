@@ -16,6 +16,10 @@ internal static class ControlPolicy
     };
 
     internal static bool IsSensitive(string value) { return value != null && Sensitive.IsMatch(value); }
+    internal static bool PassivePointer(int message, bool injected) { return message == 0x200 && !injected; }
+    internal static bool HoldKeyboard(bool controlling, uint key, bool injected) { return controlling && key != 27 && !injected; }
+    internal static bool HoldMouse(bool controlling, bool pointing, int message, bool injected)
+    { return controlling && !injected && (message != 0x200 || pointing); }
     internal static ushort[] Chord(string key)
     {
         ushort[] value;

@@ -4,7 +4,7 @@ const fake = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] }, desktopCapturer: {}, screen: {} }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/desktop-overlay.js', () => ({
-  showControlOverlay: vi.fn(), updateControlOverlay: vi.fn(), hideControlOverlay: vi.fn(), overlayPointer: vi.fn(),
+  prepareControlOverlay: vi.fn(async () => '900'), updateControlOverlay: vi.fn(), hideControlOverlay: vi.fn(), overlayPointer: vi.fn(),
 }))
 vi.mock('../src/main/desktop-host.js', () => ({
   DesktopHost: class {

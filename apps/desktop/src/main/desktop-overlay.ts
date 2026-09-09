@@ -9,9 +9,8 @@ import { allowNavigation } from './security.js'
 // says who is moving the mouse, and a companion riding beside the pointer.
 // Every window here is content-protected (absent from the comet's own
 // screenshots), non-focusable (never takes the foreground from the app being
-// controlled) and dies with the app. Nothing in this module may throw into
-// the control loop: a window that fails is a window that is missing, not a
-// reason to stop the hands.
+// controlled) and dies with the app. Input must not start without a visible
+// stop window; an unavailable overlay fails preparation closed.
 
 const PILL_WIDTH = 440
 // The pill is 44 tall; the rest is room for its floating shadow.
@@ -274,6 +273,21 @@ export function showControlOverlay(next: DesktopControlStatusDto): void {
   } catch (error) {
     console.error('control overlay could not be shown', error)
   }
+}
+
+// Native input starts only after the single stop window is visible.
+export async function prepareControlOverlay(next: DesktopControlStatusDto): Promise<string> {
+  showControlOverlay({ ...next, state: 'running' })
+  const expected = pill
+  // A cold renderer can take over five seconds under endpoint protection.
+  // No input is held while waiting, and the loaded windows are reused.
+  const deadline = Date.now() + 30000
+  while (shown && pill === expected && expected && !expected.isDestroyed()) {
+    if (ready.has(expected) && expected.isVisible()) return expected.getNativeWindowHandle().readBigUInt64LE().toString()
+    if (Date.now() >= deadline) break
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error('The computer control stop overlay is unavailable.')
 }
 
 export function updateControlOverlay(next: DesktopControlStatusDto): void {

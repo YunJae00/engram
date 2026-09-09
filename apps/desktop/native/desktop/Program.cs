@@ -57,23 +57,29 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "bind" || method == "click" || method == "type" || method == "scroll" || method == "key";
+            mutation = method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
-            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
+            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, working = monitor.Working, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
             var window = Text(request, "window", 32);
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             var target = guard.Resolve(window, pid);
             if (method == "inspectWindow")
             { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized } }); return; }
-            if (method == "bind")
+            if (method == "bind" || method == "prepare")
             {
                 if (request.ContainsKey("intervention") && Text(request, "intervention", 20) != queued.Intervention.ToString(CultureInfo.InvariantCulture))
                     throw new InvalidOperationException(monitor.Escaped ? "Escape pressed" : "User input changed during foreground delegation");
                 if (queued.Intervention != monitor.Intervention) throw new InvalidOperationException("User input changed after approval. Request new approval");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
                 Func<bool> permitted = delegate { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); };
+                if (method == "prepare")
+                {
+                    monitor.Prepare(target, Text(request, "grant", 64), queued.Intervention, permitted, Overlay(request));
+                    Send(new { id = id, result = new { intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } });
+                    return;
+                }
                 var active = monitor.Bind(target, Text(request, "grant", 64), queued.Intervention, permitted);
                 automation.Validate(target);
                 if (!permitted()) throw new InvalidOperationException("Desktop approval was cancelled while validating the application");
@@ -86,6 +92,14 @@ internal static class Program
             {
                 state = lease.Require(Text(request, "lease", 100));
                 if (state.Target.Id != target.Id || state.Target.Pid != target.Pid) throw new InvalidOperationException("This lease belongs to a different application");
+            }
+            if (method == "work" || method == "idle")
+            {
+                lease.Require(state);
+                if (method == "work") monitor.Work(state, Overlay(request));
+                else monitor.Idle(state);
+                Send(new { id = id, result = new { working = method == "work" } });
+                return;
             }
             if (method == "observe")
             {
@@ -110,6 +124,7 @@ internal static class Program
             }
             if (!mutation || state == null) throw new ArgumentException("A valid desktop control lease is required for this method");
             var snapshot = Text(request, "snapshot", 100);
+            monitor.PointerAction = method == "click" || method == "scroll";
             if (method == "click")
             {
                 string element = request.ContainsKey("element") ? Text(request, "element", 32) : null;
@@ -130,7 +145,16 @@ internal static class Program
             if (mutation) lease.Revoke(error.Message);
             Error(id, error);
         }
-        finally { if (mutation && method != "bind") automation.Invalidate(); }
+        finally { monitor.PointerAction = false; if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate(); }
+    }
+
+    private static IntPtr Overlay(Dictionary<string, object> request)
+    {
+        if (!request.ContainsKey("overlay")) return IntPtr.Zero;
+        long value;
+        if (!long.TryParse(Text(request, "overlay", 20), NumberStyles.None, CultureInfo.InvariantCulture, out value) || value <= 0)
+            throw new ArgumentException("Invalid desktop stop overlay");
+        return new IntPtr(value);
     }
 
     [MTAThread]

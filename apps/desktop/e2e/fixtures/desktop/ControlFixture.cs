@@ -99,6 +99,7 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "hide") Hide();
             else if (method == "grantForeground")
             {
                 var pid = Convert.ToInt32(request["pid"]);
@@ -126,6 +127,7 @@ internal sealed class ControlFixture : Form
             else if (method == "maximize") { WindowState = FormWindowState.Maximized; Marker.Top = ClientSize.Height - 30; }
             else if (method == "restore") { WindowState = FormWindowState.Normal; ClientSize = new Size(630, 420); Marker.Top = 390; }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
+            else if (method == "hidePassword") { Secret.Visible = false; Entry.Focus(); }
             else if (method == "foreignInput" || method == "foreignEscape")
             {
                 if (GetForegroundWindow() != Handle) throw new InvalidOperationException("Only the owned foreground fixture can receive this input");

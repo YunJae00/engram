@@ -23,6 +23,7 @@ const fake = vi.hoisted(() => {
     loadFile = vi.fn(() => Promise.resolve())
     isDestroyed = (): boolean => this.destroyed
     isVisible = (): boolean => this.visible
+    getNativeWindowHandle = (): Buffer => { const value = Buffer.alloc(8); value.writeBigUInt64LE(BigInt(this.webContents.id)); return value }
     webContents = {
       id: WindowDouble.nextId++,
       send: vi.fn(),
@@ -98,6 +99,24 @@ afterEach(() => {
 })
 
 describe('control overlay windows', () => {
+  it('waits for the visible pill before handing its native handle to input control', async () => {
+    const pending = overlay.prepareControlOverlay(running)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(pill().isVisible()).toBe(false)
+    pill().emit('ready-to-show')
+    await vi.advanceTimersByTimeAsync(25)
+    await expect(pending).resolves.toBe(String(pill().webContents.id))
+  })
+
+  it('fails closed when an overlay is cancelled during loading', async () => {
+    const pending = overlay.prepareControlOverlay(running)
+    const rejected = expect(pending).rejects.toThrow('stop overlay is unavailable')
+    overlay.hideControlOverlay()
+    pill().emit('ready-to-show')
+    await vi.advanceTimersByTimeAsync(25)
+    await rejected
+    expect(pill().isVisible()).toBe(false)
+  })
   it('opens one click-through, non-focusable, content-protected glow per display and one pill that takes clicks', () => {
     overlay.showControlOverlay(running)
     expect(glows()).toHaveLength(2)

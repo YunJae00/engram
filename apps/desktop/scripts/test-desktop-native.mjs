@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -67,7 +67,8 @@ class Channel {
       this.waiting.clear()
     })
   }
-  request(method, args = {}) {
+  async request(method, args = {}, prepared = false) {
+    if (method === 'bind' && !prepared) await this.request('prepare', args)
     const id = ++this.sequence
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.waiting.delete(id); reject(new Error(`${method} timed out`)) }, 20000)
@@ -98,6 +99,7 @@ async function until(read, predicate, label) {
 }
 const fixture = new Channel(path.join(output, 'ControlFixture.exe'), ['--ci-fixture'])
 let helper
+let overlayOwner
 let result = { passed: false, physicalHardwareInterruptionTested: false }
 try {
   result.stage = 'fixture-ready'
@@ -134,8 +136,16 @@ try {
   await until(() => helper.request('inputState'), state => state.idleMs >= 150, 'Fixture input did not settle')
   assert.equal((await fixture.request('away')).foreground, false)
   const activationInput = await helper.request('inputState')
+  const cancelledGrant = { ...target, grant: randomUUID(), intervention: activationInput.intervention }
+  await helper.request('prepare', cancelledGrant)
+  await helper.request('stop')
+  await assert.rejects(helper.request('bind', cancelledGrant, true))
+  assert.equal((await fixture.request('state')).foreground, false)
+  result.preparationStopPassed = true
+  const activationGrant = { ...target, grant: randomUUID(), intervention: activationInput.intervention }
+  await helper.request('prepare', activationGrant)
   await fixture.request('grantForeground', { pid: helper.child.pid })
-  const active = await helper.request('bind', { ...target, grant: randomUUID(), intervention: activationInput.intervention })
+  const active = await helper.request('bind', activationGrant, true)
   assert.equal((await fixture.request('state')).foreground, true)
   result.foregroundHandoffPassed = true
   result.foregroundRelayPassed = true
@@ -144,6 +154,14 @@ try {
   let snapshot = await observe()
   const entry = snapshot.nodes.find(node => node.name === 'Worker input')
   assert.ok(entry)
+  result.stage = 'idle-and-work'
+  await helper.request('idle', bound)
+  assert.equal((await helper.request('inputState')).working, false)
+  await wait(200)
+  assert.equal((await helper.request('inputState')).working, false)
+  await helper.request('work', bound)
+  assert.equal((await helper.request('inputState')).working, true)
+  result.idleReleasePassed = true
   result.stage = 'click-entry'
   await helper.request('click', { ...bound, snapshot: snapshot.snapshot, element: entry.id })
   snapshot = await observe()
@@ -195,6 +213,15 @@ try {
   await fixture.request('foreignEscape')
   await until(() => helper.request('inputState'), state => state.escaped === true, 'Escape during pause was not recorded')
   result.pausedEscapePassed = true
+  result.stage = 'escape-while-idle'
+  await fixture.request('focus')
+  const resting = await helper.request('bind', { ...target, grant: randomUUID() })
+  const restingBound = { ...target, lease: resting.lease }
+  await helper.request('idle', restingBound)
+  await fixture.request('foreignEscape')
+  await until(() => helper.request('inputState'), state => state.escaped && !state.working, 'Escape while idle did not stop control')
+  await assert.rejects(helper.request('work', restingBound))
+  result.idleEscapePassed = true
   result.stage = 'password'
   await fixture.request('password')
   const protectedView = await helper.request('observe', target)
@@ -205,6 +232,31 @@ try {
   // The foreground consent owner may grant activation to its owned helper.
   await fixture.request('grantForeground', { pid: helper.child.pid })
   result.browserInputPassed = await testDesktopBrowser(helper, desktop, output, until)
+  result.stage = 'external-stop-overlay'
+  await helper.close()
+  await fixture.request('hidePassword')
+  const ownerPath = path.join(output, 'StopOverlayFixture.exe')
+  copyFileSync(path.join(output, 'ControlFixture.exe'), ownerPath)
+  overlayOwner = new Channel(ownerPath, ['--ci-fixture'])
+  const owner = await overlayOwner.ready
+  helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(owner.pid)])
+  await helper.ready
+  await helper.request('inspectWindow', { window: target.window, pid: 0 })
+  await fixture.request('focus')
+  await assert.rejects(helper.request('bind', { ...target, grant: randomUUID(), overlay: target.window }), /stop control could not be displayed/)
+  const external = await helper.request('bind', { ...target, grant: randomUUID(), overlay: owner.window })
+  const externalBound = { ...target, lease: external.lease, overlay: owner.window }
+  const externalView = await helper.request('observe', externalBound)
+  await helper.request('idle', externalBound)
+  assert.equal((await helper.request('inputState')).working, false)
+  await helper.request('work', externalBound)
+  assert.equal((await helper.request('inputState')).working, true)
+  await helper.request('type', { ...externalBound, snapshot: externalView.snapshot, text: 'Single overlay input' })
+  await until(() => fixture.request('state'), state => state.text.includes('Single overlay input'), 'External-overlay input did not reach the fixture')
+  await overlayOwner.request('hide')
+  await until(() => helper.request('inputState'), state => !state.working, 'Hidden stop overlay did not release input')
+  await assert.rejects(helper.request('work', externalBound))
+  result.externalOverlayPassed = true
   result = { ...result, stage: 'complete', passed: true, unicodePassed: true, clickPassed: true, scrollPassed: true, keyPassed: true,
     stopRevocationPassed: true, foreignInjectedRevocationPassed: true, passwordRejectionPassed: true, readOnlyPassed: true }
   console.log('Native desktop CI fixture integration passed')
@@ -215,6 +267,7 @@ try {
   throw error
 } finally {
   if (helper) await helper.close()
+  if (overlayOwner) await overlayOwner.close()
   await fixture.close()
   writeFileSync(path.join(output, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
   console.log(`Native desktop CI evidence: ${output}`)
