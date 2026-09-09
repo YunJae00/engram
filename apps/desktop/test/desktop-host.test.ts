@@ -237,6 +237,16 @@ describe('native revocation correlation', () => {
     await rejected
   })
 
+  it('keeps the native reason when control is revoked before binding is acknowledged', async () => {
+    const request = host.request('bind', target)
+    const rejected = expect(request).rejects.toThrow('Desktop stop monitoring stalled')
+    await ready()
+    respond({ type: 'revoked', lease: 'early', reason: 'Desktop stop monitoring stalled' })
+    respond({ id: latest('bind'), result: { lease: 'early' } })
+    await rejected
+    expect(child.kill).toHaveBeenCalledOnce()
+  })
+
   it('keeps pre-response revocation history bounded and fails closed instead of forgetting revocations', async () => {
     const request = host.request('bind', target)
     const rejected = expect(request).rejects.toThrow('history is full')

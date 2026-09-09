@@ -79,6 +79,18 @@ afterEach(() => {
 })
 
 describe('taking the computer', () => {
+  it('preserves a read failure on retry rather than blaming Esc or Stop', async () => {
+    const host = binding()
+    host.request.mockImplementation(async (method) => {
+      if (method === 'bind') return { lease: 'native-100' }
+      if (method === 'observe') throw new Error('The app did not acknowledge foreground activation')
+      return { ok: true }
+    })
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('foreground activation')
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('foreground activation')
+    expect(control.desktopControlStatus().reason).toBe('The app did not acknowledge foreground activation')
+    expect(host.request.mock.calls.filter(([method]) => method === 'bind')).toHaveLength(1)
+  })
   it('the first reading takes control: no dialog, the overlay is told who holds it', async () => {
     const host = binding()
     const read = await control.readControlledDesktop(lane, undefined, true)
@@ -273,6 +285,11 @@ describe('acting', () => {
     const first = await control.readControlledDesktop(lane, undefined, true)
     const latest = await control.readControlledDesktop(lane, undefined, true)
     await expect(control.actOnDesktop(lane, { kind: 'click', snapshot: first.snapshot, element: 'e0' })).rejects.toThrow('stale')
+    host.request.mockImplementationOnce(async () => {
+      expect(deps.overlay.pointer).not.toHaveBeenCalled()
+      deps.cursor = { x: -809, y: 44 }
+      return { ok: true }
+    })
     await control.actOnDesktop(lane, { kind: 'click', snapshot: latest.snapshot, x: 1, y: 0 })
     expect(host.request).toHaveBeenCalledWith('click', { window: '100', pid: 200, lease: 'native-100', snapshot: latest.snapshot, x: -809, y: 44 })
     expect(deps.overlay.pointer).toHaveBeenCalledWith({ x: -809, y: 44 }, true)
@@ -296,6 +313,7 @@ describe('acting', () => {
     await expect(control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, element: 'e0' })).rejects.toThrow('Native failure')
     expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: false })
     expect(host.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
+    expect(deps.overlay.pointer).not.toHaveBeenCalled()
   })
 
   it('a cancelled turn releases the native hold at once', async () => {

@@ -1,10 +1,10 @@
-import { Monitor, Pause, ShieldCheck, Square, X } from 'lucide-react'
+import { Pause, ShieldCheck, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DesktopControlStatusDto } from '../../../shared/desktop.js'
 import { desktopError, stopComputerControl, useDesktopSession } from '../lib/desktopSession.js'
 
-// The in-app counterpart of the on-screen banner: the same words, so what the
-// person reads over the app and what they read in Engram never disagree.
+// Live control belongs on the desktop overlay. Keep terminal errors in the
+// app so the reason remains readable after the control windows disappear.
 export function computerStateLabel(control: DesktopControlStatusDto): string {
   const who = control.engineLabel ?? 'The comet'
   if (control.state === 'running') return `${who} is controlling your computer`
@@ -37,7 +37,8 @@ export function ComputerStatus() {
     return () => window.removeEventListener('keydown', escape, true)
   }, [active, control?.state, control?.resumable])
   if (!active || !control) return null
-  const Icon = control.state === 'ready' ? ShieldCheck : control.state === 'running' ? Monitor : Pause
+  if (control.state === 'running' || control.state === 'ready' || (control.state === 'paused' && control.resumable)) return null
+  const Icon = control.state === 'needs-person' ? ShieldCheck : Pause
   const dismiss = control.state === 'paused' && !control.resumable
   return <section className="computer-status" data-state={control.state} data-resumable={control.resumable === true ? 'true' : undefined} data-testid="computer-control-status" aria-label="Computer control">
     <Icon size={16} aria-hidden />

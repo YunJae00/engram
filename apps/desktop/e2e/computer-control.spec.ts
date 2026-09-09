@@ -127,14 +127,11 @@ test('no picker anywhere: the tiles show pages, the composer has no computer swi
   await expect(page.getByTestId('computer-control-status')).toHaveCount(0)
 })
 
-test('the banner names the brain at work, Esc takes the computer back, Dismiss clears it', async () => {
+test('live control stays out of the app, Esc takes it back and Dismiss clears it', async () => {
   await orbit()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   const banner = page.getByTestId('computer-control-status')
-  await expect(banner).toContainText('Claude is controlling your computer')
-  await expect(banner).toContainText('Excel')
-  await expect(banner).toContainText('Esc to take over')
-  await expect(banner).not.toContainText('Allow')
+  await expect(banner).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect.poll(async () => (await state()).stops).toBe(1)
   await expect(banner).toContainText('Computer control is off')
@@ -144,13 +141,12 @@ test('the banner names the brain at work, Esc takes the computer back, Dismiss c
   expect((await state()).stops).toBe(2)
 })
 
-test('a hands-on pause says the comet carries on by itself, and the stop stays reachable at every width', async () => {
+test('live pauses stay on the desktop while terminal errors remain readable at every width', async () => {
   await orbit()
   await control({ state: 'paused', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', resumable: true })
   const banner = page.getByTestId('computer-control-status')
-  await expect(banner).toContainText('You took over')
-  await expect(banner).toContainText('Claude continues once your hands have been still')
-  await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
+  await expect(banner).toHaveCount(0)
+  await control({ state: 'paused', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude', resumable: false, reason: 'The app could not be read.' })
   await mkdir(join(TMP, 'desktop-control-ui'), { recursive: true })
   for (const width of [1440, 760]) {
     await page.setViewportSize({ width, height: 900 })
@@ -180,7 +176,8 @@ test('settings carry one switch for computer use, and its state', async () => {
   await expect(toggle).not.toBeChecked()
   await toggle.check()
   await expect(settings).toContainText('Claude is controlling your computer')
-  expect(await page.locator('.settings-box').evaluate((box) => box.getBoundingClientRect().bottom <= document.querySelector('.computer-status')!.getBoundingClientRect().top)).toBe(true)
+  await expect(page.getByTestId('computer-control-status')).toHaveCount(0)
+  expect(await settings.evaluate((box) => box.getBoundingClientRect().bottom <= innerHeight)).toBe(true)
   await toggle.uncheck()
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then((value) => value.computerUse))).toBe(false)
   await control({ state: 'idle' })

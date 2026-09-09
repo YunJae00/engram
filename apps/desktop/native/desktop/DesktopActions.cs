@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Windows;
 
 internal sealed class DesktopActions
@@ -24,6 +25,30 @@ internal sealed class DesktopActions
         Lease.Require(state);
     }
     private void Move(LeaseState state, string snapshot, Point point)
+    {
+        DesktopNative.Point cursor;
+        if (!DesktopNative.GetCursorPos(out cursor)) throw new InvalidOperationException("The pointer position is unavailable");
+        var from = new Point(cursor.X, cursor.Y);
+        // Only animate inside the granted window; never route through another app.
+        if (DesktopNative.AtTarget(state.Target.Handle, cursor.X, cursor.Y))
+        {
+            var duration = Math.Min(280, 100 + (point - from).Length * 0.18);
+            var watch = Stopwatch.StartNew();
+            while (watch.ElapsedMilliseconds < duration)
+            {
+                MoveTo(state, snapshot, MotionPoint(from, point, watch.ElapsedMilliseconds / duration));
+                Thread.Sleep(12);
+            }
+        }
+        MoveTo(state, snapshot, point);
+    }
+    internal static Point MotionPoint(Point from, Point to, double progress)
+    {
+        var t = Math.Max(0, Math.Min(1, progress));
+        var eased = t * t * (3 - 2 * t);
+        return new Point(Math.Round(from.X + (to.X - from.X) * eased), Math.Round(from.Y + (to.Y - from.Y) * eased));
+    }
+    private void MoveTo(LeaseState state, string snapshot, Point point)
     {
         var left = DesktopNative.GetSystemMetrics(76);
         var top = DesktopNative.GetSystemMetrics(77);

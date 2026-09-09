@@ -5,6 +5,7 @@ import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } 
 import { bindDesktopForLane, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
 import { hideControlOverlay, overlayPointer, showControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import { broadcast } from './engine-health.js'
+import { flog } from './flog.js'
 
 // Control is taken by the comet's first reading of an app and given back by
 // the person's hands. There is no dialog: the banner on the screen is the
@@ -27,7 +28,7 @@ let paused: { lane: string; engine: DesktopEngineId; resumable: boolean; release
 let starting: Promise<DesktopBinding> | undefined
 let startingLane: string | undefined
 let cancellation = 0
-const stoppedTurns = new Set<string>()
+const stoppedTurns = new Map<string, string>()
 const observations = new Map<string, DesktopObservationDto>()
 
 setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, RESUMABLE.test(reason)))
@@ -49,7 +50,7 @@ export function desktopControlStatus(): DesktopControlStatusDto {
   return {
     ...(state.state === 'running' && !active?.native ? { ...state, state: 'ready' } : state),
     ...(engine ? { engine, engineLabel: LABEL[engine] } : {}),
-    ...(state.state === 'paused' ? { resumable: paused?.resumable === true } : {}),
+    ...(state.state === 'paused' ? { resumable: paused?.resumable === true, ...(state.lane && stoppedTurns.has(state.lane) ? { reason: stoppedTurns.get(state.lane) } : {}) } : {}),
   }
 }
 
@@ -64,8 +65,9 @@ export function stopDesktopControl(reason = 'You stopped computer control.', res
   if (!resumable) {
     cancellation++
     const lane = active?.binding.lane ?? paused?.lane ?? startingLane
-    if (lane) stoppedTurns.add(lane)
+    if (lane) stoppedTurns.set(lane, reason)
   }
+  if (active || startingLane) flog('desktop-control-stop', reason)
   const held = active
   active = undefined
   observations.clear()
@@ -78,6 +80,13 @@ export function stopDesktopControl(reason = 'You stopped computer control.', res
   } else if (paused) paused = { ...paused, resumable: paused.resumable && resumable }
   paused?.release?.()
   announce()
+}
+
+function stoppedError(lane: string): Error {
+  const reason = stoppedTurns.get(lane) ?? lease.state().reason ?? 'Computer control stopped.'
+  const detail = /^(You stopped computer control\.?|Escape pressed|Stopped by the user)$/i.test(reason)
+    ? 'The person took the computer back with Esc or Stop.' : reason
+  return new Error(`${detail} Computer control was cancelled for this turn. Ask before using it again.`)
 }
 
 // Esc or the Stop button: the person's word, for the rest of this turn.
@@ -177,14 +186,17 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
   const epoch = cancellation
   const check = () => {
     options.signal?.throwIfAborted()
-    if (epoch !== cancellation) throw new Error('Computer control was cancelled. Ask before using it again.')
+    if (epoch !== cancellation) {
+      if (stoppedTurns.has(lane)) throw stoppedError(lane)
+      throw new Error('Computer control was cancelled. Ask before using it again.')
+    }
   }
   options.signal?.throwIfAborted()
   while (starting) { await starting.catch(() => undefined); check() }
   const run = (async () => {
     const engine = await engineForControl()
     check()
-    if (stoppedTurns.has(lane)) throw new Error('The person took the computer back with Esc or Stop. Ask them before using it again.')
+    if (stoppedTurns.has(lane)) throw stoppedError(lane)
     if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
     const id = engineOf(engine.id)
     if ((active && active.binding.lane !== lane) || (paused?.resumable && paused.lane !== lane)) throw new Error('Another chat is using the computer right now. Wait for it to finish.')
@@ -197,7 +209,7 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
       stopDesktopControl('The comet moved to another app.', true)
       paused = undefined
     }
-    if (paused && paused.lane === lane && !paused.resumable) throw new Error('The person took the computer back with Esc or Stop. Ask them before using it again.')
+    if (paused && paused.lane === lane && !paused.resumable) throw stoppedError(lane)
     let tries = 0
     for (;;) {
       if (paused?.lane === lane) await awaitStillHands(options.signal)
@@ -243,7 +255,7 @@ export async function readControlledDesktop(lane: string, signal?: AbortSignal, 
   if (agent) signal?.addEventListener('abort', stop, { once: true })
   try { return await readBoundDesktop(lane, signal, agent, app) }
   catch (error) {
-    if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, 'The app could not be observed safely.')
+    if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.')
     throw error
   } finally { signal?.removeEventListener('abort', stop) }
 }
@@ -270,26 +282,20 @@ export async function actOnDesktop(lane: string, action: DesktopAction, signal?:
           if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width <= 0 || bounds.height <= 0) throw new Error('Observe an app with verified client coordinates before clicking by position.')
           args['x'] = Math.round(bounds.x + action.x * (bounds.width - 1))
           args['y'] = Math.round(bounds.y + action.y * (bounds.height - 1))
-          pointAt(Number(args['x']), Number(args['y']))
         }
       } else if (action.kind === 'type') args['text'] = action.text
       else if (action.kind === 'scroll') args['delta'] = action.delta
       else args['key'] = action.key
       await held.binding.host.request(action.kind, args)
       signal?.throwIfAborted()
+      if (action.kind === 'click') {
+        const point = cursor()
+        if (point) overlayPointer(point, true)
+      }
       return 'Input was dispatched to the app. Observe it again to verify the outcome before claiming success or taking another action.'
     })
   } catch (error) {
     if (active?.token === token) stopDesktopForLane(lane, 'Computer control stopped after an action could not be verified.')
     throw error
   } finally { signal?.removeEventListener('abort', stop) }
-}
-
-// The overlay's hand rides to where the click lands. Native points are
-// physical pixels; the overlay speaks DIPs.
-function pointAt(x: number, y: number): void {
-  try {
-    const dip = typeof screen.screenToDipPoint === 'function' ? screen.screenToDipPoint({ x, y }) : { x, y }
-    overlayPointer(dip, true)
-  } catch { /* A missing display is not a reason to fail the click. */ }
 }

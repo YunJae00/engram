@@ -70,7 +70,7 @@ export async function desktopSources(): Promise<DesktopCapturerSource[]> {
 }
 export async function desktopWindows(): Promise<DesktopWindowDto[]> {
   if (!DesktopHost.available()) return []
-  const host = bindings.values().next().value?.host ?? hostFor('')
+  const host = [...bindings.values()].find((binding) => !binding.host.closed)?.host ?? hostFor('')
   try { return (await nativeWindows(host)).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.foreground ? { foreground: true } : {}) })) }
   finally { if (![...bindings.values()].some((binding) => binding.host === host)) host.close() }
 }
@@ -96,7 +96,7 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     const target = candidates.find((one) => !one.minimized && one.foreground) ?? candidates.find((one) => !one.minimized) ?? candidates[0]
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open that app first, or call list_windows to see what is open.` : 'No app window is in front to work in. Name one with app, or open it first.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
-    const taken = [...bindings.values()].find((binding) => binding.window === target.window && binding.lane !== lane)
+    const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)
     if (taken) throw new Error(`"${target.title}" belongs to another chat right now.`)
     if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; return current }
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
@@ -112,7 +112,7 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
   if (typeof lane !== 'string' || !LANE.test(lane)) throw new Error('Choose a valid chat first.')
   if (typeof sourceId !== 'string' || !/^window:\d+:\d+$/.test(sourceId)) throw new Error('Choose a valid app window.')
   if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
-  if ([...bindings.values()].some((binding) => binding.source === sourceId && binding.lane !== lane)) throw new Error('This window already belongs to another chat. Choose a different window.')
+  if ([...bindings.values()].some((binding) => !binding.host.closed && binding.source === sourceId && binding.lane !== lane)) throw new Error('This window already belongs to another chat. Choose a different window.')
   const choice = (choices.get(lane) ?? 0) + 1
   choices.set(lane, choice)
   const window = /^window:(\d+):/.exec(sourceId)![1]!
@@ -122,7 +122,7 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
     if (host.closed) throw new Error('This app connection ended. Reconnect the app window to continue.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     // Recheck after enumeration so concurrent selections cannot share a window.
-    if ([...bindings.values()].some((binding) => binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
+    if ([...bindings.values()].some((binding) => !binding.host.closed && binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     releaseControl(lane, 'The selected app window changed.')
     bindings.get(lane)?.host.close()

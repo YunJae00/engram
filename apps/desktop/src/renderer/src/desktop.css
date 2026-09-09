@@ -129,20 +129,17 @@
   .desktop-source-picker, .desktop-controls, .computer-spinner { animation: none; }
 }
 
-/* ── Control overlay: the see-through windows over every display while a
-   comet holds the computer. The engine's tint is the only colour of its own;
-   everything else is the panel's. */
+/* The desktop overlay uses one activity colour across engines. */
 .control-host { background: transparent; }
-.control-overlay, .control-pill { --control-tint: var(--work-running); }
-.control-overlay[data-engine='claude'], .control-pill[data-engine='claude'] { --control-tint: #d97757; }
-.control-overlay[data-engine='codex'], .control-pill[data-engine='codex'] { --control-tint: #10a37f; }
+.control-overlay, .control-pill { --control-tint: #527fe3; }
+.control-overlay[data-state='paused'], .control-pill[data-state='paused'] { --control-tint: #c58c45; }
 .control-overlay { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
 .control-overlay-glow {
   position: absolute; inset: 0;
   box-shadow:
-    inset 0 0 90px -20px color-mix(in srgb, var(--control-tint) 55%, transparent),
-    inset 0 0 24px color-mix(in srgb, var(--control-tint) 35%, transparent),
-    inset 0 0 0 2px color-mix(in srgb, var(--control-tint) 45%, transparent);
+    inset 0 0 72px -20px color-mix(in srgb, var(--control-tint) 45%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--control-tint) 28%, transparent),
+    inset 0 0 0 2px color-mix(in srgb, var(--control-tint) 55%, transparent);
 }
 .control-overlay[data-state='running'] .control-overlay-glow { animation: control-breathe 3.2s ease-in-out infinite; }
 .control-overlay[data-state='paused'] .control-overlay-glow { opacity: 0.5; }
@@ -150,7 +147,7 @@
 .control-overlay-cursor[data-awake='true'] { opacity: 1; }
 .control-overlay-mark, .control-overlay-ghost { position: absolute; left: 0; top: 0; display: block; width: 22px; height: 22px; line-height: 0; will-change: transform; }
 .control-overlay-mark {
-  transition: transform 90ms var(--ease-out);
+  transition: transform 35ms linear;
   filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--control-tint) 45%, transparent));
 }
 .control-overlay-mark[data-pressed] { animation: control-press 260ms var(--ease-out); }

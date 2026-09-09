@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { flog } from './flog.js'
 
 export type DesktopMethod = 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
 const METHODS = new Set<DesktopMethod>(['inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
@@ -75,6 +76,7 @@ export class DesktopHost {
         if (message.type === 'revoked') {
           if (!nativeLease(message.lease)) { fail(); return }
           const reason = typeof message.reason === 'string' ? message.reason.slice(0, 500) : 'Computer control stopped.'
+          flog('desktop-native-revoked', reason)
           if (!this.rememberRevoked(message.lease, reason)) return
           if (message.lease === this.currentNative) {
             this.invalidate(reason)
@@ -90,6 +92,7 @@ export class DesktopHost {
         if (pending.generation !== this.generation) { pending.reject(new Error('Computer action was cancelled.')); return }
         if (message.error) {
           const error = new Error(typeof message.error === 'string' ? message.error.slice(0, 500) : 'The desktop request failed.')
+          flog('desktop-native-error', `${pending.method}: ${error.message}`)
           pending.reject(error)
           if (pending.method === 'bind') this.close(error)
           return
@@ -98,7 +101,8 @@ export class DesktopHost {
           const result = message.result as { lease?: unknown } | null
           const id = result && typeof result === 'object' && !Array.isArray(result) ? result.lease : undefined
           if (!nativeLease(id) || this.revoked.has(id)) {
-            const error = new Error('Desktop control was revoked or its native lease could not be verified.')
+            const reason = nativeLease(id) ? this.revoked.get(id) : undefined
+            const error = new Error(reason ? `Desktop control was revoked: ${reason}` : 'Desktop control was revoked or its native lease could not be verified.')
             pending.reject(error)
             this.close(error)
             return

@@ -24,6 +24,17 @@ internal static class DesktopSelfTest
     {
         try
         {
+            var from = new System.Windows.Point(-1200, 30);
+            var to = new System.Windows.Point(-200, 630);
+            Check(DesktopActions.MotionPoint(from, to, 0) == from, "Motion starts at the current pointer");
+            Check(DesktopActions.MotionPoint(from, to, 1) == to, "Motion lands exactly at the target");
+            var prior = from;
+            for (var step = 1; step <= 20; step++)
+            {
+                var point = DesktopActions.MotionPoint(from, to, step / 20.0);
+                Check(point.X >= prior.X && point.Y >= prior.Y && point.X <= to.X && point.Y <= to.Y, "Motion must not overshoot on negative-coordinate displays");
+                prior = point;
+            }
             var revocations = 0;
             var lease = new ControlLease(delegate { revocations++; });
             var target = Target();

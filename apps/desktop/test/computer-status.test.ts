@@ -21,21 +21,13 @@ describe('the in-app control banner', () => {
 
   it('names the brain at work and the way out', () => {
     fake.session.control = { state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' }
-    const html = render()
-    expect(html).toContain('Claude is controlling your computer')
-    expect(html).toContain('Excel')
-    expect(html).toContain('Esc to take over')
-    expect(html).toContain('data-testid="computer-control-stop"')
-    expect(html).toContain('Stop')
-    expect(html).not.toContain('Allow')
+    expect(render()).toBe('')
+    expect(computerStateLabel(fake.session.control)).toBe('Claude is controlling your computer')
   })
 
   it('a hands-on pause says the comet will carry on by itself', () => {
     fake.session.control = { state: 'paused', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', resumable: true }
-    const html = render()
-    expect(html).toContain('You took over')
-    expect(html).toContain('Claude continues once your hands have been still')
-    expect(html).toContain('Stop')
+    expect(render()).toBe('')
   })
 
   it('Esc or Stop reads as off, with the next task as the way back', () => {

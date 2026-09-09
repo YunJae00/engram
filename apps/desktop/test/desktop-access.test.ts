@@ -96,6 +96,37 @@ describe('binding the app the comet needs', () => {
 })
 
 describe('the connection through hands and closures', () => {
+  it('does not let a closed connection reserve a window against a new chat', async () => {
+    const first = await bindDesktopForLane(lane)
+    first.host.close()
+    const next = await bindDesktopForLane(other)
+    expect(next.window).toBe(first.window)
+    expect(next.host).not.toBe(first.host)
+    expect(next.host.closed).toBe(false)
+    await expect(bindDesktopForLane(lane)).rejects.toThrow('belongs to another chat')
+  })
+
+  it('lists windows after a previous chat connection closed without reconnecting that chat', async () => {
+    const binding = await bindDesktopForLane(lane)
+    binding.host.close()
+    await expect(desktopWindows()).resolves.toHaveLength(3)
+    expect(fake.hosts).toHaveLength(2)
+    expect(fake.request.mock.contexts.at(-1)).toBe(fake.hosts[1])
+    expect(fake.hosts[1]!.closed).toBe(true)
+    expect(desktopBinding(lane)).toBe(binding)
+    expect(binding.stopped).toBe(true)
+  })
+
+  it('reuses a live connection instead of an earlier closed connection for window listing', async () => {
+    const first = await bindDesktopForLane(lane)
+    first.host.close()
+    const second = await bindDesktopForLane(other, { app: 'Notepad' })
+    await expect(desktopWindows()).resolves.toHaveLength(3)
+    expect(fake.request.mock.contexts.at(-1)).toBe(second.host)
+    expect(second.host.closed).toBe(false)
+    expect(fake.hosts).toHaveLength(2)
+  })
+
   it('a hand on the mouse reaches control but leaves the app readable', async () => {
     await bindDesktopForLane(lane)
     fake.hosts[0]!.revoke()

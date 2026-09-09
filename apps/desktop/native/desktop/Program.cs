@@ -125,7 +125,7 @@ internal static class Program
         }
         catch (Exception error)
         {
-            if (mutation) lease.Revoke("Desktop action failed; inspect the application before granting control again");
+            if (mutation) lease.Revoke(error.Message);
             Error(id, error);
         }
         finally { if (mutation && method != "bind") automation.Invalidate(); }
