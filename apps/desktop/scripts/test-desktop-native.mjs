@@ -274,6 +274,9 @@ try {
     const { method, ...input } = action
     await helper.request(method, { ...deepBound, snapshot: deepView.snapshot, ...input })
   }
+  await until(() => helper.request('observe', deepBound),
+    view => view.focusedControl === deepEditor.runtimeId && view.nodes.some(node => node.runtimeId === deepEditor.runtimeId && node.value === 'Verified draft'),
+    'The focused partial observation did not confirm the complete edited value')
   assert.equal((await fixture.request('state')).deepText, 'Verified draft')
   await helper.request('stop')
   result.partialFocusedEditingPassed = true

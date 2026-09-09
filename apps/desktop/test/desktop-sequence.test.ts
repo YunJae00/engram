@@ -63,6 +63,7 @@ it('edits an anchored field in a large partial view without additional model cal
   const result = JSON.parse(await desktopSequence('bot-test', [...edits]))
   expect(result.completed).toBe(3)
   expect(result.error).toBeUndefined()
+  expect(result.requiresVerification).toBe(true)
   expect(fake.act).toHaveBeenCalledTimes(3)
   expect(fake.read).toHaveBeenCalledTimes(4)
 })

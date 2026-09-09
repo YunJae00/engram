@@ -54,7 +54,7 @@ export async function desktopSequence(lane: string, actions: DesktopAction[], si
       if (editing) verifyEditor(observation, true)
       completed++
     }
-    return JSON.stringify({ completed, elapsedMs: Math.round(performance.now() - start), observation })
+    return JSON.stringify({ completed, elapsedMs: Math.round(performance.now() - start), observation, requiresVerification: true })
   } catch (error) {
     signal?.throwIfAborted()
     return JSON.stringify({ completed, dispatched, failedStep, error: error instanceof Error ? error.message : String(error), elapsedMs: Math.round(performance.now() - start), observation, observationMayBeStale: true })
