@@ -234,6 +234,7 @@ try {
   result.browserInputPassed = await testDesktopBrowser(helper, desktop, output, until)
   result.stage = 'external-stop-overlay'
   await helper.close()
+  await fixture.request('hidePassword')
   const ownerPath = path.join(output, 'StopOverlayFixture.exe')
   copyFileSync(path.join(output, 'ControlFixture.exe'), ownerPath)
   overlayOwner = new Channel(ownerPath, ['--ci-fixture'])
