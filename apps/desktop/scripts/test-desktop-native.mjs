@@ -153,6 +153,14 @@ try {
   let snapshot = await observe()
   const entry = snapshot.nodes.find(node => node.name === 'Worker input')
   assert.ok(entry)
+  result.stage = 'idle-and-work'
+  await helper.request('idle', bound)
+  assert.equal((await helper.request('inputState')).working, false)
+  await wait(200)
+  assert.equal((await helper.request('inputState')).working, false)
+  await helper.request('work', bound)
+  assert.equal((await helper.request('inputState')).working, true)
+  result.idleReleasePassed = true
   result.stage = 'click-entry'
   await helper.request('click', { ...bound, snapshot: snapshot.snapshot, element: entry.id })
   snapshot = await observe()
@@ -204,6 +212,15 @@ try {
   await fixture.request('foreignEscape')
   await until(() => helper.request('inputState'), state => state.escaped === true, 'Escape during pause was not recorded')
   result.pausedEscapePassed = true
+  result.stage = 'escape-while-idle'
+  await fixture.request('focus')
+  const resting = await helper.request('bind', { ...target, grant: randomUUID() })
+  const restingBound = { ...target, lease: resting.lease }
+  await helper.request('idle', restingBound)
+  await fixture.request('foreignEscape')
+  await until(() => helper.request('inputState'), state => state.escaped && !state.working, 'Escape while idle did not stop control')
+  await assert.rejects(helper.request('work', restingBound))
+  result.idleEscapePassed = true
   result.stage = 'password'
   await fixture.request('password')
   const protectedView = await helper.request('observe', target)

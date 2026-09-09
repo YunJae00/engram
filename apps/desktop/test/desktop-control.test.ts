@@ -6,7 +6,7 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 const deps = vi.hoisted(() => ({
   bindings: new Map<string, unknown>(),
   bind: vi.fn(), changed: vi.fn(), broadcast: vi.fn(),
-  overlay: { show: vi.fn(), update: vi.fn(), hide: vi.fn(), pointer: vi.fn() },
+  overlay: { show: vi.fn(), prepare: vi.fn(), update: vi.fn(), hide: vi.fn(), pointer: vi.fn() },
   cursor: { x: 10, y: 10 },
   release: undefined as ((lane: string, reason: string) => void) | undefined,
 }))
@@ -19,7 +19,7 @@ vi.mock('../src/main/desktop-access.js', () => ({
 }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
 vi.mock('../src/main/desktop-overlay.js', () => ({
-  showControlOverlay: deps.overlay.show, updateControlOverlay: deps.overlay.update, hideControlOverlay: deps.overlay.hide, overlayPointer: deps.overlay.pointer,
+  showControlOverlay: deps.overlay.show, prepareControlOverlay: deps.overlay.prepare, updateControlOverlay: deps.overlay.update, hideControlOverlay: deps.overlay.hide, overlayPointer: deps.overlay.pointer,
 }))
 
 const lane = 'bot-first'
@@ -68,6 +68,7 @@ beforeEach(async () => {
   deps.changed.mockReset()
   deps.broadcast.mockReset()
   for (const spy of Object.values(deps.overlay)) spy.mockReset()
+  deps.overlay.prepare.mockResolvedValue('900')
   deps.release = undefined
   control = await import('../src/main/desktop-control.js')
   control.setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: true }))
@@ -79,6 +80,64 @@ afterEach(() => {
 })
 
 describe('taking the computer', () => {
+  it('releases input and hides the overlay between desktop tools without discarding the snapshot', async () => {
+    const host = binding()
+    const read = await control.withDesktopActivity(lane, () => control.readControlledDesktop(lane, undefined, true))
+    expect(host.request).toHaveBeenLastCalledWith('idle', { window: '100', pid: 200, lease: 'native-100' })
+    expect(control.desktopControlStatus().state).toBe('ready')
+    expect(deps.overlay.hide).toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(host.request.mock.calls.filter(([method]) => method === 'work')).toHaveLength(0)
+    await control.withDesktopActivity(lane, () => control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, element: 'e0' }))
+    expect(host.request).toHaveBeenCalledWith('work', { window: '100', pid: 200, lease: 'native-100', overlay: '900' })
+    expect(grants(host.request)).toHaveLength(1)
+    expect(control.desktopControlStatus().state).toBe('ready')
+  })
+
+  it('waits for input release before starting another queued desktop tool', async () => {
+    const host = binding()
+    let release!: () => void
+    const original = host.request.getMockImplementation()!
+    host.request.mockImplementation(async (method, args) => {
+      if (method === 'idle') await new Promise<void>((resolve) => { release = resolve })
+      return original(method, args)
+    })
+    const first = control.withDesktopActivity(lane, () => control.readControlledDesktop(lane, undefined, true))
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    const run = vi.fn(async () => 'next')
+    const next = control.withDesktopActivity(lane, run)
+    await Promise.resolve()
+    expect(run).not.toHaveBeenCalled()
+    release()
+    await first
+    await expect(next).resolves.toBe('next')
+    expect(run).toHaveBeenCalledOnce()
+  })
+
+  it('cannot start native control after Stop while the overlay is loading', async () => {
+    const host = binding()
+    let ready!: (handle: string) => void
+    deps.overlay.prepare.mockImplementation(() => new Promise<string>((resolve) => { ready = resolve }))
+    const pending = control.withDesktopActivity(lane, () => control.readControlledDesktop(lane, undefined, true))
+    const rejected = expect(pending).rejects.toThrow()
+    await vi.waitFor(() => expect(ready).toBeTypeOf('function'))
+    control.stopDesktopFromUi()
+    ready('900')
+    await rejected
+    expect(grants(host.request)).toHaveLength(0)
+    expect(deps.overlay.hide).toHaveBeenCalled()
+  })
+
+  it('releases the native hold when a screenshot tool fails after taking control', async () => {
+    const host = binding()
+    await expect(control.withDesktopActivity(lane, async () => {
+      await control.readControlledDesktop(lane, undefined, true)
+      throw new Error('Screenshot validation failed')
+    })).rejects.toThrow('Screenshot validation failed')
+    expect(host.request).toHaveBeenLastCalledWith('idle', expect.objectContaining({ lease: 'native-100' }))
+    expect(control.desktopControlStatus().state).toBe('ready')
+  })
+
   it('preserves a read failure on retry rather than blaming Esc or Stop', async () => {
     const host = binding()
     host.request.mockImplementation(async (method) => {
@@ -95,11 +154,11 @@ describe('taking the computer', () => {
     const host = binding()
     const read = await control.readControlledDesktop(lane, undefined, true)
     expect(read.snapshot).toBe('snapshot-1')
-    expect(host.request).toHaveBeenNthCalledWith(1, 'bind', { window: '100', pid: 200, grant: expect.any(String) })
-    expect(host.request).toHaveBeenNthCalledWith(2, 'observe', { window: '100', pid: 200, lease: 'native-100' })
+    expect(host.request).toHaveBeenCalledWith('bind', { window: '100', pid: 200, grant: expect.any(String), overlay: '900' })
+    expect(host.request).toHaveBeenCalledWith('observe', { window: '100', pid: 200, lease: 'native-100' })
     expect(host.value.readable).toBe(true)
     expect(control.desktopControlStatus()).toMatchObject({ state: 'running', lane, name: 'Editor', engine: 'claude', engineLabel: 'Claude' })
-    expect(deps.overlay.show).toHaveBeenCalledOnce()
+    expect(deps.overlay.prepare).toHaveBeenCalledOnce()
     expect(status()).toMatchObject({ state: 'running', engineLabel: 'Claude' })
   })
 

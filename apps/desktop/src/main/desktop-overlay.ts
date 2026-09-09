@@ -276,6 +276,19 @@ export function showControlOverlay(next: DesktopControlStatusDto): void {
   }
 }
 
+// Native input starts only after the single stop window is visible.
+export async function prepareControlOverlay(next: DesktopControlStatusDto): Promise<string> {
+  showControlOverlay({ ...next, state: 'running' })
+  const expected = pill
+  const deadline = Date.now() + 5000
+  while (shown && pill === expected && expected && !expected.isDestroyed()) {
+    if (ready.has(expected) && expected.isVisible()) return expected.getNativeWindowHandle().readBigUInt64LE().toString()
+    if (Date.now() >= deadline) break
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error('The computer control stop overlay is unavailable.')
+}
+
 export function updateControlOverlay(next: DesktopControlStatusDto): void {
   try {
     status = next

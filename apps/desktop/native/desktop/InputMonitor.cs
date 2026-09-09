@@ -29,12 +29,13 @@ internal sealed class InputMonitor : IDisposable
     private long PrepareUntil;
     private string PreparedGrant;
     internal volatile bool PointerAction;
+    private IntPtr Overlay;
 
     internal InputMonitor(ControlLease lease, WindowGuard guard)
     {
         Lease = lease;
         Guard = guard;
-        Packets = new PacketGate(lease, target => Guard.FastCurrent(target));
+        Packets = new PacketGate(lease, target => Armed && Guard.FastCurrent(target));
         KeyboardCallback = OnKeyboard;
         MouseCallback = OnMouse;
         Loop = new Thread(Run) { IsBackground = true, Name = "Desktop input monitor" };
@@ -51,7 +52,8 @@ internal sealed class InputMonitor : IDisposable
             if (state != null && !Lease.Valid(state)) Lease.Revoke("Desktop control expired");
             if (Preparing) {
                 if (unchecked((int)((uint)Interlocked.Read(ref PrepareUntil) - (uint)Environment.TickCount)) <= 0) Lease.Revoke("Computer control preparation timed out");
-            } else if (Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke("The selected window or desktop changed");
+            } else if (Armed && Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke("The selected window or desktop changed");
+            if (Armed && Overlay != IntPtr.Zero && !Guard.OwnerOverlay(Overlay)) Lease.Revoke("The desktop stop overlay closed");
         }, null, 100, 100);
     }
 
@@ -124,12 +126,14 @@ internal sealed class InputMonitor : IDisposable
     internal long Intervention { get { return Interlocked.Read(ref InterventionCount); } }
     internal uint IdleMilliseconds { get { return unchecked((uint)Environment.TickCount - (uint)Interlocked.Read(ref LastInput)); } }
     internal bool Escaped { get { return Volatile.Read(ref EscapeSeen) != 0; } }
+    internal bool Working { get { return Armed && Lease.Valid(Lease.State); } }
 
     // Native Stop remains available independently of the renderer overlay.
-    private bool Armed;
-    private bool Controlling { get { return Armed && Indicator.Visible && Lease.Valid(Lease.State); } }
+    private volatile bool Armed;
+    private bool IndicatorVisible { get { return Overlay == IntPtr.Zero ? Indicator.Visible : Guard.OwnerOverlay(Overlay); } }
+    private bool Controlling { get { return Armed && IndicatorVisible && Lease.Valid(Lease.State); } }
 
-    internal void Prepare(DesktopTarget target, string grant, long intervention, Func<bool> permitted)
+    internal void Prepare(DesktopTarget target, string grant, long intervention, Func<bool> permitted, IntPtr overlay)
     {
         OnLoop(delegate
         {
@@ -144,8 +148,10 @@ internal sealed class InputMonitor : IDisposable
                 Rearm();
                 DesktopNative.IdleKeys();
                 if (!current()) throw new InvalidOperationException("User input changed before computer control started");
-                Indicator.Start(target);
-                if (!Indicator.Visible) throw new InvalidOperationException("The desktop stop control could not be displayed");
+                Overlay = overlay;
+                if (Overlay == IntPtr.Zero) Indicator.Start(target);
+                else Indicator.Hide();
+                if (!IndicatorVisible) throw new InvalidOperationException("The desktop stop control could not be displayed");
                 if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while control started");
                 Interlocked.Exchange(ref Beat, Environment.TickCount);
                 Interlocked.Exchange(ref PrepareUntil, unchecked((uint)Environment.TickCount + 5000U));
@@ -184,8 +190,28 @@ internal sealed class InputMonitor : IDisposable
 
     internal void BeforeInput(LeaseState state)
     {
-        OnLoop(delegate { Lease.Require(state); Rearm(); if (!Armed || !Indicator.Visible) throw new InvalidOperationException("The desktop stop control is not visible"); });
+        OnLoop(delegate { Lease.Require(state); Rearm(); if (!Armed || !IndicatorVisible) throw new InvalidOperationException("The desktop stop control is not visible"); });
         Lease.Require(state);
+    }
+
+    internal void Work(LeaseState state, IntPtr overlay)
+    {
+        OnLoop(delegate
+        {
+            Lease.Require(state);
+            if (!Guard.FastCurrent(state.Target)) throw new InvalidOperationException("The selected window or desktop changed");
+            DesktopNative.IdleKeys();
+            Overlay = overlay;
+            if (Overlay == IntPtr.Zero) Indicator.Start(state.Target);
+            if (!IndicatorVisible) throw new InvalidOperationException("The desktop stop overlay is unavailable");
+            Lease.Require(state);
+            Armed = true;
+        });
+    }
+
+    internal void Idle(LeaseState state)
+    {
+        OnLoop(delegate { Lease.Require(state); Armed = false; PointerAction = false; Indicator.Hide(); });
     }
 
     internal void Revoked()

@@ -229,6 +229,13 @@ internal sealed class WindowGuard : IDisposable
         catch { return false; }
     }
 
+    internal bool OwnerOverlay(IntPtr handle)
+    {
+        uint pid;
+        return handle != IntPtr.Zero && IsWindow(handle) && IsWindowVisible(handle)
+            && GetWindowThreadProcessId(handle, out pid) != 0 && pid == OwnerPid;
+    }
+
     internal bool GrantForeground(int helper)
     {
         uint foregroundPid;

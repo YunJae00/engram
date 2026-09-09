@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type Engine } from 'core'
 import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } from '../shared/desktop.js'
 import { bindDesktopForLane, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
-import { hideControlOverlay, overlayPointer, showControlOverlay, updateControlOverlay } from './desktop-overlay.js'
+import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
@@ -22,13 +22,14 @@ const RESUMABLE = /returned control to the user|pointer target changed|window or
 const lease = new DesktopControlLease({ onChange: desktopChanged, ttlMs: LEASE_TTL_MS })
 type DesktopEngine = Pick<Engine, 'id' | 'desktopToolIsolation'>
 let engineForControl: () => Promise<DesktopEngine | undefined> = async () => undefined
-let active: { binding: DesktopBinding; token: string; engine: DesktopEngineId; nativeGrant: string; native?: string; bindingNative?: boolean } | undefined
+let active: { binding: DesktopBinding; token: string; engine: DesktopEngineId; nativeGrant: string; native?: string; bindingNative?: boolean; working?: boolean } | undefined
 let paused: { lane: string; engine: DesktopEngineId; resumable: boolean; release?: () => void } | undefined
 let starting: Promise<DesktopBinding> | undefined
 let startingLane: string | undefined
 let cancellation = 0
 const stoppedTurns = new Map<string, string>()
 const observations = new Map<string, DesktopObservationDto>()
+const operations = new Map<string, Promise<unknown>>()
 
 setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, RESUMABLE.test(reason)))
 
@@ -47,7 +48,7 @@ export function desktopControlStatus(): DesktopControlStatusDto {
   const state = lease.state()
   const engine = active?.engine ?? paused?.engine
   return {
-    ...(state.state === 'running' && !active?.native ? { ...state, state: 'ready' } : state),
+    ...(state.state === 'running' && (!active?.native || !active.working) ? { ...state, state: 'ready' } : state),
     ...(engine ? { engine, engineLabel: LABEL[engine] } : {}),
     ...(state.state === 'paused' ? { resumable: paused?.resumable === true, ...(state.lane && stoppedTurns.has(state.lane) ? { reason: stoppedTurns.get(state.lane) } : {}) } : {}),
   }
@@ -55,7 +56,7 @@ export function desktopControlStatus(): DesktopControlStatusDto {
 
 function announce(): void {
   const status = desktopControlStatus()
-  if (status.state === 'running' || (status.state === 'paused' && status.resumable)) updateControlOverlay(status)
+  if (status.state === 'running') updateControlOverlay(status)
   else hideControlOverlay()
   broadcast({ type: 'desktop:control', control: status })
 }
@@ -120,15 +121,54 @@ export function endDesktopTurn(lane: string): void {
 
 async function beginNative(held: NonNullable<typeof active>): Promise<void> {
   lease.assertActive(held.token, held.binding.lane)
-  if (held.native) return
+  if (held.native && held.working) return
   held.bindingNative = true
   try {
-    const result = await held.binding.host.request<{ lease: string }>('bind', { window: held.binding.window, pid: held.binding.pid, grant: held.nativeGrant })
+    const before = await held.binding.host.request<{ intervention: string }>('inputState', {})
+    const overlay = await prepareControlOverlay(desktopControlStatus())
+    const after = await held.binding.host.request<{ intervention: string; escaped: boolean }>('inputState', {})
+    if (after.escaped && after.intervention !== before.intervention) {
+      stopDesktopControl('Escape pressed')
+      throw stoppedError(held.binding.lane)
+    }
+    lease.assertActive(held.token, held.binding.lane)
+    if (active !== held) throw new Error('Computer control was cancelled before it started.')
+    if (held.native) {
+      await held.binding.host.request('work', { window: held.binding.window, pid: held.binding.pid, lease: held.native, overlay })
+      lease.assertActive(held.token, held.binding.lane)
+      held.working = true
+      announce()
+      return
+    }
+    const result = await held.binding.host.request<{ lease: string }>('bind', { window: held.binding.window, pid: held.binding.pid, grant: held.nativeGrant, overlay })
     lease.assertActive(held.token, held.binding.lane)
     if (active !== held || !result?.lease) throw new Error('Computer control was cancelled before it started.')
     held.native = result.lease
+    held.working = true
     desktopChanged()
   } finally { held.bindingNative = false }
+}
+
+// Keep snapshots between tool calls, but never hold physical input while the
+// model is thinking, generating an answer, or running a non-desktop tool.
+export async function withDesktopActivity<T>(lane: string, run: () => Promise<T>): Promise<T> {
+  const previous = operations.get(lane)
+  const operation = (async () => {
+    await previous?.catch(() => undefined)
+    try { return await run() }
+    finally {
+      const held = active
+      if (held?.binding.lane === lane && held.native && held.working) {
+        try {
+          await held.binding.host.request('idle', { window: held.binding.window, pid: held.binding.pid, lease: held.native })
+          if (active === held) { held.working = false; announce() }
+        } catch { if (active === held) stopDesktopControl('Computer control could not release input safely.') }
+      }
+    }
+  })()
+  operations.set(lane, operation)
+  try { return await operation }
+  finally { if (operations.get(lane) === operation) operations.delete(lane) }
 }
 
 function cursor(): { x: number; y: number } | null {
@@ -168,7 +208,6 @@ async function takeControl(lane: string, engine: DesktopEngineId, check: () => v
   active = held
   paused = undefined
   lease.activate(token)
-  showControlOverlay(desktopControlStatus())
   try { await beginNative(held) }
   catch (error) {
     if (active === held) stopDesktopControl(error instanceof Error ? error.message : 'Computer control did not start.', /user input changed|release your keyboard/i.test(String(error)))

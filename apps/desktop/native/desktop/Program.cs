@@ -57,11 +57,11 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "prepare" || method == "bind" || method == "click" || method == "type" || method == "scroll" || method == "key";
+            mutation = method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
-            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
+            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, working = monitor.Working, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
             var window = Text(request, "window", 32);
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             var target = guard.Resolve(window, pid);
@@ -76,7 +76,7 @@ internal static class Program
                 Func<bool> permitted = delegate { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); };
                 if (method == "prepare")
                 {
-                    monitor.Prepare(target, Text(request, "grant", 64), queued.Intervention, permitted);
+                    monitor.Prepare(target, Text(request, "grant", 64), queued.Intervention, permitted, Overlay(request));
                     Send(new { id = id, result = new { intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } });
                     return;
                 }
@@ -92,6 +92,14 @@ internal static class Program
             {
                 state = lease.Require(Text(request, "lease", 100));
                 if (state.Target.Id != target.Id || state.Target.Pid != target.Pid) throw new InvalidOperationException("This lease belongs to a different application");
+            }
+            if (method == "work" || method == "idle")
+            {
+                lease.Require(state);
+                if (method == "work") monitor.Work(state, Overlay(request));
+                else monitor.Idle(state);
+                Send(new { id = id, result = new { working = method == "work" } });
+                return;
             }
             if (method == "observe")
             {
@@ -137,7 +145,16 @@ internal static class Program
             if (mutation) lease.Revoke(error.Message);
             Error(id, error);
         }
-        finally { monitor.PointerAction = false; if (mutation && method != "bind") automation.Invalidate(); }
+        finally { monitor.PointerAction = false; if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate(); }
+    }
+
+    private static IntPtr Overlay(Dictionary<string, object> request)
+    {
+        if (!request.ContainsKey("overlay")) return IntPtr.Zero;
+        long value;
+        if (!long.TryParse(Text(request, "overlay", 20), NumberStyles.None, CultureInfo.InvariantCulture, out value) || value <= 0)
+            throw new ArgumentException("Invalid desktop stop overlay");
+        return new IntPtr(value);
     }
 
     [MTAThread]
