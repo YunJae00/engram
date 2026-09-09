@@ -63,7 +63,7 @@ test.beforeAll(async () => {
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('no site')
   siteUrl = `http://127.0.0.1:${address.port}/`
-  browser = await chromium.launch({ channel: 'chrome', headless: true })
+  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-smooth-scrolling'] })
 })
 
 test.afterAll(async () => {
