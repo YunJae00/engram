@@ -308,7 +308,12 @@ describe('the person\'s hands', () => {
 
   it('a bind refused while a key is held is retried after stillness, not reported as failure', async () => {
     const host = binding()
-    host.request.mockImplementationOnce(async () => { throw new Error('Release your keyboard and mouse before allowing control') })
+    const original = host.request.getMockImplementation()!
+    let refused = false
+    host.request.mockImplementation(async (method, args) => {
+      if (method === 'bind' && !refused) { refused = true; throw new Error('Release your keyboard and mouse before allowing control') }
+      return original(method, args)
+    })
     const read = control.readControlledDesktop(lane, undefined, true)
     await vi.advanceTimersByTimeAsync(4_600)
     await expect(read).resolves.toMatchObject({ snapshot: 'snapshot-1' })
