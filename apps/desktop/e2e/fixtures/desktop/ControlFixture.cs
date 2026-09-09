@@ -40,6 +40,7 @@ internal sealed class ControlFixture : Form
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
     private int Clicks;
     private Form Away;
+    private Panel Dense;
 
     internal ControlFixture()
     {
@@ -126,6 +127,13 @@ internal sealed class ControlFixture : Form
             else if (method == "resize") { ClientSize = new Size(900, 600); Marker.Top = ClientSize.Height - 30; }
             else if (method == "maximize") { WindowState = FormWindowState.Maximized; Marker.Top = ClientSize.Height - 30; }
             else if (method == "restore") { WindowState = FormWindowState.Normal; ClientSize = new Size(630, 420); Marker.Top = 390; }
+            else if (method == "dense")
+            {
+                Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };
+                for (var cell = 0; cell < 240; cell++) Dense.Controls.Add(new Label { Text = "Cell " + cell, Bounds = new Rectangle(cell % 20 * 28, cell / 20 * 20, 26, 18) });
+                Controls.Add(Dense); Dense.BringToFront();
+            }
+            else if (method == "sparse") { if (Dense != null) { Dense.Dispose(); Dense = null; } }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "hidePassword") { Secret.Visible = false; Entry.Focus(); }
             else if (method == "foreignInput" || method == "foreignEscape")

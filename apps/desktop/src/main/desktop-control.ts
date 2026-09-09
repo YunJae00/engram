@@ -30,6 +30,7 @@ let startingLane: string | undefined
 let cancellation = 0
 const stoppedTurns = new Map<string, string>()
 const observations = new Map<string, DesktopObservationDto>()
+const observationTimes = new WeakMap<DesktopObservationDto, number>()
 const operations = new Map<string, Promise<unknown>>()
 let launching: { lane: string; host: DesktopHost } | undefined
 
@@ -314,6 +315,7 @@ async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = fals
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('The app changed while it was being read. Observe it again.')
   if (!result || typeof result.snapshot !== 'string' || !Array.isArray(result.nodes) || !result.bounds || ![result.bounds.x, result.bounds.y, result.bounds.width, result.bounds.height].every(Number.isFinite) || result.bounds.width <= 0 || result.bounds.height <= 0) throw new Error('This app did not provide a valid observation.')
   observations.set(lane, result)
+  observationTimes.set(result, Date.now())
   return result
 }
 
@@ -339,8 +341,23 @@ export async function actOnDesktop(lane: string, action: DesktopAction, signal?:
   const held = active
   const token = lease.tokenFor(lane)
   if (!held?.native || !token || held.token !== token || held.binding.lane !== lane) throw new Error('Computer control is not active. Observe the app first.')
-  const observation = observations.get(lane)
+  let observation = observations.get(lane)
   if (!observation || observation.snapshot !== action.snapshot) throw new Error('Observe the app again before acting. This snapshot is stale.')
+  if (Date.now() - (observationTimes.get(observation) ?? 0) >= 10000) {
+    const previous = observation
+    observation = await readControlledDesktop(lane, signal, true)
+    if (JSON.stringify([previous.bounds, previous.captureBounds]) !== JSON.stringify([observation.bounds, observation.captureBounds])) throw new Error('The app geometry changed while planning. Inspect the fresh observation before acting.')
+    if (action.kind === 'click' && 'element' in action) {
+      const element = action.element
+      const target = previous.nodes.find((node) => node.id === element)
+      const matches = observation.nodes.filter((node) => target && node.name === target.name && node.controlType === target.controlType && JSON.stringify(node.bounds) === JSON.stringify(target.bounds))
+      if (matches.length !== 1) throw new Error('The planned control changed or is ambiguous. Inspect the fresh observation before acting.')
+      action = { ...action, element: matches[0]!.id }
+    } else if (action.kind === 'key' || action.kind === 'type') {
+      if (!previous.focusedControl || observation.focusedControl !== previous.focusedControl) throw new Error('Keyboard focus changed while planning. Inspect the fresh observation before acting.')
+    } else throw new Error('Observe the app again before using a planned coordinate or scroll action.')
+    action = { ...action, snapshot: observation.snapshot }
+  }
   observations.delete(lane)
   const stop = () => { if (active?.token === token) stopDesktopForLane(lane, 'This chat was cancelled.') }
   signal?.addEventListener('abort', stop, { once: true })

@@ -14,7 +14,9 @@ export interface DesktopObservationDto {
   captureBounds?: { x: number; y: number; width: number; height: number }
   protectedBounds?: { x: number; y: number; width: number; height: number }[]
   focusedEditable?: boolean
+  focusedControl?: string | null
   truncated?: boolean
+  captureSafe?: boolean
 }
 // The brain that holds the computer, named for the person: the banner on the
 // screen says who is moving the mouse.

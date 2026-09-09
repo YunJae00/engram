@@ -80,6 +80,20 @@ afterEach(() => {
 })
 
 describe('taking the computer', () => {
+  it('refreshes an expired planned click and uses the fresh snapshot', async () => {
+    const host = binding()
+    const read = await control.readControlledDesktop(lane, undefined, true)
+    vi.setSystemTime(new Date('2026-01-01T00:00:20Z'))
+    await control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, element: 'e0' })
+    expect(host.request).toHaveBeenCalledWith('click', expect.objectContaining({ snapshot: 'snapshot-2', element: 'e0' }))
+  })
+  it('does not send a delayed key when focus cannot be revalidated', async () => {
+    const host = binding()
+    const read = await control.readControlledDesktop(lane, undefined, true)
+    vi.setSystemTime(new Date('2026-01-01T00:00:20Z'))
+    await expect(control.actOnDesktop(lane, { kind: 'key', snapshot: read.snapshot, key: 'Enter' })).rejects.toThrow('Keyboard focus changed')
+    expect(host.request.mock.calls.some(([method]) => method === 'key')).toBe(false)
+  })
   it('releases input but keeps the overlay through the desktop loop without discarding the snapshot', async () => {
     const host = binding()
     const read = await control.withDesktopActivity(lane, () => control.readControlledDesktop(lane, undefined, true))

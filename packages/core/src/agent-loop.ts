@@ -115,6 +115,8 @@ export interface AgentLoopResult {
   // small model may instead ANNOUNCE that it acted. The caller states the
   // truth alongside the answer rather than letting the claim stand.
   pending?: string
+  // A model-planned phase still lacks a result checkpoint.
+  incomplete?: string
 }
 
 const MAX_CALLS = 6
