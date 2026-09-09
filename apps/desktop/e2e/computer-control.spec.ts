@@ -43,6 +43,7 @@ test.beforeAll(async () => {
     install('windows', () => [])
     install('bindings', () => [])
     install('controlStatus', () => state.control)
+    install('overlayStatus', () => state.control)
     install('controlStop', () => {
       state.stops++
       state.control = state.control.state === 'paused' ? { state: 'idle' } : { ...state.control, state: 'paused', resumable: false }
@@ -67,6 +68,30 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => { await app?.close() })
+
+test('the overlay pill renders and its resume and stop buttons reach the host', async () => {
+  await control({ state: 'paused', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', resumable: true })
+  const url = page.url().split('#')[0]! + '#overlay-pill'
+  const nextWindow = app.waitForEvent('window')
+  await app.evaluate(async ({ BrowserWindow }, target) => {
+    const main = BrowserWindow.getAllWindows()[0]!
+    const overlay = new BrowserWindow({ show: false, width: 440, height: 60, webPreferences: {
+      preload: main.webContents.getLastWebPreferences().preload, contextIsolation: true, nodeIntegration: false, sandbox: false,
+    } })
+    await overlay.loadURL(target)
+  }, url)
+  const overlay = await nextWindow
+  try {
+    await expect(overlay.getByTestId('control-pill')).toContainText('You took over')
+    await overlay.getByTestId('overlay-resume').click()
+    await expect.poll(() => app.evaluate(() => (globalThis as MockGlobal).desktopMock.resumes)).toBe(1)
+    await control({ state: 'running', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude' })
+    await expect(overlay.getByTestId('control-pill')).toContainText('Claude is controlling your computer')
+    await overlay.getByTestId('overlay-stop').click()
+    await expect.poll(() => app.evaluate(() => (globalThis as MockGlobal).desktopMock.stops)).toBe(1)
+    await expect(overlay.getByTestId('control-pill')).toHaveCount(0)
+  } finally { await overlay.close() }
+})
 test.beforeEach(async () => {
   await app.evaluate(() => {
     const mock = (globalThis as MockGlobal).desktopMock
