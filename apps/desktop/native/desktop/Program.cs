@@ -61,7 +61,7 @@ internal static class Program
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
-            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped } }); return; }
+            if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
             var window = Text(request, "window", 32);
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             var target = guard.Resolve(window, pid);
@@ -69,6 +69,8 @@ internal static class Program
             { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized } }); return; }
             if (method == "bind")
             {
+                if (request.ContainsKey("intervention") && Text(request, "intervention", 20) != queued.Intervention.ToString(CultureInfo.InvariantCulture))
+                    throw new InvalidOperationException(monitor.Escaped ? "Escape pressed" : "User input changed during foreground delegation");
                 if (queued.Intervention != monitor.Intervention) throw new InvalidOperationException("User input changed after approval. Request new approval");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
                 Func<bool> permitted = delegate { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); };
@@ -138,8 +140,15 @@ internal static class Program
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args.Length == 1 && args[0] == "--self-test") return DesktopSelfTest.Run();
         int owner;
-        if (args.Length != 2 || args[0] != "--owner-pid" || !int.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out owner) || owner <= 0)
+        if ((args.Length != 2 && args.Length != 4) || args[0] != "--owner-pid" || !int.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out owner) || owner <= 0)
         { Send(new { type = "fatal", error = "A valid --owner-pid is required" }); return 2; }
+        if (args.Length == 4)
+        {
+            int helper;
+            if (args[2] != "--grant-foreground" || !int.TryParse(args[3], out helper) || helper <= 0) return 2;
+            try { using (var guard = new WindowGuard(owner)) return guard.GrantForeground(helper) ? 0 : 1; }
+            catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+        }
         InputMonitor monitor = null;
         ControlLease lease = null;
         try

@@ -2,14 +2,15 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const deps = vi.hoisted(() => ({ spawn: vi.fn(), exists: vi.fn() }))
+const deps = vi.hoisted(() => ({ spawn: vi.fn(), execFile: vi.fn(), exists: vi.fn() }))
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
-vi.mock('node:child_process', () => ({ spawn: deps.spawn }))
+vi.mock('node:child_process', () => ({ spawn: deps.spawn, execFile: deps.execFile }))
 vi.mock('node:fs', () => ({ existsSync: deps.exists }))
 import { DesktopHost, type DesktopMethod } from '../src/main/desktop-host.js'
 
 function processDouble() {
   return Object.assign(new EventEmitter(), {
+    pid: undefined as number | undefined,
     stdin: Object.assign(new EventEmitter(), {
       destroyed: false,
       write: vi.fn((_data: string, callback?: (error?: Error) => void) => { callback?.(); return true }),
@@ -48,6 +49,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   child = processDouble()
   deps.spawn.mockReturnValue(child)
+  deps.execFile.mockImplementation((_path, _args, _options, done: (error: Error | null) => void) => done(null))
   deps.exists.mockReturnValue(true)
   vi.spyOn(DesktopHost, 'available').mockReturnValue(true)
   revoked = vi.fn()
@@ -63,6 +65,37 @@ afterEach(() => {
 })
 
 describe('desktop native readiness and request lifetime', () => {
+  it('renews foreground delegation for the exact helper before binding', async () => {
+    child.pid = 321
+    const request = host.request('bind', { ...target, grant: 'user-grant' })
+    await ready()
+    respond({ id: latest('inputState'), result: { intervention: '42' } })
+    await flush()
+    expect(messages().at(-1)).toMatchObject({ method: 'bind', intervention: '42' })
+    respond({ id: latest('bind'), result: { lease: 'native-first' } })
+    await request
+    expect(deps.execFile).toHaveBeenCalledWith(expect.stringMatching(/EngramDesktop\.exe$/),
+      ['--owner-pid', String(process.pid), '--grant-foreground', '321'],
+      { windowsHide: true, timeout: 1500 }, expect.any(Function))
+  })
+
+  it('never dispatches a bind if Stop arrives while delegation is pending', async () => {
+    child.pid = 321
+    let finish!: (error: Error | null) => void
+    deps.execFile.mockImplementation((_path, _args, _options, done: typeof finish) => { finish = done })
+    const request = host.request('bind', { ...target, grant: 'user-grant' })
+    const rejected = expect(request).rejects.toThrow('cancelled by Stop')
+    await ready()
+    respond({ id: latest('inputState'), result: { intervention: '42' } })
+    await flush()
+    expect(messages().map((message) => message.method)).toEqual(['inputState'])
+    await stop()
+    finish(null)
+    await rejected
+    await flush()
+    expect(messages().map((message) => message.method)).toEqual(['inputState', 'stop'])
+  })
+
   it('spawns hidden and owner-scoped, waiting for the supported control handshake before dispatch', async () => {
     const request = host.request('inspectWindow', target)
     expect(deps.spawn).toHaveBeenCalledWith(expect.stringMatching(/native-bin[\\/]desktop[\\/]EngramDesktop\.exe$/), ['--owner-pid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })

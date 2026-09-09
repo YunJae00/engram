@@ -7,14 +7,12 @@ const fake = vi.hoisted(() => ({ session: { control: { state: 'idle' } as Deskto
 vi.mock('../src/renderer/src/lib/desktopSession.js', () => ({
   useDesktopSession: () => fake.session, desktopError: (error: unknown) => String(error), stopComputerControl: vi.fn(),
 }))
-import { ComputerStatus, computerStateDetail, computerStateLabel } from '../src/renderer/src/components/ComputerStatus.js'
+import { ComputerStatus, computerStateLabel } from '../src/renderer/src/components/ComputerStatus.js'
 
 const render = () => renderToStaticMarkup(createElement(ComputerStatus))
 beforeEach(() => { fake.session = { control: { state: 'idle' }, error: '' } })
 
-// The banner names who holds the computer and what the person can do about
-// it, in the same words the on-screen pill uses.
-describe('the in-app control banner', () => {
+describe('desktop control stays outside the app', () => {
   it('renders nothing while the computer is the person\'s', () => {
     expect(render()).toBe('')
   })
@@ -33,12 +31,12 @@ describe('the in-app control banner', () => {
   it('Esc or Stop reads as off, with the next task as the way back', () => {
     fake.session.control = { state: 'paused', lane: 'bot-one', engine: 'codex', engineLabel: 'ChatGPT', resumable: false }
     expect(computerStateLabel(fake.session.control)).toBe('Computer control is off')
-    expect(computerStateDetail(fake.session.control)).toBe('Send the next task when you are ready.')
-    expect(render()).not.toContain('Allow control again')
+    expect(render()).toBe('')
   })
 
-  it('a status reason from the host wins over the stock detail', () => {
-    fake.session.control = { state: 'paused', lane: 'bot-one', reason: 'The computer was locked.' }
-    expect(render()).toContain('The computer was locked.')
+  it.each(['ready', 'paused', 'needs-person'] as const)('does not render a banner for %s, including host errors', (state) => {
+    fake.session.control = { state, lane: 'bot-one', reason: 'The computer was locked.' }
+    fake.session.error = 'The host could not be reached.'
+    expect(render()).toBe('')
   })
 })

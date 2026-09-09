@@ -129,10 +129,16 @@ try {
   }
   result.captureResizePassed = true
   result.stage = 'bind'
+  await fixture.request('focus')
+  await fixture.request('foreignInput')
+  await until(() => helper.request('inputState'), state => state.idleMs >= 150, 'Fixture input did not settle')
   assert.equal((await fixture.request('away')).foreground, false)
-  const active = await helper.request('bind', { ...target, grant: randomUUID() })
+  const activationInput = await helper.request('inputState')
+  await fixture.request('grantForeground', { pid: helper.child.pid })
+  const active = await helper.request('bind', { ...target, grant: randomUUID(), intervention: activationInput.intervention })
   assert.equal((await fixture.request('state')).foreground, true)
   result.foregroundHandoffPassed = true
+  result.foregroundRelayPassed = true
   const bound = { ...target, lease: active.lease }
   const observe = () => helper.request('observe', bound)
   let snapshot = await observe()
@@ -169,6 +175,13 @@ try {
   await helper.request('stop')
   await assert.rejects(helper.request('key', { ...bound, snapshot: snapshot.snapshot, key: 'Enter' }))
   result.stopRevocationPassed = true
+  result.stage = 'foreground-input-interruption'
+  await fixture.request('focus')
+  const oldInput = await helper.request('inputState')
+  await fixture.request('foreignInput')
+  await until(() => helper.request('inputState'), state => state.intervention !== oldInput.intervention, 'Input epoch did not change')
+  await assert.rejects(helper.request('bind', { ...target, grant: randomUUID(), intervention: oldInput.intervention }), /User input changed/)
+  result.foregroundInterruptionPassed = true
   result.stage = 'foreign-input'
   await fixture.request('focus')
   const second = await helper.request('bind', { ...target, grant: randomUUID() })

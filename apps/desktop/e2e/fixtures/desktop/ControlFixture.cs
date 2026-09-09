@@ -31,7 +31,6 @@ internal sealed class ControlFixture : Form
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
-    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint pid);
     private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     private static readonly object Output = new object();
     private readonly TextBox Entry = new TextBox { AccessibleName = "Worker input", Bounds = new Rectangle(18, 20, 450, 30) };
@@ -106,9 +105,15 @@ internal sealed class ControlFixture : Form
                 using (var process = System.Diagnostics.Process.GetProcessById(pid))
                 {
                     var expected = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "EngramDesktop.exe");
-                    if (!string.Equals(process.MainModule.FileName, expected, StringComparison.OrdinalIgnoreCase)
-                        || GetForegroundWindow() != Handle || !AllowSetForegroundWindow((uint)pid))
+                    if (!string.Equals(process.MainModule.FileName, expected, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidOperationException("The owned consent fixture could not grant foreground activation");
+                    using (var relay = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(expected,
+                        "--owner-pid " + System.Diagnostics.Process.GetCurrentProcess().Id + " --grant-foreground " + pid)
+                        { UseShellExecute = false, CreateNoWindow = true, WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden }))
+                    {
+                        if (!relay.WaitForExit(1500)) { relay.Kill(); throw new InvalidOperationException("Foreground delegation timed out"); }
+                        if (relay.ExitCode != 0) throw new InvalidOperationException("Foreground delegation was denied");
+                    }
                 }
             }
             else if (method == "away")

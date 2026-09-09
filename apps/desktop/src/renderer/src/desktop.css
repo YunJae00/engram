@@ -87,22 +87,6 @@
 .desktop-control-row { font-size: var(--fs-small); overflow-wrap: anywhere; }
 .desktop-control-row p { margin-top: 4px; white-space: pre-wrap; }
 .desktop-controls > .computer-secondary { align-self: flex-start; }
-.computer-status {
-  position: fixed; z-index: 1500; left: 50%; transform: translateX(-50%); bottom: 16px;
-  width: min(660px, calc(100vw - 32px)); display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px; border-radius: var(--radius-l); color: var(--fg);
-  border: 1px solid color-mix(in srgb, #527fe3 30%, var(--border-soft));
-  background: color-mix(in srgb, #527fe3 8%, var(--panel-bg)); box-shadow: var(--shadow-float);
-}
-.computer-status[data-state='paused'], .computer-status[data-state='needs-person'] { border-color: color-mix(in srgb, #d09246 30%, var(--border-soft)); background: color-mix(in srgb, #d09246 9%, var(--panel-bg)); }
-.computer-status > svg { color: #527fe3; flex: none; }
-.computer-status[data-state='paused'] > svg, .computer-status[data-state='needs-person'] > svg { color: #b67c35; }
-.computer-status-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
-.computer-status-copy strong { font-size: var(--fs-small); font-weight: 550; }
-.computer-status-copy span { font-size: var(--fs-micro); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; }
-.shell:has(.computer-status) { padding-bottom: 82px; }
-.shell:has(.computer-status) .brief-overlay, .shell:has(.computer-status) .sheet-overlay { bottom: 82px; }
-.shell:has(.computer-status) .brief-box { max-height: min(780px, calc(100vh - 126px)); }
 .computer-settings { margin-bottom: 20px; }
 .computer-settings-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .computer-settings-label > svg { flex: none; color: var(--fg-faint); }
@@ -117,12 +101,6 @@
   .computer-access { padding: 10px; gap: 6px; }
   .computer-access-actions { gap: 5px; }
   .computer-access-actions > button { padding: 6px 8px; font-size: var(--fs-micro); }
-}
-@media (max-width: 560px) {
-  .shell:has(.computer-status) { padding-bottom: 90px; }
-  .shell:has(.computer-status) .brief-overlay, .shell:has(.computer-status) .sheet-overlay { bottom: 90px; }
-  .computer-status { bottom: 8px; width: calc(100vw - 16px); gap: 8px; padding: 10px; }
-  .computer-status-copy span { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 }
 @media (prefers-reduced-motion: reduce) {
   .computer-surface-tabs button, .computer-primary, .computer-secondary, .computer-stop { transition: none; }

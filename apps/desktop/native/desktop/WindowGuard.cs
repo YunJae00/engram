@@ -26,6 +26,7 @@ internal sealed class WindowGuard : IDisposable
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int count);
     [DllImport("user32.dll")] private static extern IntPtr GetThreadDesktop(uint thread);
     [DllImport("user32.dll")] private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
@@ -226,6 +227,19 @@ internal sealed class WindowGuard : IDisposable
     {
         try { using (var owner = Process.GetProcessById(OwnerPid)) return !owner.HasExited && owner.StartTime.ToUniversalTime().Ticks == OwnerStarted; }
         catch { return false; }
+    }
+
+    internal bool GrantForeground(int helper)
+    {
+        uint foregroundPid;
+        var thread = GetWindowThreadProcessId(DesktopNative.GetForegroundWindow(), out foregroundPid);
+        if (thread == 0 || foregroundPid != OwnerPid || !OwnerAlive()) return false;
+        RequireUserDesktop(thread);
+        RequireUserProcess(helper);
+        if (!string.Equals(ProcessPath(helper), ProcessPath(HelperPid), StringComparison.OrdinalIgnoreCase)) return false;
+        // A fresh child of the foreground owner can delegate activation to its
+        // long-lived helper. No focus or input is changed by this grant.
+        return AllowSetForegroundWindow((uint)helper);
     }
 
     public void Dispose() { Lifetime.Dispose(); }

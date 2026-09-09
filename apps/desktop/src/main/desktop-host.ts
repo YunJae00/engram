@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -146,7 +146,7 @@ export class DesktopHost {
     if (method === 'bind' && (this.currentNative || [...this.pending.values()].some((request) => request.method === 'bind'))) throw new Error('A native control grant is already active or pending.')
     const generation = this.generation
     const id = ++this.serial
-    const line = JSON.stringify({ ...args, id, method }) + '\n'
+    let line = JSON.stringify({ ...args, id, method }) + '\n'
     if (line.length > 65536) throw new Error('The desktop request is too large.')
     return new Promise<T>((resolve, reject) => {
       const pending: PendingRequest = { method, generation, resolve: (value) => resolve(value as T), reject }
@@ -154,7 +154,21 @@ export class DesktopHost {
       let ready: Promise<void>
       try { ready = this.start() }
       catch (error) { this.close(error instanceof Error ? error : new Error('The desktop helper could not start.')); return }
-      void ready.then(() => {
+      void ready.then(async () => {
+        if (method === 'bind' && this.pending.get(id) === pending && this.child?.pid) {
+          const pid = this.child.pid
+          const input = await this.request<{ intervention: string }>('inputState', {})
+          if (!/^\d{1,20}$/.test(input.intervention)) throw new Error('Desktop input monitoring could not be verified.')
+          if (this.pending.get(id) !== pending || this.ended) return
+          line = JSON.stringify({ ...args, id, method, intervention: input.intervention }) + '\n'
+          await new Promise<void>((done) => {
+            execFile(DesktopHost.path(), ['--owner-pid', String(process.pid), '--grant-foreground', String(pid)],
+              { windowsHide: true, timeout: 1500 }, (error) => {
+                if (error) flog('desktop-foreground-grant', 'Foreground delegation was unavailable; checking native activation.')
+                done()
+              })
+          })
+        }
         if (this.pending.get(id) !== pending) return
         if (generation !== this.generation || this.ended || !this.child || this.child.stdin.destroyed) {
           this.pending.delete(id)
@@ -171,7 +185,7 @@ export class DesktopHost {
         if (this.pending.get(id) !== pending) return
         this.pending.delete(id)
         reject(error instanceof Error ? error : new Error('The desktop helper could not start.'))
-      })
+      }).catch((error: unknown) => this.close(error instanceof Error ? error : new Error('Foreground delegation failed.')))
     })
   }
 

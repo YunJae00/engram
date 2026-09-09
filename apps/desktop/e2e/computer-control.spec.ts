@@ -127,21 +127,20 @@ test('no picker anywhere: the tiles show pages, the composer has no computer swi
   await expect(page.getByTestId('computer-control-status')).toHaveCount(0)
 })
 
-test('live control stays out of the app, Esc takes it back and Dismiss clears it', async () => {
+test('control stays out of the app even after Esc takes it back', async () => {
   await orbit()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   const banner = page.getByTestId('computer-control-status')
   await expect(banner).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect.poll(async () => (await state()).stops).toBe(1)
-  await expect(banner).toContainText('Computer control is off')
-  await expect(page.getByTestId('computer-control-stop')).toContainText('Dismiss')
-  await page.getByTestId('computer-control-stop').click()
   await expect(banner).toHaveCount(0)
-  expect((await state()).stops).toBe(2)
+  expect((await state()).control).toMatchObject({ state: 'paused', resumable: false })
+  await page.keyboard.press('Escape')
+  expect((await state()).stops).toBe(1)
 })
 
-test('live pauses stay on the desktop while terminal errors remain readable at every width', async () => {
+test('terminal errors never add an in-app banner or bottom space at any width', async () => {
   await orbit()
   await control({ state: 'paused', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', resumable: true })
   const banner = page.getByTestId('computer-control-status')
@@ -151,7 +150,9 @@ test('live pauses stay on the desktop while terminal errors remain readable at e
   for (const width of [1440, 760]) {
     await page.setViewportSize({ width, height: 900 })
     if (width <= 900 && await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
-    await expect(page.getByTestId('computer-control-stop')).toBeVisible()
+    await expect(banner).toHaveCount(0)
+    await expect(page.getByTestId('computer-control-stop')).toHaveCount(0)
+    await expect(page.getByTestId('shell')).toHaveCSS('padding-bottom', '0px')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const png = await app.evaluate(async ({ BrowserWindow }) => {
       const main = BrowserWindow.getAllWindows()[0]!
