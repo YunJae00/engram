@@ -6,6 +6,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { testDesktopBrowser } from './test-desktop-browser.mjs'
+import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 
 if (process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
   throw new Error('Native desktop integration requires an isolated Windows CI runner')
@@ -286,6 +287,43 @@ try {
   assert.equal((await helper.request('observe', target)).captureSafe, false)
   await fixture.request('sparse')
   result.partialCapturePassed = true
+  result.stage = 'guarded-workflow'
+  await fixture.request('hidePassword')
+  const beforeWorkflow = await fixture.request('workflow')
+  const workflowLease = await helper.request('bind', { ...target, grant: randomUUID() })
+  const workflowBound = { ...target, lease: workflowLease.lease }
+  const workflowRead = () => helper.request('observe', workflowBound)
+  const workflowAct = ({ kind, snapshot, ...args }) => helper.request(kind, { ...workflowBound, snapshot, ...args })
+  const workflowView = await workflowRead()
+  const draftTarget = { name: 'Draft value', controlType: 'Edit' }
+  const workflowSteps = [
+    { kind: 'click', target: { name: 'Open draft', controlType: 'Button' } },
+    { kind: 'click', target: draftTarget },
+    { kind: 'type', target: draftTarget, text: '검증된 초안 42' },
+    { kind: 'verify', target: draftTarget, value: '검증된 초안 42' },
+    { kind: 'click', target: { name: 'Review draft', controlType: 'Button' } },
+    { kind: 'verify', target: { name: 'Reviewed value', controlType: 'Edit' }, value: '검증된 초안 42' },
+  ].map(step => ({ ...step, snapshot: workflowView.snapshot }))
+  const workflowResult = JSON.parse(await guardedSequence(workflowView, workflowSteps, workflowRead, workflowAct))
+  assert.equal(workflowResult.error, undefined, workflowResult.error)
+  assert.equal(workflowResult.completed, 6)
+  assert.equal(workflowResult.dispatched, 4)
+  assert.equal(workflowResult.verified, 2)
+  const workflowState = await fixture.request('state')
+  assert.equal(workflowState.reviewed, '검증된 초안 42')
+  assert.equal(workflowState.text, beforeWorkflow.text, 'The existing unrelated field changed')
+  result.guardedWorkflowMs = workflowResult.elapsedMs
+  const mismatch = JSON.parse(await guardedSequence(await workflowRead(), [
+    { kind: 'verify', target: draftTarget, value: 'not the result' },
+    { kind: 'click', target: { name: 'Count click', controlType: 'Button' } },
+  ], workflowRead, workflowAct))
+  assert.match(mismatch.error, /not observed/)
+  assert.equal(mismatch.dispatched, 0)
+  assert.equal((await fixture.request('state')).clicks, workflowState.clicks)
+  result.guardedWorkflowPassed = true
+  result.guardedMismatchStopPassed = true
+  await helper.request('stop')
+  await fixture.request('endWorkflow')
   result.stage = 'password'
   await fixture.request('password')
   const protectedView = await helper.request('observe', target)
