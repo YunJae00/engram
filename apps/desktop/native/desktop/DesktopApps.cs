@@ -33,7 +33,7 @@ internal static class DesktopApps
         var path = Launcher(id);
         if (!File.Exists(path)) throw new InvalidOperationException("This app's Windows launcher is unavailable.");
         if (!permitted()) throw new InvalidOperationException("The app launch was cancelled.");
-        using (var process = Process.Start(new ProcessStartInfo(path) { UseShellExecute = false }))
+        using (var process = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }))
         {
             if (process == null) throw new InvalidOperationException("Windows did not accept the app launch.");
             return new { requested = true, app = id, requiresObservation = true };
