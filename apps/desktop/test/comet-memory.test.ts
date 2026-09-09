@@ -36,3 +36,10 @@ it('adds nothing when there are no current matching notes', () => {
   expect(taskRecall(store([]), 'Unrelated task')).toBe('')
   expect(taskRecall(store([note('old', '# Draft', 'draft')]), 'Draft')).toBe('')
 })
+it('bounds automatic search work for long requests while leaving the task unchanged', () => {
+  const source = store([])
+  const task = 'Prepare the report. '.repeat(2000)
+  taskRecall(source, task)
+  expect(source.search).toHaveBeenCalledWith(task.slice(0, 256))
+  expect(task).toHaveLength(40000)
+})

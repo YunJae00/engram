@@ -29,7 +29,7 @@ type EngineCwd = Parameters<typeof collectResult>[1]['workdir']
 const REMEMBER_TIMEOUT_MS = 60_000
 
 export function taskRecall(store: Pick<NoteStore, 'search' | 'get'>, task: string): string {
-  const notes = store.search(task).slice(0, 12).flatMap((hit) => {
+  const notes = store.search(task.slice(0, 256)).slice(0, 12).flatMap((hit) => {
     const note = store.get(hit.id)
     return note?.front.status === 'current' ? [note] : []
   }).slice(0, 3)
