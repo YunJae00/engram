@@ -16,19 +16,21 @@ internal sealed class DesktopActions
         Lease = lease; Monitor = monitor; Automation = automation;
         Input = new InputDispatcher(lease, monitor.Packets, InputDispatcher.NativeDispatch);
     }
-    private void Prepare(LeaseState state, string snapshot)
+    private DesktopObservation Prepare(LeaseState state, string snapshot)
     {
         Lease.Require(state);
-        Automation.Require(snapshot, state);
         DesktopNative.IdleKeys();
         Monitor.BeforeInput(state);
+        var observation = Automation.Require(snapshot, state);
         Lease.Require(state);
+        return observation;
     }
     private void Move(LeaseState state, string snapshot, Point point)
     {
         DesktopNative.Point cursor;
         if (!DesktopNative.GetCursorPos(out cursor)) throw new InvalidOperationException("The pointer position is unavailable");
         var from = new Point(cursor.X, cursor.Y);
+        if (from == point) return;
         // Only animate inside the granted window; never route through another app.
         if (DesktopNative.AtTarget(state.Target.Handle, cursor.X, cursor.Y))
         {
@@ -60,8 +62,7 @@ internal sealed class DesktopActions
         if (x < 0 || y < 0 || x > 65535 || y > 65535) throw new InvalidOperationException("Input position is outside the desktop");
         Input.Send(state, new[] { InputDispatcher.Mouse(x, y, 0, 0xc001) }, delegate
         {
-            Prepare(state, snapshot);
-            Automation.ClickPoint(Automation.Require(snapshot, state), null, (int)point.X, (int)point.Y);
+            Automation.ClickPoint(Prepare(state, snapshot), null, (int)point.X, (int)point.Y);
         });
     }
     internal void Click(LeaseState state, string snapshot, string element, int? x, int? y)
@@ -99,7 +100,7 @@ internal sealed class DesktopActions
                     inputs.Add(InputDispatcher.Key(0, character, 6));
                 }
             }
-            Input.Send(state, inputs.ToArray(), delegate { Prepare(state, snapshot); Automation.RequireEditable(Automation.Require(snapshot, state)); });
+            Input.Send(state, inputs.ToArray(), delegate { Automation.RequireEditable(Prepare(state, snapshot)); });
         }
     }
     internal void Scroll(LeaseState state, string snapshot, int delta)
@@ -121,6 +122,6 @@ internal sealed class DesktopActions
         foreach (var code in keys) inputs.Add(InputDispatcher.Key(code, 0, code >= 33 && code <= 46 ? 1U : 0U));
         for (var index = keys.Length - 1; index >= 0; index--)
             inputs.Add(InputDispatcher.Key(keys[index], 0, keys[index] >= 33 && keys[index] <= 46 ? 3U : 2U));
-        Input.Send(state, inputs.ToArray(), delegate { Prepare(state, snapshot); Automation.RequireFocus(Automation.Require(snapshot, state)); });
+        Input.Send(state, inputs.ToArray(), delegate { Automation.RequireFocus(Prepare(state, snapshot)); });
     }
 }

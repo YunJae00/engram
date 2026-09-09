@@ -256,8 +256,33 @@ try {
   assert.equal(partialView.truncated, true)
   assert.equal(partialView.captureSafe, true)
   await helper.request('capture', { ...target, snapshot: partialView.snapshot })
+  result.stage = 'partial-focused-editing'
+  await fixture.request('deepFocus')
+  const deepLease = await helper.request('bind', { ...target, grant: randomUUID() })
+  const deepBound = { ...target, lease: deepLease.lease }
+  let deepView = await helper.request('observe', deepBound)
+  assert.equal(deepView.truncated, true)
+  const deepEditor = deepView.nodes.find(node => node.name === 'Deep editor')
+  assert.ok(deepEditor?.runtimeId)
+  assert.equal(deepEditor.actions.type, true)
+  assert.equal(deepView.focusedControl, deepEditor.runtimeId)
+  assert.equal(deepView.focusedEditable, true)
+  await helper.request('click', { ...deepBound, snapshot: deepView.snapshot, element: deepEditor.id })
+  for (const action of [{ method: 'type', text: 'Draft' }, { method: 'key', key: 'Control+A' }, { method: 'type', text: 'Verified draft' }]) {
+    deepView = await helper.request('observe', deepBound)
+    assert.equal(deepView.focusedControl, deepEditor.runtimeId)
+    const { method, ...input } = action
+    await helper.request(method, { ...deepBound, snapshot: deepView.snapshot, ...input })
+  }
+  await until(() => helper.request('observe', deepBound),
+    view => view.focusedControl === deepEditor.runtimeId && view.nodes.some(node => node.runtimeId === deepEditor.runtimeId && node.value === 'Verified draft'),
+    'The focused partial observation did not confirm the complete edited value')
+  assert.equal((await fixture.request('state')).deepText, 'Verified draft')
+  await helper.request('stop')
+  result.partialFocusedEditingPassed = true
+  const beforePassword = await helper.request('observe', target)
   await fixture.request('password')
-  await assert.rejects(helper.request('capture', { ...target, snapshot: partialView.snapshot }), /cleared for capture/)
+  await assert.rejects(helper.request('capture', { ...target, snapshot: beforePassword.snapshot }), /cleared for capture/)
   assert.equal((await helper.request('observe', target)).captureSafe, false)
   await fixture.request('sparse')
   result.partialCapturePassed = true

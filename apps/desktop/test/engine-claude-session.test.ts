@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, ToolSessionJob } from 'core'
+const timingLog = vi.hoisted(() => vi.fn())
+vi.mock('../src/main/flog.js', () => ({ flog: timingLog }))
 import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 
 // A stand-in runtime: one process per query, answering every user message
@@ -49,6 +51,18 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
+  it('records tool duration and between-tool wait without task content', async () => {
+    timingLog.mockClear()
+    const { sdk } = fakeSdk([])
+    const pool = new SessionPool()
+    try {
+      await pool.run(job('private fixture content', { sessionKey: 'timing' }), { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' })
+      const entries = timingLog.mock.calls.filter(([tag]) => tag === 'engine-tool-latency')
+      expect(entries).toHaveLength(1)
+      expect(entries[0]![1]).toMatch(/^tool=search_memory between_tools_ms=\d+ tool_ms=\d+$/)
+      expect(JSON.stringify(entries)).not.toContain('private fixture content')
+    } finally { pool.closeAll() }
+  })
   it('isolates supplied desktop tools and rich observations, recycling when access is removed', async () => {
     const { sdk, processes, optionsSeen, outcomes } = fakeSdk([])
     const pool = new SessionPool()

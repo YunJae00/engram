@@ -109,7 +109,7 @@ import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
-import { registerCometMemoryIpc, rememberTurn } from './comet-memory.js'
+import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
 import { claudeModels, fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -2063,8 +2063,9 @@ export function registerIpc(ctx: VaultContext): void {
       // one that cannot needs the loop's guidance step by step.
       const guided = engine.id !== 'claude' && engine.id !== 'codex'
       // Read once per turn so every prompt of the turn carries the same bytes.
-      const remembered = (await loadBotMemory(paths, bot.id)).facts.map((f) => f.text)
-      const memory = renderMemory(await loadBotMemory(paths, bot.id))
+      const botMemory = await loadBotMemory(paths, bot.id)
+      const remembered = botMemory.facts.map((f) => f.text)
+      const memory = [renderMemory(botMemory), taskRecall(ctx.store, request.message)].filter(Boolean).join('\n\n')
       // Everything the comet does on the person's behalf is written down
       // in the vault, one line per event: what was pressed, what picture
       // left for a brain, what was asked and answered, where it was stopped.
