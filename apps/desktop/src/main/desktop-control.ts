@@ -327,6 +327,12 @@ export async function readControlledDesktop(lane: string, signal?: AbortSignal, 
   } finally { signal?.removeEventListener('abort', stop) }
 }
 
+export function desktopObservation(lane: string, snapshot: string): DesktopObservationDto {
+  const observation = observations.get(lane)
+  if (!observation || observation.snapshot !== snapshot) throw new Error('Observe the app again before acting. This snapshot is stale.')
+  return observation
+}
+
 export async function actOnDesktop(lane: string, action: DesktopAction, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted()
   await ensureDesktopControl(lane, signal ? { signal } : {})

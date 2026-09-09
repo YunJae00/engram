@@ -19,9 +19,10 @@ export interface DesktopCourier {
   read(signal?: AbortSignal, app?: string): Promise<string>
   look?(signal?: AbortSignal, app?: string): Promise<ToolOutcome>
   act?(action: DesktopAction, context: AgentToolContext): Promise<string>
+  sequence?(actions: DesktopAction[], context: AgentToolContext): Promise<string>
 }
 
-const DESKTOP_TOOLS = new Set(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action'])
+const DESKTOP_TOOLS = new Set(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence'])
 const KINDS = new Set(['click', 'type', 'scroll', 'key'])
 const KEYS = ['Enter', 'Escape', 'Tab', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Space']
 const APP_CAP = 80
@@ -95,6 +96,7 @@ export function isDesktopTool(name: string): boolean { return DESKTOP_TOOLS.has(
 export function desktopScopeTools(tools: AgentTool[]): AgentTool[] { return tools }
 
 export function desktopStepArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (name === 'desktop_sequence') return { snapshot: args['snapshot'], actions: '[redacted]' }
   if (name !== 'desktop_action') return args
   // Invalid input must be redacted too: narration happens before validation.
   return { ...args, ...('text' in args ? { text: '[redacted]' } : {}) }
@@ -104,6 +106,7 @@ export function desktopStepSummary(name: string, args: Record<string, unknown>):
   if (!isDesktopTool(name)) return null
   if (name === 'list_windows') return 'open windows'
   if (name === 'list_apps') return 'available app launchers'
+  if (name === 'desktop_sequence') return 'a verified sequence on the desktop'
   if (name === 'open_app') return `open ${String(args['app'] ?? 'app')}`
   if (name !== 'desktop_action') return typeof args['app'] === 'string' && args['app'] ? `${args['app']} on the desktop` : 'the desktop'
   const kind = args['kind']
@@ -117,7 +120,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
   const apps = courier.apps, open = courier.open
   if (apps && open) tools.push({
     name: 'list_apps',
-    description: 'List supported Windows app launchers and their exact IDs. This is not a full installed-app inventory. Use open_app for a listed app that is not already open; use list_windows for existing apps.',
+    description: 'Discover launchable apps registered with Windows and their exact opaque IDs. System, security and terminal surfaces are excluded. Use open_app for a listed app that is not already open; use list_windows for existing apps.',
     argsSchema: { type: 'object', properties: {}, additionalProperties: false },
     async run(args, context) {
       context.signal?.throwIfAborted()
@@ -127,10 +130,10 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
   }, {
     name: 'open_app',
     description: `Open a supported Windows app using its exact ID from list_apps, without command arguments. After launch, use list_windows to find its localized window title, then read_desktop to verify it opened before acting. Never retry a failed launch if the person asked to stop on the first error. ${GUIDANCE}`,
-    argsSchema: { type: 'object', additionalProperties: false, required: ['app'], properties: { app: { type: 'string', pattern: '^[a-z]{1,40}$' } } },
+    argsSchema: { type: 'object', additionalProperties: false, required: ['app'], properties: { app: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
     async run(args, context) {
       context.signal?.throwIfAborted()
-      if (!plainRecord(args) || !exactKeys(args, ['app']) || typeof args['app'] !== 'string' || !/^[a-z]{1,40}$/.test(args['app'])) return 'Use exactly one app ID from list_apps; paths and commands are not accepted.'
+      if (!plainRecord(args) || !exactKeys(args, ['app']) || typeof args['app'] !== 'string' || !/^[a-f0-9]{64}$/.test(args['app'])) return 'Use exactly one app ID from list_apps; paths and commands are not accepted.'
       try { return await open(args['app'], context.signal) } finally { context.signal?.throwIfAborted() }
     },
   })
@@ -203,6 +206,33 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
       const action = actionOf(args, context)
       try { return await act(action, context) }
       finally { context.signal?.throwIfAborted() }
+    },
+  })
+  const sequence = courier.sequence
+  if (sequence) tools.push({
+    name: 'desktop_sequence',
+    description: `Perform up to 12 related actions in one model call on the currently observed, stable interface. Supply snapshot and actions without individual snapshot fields. Supports element clicks, printable typing and supported keys; no coordinate clicks or scrolling. The host re-observes between actions, resolves each original element against the fresh controls, and stops on layout changes, ambiguity, cancellation or the first error. Use individual actions when expecting navigation, new dialogs or unfamiliar states. Returns actual final observation and elapsed time; inspect the result before claiming success. ${HANDS} ${GUIDANCE}`,
+    argsSchema: {
+      type: 'object', additionalProperties: false, required: ['snapshot', 'actions'],
+      properties: {
+        snapshot: { type: 'string', minLength: 1, maxLength: 160 },
+        actions: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['kind'], properties: {
+          kind: { type: 'string', enum: ['click', 'type', 'key'] }, element: { type: 'string', pattern: '^e[0-9]+$' },
+          text: { type: 'string', minLength: 1, maxLength: 2000 }, key: { type: 'string', enum: KEYS },
+        } } },
+      },
+    },
+    async run(args, context) {
+      context.signal?.throwIfAborted()
+      if (!plainRecord(args) || !exactKeys(args, ['snapshot', 'actions']) || !Array.isArray(args['actions']) || args['actions'].length < 1 || args['actions'].length > 12) throw new Error('Use snapshot and 1 to 12 actions.')
+      const actions = args['actions'].map((step: unknown) => {
+        if (!plainRecord(step) || 'snapshot' in step) throw new Error('Sequence actions share the outer snapshot.')
+        const action = actionOf({ ...step, snapshot: args['snapshot'] }, context)
+        if (action.kind === 'scroll' || (action.kind === 'click' && !('element' in action))) throw new Error('Sequence actions require stable element targets, typing or supported keys.')
+        return action
+      })
+      if (actions[0]?.kind !== 'click') throw new Error('Start a sequence with an observed element click to establish its input target.')
+      try { return await sequence(actions, context) } finally { context.signal?.throwIfAborted() }
     },
   })
   return tools

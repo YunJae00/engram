@@ -64,7 +64,7 @@ internal static class Program
             if (method == "listApps") { Send(new { id = id, result = DesktopApps.List() }); return; }
             if (method == "openApp")
             {
-                Send(new { id = id, result = DesktopApps.Open(Text(request, "app", 40), delegate
+                Send(new { id = id, result = DesktopApps.Open(Text(request, "app", 64), delegate
                 { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch) && !monitor.Escaped; }) });
                 return;
             }

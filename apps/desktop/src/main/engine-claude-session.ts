@@ -60,6 +60,8 @@ export function signatureOf(job: ToolSessionJob): string {
 }
 
 interface Turn {
+  startedAt: number
+  firstTool: boolean
   resolve(result: ToolSessionResult): void
   answer: string
   timer: ReturnType<typeof setTimeout>
@@ -75,6 +77,7 @@ interface PartialEvent {
 }
 
 export class WarmSession {
+  private readonly startedAt = performance.now()
   readonly signature: string
   // Which model this session was opened with - a change recycles it.
   get model(): string {
@@ -103,6 +106,10 @@ export class WarmSession {
           // The tool of the turn under way: the same name may run against a
           // different notebook or browser next time.
           const tool = this.tools.get(one.name)
+          if (this.turn && !this.turn.firstTool) {
+            this.turn.firstTool = true
+            flog('engine-turn-latency', `first_tool_ms=${Math.round(performance.now() - this.turn.startedAt)}`)
+          }
           const outcome = tool ? await tool.run(args as Record<string, unknown>) : 'that tool is not available this turn'
           if (typeof outcome === 'string') return { content: [{ type: 'text', text: outcome }] }
           return {
@@ -178,7 +185,7 @@ export class WarmSession {
         // line in the field log, because "which model answered" is otherwise
         // unanswerable after the fact.
         if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
-          flog('engine-claude', `session running on ${(message as { model?: string }).model ?? 'an unnamed model'}`)
+          flog('engine-claude', `session running on ${(message as { model?: string }).model ?? 'an unnamed model'}; startup_ms=${Math.round(performance.now() - this.startedAt)}`)
           continue
         }
         if (message.type !== 'result') continue
@@ -226,7 +233,7 @@ export class WarmSession {
         this.close()
       }
       const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
-      this.turn = { resolve, answer: '', timer, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
+      this.turn = { resolve, answer: '', timer, startedAt: performance.now(), firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
       job.signal?.addEventListener('abort', () => cut('canceled'), { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()

@@ -4,6 +4,7 @@ import type { DesktopObservationDto } from '../shared/desktop.js'
 import { desktopBinding, desktopWindows } from './desktop-access.js'
 import { actOnDesktop, ensureDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
+import { desktopSequence } from './desktop-sequence.js'
 
 function imageGeometry(observation: DesktopObservationDto): string {
   if (observation.truncated !== false) throw new Error('This window\'s accessibility scan was incomplete. Use read_desktop for available text, or choose a simpler window before requesting a screenshot.')
@@ -74,6 +75,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     read: (signal, app) => withDesktopActivity(lane, async () => JSON.stringify(await readControlledDesktop(lane, signal, true, app))),
     look: (signal, app) => withDesktopActivity(lane, () => lookDesktop(lane, signal, app)),
     act: (action, context) => withDesktopActivity(lane, () => actOnDesktop(lane, action, context.signal)),
+    sequence: (actions, context) => withDesktopActivity(lane, () => desktopSequence(lane, actions, context.signal)),
   })
 }
 

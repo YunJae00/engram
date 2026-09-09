@@ -310,7 +310,7 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   if (desktop && !desktopObserved && by('list_apps')) wanted.push(by(used('list_apps') ? 'open_app' : 'list_apps'), by('list_windows'))
   // Selected-app capabilities must not be crowded out by the browser menu.
   // Consent questions stay reachable without authorizing any input themselves.
-  if (desktop) wanted.push(by('read_desktop'), by('look_desktop'), ...(desktopObserved ? [by('desktop_action')] : []), by('ask_person'))
+  if (desktop) wanted.push(by('read_desktop'), by('look_desktop'), ...(desktopObserved ? [by('desktop_action'), by('desktop_sequence')] : []), by('ask_person'))
   // "Handle that", with no "that" anywhere: nothing named, nothing in the
   // conversation to name it. Looking first found the nearest notes and a web
   // page about something else, and wrote those up (measured). The one move
@@ -379,6 +379,7 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
     ? new Set(['propose_note', 'propose_edit', 'propose_file'])
     : new Set<string>()
   if (desktop && !desktopObserved) setAside.add('desktop_action')
+  if (desktop && !desktopObserved) setAside.add('desktop_sequence')
 
   const picked: AgentTool[] = []
   for (const tool of wanted) {
