@@ -75,8 +75,10 @@ test('the overlay pill renders and its resume and stop buttons reach the host', 
   const nextWindow = app.waitForEvent('window')
   await app.evaluate(async ({ BrowserWindow }, target) => {
     const main = BrowserWindow.getAllWindows()[0]!
+    const preload = main.webContents.getLastWebPreferences().preload
+    if (!preload) throw new Error('The fixture preload is unavailable')
     const overlay = new BrowserWindow({ show: false, width: 440, height: 60, webPreferences: {
-      preload: main.webContents.getLastWebPreferences().preload, contextIsolation: true, nodeIntegration: false, sandbox: false,
+      preload, contextIsolation: true, nodeIntegration: false, sandbox: false,
     } })
     await overlay.loadURL(target)
   }, url)
