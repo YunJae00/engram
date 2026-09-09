@@ -93,16 +93,27 @@ test('reads current off-screen form values beyond the control cap without disclo
 
 test('scrolls both axes inside a modal without moving the page underneath', async () => {
   await page.setContent('<div style="height:3000px">Background</div><div role="dialog" style="position:fixed;top:40px;left:40px;width:440px;height:240px;overflow:auto"><div style="width:1800px;height:1800px">Form details</div></div>')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.locator('[role="dialog"]').evaluate((node) => {
+    node.addEventListener('scroll', () => { node.setAttribute('data-scroll-steps', String(Number(node.getAttribute('data-scroll-steps') ?? 0) + 1)) })
+  })
   expect(await scrollPage(page, 'right')).toMatchObject({ ok: true })
+  expect(Number(await page.locator('[role="dialog"]').getAttribute('data-scroll-steps'))).toBeGreaterThan(1)
   expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBeGreaterThan(0)
   expect(await scrollPage(page, 'down')).toMatchObject({ ok: true })
   expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
   expect(await page.evaluate(() => scrollY)).toBe(0)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   expect(await scrollPage(page, 'left')).toMatchObject({ ok: true })
   expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBe(0)
   expect(await scrollPage(page, 'bottom')).toMatchObject({ ok: true, changed: true })
   expect(await scrollPage(page, 'bottom')).toMatchObject({ ok: true, changed: false })
   expect(await page.evaluate(() => scrollY)).toBe(0)
+  await page.locator('[role="dialog"]').evaluate((node) => { (node as HTMLElement).style.direction = 'rtl'; node.scrollLeft = 0 })
+  expect(await scrollPage(page, 'left')).toMatchObject({ ok: true, changed: true })
+  expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBeLessThan(0)
+  expect(await scrollPage(page, 'right')).toMatchObject({ ok: true, changed: true })
+  expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBe(0)
 })
 
 test('the reader sees through shadow roots and frames, numbers every control, and keeps folded words apart', async () => {

@@ -45,9 +45,9 @@ export const BotsView = memo(function BotsView() {
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
   const listRef = useRef<HTMLDivElement | null>(null)
-  const { selectedId } = useSyncExternalStore(cometThreads.subscribe, cometThreads.getSnapshot)
+  const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const selected = bots.find((b) => b.id === selectedId) ?? null
-  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = cometThreads.thread(selected?.id ?? null)
+  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   // Each comet works on its own tab with its own brain session: only this

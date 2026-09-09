@@ -7,6 +7,7 @@ import {
 import { BrowserWindow } from 'electron'
 import type { EngineHealthDto, EngineHealthReason, EngineStatusDto, EngramEvent } from '../shared/types.js'
 import type { VaultContext } from './vault.js'
+import { overlayWindowIds } from './desktop-overlay.js'
 
 // Assigning core's EngineErrorKind into the DTO union is the tripwire: a new
 // kind in core stops compiling here instead of shipping a health state that
@@ -21,7 +22,12 @@ function toReason(kind: EngineErrorKind): EngineHealthReason {
 // top bar showed a green dot.
 
 export function broadcast(event: EngramEvent): void {
-  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', event)
+  // Control overlays receive their status directly; do not clone browser frames
+  // and chat streams into every transparent display window, including hidden ones.
+  const overlays = overlayWindowIds()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!overlays.includes(win.webContents.id)) win.webContents.send('engram:event', event)
+  }
 }
 
 const engineHealth = new Map<string, EngineHealthDto>()

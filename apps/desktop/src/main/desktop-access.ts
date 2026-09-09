@@ -101,7 +101,6 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; return current }
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     if (current && current.host !== host) current.host.close()
-    releaseControl(lane, 'The app in front changed.')
     const binding: Binding = { lane, source: `window:${target.window}:0`, name: target.title, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
     bindings.set(lane, binding)
     changed()

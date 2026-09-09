@@ -65,6 +65,14 @@ export function useAppEvents(options: AppEventsOptions): void {
   } = options
 
   useEffect(() => {
+    let fabricTimer: ReturnType<typeof setTimeout> | null = null
+    const refreshFabricSoon = () => {
+      if (fabricTimer !== null) return
+      fabricTimer = setTimeout(() => {
+        fabricTimer = null
+        void api.brainFabric().then(setters.fabric).catch(() => undefined)
+      }, 200)
+    }
     const loadVault = () => {
       setters.vaultReady(true)
       void refresh()
@@ -98,7 +106,7 @@ export function useAppEvents(options: AppEventsOptions): void {
       if (event.type === 'vault:error') setters.vaultError({ message: event.message, root: event.root })
       if (event.type === 'vault:changed') refreshCardsInboxSoon()
       if (event.type === 'notes:delta') {
-        void api.brainFabric().then(setters.fabric).catch(() => undefined)
+        refreshFabricSoon()
         for (const note of event.upserts) notesRef.current.set(note.id, note)
         for (const id of event.removed) notesRef.current.delete(id)
         schedulePublish()
@@ -248,6 +256,7 @@ export function useAppEvents(options: AppEventsOptions): void {
 
     return () => {
       unsub()
+      if (fabricTimer !== null) clearTimeout(fabricTimer)
       for (const ref of [absorbResetRef, publishTimer, cardsInboxTimer, pendingTimer]) {
         if (ref.current !== null) window.clearTimeout(ref.current)
         ref.current = null

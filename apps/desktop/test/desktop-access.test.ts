@@ -75,7 +75,7 @@ describe('binding the app the comet needs', () => {
     const second = await bindDesktopForLane(lane, { app: 'Notepad' })
     expect(second).not.toBe(first)
     expect(second.host).toBe(first.host)
-    expect(fake.release).toHaveBeenCalledWith(lane, 'The app in front changed.')
+    expect(fake.release).not.toHaveBeenCalled()
     expect(second.revision).toBeGreaterThan(first.revision)
   })
 

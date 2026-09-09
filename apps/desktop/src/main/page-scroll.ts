@@ -8,7 +8,7 @@ export async function scrollDirection(page: Page, direction: string): Promise<bo
       await element?.dispose()
       if (!visible) continue
     }
-    const moved = await frame.evaluate((way) => {
+    const moved = await frame.evaluate(async (way) => {
       const horizontal = way === 'left' || way === 'right'
       const forward = way === 'down' || way === 'right' || way === 'bottom'
       const visible = (node: Element) => {
@@ -41,7 +41,18 @@ export async function scrollDirection(page: Page, direction: string): Promise<bo
         const before = horizontal ? node.scrollLeft : node.scrollTop
         const step = Math.max(80, (horizontal ? node.clientWidth : node.clientHeight) * 0.8)
         const next = way === 'top' ? 0 : way === 'bottom' ? node.scrollHeight : before + (forward ? step : -step)
-        node.scrollTo({ [horizontal ? 'left' : 'top']: next, behavior: 'instant' })
+        const limit = horizontal ? node.scrollWidth - node.clientWidth : node.scrollHeight - node.clientHeight
+        const rtl = horizontal && getComputedStyle(node).direction === 'rtl'
+        if (Math.max(rtl ? -limit : 0, Math.min(rtl ? 0 : limit, next)) === before) continue
+        const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+        await new Promise<void>((resolve) => {
+          const events = node === document.scrollingElement ? document : node
+          const finish = () => { clearTimeout(timer); events.removeEventListener('scrollend', finish); resolve() }
+          // A detached or background surface may never emit scrollend.
+          const timer = setTimeout(finish, smooth ? 1200 : 0)
+          events.addEventListener('scrollend', finish, { once: true })
+          node.scrollTo({ [horizontal ? 'left' : 'top']: next, behavior: smooth ? 'smooth' : 'instant' })
+        })
         if ((horizontal ? node.scrollLeft : node.scrollTop) !== before) return true
       }
       return dialogs.length ? false : null

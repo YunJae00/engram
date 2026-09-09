@@ -30,6 +30,22 @@ describe('cometThreads', () => {
     unsubscribe()
   })
 
+  it('keeps selected conversation snapshots stable while another chat streams', () => {
+    const store = createCometThreads(BOT)
+    store.load(BOT, [{ role: 'assistant', text: 'settled answer' }])
+    const selected = store.thread(BOT)
+    store.begin('background', 'research')
+    for (let i = 0; i < 100; i++) {
+      store.handleEvent({ type: 'chat:token', channel: cometChannel('background'), text: 'word ' })
+      expect(store.getSnapshot().selectedId).toBe(BOT)
+      expect(store.thread(BOT)).toBe(selected)
+    }
+    store.handleEvent({ type: 'chat:done', channel: cometChannel('background'), text: 'finished' })
+    expect(store.thread(BOT)).toBe(selected)
+    store.select('background')
+    expect(store.thread(store.getSnapshot().selectedId).messages.at(-1)?.text).toBe('finished')
+  })
+
   it('keeps a turn in flight on top of a disk reload', () => {
     const store = createCometThreads(BOT)
     store.load(BOT, [{ role: 'user', text: 'old' }, { role: 'assistant', text: 'older answer' }])
