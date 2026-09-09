@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { initVault } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { DesktopControlStatusDto } from '../src/shared/desktop.js'
@@ -73,15 +73,12 @@ test('the overlay pill renders and its resume and stop buttons reach the host', 
   await control({ state: 'paused', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', resumable: true })
   const url = page.url().split('#')[0]! + '#overlay-pill'
   const nextWindow = app.waitForEvent('window')
-  await app.evaluate(async ({ BrowserWindow }, target) => {
-    const main = BrowserWindow.getAllWindows()[0]!
-    const preload = main.webContents.getLastWebPreferences().preload
-    if (!preload) throw new Error('The fixture preload is unavailable')
-    const overlay = new BrowserWindow({ show: false, width: 440, height: 60, webPreferences: {
+  await app.evaluate(async ({ BrowserWindow }, { target, preload }) => {
+    const overlay = new BrowserWindow({ show: false, frame: false, autoHideMenuBar: true, width: 440, height: 60, webPreferences: {
       preload, contextIsolation: true, nodeIntegration: false, sandbox: false,
     } })
     await overlay.loadURL(target)
-  }, url)
+  }, { target: url, preload: fileURLToPath(new URL('../out/preload/index.mjs', import.meta.url)) })
   const overlay = await nextWindow
   try {
     await expect(overlay.getByTestId('control-pill')).toContainText('You took over')
@@ -160,7 +157,13 @@ test('a hands-on pause says the comet carries on by itself, and the stop stays r
     if (width <= 900 && await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
     await expect(page.getByTestId('computer-control-stop')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await page.screenshot({ path: join(TMP, 'desktop-control-ui', `electron-orbit-${width}.png`) })
+    const png = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = BrowserWindow.getAllWindows()[0]!
+      const image = await main.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
+      if (image.isEmpty()) throw new Error('The hidden fixture did not render a frame')
+      return image.toPNG().toString('base64')
+    })
+    await writeFile(join(TMP, 'desktop-control-ui', `electron-orbit-${width}.png`), Buffer.from(png, 'base64'))
   }
   await page.setViewportSize({ width: 1440, height: 900 })
 })
