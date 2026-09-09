@@ -61,6 +61,7 @@ export function signatureOf(job: ToolSessionJob): string {
 
 interface Turn {
   startedAt: number
+  lastToolEnd: number
   firstTool: boolean
   resolve(result: ToolSessionResult): void
   answer: string
@@ -110,7 +111,17 @@ export class WarmSession {
             this.turn.firstTool = true
             flog('engine-turn-latency', `first_tool_ms=${Math.round(performance.now() - this.turn.startedAt)}`)
           }
-          const outcome = tool ? await tool.run(args as Record<string, unknown>) : 'that tool is not available this turn'
+          const turn = this.turn
+          const started = performance.now()
+          const gap = turn ? Math.round(started - turn.lastToolEnd) : 0
+          const outcome = await (async () => {
+            try { return tool ? await tool.run(args as Record<string, unknown>) : 'that tool is not available this turn' }
+            finally {
+              const ended = performance.now()
+              if (turn) turn.lastToolEnd = ended
+              flog('engine-tool-latency', `tool=${one.name} between_tools_ms=${gap} tool_ms=${Math.round(ended - started)}`)
+            }
+          })()
           if (typeof outcome === 'string') return { content: [{ type: 'text', text: outcome }] }
           return {
             content: [
@@ -233,7 +244,8 @@ export class WarmSession {
         this.close()
       }
       const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
-      this.turn = { resolve, answer: '', timer, startedAt: performance.now(), firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
+      const now = performance.now()
+      this.turn = { resolve, answer: '', timer, startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
       job.signal?.addEventListener('abort', () => cut('canceled'), { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()

@@ -64,7 +64,7 @@ internal sealed class AutomationSession
         if (element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) return !((ValuePattern)pattern).Current.IsReadOnly;
         return info.ControlType == ControlType.Edit && info.IsKeyboardFocusable;
     }
-    private static object Node(AutomationElement element, string id, int depth, ref int remaining)
+    private static object Node(AutomationElement element, string id, string runtime, int depth, ref int remaining)
     {
         var current = element.Current;
         string value = null;
@@ -73,7 +73,7 @@ internal sealed class AutomationSession
             value = TextBudget(((ValuePattern)pattern).Current.Value, 4096, ref remaining);
         return new
         {
-            id = id, name = current.IsPassword ? "Password field" : TextBudget(current.Name, 512, ref remaining),
+            id = id, runtimeId = runtime, name = current.IsPassword ? "Password field" : TextBudget(current.Name, 512, ref remaining),
             controlType = current.ControlType.ProgrammaticName.Replace("ControlType.", ""),
             value = value, bounds = Bounds(current.BoundingRectangle), enabled = current.IsEnabled,
             password = current.IsPassword, isPassword = current.IsPassword, offscreen = current.IsOffscreen, depth = depth,
@@ -94,6 +94,17 @@ internal sealed class AutomationSession
         var seen = new HashSet<string>();
         pending.Enqueue(Tuple.Create(root, 0));
         var watch = Stopwatch.StartNew();
+        try
+        {
+            var initialFocus = AutomationElement.FocusedElement;
+            if (initialFocus != null)
+            {
+                SafeAncestors(initialFocus, rootId);
+                pending.Enqueue(Tuple.Create(initialFocus, 1));
+            }
+        }
+        catch (ElementNotAvailableException) { /* Traverse the remaining controls when focus disappears. */ }
+        catch (InvalidOperationException) { /* Do not prioritize controls inside protected or foreign paths. */ }
         var limited = false;
         var remaining = 32768;
         while (pending.Count > 0 && nodes.Count < MaxNodes && watch.ElapsedMilliseconds < DeadlineMs)
@@ -105,7 +116,7 @@ internal sealed class AutomationSession
                 var runtime = RuntimeId(element);
                 if (!seen.Add(runtime)) continue;
                 var id = "e" + nodes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                nodes.Add(Node(element, id, item.Item2, ref remaining));
+                nodes.Add(Node(element, id, runtime, item.Item2, ref remaining));
                 var info = element.Current;
                 observation.Elements.Add(id, new ObservedElement { Element = element, Runtime = runtime, Name = info.Name,
                     AutomationId = info.AutomationId, ControlType = info.ControlType.Id, Bounds = info.BoundingRectangle });

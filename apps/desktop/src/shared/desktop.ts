@@ -2,9 +2,11 @@ export interface DesktopWindowDto { id: string; name: string; foreground?: boole
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {
   id: string
+  runtimeId?: string
   name: string
   controlType: string
   value?: string | null
+  actions?: { type?: boolean }
   bounds: { x: number; y: number; width: number; height: number }
 }
 export interface DesktopObservationDto {

@@ -212,7 +212,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
   const sequence = courier.sequence
   if (sequence) tools.push({
     name: 'desktop_sequence',
-    description: `Perform up to 12 related actions in one model call on the currently observed, stable interface. Supply snapshot and actions without individual snapshot fields. Supports element clicks, printable typing and supported keys; no coordinate clicks or scrolling. The host re-observes between actions, resolves each original element against the fresh controls, and stops on layout changes, ambiguity, cancellation or the first error. Use individual actions when expecting navigation, new dialogs or unfamiliar states. Returns actual final observation and elapsed time; inspect the result before claiming success. ${HANDS} ${GUIDANCE}`,
+    description: `Perform up to 12 related actions in one model call. Start with an observed element click; supply snapshot and actions without individual snapshot fields. Supports element clicks, printable typing and supported keys; no coordinates or scrolling. Normally requires a complete, stable interface. A partial view also supports focused editing: click an Edit with actions.type and runtimeId, then type or use editing/selection keys within that same editor (no Enter, Tab, Escape or Control+F). The host re-observes between actions and stops on changed targets, focus, geometry, cancellation or the first error. Use individual actions for navigation or dialogs. Returns actual final observation and elapsed time; verify the result. ${HANDS} ${GUIDANCE}`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['snapshot', 'actions'],
       properties: {

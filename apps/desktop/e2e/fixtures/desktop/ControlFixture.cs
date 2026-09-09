@@ -41,6 +41,7 @@ internal sealed class ControlFixture : Form
     private int Clicks;
     private Form Away;
     private Panel Dense;
+    private TextBox Deep;
 
     internal ControlFixture()
     {
@@ -131,9 +132,12 @@ internal sealed class ControlFixture : Form
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };
                 for (var cell = 0; cell < 240; cell++) Dense.Controls.Add(new Label { Text = "Cell " + cell, Bounds = new Rectangle(cell % 20 * 28, cell / 20 * 20, 26, 18) });
+                Deep = new TextBox { AccessibleName = "Deep editor", Bounds = new Rectangle(8, 245, 450, 25) };
+                Dense.Controls.Add(Deep);
                 Controls.Add(Dense); Dense.BringToFront();
             }
-            else if (method == "sparse") { if (Dense != null) { Dense.Dispose(); Dense = null; } }
+            else if (method == "deepFocus") { Deep.Focus(); }
+            else if (method == "sparse") { if (Dense != null) { Dense.Dispose(); Dense = null; Deep = null; } }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "hidePassword") { Secret.Visible = false; Entry.Focus(); }
             else if (method == "foreignInput" || method == "foreignEscape")
@@ -149,7 +153,7 @@ internal sealed class ControlFixture : Form
             }
             else if (method != "state") throw new ArgumentException("Unsupported fixture request");
             Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, wheelEvents = Scroller.Wheels,
-                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible } });
+                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible, deepText = Deep == null ? null : Deep.Text } });
         }
         catch (Exception error) { Send(new { id = id, error = error.Message }); }
     }
