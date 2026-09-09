@@ -11,7 +11,7 @@ vi.mock('../src/main/desktop-access.js', () => ({
   setDesktopReleaseHook: vi.fn(),
 }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
-vi.mock('../src/main/desktop-overlay.js', () => ({ showControlOverlay: vi.fn(), updateControlOverlay: vi.fn(), hideControlOverlay: vi.fn(), overlayPointer: vi.fn() }))
+vi.mock('../src/main/desktop-overlay.js', () => ({ prepareControlOverlay: vi.fn().mockResolvedValue('900'), updateControlOverlay: vi.fn(), hideControlOverlay: vi.fn(), overlayPointer: vi.fn() }))
 let control: typeof import('../src/main/desktop-control.js')
 const good: Choice = { id: 'claude', desktopToolIsolation: true }
 const unsupported: Choice = { id: 'codex', desktopToolIsolation: false }

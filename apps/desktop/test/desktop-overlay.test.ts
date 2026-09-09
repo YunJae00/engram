@@ -101,6 +101,7 @@ afterEach(() => {
 describe('control overlay windows', () => {
   it('waits for the visible pill before handing its native handle to input control', async () => {
     const pending = overlay.prepareControlOverlay(running)
+    await vi.advanceTimersByTimeAsync(6000)
     expect(pill().isVisible()).toBe(false)
     pill().emit('ready-to-show')
     await vi.advanceTimersByTimeAsync(25)
