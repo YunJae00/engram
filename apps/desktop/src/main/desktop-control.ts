@@ -6,6 +6,7 @@ import { bindDesktopForLane, desktopBinding, desktopChanged, setDesktopReleaseHo
 import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
+import { DesktopHost } from './desktop-host.js'
 
 // Control is taken by the comet's first reading of an app and given back by
 // an explicit stop. Pointer motion is harmless; native control separates
@@ -30,6 +31,7 @@ let cancellation = 0
 const stoppedTurns = new Map<string, string>()
 const observations = new Map<string, DesktopObservationDto>()
 const operations = new Map<string, Promise<unknown>>()
+let launching: { lane: string; host: DesktopHost } | undefined
 
 setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, RESUMABLE.test(reason)))
 
@@ -48,7 +50,8 @@ export function desktopControlStatus(): DesktopControlStatusDto {
   const state = lease.state()
   const engine = active?.engine ?? paused?.engine
   return {
-    ...(state.state === 'running' && (!active?.native || !active.working) ? { ...state, state: 'ready' } : state),
+    ...(state.state === 'running' && !active?.native ? { ...state, state: 'ready' } : state),
+    inputActive: active?.working === true,
     ...(engine ? { engine, engineLabel: LABEL[engine] } : {}),
     ...(state.state === 'paused' ? { resumable: paused?.resumable === true, ...(state.lane && stoppedTurns.has(state.lane) ? { reason: stoppedTurns.get(state.lane) } : {}) } : {}),
   }
@@ -64,11 +67,12 @@ function announce(): void {
 export function stopDesktopControl(reason = 'You stopped computer control.', resumable = false): void {
   if (!resumable) {
     cancellation++
-    const lane = active?.binding.lane ?? paused?.lane ?? startingLane
+    const lane = active?.binding.lane ?? paused?.lane ?? startingLane ?? launching?.lane
     if (lane) stoppedTurns.set(lane, reason)
   }
   if (active || startingLane) flog('desktop-control-stop', reason)
   const held = active
+  launching?.host.close()
   active = undefined
   observations.clear()
   lease.stop(reason)
@@ -99,7 +103,32 @@ export function stopDesktopFromUi(): void {
 export function resumeDesktopControl(): void { paused?.release?.() }
 
 export function stopDesktopForLane(lane: string, reason = 'This chat stopped.', resumable = false): void {
-  if (lease.state().lane === lane || active?.binding.lane === lane || startingLane === lane) stopDesktopControl(reason, resumable)
+  if (lease.state().lane === lane || active?.binding.lane === lane || startingLane === lane || launching?.lane === lane) stopDesktopControl(reason, resumable)
+}
+
+export async function openDesktopApp(lane: string, app: string, signal?: AbortSignal): Promise<string> {
+  const epoch = cancellation
+  signal?.throwIfAborted()
+  const engine = await engineForControl()
+  signal?.throwIfAborted()
+  if (stoppedTurns.has(lane) || epoch !== cancellation) throw stoppedError(lane)
+  if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
+  if (launching || starting || (active && active.binding.lane !== lane)) throw new Error('Another desktop operation is in progress.')
+  const host = new DesktopHost()
+  const pending = { lane, host }
+  launching = pending
+  const abort = () => host.close()
+  signal?.addEventListener('abort', abort, { once: true })
+  try {
+    await host.request('openApp', { app })
+    signal?.throwIfAborted()
+    if (epoch !== cancellation) throw stoppedError(lane)
+    return 'Windows accepted the launch request. Use list_windows to find the actual window, then read_desktop to verify it. A launch request alone does not prove the app is ready.'
+  } finally {
+    signal?.removeEventListener('abort', abort)
+    if (launching === pending) launching = undefined
+    host.close()
+  }
 }
 
 // A turn's control ends with the turn. The app stays connected and readable,
@@ -296,6 +325,12 @@ export async function readControlledDesktop(lane: string, signal?: AbortSignal, 
     if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.')
     throw error
   } finally { signal?.removeEventListener('abort', stop) }
+}
+
+export function desktopObservation(lane: string, snapshot: string): DesktopObservationDto {
+  const observation = observations.get(lane)
+  if (!observation || observation.snapshot !== snapshot) throw new Error('Observe the app again before acting. This snapshot is stale.')
+  return observation
 }
 
 export async function actOnDesktop(lane: string, action: DesktopAction, signal?: AbortSignal): Promise<string> {

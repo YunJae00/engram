@@ -140,7 +140,7 @@ describe('control overlay windows', () => {
     expect(pillWin.setContentProtection).toHaveBeenCalledWith(true)
     expect(pillWin.loadFile).toHaveBeenCalledWith(expect.anything(), { hash: 'overlay-pill' })
     // Top-centre of the display under the pointer (the first one here).
-    expect(pillWin.options).toMatchObject({ x: 420, y: 12 })
+    expect(pillWin.options).toMatchObject({ x: 420, y: 56 })
   })
 
   it('shows windows without activating them once they are ready, and never before', () => {

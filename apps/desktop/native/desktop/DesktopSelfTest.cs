@@ -24,6 +24,13 @@ internal static class DesktopSelfTest
     {
         try
         {
+            Check(DesktopApps.Allowed("Example", "Example.App_123!App", ""), "Registered packaged apps are discoverable");
+            Check(DesktopApps.Allowed("Example", "Example", @"C:\Apps\Example.exe"), "Registered desktop executables are discoverable");
+            Check(!DesktopApps.Allowed("Example", "Example", @"C:\Windows\System32\cmd.exe"), "Terminal targets are excluded regardless of display name");
+            Check(!DesktopApps.Allowed("Example", "Microsoft.WindowsTerminal_123!App", ""), "Packaged terminals are excluded");
+            Check(!DesktopApps.Allowed("Example", "Example", @"C:\Apps\example.bat"), "Scripts are not app launchers");
+            Reject(delegate { DesktopApps.Open("../calc.exe", delegate { return true; }); }, "Model paths cannot be launched");
+            Check(DesktopApps.Id("Example") == DesktopApps.Id("Example") && DesktopApps.Id("Example").Length == 64, "Catalog IDs are stable and opaque");
             Check(ControlPolicy.PassivePointer(0x200, false), "Physical pointer motion is not cancellation");
             Check(!ControlPolicy.PassivePointer(0x201, false), "A button press is not passive motion");
             Check(!ControlPolicy.PassivePointer(0x200, true), "Other automation still interrupts control");

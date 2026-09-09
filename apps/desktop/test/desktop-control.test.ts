@@ -80,18 +80,20 @@ afterEach(() => {
 })
 
 describe('taking the computer', () => {
-  it('releases input and hides the overlay between desktop tools without discarding the snapshot', async () => {
+  it('releases input but keeps the overlay through the desktop loop without discarding the snapshot', async () => {
     const host = binding()
     const read = await control.withDesktopActivity(lane, () => control.readControlledDesktop(lane, undefined, true))
     expect(host.request).toHaveBeenLastCalledWith('idle', { window: '100', pid: 200, lease: 'native-100' })
-    expect(control.desktopControlStatus().state).toBe('ready')
-    expect(deps.overlay.hide).toHaveBeenCalled()
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', inputActive: false })
+    expect(deps.overlay.hide).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1000)
     expect(host.request.mock.calls.filter(([method]) => method === 'work')).toHaveLength(0)
     await control.withDesktopActivity(lane, () => control.actOnDesktop(lane, { kind: 'click', snapshot: read.snapshot, element: 'e0' }))
     expect(host.request).toHaveBeenCalledWith('work', { window: '100', pid: 200, lease: 'native-100', overlay: '900' })
     expect(grants(host.request)).toHaveLength(1)
-    expect(control.desktopControlStatus().state).toBe('ready')
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', inputActive: false })
+    control.endDesktopTurn(lane)
+    expect(deps.overlay.hide).toHaveBeenCalled()
   })
 
   it('waits for input release before starting another queued desktop tool', async () => {
@@ -135,7 +137,7 @@ describe('taking the computer', () => {
       throw new Error('Screenshot validation failed')
     })).rejects.toThrow('Screenshot validation failed')
     expect(host.request).toHaveBeenLastCalledWith('idle', expect.objectContaining({ lease: 'native-100' }))
-    expect(control.desktopControlStatus().state).toBe('ready')
+    expect(control.desktopControlStatus()).toMatchObject({ state: 'running', inputActive: false })
   })
 
   it('preserves a read failure on retry rather than blaming Esc or Stop', async () => {

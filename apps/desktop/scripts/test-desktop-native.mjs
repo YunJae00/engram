@@ -109,6 +109,17 @@ try {
   helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
   const capability = await Promise.race([helper.ready, wait(10000).then(() => { throw new Error('Desktop helper did not start') })])
   assert.equal(capability.protocol, 2)
+  result.stage = 'app-launch'
+  const launchers = await helper.request('listApps')
+  const notepadApp = launchers.find(app => /notepad/i.test(app.name))
+  assert.ok(notepadApp, 'Registered Notepad app was not discovered')
+  await assert.rejects(helper.request('openApp', { app: 'cmd.exe' }), /Paths and commands/)
+  assert.equal((await helper.request('openApp', { app: notepadApp.id })).requested, true)
+  const launched = await until(() => helper.request('listWindows'), value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch')
+  const notepad = launched.windows.find(window => /notepad/i.test(window.title))
+  const launchedView = await helper.request('observe', { window: notepad.window, pid: notepad.pid })
+  assert.ok(launchedView.snapshot)
+  result.appLaunchPassed = true
   const target = { window: ready.window, pid: ready.pid }
   result.stage = 'inspect-window'
   await helper.request('inspectWindow', { window: ready.window, pid: 0 })
@@ -181,6 +192,16 @@ try {
     y: Math.round(snapshot.captureBounds.y + y * (snapshot.captureBounds.height - 1)) })
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Native click did not reach the fixture')
   result.clickPassed = true
+  result.stage = 'observed-input-sequence'
+  const sequenceStart = performance.now()
+  for (let index = 0; index < 7; index++) {
+    const next = await helper.request('observe', bound)
+    const targetButton = next.nodes.filter(node => node.name === 'Count click')
+    assert.equal(targetButton.length, 1)
+    await helper.request('click', { ...bound, snapshot: next.snapshot, element: targetButton[0].id })
+    await until(() => fixture.request('state'), state => state.clicks === index + 2, 'Observed sequence input was not applied')
+  }
+  result.observedSequenceMs = Math.round(performance.now() - sequenceStart)
   result.stage = 'scroll'
   snapshot = await observe()
   await helper.request('scroll', { ...bound, snapshot: snapshot.snapshot, delta: -3 })

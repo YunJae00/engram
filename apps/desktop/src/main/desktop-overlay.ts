@@ -15,7 +15,7 @@ import { allowNavigation } from './security.js'
 const PILL_WIDTH = 440
 // The pill is 44 tall; the rest is room for its floating shadow.
 const PILL_HEIGHT = 60
-const PILL_TOP_INSET = 12
+const PILL_TOP_INSET = 56
 const POINTER_POLL_MS = 33
 // Windows' topmost band is last-set-wins: whichever window asked most recently
 // sits above, so the claim is renewed while shown.

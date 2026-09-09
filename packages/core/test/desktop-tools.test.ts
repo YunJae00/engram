@@ -95,7 +95,7 @@ describe('desktop tool capabilities', () => {
       expect(tool.description).toContain('Never handle passwords, authentication, terminals or security settings')
       expect(tool.description).toContain('do not claim success from input delivery alone')
     }
-    expect(tools[2]!.description).toContain('resumes once their hands are still')
+    expect(tools[2]!.description).toContain('ordinary pointer motion does not cancel control')
     expect(tools[2]!.description).toContain('Esc or Stop')
     expect(tools[2]!.description).toContain('Escape key ends control')
   })

@@ -115,9 +115,9 @@
 .control-overlay-glow {
   position: absolute; inset: 0;
   box-shadow:
-    inset 0 0 72px -20px color-mix(in srgb, var(--control-tint) 45%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--control-tint) 28%, transparent),
-    inset 0 0 0 2px color-mix(in srgb, var(--control-tint) 55%, transparent);
+    inset 0 0 80px -20px color-mix(in srgb, var(--control-tint) 65%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--control-tint) 45%, transparent),
+    inset 0 0 0 3px var(--control-tint);
 }
 .control-overlay[data-state='running'] .control-overlay-glow { animation: control-breathe 3.2s ease-in-out infinite; }
 .control-overlay[data-state='paused'] .control-overlay-glow { opacity: 0.5; }
@@ -156,7 +156,7 @@
 .control-pill-stop:hover { background: var(--hover-bg); color: var(--fg); }
 .control-pill-resume { background: var(--button-bg); color: var(--button-fg); }
 .control-pill-resume:hover { opacity: 0.88; }
-@keyframes control-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@keyframes control-breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 1; } }
 @keyframes control-press { 0% { scale: 0.9; } 55% { scale: 1.15; } 100% { scale: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .control-overlay[data-state='running'] .control-overlay-glow, .control-overlay-mark[data-pressed], .control-pill { animation: none; }

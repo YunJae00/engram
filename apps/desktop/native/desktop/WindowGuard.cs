@@ -58,6 +58,8 @@ internal sealed class WindowGuard : IDisposable
         "wsl", "putty", "ssh", "regedit", "mmc", "taskmgr", "systemsettings", "control", "mshta", "rundll32"
     };
 
+    internal static bool ProtectedApplication(string name) { return ProtectedNames.Contains(name); }
+
     internal WindowGuard(int owner)
     {
         OwnerPid = owner;
