@@ -134,3 +134,35 @@ describe('looking comes before asking', () => {
     expect(result.answer).toBe('Which report?')
   })
 })
+
+it('retains an incomplete phase and stops unproductive calls without granting a fresh budget', async () => {
+  let reads = 0
+  const engine = sessionBrain(async (job) => {
+    const plan = job.tools.find((tool) => tool.name === 'task_plan')!
+    const read = job.tools.find((tool) => tool.name === 'read_desktop')!
+    await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
+    for (let index = 0; index < 45; index++) await read.run({})
+    return { answer: 'Incomplete' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return 'Observed workspace' } }] }, 'Perform the requested changes')
+  expect(reads).toBe(39)
+  expect(result.stopped).toBe('calls')
+  expect(result.incomplete).toContain('Prepare workspace')
+})
+
+it('adds bounded execution room after an observed phase, retaining one session', async () => {
+  const engine = sessionBrain(async (job) => {
+    const plan = job.tools.find((tool) => tool.name === 'task_plan')!
+    const read = job.tools.find((tool) => tool.name === 'read_desktop')!
+    await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
+    await read.run({})
+    await plan.run({ evidenceStep: 2, finding: 'The requested workspace is visible' })
+    for (let index = 0; index < 40; index++) await read.run({})
+    await plan.run({ evidenceStep: 43, finding: 'Requested result visible' })
+    return { answer: 'Verified' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform the requested changes')
+  expect(result.steps).toHaveLength(44)
+  expect(result.stopped).toBeUndefined()
+  expect(result.incomplete).toBeUndefined()
+})

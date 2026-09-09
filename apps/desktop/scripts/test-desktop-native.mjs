@@ -181,6 +181,13 @@ try {
   await helper.request('type', { ...bound, snapshot: snapshot.snapshot, text: 'alpha 한글 🚀' })
   await until(() => fixture.request('state'), state => state.text === 'alpha 한글 🚀', 'Native Unicode entry did not reach the fixture')
   result.unicodePassed = true
+  result.stage = 'editing-chord'
+  snapshot = await observe()
+  await helper.request('key', { ...bound, snapshot: snapshot.snapshot, key: 'Control+A' })
+  snapshot = await observe()
+  await helper.request('type', { ...bound, snapshot: snapshot.snapshot, text: 'Edited sample' })
+  await until(() => fixture.request('state'), state => state.text === 'Edited sample', 'Selection and replacement did not reach the fixture')
+  result.editingChordPassed = true
   result.stage = 'click-button'
   snapshot = await observe()
   const button = snapshot.nodes.find(node => node.name === 'Count click')
@@ -243,6 +250,17 @@ try {
   await until(() => helper.request('inputState'), state => state.escaped && !state.working, 'Escape while idle did not stop control')
   await assert.rejects(helper.request('work', restingBound))
   result.idleEscapePassed = true
+  result.stage = 'partial-capture'
+  await fixture.request('dense')
+  const partialView = await helper.request('observe', target)
+  assert.equal(partialView.truncated, true)
+  assert.equal(partialView.captureSafe, true)
+  await helper.request('capture', { ...target, snapshot: partialView.snapshot })
+  await fixture.request('password')
+  await assert.rejects(helper.request('capture', { ...target, snapshot: partialView.snapshot }), /cleared for capture/)
+  assert.equal((await helper.request('observe', target)).captureSafe, false)
+  await fixture.request('sparse')
+  result.partialCapturePassed = true
   result.stage = 'password'
   await fixture.request('password')
   const protectedView = await helper.request('observe', target)

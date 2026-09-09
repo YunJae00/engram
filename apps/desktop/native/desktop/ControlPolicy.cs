@@ -12,7 +12,17 @@ internal static class ControlPolicy
         { "ArrowLeft", new ushort[] { 37 } }, { "ArrowUp", new ushort[] { 38 } },
         { "ArrowRight", new ushort[] { 39 } }, { "ArrowDown", new ushort[] { 40 } },
         { "Home", new ushort[] { 36 } }, { "End", new ushort[] { 35 } },
-        { "PageUp", new ushort[] { 33 } }, { "PageDown", new ushort[] { 34 } }
+        { "PageUp", new ushort[] { 33 } }, { "PageDown", new ushort[] { 34 } },
+        { "Control+A", new ushort[] { 17, 65 } }, { "Control+B", new ushort[] { 17, 66 } },
+        { "Control+I", new ushort[] { 17, 73 } }, { "Control+U", new ushort[] { 17, 85 } },
+        { "Control+F", new ushort[] { 17, 70 } },
+        { "Control+Home", new ushort[] { 17, 36 } }, { "Control+End", new ushort[] { 17, 35 } },
+        { "Control+ArrowLeft", new ushort[] { 17, 37 } }, { "Control+ArrowRight", new ushort[] { 17, 39 } },
+        { "Shift+Home", new ushort[] { 16, 36 } }, { "Shift+End", new ushort[] { 16, 35 } },
+        { "Shift+ArrowLeft", new ushort[] { 16, 37 } }, { "Shift+ArrowRight", new ushort[] { 16, 39 } },
+        { "Shift+ArrowUp", new ushort[] { 16, 38 } }, { "Shift+ArrowDown", new ushort[] { 16, 40 } },
+        { "Control+Shift+Home", new ushort[] { 17, 16, 36 } }, { "Control+Shift+End", new ushort[] { 17, 16, 35 } },
+        { "Control+Shift+ArrowLeft", new ushort[] { 17, 16, 37 } }, { "Control+Shift+ArrowRight", new ushort[] { 17, 16, 39 } }
     };
 
     internal static bool IsSensitive(string value) { return value != null && Sensitive.IsMatch(value); }

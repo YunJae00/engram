@@ -32,6 +32,24 @@ beforeEach(() => {
   fake.image.mockReturnValue({ toJPEG: () => Buffer.from('fixture-image') })
 })
 describe('desktop image consent and capture validation', () => {
+  it('returns a fresh partial observation after input without claiming task completion', async () => {
+    fake.read.mockResolvedValue({ ...observation('after'), truncated: true })
+    const tool = desktopAgentTools('bot-one').find((one) => one.name === 'desktop_action')!
+    const result = JSON.parse(await tool.run({ kind: 'key', snapshot: 'before', key: 'Shift+Home' }, { task: 'Select the current line' }))
+    expect(result.observation.snapshot).toBe('after')
+    expect(result.observation.truncated).toBe(true)
+    expect(result.requiresVerification).toBe(true)
+    expect(fake.act).toHaveBeenCalledOnce()
+    expect(fake.read).toHaveBeenCalledOnce()
+  })
+  it('never retakes control after Escape and never retries an input error', async () => {
+    const tool = desktopAgentTools('bot-one').find((one) => one.name === 'desktop_action')!
+    expect(await tool.run({ kind: 'key', snapshot: 'before', key: 'Escape' }, { task: 'Stop' })).toContain('ended')
+    expect(fake.read).not.toHaveBeenCalled()
+    fake.act.mockRejectedValueOnce(new Error('First native failure'))
+    await expect(tool.run({ kind: 'key', snapshot: 'before', key: 'Home' }, { task: 'Move' })).rejects.toThrow('First native failure')
+    expect(fake.read).not.toHaveBeenCalled()
+  })
   it('offers the computer whenever this build can drive it, and never without the helper', async () => {
     fake.available = false
     expect(desktopAgentTools('bot-one')).toEqual([])
@@ -60,6 +78,12 @@ describe('desktop image consent and capture validation', () => {
     const offset = (16 * 32 + 16) * 4
     expect([...pixels.subarray(offset, offset + 4)]).toEqual([32, 32, 32, 255])
     expect([...pixels.subarray(0, 4)]).toEqual([255, 255, 255, 255])
+  })
+  it('accepts partial text only with explicit native capture clearance on both observations', async () => {
+    fake.read.mockResolvedValue({ ...observation(), truncated: true, captureSafe: true })
+    expect((await look()).image?.mimeType).toBe('image/jpeg')
+    fake.read.mockResolvedValueOnce({ ...observation(), truncated: true, captureSafe: true }).mockResolvedValueOnce({ ...observation(), truncated: true, captureSafe: false })
+    await expect(look()).rejects.toThrow('accessibility scan was incomplete')
   })
   it.each([true, undefined, 'false', 0])('does not capture with incomplete coverage (%s)', async (truncated) => {
     fake.read.mockResolvedValueOnce({ ...observation(), truncated })

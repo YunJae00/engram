@@ -2223,14 +2223,15 @@ export function registerIpc(ctx: VaultContext): void {
         // went, so the next time starts from what was learned rather than from
         // nothing. The note is the person's to approve, like any other.
         const HANDS = new Set(['press', 'type_text', 'choose', 'press_point', 'reveal'])
-        const handled = result.steps.some((step) => HANDS.has(step.tool))
+        const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete
+        const handled = finished && result.steps.some((step) => HANDS.has(step.tool))
         // What to offer is read off what happened, never off a fixed row of
         // buttons: a job it was never shown asks to be taught, a procedure
         // it found asks to be run, and a job that took real work - several
         // tools, a real answer at the end - asks whether to be kept for one
         // click next time. A quick answer offers nothing at all.
         const worked = result.steps.filter((step) => !step.seeded).length
-        const keepable = !routine && !result.asked && worked >= KEEP_AFTER_STEPS
+        const keepable = !routine && finished && worked >= KEEP_AFTER_STEPS
         // The third morning of the same ask, and a read-only procedure with
         // no blanks was just run for it: that one can run itself from now on.
         const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)

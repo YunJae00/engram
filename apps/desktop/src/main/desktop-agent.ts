@@ -7,7 +7,7 @@ import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
 
 function imageGeometry(observation: DesktopObservationDto): string {
-  if (observation.truncated !== false) throw new Error('This window\'s accessibility scan was incomplete. Use read_desktop for available text, or choose a simpler window before requesting a screenshot.')
+  if (observation.truncated !== false && observation.captureSafe !== true) throw new Error('This window\'s accessibility scan was incomplete. Use read_desktop for available text, or choose a simpler window before requesting a screenshot.')
   const rectangles = [observation.bounds, observation.captureBounds, ...(observation.protectedBounds ?? [])]
   if (rectangles.some((rect) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('This app did not provide safe screenshot geometry.')
   const values = (rect: DesktopObservationDto['bounds']) => [rect.x, rect.y, rect.width, rect.height]
@@ -74,7 +74,12 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     windows: listWindows,
     read: (signal, app) => withDesktopActivity(lane, async () => JSON.stringify(await readControlledDesktop(lane, signal, true, app))),
     look: (signal, app) => withDesktopActivity(lane, () => lookDesktop(lane, signal, app)),
-    act: (action, context) => withDesktopActivity(lane, () => actOnDesktop(lane, action, context.signal)),
+    act: (action, context) => withDesktopActivity(lane, async () => {
+      await actOnDesktop(lane, action, context.signal)
+      if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
+      const observation = await readControlledDesktop(lane, context.signal, true)
+      return JSON.stringify({ dispatched: true, observation, requiresVerification: true })
+    }),
     sequence: (actions, context) => withDesktopActivity(lane, () => desktopSequence(lane, actions, context.signal)),
   })
 }

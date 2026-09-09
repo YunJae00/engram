@@ -114,7 +114,9 @@ internal static class DesktopSelfTest
                 Reject(delegate { ControlPolicy.Literal(invalid); }, "Invalid text must be rejected");
             foreach (var key in new[] { "Enter", "Tab", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Space" })
                 Check(ControlPolicy.Chord(key).Length == 1, "Allowed keys must not hold modifiers");
-            foreach (var key in new[] { "Control+V", "Control+C", "Alt+Tab", "Win+R", "Escape", "F12", "Control+A" })
+            foreach (var key in new[] { "Control+A", "Control+B", "Control+I", "Control+U", "Control+F", "Control+Home", "Control+End", "Control+ArrowLeft", "Control+ArrowRight", "Shift+Home", "Shift+End", "Shift+ArrowLeft", "Shift+ArrowRight", "Shift+ArrowUp", "Shift+ArrowDown", "Control+Shift+Home", "Control+Shift+End", "Control+Shift+ArrowLeft", "Control+Shift+ArrowRight" })
+                Check(ControlPolicy.Chord(key).Length >= 2 && ControlPolicy.Chord(key).Length <= 3, "Editing chords have bounded modifiers");
+            foreach (var key in new[] { "Control+V", "Control+C", "Alt+Tab", "Win+R", "Escape", "F12", "Control+Alt+Delete" })
                 Reject(delegate { ControlPolicy.Chord(key); }, "System and clipboard chords must be rejected");
             Check(ControlPolicy.IsSensitive("Sign in to account") && ControlPolicy.IsSensitive("비밀번호") && ControlPolicy.IsSensitive("Windows PowerShell"), "Sensitive surfaces must be recognized");
             Check(ControlPolicy.IsSensitive("Windows Security") && ControlPolicy.IsSensitive("User Account Control"), "Security application titles must require manual control");

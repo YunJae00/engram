@@ -24,6 +24,7 @@ internal sealed class DesktopObservation
     internal Rect CaptureBounds;
     internal long Epoch;
     internal string FocusedRuntime;
+    internal bool Partial;
     internal readonly Dictionary<string, ObservedElement> Elements = new Dictionary<string, ObservedElement>();
 }
 
@@ -132,12 +133,15 @@ internal sealed class AutomationSession
         var focusedEditable = Inside(focused, rootId) && Editable(focused);
         observation.FocusedRuntime = Inside(focused, rootId) ? RuntimeId(focused) : null;
         Observation = observation;
+        observation.Partial = limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs;
         return new
         {
             window = target.Id, pid = target.Pid, title = target.Title, snapshot = observation.Id,
             expiresInMs = 15000, bounds = Bounds(observation.Bounds), captureBounds = Bounds(observation.CaptureBounds), nodes = nodes, protectedBounds = protectedBounds,
             focusedEditable = focusedEditable,
-            truncated = limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs
+            focusedControl = observation.FocusedRuntime,
+            truncated = observation.Partial,
+            captureSafe = !observation.Partial || CanCapturePartial(target)
         };
     }
     internal void RequireCapture(string snapshot, DesktopTarget target)
@@ -147,8 +151,26 @@ internal sealed class AutomationSession
             || (Stopwatch.GetTimestamp() - value.Created) * 1000.0 / Stopwatch.Frequency > 15000)
             throw new InvalidOperationException("Observe this app before requesting an image");
         Guard.Same(target);
+        if (value.Partial && !CanCapturePartial(target)) throw new InvalidOperationException("The incomplete view could not be cleared for capture");
         if (DesktopNative.Bounds(target.Handle) != value.Bounds || DesktopCapture.Bounds(target.Handle) != value.CaptureBounds)
             throw new InvalidOperationException("The app geometry changed. Observe it again");
+    }
+    private bool CanCapturePartial(DesktopTarget target)
+    {
+        try
+        {
+            Guard.Same(target);
+            var root = AutomationElement.FromHandle(target.Handle);
+            if (ControlPolicy.IsSensitive(target.Title) || ControlPolicy.IsSensitive(root.Current.Name)) return false;
+            return VisiblePassword(root) == null;
+        }
+        catch (ElementNotAvailableException) { return false; }
+    }
+    private static AutomationElement VisiblePassword(AutomationElement root)
+    {
+        return root.FindFirst(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.IsPasswordProperty, true),
+            new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
     }
     private static bool Inside(AutomationElement element, string rootId)
     {
@@ -184,9 +206,7 @@ internal sealed class AutomationSession
         DesktopNative.Foreground(target);
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         var root = AutomationElement.FromHandle(target.Handle);
-        var password = root.FindFirst(TreeScope.Descendants, new AndCondition(
-            new PropertyCondition(AutomationElement.IsPasswordProperty, true),
-            new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
+        var password = VisiblePassword(root);
         if (password != null) throw new InvalidOperationException("Password and authentication entry must be completed manually");
         if (ControlPolicy.IsSensitive(root.Current.Name)) throw new InvalidOperationException("This application surface requires manual control");
         var focused = AutomationElement.FocusedElement;
