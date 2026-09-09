@@ -67,7 +67,8 @@ class Channel {
       this.waiting.clear()
     })
   }
-  request(method, args = {}) {
+  async request(method, args = {}, prepared = false) {
+    if (method === 'bind' && !prepared) await this.request('prepare', args)
     const id = ++this.sequence
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.waiting.delete(id); reject(new Error(`${method} timed out`)) }, 20000)
@@ -134,8 +135,16 @@ try {
   await until(() => helper.request('inputState'), state => state.idleMs >= 150, 'Fixture input did not settle')
   assert.equal((await fixture.request('away')).foreground, false)
   const activationInput = await helper.request('inputState')
+  const cancelledGrant = { ...target, grant: randomUUID(), intervention: activationInput.intervention }
+  await helper.request('prepare', cancelledGrant)
+  await helper.request('stop')
+  await assert.rejects(helper.request('bind', cancelledGrant, true))
+  assert.equal((await fixture.request('state')).foreground, false)
+  result.preparationStopPassed = true
+  const activationGrant = { ...target, grant: randomUUID(), intervention: activationInput.intervention }
+  await helper.request('prepare', activationGrant)
   await fixture.request('grantForeground', { pid: helper.child.pid })
-  const active = await helper.request('bind', { ...target, grant: randomUUID(), intervention: activationInput.intervention })
+  const active = await helper.request('bind', activationGrant, true)
   assert.equal((await fixture.request('state')).foreground, true)
   result.foregroundHandoffPassed = true
   result.foregroundRelayPassed = true

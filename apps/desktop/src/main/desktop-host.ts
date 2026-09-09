@@ -6,8 +6,8 @@ import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { flog } from './flog.js'
 
-export type DesktopMethod = 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
-const METHODS = new Set<DesktopMethod>(['inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
+export type DesktopMethod = 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
+const METHODS = new Set<DesktopMethod>(['inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'prepare', 'bind', 'click', 'type', 'scroll', 'key', 'stop'])
 // Everything else names one window; these two speak about the session.
 const UNSCOPED = new Set<DesktopMethod>(['inputState', 'listWindows', 'stop'])
 
@@ -52,8 +52,13 @@ export class DesktopHost {
     child.stderr.resume()
     this.ready = new Promise<void>((resolve, reject) => {
       this.rejectReady = reject
-      const fail = () => this.close(new Error('The computer connection closed. Reconnect the window to continue.'))
-      this.readyTimer = setTimeout(fail, 10000)
+      const fail = (cause?: unknown) => {
+        if (this.ended) return
+        const detail = cause instanceof Error ? cause.message.slice(0, 500) : 'The native process or its pipe exited.'
+        flog('desktop-native-connection', detail)
+        this.close(new Error(`The computer connection closed. ${detail}`))
+      }
+      this.readyTimer = setTimeout(() => fail(new Error('The native helper did not become ready within 10 seconds.')), 10000)
       child.once('error', fail)
       child.once('exit', fail)
       child.stdin.once('error', fail)
@@ -72,7 +77,7 @@ export class DesktopHost {
           resolve()
           return
         }
-        if (message.type === 'fatal') { fail(); return }
+        if (message.type === 'fatal') { fail(new Error(typeof message.error === 'string' ? message.error : 'Native startup failed.')); return }
         if (message.type === 'revoked') {
           if (!nativeLease(message.lease)) { fail(); return }
           const reason = typeof message.reason === 'string' ? message.reason.slice(0, 500) : 'Computer control stopped.'
@@ -94,7 +99,7 @@ export class DesktopHost {
           const error = new Error(typeof message.error === 'string' ? message.error.slice(0, 500) : 'The desktop request failed.')
           flog('desktop-native-error', `${pending.method}: ${error.message}`)
           pending.reject(error)
-          if (pending.method === 'bind') this.close(error)
+          if (pending.method === 'bind' || (pending.method === 'prepare' && !/user input changed|release your keyboard/i.test(error.message))) this.close(error)
           return
         }
         if (pending.method === 'bind') {
@@ -157,7 +162,7 @@ export class DesktopHost {
       void ready.then(async () => {
         if (method === 'bind' && this.pending.get(id) === pending && this.child?.pid) {
           const pid = this.child.pid
-          const input = await this.request<{ intervention: string }>('inputState', {})
+          const input = await this.request<{ intervention: string }>('prepare', args)
           if (!/^\d{1,20}$/.test(input.intervention)) throw new Error('Desktop input monitoring could not be verified.')
           if (this.pending.get(id) !== pending || this.ended) return
           line = JSON.stringify({ ...args, id, method, intervention: input.intervention }) + '\n'
@@ -185,7 +190,13 @@ export class DesktopHost {
         if (this.pending.get(id) !== pending) return
         this.pending.delete(id)
         reject(error instanceof Error ? error : new Error('The desktop helper could not start.'))
-      }).catch((error: unknown) => this.close(error instanceof Error ? error : new Error('Foreground delegation failed.')))
+      }).catch((error: unknown) => {
+        if (this.pending.get(id) !== pending) return
+        if (error instanceof Error && /user input changed|release your keyboard/i.test(error.message)) {
+          this.pending.delete(id)
+          reject(error)
+        } else this.close(error instanceof Error ? error : new Error('Foreground delegation failed.'))
+      })
     })
   }
 

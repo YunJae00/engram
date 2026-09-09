@@ -24,6 +24,18 @@ internal static class DesktopSelfTest
     {
         try
         {
+            Check(ControlPolicy.PassivePointer(0x200, false), "Physical pointer motion is not cancellation");
+            Check(!ControlPolicy.PassivePointer(0x201, false), "A button press is not passive motion");
+            Check(!ControlPolicy.PassivePointer(0x200, true), "Other automation still interrupts control");
+            Check(ControlPolicy.HoldKeyboard(true, 65, false), "Physical typing cannot mix with agent typing");
+            Check(!ControlPolicy.HoldKeyboard(true, 27, false), "Escape must always release control");
+            Check(!ControlPolicy.HoldKeyboard(false, 65, false), "Normal keyboard input is untouched outside control");
+            Check(!ControlPolicy.HoldKeyboard(true, 65, true), "Foreign injected keys remain an interruption");
+            Check(ControlPolicy.HoldMouse(true, true, 0x200, false), "Pointer actions cannot race physical motion");
+            Check(!ControlPolicy.HoldMouse(true, false, 0x200, false), "The stop control stays reachable between pointer actions");
+            Check(ControlPolicy.HoldMouse(true, false, 0x201, false), "Physical clicks cannot change the agent target");
+            Check(!ControlPolicy.HoldMouse(false, true, 0x201, false), "Expired control cannot hold mouse input");
+            Check(!ControlPolicy.HoldMouse(true, true, 0x200, true), "Foreign pointer automation is not swallowed");
             var from = new System.Windows.Point(-1200, 30);
             var to = new System.Windows.Point(-200, 630);
             Check(DesktopActions.MotionPoint(from, to, 0) == from, "Motion starts at the current pointer");

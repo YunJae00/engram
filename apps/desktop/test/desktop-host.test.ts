@@ -69,7 +69,7 @@ describe('desktop native readiness and request lifetime', () => {
     child.pid = 321
     const request = host.request('bind', { ...target, grant: 'user-grant' })
     await ready()
-    respond({ id: latest('inputState'), result: { intervention: '42' } })
+    respond({ id: latest('prepare'), result: { intervention: '42' } })
     await flush()
     expect(messages().at(-1)).toMatchObject({ method: 'bind', intervention: '42' })
     respond({ id: latest('bind'), result: { lease: 'native-first' } })
@@ -86,14 +86,14 @@ describe('desktop native readiness and request lifetime', () => {
     const request = host.request('bind', { ...target, grant: 'user-grant' })
     const rejected = expect(request).rejects.toThrow('cancelled by Stop')
     await ready()
-    respond({ id: latest('inputState'), result: { intervention: '42' } })
+    respond({ id: latest('prepare'), result: { intervention: '42' } })
     await flush()
-    expect(messages().map((message) => message.method)).toEqual(['inputState'])
+    expect(messages().map((message) => message.method)).toEqual(['prepare'])
     await stop()
     finish(null)
     await rejected
     await flush()
-    expect(messages().map((message) => message.method)).toEqual(['inputState', 'stop'])
+    expect(messages().map((message) => message.method)).toEqual(['prepare', 'stop'])
   })
 
   it('spawns hidden and owner-scoped, waiting for the supported control handshake before dispatch', async () => {
@@ -291,6 +291,23 @@ describe('native revocation correlation', () => {
 })
 
 describe('desktop transport failures', () => {
+  it('keeps the connection usable when held keys postpone preparation', async () => {
+    child.pid = 321
+    const first = host.request('bind', { ...target, grant: 'first' })
+    const rejected = expect(first).rejects.toThrow('Release your keyboard')
+    await ready()
+    respond({ id: latest('prepare'), error: 'Release your keyboard and mouse before allowing control' })
+    await rejected
+    expect(host.closed).toBe(false)
+    expect(child.kill).not.toHaveBeenCalled()
+    expect(deps.execFile).not.toHaveBeenCalled()
+    const next = host.request('bind', { ...target, grant: 'next' })
+    await flush()
+    respond({ id: latest('prepare'), result: { intervention: '7' } })
+    await flush()
+    respond({ id: latest('bind'), result: { lease: 'recovered' } })
+    await expect(next).resolves.toEqual({ lease: 'recovered' })
+  })
   it.each(['exit', 'error', 'stdin-error', 'stdout-error'])('revokes all access on %s regardless of the current native ID', async (event) => {
     await bind()
     const request = host.request('observe', target)

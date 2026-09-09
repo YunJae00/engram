@@ -25,6 +25,10 @@ internal sealed class InputMonitor : IDisposable
     private int EscapeSeen;
     private readonly System.Threading.Timer Watchdog;
     private readonly WindowGuard Guard;
+    private volatile bool Preparing;
+    private long PrepareUntil;
+    private string PreparedGrant;
+    internal volatile bool PointerAction;
 
     internal InputMonitor(ControlLease lease, WindowGuard guard)
     {
@@ -45,7 +49,9 @@ internal sealed class InputMonitor : IDisposable
             if (unchecked((uint)Environment.TickCount - (uint)Interlocked.Read(ref Beat)) > 500) Lease.Revoke("Desktop stop monitoring stalled");
             if (!Guard.OwnerAlive()) Lease.Revoke("The desktop owner exited");
             if (state != null && !Lease.Valid(state)) Lease.Revoke("Desktop control expired");
-            if (Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke("The selected window or desktop changed");
+            if (Preparing) {
+                if (unchecked((int)((uint)Interlocked.Read(ref PrepareUntil) - (uint)Environment.TickCount)) <= 0) Lease.Revoke("Computer control preparation timed out");
+            } else if (Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke("The selected window or desktop changed");
         }, null, 100, 100);
     }
 
@@ -57,7 +63,7 @@ internal sealed class InputMonitor : IDisposable
             using (var user = WindowsIdentity.GetCurrent()) sid = user.User.Value;
             var session = Process.GetCurrentProcess().SessionId;
             GlobalLease = new Mutex(false, "Local\\EngramDesktopControl-" + session + "-" + sid);
-            Indicator = new ControlIndicator(delegate { Lease.Revoke("Stopped by the user"); });
+            Indicator = new ControlIndicator(delegate { Interlocked.Exchange(ref EscapeSeen, 1); Interlocked.Increment(ref InterventionCount); Lease.Revoke("Stopped by the user"); });
             var unused = Indicator.Handle;
             Rearm();
             Interlocked.Exchange(ref Beat, Environment.TickCount);
@@ -121,10 +127,10 @@ internal sealed class InputMonitor : IDisposable
 
     // Native Stop remains available independently of the renderer overlay.
     private bool Armed;
+    private bool Controlling { get { return Armed && Indicator.Visible && Lease.Valid(Lease.State); } }
 
-    internal LeaseState Bind(DesktopTarget target, string grant, long intervention, Func<bool> permitted)
+    internal void Prepare(DesktopTarget target, string grant, long intervention, Func<bool> permitted)
     {
-        LeaseState state = null;
         OnLoop(delegate
         {
             Func<bool> current = delegate { return intervention == Intervention && permitted(); };
@@ -137,20 +143,41 @@ internal sealed class InputMonitor : IDisposable
             {
                 Rearm();
                 DesktopNative.IdleKeys();
-                if (!current()) throw new InvalidOperationException("Desktop approval was cancelled before focus changed");
-                if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
-                    throw new InvalidOperationException("Bring the chosen application to the foreground and grant control again");
-                DesktopNative.AwaitForeground(target);
-                if (!current()) throw new InvalidOperationException("User input changed while the app was becoming active");
+                if (!current()) throw new InvalidOperationException("User input changed before computer control started");
                 Indicator.Start(target);
                 if (!Indicator.Visible) throw new InvalidOperationException("The desktop stop control could not be displayed");
                 if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while control started");
                 Interlocked.Exchange(ref Beat, Environment.TickCount);
-                state = Lease.Bind(target, grant, current);
+                Interlocked.Exchange(ref PrepareUntil, unchecked((uint)Environment.TickCount + 5000U));
+                Preparing = true;
+                Lease.Bind(target, grant, current);
+                PreparedGrant = grant;
                 Interlocked.Exchange(ref EscapeSeen, 0);
                 Armed = true;
             }
-            catch { Armed = false; Lease.Revoke("Desktop control could not start"); Indicator.Paused(); if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; } throw; }
+            catch { Armed = false; Preparing = false; Lease.Revoke("Desktop control could not start"); Indicator.Paused(); if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; } throw; }
+        });
+    }
+
+    internal LeaseState Bind(DesktopTarget target, string grant, long intervention, Func<bool> permitted)
+    {
+        LeaseState state = null;
+        OnLoop(delegate
+        {
+            state = Lease.State;
+            if (Escaped) throw new InvalidOperationException("Escape pressed");
+            Lease.Require(state);
+            if (!Preparing || PreparedGrant != grant || state.Target.Id != target.Id || state.Target.Pid != target.Pid)
+                throw new InvalidOperationException("Prepare the selected application before taking control");
+            Guard.Same(state.Target);
+            Func<bool> current = delegate { return intervention == Intervention && permitted() && Lease.Valid(state); };
+            if (!current()) throw new InvalidOperationException("Desktop approval was cancelled before focus changed");
+            if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
+                throw new InvalidOperationException("Bring the chosen application to the foreground and grant control again");
+            DesktopNative.AwaitForeground(target);
+            if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while the app was becoming active");
+            Preparing = false;
+            PreparedGrant = null;
         });
         return state;
     }
@@ -169,6 +196,8 @@ internal sealed class InputMonitor : IDisposable
             Indicator.BeginInvoke((Action)delegate
             {
                 Armed = false;
+                Preparing = false;
+                PointerAction = false;
                 if (OwnMutex) { GlobalLease.ReleaseMutex(); OwnMutex = false; }
                 Indicator.Paused();
             });
@@ -189,6 +218,7 @@ internal sealed class InputMonitor : IDisposable
             }
             else
             {
+                if (ControlPolicy.HoldKeyboard(Controlling, value.Key, (value.Flags & 0x10) != 0)) return new IntPtr(1);
                 Interlocked.Exchange(ref LastInput, Environment.TickCount);
                 if (value.Key == 27) Interlocked.Exchange(ref EscapeSeen, 1);
                 Interlocked.Increment(ref InterventionCount);
@@ -216,9 +246,15 @@ internal sealed class InputMonitor : IDisposable
             }
             else
             {
+                var kind = message.ToInt32();
+                var injected = (value.Flags & 1) != 0;
+                var controlling = Controlling;
+                var stopped = kind == 0x201 && (Indicator.StopAt(value.Point.X, value.Point.Y)
+                    || (controlling && !Preparing && !injected && !DesktopNative.AtTarget(Lease.State.Target.Handle, value.Point.X, value.Point.Y)));
+                if (!stopped && ControlPolicy.HoldMouse(controlling, Preparing || PointerAction, kind, injected)) return new IntPtr(1);
+                if (ControlPolicy.PassivePointer(kind, injected)) return DesktopNative.CallNextHookEx(Mouse, code, message, data);
                 Interlocked.Exchange(ref LastInput, Environment.TickCount);
                 Interlocked.Increment(ref InterventionCount);
-                var stopped = message.ToInt32() == 0x201 && Indicator.StopAt(value.Point.X, value.Point.Y);
                 if (stopped) Interlocked.Exchange(ref EscapeSeen, 1);
                 Lease.Revoke(stopped ? "Stopped by the user" : "Mouse input returned control to the user");
             }

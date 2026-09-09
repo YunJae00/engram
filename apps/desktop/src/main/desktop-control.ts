@@ -8,10 +8,9 @@ import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
 // Control is taken by the comet's first reading of an app and given back by
-// the person's hands. There is no dialog: the banner on the screen is the
-// notice, and a moving mouse or a key press pauses the work at once. Only a
-// pause the person made with their hands is resumed - after they have been
-// still for a moment - and Esc or Stop ends control for the turn.
+// an explicit stop. Pointer motion is harmless; native control separates
+// physical input from agent input. Esc, Stop, or a click outside the target
+// ends control for the turn. Interrupted preparation can wait for held keys.
 const LEASE_TTL_MS = 60 * 60_000
 const HANDS_STILL_MS = 4_000
 const HANDS_AT_MOST_MS = 5 * 60_000
@@ -155,7 +154,7 @@ async function awaitStillHands(signal?: AbortSignal): Promise<void> {
     if (input.escaped) { stopDesktopControl('Escape pressed'); throw new Error('The person took the computer back with Esc.') }
     if (!Number.isFinite(input.idleMs) || input.idleMs < HANDS_STILL_MS) stillSince = Date.now()
     const now = cursor()
-    if (!last || !now || now.x !== last.x || now.y !== last.y) { stillSince = Date.now(); last = now }
+    if (!/user input changed|release your keyboard/i.test(lease.state().reason ?? '') && (!last || !now || now.x !== last.x || now.y !== last.y)) { stillSince = Date.now(); last = now }
     if (Date.now() - stillSince >= HANDS_STILL_MS) return
   }
   if (!released) throw new Error('The person kept using the computer. Ask them when you may continue.')
