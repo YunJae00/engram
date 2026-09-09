@@ -24,6 +24,12 @@ internal static class DesktopSelfTest
     {
         try
         {
+            Check(System.IO.Path.GetFileName(DesktopApps.Launcher("calculator")) == "calc.exe", "Calculator uses the OS launcher");
+            Check(System.IO.Path.IsPathRooted(DesktopApps.Launcher("notepad")), "App launch does not search PATH");
+            Reject(delegate { DesktopApps.Launcher("cmd"); }, "Terminals cannot be launched");
+            Reject(delegate { DesktopApps.Launcher("../calc.exe"); }, "Model paths cannot be launched");
+            Reject(delegate { DesktopApps.Launcher("calculator & cmd"); }, "Command arguments cannot be launched");
+            Reject(delegate { DesktopApps.Open("calculator", delegate { return false; }); }, "Cancelled launches cannot run");
             Check(ControlPolicy.PassivePointer(0x200, false), "Physical pointer motion is not cancellation");
             Check(!ControlPolicy.PassivePointer(0x201, false), "A button press is not passive motion");
             Check(!ControlPolicy.PassivePointer(0x200, true), "Other automation still interrupts control");

@@ -27,6 +27,7 @@ export interface DesktopControlStatusDto {
   expiresAt?: number
   engine?: DesktopEngineId
   engineLabel?: string
+  inputActive?: boolean
   // Paused because a hand touched the mouse or keyboard: the comet carries on
   // once that hand has been still for a moment. Esc and Stop are not resumable.
   resumable?: boolean

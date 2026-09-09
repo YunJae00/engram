@@ -72,7 +72,7 @@ export function ControlPill() {
           {running ? (
             <>
               <strong>{who} is controlling your computer</strong>
-              <span>Esc to take over</span>
+              <span>{status.inputActive === false ? 'Planning next action · ' : ''}Esc to take over</span>
             </>
           ) : (
             <>

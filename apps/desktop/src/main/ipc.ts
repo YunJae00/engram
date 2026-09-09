@@ -2190,6 +2190,7 @@ export function registerIpc(ctx: VaultContext): void {
           },
         )
         if (signal.aborted) return
+        endDesktopTurn(channel)
         // A model that was pushed to act may announce that it acted. The
         // record is corrected here, in the same breath as the answer, so the
         // person is never told a chore was done when it was not — and when the

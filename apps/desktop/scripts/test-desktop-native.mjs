@@ -109,6 +109,16 @@ try {
   helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
   const capability = await Promise.race([helper.ready, wait(10000).then(() => { throw new Error('Desktop helper did not start') })])
   assert.equal(capability.protocol, 2)
+  result.stage = 'app-launch'
+  const launchers = await helper.request('listApps')
+  assert.ok(launchers.some(app => app.id === 'notepad'))
+  await assert.rejects(helper.request('openApp', { app: 'cmd.exe' }), /Paths and commands/)
+  assert.equal((await helper.request('openApp', { app: 'notepad' })).requested, true)
+  const launched = await until(() => helper.request('listWindows'), value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch')
+  const notepad = launched.windows.find(window => /notepad/i.test(window.title))
+  const launchedView = await helper.request('observe', { window: notepad.window, pid: notepad.pid })
+  assert.ok(launchedView.snapshot)
+  result.appLaunchPassed = true
   const target = { window: ready.window, pid: ready.pid }
   result.stage = 'inspect-window'
   await helper.request('inspectWindow', { window: ready.window, pid: 0 })
