@@ -307,6 +307,7 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   const wanted: (AgentTool | undefined)[] = []
   const desktop = all.some((tool) => isDesktopTool(tool.name))
   const desktopObserved = steps.some((step) => !step.seeded && (step.tool === 'read_desktop' || step.tool === 'look_desktop'))
+  if (desktop && !desktopObserved && by('list_apps')) wanted.push(by(used('list_apps') ? 'open_app' : 'list_apps'), by('list_windows'))
   // Selected-app capabilities must not be crowded out by the browser menu.
   // Consent questions stay reachable without authorizing any input themselves.
   if (desktop) wanted.push(by('read_desktop'), by('look_desktop'), ...(desktopObserved ? [by('desktop_action')] : []), by('ask_person'))

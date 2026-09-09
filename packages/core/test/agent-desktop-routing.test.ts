@@ -22,6 +22,16 @@ function sessionBrain(script: (job: ToolSessionJob) => Promise<ToolSessionResult
 }
 
 describe('selected desktop routing in a bounded tool menu', () => {
+  it('keeps app discovery and launch reachable before the first window observation', () => {
+    const tools = supplied(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action'])
+    const first = pickTools(tools, 'Open calculator', []).map((one) => one.name)
+    expect(first).toContain('list_apps')
+    expect(first).toContain('list_windows')
+    const next = pickTools(tools, 'Open calculator', [{ tool: 'list_apps', args: {}, observation: 'calculator' }]).map((one) => one.name)
+    expect(next).toContain('open_app')
+    expect(next).toContain('read_desktop')
+    expect(next).not.toContain('desktop_action')
+  })
   it('keeps observation and consent available when desktop tools are appended after browser tools', () => {
     const tools = supplied()
     const shown = pickTools(tools, 'Review the selected workbook', [])
