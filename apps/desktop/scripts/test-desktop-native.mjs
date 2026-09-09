@@ -252,7 +252,7 @@ try {
   await helper.request('work', externalBound)
   assert.equal((await helper.request('inputState')).working, true)
   await helper.request('type', { ...externalBound, snapshot: externalView.snapshot, text: 'Single overlay input' })
-  assert.ok((await fixture.request('state')).text.includes('Single overlay input'))
+  await until(() => fixture.request('state'), state => state.text.includes('Single overlay input'), 'External-overlay input did not reach the fixture')
   await overlayOwner.request('hide')
   await until(() => helper.request('inputState'), state => !state.working, 'Hidden stop overlay did not release input')
   await assert.rejects(helper.request('work', externalBound))
