@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -99,6 +99,7 @@ async function until(read, predicate, label) {
 }
 const fixture = new Channel(path.join(output, 'ControlFixture.exe'), ['--ci-fixture'])
 let helper
+let overlayOwner
 let result = { passed: false, physicalHardwareInterruptionTested: false }
 try {
   result.stage = 'fixture-ready'
@@ -231,6 +232,30 @@ try {
   // The foreground consent owner may grant activation to its owned helper.
   await fixture.request('grantForeground', { pid: helper.child.pid })
   result.browserInputPassed = await testDesktopBrowser(helper, desktop, output, until)
+  result.stage = 'external-stop-overlay'
+  await helper.close()
+  const ownerPath = path.join(output, 'StopOverlayFixture.exe')
+  copyFileSync(path.join(output, 'ControlFixture.exe'), ownerPath)
+  overlayOwner = new Channel(ownerPath, ['--ci-fixture'])
+  const owner = await overlayOwner.ready
+  helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(owner.pid)])
+  await helper.ready
+  await helper.request('inspectWindow', { window: target.window, pid: 0 })
+  await fixture.request('focus')
+  await assert.rejects(helper.request('bind', { ...target, grant: randomUUID(), overlay: target.window }), /stop control could not be displayed/)
+  const external = await helper.request('bind', { ...target, grant: randomUUID(), overlay: owner.window })
+  const externalBound = { ...target, lease: external.lease, overlay: owner.window }
+  const externalView = await helper.request('observe', externalBound)
+  await helper.request('idle', externalBound)
+  assert.equal((await helper.request('inputState')).working, false)
+  await helper.request('work', externalBound)
+  assert.equal((await helper.request('inputState')).working, true)
+  await helper.request('type', { ...externalBound, snapshot: externalView.snapshot, text: 'Single overlay input' })
+  assert.ok((await fixture.request('state')).text.includes('Single overlay input'))
+  await overlayOwner.request('hide')
+  await until(() => helper.request('inputState'), state => !state.working, 'Hidden stop overlay did not release input')
+  await assert.rejects(helper.request('work', externalBound))
+  result.externalOverlayPassed = true
   result = { ...result, stage: 'complete', passed: true, unicodePassed: true, clickPassed: true, scrollPassed: true, keyPassed: true,
     stopRevocationPassed: true, foreignInjectedRevocationPassed: true, passwordRejectionPassed: true, readOnlyPassed: true }
   console.log('Native desktop CI fixture integration passed')
@@ -241,6 +266,7 @@ try {
   throw error
 } finally {
   if (helper) await helper.close()
+  if (overlayOwner) await overlayOwner.close()
   await fixture.close()
   writeFileSync(path.join(output, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
   console.log(`Native desktop CI evidence: ${output}`)

@@ -99,6 +99,7 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "hide") Hide();
             else if (method == "grantForeground")
             {
                 var pid = Convert.ToInt32(request["pid"]);
