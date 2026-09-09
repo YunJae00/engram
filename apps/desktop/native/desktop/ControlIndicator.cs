@@ -54,6 +54,12 @@ internal sealed class ControlIndicator : Form
         PauseTimer.Start();
     }
 
+    internal bool StopAt(int x, int y)
+    {
+        return Visible && new Rectangle(Left + StopButton.Left, Top + StopButton.Top,
+            StopButton.Width, StopButton.Height).Contains(x, y);
+    }
+
     protected override void Dispose(bool disposing)
     { if (disposing && PauseTimer != null) PauseTimer.Dispose(); base.Dispose(disposing); }
 

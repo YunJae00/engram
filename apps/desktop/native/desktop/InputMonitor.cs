@@ -214,7 +214,14 @@ internal sealed class InputMonitor : IDisposable
                 { Lease.Revoke("The pointer target changed"); return new IntPtr(1); }
                 if (!Packets.Admit(marker, 0x20001, release, down)) return new IntPtr(1);
             }
-            else { Interlocked.Exchange(ref LastInput, Environment.TickCount); Interlocked.Increment(ref InterventionCount); Lease.Revoke("Mouse input returned control to the user"); }
+            else
+            {
+                Interlocked.Exchange(ref LastInput, Environment.TickCount);
+                Interlocked.Increment(ref InterventionCount);
+                var stopped = message.ToInt32() == 0x201 && Indicator.StopAt(value.Point.X, value.Point.Y);
+                if (stopped) Interlocked.Exchange(ref EscapeSeen, 1);
+                Lease.Revoke(stopped ? "Stopped by the user" : "Mouse input returned control to the user");
+            }
         }
         return DesktopNative.CallNextHookEx(Mouse, code, message, data);
     }
