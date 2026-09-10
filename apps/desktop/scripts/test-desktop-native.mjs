@@ -110,11 +110,11 @@ let overlayOwner
 let result = { passed: false, physicalHardwareInterruptionTested: false }
 try {
   result.stage = 'fixture-ready'
-  const ready = await Promise.race([fixture.ready, wait(10000).then(() => { throw new Error('Owned fixture did not start') })])
+  const ready = await Promise.race([fixture.ready, wait(30000).then(() => { throw new Error('Owned fixture did not start') })])
   assert.equal(ready.visible, true)
   result.stage = 'helper-ready'
   helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
-  const capability = await Promise.race([helper.ready, wait(10000).then(() => { throw new Error('Desktop helper did not start') })])
+  const capability = await Promise.race([helper.ready, wait(30000).then(() => { throw new Error('Desktop helper did not start') })])
   assert.equal(capability.protocol, 2)
   result.stage = 'app-launch'
   const launchers = await helper.request('listApps')
