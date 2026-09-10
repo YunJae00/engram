@@ -140,6 +140,7 @@ internal sealed class ControlFixture : Form
                 Controls.Add(Dense); Dense.BringToFront();
             }
             else if (method == "deepFocus") { Deep.Focus(); }
+            else if (method == "deepReadonly") { Deep.ReadOnly = true; Deep.Focus(); }
             else if (method == "workflow")
             {
                 Workflow = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Draft workflow" };

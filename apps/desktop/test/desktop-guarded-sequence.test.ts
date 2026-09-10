@@ -117,6 +117,19 @@ it('stops on a result mismatch and returns fresh evidence without dispatching th
   expect(act).not.toHaveBeenCalled()
 })
 
+it('never treats a truncated value prefix as a completed result', async () => {
+  let elapsed = 0
+  vi.spyOn(performance, 'now').mockImplementation(() => (elapsed += 500))
+  const current = base()
+  current.nodes[0]!.value = 'Expected'
+  current.nodes[0]!.valueTruncated = true
+  const act = vi.fn()
+  const result = JSON.parse(await guardedSequence(current, [step({ kind: 'verify', value: 'Expected' }), step({ kind: 'type', text: 'Do not type' })], async () => current, act))
+  expect(result).toMatchObject({ completed: 0, verified: 0 })
+  expect(result.error).toContain('not observed')
+  expect(act).not.toHaveBeenCalled()
+})
+
 it('reports uncertain delivery without retrying and propagates cancellation', async () => {
   const act = vi.fn(async () => { throw new Error('Native input failed') })
   const result = JSON.parse(await guardedSequence(base(), [step({ kind: 'type', text: 'Test' })], async () => base(), act))

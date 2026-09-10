@@ -265,9 +265,10 @@ try {
   assert.equal(deepView.truncated, true)
   const deepEditor = deepView.nodes.find(node => node.name === 'Deep editor')
   assert.ok(deepEditor?.runtimeId)
-  assert.equal(deepEditor.actions.type, true)
-  assert.equal(deepView.focusedControl, deepEditor.runtimeId)
-  assert.equal(deepView.focusedEditable, true)
+  result.partialEditorType = deepEditor.controlType
+  assert.equal(deepEditor.actions.type, true, 'The multiline editor was not recognized as editable')
+  assert.equal(deepView.focusedControl, deepEditor.runtimeId, 'The partial observation lost editor focus')
+  assert.equal(deepView.focusedEditable, true, 'The focused multiline surface was not recognized as editable')
   await helper.request('click', { ...deepBound, snapshot: deepView.snapshot, element: deepEditor.id })
   for (const action of [{ method: 'type', text: 'Draft' }, { method: 'key', key: 'Control+A' }, { method: 'type', text: 'Verified draft' }]) {
     deepView = await helper.request('observe', deepBound)
@@ -310,6 +311,17 @@ try {
   assert.equal((await fixture.request('state')).deepText.replace(/\r\n?/g, '\n'), finalText)
   result.anchoredPartialWorkflowMs = anchoredResult.elapsedMs
   result.anchoredPartialWorkflowPassed = true
+  await helper.request('stop')
+  result.stage = 'readonly-document'
+  await fixture.request('deepReadonly')
+  const readonlyLease = await helper.request('bind', { ...target, grant: randomUUID() })
+  const readonlyBound = { ...target, lease: readonlyLease.lease }
+  const readonlyDocument = await helper.request('observe', readonlyBound)
+  assert.equal(readonlyDocument.focusedEditable, false)
+  assert.equal(readonlyDocument.nodes.find(node => node.runtimeId === deepEditor.runtimeId)?.actions.type, false)
+  await assert.rejects(helper.request('type', { ...readonlyBound, snapshot: readonlyDocument.snapshot, text: 'Do not type' }), /editable field/)
+  assert.equal((await fixture.request('state')).deepText.replace(/\r\n?/g, '\n'), finalText)
+  result.readonlyDocumentRejectionPassed = true
   await helper.request('stop')
   result.partialFocusedEditingPassed = true
   const beforePassword = await helper.request('observe', target)

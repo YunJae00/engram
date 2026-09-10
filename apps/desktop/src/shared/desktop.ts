@@ -6,6 +6,7 @@ export interface DesktopNodeDto {
   name: string
   controlType: string
   value?: string | null
+  valueTruncated?: boolean
   enabled?: boolean
   offscreen?: boolean
   password?: boolean

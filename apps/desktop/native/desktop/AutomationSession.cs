@@ -62,20 +62,34 @@ internal sealed class AutomationSession
         if (info.IsPassword || !info.IsEnabled || info.IsOffscreen || ControlPolicy.IsSensitive(info.Name) || ControlPolicy.IsSensitive(info.AutomationId)) return false;
         object pattern;
         if (element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) return !((ValuePattern)pattern).Current.IsReadOnly;
+        if ((info.ControlType == ControlType.Edit || info.ControlType == ControlType.Document) && element.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
+            return info.IsKeyboardFocusable && object.Equals(((TextPattern)pattern).DocumentRange.GetAttributeValue(TextPattern.IsReadOnlyAttribute), false);
         return info.ControlType == ControlType.Edit && info.IsKeyboardFocusable;
     }
     private static object Node(AutomationElement element, string id, string runtime, int depth, ref int remaining)
     {
         var current = element.Current;
         string value = null;
+        var valueTruncated = false;
         object pattern;
         if (!current.IsPassword && element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern))
-            value = TextBudget(((ValuePattern)pattern).Current.Value, 4096, ref remaining);
+        {
+            var text = ((ValuePattern)pattern).Current.Value;
+            value = TextBudget(text, 4096, ref remaining);
+            valueTruncated = text != null && text.Length > value.Length;
+        }
+        else if (!current.IsPassword && (current.ControlType == ControlType.Edit || current.ControlType == ControlType.Document)
+            && element.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
+        {
+            var text = ((TextPattern)pattern).DocumentRange.GetText(Math.Min(4096, remaining) + 1);
+            value = TextBudget(text, 4096, ref remaining);
+            valueTruncated = text != null && text.Length > value.Length;
+        }
         return new
         {
             id = id, runtimeId = runtime, name = current.IsPassword ? "Password field" : TextBudget(current.Name, 512, ref remaining),
             controlType = current.ControlType.ProgrammaticName.Replace("ControlType.", ""),
-            value = value, bounds = Bounds(current.BoundingRectangle), enabled = current.IsEnabled,
+            value = value, valueTruncated = valueTruncated, bounds = Bounds(current.BoundingRectangle), enabled = current.IsEnabled,
             password = current.IsPassword, isPassword = current.IsPassword, offscreen = current.IsOffscreen, depth = depth,
             actions = new { click = current.IsEnabled && !current.IsPassword && !current.IsOffscreen,
                 type = Editable(element), scroll = element.TryGetCurrentPattern(ScrollPattern.Pattern, out pattern) }

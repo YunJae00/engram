@@ -64,7 +64,7 @@ export async function guardedSequence(
       let node = targetOf(step)
       if (step.kind === 'verify') {
         const until = performance.now() + 2000
-        while (!node || lines(node.value) !== lines(step.value)) {
+        while (!node || node.valueTruncated === true || lines(node.value) !== lines(step.value)) {
           if (performance.now() >= until) throw new Error('The expected field value was not observed. Inspect the result; do not repeat the input.')
           await delay(80, undefined, { signal })
           await refresh()
