@@ -40,7 +40,7 @@ static RemoteScanResult RemoteFullScan(IUIAutomation* automation, IUIAutomationE
         operation.ImportElement({ 1 }, held.as<winrt::Windows::UI::UIAutomation::AutomationElement>());
         stage = "scan-capability";
         const std::vector<uint32_t> opcodes = {
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x0e, 0x0f, 0x19, 0x1a, 0x18,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x0e, 0x0f, 0x19, 0x18,
             0x1c, 0x1d, 0x1e, 0x1f, 0x25, 0x2a, 0x2c, 0x2e, 0x38, 0x39, 0x3a, 0x3d, 0x3e,
         };
         for (const auto opcode : opcodes)
@@ -50,7 +50,7 @@ static RemoteScanResult RemoteFullScan(IUIAutomation* automation, IUIAutomationE
         enum Operand : uint32_t {
             Root = 1, PasswordId, OffscreenId, False, True, FirstChild, NextSibling, PidId, ExpectedPid,
             Cursor, Stack, Depth, Nodes, Found, Complete, Reason, Test, Password, Offscreen,
-            Size, One, Zero, NodeCap, DepthCap, Budget, Cost, ActualPid, MaxDepth,
+            Size, One, Zero, NodeCap, DepthCap, Budget, Cost, ActualPid, MaxDepth, Child,
         };
         constexpr uint32_t nodeLimit = 1024, depthLimit = 64, instructionLimit = 131072;
         RemoteScanCode code;
@@ -70,13 +70,13 @@ static RemoteScanResult RemoteFullScan(IUIAutomation* automation, IUIAutomationE
         code.Emit({ 0x1f, Found, 0 }); code.Emit({ 0x1f, Complete, 0 });
         code.Emit({ 0x25, Stack });
         code.Emit({ 0x39, Cursor, Root, FirstChild });
+        code.Emit({ 0x3a, Test, Cursor });
+        const int emptyTree = code.Emit({ 0x02, Test, 0 });
 
         const int loop = static_cast<int>(code.instructions.size());
         code.Emit({ 0x1c, Test, Budget, Cost, 3 }); // LessThan.
         const int budgetFailure = code.Emit({ 0x02, Test, 0 });
         code.Emit({ 0x0f, Budget, Cost });
-        code.Emit({ 0x3a, Test, Cursor });
-        const int ascend = code.Emit({ 0x02, Test, 0 });
         code.Emit({ 0x1c, Test, Nodes, NodeCap, 4 }); // GreaterThanOrEqual.
         const int nodeFailure = code.Emit({ 0x02, Test, 0 });
         code.Emit({ 0x1c, Test, Depth, DepthCap, 2 }); // GreaterThan.
@@ -89,37 +89,46 @@ static RemoteScanResult RemoteFullScan(IUIAutomation* automation, IUIAutomationE
         code.Emit({ 0x38, Password, Cursor, PasswordId, False });
         code.Emit({ 0x3d, Test, Password });
         const int passwordTypeFailure = code.Emit({ 0x03, Test, 0 });
+        const int notPassword = code.Emit({ 0x03, Password, 0 });
         code.Emit({ 0x38, Offscreen, Cursor, OffscreenId, False });
         code.Emit({ 0x3d, Test, Offscreen });
         const int offscreenTypeFailure = code.Emit({ 0x03, Test, 0 });
         code.Emit({ 0x19, Test, Offscreen });
-        code.Emit({ 0x1a, Test, Password, Test });
         code.Emit({ 0x18, Found, Test });
+        code.Target(notPassword, static_cast<int>(code.instructions.size()));
         code.Emit({ 0x0e, Nodes, One });
         code.Emit({ 0x1c, Test, Depth, MaxDepth, 2 });
         const int depthUnchanged = code.Emit({ 0x03, Test, 0 });
         code.Emit({ 0x01, MaxDepth, Depth });
         code.Target(depthUnchanged, static_cast<int>(code.instructions.size()));
-        // Only descendants are pushed. The imported root's sibling is never read.
+        code.Emit({ 0x39, Child, Cursor, FirstChild });
+        code.Emit({ 0x3a, Test, Child });
+        const int leaf = code.Emit({ 0x02, Test, 0 });
+        // Push only real ancestors, avoiding a second main-loop pass for every leaf.
+        // The imported root is never pushed, so its sibling is never read.
         code.Emit({ 0x2a, Stack, Cursor });
         code.Emit({ 0x0e, Depth, One });
-        code.Emit({ 0x39, Cursor, Cursor, FirstChild });
+        code.Emit({ 0x01, Cursor, Child });
         const int descend = code.Emit({ 0x04, 0 }); code.Target(descend, loop);
 
-        code.Target(ascend, static_cast<int>(code.instructions.size()));
+        const int sibling = static_cast<int>(code.instructions.size());
+        code.Target(leaf, sibling);
+        code.Emit({ 0x39, Cursor, Cursor, NextSibling });
+        code.Emit({ 0x3a, Test, Cursor });
+        const int nextNode = code.Emit({ 0x03, Test, 0 }); code.Target(nextNode, loop);
         code.Emit({ 0x2e, Size, Stack });
         code.Emit({ 0x1c, Test, Size, Zero, 0 });
         const int exhausted = code.Emit({ 0x02, Test, 0 });
         code.Emit({ 0x0f, Size, One });
         code.Emit({ 0x2c, Cursor, Stack, Size });
         code.Emit({ 0x0f, Depth, One });
-        code.Emit({ 0x39, Cursor, Cursor, NextSibling });
-        const int advance = code.Emit({ 0x04, 0 }); code.Target(advance, loop);
-        // Every loop path executes at most this many instructions, including both
-        // alternatives. Charging that conservative bound makes cycles bounded too.
+        const int advance = code.Emit({ 0x04, 0 }); code.Target(advance, sibling);
+        // Every node charges all branches, including one ancestor pop. Every pop
+        // has an earlier push, so this bounds the total even for a deep ascent.
         const auto loopCost = static_cast<uint32_t>(code.instructions.size() - loop);
         code.instructions.at(costInstruction).back() = loopCost;
         code.Target(exhausted, static_cast<int>(code.instructions.size()));
+        code.Target(emptyTree, static_cast<int>(code.instructions.size()));
         code.Emit({ 0x01, Complete, True }); code.Emit({ 0x05 });
         const auto fail = [&](std::initializer_list<int> branches, uint32_t reason)
         {
@@ -138,10 +147,19 @@ static RemoteScanResult RemoteFullScan(IUIAutomation* automation, IUIAutomationE
         const auto result = operation.Execute(code.Bytes());
         const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         if (result.Status() != Core::AutomationRemoteOperationStatus::Success)
+        {
+            const int status = static_cast<int>(result.Status());
+            const char* statusNames[] = { "Success", "MalformedBytecode", "InstructionLimitExceeded", "UnhandledException", "ExecutionFailure" };
+            const int location = result.ErrorLocation();
+            const int opcode = location >= 0 && static_cast<size_t>(location) < code.instructions.size()
+                ? static_cast<int>(code.instructions[location][0]) : -1;
             return { "{\"available\":false,\"completeCoverage\":false,\"stage\":\"scan-execute\",\"status\":"
-                + std::to_string(static_cast<int>(result.Status())) + ",\"extendedError\":"
+                + std::to_string(status) + ",\"statusName\":\"" + (status >= 0 && status <= 4 ? statusNames[status] : "Unknown")
+                + "\",\"errorOpcode\":" + std::to_string(opcode) + ",\"staticInstructions\":"
+                + std::to_string(code.instructions.size()) + ",\"extendedError\":"
                 + std::to_string(static_cast<int32_t>(result.ExtendedError())) + ",\"errorLocation\":"
-                + std::to_string(result.ErrorLocation()) + "}" };
+                + std::to_string(location) + "}" };
+        }
         const auto value = [&](Operand id) { return result.GetOperand({ static_cast<int>(id) }); };
         const bool exhaustedTree = winrt::unbox_value<bool>(value(Complete));
         const bool found = winrt::unbox_value<bool>(value(Found));
