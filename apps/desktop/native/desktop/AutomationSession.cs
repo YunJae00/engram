@@ -194,22 +194,9 @@ internal sealed class AutomationSession
     }
     private static AutomationElement VisiblePassword(AutomationElement root)
     {
-        var timing = Stopwatch.StartNew();
-        var request = new CacheRequest { TreeScope = TreeScope.Subtree,
-            TreeFilter = Automation.RawViewCondition, AutomationElementMode = AutomationElementMode.None };
-        request.Add(AutomationElement.IsPasswordProperty);
-        request.Add(AutomationElement.IsOffscreenProperty);
-        var pending = new Queue<AutomationElement>();
-        pending.Enqueue(root.GetUpdatedCache(request));
-        Console.Error.WriteLine("Password lookup ms: " + timing.ElapsedMilliseconds);
-        while (pending.Count > 0)
-        {
-            var element = pending.Dequeue();
-            if (element.Cached.IsPassword && !element.Cached.IsOffscreen) return element;
-            var children = element.CachedChildren;
-            if (children != null) foreach (AutomationElement child in children) pending.Enqueue(child);
-        }
-        return null;
+        return root.FindFirst(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.IsPasswordProperty, true),
+            new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
     }
     private static bool Inside(AutomationElement element, string rootId)
     {
@@ -241,9 +228,7 @@ internal sealed class AutomationSession
     }
     internal void Validate(DesktopTarget target)
     {
-        var timing = Stopwatch.StartNew();
         Guard.Same(target);
-        Console.Error.WriteLine("Window validation ms: " + timing.ElapsedMilliseconds);
         DesktopNative.Foreground(target);
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         var root = AutomationElement.FromHandle(target.Handle);

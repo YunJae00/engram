@@ -425,7 +425,6 @@ try {
   try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error
 } finally {
-  result.nativeDiagnostics = helper?.stderr
   if (helper) await helper.close()
   if (overlayOwner) await overlayOwner.close()
   await fixture.close()
