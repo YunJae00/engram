@@ -47,6 +47,11 @@ internal sealed class PacketGate
         return packet;
     }
     internal bool Own(ulong marker) { lock (Issued) return Issued.Contains(marker); }
+    internal LeaseState Active(ulong marker)
+    {
+        InputPacket packet;
+        return Pending.TryGetValue(marker, out packet) && Lease.Valid(packet.Lease) ? packet.Lease : null;
+    }
     internal bool Admit(ulong marker, uint identity, bool release, bool tracked)
     {
         InputPacket packet;

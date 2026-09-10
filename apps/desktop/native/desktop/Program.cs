@@ -208,7 +208,7 @@ internal static class Program
             {
                 lease = new ControlLease(delegate(LeaseState state, string reason)
                 {
-                    if (monitor != null) monitor.Revoked();
+                    if (monitor != null) monitor.Revoked(state);
                     ThreadPool.QueueUserWorkItem(delegate
                     {
                         try { Send(new { type = "revoked", lease = state.Id, epoch = state.Epoch, reason = reason }); }

@@ -47,13 +47,13 @@ internal sealed class InputMonitor : IDisposable
         {
             var state = Lease.State;
             if (state == null) return;
-            if (unchecked((uint)Environment.TickCount - (uint)Interlocked.Read(ref Beat)) > 500) Lease.Revoke("Desktop stop monitoring stalled");
-            if (!Guard.OwnerAlive()) Lease.Revoke("The desktop owner exited");
-            if (state != null && !Lease.Valid(state)) Lease.Revoke("Desktop control expired");
+            if (unchecked((uint)Environment.TickCount - (uint)Interlocked.Read(ref Beat)) > 500) Lease.Revoke(state, "Desktop stop monitoring stalled");
+            if (!Guard.OwnerAlive()) Lease.Revoke(state, "The desktop owner exited");
+            if (!Lease.Valid(state)) Lease.Revoke(state, "Desktop control expired");
             if (Preparing) {
-                if (unchecked((int)((uint)Interlocked.Read(ref PrepareUntil) - (uint)Environment.TickCount)) <= 0) Lease.Revoke("Computer control preparation timed out");
-            } else if (Armed && Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke("The selected window or desktop changed");
-            if (Armed && Overlay != IntPtr.Zero && !Guard.OwnerOverlay(Overlay)) Lease.Revoke("The desktop stop overlay closed");
+                if (unchecked((int)((uint)Interlocked.Read(ref PrepareUntil) - (uint)Environment.TickCount)) <= 0) Lease.Revoke(state, "Computer control preparation timed out");
+            } else if (Armed && Lease.Valid(state) && !Guard.FastCurrent(state.Target)) Lease.Revoke(state, "The selected window or desktop changed");
+            if (Armed && Overlay != IntPtr.Zero && !Guard.OwnerOverlay(Overlay)) Lease.Revoke(state, "The desktop stop overlay closed");
         }, null, 100, 100);
     }
 
@@ -214,13 +214,14 @@ internal sealed class InputMonitor : IDisposable
         OnLoop(delegate { Lease.Require(state); Armed = false; PointerAction = false; Indicator.Hide(); });
     }
 
-    internal void Revoked()
+    internal void Revoked(LeaseState state)
     {
         if (Indicator == null || Volatile.Read(ref Disposed) != 0) return;
         try
         {
             Indicator.BeginInvoke((Action)delegate
             {
+                if (!ReferenceEquals(Lease.State, state)) return;
                 Armed = false;
                 Preparing = false;
                 PointerAction = false;
@@ -265,9 +266,9 @@ internal sealed class InputMonitor : IDisposable
                 var kind = message.ToInt32();
                 var release = kind == 0x202;
                 var down = kind == 0x201;
-                var state = Lease.State;
+                var state = Packets.Active(marker);
                 if (!release && (state == null || !DesktopNative.AtTarget(state.Target.Handle, value.Point.X, value.Point.Y)))
-                { Lease.Revoke("The pointer target changed"); return new IntPtr(1); }
+                { if (state != null) Lease.Revoke(state, "The pointer target changed"); return new IntPtr(1); }
                 if (!Packets.Admit(marker, 0x20001, release, down)) return new IntPtr(1);
             }
             else

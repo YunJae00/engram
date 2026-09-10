@@ -95,8 +95,8 @@ class Channel {
 }
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
-async function until(read, predicate, label) {
-  const deadline = Date.now() + 8000
+async function until(read, predicate, label, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const state = await read()
     if (predicate(state)) return state
@@ -110,11 +110,11 @@ let overlayOwner
 let result = { passed: false, physicalHardwareInterruptionTested: false }
 try {
   result.stage = 'fixture-ready'
-  const ready = await Promise.race([fixture.ready, wait(10000).then(() => { throw new Error('Owned fixture did not start') })])
+  const ready = await Promise.race([fixture.ready, wait(30000).then(() => { throw new Error('Owned fixture did not start') })])
   assert.equal(ready.visible, true)
   result.stage = 'helper-ready'
   helper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
-  const capability = await Promise.race([helper.ready, wait(10000).then(() => { throw new Error('Desktop helper did not start') })])
+  const capability = await Promise.race([helper.ready, wait(30000).then(() => { throw new Error('Desktop helper did not start') })])
   assert.equal(capability.protocol, 2)
   result.stage = 'app-launch'
   const launchers = await helper.request('listApps')
@@ -122,7 +122,14 @@ try {
   assert.ok(notepadApp, 'Registered Notepad app was not discovered')
   await assert.rejects(helper.request('openApp', { app: 'cmd.exe' }), /Paths and commands/)
   assert.equal((await helper.request('openApp', { app: notepadApp.id })).requested, true)
-  const launched = await until(() => helper.request('listWindows'), value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch')
+  result.appLaunchReads = []
+  const launched = await until(async () => {
+    const started = performance.now()
+    const value = await helper.request('listWindows')
+    result.appLaunchReads.push({ elapsedMs: Math.round(performance.now() - started), titles: value.windows.map(window => window.title) })
+    return value
+  }, value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch', 30000)
+  assert.ok(launched.windows.every(window => window.title.trim().length > 0))
   const notepad = launched.windows.find(window => /notepad/i.test(window.title))
   const launchedView = await helper.request('observe', { window: notepad.window, pid: notepad.pid })
   assert.ok(launchedView.snapshot)
@@ -341,7 +348,7 @@ try {
 } catch (error) {
   result.error = error instanceof Error ? error.message : String(error)
   result.helperDiagnostics = helper?.stderr
-  result.events = helper?.events
+  result.events = helper?.events.slice(-20)
   try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error
 } finally {

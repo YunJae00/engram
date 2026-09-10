@@ -51,7 +51,7 @@ internal sealed class ControlLease
     internal LeaseState Require(string id)
     {
         var value = State;
-        if (!Valid(value)) { Revoke("Control expired or was stopped"); throw new InvalidOperationException("Desktop control requires new user approval"); }
+        if (!Valid(value)) { Revoke(value, "Control expired or was stopped"); throw new InvalidOperationException("Desktop control requires new user approval"); }
         if (!string.Equals(value.Id, id, StringComparison.Ordinal)) throw new InvalidOperationException("Desktop control lease does not match");
         return value;
     }
@@ -61,11 +61,18 @@ internal sealed class ControlLease
         if (!Valid(state)) throw new InvalidOperationException("Desktop control was interrupted; no further input was sent");
     }
 
-    internal void Revoke(string reason)
+    internal void Revoke(string reason) { lock (Sync) Revoke(State, reason); }
+
+    internal void Revoke(LeaseState expected, string reason)
     {
-        var value = State;
-        if (value == null || Interlocked.Exchange(ref value.Revoked, 1) != 0) return;
-        Interlocked.Increment(ref Epoch);
+        LeaseState value;
+        lock (Sync)
+        {
+            value = State;
+            if (expected == null || !ReferenceEquals(value, expected)
+                || Interlocked.Exchange(ref value.Revoked, 1) != 0) return;
+            Interlocked.Increment(ref Epoch);
+        }
         Changed(value, reason);
     }
 }
