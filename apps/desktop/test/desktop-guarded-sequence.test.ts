@@ -11,6 +11,15 @@ const base = (): DesktopObservationDto => ({ snapshot: 'first', truncated: false
 const step = (action: Omit<DesktopGuardedAction, 'snapshot' | 'target'> & { text?: string; key?: string; value?: string }, one = target) => ({ ...action, snapshot: 'first', target: one } as DesktopGuardedAction)
 afterEach(() => vi.restoreAllMocks())
 
+it('verifies multiline values across native line endings without sending input', async () => {
+  const current = base()
+  current.nodes[0]!.value = 'First\r\nSecond\tValue'
+  const act = vi.fn()
+  const result = JSON.parse(await guardedSequence(current, [step({ kind: 'verify', value: 'First\nSecond\tValue' })], async () => current, act))
+  expect(result).toMatchObject({ verified: 1, dispatched: 0 })
+  expect(act).not.toHaveBeenCalled()
+})
+
 it('continues through an expected layout transition and verifies without another model call', async () => {
   const current = base()
   const act = vi.fn(async (action) => {

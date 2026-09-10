@@ -67,6 +67,10 @@ function appOf(args: unknown, tool: string): { ok: true; app?: string } | { ok: 
 
 const OBVIOUS_SECRET = /\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|Bearer\s+\S{8,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)|-----BEGIN [A-Z ]*PRIVATE KEY-----/i
 
+function requirePublicText(text: string, context: AgentToolContext): void {
+  if (secretsIn(text).length || carriesSecret(text, context.task) || carriesSecret(text, context.read ?? '') || OBVIOUS_SECRET.test(text)) throw new Error('Passwords, tokens and other secrets must be entered directly by the person, not desktop typing or verification.')
+}
+
 function actionOf(args: Record<string, unknown>, context: AgentToolContext): DesktopAction {
   if (!plainRecord(args)) throw new Error('Desktop action arguments must be a plain object.')
   const snapshot = args['snapshot']
@@ -82,7 +86,7 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
     case 'type': {
       const text = args['text']
       if (!exactKeys(args, ['kind', 'snapshot', 'text']) || typeof text !== 'string' || !text || text.length > 2000 || !printable(text)) break
-      if (secretsIn(text).length || carriesSecret(text, context.task) || carriesSecret(text, context.read ?? '') || OBVIOUS_SECRET.test(text)) throw new Error('Passwords, tokens and other secrets must be entered directly by the person, not desktop typing.')
+      requirePublicText(text, context)
       return { kind: 'type', snapshot, text }
     }
     case 'scroll': {
@@ -106,8 +110,8 @@ function guardedActionOf(args: Record<string, unknown>, context: AgentToolContex
     || typeof target['controlType'] !== 'string' || !/^[A-Za-z]{1,40}$/.test(target['controlType'])) throw new Error('Use an exact accessible name and controlType for each target.')
   const selector = { name: target['name'], controlType: target['controlType'] }
   if (input['kind'] === 'verify') {
-    if (!exactKeys(input, ['kind', 'snapshot', 'value']) || typeof input['value'] !== 'string' || input['value'].length > 2000 || !printable(input['value'])) throw new Error('Verification requires an exact printable field value, up to 2000 characters.')
-    if (input['value']) actionOf({ kind: 'type', snapshot: input['snapshot'], text: input['value'] }, context)
+    if (!exactKeys(input, ['kind', 'snapshot', 'value']) || typeof input['value'] !== 'string' || input['value'].length > 2000 || !printable(input['value'].replace(/[\r\n\t]/g, ''))) throw new Error('Verification requires an exact field value, up to 2000 characters; line breaks and tabs are allowed.')
+    requirePublicText(input['value'], context)
     actionOf({ kind: 'key', snapshot: input['snapshot'], key: 'Tab' }, context)
     return { kind: 'verify', snapshot: input['snapshot'] as string, target: selector, value: input['value'] }
   }

@@ -30,3 +30,14 @@ it('validates named batches and checkpoints completely before dispatch', async (
   ]) await expect(tool.run({ snapshot: 'fresh', actions: bad }, { task: '' })).rejects.toThrow()
   expect(sequence).not.toHaveBeenCalled()
 })
+
+it('permits line breaks in read-only verification but never in dispatched typing', async () => {
+  const sequence = vi.fn(async () => 'checked')
+  const tool = desktopTools({ read: async () => '', sequence }).find((one) => one.name === 'desktop_sequence')!
+  const target = { name: 'Draft', controlType: 'Edit' }
+  const args = { snapshot: 'fresh', actions: [{ kind: 'verify', target, value: 'One\r\nTwo\tThree' }] }
+  expect(await tool.run(args, { task: '' })).toBe('checked')
+  sequence.mockClear()
+  await expect(tool.run({ ...args, actions: [{ kind: 'verify', target, value: 'One\u0000Two' }] }, { task: '' })).rejects.toThrow()
+  expect(sequence).not.toHaveBeenCalled()
+})

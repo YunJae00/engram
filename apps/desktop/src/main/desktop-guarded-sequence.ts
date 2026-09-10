@@ -3,6 +3,7 @@ import type { DesktopAction, DesktopGuardedAction } from 'core'
 import type { DesktopObservationDto, DesktopNodeDto } from '../shared/desktop.js'
 
 const geometry = (view: DesktopObservationDto) => JSON.stringify([view.bounds, view.captureBounds])
+const lines = (value?: string | null) => value?.replace(/\r\n?/g, '\n')
 
 // ponytail: exact names need a complete view; use observed element editing for partial trees.
 export async function guardedSequence(
@@ -51,7 +52,7 @@ export async function guardedSequence(
       let node = targetOf(step)
       if (step.kind === 'verify') {
         const until = performance.now() + 2000
-        while (!node || node.value !== step.value) {
+        while (!node || lines(node.value) !== lines(step.value)) {
           if (performance.now() >= until) throw new Error('The expected field value was not observed. Inspect the result; do not repeat the input.')
           await delay(80, undefined, { signal })
           await refresh()
