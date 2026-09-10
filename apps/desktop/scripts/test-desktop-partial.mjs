@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 import { testDesktopUia } from './test-desktop-uia.mjs'
+import { testDesktopLegacy } from './test-desktop-legacy.mjs'
 
 export async function testDesktopPartial(helper, fixture, target, result, until, desktop, output) {
   result.stage = 'partial-capture'
@@ -15,6 +16,8 @@ export async function testDesktopPartial(helper, fixture, target, result, until,
   await fixture.request('password')
   result.uiaPassword = testDesktopUia(desktop, output, target, true)
   await fixture.request('hidePassword')
+  result.stage = 'legacy-accessibility-probe'
+  await testDesktopLegacy(fixture, target, output, result)
   result.stage = 'partial-focused-editing'
   await fixture.request('deepFocus')
   const deepLease = await helper.request('bind', { ...target, grant: randomUUID() })

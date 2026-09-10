@@ -8,7 +8,7 @@ using System.Text;
 
 internal static class MediumHarness
 {
-    private const int LimitMs = 180000;
+    private const int LimitMs = 300000;
     private const uint TokenRights = 0x008B;
     private const uint Suspended = 0x00000004;
     private const uint UnicodeEnvironment = 0x00000400;

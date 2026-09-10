@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <roapi.h>
 #include <UIAutomation.h>
 #include <wrl/client.h>
 #include <chrono>
@@ -22,6 +23,8 @@ static void Check(HRESULT result)
 {
     if (FAILED(result)) throw std::runtime_error("UI Automation query failed");
 }
+
+#include "LegacyProbe.h"
 
 static unsigned long long Number(const wchar_t* value)
 {
@@ -163,7 +166,7 @@ int wmain(int argc, wchar_t** argv)
     {
         const auto ci = _wgetenv(L"CI");
         const auto github = _wgetenv(L"GITHUB_ACTIONS");
-        if ((argc != 3 && argc != 4) || (argc == 4 && std::wcscmp(argv[3], L"--remote"))
+        if ((argc != 3 && argc != 4) || (argc == 4 && std::wcscmp(argv[3], L"--remote") && std::wcscmp(argv[3], L"--legacy") && std::wcscmp(argv[3], L"--legacy-readonly"))
             || !ci || !github || std::wcscmp(ci, L"true") || std::wcscmp(github, L"true"))
             throw std::runtime_error("An isolated Windows CI fixture is required");
         const auto window = reinterpret_cast<HWND>(Number(argv[1]));
@@ -174,11 +177,12 @@ int wmain(int argc, wchar_t** argv)
         GetWindowTextW(window, title, 128);
         if (!IsWindow(window) || pid != expectedPid || std::wcscmp(title, L"Desktop input fixture"))
             throw std::runtime_error("The owned fixture window is unavailable");
-        Check(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+        Check(RoInitialize(RO_INIT_MULTITHREADED));
         if (argc == 4)
         {
-            std::cout << RemoteDiagnostic(window) << '\n';
-            CoUninitialize();
+            std::cout << (!std::wcscmp(argv[3], L"--remote") ? RemoteDiagnostic(window)
+                : LegacyDiagnostic(window, pid, !std::wcscmp(argv[3], L"--legacy-readonly"))) << '\n';
+            RoUninitialize();
             return 0;
         }
         std::cout << "{\"classic\":";
@@ -188,7 +192,7 @@ int wmain(int argc, wchar_t** argv)
         std::cout << ",\"modernPasswordFirst\":";
         Samples(__uuidof(CUIAutomation8), window, true);
         std::cout << "}\n";
-        CoUninitialize();
+        RoUninitialize();
         return 0;
     }
     catch (const std::exception& error)

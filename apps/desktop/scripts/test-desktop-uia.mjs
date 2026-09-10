@@ -63,7 +63,7 @@ export function testDesktopUia(desktop, output, target, expectedPassword) {
       const separator = line.indexOf('=')
       if (separator > 0) environment[line.slice(0, separator)] = line.slice(separator + 1)
     }
-    run('cl.exe', ['/nologo', '/EHsc', '/O2', '/std:c++17',
+    run('cl.exe', ['/nologo', '/EHsc', '/O2', '/std:c++20',
       path.join(desktop, 'e2e/fixtures/desktop/AutomationProbe.cpp'), `/Fe:${native}`, '/link', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'runtimeobject.lib'],
     { cwd: output, env: environment })
     const framework = path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319')
