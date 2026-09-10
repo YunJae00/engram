@@ -281,8 +281,19 @@ try {
     'The focused partial observation did not confirm the complete edited value')
   assert.equal((await fixture.request('state')).deepText, 'Verified draft')
   result.stage = 'anchored-partial-workflow'
-  const partialRead = (focusedOnly = false) => helper.request('observe', { ...deepBound, focusedOnly })
-  const partialAct = ({ kind, snapshot, ...args }) => helper.request(kind, { ...deepBound, snapshot, ...args })
+  result.partialTimings = []
+  const partialRead = async (focusedOnly = false) => {
+    const started = performance.now()
+    const view = await helper.request('observe', { ...deepBound, focusedOnly })
+    result.partialTimings.push({ kind: 'observe', focusedOnly, elapsedMs: Math.round(performance.now() - started) })
+    return view
+  }
+  const partialAct = async ({ kind, snapshot, ...args }) => {
+    const started = performance.now()
+    const value = await helper.request(kind, { ...deepBound, snapshot, ...args })
+    result.partialTimings.push({ kind, elapsedMs: Math.round(performance.now() - started) })
+    return value
+  }
   const partialStart = await partialRead()
   const anchor = partialStart.nodes.find(node => node.runtimeId === deepEditor.runtimeId)
   assert.ok(anchor)
