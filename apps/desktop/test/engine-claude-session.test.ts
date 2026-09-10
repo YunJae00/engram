@@ -9,6 +9,7 @@ import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/e
 // what the tool said. Counts how many processes were started.
 function fakeSdk(log: string[]) {
   let processes = 0
+  let interruptions = 0
   const optionsSeen: Record<string, unknown>[] = []
   const outcomes: unknown[] = []
   const sdk: SessionSdk = {
@@ -31,12 +32,13 @@ function fakeSdk(log: string[]) {
       }
       const stream = run() as AsyncGenerator<{ type: string }> & { interrupt(): Promise<unknown> }
       stream.interrupt = async () => {
+        interruptions++
         interrupted = true
       }
       return stream
     },
   }
-  return { sdk, processes: () => processes, optionsSeen, outcomes }
+  return { sdk, processes: () => processes, interruptions: () => interruptions, optionsSeen, outcomes }
 }
 
 function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJob {
@@ -132,7 +134,7 @@ describe('a warm session: one process, many turns', () => {
   })
 
   it('a cancelled turn comes back as canceled and the pool opens a fresh session next time', async () => {
-    const { sdk, processes } = fakeSdk([])
+    const { sdk, processes, interruptions, optionsSeen } = fakeSdk([])
     const pool = new SessionPool()
     const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
     const abort = new AbortController()
@@ -144,11 +146,73 @@ describe('a warm session: one process, many turns', () => {
     const pending = pool.run(slow, spec)
     abort.abort()
     expect((await pending).error).toBe('canceled')
+    expect(interruptions()).toBe(1)
+    expect((optionsSeen[0]!['abortController'] as AbortController).signal.aborted).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 250))
     const next = await pool.run(job('again', { sessionKey: 'k' }), spec)
     expect(next.answer).toContain('again')
     expect(processes()).toBe(2)
     pool.closeAll()
+  })
+
+  it('removes a finished turn signal so its later abort cannot cancel a warm follow-up', async () => {
+    const { sdk, processes, interruptions, optionsSeen } = fakeSdk([])
+    const pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
+    const previous = new AbortController()
+    const add = vi.spyOn(previous.signal, 'addEventListener')
+    const remove = vi.spyOn(previous.signal, 'removeEventListener')
+    try {
+      await pool.run(job('first', { sessionKey: 'k', signal: previous.signal }), spec)
+      const listener = add.mock.calls.find(([type]) => type === 'abort')![1]
+      const next = await pool.run(job('second', {
+        sessionKey: 'k', tools: [{ name: 'search_memory', description: 'search', argsSchema: {}, run: async () => {
+          previous.abort()
+          if (typeof listener === 'function') listener.call(previous.signal, new Event('abort'))
+          return 'the second turn completed'
+        } }],
+      }), spec)
+      expect(next).toEqual({ answer: 'the tool said the second turn completed' })
+      expect(remove).toHaveBeenCalledWith('abort', expect.any(Function))
+      expect(interruptions()).toBe(0)
+      expect(processes()).toBe(1)
+      expect((optionsSeen[0]!['abortController'] as AbortController).signal.aborted).toBe(false)
+    } finally { pool.closeAll() }
+  })
+
+  it('does not open or queue an already-aborted job', async () => {
+    const log: string[] = []
+    const { sdk, processes } = fakeSdk(log)
+    const pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
+    const canceled = new AbortController()
+    canceled.abort()
+    try {
+      expect(await pool.run(job('never queue', { signal: canceled.signal }), spec)).toEqual({ answer: '', error: 'canceled' })
+      expect(processes()).toBe(0)
+      expect(log).toEqual([])
+    } finally { pool.closeAll() }
+  })
+
+  it('does not let an already-aborted job replace the current active session', async () => {
+    const log: string[] = []
+    const { sdk, processes, interruptions } = fakeSdk(log)
+    const pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
+    const canceled = new AbortController()
+    canceled.abort()
+    try {
+      const current = await pool.run(job('active', {
+        tools: [{ name: 'search_memory', description: 'search', argsSchema: {}, run: async () => {
+          expect(await pool.run(job('never replace', { signal: canceled.signal }), spec)).toEqual({ answer: '', error: 'canceled' })
+          return 'still active'
+        } }],
+      }), spec)
+      expect(current).toEqual({ answer: 'the tool said still active' })
+      expect(processes()).toBe(1)
+      expect(interruptions()).toBe(0)
+      expect(log).toEqual(['user: active'])
+    } finally { pool.closeAll() }
   })
 })
 

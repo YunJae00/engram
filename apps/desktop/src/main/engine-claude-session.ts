@@ -66,6 +66,7 @@ interface Turn {
   resolve(result: ToolSessionResult): void
   answer: string
   timer: ReturnType<typeof setTimeout>
+  detachAbort(): void
   onToken?: (text: string) => void
   onReset?: () => void
 }
@@ -223,10 +224,12 @@ export class WarmSession {
     if (!turn) return
     this.turn = null
     clearTimeout(turn.timer)
+    turn.detachAbort()
     turn.resolve(result)
   }
 
   run(job: ToolSessionJob): Promise<ToolSessionResult> {
+    if (job.signal?.aborted) return Promise.resolve({ answer: '', error: 'canceled' })
     if (this.closed) return Promise.resolve({ answer: '', error: 'the session ended' })
     this.tools = new Map(job.tools.map((tool) => [tool.name, tool]))
     this.turns++
@@ -239,14 +242,17 @@ export class WarmSession {
       // on the next turn; the session goes with it, and the next turn opens
       // a fresh one.
       const cut = (error: string): void => {
+        if (this.turn !== turn) return
         void this.query?.interrupt().catch(() => undefined)
-        this.finish({ answer: this.turn?.answer ?? '', error })
+        this.finish({ answer: turn.answer, error })
         this.close()
       }
+      const onAbort = (): void => cut('canceled')
       const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
       const now = performance.now()
-      this.turn = { resolve, answer: '', timer, startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
-      job.signal?.addEventListener('abort', () => cut('canceled'), { once: true })
+      const turn: Turn = { resolve, answer: '', timer, detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
+      this.turn = turn
+      job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()
       this.wake = null
@@ -268,6 +274,7 @@ export class SessionPool {
   private readonly sessions = new Map<string, WarmSession>()
 
   run(job: ToolSessionJob, spec: SessionSpec): Promise<ToolSessionResult> {
+    if (job.signal?.aborted) return Promise.resolve({ answer: '', error: 'canceled' })
     const key = job.sessionKey ?? 'default'
     let session = this.sessions.get(key)
     // A changed model is a new session: the person switched in Settings, and
