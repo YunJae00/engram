@@ -165,7 +165,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     // the pages ahead are usually in another one, and whichever language
     // fills the turn wins by weight alone unless this is said last - and
     // said by name, not left to be read off the ask.
-    prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []), `Task: ${task}`, answerLanguageLine(task)].join('\n'),
+    prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
+      ...(desktop ? ['Prior-turn desktop observations are historical: use read_desktop or look_desktop before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
+      `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     tools: sessionCalls,
