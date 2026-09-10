@@ -273,8 +273,12 @@ test('window and chat handoffs preserve independent input, composition and monit
         window.engram.agentGo(`${url}?lane=second`, `bot-${second}`),
       ])
     }, { url: siteUrl, first: first.id, second: second.id })
+    // Navigation on the app's connection can finish before this observer receives it.
+    await expect.poll(() => context.pages().map((one) => one.url())).toEqual(expect.arrayContaining([`${siteUrl}?lane=first`, `${siteUrl}?lane=second`]))
     const firstPage = context.pages().find((one) => one.url() === `${siteUrl}?lane=first`)!
     const secondPage = context.pages().find((one) => one.url() === `${siteUrl}?lane=second`)!
+    await expect(firstPage.locator('input')).toBeVisible()
+    await expect(secondPage.locator('input')).toBeVisible()
     const clickInput = async () => {
       const canvas = page.getByTestId('web-pane').locator('canvas[data-painted]')
       await expect(canvas).toBeVisible()

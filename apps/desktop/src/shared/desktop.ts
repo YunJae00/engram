@@ -6,6 +6,10 @@ export interface DesktopNodeDto {
   name: string
   controlType: string
   value?: string | null
+  enabled?: boolean
+  offscreen?: boolean
+  password?: boolean
+  isPassword?: boolean
   actions?: { type?: boolean }
   bounds: { x: number; y: number; width: number; height: number }
 }

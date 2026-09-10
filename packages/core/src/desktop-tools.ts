@@ -8,6 +8,14 @@ export type DesktopAction =
   | { kind: 'scroll'; snapshot: string; delta: number }
   | { kind: 'key'; snapshot: string; key: string }
 
+export type DesktopGuardedAction = { snapshot: string; target: { name: string; controlType: string } } & (
+  | { kind: 'click' }
+  | { kind: 'type'; text: string }
+  | { kind: 'key'; key: string }
+  | { kind: 'verify'; value: string }
+)
+export type DesktopSequenceAction = DesktopAction | DesktopGuardedAction
+
 // The desktop as the comet reaches it: the host lists the open windows, and
 // reading or looking at an app is what takes the computer - there is no
 // separate "may I" step. `app` names the window to bring forward, by a word
@@ -19,7 +27,7 @@ export interface DesktopCourier {
   read(signal?: AbortSignal, app?: string): Promise<string>
   look?(signal?: AbortSignal, app?: string): Promise<ToolOutcome>
   act?(action: DesktopAction, context: AgentToolContext): Promise<string>
-  sequence?(actions: DesktopAction[], context: AgentToolContext): Promise<string>
+  sequence?(actions: DesktopSequenceAction[], context: AgentToolContext): Promise<string>
 }
 
 const DESKTOP_TOOLS = new Set(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence'])
@@ -59,6 +67,10 @@ function appOf(args: unknown, tool: string): { ok: true; app?: string } | { ok: 
 
 const OBVIOUS_SECRET = /\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|Bearer\s+\S{8,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)|-----BEGIN [A-Z ]*PRIVATE KEY-----/i
 
+function requirePublicText(text: string, context: AgentToolContext): void {
+  if (secretsIn(text).length || carriesSecret(text, context.task) || carriesSecret(text, context.read ?? '') || OBVIOUS_SECRET.test(text)) throw new Error('Passwords, tokens and other secrets must be entered directly by the person, not desktop typing or verification.')
+}
+
 function actionOf(args: Record<string, unknown>, context: AgentToolContext): DesktopAction {
   if (!plainRecord(args)) throw new Error('Desktop action arguments must be a plain object.')
   const snapshot = args['snapshot']
@@ -74,7 +86,7 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
     case 'type': {
       const text = args['text']
       if (!exactKeys(args, ['kind', 'snapshot', 'text']) || typeof text !== 'string' || !text || text.length > 2000 || !printable(text)) break
-      if (secretsIn(text).length || carriesSecret(text, context.task) || carriesSecret(text, context.read ?? '') || OBVIOUS_SECRET.test(text)) throw new Error('Passwords, tokens and other secrets must be entered directly by the person, not desktop typing.')
+      requirePublicText(text, context)
       return { kind: 'type', snapshot, text }
     }
     case 'scroll': {
@@ -89,6 +101,25 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
     }
   }
   throw new Error('Invalid desktop action. Use exactly one click target, printable text, a nonzero scroll delta from -10 to 10, or one supported key.')
+}
+
+function guardedActionOf(args: Record<string, unknown>, context: AgentToolContext): DesktopGuardedAction {
+  const { target, ...input } = args
+  if (!plainRecord(target) || !exactKeys(target, ['name', 'controlType']) || typeof target['name'] !== 'string'
+    || !target['name'].trim() || target['name'].length > 512 || !printable(target['name'])
+    || typeof target['controlType'] !== 'string' || !/^[A-Za-z]{1,40}$/.test(target['controlType'])) throw new Error('Use an exact accessible name and controlType for each target.')
+  const selector = { name: target['name'], controlType: target['controlType'] }
+  if (input['kind'] === 'verify') {
+    if (!exactKeys(input, ['kind', 'snapshot', 'value']) || typeof input['value'] !== 'string' || input['value'].length > 2000 || !printable(input['value'].replace(/[\r\n\t]/g, ''))) throw new Error('Verification requires an exact field value, up to 2000 characters; line breaks and tabs are allowed.')
+    requirePublicText(input['value'], context)
+    actionOf({ kind: 'key', snapshot: input['snapshot'], key: 'Tab' }, context)
+    return { kind: 'verify', snapshot: input['snapshot'] as string, target: selector, value: input['value'] }
+  }
+  if (input['kind'] === 'click' && !exactKeys(input, ['kind', 'snapshot'])) throw new Error('A named target replaces the element or coordinates.')
+  const action = actionOf(input['kind'] === 'click' ? { ...input, element: 'e0' } : input, context)
+  if (action.kind === 'scroll' || (action.kind === 'key' && action.key === 'Escape')) throw new Error('Use individual actions for scrolling or ending control.')
+  if (action.kind === 'click') return { kind: 'click', snapshot: action.snapshot, target: selector }
+  return { ...action, target: selector }
 }
 
 export function isDesktopTool(name: string): boolean { return DESKTOP_TOOLS.has(name) }
@@ -212,14 +243,16 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
   const sequence = courier.sequence
   if (sequence) tools.push({
     name: 'desktop_sequence',
-    description: `Perform up to 12 related actions in one model call. Start with an observed element click; supply snapshot and actions without individual snapshot fields. Supports element clicks, printable typing and supported keys; no coordinates or scrolling. Normally requires a complete, stable interface. A partial view also supports focused editing: click an Edit with actions.type and runtimeId, then type or use editing/selection keys within that same editor (no Enter, Tab, Escape or Control+F). The host re-observes between actions and stops on changed targets, focus, geometry, cancellation or the first error. Use individual actions for navigation or dialogs. Returns actual final observation and elapsed time; verify the result. ${HANDS} ${GUIDANCE}`,
+    description: `Perform up to 12 related actions in one model call; supply snapshot and actions without individual snapshots. Prefer a short batch over repeated single actions when the next targets and result checks are known. Two modes: (1) element mode starts with an observed element click on a stable interface. A partial view supports an Edit with actions.type and runtimeId followed by editing keys/typing in that editor, without Enter, Tab, Escape or Control+F. (2) guarded mode gives EVERY step target:{name,controlType}, using exact accessible names. Clicks resolve the next target in the live complete view, including after an expected interface change. Type/key require that exact control to have keyboard focus; use clicks to select other fields. Add kind:verify with target and exact value to wait up to 2 seconds for a result without repeating input. Start with an observed target; predict only a short known continuation, not an entire unseen workflow. No coordinates, scroll or Escape in guarded mode. Both modes re-observe within the same call, stop on missing/ambiguous targets, unsafe state, changed geometry, cancellation or first error, and return the last observation. Never replay a partially dispatched batch. ${HANDS} ${GUIDANCE}`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['snapshot', 'actions'],
       properties: {
         snapshot: { type: 'string', minLength: 1, maxLength: 160 },
         actions: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['kind'], properties: {
-          kind: { type: 'string', enum: ['click', 'type', 'key'] }, element: { type: 'string', pattern: '^e[0-9]+$' },
+          kind: { type: 'string', enum: ['click', 'type', 'key', 'verify'] }, element: { type: 'string', pattern: '^e[0-9]+$' },
           text: { type: 'string', minLength: 1, maxLength: 2000 }, key: { type: 'string', enum: KEYS },
+          target: { type: 'object', additionalProperties: false, required: ['name', 'controlType'], properties: { name: { type: 'string', minLength: 1, maxLength: 512 }, controlType: { type: 'string', minLength: 1, maxLength: 40 } } },
+          value: { type: 'string', maxLength: 2000 },
         } } },
       },
     },
@@ -228,11 +261,14 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
       if (!plainRecord(args) || !exactKeys(args, ['snapshot', 'actions']) || !Array.isArray(args['actions']) || args['actions'].length < 1 || args['actions'].length > 12) throw new Error('Use snapshot and 1 to 12 actions.')
       const actions = args['actions'].map((step: unknown) => {
         if (!plainRecord(step) || 'snapshot' in step) throw new Error('Sequence actions share the outer snapshot.')
+        if ('target' in step) return guardedActionOf({ ...step, snapshot: args['snapshot'] }, context)
         const action = actionOf({ ...step, snapshot: args['snapshot'] }, context)
         if (action.kind === 'scroll' || (action.kind === 'click' && !('element' in action))) throw new Error('Sequence actions require stable element targets, typing or supported keys.')
         return action
       })
-      if (actions[0]?.kind !== 'click') throw new Error('Start a sequence with an observed element click to establish its input target.')
+      const guarded = actions.some((action) => 'target' in action)
+      if (guarded && !actions.every((action) => 'target' in action)) throw new Error('Every step in guarded mode needs an explicit target.')
+      if (!guarded && actions[0]?.kind !== 'click') throw new Error('Start a sequence with an observed element click to establish its input target.')
       try { return await sequence(actions, context) } finally { context.signal?.throwIfAborted() }
     },
   })

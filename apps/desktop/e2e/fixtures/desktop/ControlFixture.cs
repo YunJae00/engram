@@ -42,6 +42,9 @@ internal sealed class ControlFixture : Form
     private Form Away;
     private Panel Dense;
     private TextBox Deep;
+    private Panel Workflow;
+    private TextBox Draft;
+    private TextBox Reviewed;
 
     internal ControlFixture()
     {
@@ -137,6 +140,24 @@ internal sealed class ControlFixture : Form
                 Controls.Add(Dense); Dense.BringToFront();
             }
             else if (method == "deepFocus") { Deep.Focus(); }
+            else if (method == "workflow")
+            {
+                Workflow = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Draft workflow" };
+                var open = new Button { Text = "Open draft", AccessibleName = "Open draft", Bounds = new Rectangle(8, 8, 120, 32) };
+                Draft = new TextBox { AccessibleName = "Draft value", Bounds = new Rectangle(8, 60, 450, 30), Visible = false };
+                var review = new Button { Text = "Review draft", AccessibleName = "Review draft", Bounds = new Rectangle(8, 105, 120, 32), Visible = false };
+                Reviewed = new TextBox { AccessibleName = "Reviewed value", ReadOnly = true, Bounds = new Rectangle(8, 155, 450, 30), Visible = false };
+                open.Click += delegate { Draft.Visible = true; review.Visible = true; Draft.Focus(); };
+                review.Click += delegate
+                {
+                    var timer = new System.Windows.Forms.Timer { Interval = 250 };
+                    timer.Tick += delegate { timer.Stop(); timer.Dispose(); Reviewed.Text = Draft.Text; Reviewed.Visible = true; };
+                    timer.Start();
+                };
+                Workflow.Controls.AddRange(new Control[] { open, Draft, review, Reviewed });
+                Controls.Add(Workflow); Workflow.BringToFront();
+            }
+            else if (method == "endWorkflow") { if (Workflow != null) { Workflow.Dispose(); Workflow = null; Draft = null; Reviewed = null; } Entry.Focus(); }
             else if (method == "sparse") { if (Dense != null) { Dense.Dispose(); Dense = null; Deep = null; } }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "hidePassword") { Secret.Visible = false; Entry.Focus(); }
@@ -153,7 +174,8 @@ internal sealed class ControlFixture : Form
             }
             else if (method != "state") throw new ArgumentException("Unsupported fixture request");
             Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, wheelEvents = Scroller.Wheels,
-                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible, deepText = Deep == null ? null : Deep.Text } });
+                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible, deepText = Deep == null ? null : Deep.Text,
+                draft = Draft == null ? null : Draft.Text, reviewed = Reviewed == null ? null : Reviewed.Text } });
         }
         catch (Exception error) { Send(new { id = id, error = error.Message }); }
     }
