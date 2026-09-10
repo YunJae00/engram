@@ -32,6 +32,24 @@ beforeEach(() => {
   fake.image.mockReturnValue({ toJPEG: () => Buffer.from('fixture-image') })
 })
 describe('desktop image consent and capture validation', () => {
+  it('keeps task context aligned with observation reuse and guarded batches', () => {
+    expect(desktopContext()).toContain('desktop_sequence')
+    expect(desktopContext()).toContain('returned observation')
+    expect(desktopContext()).not.toContain('After every action, observe')
+  })
+  it('always reads after a replacement and does not retry when readback fails', async () => {
+    const tool = desktopAgentTools('bot-one').find((one) => one.name === 'desktop_action')!
+    const args = { kind: 'replace', snapshot: 'before', element: 'e1', expected: 'Old', text: 'New' }
+    const result = JSON.parse(await tool.run(args, { task: 'Replace the entire field' }))
+    expect(result).toMatchObject({ dispatched: true, requiresVerification: true, observation: { snapshot: 'fresh' } })
+    expect(fake.act).toHaveBeenCalledOnce()
+    expect(fake.read).toHaveBeenCalledOnce()
+    fake.act.mockClear(); fake.read.mockClear()
+    fake.read.mockRejectedValueOnce(new Error('Readback unavailable'))
+    await expect(tool.run(args, { task: 'Replace the entire field' })).rejects.toThrow('Readback unavailable')
+    expect(fake.act).toHaveBeenCalledOnce()
+    expect(fake.read).toHaveBeenCalledOnce()
+  })
   it('returns a fresh partial observation after input without claiming task completion', async () => {
     fake.read.mockResolvedValue({ ...observation('after'), truncated: true })
     const tool = desktopAgentTools('bot-one').find((one) => one.name === 'desktop_action')!

@@ -6,8 +6,8 @@ import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { flog } from './flog.js'
 
-export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'scroll' | 'key' | 'stop'
-const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'scroll', 'key', 'stop'])
+export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop'
+const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop'])
 // Everything else names one window; these two speak about the session.
 const UNSCOPED = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'stop'])
 

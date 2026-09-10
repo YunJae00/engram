@@ -9,6 +9,7 @@ vi.mock('../src/main/agent-browser.js', () => ({
   activeLaneName: () => deps.active,
   setActiveLane: (lane: string) => { deps.active = lane },
   lanePage: (lane: string) => deps.pages.get(lane),
+  ensureAgentPage: async (lane: string) => deps.pages.get(lane),
   laneOf: (page: unknown) => [...deps.pages].find(([, held]) => held === page)?.[0],
 }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
@@ -24,6 +25,7 @@ function fixture(lane: string) {
   const page = Object.assign(new EventEmitter(), {
     context: () => ({ newCDPSession: async () => cdp }), isClosed: () => false,
     viewportSize: () => ({ width: 1280, height: 860 }), url: () => `https://${lane}.example`,
+    goto: vi.fn(async () => undefined),
   })
   deps.pages.set(lane, page)
   return { page, cdp }
@@ -37,6 +39,31 @@ beforeEach(() => {
 })
 
 describe('browser view handoffs', () => {
+  it('reports a failed navigation without discarding the existing page or its mirror', async () => {
+    const first = fixture('bot-one'), second = fixture('bot-two')
+    const failure = new Error('page.goto: net::ERR_CONNECTION_REFUSED')
+    first.page.goto.mockRejectedValueOnce(failure)
+    const view = await import('../src/main/agent-view.js')
+    await view.lookAtLane('bot-one')
+    const before = view.agentViewState()
+
+    await expect(view.agentViewGo('http://127.0.0.1:1/', 'bot-one')).rejects.toBe(failure)
+
+    expect(first.page.goto).toHaveBeenCalledExactlyOnceWith('http://127.0.0.1:1/', { waitUntil: 'commit' })
+    expect(second.page.goto).not.toHaveBeenCalled()
+    expect(deps.pages.get('bot-one')).toBe(first.page)
+    expect(view.agentViewState()).toEqual(before)
+    expect(first.cdp.detach).not.toHaveBeenCalled()
+  })
+
+  it('returns normally after the requested lane commits a navigation', async () => {
+    const first = fixture('bot-one'), second = fixture('bot-two')
+    const view = await import('../src/main/agent-view.js')
+    await expect(view.agentViewGo('https://example.com/', 'bot-two')).resolves.toBeUndefined()
+    expect(first.page.goto).not.toHaveBeenCalled()
+    expect(second.page.goto).toHaveBeenCalledExactlyOnceWith('https://example.com/', { waitUntil: 'commit' })
+  })
+
   it('drops keyboard and wheel input from a chat that is no longer selected', async () => {
     const first = fixture('bot-one'), second = fixture('bot-two')
     const view = await import('../src/main/agent-view.js')

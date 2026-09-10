@@ -6,6 +6,11 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { testDesktopBrowser } from './test-desktop-browser.mjs'
+import { testDesktopInterruption } from './test-desktop-interruption.mjs'
+import { testDesktopPartial } from './test-desktop-partial.mjs'
+import { testDesktopReplace } from './test-desktop-replace.mjs'
+import { testDesktopRemoteBytecode } from './test-desktop-remote-bytecode.mjs'
+import { testDesktopScanner } from './test-desktop-scanner.mjs'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 
 if (process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -25,9 +30,10 @@ if (process.env.ENGRAM_DESKTOP_MEDIUM_CHILD !== 'true') {
     path.join(desktop, 'e2e/fixtures/desktop/FixtureProcessSecurity.cs'),
     path.join(desktop, 'e2e/fixtures/desktop/FixtureDefaultDacl.cs'),
     path.join(desktop, 'e2e/fixtures/desktop/FixtureInitializationProbe.cs')], { stdio: 'inherit', windowsHide: true })
-  execFileSync(launcher, [process.execPath, repository], { stdio: 'inherit', windowsHide: true, timeout: 210000 })
+  execFileSync(launcher, [process.execPath, repository], { stdio: 'inherit', windowsHide: true, timeout: 330000 })
   process.exit(0)
 }
+console.log(JSON.stringify({ remoteBytecode: testDesktopRemoteBytecode(desktop, output) }))
 execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(desktop, 'scripts/build-desktop.ps1'), '-OutputPath', output], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(output, 'EngramDesktop.exe'), ['--self-test'], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',
@@ -122,6 +128,8 @@ try {
   assert.ok(launchedView.snapshot)
   result.appLaunchPassed = true
   const target = { window: ready.window, pid: ready.pid }
+  result.stage = 'scanner-lifecycle'
+  result.scanner = await testDesktopScanner(desktop, output, target)
   result.stage = 'inspect-window'
   await helper.request('inspectWindow', { window: ready.window, pid: 0 })
   const readOnly = await helper.request('observe', target)
@@ -251,42 +259,10 @@ try {
   await until(() => helper.request('inputState'), state => state.escaped && !state.working, 'Escape while idle did not stop control')
   await assert.rejects(helper.request('work', restingBound))
   result.idleEscapePassed = true
-  result.stage = 'partial-capture'
-  await fixture.request('dense')
-  const partialView = await helper.request('observe', target)
-  assert.equal(partialView.truncated, true)
-  assert.equal(partialView.captureSafe, true)
-  await helper.request('capture', { ...target, snapshot: partialView.snapshot })
-  result.stage = 'partial-focused-editing'
-  await fixture.request('deepFocus')
-  const deepLease = await helper.request('bind', { ...target, grant: randomUUID() })
-  const deepBound = { ...target, lease: deepLease.lease }
-  let deepView = await helper.request('observe', deepBound)
-  assert.equal(deepView.truncated, true)
-  const deepEditor = deepView.nodes.find(node => node.name === 'Deep editor')
-  assert.ok(deepEditor?.runtimeId)
-  assert.equal(deepEditor.actions.type, true)
-  assert.equal(deepView.focusedControl, deepEditor.runtimeId)
-  assert.equal(deepView.focusedEditable, true)
-  await helper.request('click', { ...deepBound, snapshot: deepView.snapshot, element: deepEditor.id })
-  for (const action of [{ method: 'type', text: 'Draft' }, { method: 'key', key: 'Control+A' }, { method: 'type', text: 'Verified draft' }]) {
-    deepView = await helper.request('observe', deepBound)
-    assert.equal(deepView.focusedControl, deepEditor.runtimeId)
-    const { method, ...input } = action
-    await helper.request(method, { ...deepBound, snapshot: deepView.snapshot, ...input })
-  }
-  await until(() => helper.request('observe', deepBound),
-    view => view.focusedControl === deepEditor.runtimeId && view.nodes.some(node => node.runtimeId === deepEditor.runtimeId && node.value === 'Verified draft'),
-    'The focused partial observation did not confirm the complete edited value')
-  assert.equal((await fixture.request('state')).deepText, 'Verified draft')
-  await helper.request('stop')
-  result.partialFocusedEditingPassed = true
-  const beforePassword = await helper.request('observe', target)
-  await fixture.request('password')
-  await assert.rejects(helper.request('capture', { ...target, snapshot: beforePassword.snapshot }), /cleared for capture/)
-  assert.equal((await helper.request('observe', target)).captureSafe, false)
-  await fixture.request('sparse')
-  result.partialCapturePassed = true
+  result.stage = 'password-during-typing'
+  result.passwordDuringTyping = await testDesktopInterruption(helper, fixture, target)
+  await testDesktopReplace(helper, fixture, target, result, until)
+  await testDesktopPartial(helper, fixture, target, result, until, desktop, output)
   result.stage = 'guarded-workflow'
   await fixture.request('hidePassword')
   const beforeWorkflow = await fixture.request('workflow')
@@ -364,6 +340,7 @@ try {
   console.log('Native desktop CI fixture integration passed')
 } catch (error) {
   result.error = error instanceof Error ? error.message : String(error)
+  result.helperDiagnostics = helper?.stderr
   result.events = helper?.events
   try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error

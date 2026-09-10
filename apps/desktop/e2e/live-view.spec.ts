@@ -222,6 +222,12 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
   await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)
+  // Navigation commits before the new document can receive wheel input.
+  await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
+    const canvas = node as HTMLCanvasElement
+    const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
+    return { format: canvas.dataset.format, width: canvas.width, pixel: Array.from(pixel) }
+  }), { timeout: 20000 }).toEqual({ format: 'png', width: 2560, pixel: [240, 40, 40, 255] })
   await page.evaluate((id) => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }, `bot-${id}`), bots[3]!.id)
   await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
     const canvas = node as HTMLCanvasElement

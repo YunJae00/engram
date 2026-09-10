@@ -41,3 +41,50 @@ it('permits line breaks in read-only verification but never in dispatched typing
   await expect(tool.run({ ...args, actions: [{ kind: 'verify', target, value: 'One\u0000Two' }] }, { task: '' })).rejects.toThrow()
   expect(sequence).not.toHaveBeenCalled()
 })
+
+it('accepts explicit starting anchors and rejects malformed anchors before dispatch', async () => {
+  const sequence = vi.fn(async () => 'checked')
+  const tool = desktopTools({ read: async () => '', sequence }).find((one) => one.name === 'desktop_sequence')!
+  const target = { name: 'Draft', controlType: 'Edit', element: 'e12' }
+  expect(await tool.run({ snapshot: 'fresh', actions: [{ kind: 'type', target, text: 'Hello' }] }, { task: '' })).toBe('checked')
+  expect(sequence).toHaveBeenCalledWith([{ kind: 'type', snapshot: 'fresh', target, text: 'Hello' }], { task: '' })
+  sequence.mockClear()
+  for (const element of ['', 'e-1', 'e123456789', 'Draft', 12, undefined]) {
+    await expect(tool.run({ snapshot: 'fresh', actions: [{ kind: 'type', target: { ...target, element }, text: 'Hello' }] }, { task: '' })).rejects.toThrow()
+  }
+  expect(sequence).not.toHaveBeenCalled()
+})
+
+it('permits unnamed controls only with an explicit starting anchor', async () => {
+  const sequence = vi.fn(async () => 'checked')
+  const tool = desktopTools({ read: async () => '', sequence }).find((one) => one.name === 'desktop_sequence')!
+  const target = { name: '', controlType: 'Document', element: 'e12' }
+  const actions = [{ kind: 'type', target, text: 'Draft' }, { kind: 'verify', target, value: 'Draft' }]
+  expect(await tool.run({ snapshot: 'fresh', actions }, { task: '' })).toBe('checked')
+  expect(sequence).toHaveBeenCalledWith(actions.map((action) => ({ ...action, snapshot: 'fresh' })), { task: '' })
+  sequence.mockClear()
+  for (const invalid of [{ name: '', controlType: 'Document' }, { ...target, element: undefined }, { ...target, element: 'Document' }]) {
+    await expect(tool.run({ snapshot: 'fresh', actions: [{ kind: 'type', target: invalid, text: 'Draft' }] }, { task: '' })).rejects.toThrow()
+  }
+  expect(sequence).not.toHaveBeenCalled()
+})
+
+it('validates explicit whole-field replacements and redacts both old and new content', async () => {
+  const act = vi.fn(async () => 'read the new value'), sequence = vi.fn(async () => 'checked')
+  const tools = desktopTools({ read: async () => '', act, sequence })
+  const one = tools.find((tool) => tool.name === 'desktop_action')!
+  const batch = tools.find((tool) => tool.name === 'desktop_sequence')!
+  const args = { kind: 'replace', snapshot: 'fresh', element: 'e1', expected: 'Old draft', text: 'New draft' }
+  expect(await one.run(args, { task: 'Replace the draft' })).toBe('read the new value')
+  expect(act).toHaveBeenCalledWith(args, { task: 'Replace the draft' })
+  expect(desktopStepArgs('desktop_action', args)).toEqual({ ...args, expected: '[redacted]', text: '[redacted]' })
+  const target = { name: 'Draft', controlType: 'Edit', element: 'e1' }
+  expect(await batch.run({ snapshot: 'fresh', actions: [{ kind: 'replace', target, expected: '', text: 'Draft' }] }, { task: '' })).toBe('checked')
+  act.mockClear(); sequence.mockClear()
+  for (const invalid of [{ ...args, expected: undefined }, { ...args, expected: 'Bearer 123456789abc' }, { ...args, text: 'Bearer 123456789abc' },
+    { ...args, expected: 'x'.repeat(2001) }, { ...args, expected: 'bad\0value' }, { ...args, text: '' }, { ...args, text: 'New\nDraft' }])
+    await expect(one.run(invalid, { task: '' })).rejects.toThrow()
+  await expect(batch.run({ snapshot: 'fresh', actions: [{ kind: 'replace', element: 'e1', expected: '', text: 'Draft' }] }, { task: '' })).rejects.toThrow('guarded targets')
+  expect(act).not.toHaveBeenCalled()
+  expect(sequence).not.toHaveBeenCalled()
+})

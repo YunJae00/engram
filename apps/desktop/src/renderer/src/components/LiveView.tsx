@@ -8,6 +8,7 @@ import { FrameScreen } from './FrameScreen.js'
 import { t } from '../i18n.js'
 import { NativeSurface } from './NativeSurface.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
+import { useApp } from '../state.js'
 
 // The agent browser, seen from inside the app: while a comet works, the page
 // sits at the foot of the thread, as wide as the conversation and stuck
@@ -120,6 +121,7 @@ function Stage({ frame, size, live, lane }: { frame: boolean; size: { width: num
 }
 
 function Address({ url }: { url?: string }) {
+  const { showToast } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
   return (
@@ -135,7 +137,7 @@ function Address({ url }: { url?: string }) {
         if (e.key !== 'Enter') return
         const typed = shown.trim()
         if (!typed) return
-        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`).catch(() => {})
+        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website'))
         setDraft(null)
         e.currentTarget.blur()
       }}

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runComet, runToolSession } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
@@ -164,5 +164,95 @@ it('adds bounded execution room after an observed phase, retaining one session',
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform the requested changes')
   expect(result.steps).toHaveLength(44)
   expect(result.stopped).toBeUndefined()
+  expect(result.incomplete).toBeUndefined()
+})
+
+it('accepts the fresh phase checkpoint at the execution allowance boundary', async () => {
+  const engine = sessionBrain(async (job) => {
+    const plan = job.tools.find((tool) => tool.name === 'task_plan')!
+    const read = job.tools.find((tool) => tool.name === 'read_desktop')!
+    await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
+    for (let index = 0; index < 39; index++) await read.run({})
+    expect(await plan.run({ evidenceStep: 40, finding: 'The requested workspace is visible' })).toContain('"completed":1')
+    await read.run({})
+    await plan.run({ evidenceStep: 42, finding: 'Requested result visible' })
+    return { answer: 'Verified' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform requested changes')
+  expect(result.steps).toHaveLength(43)
+  expect(result.stopped).toBeUndefined()
+  expect(result.incomplete).toBeUndefined()
+})
+
+it.each(['failed-observation', 'reused-evidence', 'expired'] as const)('does not replenish the boundary allowance from %s', async (cause) => {
+  let reads = 0
+  const clock = vi.spyOn(Date, 'now')
+  const engine = sessionBrain(async (job) => {
+    const plan = job.tools.find((tool) => tool.name === 'task_plan')!
+    const read = job.tools.find((tool) => tool.name === 'read_desktop')!
+    await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
+    for (let index = 0; index < 39; index++) await read.run({})
+    if (cause === 'expired') clock.mockReturnValue(Date.now() + 600001)
+    const checkpoint = { evidenceStep: cause === 'reused-evidence' ? 2 : 40, finding: 'Ready' }
+    expect(await plan.run(checkpoint)).not.toContain('"completed":1')
+    expect(await plan.run(checkpoint)).toContain('No more calls')
+    expect(await read.run({})).toContain('No more calls')
+    return { answer: 'Incomplete' }
+  })
+  try {
+    const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return cause === 'failed-observation' ? 'that did not work: scan failed' : 'Observed workspace' } }] }, 'Perform requested changes')
+    expect(reads).toBe(39)
+    expect(result.stopped).toBe('calls')
+    expect(result.incomplete).toContain('Prepare workspace')
+  } finally { clock.mockRestore() }
+})
+
+it('keeps the total 120-call ceiling even when a fresh phase checkpoint is available', async () => {
+  const engine = sessionBrain(async (job) => {
+    const plan = job.tools.find((tool) => tool.name === 'task_plan')!
+    const read = job.tools.find((tool) => tool.name === 'read_desktop')!
+    await plan.run({ phases: ['Prepare', 'Edit', 'Review', 'Validate', 'Verify'] })
+    let steps = 1
+    for (const boundary of [40, 60, 80, 100]) {
+      while (steps < boundary) { await read.run({}); steps++ }
+      expect(await plan.run({ evidenceStep: steps, finding: 'Phase result visible' })).toContain('"completed"')
+      steps++
+    }
+    while (steps < 120) { await read.run({}); steps++ }
+    expect(await plan.run({ evidenceStep: 120, finding: 'Final result visible' })).toContain('No more calls')
+    return { answer: 'Incomplete' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform requested changes')
+  expect(result.steps).toHaveLength(120)
+  expect(result.stopped).toBe('calls')
+  expect(result.incomplete).toContain('5/5')
+})
+
+it.each(['that did not work: target changed', '{"error":"Target was replaced"}', '{"observationMayBeStale":true}'])('marks the final failed desktop result incomplete: %s', async (failure) => {
+  let actions = 0
+  const engine = sessionBrain(async (job) => {
+    const act = job.tools.find((tool) => tool.name === 'desktop_action')!
+    for (let index = 0; index < 3; index++) await act.run({})
+    return { answer: 'Stopped at the first unsuccessful action' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'desktop_action', description: 'act', argsSchema: {}, run: async () => ++actions === 3 ? failure : '{"observation":{"snapshot":"fresh"}}' }] }, 'Perform requested changes')
+  expect(result.incomplete).toContain('not been verified')
+  expect(!result.asked && !result.stopped && !result.pending && !result.incomplete).toBe(false)
+})
+
+it.each(['desktop_action', 'read_desktop'])('does not retain an earlier desktop error after a fresh %s result', async (lastTool) => {
+  let failed = false
+  const engine = sessionBrain(async (job) => {
+    await job.tools.find((tool) => tool.name === 'desktop_action')!.run({})
+    await job.tools.find((tool) => tool.name === lastTool)!.run({})
+    return { answer: 'The requested result is now visible' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [
+    { name: 'desktop_action', description: 'act', argsSchema: {}, run: async () => {
+      if (!failed) { failed = true; return '{"error":"Target changed"}' }
+      return '{"dispatched":true,"observation":{"snapshot":"fresh"}}'
+    } },
+    { name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => '{"snapshot":"fresh","nodes":[]}' },
+  ] }, 'Perform requested changes')
   expect(result.incomplete).toBeUndefined()
 })

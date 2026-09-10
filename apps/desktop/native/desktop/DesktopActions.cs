@@ -18,24 +18,26 @@ internal sealed class DesktopActions
     }
     private DesktopObservation Prepare(LeaseState state, string snapshot)
     {
+        using (DesktopProfile.Measure("prepare"))
+        {
         Lease.Require(state);
         DesktopNative.IdleKeys();
-        Monitor.BeforeInput(state);
+        using (DesktopProfile.Measure("monitor.beforeInput")) Monitor.BeforeInput(state);
         var observation = Automation.Require(snapshot, state);
         Lease.Require(state);
         return observation;
+        }
     }
-    private void Move(LeaseState state, string snapshot, Point point)
+    private void Move(LeaseState state, string snapshot, Point point, Stopwatch watch)
     {
         DesktopNative.Point cursor;
         if (!DesktopNative.GetCursorPos(out cursor)) throw new InvalidOperationException("The pointer position is unavailable");
         var from = new Point(cursor.X, cursor.Y);
         if (from == point) return;
-        // Only animate inside the granted window; never route through another app.
+        // Preparation shares the animation budget. Every dispatched move still validates its target.
         if (DesktopNative.AtTarget(state.Target.Handle, cursor.X, cursor.Y))
         {
             var duration = Math.Min(280, 100 + (point - from).Length * 0.18);
-            var watch = Stopwatch.StartNew();
             while (watch.ElapsedMilliseconds < duration)
             {
                 MoveTo(state, snapshot, MotionPoint(from, point, watch.ElapsedMilliseconds / duration));
@@ -67,9 +69,10 @@ internal sealed class DesktopActions
     }
     internal void Click(LeaseState state, string snapshot, string element, int? x, int? y)
     {
+        var motion = Stopwatch.StartNew();
         var observation = Automation.Require(snapshot, state);
         var point = Automation.ClickPoint(observation, element, x, y);
-        Move(state, snapshot, point);
+        Move(state, snapshot, point, motion);
         Input.Send(state, new[] { InputDispatcher.Mouse(0, 0, 0, 2), InputDispatcher.Mouse(0, 0, 0, 4) }, delegate
         {
             Prepare(state, snapshot);
@@ -106,13 +109,25 @@ internal sealed class DesktopActions
     internal void Scroll(LeaseState state, string snapshot, int delta)
     {
         if (delta == 0 || delta < -10 || delta > 10) throw new ArgumentException("Scroll delta must be a nonzero integer from -10 to 10");
+        var motion = Stopwatch.StartNew();
         var observation = Automation.Require(snapshot, state);
         var point = new Point(Math.Floor(observation.Bounds.X + observation.Bounds.Width / 2),
             Math.Floor(observation.Bounds.Y + observation.Bounds.Height / 2));
-        Move(state, snapshot, point);
+        Move(state, snapshot, point, motion);
         for (var tick = 0; tick < Math.Abs(delta); tick++)
             Input.Send(state, new[] { InputDispatcher.Mouse(0, 0, unchecked((uint)(Math.Sign(delta) * 120)), 0x800) },
                 delegate { Prepare(state, snapshot); Automation.ClickPoint(observation, null, (int)point.X, (int)point.Y); });
+    }
+    internal void Replace(LeaseState state, string snapshot, string element, string expected, string text)
+    {
+        ControlPolicy.Literal(text);
+        var observation = Prepare(state, snapshot);
+        var value = Automation.RequireReplacement(observation, element, expected);
+        Lease.Require(state);
+        Monitor.BeforeInput(state);
+        // This is a whole-field provider call, not interruptible keystrokes or compare-and-swap.
+        value.SetValue(text);
+        Lease.Require(state);
     }
     internal void Key(LeaseState state, string snapshot, string key)
     {

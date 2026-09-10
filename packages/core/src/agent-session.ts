@@ -35,6 +35,19 @@ function summarizeArgs(args: Record<string, unknown>): string {
   return typeof first === 'string' ? first.slice(0, 80) : ''
 }
 
+function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined {
+  const step = steps.filter((one) => ['desktop_action', 'desktop_sequence', 'read_desktop', 'look_desktop'].includes(one.tool)).at(-1)
+  if (!step) return undefined
+  const incomplete = 'The last computer result failed or may be stale and has not been verified.'
+  if (step.observation.startsWith('that did not work:')) return incomplete
+  if (step.tool !== 'desktop_action' && step.tool !== 'desktop_sequence') return undefined
+  try {
+    const result = JSON.parse(step.observation) as { error?: unknown; observationMayBeStale?: unknown }
+    if (result.error || result.observationMayBeStale === true) return incomplete
+  } catch { return undefined }
+  return undefined
+}
+
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   if (desktop && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
@@ -61,7 +74,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       // A turn has a budget of calls, or a page that will not load becomes a
       // hundred tries; past it the answer is made from what is in hand.
-      if (steps.length >= allowance() || Date.now() - started >= SESSION_TURN_MS) {
+      const budget = allowance()
+      // A final observation can use the phase allowance; let its checkpoint
+      // earn the next bounded phase, but never exceed the total call ceiling.
+      const checkpoint = !exhausted && tool.name === 'task_plan' && steps.length === budget && budget < 120 && args['evidenceStep'] === steps.length
+      if ((steps.length >= budget && !checkpoint) || Date.now() - started >= SESSION_TURN_MS) {
         exhausted = true
         return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
       }
@@ -146,7 +163,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (session.error) throw new Error(session.error)
-  return { answer: withoutSecrets(session.answer.trim(), task), steps, fellBack: false, ...(exhausted || steps.length >= allowance() ? { stopped: 'calls' as const } : {}), ...(plan.pending() ? { incomplete: plan.pending()! } : {}) }
+  const incomplete = plan.pending() ?? finalDesktopFailure(steps)
+  return { answer: withoutSecrets(session.answer.trim(), task), steps, fellBack: false, ...(exhausted || steps.length >= allowance() ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
 }
 
 // One door for a comet's turn: the session where the brain offers one, the

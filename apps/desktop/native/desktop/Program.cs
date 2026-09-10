@@ -52,12 +52,13 @@ internal static class Program
         var id = 0;
         var mutation = false;
         var method = "";
+        DesktopProfile.Begin();
         try
         {
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "scroll" || method == "key";
+            mutation = method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
@@ -71,7 +72,8 @@ internal static class Program
             if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, working = monitor.Working, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
             var window = Text(request, "window", 32);
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
-            var target = guard.Resolve(window, pid);
+            DesktopTarget target;
+            using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
             if (method == "inspectWindow")
             { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized } }); return; }
             if (method == "bind" || method == "prepare")
@@ -111,7 +113,11 @@ internal static class Program
             if (method == "observe")
             {
                 if (state != null) { DesktopNative.Foreground(target); lease.Require(state); }
-                var observation = automation.Observe(target, state);
+                object focus;
+                if (request.TryGetValue("focusedOnly", out focus) && !(focus is bool)) throw new ArgumentException("Invalid observation scope");
+                var focusedOnly = focus is bool && (bool)focus;
+                if (focusedOnly) lease.Require(state);
+                var observation = automation.Observe(target, state, focusedOnly);
                 if (state != null) lease.Require(state);
                 Send(new { id = id, result = observation });
                 return;
@@ -141,6 +147,7 @@ internal static class Program
                 actions.Click(state, snapshot, element, x, y);
             }
             else if (method == "type") actions.Type(state, snapshot, Text(request, "text", 2000));
+            else if (method == "replace") actions.Replace(state, snapshot, Text(request, "element", 32), Text(request, "expected", 2000), Text(request, "text", 2000));
             else if (method == "scroll") actions.Scroll(state, snapshot, Number(request, "delta", -10, 10));
             else if (method == "key") actions.Key(state, snapshot, Text(request, "key", 32));
             else throw new ArgumentException("Unsupported desktop method");
@@ -152,7 +159,12 @@ internal static class Program
             if (mutation) lease.Revoke(error.Message);
             Error(id, error);
         }
-        finally { monitor.PointerAction = false; if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate(); }
+        finally
+        {
+            monitor.PointerAction = false;
+            if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate();
+            DesktopProfile.End(id, method);
+        }
     }
 
     private static IntPtr Overlay(Dictionary<string, object> request)
@@ -169,6 +181,12 @@ internal static class Program
     {
         Console.InputEncoding = new UTF8Encoding(false);
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (args.Length > 0 && args[0] == "--password-scan-worker") return PasswordScanWorker.Run(args);
+        return RunDesktop(args);
+    }
+
+    private static int RunDesktop(string[] args)
+    {
         if (args.Length == 1 && args[0] == "--self-test") return DesktopSelfTest.Run();
         int owner;
         if ((args.Length != 2 && args.Length != 4) || args[0] != "--owner-pid" || !int.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out owner) || owner <= 0)
@@ -203,11 +221,15 @@ internal static class Program
                     var actions = new DesktopActions(lease, monitor, automation);
                     var worker = new Thread(delegate()
                     {
-                        foreach (var request in requests.GetConsumingEnumerable())
+                        try
                         {
-                            if (Volatile.Read(ref Closed) != 0) break;
-                            Receive(request, automation, guard, lease, monitor, actions);
+                            foreach (var request in requests.GetConsumingEnumerable())
+                            {
+                                if (Volatile.Read(ref Closed) != 0) break;
+                                Receive(request, automation, guard, lease, monitor, actions);
+                            }
                         }
+                        finally { automation.Dispose(); }
                     }) { IsBackground = true, Name = "Desktop accessibility worker" };
                     worker.SetApartmentState(ApartmentState.MTA);
                     worker.Start();

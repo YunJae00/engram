@@ -6,15 +6,17 @@ export interface DesktopNodeDto {
   name: string
   controlType: string
   value?: string | null
+  valueTruncated?: boolean
   enabled?: boolean
   offscreen?: boolean
   password?: boolean
   isPassword?: boolean
-  actions?: { type?: boolean }
+  actions?: { type?: boolean; replace?: boolean }
   bounds: { x: number; y: number; width: number; height: number }
 }
 export interface DesktopObservationDto {
   snapshot: string
+  scope?: 'focus' | 'window'
   nodes: DesktopNodeDto[]
   bounds: { x: number; y: number; width: number; height: number }
   captureBounds?: { x: number; y: number; width: number; height: number }

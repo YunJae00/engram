@@ -303,6 +303,7 @@ export async function agentViewGo(url: string, lane = activeLaneName()): Promise
   const page = await ensureAgentPage(lane)
   await page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
+    throw err
   })
 }
 
