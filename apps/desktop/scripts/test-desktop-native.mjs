@@ -10,6 +10,7 @@ import { testDesktopInterruption } from './test-desktop-interruption.mjs'
 import { testDesktopPartial } from './test-desktop-partial.mjs'
 import { testDesktopReplace } from './test-desktop-replace.mjs'
 import { testDesktopRemoteBytecode } from './test-desktop-remote-bytecode.mjs'
+import { testDesktopScanner } from './test-desktop-scanner.mjs'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 
 if (process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -127,6 +128,8 @@ try {
   assert.ok(launchedView.snapshot)
   result.appLaunchPassed = true
   const target = { window: ready.window, pid: ready.pid }
+  result.stage = 'scanner-lifecycle'
+  result.scanner = await testDesktopScanner(desktop, output, target)
   result.stage = 'inspect-window'
   await helper.request('inspectWindow', { window: ready.window, pid: 0 })
   const readOnly = await helper.request('observe', target)

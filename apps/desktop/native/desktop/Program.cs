@@ -181,6 +181,12 @@ internal static class Program
     {
         Console.InputEncoding = new UTF8Encoding(false);
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (args.Length > 0 && args[0] == "--password-scan-worker") return PasswordScanWorker.Run(args);
+        return RunDesktop(args);
+    }
+
+    private static int RunDesktop(string[] args)
+    {
         if (args.Length == 1 && args[0] == "--self-test") return DesktopSelfTest.Run();
         int owner;
         if ((args.Length != 2 && args.Length != 4) || args[0] != "--owner-pid" || !int.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out owner) || owner <= 0)

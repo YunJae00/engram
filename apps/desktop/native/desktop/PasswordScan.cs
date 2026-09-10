@@ -5,7 +5,7 @@ using System.Windows.Automation;
 internal sealed class PasswordScan : IDisposable
 {
     [ComImport, Guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface Client
+    internal interface Client
     {
         [PreserveSig] int CompareElements(IntPtr first, IntPtr second, out int same);
         [PreserveSig] int CompareRuntimeIds(IntPtr first, IntPtr second, out int same);
@@ -33,7 +33,7 @@ internal sealed class PasswordScan : IDisposable
     }
 
     [ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface Element
+    internal interface Element
     {
         [PreserveSig] int SetFocus();
         [PreserveSig] int GetRuntimeId(out IntPtr runtime);
@@ -43,7 +43,7 @@ internal sealed class PasswordScan : IDisposable
     private Client Automation;
     private IntPtr Condition;
     private bool Unavailable;
-    private readonly RemotePasswordScan Remote = new RemotePasswordScan();
+    private readonly PasswordScanBroker Remote = new PasswordScanBroker();
 
     private static void Check(int result) { Marshal.ThrowExceptionForHR(result); }
     private static void Release(object value)
@@ -85,7 +85,7 @@ internal sealed class PasswordScan : IDisposable
         }
     }
 
-    internal bool HasVisiblePassword(IntPtr window, AutomationElement fallbackRoot, int expectedPid)
+    internal bool HasVisiblePassword(IntPtr window, AutomationElement fallbackRoot, int expectedPid, long expectedStarted)
     {
         using (DesktopProfile.Measure("password.total"))
         {
@@ -100,8 +100,8 @@ internal sealed class PasswordScan : IDisposable
             if (root == null) throw new InvalidOperationException("The password scan window is unavailable");
             bool password;
             var started = DesktopProfile.Start();
-            var available = Remote.TryScan(root, expectedPid, out password);
-            DesktopProfile.Record("password.remote." + (available ? "complete" : Remote.Diagnostic), started);
+            var available = Remote.TryScan(window, expectedPid, expectedStarted, out password);
+            DesktopProfile.Record("password.remote." + (available ? "complete" : "unavailable"), started);
             if (available) return password;
             using (DesktopProfile.Measure("password.nativeFallback"))
                 Check(root.FindFirst((int)TreeScope.Descendants, Condition, out found));
