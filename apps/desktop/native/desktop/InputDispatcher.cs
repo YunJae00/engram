@@ -17,7 +17,7 @@ internal sealed class InputDispatcher
     {
         if (inputs.Length == 0 || inputs.Length > 8) throw new ArgumentException("Input batches must be small and complete");
         Lease.Require(state);
-        validate();
+        using (DesktopProfile.Measure("input.validate")) validate();
         Lease.Require(state);
         var packet = Packets.Begin(state);
         for (var index = 0; index < inputs.Length; index++)
@@ -28,11 +28,15 @@ internal sealed class InputDispatcher
         try
         {
             Lease.Require(state);
-            if (Dispatch(inputs) != inputs.Length) throw new InvalidOperationException("Desktop input was not fully accepted");
+            using (DesktopProfile.Measure("input.dispatch"))
+                if (Dispatch(inputs) != inputs.Length) throw new InvalidOperationException("Desktop input was not fully accepted");
+            using (DesktopProfile.Measure("input.ack"))
+            {
             var watch = Stopwatch.StartNew();
             while (Volatile.Read(ref packet.Seen) < inputs.Length && watch.ElapsedMilliseconds < 500) Thread.Sleep(1);
             if (Volatile.Read(ref packet.Seen) < inputs.Length) throw new InvalidOperationException("Desktop input hook acknowledgement is missing (" + packet.Seen + "/" + inputs.Length + ", active=" + Lease.Valid(state) + ")");
             Lease.Require(state);
+            }
         }
         catch { Lease.Revoke("Desktop input was interrupted or could not be verified"); throw; }
         finally

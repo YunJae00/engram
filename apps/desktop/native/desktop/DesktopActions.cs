@@ -18,12 +18,15 @@ internal sealed class DesktopActions
     }
     private DesktopObservation Prepare(LeaseState state, string snapshot)
     {
+        using (DesktopProfile.Measure("prepare"))
+        {
         Lease.Require(state);
         DesktopNative.IdleKeys();
-        Monitor.BeforeInput(state);
+        using (DesktopProfile.Measure("monitor.beforeInput")) Monitor.BeforeInput(state);
         var observation = Automation.Require(snapshot, state);
         Lease.Require(state);
         return observation;
+        }
     }
     private void Move(LeaseState state, string snapshot, Point point, Stopwatch watch)
     {

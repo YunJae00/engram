@@ -337,6 +337,7 @@ try {
   console.log('Native desktop CI fixture integration passed')
 } catch (error) {
   result.error = error instanceof Error ? error.message : String(error)
+  result.helperDiagnostics = helper?.stderr
   result.events = helper?.events
   try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error

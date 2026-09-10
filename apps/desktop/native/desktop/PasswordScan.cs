@@ -87,6 +87,8 @@ internal sealed class PasswordScan : IDisposable
 
     internal bool HasVisiblePassword(IntPtr window, AutomationElement fallbackRoot, int expectedPid)
     {
+        using (DesktopProfile.Measure("password.total"))
+        {
         if (!Initialize()) return fallbackRoot.FindFirst(TreeScope.Descendants, new AndCondition(
             new PropertyCondition(AutomationElement.IsPasswordProperty, true),
             new PropertyCondition(AutomationElement.IsOffscreenProperty, false))) != null;
@@ -97,14 +99,19 @@ internal sealed class PasswordScan : IDisposable
             Check(Automation.ElementFromHandle(window, out root));
             if (root == null) throw new InvalidOperationException("The password scan window is unavailable");
             bool password;
-            if (Remote.TryScan(root, expectedPid, out password)) return password;
-            Check(root.FindFirst((int)TreeScope.Descendants, Condition, out found));
+            var started = DesktopProfile.Start();
+            var available = Remote.TryScan(root, expectedPid, out password);
+            DesktopProfile.Record("password.remote." + (available ? "complete" : Remote.Diagnostic), started);
+            if (available) return password;
+            using (DesktopProfile.Measure("password.nativeFallback"))
+                Check(root.FindFirst((int)TreeScope.Descendants, Condition, out found));
             return found != IntPtr.Zero;
         }
         finally
         {
             if (found != IntPtr.Zero) Marshal.Release(found);
             Release(root);
+        }
         }
     }
 

@@ -8,6 +8,7 @@ internal sealed class RemotePasswordScan : IDisposable
     private static readonly Guid ResultId = new Guid("e0f80c42-4a67-5534-bf5a-09e8a99b36b1");
     private static readonly Guid PropertyId = new Guid("4bd682dd-7554-40e9-9a9b-82654ede7e62");
     private bool Initialized;
+    internal string Diagnostic = "start";
 
     [DllImport("combase.dll")] private static extern int RoInitialize(uint type);
     [DllImport("combase.dll")] private static extern void RoUninitialize();
@@ -96,12 +97,15 @@ internal sealed class RemotePasswordScan : IDisposable
         var result = IntPtr.Zero;
         try
         {
+            Diagnostic = "initialize";
             if (!Initialized) { Check(RoInitialize(1)); Initialized = true; }
             const string runtimeClass = "Windows.UI.UIAutomation.Core.CoreAutomationRemoteOperation";
             Check(WindowsCreateString(runtimeClass, (uint)runtimeClass.Length, out name));
+            Diagnostic = "activate";
             Check(RoActivateInstance(name, out instance));
             if (instance == IntPtr.Zero) return false;
             operation = Query(instance, OperationId);
+            Diagnostic = "import";
             unknown = Marshal.GetIUnknownForObject(root);
             element = Query(unknown, ElementId);
             Check(Method<Import>(operation, 7)(operation, (int)RemoteScanProgram.Operand.Root, element));
@@ -109,20 +113,23 @@ internal sealed class RemotePasswordScan : IDisposable
             {
                 byte supported;
                 Check(Method<Supported>(operation, 6)(operation, opcode, out supported));
-                if (supported != 1) return false;
+                if (supported != 1) { Diagnostic = "opcode." + opcode; return false; }
             }
             foreach (var operand in new[] { RemoteScanProgram.Operand.Found, RemoteScanProgram.Operand.Complete,
                 RemoteScanProgram.Operand.Reason, RemoteScanProgram.Operand.Nodes, RemoteScanProgram.Operand.MaxDepth })
                 Check(Method<AddResult>(operation, 9)(operation, (int)operand));
             var code = RemoteScanProgram.Build(pid);
+            Diagnostic = "execute";
             Check(Method<Execute>(operation, 10)(operation, (uint)code.Length, code, out returned));
             if (returned == IntPtr.Zero) return false;
             result = Query(returned, ResultId);
             int status;
             Check(Method<ReadInt>(result, 6)(result, out status));
-            if (status != 0) return false;
-            if (Value(result, RemoteScanProgram.Operand.Complete, true) != 1
-                || Value(result, RemoteScanProgram.Operand.Reason, false) != 0) return false;
+            if (status != 0) { Diagnostic = "status." + status; return false; }
+            Diagnostic = "coverage";
+            var complete = Value(result, RemoteScanProgram.Operand.Complete, true);
+            var reason = Value(result, RemoteScanProgram.Operand.Reason, false);
+            if (complete != 1 || reason != 0) { Diagnostic = "coverage." + reason; return false; }
             var nodes = Value(result, RemoteScanProgram.Operand.Nodes, false);
             var depth = Value(result, RemoteScanProgram.Operand.MaxDepth, false);
             var found = Value(result, RemoteScanProgram.Operand.Found, true) == 1;
@@ -132,7 +139,7 @@ internal sealed class RemotePasswordScan : IDisposable
             return true;
         }
         // Failure only selects the fresh full native query; it never clears protection.
-        catch (COMException) { return false; }
+        catch (COMException error) { Diagnostic += ".hr." + error.ErrorCode.ToString("X8"); return false; }
         catch (InvalidCastException) { return false; }
         catch (InvalidOperationException) { return false; }
         catch (EntryPointNotFoundException) { return false; }

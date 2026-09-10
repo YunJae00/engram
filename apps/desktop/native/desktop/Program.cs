@@ -52,6 +52,7 @@ internal static class Program
         var id = 0;
         var mutation = false;
         var method = "";
+        DesktopProfile.Begin();
         try
         {
             var request = queued.Value;
@@ -71,7 +72,8 @@ internal static class Program
             if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, working = monitor.Working, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
             var window = Text(request, "window", 32);
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
-            var target = guard.Resolve(window, pid);
+            DesktopTarget target;
+            using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
             if (method == "inspectWindow")
             { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized } }); return; }
             if (method == "bind" || method == "prepare")
@@ -157,7 +159,12 @@ internal static class Program
             if (mutation) lease.Revoke(error.Message);
             Error(id, error);
         }
-        finally { monitor.PointerAction = false; if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate(); }
+        finally
+        {
+            monitor.PointerAction = false;
+            if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate();
+            DesktopProfile.End(id, method);
+        }
     }
 
     private static IntPtr Overlay(Dictionary<string, object> request)
