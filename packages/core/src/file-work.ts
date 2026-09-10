@@ -14,6 +14,7 @@ const schema = (properties: object, required: string[]) => ({ type: 'object', ad
 export interface FileWorkOptions {
   directory: string
   approveRead(path: string, signal?: AbortSignal): Promise<boolean>
+  assertReadable?(path: string): Promise<void>
   assertActive?(): void
 }
 
@@ -80,7 +81,7 @@ function textOf(data: Buffer, name: string): string {
 // are immutable inputs; even an open document's backing file is never replaced.
 export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
   const inputs = new Map<string, { path: string; sha256: string }>()
-  const cancelled = new Set<string>()
+  let declined = false
   const inspect = async (path: string, signal?: AbortSignal, offset = 0) => {
     const data = await boundedRead(path, signal)
     const content = textOf(data, path)
@@ -99,17 +100,18 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
         if (typeof args['path'] !== 'string' || !isAbsolute(args['path']) || !TEXT.has(extname(args['path']).toLowerCase())) throw new Error('Supply an absolute path to a supported saved text file.')
         const offset = args['offset'] ?? 0
         if (!Number.isSafeInteger(offset) || (offset as number) < 0 || (offset as number) > MAX_BYTES) throw new Error('Invalid file offset.')
-        const path = await realpath(args['path'])
-        if (cancelled.has(path)) throw new Error('File access was declined for this turn. Do not ask again or use another tool to bypass it.')
-        if (!inputs.has(path)) {
-          if (!await options.approveRead(path, context.signal)) {
-            cancelled.add(path)
+        if (declined) throw new Error('File access was declined for this turn. Do not ask again or use another tool to bypass it.')
+        if (!inputs.has(args['path'])) {
+          if (!await options.approveRead(args['path'], context.signal)) {
+            declined = true
             throw new Error('File access was declined. No file content was read.')
           }
-          context.signal?.throwIfAborted()
-          if (await realpath(args['path']) !== path) throw new Error('The approved file target changed. No content was read.')
         }
+        context.signal?.throwIfAborted()
         options.assertActive?.()
+        const path = await realpath(args['path'])
+        if (inputs.has(args['path']) && path !== args['path']) throw new Error('The approved file target changed. No content was read.')
+        await options.assertReadable?.(path)
         const result = await inspect(path, context.signal, offset as number)
         inputs.set(path, { path, sha256: result.sha256 })
         return JSON.stringify({ path, ...result })
@@ -136,9 +138,11 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
         }
         if (args['sourcePath'] !== undefined || args['expectedSha256'] !== undefined) {
           if (typeof args['sourcePath'] !== 'string' || typeof args['expectedSha256'] !== 'string') throw new Error('A revision needs both sourcePath and expectedSha256.')
-          const path = await realpath(args['sourcePath'])
-          const input = inputs.get(path)
-          if (!input || input.sha256 !== args['expectedSha256'] || digest(await boundedRead(path, context.signal)) !== input.sha256) throw new Error('Read the approved source again; its revision is missing or changed. No output was written.')
+          const input = inputs.get(args['sourcePath'])
+          if (!input || input.sha256 !== args['expectedSha256']) throw new Error('Read the approved source again; its revision is missing or changed. No output was written.')
+          const path = await realpath(input.path)
+          await options.assertReadable?.(path)
+          if (path !== input.path || digest(await boundedRead(path, context.signal)) !== input.sha256) throw new Error('Read the approved source again; its revision is missing or changed. No output was written.')
         }
         context.signal?.throwIfAborted()
         options.assertActive?.()
