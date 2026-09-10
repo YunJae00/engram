@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
@@ -24,6 +24,16 @@ it('does not expose the private vault even through a model-selected file path', 
   const tool = cometFileTools(vaultPaths(root), 'lane').find((tool) => tool.name === 'file_read')!
   await expect(tool.run({ path }, { task: 'Read a file.' })).rejects.toThrow('Private vault')
   expect(state.confirm).not.toHaveBeenCalled()
+})
+
+it.skipIf(process.platform === 'win32')('checks the canonical target after approval so an alias cannot expose private files', async () => {
+  const target = join(root, 'private', 'note.txt')
+  const path = join(root, 'alias.txt')
+  await writeFile(target, 'private')
+  await symlink(target, path)
+  const tool = cometFileTools(vaultPaths(root), 'lane').find((tool) => tool.name === 'file_read')!
+  await expect(tool.run({ path }, { task: 'Read a file.' })).rejects.toThrow('Private vault')
+  expect(state.confirm).toHaveBeenCalledOnce()
 })
 
 it('requires an exact-path native consent and honors Stop during the consent dialog', async () => {

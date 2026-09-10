@@ -53,6 +53,14 @@ it('does not repeat denied approval, and cancellation prevents output', async ()
   expect(await readdir(root)).toEqual(['source.txt'])
 })
 
+it('does not even resolve an unapproved source, including metadata-only revision attempts', async () => {
+  const call = tools(async () => false)
+  const path = join(root, 'not-present.txt')
+  await expect(call('file_read', { path })).rejects.toThrow('declined')
+  await expect(call('file_create_copy', { name: 'copy.txt', sourcePath: path, expectedSha256: '0'.repeat(64), content: 'x' })).rejects.toThrow('revision is missing')
+  expect(await readdir(root)).toHaveLength(0)
+})
+
 it('paginates complete UTF-8 content and returns the same artifact for duplicate writes', async () => {
   const call = tools()
   const content = '한글,quoted\n'.repeat(3000)
@@ -83,6 +91,13 @@ it.skipIf(process.platform === 'win32')('does not reveal a generated-name symlin
   const id = '12345678-1234-1234-1234-123456789012-note.txt'
   await symlink(target, join(out, id))
   await expect(resolveArtifact(out, id)).rejects.toThrow('outside')
+  const call = tools()
+  const approved = join(root, 'approved.txt')
+  await writeFile(approved, 'approved content')
+  await call('file_read', { path: approved })
+  await rm(approved)
+  await symlink(target, approved)
+  await expect(call('file_read', { path: approved })).rejects.toThrow('target changed')
 })
 
 it('creates a bulk workbook with literal strings and verified serialized formulas, not invented calculations', async () => {
