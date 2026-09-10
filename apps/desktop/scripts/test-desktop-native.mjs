@@ -9,6 +9,7 @@ import { testDesktopBrowser } from './test-desktop-browser.mjs'
 import { testDesktopInterruption } from './test-desktop-interruption.mjs'
 import { testDesktopPartial } from './test-desktop-partial.mjs'
 import { testDesktopReplace } from './test-desktop-replace.mjs'
+import { testDesktopRemoteBytecode } from './test-desktop-remote-bytecode.mjs'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 
 if (process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -31,6 +32,7 @@ if (process.env.ENGRAM_DESKTOP_MEDIUM_CHILD !== 'true') {
   execFileSync(launcher, [process.execPath, repository], { stdio: 'inherit', windowsHide: true, timeout: 330000 })
   process.exit(0)
 }
+console.log(JSON.stringify({ remoteBytecode: testDesktopRemoteBytecode(desktop, output) }))
 execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(desktop, 'scripts/build-desktop.ps1'), '-OutputPath', output], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(output, 'EngramDesktop.exe'), ['--self-test'], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',

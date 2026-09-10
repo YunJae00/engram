@@ -212,7 +212,7 @@ internal sealed class AutomationSession : IDisposable
             Guard.Same(target);
             var root = AutomationElement.FromHandle(target.Handle);
             if (ControlPolicy.IsSensitive(target.Title) || ControlPolicy.IsSensitive(root.Current.Name)) return false;
-            return !Passwords.HasVisiblePassword(target.Handle, root);
+            return !Passwords.HasVisiblePassword(target.Handle, root, target.Pid);
         }
         catch (ElementNotAvailableException) { return false; }
     }
@@ -253,7 +253,7 @@ internal sealed class AutomationSession : IDisposable
         DesktopNative.Foreground(target);
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         var root = AutomationElement.FromHandle(target.Handle);
-        if (Passwords.HasVisiblePassword(target.Handle, root)) throw new InvalidOperationException("Password and authentication entry must be completed manually");
+        if (Passwords.HasVisiblePassword(target.Handle, root, target.Pid)) throw new InvalidOperationException("Password and authentication entry must be completed manually");
         if (ControlPolicy.IsSensitive(root.Current.Name)) throw new InvalidOperationException("This application surface requires manual control");
         var focused = AutomationElement.FocusedElement;
         if (focused != null && Inside(focused, RuntimeId(root))) SafeAncestors(focused, RuntimeId(root));

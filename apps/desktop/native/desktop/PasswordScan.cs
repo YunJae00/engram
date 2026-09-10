@@ -43,6 +43,7 @@ internal sealed class PasswordScan : IDisposable
     private Client Automation;
     private IntPtr Condition;
     private bool Unavailable;
+    private readonly RemotePasswordScan Remote = new RemotePasswordScan();
 
     private static void Check(int result) { Marshal.ThrowExceptionForHR(result); }
     private static void Release(object value)
@@ -84,7 +85,7 @@ internal sealed class PasswordScan : IDisposable
         }
     }
 
-    internal bool HasVisiblePassword(IntPtr window, AutomationElement fallbackRoot)
+    internal bool HasVisiblePassword(IntPtr window, AutomationElement fallbackRoot, int expectedPid)
     {
         if (!Initialize()) return fallbackRoot.FindFirst(TreeScope.Descendants, new AndCondition(
             new PropertyCondition(AutomationElement.IsPasswordProperty, true),
@@ -95,6 +96,8 @@ internal sealed class PasswordScan : IDisposable
         {
             Check(Automation.ElementFromHandle(window, out root));
             if (root == null) throw new InvalidOperationException("The password scan window is unavailable");
+            bool password;
+            if (Remote.TryScan(root, expectedPid, out password)) return password;
             Check(root.FindFirst((int)TreeScope.Descendants, Condition, out found));
             return found != IntPtr.Zero;
         }
@@ -110,5 +113,6 @@ internal sealed class PasswordScan : IDisposable
         if (Condition != IntPtr.Zero) { Marshal.Release(Condition); Condition = IntPtr.Zero; }
         Release(Automation);
         Automation = null;
+        Remote.Dispose();
     }
 }
