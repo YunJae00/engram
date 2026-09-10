@@ -45,6 +45,7 @@ internal sealed class ControlFixture : Form
     private Panel Workflow;
     private TextBox Draft;
     private TextBox Reviewed;
+    private bool RevealPasswordOnInput;
 
     internal ControlFixture()
     {
@@ -54,6 +55,12 @@ internal sealed class ControlFixture : Form
         Location = new Point(80, 80);
         ClientSize = new Size(630, 420);
         Counter.Click += delegate { Clicks++; };
+        Entry.TextChanged += delegate
+        {
+            if (!RevealPasswordOnInput || Entry.TextLength == 0) return;
+            RevealPasswordOnInput = false;
+            Secret.Visible = true;
+        };
         Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker });
         Shown += delegate
         {
@@ -104,6 +111,15 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "passwordDuringTyping")
+            {
+                RevealPasswordOnInput = false;
+                Secret.Visible = false;
+                Secret.Clear();
+                Entry.Clear();
+                Activate(); Entry.Focus();
+                RevealPasswordOnInput = true;
+            }
             else if (method == "hide") Hide();
             else if (method == "grantForeground")
             {
@@ -175,7 +191,8 @@ internal sealed class ControlFixture : Form
             }
             else if (method != "state") throw new ArgumentException("Unsupported fixture request");
             Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, wheelEvents = Scroller.Wheels,
-                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible, deepText = Deep == null ? null : Deep.Text,
+                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible,
+                protectedCharacters = Secret.TextLength, deepText = Deep == null ? null : Deep.Text,
                 draft = Draft == null ? null : Draft.Text, reviewed = Reviewed == null ? null : Reviewed.Text } });
         }
         catch (Exception error) { Send(new { id = id, error = error.Message }); }

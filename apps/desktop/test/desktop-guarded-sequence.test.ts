@@ -11,6 +11,34 @@ const base = (): DesktopObservationDto => ({ snapshot: 'first', truncated: false
 const step = (action: Omit<DesktopGuardedAction, 'snapshot' | 'target'> & { text?: string; key?: string; value?: string }, one = target) => ({ ...action, snapshot: 'first', target: one } as DesktopGuardedAction)
 afterEach(() => vi.restoreAllMocks())
 
+it('uses unnamed anchored focus reads without authorizing window captures', async () => {
+  const original = base()
+  original.nodes[0]!.name = ''
+  const current = structuredClone(original)
+  Object.assign(current, { scope: 'focus', truncated: true, captureSafe: false })
+  const anchored = { name: '', controlType: 'Edit', element: 'e1' }
+  const act = vi.fn(async (action) => { if (action.kind === 'type') current.nodes[0]!.value = action.text })
+  const read = vi.fn(async () => current)
+  const result = JSON.parse(await guardedSequence(original, [step({ kind: 'type', text: 'Complete' }, anchored), step({ kind: 'verify', value: 'Complete' }, anchored)], read, act))
+  expect(result).toMatchObject({ completed: 2, verified: 1, observation: { captureSafe: false, scope: 'focus' } })
+  expect(read).toHaveBeenCalledWith(true)
+  expect(act).toHaveBeenCalledOnce()
+})
+
+it.each(['scope', 'anchor', 'focus', 'protected'] as const)('refuses unclear focused evidence: %s', async (change) => {
+  const original = base()
+  const current = structuredClone(original)
+  Object.assign(current, { scope: 'focus', truncated: true, captureSafe: false })
+  const anchored = { ...target, element: 'e1' }
+  if (change === 'scope') current.scope = 'window'
+  if (change === 'focus') current.focusedControl = 'other'
+  if (change === 'protected') current.protectedBounds = [current.bounds]
+  const act = vi.fn()
+  const result = JSON.parse(await guardedSequence(original, [step({ kind: 'type', text: 'Do not type' }, change === 'anchor' ? target : anchored)], async () => current, act))
+  expect(result.error).toBeTruthy()
+  expect(act).not.toHaveBeenCalled()
+})
+
 it('edits and verifies an anchored partial view despite repeated names and renumbered element IDs', async () => {
   const original = base()
   original.truncated = true

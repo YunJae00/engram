@@ -106,7 +106,7 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
 function guardedActionOf(args: Record<string, unknown>, context: AgentToolContext): DesktopGuardedAction {
   const { target, ...input } = args
   if (!plainRecord(target) || !exactKeys(target, 'element' in target ? ['name', 'controlType', 'element'] : ['name', 'controlType']) || typeof target['name'] !== 'string'
-    || !target['name'].trim() || target['name'].length > 512 || !printable(target['name'])
+    || (!target['name'].trim() && !('element' in target)) || target['name'].length > 512 || !printable(target['name'])
     || typeof target['controlType'] !== 'string' || !/^[A-Za-z]{1,40}$/.test(target['controlType'])) throw new Error('Use an exact accessible name and controlType for each target.')
   if ('element' in target && (typeof target['element'] !== 'string' || !/^e[0-9]{1,8}$/.test(target['element']))) throw new Error('Use an element ID from the starting observation to anchor a target.')
   const selector = { name: target['name'], controlType: target['controlType'], ...('element' in target ? { element: target['element'] as string } : {}) }
@@ -252,7 +252,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
         actions: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['kind'], properties: {
           kind: { type: 'string', enum: ['click', 'type', 'key', 'verify'] }, element: { type: 'string', pattern: '^e[0-9]+$' },
           text: { type: 'string', minLength: 1, maxLength: 2000 }, key: { type: 'string', enum: KEYS },
-          target: { type: 'object', additionalProperties: false, required: ['name', 'controlType'], properties: { name: { type: 'string', minLength: 1, maxLength: 512 }, controlType: { type: 'string', minLength: 1, maxLength: 40 }, element: { type: 'string', pattern: '^e[0-9]{1,8}$' } } },
+          target: { type: 'object', additionalProperties: false, required: ['name', 'controlType'], properties: { name: { type: 'string', maxLength: 512, description: 'Exact accessible name; an empty name requires an element anchor.' }, controlType: { type: 'string', minLength: 1, maxLength: 40 }, element: { type: 'string', pattern: '^e[0-9]{1,8}$' } } },
           value: { type: 'string', maxLength: 2000 },
         } } },
       },

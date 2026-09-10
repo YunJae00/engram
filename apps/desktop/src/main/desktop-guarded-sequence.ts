@@ -23,7 +23,10 @@ export async function guardedSequence(
   const check = () => {
     signal?.throwIfAborted()
     if (performance.now() - started > 20000) throw new Error('Sequence time limit reached. Inspect the current state before continuing.')
-    if (observation.captureSafe === false || observation.protectedBounds?.length || (observation.truncated !== false && observation.captureSafe !== true)) throw new Error('The observation could not be cleared for input.')
+    // Focus reads do not authorize images. Native input still revalidates the
+    // whole window before each packet; only this anchored path can use them.
+    if (observation.protectedBounds?.length || (!(focusedOnly && observation.scope === 'focus')
+      && (observation.captureSafe === false || (observation.truncated !== false && observation.captureSafe !== true)))) throw new Error('The observation could not be cleared for input.')
     if (geometry(observation) !== geometry(original)) throw new Error('The app geometry changed. Inspect the current state before continuing.')
   }
   const targetOf = (step: DesktopGuardedAction): DesktopNodeDto | undefined => {

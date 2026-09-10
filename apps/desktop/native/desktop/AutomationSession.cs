@@ -25,6 +25,7 @@ internal sealed class DesktopObservation
     internal long Epoch;
     internal string FocusedRuntime;
     internal bool Partial;
+    internal bool FocusedOnly;
     internal readonly Dictionary<string, ObservedElement> Elements = new Dictionary<string, ObservedElement>();
 }
 
@@ -100,7 +101,7 @@ internal sealed class AutomationSession
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading its contents");
         var root = AutomationElement.FromHandle(target.Handle);
         var rootId = RuntimeId(root);
-        var observation = new DesktopObservation { Id = Guid.NewGuid().ToString("N"), Target = target,
+        var observation = new DesktopObservation { Id = Guid.NewGuid().ToString("N"), Target = target, FocusedOnly = focusedOnly,
             Bounds = DesktopNative.Bounds(target.Handle), CaptureBounds = DesktopCapture.Bounds(target.Handle), Created = Stopwatch.GetTimestamp(), Epoch = lease == null ? 0 : lease.Epoch };
         var nodes = new List<object>();
         var protectedBounds = new List<object>();
@@ -167,7 +168,7 @@ internal sealed class AutomationSession
             focusedEditable = focusedEditable,
             focusedControl = observation.FocusedRuntime,
             truncated = observation.Partial, scope = focusedOnly ? "focus" : "window",
-            captureSafe = !observation.Partial || CanCapturePartial(target)
+            captureSafe = !focusedOnly && (!observation.Partial || CanCapturePartial(target))
         };
     }
     internal void RequireCapture(string snapshot, DesktopTarget target)
@@ -176,6 +177,7 @@ internal sealed class AutomationSession
         if (value == null || value.Id != snapshot || value.Target.Id != target.Id || value.Target.Pid != target.Pid
             || (Stopwatch.GetTimestamp() - value.Created) * 1000.0 / Stopwatch.Frequency > 15000)
             throw new InvalidOperationException("Observe this app before requesting an image");
+        if (value.FocusedOnly) throw new InvalidOperationException("Observe the full window before requesting an image");
         Guard.Same(target);
         if (value.Partial && !CanCapturePartial(target)) throw new InvalidOperationException("The incomplete view could not be cleared for capture");
         if (DesktopNative.Bounds(target.Handle) != value.Bounds || DesktopCapture.Bounds(target.Handle) != value.CaptureBounds)

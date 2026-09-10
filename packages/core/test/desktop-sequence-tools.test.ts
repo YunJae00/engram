@@ -54,3 +54,17 @@ it('accepts explicit starting anchors and rejects malformed anchors before dispa
   }
   expect(sequence).not.toHaveBeenCalled()
 })
+
+it('permits unnamed controls only with an explicit starting anchor', async () => {
+  const sequence = vi.fn(async () => 'checked')
+  const tool = desktopTools({ read: async () => '', sequence }).find((one) => one.name === 'desktop_sequence')!
+  const target = { name: '', controlType: 'Document', element: 'e12' }
+  const actions = [{ kind: 'type', target, text: 'Draft' }, { kind: 'verify', target, value: 'Draft' }]
+  expect(await tool.run({ snapshot: 'fresh', actions }, { task: '' })).toBe('checked')
+  expect(sequence).toHaveBeenCalledWith(actions.map((action) => ({ ...action, snapshot: 'fresh' })), { task: '' })
+  sequence.mockClear()
+  for (const invalid of [{ name: '', controlType: 'Document' }, { ...target, element: undefined }, { ...target, element: 'Document' }]) {
+    await expect(tool.run({ snapshot: 'fresh', actions: [{ kind: 'type', target: invalid, text: 'Draft' }] }, { task: '' })).rejects.toThrow()
+  }
+  expect(sequence).not.toHaveBeenCalled()
+})
