@@ -21,10 +21,26 @@ internal static class AutomationProbe {
   private interface Element { }
   [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder title, int size);
-  private static void Production(IntPtr window, int pid) {
+  private static void Production(IntPtr window, int pid, string mode) {
+    AutomationElement managedRoot = null;
+    if (mode == "--production-managed-first") {
+      managedRoot = AutomationElement.FromHandle(window);
+      if (managedRoot.GetRuntimeId().Length == 0) throw new InvalidOperationException("Managed root identity is unavailable");
+    }
     var client = (Client)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("e22ad333-b25f-460c-83d0-0581107395c9"), true));
     try {
       using (var scan = new RemotePasswordScan()) {
+        var warmup = "not-run";
+        if (mode == "--production-native-first-mixed") {
+          Element nativeRoot = null;
+          try {
+            Marshal.ThrowExceptionForHR(client.ElementFromHandle(window, out nativeRoot));
+            bool ignored;
+            warmup = scan.TryScan(nativeRoot, pid, out ignored) ? "available" : scan.Diagnostic;
+          } finally { if (nativeRoot != null) Marshal.FinalReleaseComObject(nativeRoot); }
+          managedRoot = AutomationElement.FromHandle(window);
+          if (managedRoot.GetRuntimeId().Length == 0) throw new InvalidOperationException("Managed root identity is unavailable");
+        }
         Console.Write("[");
         for (var index = 0; index < 3; index++) {
           Element root = null;
@@ -37,17 +53,19 @@ internal static class AutomationProbe {
             if (index > 0) Console.Write(",");
             Console.Write("{\\"available\\":" + (available ? "true" : "false")
               + ",\\"password\\":" + (available ? (password ? "true" : "false") : "null")
-              + ",\\"elapsedMs\\":" + watch.Elapsed.TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}");
+              + ",\\"elapsedMs\\":" + watch.Elapsed.TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+              + ",\\"diagnostic\\":\\"" + scan.Diagnostic + "\\",\\"warmup\\":\\"" + warmup + "\\"}");
           } finally { if (root != null) Marshal.FinalReleaseComObject(root); }
         }
         Console.WriteLine("]");
       }
-    } finally { Marshal.FinalReleaseComObject(client); }
+    } finally { Marshal.FinalReleaseComObject(client); GC.KeepAlive(managedRoot); }
   }
   [MTAThread] private static int Main(string[] args) {
     try {
       if (Environment.GetEnvironmentVariable("CI") != "true" || Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true"
-          || (args.Length != 2 && (args.Length != 3 || args[2] != "--production")))
+          || (args.Length != 2 && (args.Length != 3 || (args[2] != "--production" && args[2] != "--production-managed-first"
+              && args[2] != "--production-native-first-mixed"))))
         throw new InvalidOperationException("An isolated Windows CI fixture is required");
       var window = new IntPtr(long.Parse(args[0]));
       uint pid;
@@ -56,7 +74,7 @@ internal static class AutomationProbe {
       GetWindowText(window, title, title.Capacity);
       if (pid != uint.Parse(args[1]) || title.ToString() != "Desktop input fixture")
         throw new InvalidOperationException("The owned fixture window is unavailable");
-      if (args.Length == 3) { Production(window, checked((int)pid)); return 0; }
+      if (args.Length == 3) { Production(window, checked((int)pid), args[2]); return 0; }
       var condition = new AndCondition(new PropertyCondition(AutomationElement.IsPasswordProperty, true),
         new PropertyCondition(AutomationElement.IsOffscreenProperty, false));
       Console.Write("[");
@@ -150,5 +168,19 @@ export function testDesktopUia(desktop, output, target, expectedPassword) {
     if (sample.available) assert.equal(sample.password, expectedPassword, 'The production fast path disagreed with the full reference query')
     else assert.equal(sample.password, null, 'An unavailable scan must not claim the absence of passwords')
   }
-  return { ...samples, remote, production }
+  const initializationOrder = {
+    managedFirst: JSON.parse(run(managed, [...args, '--production-managed-first'], { timeout: 10000 })),
+    nativeFirstMixed: JSON.parse(run(managed, [...args, '--production-native-first-mixed'], { timeout: 10000 })),
+  }
+  for (const measurements of Object.values(initializationOrder)) {
+    assert.equal(measurements.length, 3)
+    for (const sample of measurements) {
+      assert.equal(typeof sample.available, 'boolean')
+      assert.ok(Number.isFinite(sample.elapsedMs) && sample.elapsedMs >= 0)
+      assert.equal(typeof sample.diagnostic, 'string')
+      if (sample.available) assert.equal(sample.password, expectedPassword)
+      else assert.equal(sample.password, null, 'Initialization failure cannot establish the absence of passwords')
+    }
+  }
+  return { ...samples, remote, production, ...initializationOrder }
 }

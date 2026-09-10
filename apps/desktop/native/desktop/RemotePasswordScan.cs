@@ -105,9 +105,11 @@ internal sealed class RemotePasswordScan : IDisposable
             Check(RoActivateInstance(name, out instance));
             if (instance == IntPtr.Zero) return false;
             operation = Query(instance, OperationId);
-            Diagnostic = "import";
+            Diagnostic = "rootIUnknown";
             unknown = Marshal.GetIUnknownForObject(root);
+            Diagnostic = "rootWinRTQuery";
             element = Query(unknown, ElementId);
+            Diagnostic = "importElement";
             Check(Method<Import>(operation, 7)(operation, (int)RemoteScanProgram.Operand.Root, element));
             foreach (var opcode in RemoteScanProgram.Opcodes)
             {
