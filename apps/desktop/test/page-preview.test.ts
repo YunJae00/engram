@@ -20,6 +20,23 @@ describe('compositor previews', () => {
     expect(cdp.send.mock.calls.filter(([method]) => method === 'Page.captureScreenshot')).toHaveLength(1)
   })
 
+  it('refreshes a settled navigation frame when the deferred document becomes ready', async () => {
+    vi.useFakeTimers()
+    const { page, cdp } = fixture()
+    cdp.send.mockResolvedValue({ data: 'before-content' })
+    const receive = vi.fn()
+    const stop = await startPagePreview(page, receive)
+    await vi.advanceTimersByTimeAsync(61)
+    expect(receive.mock.calls.at(-1)?.[0].data).toBe('before-content')
+    cdp.send.mockResolvedValue({ data: 'document-content' })
+    page.emit('domcontentloaded')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(receive.mock.calls.at(-1)?.[0].data).toBe('document-content')
+    stop()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(page.listenerCount('domcontentloaded')).toBe(0)
+  })
+
   it('delivers lossless stills, limits motion frames, and stops encoding when hidden', async () => {
     vi.useFakeTimers()
     const { page, cdp } = fixture()
