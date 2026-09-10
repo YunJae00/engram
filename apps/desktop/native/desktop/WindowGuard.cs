@@ -157,6 +157,16 @@ internal sealed class WindowGuard : IDisposable
         finally { if (token != IntPtr.Zero) CloseHandle(token); CloseHandle(process); }
     }
 
+    internal bool ListCandidate(IntPtr handle)
+    {
+        uint pid;
+        if (!IsWindowVisible(handle) || GetAncestor(handle, 2) != handle
+            || GetWindowThreadProcessId(handle, out pid) == 0 || pid <= 4 || pid == OwnerPid || pid == HelperPid) return false;
+        var title = new StringBuilder(1024);
+        GetWindowText(handle, title, title.Capacity);
+        return !string.IsNullOrWhiteSpace(title.ToString());
+    }
+
     internal DesktopTarget Resolve(string id, int pid)
     {
         using (var owner = Process.GetProcessById(OwnerPid))

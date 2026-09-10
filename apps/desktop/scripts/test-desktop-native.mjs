@@ -122,7 +122,14 @@ try {
   assert.ok(notepadApp, 'Registered Notepad app was not discovered')
   await assert.rejects(helper.request('openApp', { app: 'cmd.exe' }), /Paths and commands/)
   assert.equal((await helper.request('openApp', { app: notepadApp.id })).requested, true)
-  const launched = await until(() => helper.request('listWindows'), value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch', 30000)
+  result.appLaunchReads = []
+  const launched = await until(async () => {
+    const started = performance.now()
+    const value = await helper.request('listWindows')
+    result.appLaunchReads.push({ elapsedMs: Math.round(performance.now() - started), titles: value.windows.map(window => window.title) })
+    return value
+  }, value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch', 30000)
+  assert.ok(launched.windows.every(window => window.title.trim().length > 0))
   const notepad = launched.windows.find(window => /notepad/i.test(window.title))
   const launchedView = await helper.request('observe', { window: notepad.window, pid: notepad.pid })
   assert.ok(launchedView.snapshot)

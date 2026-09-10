@@ -75,6 +75,7 @@ internal static class DesktopNative
         {
             try
             {
+                if (!guard.ListCandidate(handle)) return true;
                 var target = guard.Resolve(handle.ToInt64().ToString(System.Globalization.CultureInfo.InvariantCulture), 0);
                 if (!string.IsNullOrWhiteSpace(target.Title))
                     result.Add(new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized, foreground = handle == GetForegroundWindow() });
