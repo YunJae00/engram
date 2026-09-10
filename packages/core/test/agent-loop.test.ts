@@ -562,7 +562,7 @@ describe('cometTools — every write ends in a card', () => {
     expect(miss).toContain('run_procedure')
   })
 
-  it('with one saved procedure there is nothing to disambiguate — it is the answer', async () => {
+  it('shows a single saved procedure as a candidate without assuming it matches', async () => {
     const paths = await initVault(await tmpVaultRoot('tools-find-one'), { git: false })
     const only = await addRoutine(paths, {
       name: 'Post the daily work log',
@@ -576,9 +576,13 @@ describe('cometTools — every write ends in a card', () => {
     // Asked in another language entirely, which is exactly when word overlap
     // and a cold embedder both come up empty.
     const found = await find.run({ task: '오늘 업무일지 올리기' }, CTX)
+    expect(found).toContain('nothing written down matches')
     expect(found).toContain('Post the daily work log')
     expect(found).toContain(only.id)
     expect(found).toContain('Blanks to fill: entry')
+    const unrelated = await find.run({ task: 'Compare a supplier quote' }, CTX)
+    expect(unrelated).not.toContain('found "Post the daily work log"')
+    expect(unrelated).toContain('Make that call only when a saved name IS this very job')
   })
 
   it('search_memory answers with titled excerpts and honest emptiness', async () => {

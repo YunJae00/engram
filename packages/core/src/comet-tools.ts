@@ -294,10 +294,6 @@ ${note.body.slice(0, 2_000)}`
             ? `Blanks to fill: ${shown.join(', ')}. Take each from the ask or from something read (search_memory); a blank the ask says nothing about keeps what it held last time. Then call run_procedure with {"id": "${r.id}", "slots": {${slots.map((name) => `"${name}": "..."`).join(', ')}}}.`
             : `Nothing to fill — call run_procedure with {"id": "${r.id}", "slots": {}}.`
         }
-        // One saved procedure and a request to do a chore: there is nothing to
-        // disambiguate, and making the person's only procedure unreachable
-        // because the words did not line up is the worse failure.
-        const only = routines.length === 1 ? routines[0]! : null
         // Retrieval always has a nearest note, and nearest is not the same as
         // right: asked about a page's rate limit, it "found" the work-log
         // procedure and the loop went and ran it. A hit by meaning counts only
@@ -309,7 +305,7 @@ ${note.body.slice(0, 2_000)}`
         const backed = (r: (typeof routines)[number], score: number): boolean =>
           score >= 2 || (subjectOf(r).length > 1 && task.toLowerCase().includes(subjectOf(r)))
         const meant = byRank[0] && scored[0]!.score > 0 && backed(scored[0]!.r, scored[0]!.score) ? byRank[0] : null
-        const best = only ? { r: only, score: 1 } : meant ? { r: meant, score: 1 } : backed(scored[0]!.r, scored[0]!.score) ? scored[0]! : { r: scored[0]!.r, score: 0 }
+        const best = meant ? { r: meant, score: 1 } : backed(scored[0]!.r, scored[0]!.score) ? scored[0]! : { r: scored[0]!.r, score: 0 }
         // Nothing matched by words or by meaning — but the person's own
         // procedures are few and named by them, so showing the shelf beats
         // guessing. A small model picks reliably from a short list of ids.

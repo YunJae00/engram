@@ -43,3 +43,12 @@ it('bounds automatic search work for long requests while leaving the task unchan
   expect(source.search).toHaveBeenCalledWith(task.slice(0, 256))
   expect(task).toHaveLength(40000)
 })
+
+it('carries prior routine outcome and uncertain-write state without treating them as present success', () => {
+  const routine = note('routine', '# Monthly summary', 'current', 'routine')
+  routine.front.routine = { steps: [{ kind: 'read' }], lastOutcome: 'failed', lastSuccessAt: '2026-01-01T00:00:00.000Z', pendingWrite: { at: '2026-01-02T00:00:00.000Z', step: 1, label: 'Private form value' } }
+  const context = taskRecall(store([routine]), 'Prepare a monthly summary')
+  expect(JSON.parse(context.split('\n').at(-1)!)[0].priorRun).toEqual({ outcome: 'failed', lastSuccessAt: '2026-01-01T00:00:00.000Z', unfinishedWrite: true })
+  expect(context).not.toContain('Private form value')
+  expect(context).toContain('never assume an unfinished write should be repeated')
+})

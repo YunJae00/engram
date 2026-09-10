@@ -59,6 +59,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const tools = desktop ? [...deps.tools, plan.tool] : deps.tools
   const allowance = () => Math.min(120, SESSION_MAX_CALLS + plan.completed() * 20)
   const started = Date.now()
+  const lifetime = new AbortController()
+  const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
+  let startedCalls = 0
+  let queued = 0
+  let toolTail = Promise.resolve()
   let asked: { question: string; options: string[] } | null = null
   const canSearch = deps.tools.some((tool) => tool.name === 'search_web')
   let lookedFirst = false
@@ -68,7 +73,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     description: tool.description,
     argsSchema: tool.argsSchema,
     run: async (args) => {
-      options.signal?.throwIfAborted()
+      signal.throwIfAborted()
       // A question to the person ends the turn: whatever the model says
       // after it, the question is the answer.
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
@@ -77,8 +82,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const budget = allowance()
       // A final observation can use the phase allowance; let its checkpoint
       // earn the next bounded phase, but never exceed the total call ceiling.
-      const checkpoint = !exhausted && tool.name === 'task_plan' && steps.length === budget && budget < 120 && args['evidenceStep'] === steps.length
-      if ((steps.length >= budget && !checkpoint) || Date.now() - started >= SESSION_TURN_MS) {
+      const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === steps.length && steps.length === budget && budget < 120
+        && Object.keys(args).length === 2 && typeof args['finding'] === 'string' && args['evidenceStep'] === steps.length
+      if ((startedCalls >= budget && !checkpoint) || Date.now() - started >= SESSION_TURN_MS) {
         exhausted = true
         return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
       }
@@ -89,11 +95,12 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         lookedFirst = true
         return `Look before you ask: call search_web with {"query": "${task.slice(0, 80).replace(/"/g, "'")}"} first. Ask only if that comes back with nothing, or if the ask names no job at all.`
       }
+      startedCalls++
       options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, args) ?? summarizeArgs(args)}`)
       let observation: string
       let image: { data: string; mimeType: string } | undefined
       try {
-        const context = { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) }
+        const context = { task, read: readSoFar(steps, options.history), signal }
         // A brain in a session can look at a picture; the words are what
         // the turn keeps, the picture goes to the brain and nowhere else.
         if (tool.runRich) {
@@ -102,9 +109,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
           image = outcome.image
         } else observation = await tool.run(args, context)
       } catch (err) {
-        if (options.signal?.aborted) throw err
+        if (signal.aborted) throw err
         observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`
       }
+      signal.throwIfAborted()
       options.onObservation?.(tool.name, observation)
       steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation })
       const ask = parseAsk(observation)
@@ -114,7 +122,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       }
       // The last few calls are counted out loud, so the answer is written
       // before the budget is gone rather than after.
-      const left = allowance() - steps.length
+      const left = allowance() - startedCalls
       const elapsed = Date.now() - started
       const notes = [
         ...(desktop ? [`Observation step ${steps.length}`, ...(plan.pending() ? [plan.pending()!] : [])] : []),
@@ -127,6 +135,15 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       return image ? { text, image } : text
     },
   }))
+  // Desktop callbacks share one changing foreground and observation history.
+  // Queue them locally without another model exchange; recheck guards on entry.
+  const sessionCalls = calls.map((call): ToolSessionCall => ({ ...call, run: (args) => {
+    queued++
+    const outcome = desktop ? toolTail.then(() => call.run(args)) : call.run(args)
+    const settled = outcome.finally(() => { queued-- })
+    if (desktop) toolTail = settled.then(() => undefined, () => undefined)
+    return settled
+  } }))
   // The standing rules make the system prompt, the same for every turn, so
   // a brain that keeps its session open can keep it; who is speaking and
   // what they want travel with each turn, and the conversation so far only
@@ -148,23 +165,29 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     // the pages ahead are usually in another one, and whichever language
     // fills the turn wins by weight alone unless this is said last - and
     // said by name, not left to be read off the ask.
-    prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []), `Task: ${task}`, answerLanguageLine(task)].join('\n'),
+    prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
+      ...(desktop ? ['Prior-turn desktop observations are historical: use read_desktop or look_desktop before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
+      `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
-    tools: calls,
+    tools: sessionCalls,
     maxCalls: desktop ? 120 : SESSION_MAX_CALLS,
     ...(options.onToken ? { onToken: options.onToken } : {}),
     ...(options.onReset ? { onReset: options.onReset } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-  })
+    signal,
+  }).finally(() => lifetime.abort(new Error('The tool session has ended.')))
   if (options.signal?.aborted) throw new Error('canceled')
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (session.error) throw new Error(session.error)
-  const incomplete = plan.pending() ?? finalDesktopFailure(steps)
-  return { answer: withoutSecrets(session.answer.trim(), task), steps, fellBack: false, ...(exhausted || steps.length >= allowance() ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
+  const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps))
+  const stopped = exhausted || steps.length >= allowance()
+  const answer = incomplete || stopped
+    ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
+    : session.answer.trim()
+  return { answer: withoutSecrets(answer, task), steps, fellBack: false, ...(stopped ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
 }
 
 // One door for a comet's turn: the session where the brain offers one, the

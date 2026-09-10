@@ -151,6 +151,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   })
   const navigated = () => { changed = Date.now(); settled = false }
   page.on('framenavigated', navigated)
+  page.on('domcontentloaded', navigated)
   const timer = setInterval(() => {
     if (!settled && Date.now() - changed > 300) void still()
   }, 150).unref()
@@ -164,6 +165,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     motionFrame = undefined
     pendingFrame = undefined
     page.off('framenavigated', navigated)
+    page.off('domcontentloaded', navigated)
     page.off('close', stop)
     stopping = cdp.send('Page.stopScreencast').catch(() => undefined).then(() => cdp.detach().catch(() => undefined))
     return stopping
