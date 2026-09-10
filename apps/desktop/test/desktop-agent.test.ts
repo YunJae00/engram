@@ -32,6 +32,11 @@ beforeEach(() => {
   fake.image.mockReturnValue({ toJPEG: () => Buffer.from('fixture-image') })
 })
 describe('desktop image consent and capture validation', () => {
+  it('keeps task context aligned with observation reuse and guarded batches', () => {
+    expect(desktopContext()).toContain('desktop_sequence')
+    expect(desktopContext()).toContain('returned observation')
+    expect(desktopContext()).not.toContain('After every action, observe')
+  })
   it('always reads after a replacement and does not retry when readback fails', async () => {
     const tool = desktopAgentTools('bot-one').find((one) => one.name === 'desktop_action')!
     const args = { kind: 'replace', snapshot: 'before', element: 'e1', expected: 'Old', text: 'New' }
