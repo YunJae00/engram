@@ -87,6 +87,24 @@ export function testDesktopUia(desktop, output, target, expectedPassword) {
   try { remote = JSON.parse(run(native, [...args, '--remote'], { timeout: 10000 })) }
   catch { remote = { available: false, stage: 'timeout-or-process-failure', completeCoverage: false } }
   assert.equal(typeof remote.available, 'boolean')
-  assert.equal(remote.completeCoverage, false)
+  assert.equal(typeof remote.completeCoverage, 'boolean')
+  if (remote.available) {
+    assert.equal(remote.propertyMatches, true, 'Remote property results disagreed with the live control')
+    assert.equal(remote.navigationMatches, true, 'Remote navigation identified different controls')
+    assert.equal(remote.completeCoverage, remote.fullScan?.completeCoverage === true)
+    if (remote.completeCoverage) {
+      const scan = remote.fullScan
+      assert.equal(scan.exhausted, true)
+      assert.equal(scan.reason, 0)
+      assert.equal(scan.password, expectedPassword, 'The complete remote scan missed a password surface')
+      assert.equal(scan.passwordMatches, true)
+      assert.equal(scan.nodeCountMatches, true)
+      assert.equal(scan.nodesVisited, scan.referenceNodes)
+      assert.ok(scan.nodesVisited > 0 && scan.nodesVisited <= scan.nodeLimit)
+      assert.ok(scan.maxDepth > 0 && scan.maxDepth <= scan.depthLimit)
+      assert.ok(scan.chargedInstructions <= scan.instructionLimit)
+      assert.ok(Number.isFinite(scan.elapsedMs) && scan.elapsedMs >= 0)
+    }
+  }
   return { ...samples, remote }
 }

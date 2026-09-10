@@ -3,6 +3,7 @@
 #include <UIAutomation.h>
 #include <wrl/client.h>
 #include <chrono>
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cwchar>
@@ -25,6 +26,7 @@ static void Check(HRESULT result)
 }
 
 #include "LegacyProbe.h"
+#include "RemoteProbe.h"
 
 static unsigned long long Number(const wchar_t* value)
 {
@@ -144,10 +146,14 @@ static std::string RemoteDiagnostic(HWND window)
         };
         const bool propertyMatches = remotePassword == (password != FALSE);
         const bool navigationMatches = same(child.get(), 6) && same(sibling.get(), 8);
+        DWORD pid = 0;
+        GetWindowThreadProcessId(window, &pid);
+        const auto scan = RemoteFullScan(automation.get(), root.get(), pid);
         std::ostringstream json;
         json << "{\"available\":true,\"stage\":\"complete\",\"elapsedMs\":" << milliseconds
             << ",\"propertyMatches\":" << (propertyMatches ? "true" : "false")
-            << ",\"navigationMatches\":" << (navigationMatches ? "true" : "false") << ",\"completeCoverage\":false}";
+            << ",\"navigationMatches\":" << (navigationMatches ? "true" : "false")
+            << ",\"completeCoverage\":" << (scan.complete ? "true" : "false") << ",\"fullScan\":" << scan.json << '}';
         return json.str();
     }
     catch (const winrt::hresult_error& error)

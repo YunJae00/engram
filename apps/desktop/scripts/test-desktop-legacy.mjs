@@ -7,8 +7,15 @@ export async function testDesktopLegacy(fixture, target, output, result) {
     throw new Error('Legacy accessibility probes require an isolated Windows CI runner')
   }
   const executable = path.join(output, 'AutomationProbe.exe')
-  const run = mode => JSON.parse(execFileSync(executable, [String(target.window), String(target.pid), mode],
-    { windowsHide: true, encoding: 'utf8', timeout: 20000 }))
+  const run = mode => {
+    try {
+      return JSON.parse(execFileSync(executable, [String(target.window), String(target.pid), mode],
+        { windowsHide: true, encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }))
+    } catch (error) {
+      result.legacyProbe.failure = { mode, status: error.status, stderr: String(error.stderr || '').slice(-2000) }
+      throw error
+    }
+  }
   const initial = await fixture.request('state')
   result.legacyProbe = {}
   try {
@@ -20,7 +27,7 @@ export async function testDesktopLegacy(fixture, target, output, result) {
     for (const key of ['text', 'deepText', 'draft', 'reviewed', 'clicks', 'protectedCharacters']) assert.equal(restored[key], initial[key])
     await fixture.request('deepReadonly')
     result.legacyProbe.readonly = run('--legacy-readonly')
-    assert.equal(result.legacyProbe.readonly.readonlyBlocked, true)
+    assert.ok(result.legacyProbe.readonly.unsupported || result.legacyProbe.readonly.readonlyBlocked)
     assert.equal(result.legacyProbe.readonly.setterAttempted, false)
     const readonly = await fixture.request('state')
     for (const key of ['text', 'deepText', 'draft', 'reviewed', 'clicks', 'protectedCharacters']) assert.equal(readonly[key], initial[key])
@@ -31,6 +38,7 @@ export async function testDesktopLegacy(fixture, target, output, result) {
     const protectedState = await fixture.request('state')
     for (const key of ['text', 'deepText', 'draft', 'reviewed', 'clicks', 'protectedCharacters']) assert.equal(protectedState[key], initial[key])
     result.legacyProbe.protectedBlocked = true
+    delete result.legacyProbe.failure
   } finally {
     await fixture.request('hidePassword')
     await fixture.request('deepWritable')

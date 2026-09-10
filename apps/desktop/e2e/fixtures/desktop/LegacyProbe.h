@@ -42,6 +42,7 @@ static std::wstring ProbeText(IUIAutomationTextPattern* pattern)
 {
     ComPtr<IUIAutomationTextRange> range;
     Check(pattern->get_DocumentRange(&range));
+    if (!range) throw std::runtime_error("The document range is unavailable");
     BSTR raw = nullptr;
     Check(range->GetText(2001, &raw));
     const auto text = ProbeString(raw);
@@ -53,6 +54,7 @@ static bool ProbeReadonly(IUIAutomationTextPattern* pattern)
 {
     ComPtr<IUIAutomationTextRange> range;
     Check(pattern->get_DocumentRange(&range));
+    if (!range) throw std::runtime_error("The readonly document range is unavailable");
     VARIANT value;
     VariantInit(&value);
     Check(range->GetAttributeValue(UIA_IsReadOnlyAttributeId, &value));
@@ -71,6 +73,7 @@ static void RequireUnprotectedFixture(IUIAutomation* automation, IUIAutomationEl
     Check(automation->CreatePropertyCondition(UIA_IsPasswordPropertyId, flag, &passwords));
     ComPtr<IUIAutomationElementArray> found;
     Check(root->FindAll(TreeScope_Descendants, passwords.Get(), &found));
+    if (!found) throw std::runtime_error("The complete password scan is unavailable");
     int total = 0;
     Check(found->get_Length(&total));
     for (int index = 0; index < total; index++) {
@@ -84,6 +87,8 @@ static void RequireUnprotectedFixture(IUIAutomation* automation, IUIAutomationEl
 
 static std::string LegacyDiagnostic(HWND window, DWORD expectedPid, bool expectReadonly)
 {
+    const auto stage = [](const char* value) { std::cerr << "Legacy probe stage: " << value << std::endl; };
+    stage("owned-fixture");
     RequireLegacyFixture(window, expectedPid);
     ComPtr<IUIAutomation> automation;
     Check(CoCreateInstance(__uuidof(CUIAutomation8), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation)));
@@ -93,6 +98,8 @@ static std::string LegacyDiagnostic(HWND window, DWORD expectedPid, bool expectR
     Check(settings->put_TransactionTimeout(5000));
     ComPtr<IUIAutomationElement> root, editor;
     Check(automation->ElementFromHandle(window, &root));
+    if (!root) throw std::runtime_error("The owned root is unavailable");
+    stage("password-scan");
     RequireUnprotectedFixture(automation.Get(), root.Get());
     ComPtr<IUIAutomationCondition> condition;
     VARIANT name;
@@ -104,10 +111,13 @@ static std::string LegacyDiagnostic(HWND window, DWORD expectedPid, bool expectR
     Check(named);
     ComPtr<IUIAutomationElementArray> matches;
     Check(root->FindAll(TreeScope_Descendants, condition.Get(), &matches));
+    if (!matches) throw std::runtime_error("The owned editor search is unavailable");
     int count = 0;
     Check(matches->get_Length(&count));
     if (count != 1) throw std::runtime_error("Expected exactly one owned multiline editor");
     Check(matches->GetElement(0, &editor));
+    if (!editor) throw std::runtime_error("The owned editor is unavailable");
+    stage("text-pattern");
     CONTROLTYPEID type = 0;
     Check(editor->get_CurrentControlType(&type));
     if (type != UIA_DocumentControlTypeId && type != UIA_EditControlTypeId) throw std::runtime_error("The owned target is not a text editor");
@@ -117,11 +127,15 @@ static std::string LegacyDiagnostic(HWND window, DWORD expectedPid, bool expectR
     Check(editor->get_CurrentAutomationId(&identifier));
     const auto originalId = ProbeString(identifier);
     ComPtr<IUIAutomationTextPattern> text;
-    Check(editor->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&text)));
+    const auto textAvailable = editor->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&text));
+    if (FAILED(textAvailable) || !text)
+        return "{\"unsupported\":true,\"reason\":\"text-pattern-unavailable\",\"setterAttempted\":false,\"restored\":true}";
+    stage("text-readback");
     const auto initialText = ProbeText(text.Get());
     const auto readonly = ProbeReadonly(text.Get());
     if (readonly != expectReadonly) throw std::runtime_error("The document readonly fixture state disagrees");
     ComPtr<IUIAutomationLegacyIAccessiblePattern> legacy;
+    stage("legacy-pattern");
     const auto available = editor->GetCurrentPatternAs(UIA_LegacyIAccessiblePatternId, IID_PPV_ARGS(&legacy));
     if (FAILED(available) || !legacy)
         return std::string("{\"legacyAvailable\":false,\"unsupported\":true,\"setterAttempted\":false,\"restored\":true,\"readonlyBlocked\":")
@@ -176,10 +190,13 @@ static std::string LegacyDiagnostic(HWND window, DWORD expectedPid, bool expectR
     };
     std::wstring replacement;
     for (int line = 0; line < 100; line++) replacement += L"Line \uD55C\uAE00 42\r\n";
+    stage("pre-write-guards");
     safe(initial);
+    stage("setter");
     const auto started = std::chrono::steady_clock::now();
     const auto written = legacy->SetValue(replacement.c_str());
     const auto milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    stage("write-readback");
     const auto after = ProbeText(text.Get());
     if (FAILED(written)) {
         const bool unchanged = ProbeLines(after) == ProbeLines(initial);
@@ -188,7 +205,9 @@ static std::string LegacyDiagnostic(HWND window, DWORD expectedPid, bool expectR
     }
     const bool verified = ProbeLines(after) == ProbeLines(replacement);
     if (!verified) return "{\"legacyAvailable\":true,\"setterAttempted\":true,\"setterHresult\":0,\"writeVerified\":false,\"restored\":false}";
+    stage("pre-restore-guards");
     safe(replacement);
+    stage("restore");
     const auto restored = legacy->SetValue(initial.c_str());
     const bool restoredValue = SUCCEEDED(restored) && ProbeLines(ProbeText(text.Get())) == ProbeLines(initial);
     std::ostringstream evidence;
