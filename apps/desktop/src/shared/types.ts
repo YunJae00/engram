@@ -502,6 +502,7 @@ export type AgentInputDto =
 export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
 export interface EngramApi extends DesktopApi {
+  artifactReveal(id: string): Promise<void>
   nativeEnabled(): Promise<boolean>
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
   // The agent browser's mirror: watch (frames flow while at least one view

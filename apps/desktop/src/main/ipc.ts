@@ -117,6 +117,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
+import { cometFileTools, registerArtifactIpc } from './file-work.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
@@ -1202,6 +1203,7 @@ export function registerIpc(ctx: VaultContext): void {
   type RoutineRunReply = { ok: boolean; error?: string; blocked?: RoutineBlock }
 
   const approvals = approvalsStore(app.getPath('userData'))
+  registerArtifactIpc(ctx.paths)
   ipcMain.handle('routines:list', () => listRoutines(paths))
   ipcMain.handle('routines:add', async (_e, input: { name: string; steps: RoutineStep[] }) => {
     const routine = await addRoutine(paths, input)
@@ -2156,7 +2158,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? desktopAgentTools(channel) : [])],
+            }), ...(!guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel) : []), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? desktopAgentTools(channel) : [])],
           },
           request.message,
           {

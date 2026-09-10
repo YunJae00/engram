@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { createNote, initVault, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, createNote, fileWorkTools, initVault, type VaultPaths } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -143,4 +143,23 @@ test('a question just sent and a draft not yet sent both survive a tab switch', 
   await page.getByTestId('activity-sky').click()
   await page.getByTestId('activity-bots').click()
   await expect(page.locator('.bots-write textarea')).toHaveValue('unsent thought')
+})
+
+test('created file links reveal only generated artifacts and reject escaping links', async () => {
+  const bot = await createBot(paths, { name: 'File output verification' })
+  const tool = fileWorkTools({ directory: join(paths.cache, 'artifacts'), approveRead: async () => false }).find((tool) => tool.name === 'file_create_copy')!
+  const artifact = JSON.parse(await tool.run({ name: '검증 결과.json', content: '{"verified":true}' }, { task: 'Create a test artifact.' })) as { path: string; markdownLink: string }
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `${artifact.markdownLink}\n\n[Unavailable output](engram-artifact:../outside.txt)`, at: new Date().toISOString() })
+  await app.evaluate(({ shell }) => {
+    shell.showItemInFolder = (path: string) => { (globalThis as unknown as { revealedArtifact: string }).revealedArtifact = path }
+  })
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId('activity-bots').click()
+  await page.locator('.bots-row', { hasText: 'File output verification' }).click()
+  await page.getByRole('link', { name: '검증 결과.json', exact: true }).click()
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as { revealedArtifact: string }).revealedArtifact)).toBe(artifact.path)
+  await page.getByRole('link', { name: 'Unavailable output', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('This output file is unavailable')
+  expect(await app.evaluate(() => (globalThis as unknown as { revealedArtifact: string }).revealedArtifact)).toBe(artifact.path)
 })

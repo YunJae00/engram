@@ -105,4 +105,6 @@ export { appendAudit, auditDays, auditDir, readAudit, type AuditEntry, type Audi
 export { recordedSteps, type TurnStep } from './routine-record.js'
 export { DesktopControlLease } from './desktop-control-lease.js'
 export type { ToolOutcome } from './agent-loop.js'
+export { fileWorkTools, resolveArtifact } from './file-work.js'
+export { workbookTool } from './file-workbook.js'
 export { desktopTools, type DesktopAction, type DesktopGuardedAction, type DesktopSequenceAction, type DesktopCourier } from './desktop-tools.js'

@@ -12,6 +12,7 @@ import type {
 } from '../shared/types.js'
 
 const api: EngramApi = {
+  artifactReveal: (id) => ipcRenderer.invoke('artifact:reveal', id),
   desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
   desktopVisible: () => ipcRenderer.invoke('desktop:visible'),
   desktopWindows: () => ipcRenderer.invoke('desktop:windows'),

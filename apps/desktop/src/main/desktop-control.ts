@@ -95,6 +95,10 @@ function stoppedError(lane: string): Error {
   return new Error(`${detail} Computer control was cancelled for this turn. Ask before using it again.`)
 }
 
+export function assertDesktopTurnNotStopped(lane: string): void {
+  if (stoppedTurns.has(lane)) throw stoppedError(lane)
+}
+
 // Esc or the Stop button: the person's word, for the rest of this turn.
 export function stopDesktopFromUi(): void {
   if (paused && !paused.resumable && !active) { cancellation++; paused.release?.(); lease.reset(); paused = undefined; announce() }
