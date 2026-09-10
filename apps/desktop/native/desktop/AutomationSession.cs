@@ -194,10 +194,12 @@ internal sealed class AutomationSession
     }
     private static AutomationElement VisiblePassword(AutomationElement root)
     {
+        var timing = Stopwatch.StartNew();
         // Geometry queries are expensive in dense accessibility trees. Read
         // visibility only for password controls, not for every descendant.
         var passwords = root.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.IsPasswordProperty, true));
+        Console.Error.WriteLine("Password lookup ms: " + timing.ElapsedMilliseconds);
         foreach (AutomationElement password in passwords)
             if (!password.Current.IsOffscreen) return password;
         return null;
@@ -232,7 +234,9 @@ internal sealed class AutomationSession
     }
     internal void Validate(DesktopTarget target)
     {
+        var timing = Stopwatch.StartNew();
         Guard.Same(target);
+        Console.Error.WriteLine("Window validation ms: " + timing.ElapsedMilliseconds);
         DesktopNative.Foreground(target);
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         var root = AutomationElement.FromHandle(target.Handle);
