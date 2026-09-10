@@ -5,7 +5,7 @@ import type { DesktopObservationDto, DesktopNodeDto } from '../shared/desktop.js
 const geometry = (view: DesktopObservationDto) => JSON.stringify([view.bounds, view.captureBounds])
 const lines = (value?: string | null) => value?.replace(/\r\n?/g, '\n')
 
-// ponytail: exact names need a complete view; use observed element editing for partial trees.
+// ponytail: partial trees need explicit starting anchors; unseen controls require a complete view.
 export async function guardedSequence(
   original: DesktopObservationDto, actions: DesktopGuardedAction[],
   read: () => Promise<DesktopObservationDto>, act: (action: DesktopAction) => Promise<unknown>, signal?: AbortSignal,
@@ -18,16 +18,19 @@ export async function guardedSequence(
   let failedStep = 1
   let observationMayBeStale = false
   const identities = new Map<string, string>()
+  const anchors = new Map<string, string>()
   const check = () => {
     signal?.throwIfAborted()
     if (performance.now() - started > 20000) throw new Error('Sequence time limit reached. Inspect the current state before continuing.')
-    if (observation.truncated !== false || observation.captureSafe === false || observation.protectedBounds?.length) throw new Error('Named targets require a complete, unprotected observation. Use observed element editing for a partial view.')
+    if (observation.captureSafe === false || observation.protectedBounds?.length || (observation.truncated !== false && observation.captureSafe !== true)) throw new Error('The observation could not be cleared for input.')
     if (geometry(observation) !== geometry(original)) throw new Error('The app geometry changed. Inspect the current state before continuing.')
   }
   const targetOf = (step: DesktopGuardedAction): DesktopNodeDto | undefined => {
     check()
+    const anchor = step.target.element ? anchors.get(step.target.element) : undefined
+    if (observation.truncated !== false && !anchor) throw new Error('A partial view requires target.element from the starting observation for every target.')
     const matches = observation.nodes.filter((node) => node.name === step.target.name && node.controlType === step.target.controlType
-      && node.offscreen !== true && node.enabled !== false)
+      && (!anchor || node.runtimeId === anchor) && node.offscreen !== true && node.enabled !== false)
     if (matches.length > 1) throw new Error('The next target is ambiguous. Inspect the current state before continuing.')
     const node = matches[0]
     if (node && (node.password || node.isPassword)) throw new Error('Protected controls require the person.')
@@ -45,6 +48,15 @@ export async function guardedSequence(
     check()
   }
   try {
+    for (const step of actions) {
+      if (original.truncated !== false && !step.target.element) throw new Error('A partial view requires target.element from the starting observation for every target.')
+      if (!step.target.element) continue
+      const nodes = original.nodes.filter((node) => node.id === step.target.element && node.name === step.target.name && node.controlType === step.target.controlType)
+      const node = nodes[0]
+      if (nodes.length !== 1 || !node?.runtimeId || node.password || node.isPassword || node.offscreen === true || node.enabled === false
+        || original.nodes.filter((one) => one.runtimeId === node.runtimeId).length !== 1) throw new Error('Every anchor must identify one available, unprotected control in the starting observation.')
+      anchors.set(step.target.element, node.runtimeId)
+    }
     if (!actions.length || actions.length > 12 || !targetOf(actions[0]!)) throw new Error('Start with a target from the current observation, using 1 to 12 steps.')
     await refresh()
     for (const step of actions) {

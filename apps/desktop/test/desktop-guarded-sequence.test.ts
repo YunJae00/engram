@@ -11,6 +11,50 @@ const base = (): DesktopObservationDto => ({ snapshot: 'first', truncated: false
 const step = (action: Omit<DesktopGuardedAction, 'snapshot' | 'target'> & { text?: string; key?: string; value?: string }, one = target) => ({ ...action, snapshot: 'first', target: one } as DesktopGuardedAction)
 afterEach(() => vi.restoreAllMocks())
 
+it('edits and verifies an anchored partial view despite repeated names and renumbered element IDs', async () => {
+  const original = base()
+  original.truncated = true
+  original.nodes.push({ ...original.nodes[0]!, id: 'e2', runtimeId: 'other' })
+  const current = structuredClone(original)
+  current.nodes[0]!.id = 'e9'
+  const act = vi.fn(async (action) => { if (action.kind === 'type') current.nodes[0]!.value = action.text })
+  const anchored = { ...target, element: 'e1' }
+  const result = JSON.parse(await guardedSequence(original, [step({ kind: 'click' }, anchored), step({ kind: 'type', text: 'Checked' }, anchored), step({ kind: 'verify', value: 'Checked' }, anchored)], async () => current, act))
+  expect(result).toMatchObject({ completed: 3, dispatched: 2, verified: 1 })
+  expect(act.mock.calls[0]![0]).toEqual({ kind: 'click', snapshot: 'first', element: 'e9' })
+  expect(current.nodes[1]!.value).toBe('')
+})
+
+it.each(['unseen', 'name', 'identity', 'password', 'unsafe', 'focus', 'mixed'] as const)('refuses an unsafe partial anchor: %s', async (change) => {
+  const original = base()
+  original.truncated = true
+  const current = structuredClone(original)
+  const anchored = { ...target, element: change === 'unseen' ? 'e99' : 'e1' }
+  if (change === 'name') anchored.name = 'Different'
+  if (change === 'identity') current.nodes[0]!.runtimeId = 'replacement'
+  if (change === 'password') current.nodes[0]!.password = true
+  if (change === 'unsafe') current.captureSafe = false
+  if (change === 'focus') current.focusedControl = 'other'
+  const actions = [step({ kind: 'type', text: 'Do not type' }, anchored)]
+  if (change === 'mixed') actions.push(step({ kind: 'verify', value: 'Do not type' }))
+  const act = vi.fn()
+  const result = JSON.parse(await guardedSequence(original, actions, async () => current, act))
+  expect(result.error).toBeTruthy()
+  expect(act).not.toHaveBeenCalled()
+})
+
+it('stops after focus changes within an anchored batch without repeating delivered input', async () => {
+  const original = base()
+  original.truncated = true
+  const current = structuredClone(original)
+  const act = vi.fn(async () => { current.focusedControl = 'different' })
+  const anchored = { ...target, element: 'e1' }
+  const result = JSON.parse(await guardedSequence(original, [step({ kind: 'key', key: 'Tab' }, anchored), step({ kind: 'type', text: 'Do not type' }, anchored)], async () => current, act))
+  expect(result).toMatchObject({ completed: 1, dispatched: 1, failedStep: 2 })
+  expect(result.error).toContain('focus')
+  expect(act).toHaveBeenCalledOnce()
+})
+
 it('verifies multiline values across native line endings without sending input', async () => {
   const current = base()
   current.nodes[0]!.value = 'First\r\nSecond\tValue'

@@ -8,7 +8,7 @@ export type DesktopAction =
   | { kind: 'scroll'; snapshot: string; delta: number }
   | { kind: 'key'; snapshot: string; key: string }
 
-export type DesktopGuardedAction = { snapshot: string; target: { name: string; controlType: string } } & (
+export type DesktopGuardedAction = { snapshot: string; target: { name: string; controlType: string; element?: string } } & (
   | { kind: 'click' }
   | { kind: 'type'; text: string }
   | { kind: 'key'; key: string }
@@ -105,10 +105,11 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
 
 function guardedActionOf(args: Record<string, unknown>, context: AgentToolContext): DesktopGuardedAction {
   const { target, ...input } = args
-  if (!plainRecord(target) || !exactKeys(target, ['name', 'controlType']) || typeof target['name'] !== 'string'
+  if (!plainRecord(target) || !exactKeys(target, 'element' in target ? ['name', 'controlType', 'element'] : ['name', 'controlType']) || typeof target['name'] !== 'string'
     || !target['name'].trim() || target['name'].length > 512 || !printable(target['name'])
     || typeof target['controlType'] !== 'string' || !/^[A-Za-z]{1,40}$/.test(target['controlType'])) throw new Error('Use an exact accessible name and controlType for each target.')
-  const selector = { name: target['name'], controlType: target['controlType'] }
+  if ('element' in target && (typeof target['element'] !== 'string' || !/^e[0-9]{1,8}$/.test(target['element']))) throw new Error('Use an element ID from the starting observation to anchor a target.')
+  const selector = { name: target['name'], controlType: target['controlType'], ...('element' in target ? { element: target['element'] as string } : {}) }
   if (input['kind'] === 'verify') {
     if (!exactKeys(input, ['kind', 'snapshot', 'value']) || typeof input['value'] !== 'string' || input['value'].length > 2000 || !printable(input['value'].replace(/[\r\n\t]/g, ''))) throw new Error('Verification requires an exact field value, up to 2000 characters; line breaks and tabs are allowed.')
     requirePublicText(input['value'], context)
@@ -243,7 +244,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
   const sequence = courier.sequence
   if (sequence) tools.push({
     name: 'desktop_sequence',
-    description: `Perform up to 12 related actions in one model call; supply snapshot and actions without individual snapshots. Prefer a short batch over repeated single actions when the next targets and result checks are known. Two modes: (1) element mode starts with an observed element click on a stable interface. A partial view supports an Edit with actions.type and runtimeId followed by editing keys/typing in that editor, without Enter, Tab, Escape or Control+F. (2) guarded mode gives EVERY step target:{name,controlType}, using exact accessible names. Clicks resolve the next target in the live complete view, including after an expected interface change. Type/key require that exact control to have keyboard focus; use clicks to select other fields. Add kind:verify with target and exact value to wait up to 2 seconds for a result without repeating input. Start with an observed target; predict only a short known continuation, not an entire unseen workflow. No coordinates, scroll or Escape in guarded mode. Both modes re-observe within the same call, stop on missing/ambiguous targets, unsafe state, changed geometry, cancellation or first error, and return the last observation. Never replay a partially dispatched batch. ${HANDS} ${GUIDANCE}`,
+    description: `Perform up to 12 related actions in one model call; supply snapshot and actions without individual snapshots. Prefer a short batch over repeated single actions when the next targets and result checks are known. Two modes: (1) element mode starts with an observed element click on a stable interface. A partial view supports an Edit with actions.type and runtimeId followed by editing keys/typing in that editor, without Enter, Tab, Escape or Control+F. (2) guarded mode gives EVERY step target:{name,controlType}, using exact accessible names. Add target.element from the STARTING observation to anchor an existing control by its stable identity: this also works in a safe partial view and disambiguates duplicate names. Every target used in a partial view must be anchored; an anchor cannot refer to an unseen future control. Without an anchor, clicks resolve the next target in the live complete view, including after an expected interface change. Type/key require that exact control to have keyboard focus; use clicks to select other fields. Add kind:verify with target and exact value to wait up to 2 seconds for a result without repeating input. Start with an observed target; predict only a short known continuation, not an entire unseen workflow. No coordinates, scroll or Escape in guarded mode. Both modes re-observe within the same call, stop on missing/ambiguous targets, unsafe state, changed geometry, cancellation or first error, and return the last observation. Never replay a partially dispatched batch. ${HANDS} ${GUIDANCE}`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['snapshot', 'actions'],
       properties: {
@@ -251,7 +252,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
         actions: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['kind'], properties: {
           kind: { type: 'string', enum: ['click', 'type', 'key', 'verify'] }, element: { type: 'string', pattern: '^e[0-9]+$' },
           text: { type: 'string', minLength: 1, maxLength: 2000 }, key: { type: 'string', enum: KEYS },
-          target: { type: 'object', additionalProperties: false, required: ['name', 'controlType'], properties: { name: { type: 'string', minLength: 1, maxLength: 512 }, controlType: { type: 'string', minLength: 1, maxLength: 40 } } },
+          target: { type: 'object', additionalProperties: false, required: ['name', 'controlType'], properties: { name: { type: 'string', minLength: 1, maxLength: 512 }, controlType: { type: 'string', minLength: 1, maxLength: 40 }, element: { type: 'string', pattern: '^e[0-9]{1,8}$' } } },
           value: { type: 'string', maxLength: 2000 },
         } } },
       },

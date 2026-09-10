@@ -135,7 +135,7 @@ internal sealed class ControlFixture : Form
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };
                 for (var cell = 0; cell < 240; cell++) Dense.Controls.Add(new Label { Text = "Cell " + cell, Bounds = new Rectangle(cell % 20 * 28, cell / 20 * 20, 26, 18) });
-                Deep = new TextBox { AccessibleName = "Deep editor", Bounds = new Rectangle(8, 245, 450, 25) };
+                Deep = new TextBox { AccessibleName = "Deep editor", Multiline = true, AcceptsReturn = true, Bounds = new Rectangle(8, 235, 450, 40) };
                 Dense.Controls.Add(Deep);
                 Controls.Add(Dense); Dense.BringToFront();
             }

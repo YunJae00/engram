@@ -279,6 +279,37 @@ try {
     view => view.focusedControl === deepEditor.runtimeId && view.nodes.some(node => node.runtimeId === deepEditor.runtimeId && node.value === 'Verified draft'),
     'The focused partial observation did not confirm the complete edited value')
   assert.equal((await fixture.request('state')).deepText, 'Verified draft')
+  result.stage = 'anchored-partial-workflow'
+  const partialRead = () => helper.request('observe', deepBound)
+  const partialAct = ({ kind, snapshot, ...args }) => helper.request(kind, { ...deepBound, snapshot, ...args })
+  const partialStart = await partialRead()
+  const anchor = partialStart.nodes.find(node => node.runtimeId === deepEditor.runtimeId)
+  assert.ok(anchor)
+  const anchoredTarget = { name: anchor.name, controlType: anchor.controlType, element: anchor.id }
+  const initialText = 'Quarterly planning\nReview 12 open items\nPrepare follow-up'
+  const finalText = initialText.replace('Quarterly planning', 'Updated quarterly planning')
+  const anchoredSteps = [
+    { kind: 'key', key: 'Control+A' },
+    { kind: 'type', text: 'Quarterly planning' },
+    { kind: 'key', key: 'Enter' },
+    { kind: 'type', text: 'Review 12 open items' },
+    { kind: 'key', key: 'Enter' },
+    { kind: 'type', text: 'Prepare follow-up' },
+    { kind: 'verify', value: initialText },
+    { kind: 'key', key: 'Control+Home' },
+    { kind: 'key', key: 'Shift+End' },
+    { kind: 'type', text: 'Updated quarterly planning' },
+    { kind: 'verify', value: finalText },
+  ].map(step => ({ ...step, target: anchoredTarget, snapshot: partialStart.snapshot }))
+  const anchoredResult = JSON.parse(await guardedSequence(partialStart, anchoredSteps, partialRead, partialAct))
+  assert.equal(anchoredResult.error, undefined, anchoredResult.error)
+  assert.equal(anchoredResult.completed, 11)
+  assert.equal(anchoredResult.dispatched, 9)
+  assert.equal(anchoredResult.verified, 2)
+  assert.equal(anchoredResult.observation.truncated, true)
+  assert.equal((await fixture.request('state')).deepText.replace(/\r\n?/g, '\n'), finalText)
+  result.anchoredPartialWorkflowMs = anchoredResult.elapsedMs
+  result.anchoredPartialWorkflowPassed = true
   await helper.request('stop')
   result.partialFocusedEditingPassed = true
   const beforePassword = await helper.request('observe', target)

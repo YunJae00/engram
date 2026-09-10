@@ -260,7 +260,7 @@ internal sealed class AutomationSession
     }
     internal void RequireEditable(DesktopObservation observation)
     {
-        Validate(observation.Target);
+        // Prepare already validates this window for each input packet.
         RequireFocus(observation);
         var focused = AutomationElement.FocusedElement;
         if (!Editable(focused)) throw new InvalidOperationException("Select a non-password editable field before typing");

@@ -41,3 +41,16 @@ it('permits line breaks in read-only verification but never in dispatched typing
   await expect(tool.run({ ...args, actions: [{ kind: 'verify', target, value: 'One\u0000Two' }] }, { task: '' })).rejects.toThrow()
   expect(sequence).not.toHaveBeenCalled()
 })
+
+it('accepts explicit starting anchors and rejects malformed anchors before dispatch', async () => {
+  const sequence = vi.fn(async () => 'checked')
+  const tool = desktopTools({ read: async () => '', sequence }).find((one) => one.name === 'desktop_sequence')!
+  const target = { name: 'Draft', controlType: 'Edit', element: 'e12' }
+  expect(await tool.run({ snapshot: 'fresh', actions: [{ kind: 'type', target, text: 'Hello' }] }, { task: '' })).toBe('checked')
+  expect(sequence).toHaveBeenCalledWith([{ kind: 'type', snapshot: 'fresh', target, text: 'Hello' }], { task: '' })
+  sequence.mockClear()
+  for (const element of ['', 'e-1', 'e123456789', 'Draft', 12, undefined]) {
+    await expect(tool.run({ snapshot: 'fresh', actions: [{ kind: 'type', target: { ...target, element }, text: 'Hello' }] }, { task: '' })).rejects.toThrow()
+  }
+  expect(sequence).not.toHaveBeenCalled()
+})
