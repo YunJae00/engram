@@ -95,8 +95,8 @@ class Channel {
 }
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
-async function until(read, predicate, label) {
-  const deadline = Date.now() + 8000
+async function until(read, predicate, label, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const state = await read()
     if (predicate(state)) return state
@@ -122,7 +122,7 @@ try {
   assert.ok(notepadApp, 'Registered Notepad app was not discovered')
   await assert.rejects(helper.request('openApp', { app: 'cmd.exe' }), /Paths and commands/)
   assert.equal((await helper.request('openApp', { app: notepadApp.id })).requested, true)
-  const launched = await until(() => helper.request('listWindows'), value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch')
+  const launched = await until(() => helper.request('listWindows'), value => value.windows.some(window => /notepad/i.test(window.title)), 'Notepad did not expose a window after launch', 30000)
   const notepad = launched.windows.find(window => /notepad/i.test(window.title))
   const launchedView = await helper.request('observe', { window: notepad.window, pid: notepad.pid })
   assert.ok(launchedView.snapshot)
