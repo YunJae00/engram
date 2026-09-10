@@ -195,13 +195,20 @@ internal sealed class AutomationSession
     private static AutomationElement VisiblePassword(AutomationElement root)
     {
         var timing = Stopwatch.StartNew();
-        // Geometry queries are expensive in dense accessibility trees. Read
-        // visibility only for password controls, not for every descendant.
-        var passwords = root.FindAll(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.IsPasswordProperty, true));
+        var request = new CacheRequest { TreeScope = TreeScope.Subtree,
+            TreeFilter = Automation.RawViewCondition, AutomationElementMode = AutomationElementMode.None };
+        request.Add(AutomationElement.IsPasswordProperty);
+        request.Add(AutomationElement.IsOffscreenProperty);
+        var pending = new Queue<AutomationElement>();
+        pending.Enqueue(root.GetUpdatedCache(request));
         Console.Error.WriteLine("Password lookup ms: " + timing.ElapsedMilliseconds);
-        foreach (AutomationElement password in passwords)
-            if (!password.Current.IsOffscreen) return password;
+        while (pending.Count > 0)
+        {
+            var element = pending.Dequeue();
+            if (element.Cached.IsPassword && !element.Cached.IsOffscreen) return element;
+            var children = element.CachedChildren;
+            if (children != null) foreach (AutomationElement child in children) pending.Enqueue(child);
+        }
         return null;
     }
     private static bool Inside(AutomationElement element, string rootId)
