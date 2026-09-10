@@ -143,6 +143,7 @@ export function isDesktopTool(name: string): boolean { return DESKTOP_TOOLS.has(
 export function desktopScopeTools(tools: AgentTool[]): AgentTool[] { return tools }
 
 export function desktopStepArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (name.startsWith('file_')) return Object.fromEntries(Object.entries(args).filter(([key]) => ['path', 'name', 'sheet', 'offset', 'sourcePath', 'expectedSha256'].includes(key)))
   if (name === 'desktop_sequence') return { snapshot: args['snapshot'], actions: '[redacted]' }
   if (name !== 'desktop_action') return args
   // Invalid input must be redacted too: narration happens before validation.
@@ -150,6 +151,7 @@ export function desktopStepArgs(name: string, args: Record<string, unknown>): Re
 }
 
 export function desktopStepSummary(name: string, args: Record<string, unknown>): string | null {
+  if (name.startsWith('file_')) return typeof args['name'] === 'string' ? args['name'].slice(0, 120) : 'saved file'
   if (!isDesktopTool(name)) return null
   if (name === 'list_windows') return 'open windows'
   if (name === 'list_apps') return 'available app launchers'
