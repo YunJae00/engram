@@ -194,9 +194,13 @@ internal sealed class AutomationSession
     }
     private static AutomationElement VisiblePassword(AutomationElement root)
     {
-        return root.FindFirst(TreeScope.Descendants, new AndCondition(
-            new PropertyCondition(AutomationElement.IsPasswordProperty, true),
-            new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
+        // Geometry queries are expensive in dense accessibility trees. Read
+        // visibility only for password controls, not for every descendant.
+        var passwords = root.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.IsPasswordProperty, true));
+        foreach (AutomationElement password in passwords)
+            if (!password.Current.IsOffscreen) return password;
+        return null;
     }
     private static bool Inside(AutomationElement element, string rootId)
     {
