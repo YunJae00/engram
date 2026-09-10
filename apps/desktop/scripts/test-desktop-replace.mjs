@@ -8,6 +8,8 @@ export async function testDesktopReplace(helper, fixture, target, result, until)
   }
   const original = await fixture.request('state')
   const evidence = result.fieldReplacement = { passed: false }
+  let failed = false
+  let failure
   const begin = async () => {
     await helper.request('stop')
     await fixture.request('hidePassword')
@@ -113,17 +115,26 @@ export async function testDesktopReplace(helper, fixture, target, result, until)
     assert.deepEqual(await fixture.request('state'), beforeRefusal)
     evidence.readonlyRejected = true
     evidence.passed = true
+  } catch (error) {
+    failed = true
+    failure = error
   } finally {
-    await helper.request('stop')
-    await fixture.request('endWorkflow')
-    const restore = await begin()
-    if (original.text) await replace(restore, restore.entry.value, original.text)
-    else {
-      await helper.request('key', { ...restore.bound, snapshot: restore.view.snapshot, key: 'Control+A' })
-      const view = await helper.request('observe', restore.bound)
-      await helper.request('key', { ...restore.bound, snapshot: view.snapshot, key: 'Backspace' })
+    try {
+      await helper.request('stop')
+      await fixture.request('endWorkflow')
+      const restore = await begin()
+      if (original.text) await replace(restore, restore.entry.value, original.text)
+      else {
+        await helper.request('key', { ...restore.bound, snapshot: restore.view.snapshot, key: 'Control+A' })
+        const view = await helper.request('observe', restore.bound)
+        await helper.request('key', { ...restore.bound, snapshot: view.snapshot, key: 'Backspace' })
+      }
+      assert.equal((await fixture.request('state')).text, original.text)
+      await helper.request('stop')
+    } catch (error) {
+      if (!failed) { failed = true; failure = error }
+      else evidence.cleanupError = (error instanceof Error ? error.message : String(error)).slice(0, 500)
     }
-    assert.equal((await fixture.request('state')).text, original.text)
-    await helper.request('stop')
   }
+  if (failed) throw failure
 }

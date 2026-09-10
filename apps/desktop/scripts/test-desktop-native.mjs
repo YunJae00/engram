@@ -341,7 +341,7 @@ try {
 } catch (error) {
   result.error = error instanceof Error ? error.message : String(error)
   result.helperDiagnostics = helper?.stderr
-  result.events = helper?.events
+  result.events = helper?.events.slice(-20)
   try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error
 } finally {
