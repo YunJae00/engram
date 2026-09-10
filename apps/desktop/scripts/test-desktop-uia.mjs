@@ -64,7 +64,7 @@ export function testDesktopUia(desktop, output, target, expectedPassword) {
       if (separator > 0) environment[line.slice(0, separator)] = line.slice(separator + 1)
     }
     run('cl.exe', ['/nologo', '/EHsc', '/O2', '/std:c++17',
-      path.join(desktop, 'e2e/fixtures/desktop/AutomationProbe.cpp'), `/Fe:${native}`, '/link', 'ole32.lib', 'oleaut32.lib', 'user32.lib'],
+      path.join(desktop, 'e2e/fixtures/desktop/AutomationProbe.cpp'), `/Fe:${native}`, '/link', 'ole32.lib', 'oleaut32.lib', 'user32.lib', 'runtimeobject.lib'],
     { cwd: output, env: environment })
     const framework = path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319')
     const source = path.join(output, 'ManagedAutomationProbe.cs')
@@ -83,5 +83,10 @@ export function testDesktopUia(desktop, output, target, expectedPassword) {
       assert.ok(Number.isFinite(sample.elapsedMs) && sample.elapsedMs >= 0)
     }
   }
-  return samples
+  let remote
+  try { remote = JSON.parse(run(native, [...args, '--remote'], { timeout: 10000 })) }
+  catch { remote = { available: false, stage: 'timeout-or-process-failure', completeCoverage: false } }
+  assert.equal(typeof remote.available, 'boolean')
+  assert.equal(remote.completeCoverage, false)
+  return { ...samples, remote }
 }

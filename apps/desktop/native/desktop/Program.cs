@@ -57,7 +57,7 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "scroll" || method == "key";
+            mutation = method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
@@ -145,6 +145,7 @@ internal static class Program
                 actions.Click(state, snapshot, element, x, y);
             }
             else if (method == "type") actions.Type(state, snapshot, Text(request, "text", 2000));
+            else if (method == "replace") actions.Replace(state, snapshot, Text(request, "element", 32), Text(request, "expected", 2000), Text(request, "text", 2000));
             else if (method == "scroll") actions.Scroll(state, snapshot, Number(request, "delta", -10, 10));
             else if (method == "key") actions.Key(state, snapshot, Text(request, "key", 32));
             else throw new ArgumentException("Unsupported desktop method");

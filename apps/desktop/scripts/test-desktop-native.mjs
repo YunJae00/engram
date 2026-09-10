@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { testDesktopBrowser } from './test-desktop-browser.mjs'
 import { testDesktopInterruption } from './test-desktop-interruption.mjs'
 import { testDesktopPartial } from './test-desktop-partial.mjs'
+import { testDesktopReplace } from './test-desktop-replace.mjs'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 
 if (process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -255,6 +256,7 @@ try {
   result.idleEscapePassed = true
   result.stage = 'password-during-typing'
   result.passwordDuringTyping = await testDesktopInterruption(helper, fixture, target)
+  await testDesktopReplace(helper, fixture, target, result, until)
   await testDesktopPartial(helper, fixture, target, result, until, desktop, output)
   result.stage = 'guarded-workflow'
   await fixture.request('hidePassword')

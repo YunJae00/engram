@@ -13,6 +13,7 @@ internal sealed class ObservedElement
     internal string AutomationId;
     internal int ControlType;
     internal Rect Bounds;
+    internal string ReplaceValue;
 }
 
 internal sealed class DesktopObservation
@@ -43,9 +44,18 @@ internal sealed class AutomationSession : IDisposable
     internal void Invalidate() { Observation = null; }
     internal static string RuntimeId(AutomationElement element)
     {
-        var id = element.GetRuntimeId();
+        return RuntimeId(element.GetRuntimeId());
+    }
+    private static string RuntimeId(int[] id)
+    {
         if (id == null || id.Length == 0) throw new InvalidOperationException("The control has no stable accessibility identity");
         return string.Join(".", id.Select(part => part.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray());
+    }
+    private static CacheRequest PropertyCache(params AutomationProperty[] properties)
+    {
+        var cache = new CacheRequest { TreeScope = TreeScope.Element, TreeFilter = Automation.RawViewCondition };
+        foreach (var property in properties) cache.Add(property);
+        return cache;
     }
     private static string TextBudget(string value, int limit, ref int remaining)
     {
@@ -61,16 +71,23 @@ internal sealed class AutomationSession : IDisposable
     private static bool Editable(AutomationElement element)
     {
         if (element == null) return false;
-        var info = element.Current;
+        var cache = PropertyCache(AutomationElement.IsPasswordProperty, AutomationElement.IsEnabledProperty,
+            AutomationElement.IsOffscreenProperty, AutomationElement.NameProperty, AutomationElement.AutomationIdProperty,
+            AutomationElement.ControlTypeProperty, AutomationElement.IsKeyboardFocusableProperty, ValuePattern.IsReadOnlyProperty);
+        cache.Add(ValuePattern.Pattern);
+        cache.Add(TextPattern.Pattern);
+        var fresh = element.GetUpdatedCache(cache);
+        var info = fresh.Cached;
         if (info.IsPassword || !info.IsEnabled || info.IsOffscreen || ControlPolicy.IsSensitive(info.Name) || ControlPolicy.IsSensitive(info.AutomationId)) return false;
         object pattern;
-        if (element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) return !((ValuePattern)pattern).Current.IsReadOnly;
-        if ((info.ControlType == ControlType.Edit || info.ControlType == ControlType.Document) && element.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
+        if (fresh.TryGetCachedPattern(ValuePattern.Pattern, out pattern)) return !((ValuePattern)pattern).Cached.IsReadOnly;
+        if ((info.ControlType == ControlType.Edit || info.ControlType == ControlType.Document) && fresh.TryGetCachedPattern(TextPattern.Pattern, out pattern))
             return info.IsKeyboardFocusable && object.Equals(((TextPattern)pattern).DocumentRange.GetAttributeValue(TextPattern.IsReadOnlyAttribute), false);
         return info.ControlType == ControlType.Edit && info.IsKeyboardFocusable;
     }
-    private static object Node(AutomationElement element, string id, string runtime, int depth, ref int remaining)
+    private static object Node(AutomationElement element, string id, string runtime, int depth, ref int remaining, out string replaceValue)
     {
+        replaceValue = null;
         var current = element.Current;
         string value = null;
         var valueTruncated = false;
@@ -80,6 +97,7 @@ internal sealed class AutomationSession : IDisposable
             var text = ((ValuePattern)pattern).Current.Value;
             value = TextBudget(text, 4096, ref remaining);
             valueTruncated = text != null && text.Length > value.Length;
+            if (!valueTruncated && text != null && text.Length <= 2000 && Editable(element)) replaceValue = text;
         }
         else if (!current.IsPassword && (current.ControlType == ControlType.Edit || current.ControlType == ControlType.Document)
             && element.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
@@ -95,7 +113,7 @@ internal sealed class AutomationSession : IDisposable
             value = value, valueTruncated = valueTruncated, bounds = Bounds(current.BoundingRectangle), enabled = current.IsEnabled,
             password = current.IsPassword, isPassword = current.IsPassword, offscreen = current.IsOffscreen, depth = depth,
             actions = new { click = current.IsEnabled && !current.IsPassword && !current.IsOffscreen,
-                type = Editable(element), scroll = element.TryGetCurrentPattern(ScrollPattern.Pattern, out pattern) }
+                type = Editable(element), replace = replaceValue != null, scroll = element.TryGetCurrentPattern(ScrollPattern.Pattern, out pattern) }
         };
     }
     internal object Observe(DesktopTarget target, LeaseState lease, bool focusedOnly = false)
@@ -133,10 +151,11 @@ internal sealed class AutomationSession : IDisposable
                 var runtime = RuntimeId(element);
                 if (!seen.Add(runtime)) continue;
                 var id = "e" + nodes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                nodes.Add(Node(element, id, runtime, item.Item2, ref remaining));
+                string replaceValue;
+                nodes.Add(Node(element, id, runtime, item.Item2, ref remaining, out replaceValue));
                 var info = element.Current;
                 observation.Elements.Add(id, new ObservedElement { Element = element, Runtime = runtime, Name = info.Name,
-                    AutomationId = info.AutomationId, ControlType = info.ControlType.Id, Bounds = info.BoundingRectangle });
+                    AutomationId = info.AutomationId, ControlType = info.ControlType.Id, Bounds = info.BoundingRectangle, ReplaceValue = replaceValue });
                 if (element.Current.IsPassword)
                 {
                     if (!element.Current.IsOffscreen) protectedBounds.Add(Bounds(element.Current.BoundingRectangle));
@@ -159,8 +178,9 @@ internal sealed class AutomationSession : IDisposable
             throw new InvalidOperationException("The window changed while reading. Observe it again.");
         if (nodes.Count == 0) throw new InvalidOperationException("This window does not expose readable accessibility controls");
         var focused = AutomationElement.FocusedElement;
-        var focusedEditable = Inside(focused, rootId) && Editable(focused);
-        observation.FocusedRuntime = Inside(focused, rootId) ? RuntimeId(focused) : null;
+        var focusedInside = Inside(focused, rootId);
+        var focusedEditable = focusedInside && Editable(focused);
+        observation.FocusedRuntime = focusedInside ? RuntimeId(focused) : null;
         Observation = observation;
         observation.Partial = focusedOnly || limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs;
         return new
@@ -204,12 +224,15 @@ internal sealed class AutomationSession : IDisposable
     }
     private static void SafeAncestors(AutomationElement element, string rootId)
     {
-        for (var depth = 0; element != null && depth < 48; depth++, element = TreeWalker.RawViewWalker.GetParent(element))
+        var cache = PropertyCache(AutomationElement.IsPasswordProperty, AutomationElement.NameProperty,
+            AutomationElement.AutomationIdProperty, AutomationElement.RuntimeIdProperty);
+        if (element != null) element = element.GetUpdatedCache(cache);
+        for (var depth = 0; element != null && depth < 48; depth++, element = TreeWalker.RawViewWalker.GetParent(element, cache))
         {
-            var info = element.Current;
+            var info = element.Cached;
             if (info.IsPassword || ControlPolicy.IsSensitive(info.Name) || ControlPolicy.IsSensitive(info.AutomationId))
                 throw new InvalidOperationException("Authentication, password, terminal, and security surfaces require manual control");
-            if (RuntimeId(element) == rootId) return;
+            if (RuntimeId(element.GetCachedPropertyValue(AutomationElement.RuntimeIdProperty) as int[]) == rootId) return;
         }
         throw new InvalidOperationException("The control is outside the selected application window");
     }
@@ -263,18 +286,33 @@ internal sealed class AutomationSession : IDisposable
         SafeAncestors(element, RuntimeId(AutomationElement.FromHandle(observation.Target.Handle)));
         return point;
     }
-    internal void RequireFocus(DesktopObservation observation)
+    internal AutomationElement RequireFocus(DesktopObservation observation)
     {
         var focused = AutomationElement.FocusedElement;
         if (focused == null || observation.FocusedRuntime == null || RuntimeId(focused) != observation.FocusedRuntime)
             throw new InvalidOperationException("Keyboard focus changed. Observe the application again");
         SafeAncestors(focused, RuntimeId(AutomationElement.FromHandle(observation.Target.Handle)));
+        return focused;
     }
     internal void RequireEditable(DesktopObservation observation)
     {
         // Prepare already validates this window for each input packet.
-        RequireFocus(observation);
-        var focused = AutomationElement.FocusedElement;
+        var focused = RequireFocus(observation);
         if (!Editable(focused)) throw new InvalidOperationException("Select a non-password editable field before typing");
+    }
+    internal ValuePattern RequireReplacement(DesktopObservation observation, string id, string expected)
+    {
+        ClickPoint(observation, id, null, null);
+        RequireEditable(observation);
+        var observed = observation.Elements[id];
+        if (observed.Runtime != observation.FocusedRuntime || observed.ReplaceValue == null || observed.ReplaceValue != expected)
+            throw new InvalidOperationException("Replacement requires the complete observed value of the focused field");
+        object pattern;
+        if (!observed.Element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern) || ((ValuePattern)pattern).Current.IsReadOnly)
+            throw new InvalidOperationException("This field does not support writable value replacement");
+        var value = (ValuePattern)pattern;
+        if (value.Current.Value != expected)
+            throw new InvalidOperationException("The field value changed. Observe it again before replacing its contents");
+        return value;
     }
 }

@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import type { DesktopAction, DesktopGuardedAction } from 'core'
 import type { DesktopObservationDto, DesktopNodeDto } from '../shared/desktop.js'
+import { replacementTarget } from './desktop-replacement.js'
 
 const geometry = (view: DesktopObservationDto) => JSON.stringify([view.bounds, view.captureBounds])
 const lines = (value?: string | null) => value?.replace(/\r\n?/g, '\n')
@@ -81,13 +82,20 @@ export async function guardedSequence(
         if (!node?.runtimeId) throw new Error('The next target is missing or has no stable identity. Inspect the current state before continuing.')
         if (step.kind !== 'click' && observation.focusedControl !== node.runtimeId) throw new Error('The intended control does not have keyboard focus. Inspect the current state before continuing.')
         if (step.kind === 'type' && (observation.focusedEditable !== true || node.actions?.type !== true)) throw new Error('The intended field is not editable.')
+        if (step.kind === 'replace') replacementTarget(observation, node.id, step.expected)
         const action: DesktopAction = step.kind === 'click' ? { kind: 'click', snapshot: observation.snapshot, element: node.id }
           : step.kind === 'type' ? { kind: 'type', snapshot: observation.snapshot, text: step.text }
+            : step.kind === 'replace' ? { kind: 'replace', snapshot: observation.snapshot, element: node.id, expected: step.expected, text: step.text }
             : { kind: 'key', snapshot: observation.snapshot, key: step.key }
         observationMayBeStale = true
         await act(action)
         dispatched++
         await refresh()
+        if (step.kind === 'replace') {
+          const current = targetOf(step)
+          if (!current || current.valueTruncated !== false || current.value !== step.text) throw new Error('The replacement result was not fully observed. Inspect it without repeating the replacement.')
+          verified++
+        }
       }
       completed++
     }

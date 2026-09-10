@@ -111,6 +111,7 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "changeEntry") { Entry.Text = "Changed by application"; Entry.Focus(); }
             else if (method == "passwordDuringTyping")
             {
                 RevealPasswordOnInput = false;

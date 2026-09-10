@@ -11,7 +11,7 @@ export interface DesktopNodeDto {
   offscreen?: boolean
   password?: boolean
   isPassword?: boolean
-  actions?: { type?: boolean }
+  actions?: { type?: boolean; replace?: boolean }
   bounds: { x: number; y: number; width: number; height: number }
 }
 export interface DesktopObservationDto {

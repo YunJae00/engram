@@ -17,6 +17,7 @@ export async function desktopSequence(lane: string, steps: DesktopSequenceAction
   if (steps.every((step) => 'target' in step)) return guardedSequence(desktopObservation(lane, steps[0]!.snapshot), steps,
     (focusedOnly) => readControlledDesktop(lane, signal, true, undefined, focusedOnly), (action) => actOnDesktop(lane, action, signal), signal)
   if (steps.some((step) => 'target' in step)) throw new Error('Do not mix named targets and element mode.')
+  if (steps.some((step) => step.kind === 'replace')) throw new Error('Replacement batches require guarded targets and exact expected values.')
   const actions = steps as DesktopAction[]
   const start = performance.now()
   const original = desktopObservation(lane, actions[0]!.snapshot)

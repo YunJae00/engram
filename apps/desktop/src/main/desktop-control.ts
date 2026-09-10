@@ -7,6 +7,7 @@ import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateContro
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
+import { replacementTarget } from './desktop-replacement.js'
 
 // Control is taken by the comet's first reading of an app and given back by
 // an explicit stop. Pointer motion is harmless; native control separates
@@ -347,10 +348,11 @@ export async function actOnDesktop(lane: string, action: DesktopAction, signal?:
     const previous = observation
     observation = await readControlledDesktop(lane, signal, true)
     if (JSON.stringify([previous.bounds, previous.captureBounds]) !== JSON.stringify([observation.bounds, observation.captureBounds])) throw new Error('The app geometry changed while planning. Inspect the fresh observation before acting.')
-    if (action.kind === 'click' && 'element' in action) {
+    if ((action.kind === 'click' && 'element' in action) || action.kind === 'replace') {
       const element = action.element
-      const target = previous.nodes.find((node) => node.id === element)
-      const matches = observation.nodes.filter((node) => target && node.name === target.name && node.controlType === target.controlType && JSON.stringify(node.bounds) === JSON.stringify(target.bounds))
+      const target = action.kind === 'replace' ? replacementTarget(previous, element, action.expected) : previous.nodes.find((node) => node.id === element)
+      const replacing = action.kind === 'replace'
+      const matches = observation.nodes.filter((node) => target && (!replacing || node.runtimeId === target.runtimeId) && node.name === target.name && node.controlType === target.controlType && JSON.stringify(node.bounds) === JSON.stringify(target.bounds))
       if (matches.length !== 1) throw new Error('The planned control changed or is ambiguous. Inspect the fresh observation before acting.')
       action = { ...action, element: matches[0]!.id }
     } else if (action.kind === 'key' || action.kind === 'type') {
@@ -358,6 +360,7 @@ export async function actOnDesktop(lane: string, action: DesktopAction, signal?:
     } else throw new Error('Observe the app again before using a planned coordinate or scroll action.')
     action = { ...action, snapshot: observation.snapshot }
   }
+  if (action.kind === 'replace') replacementTarget(observation, action.element, action.expected)
   observations.delete(lane)
   const stop = () => { if (active?.token === token) stopDesktopForLane(lane, 'This chat was cancelled.') }
   signal?.addEventListener('abort', stop, { once: true })
@@ -373,7 +376,8 @@ export async function actOnDesktop(lane: string, action: DesktopAction, signal?:
           args['x'] = Math.round(bounds.x + action.x * (bounds.width - 1))
           args['y'] = Math.round(bounds.y + action.y * (bounds.height - 1))
         }
-      } else if (action.kind === 'type') args['text'] = action.text
+      } else if (action.kind === 'replace') Object.assign(args, { element: action.element, expected: action.expected, text: action.text })
+      else if (action.kind === 'type') args['text'] = action.text
       else if (action.kind === 'scroll') args['delta'] = action.delta
       else args['key'] = action.key
       await held.binding.host.request(action.kind, args)

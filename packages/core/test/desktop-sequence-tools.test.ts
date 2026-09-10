@@ -68,3 +68,23 @@ it('permits unnamed controls only with an explicit starting anchor', async () =>
   }
   expect(sequence).not.toHaveBeenCalled()
 })
+
+it('validates explicit whole-field replacements and redacts both old and new content', async () => {
+  const act = vi.fn(async () => 'read the new value'), sequence = vi.fn(async () => 'checked')
+  const tools = desktopTools({ read: async () => '', act, sequence })
+  const one = tools.find((tool) => tool.name === 'desktop_action')!
+  const batch = tools.find((tool) => tool.name === 'desktop_sequence')!
+  const args = { kind: 'replace', snapshot: 'fresh', element: 'e1', expected: 'Old draft', text: 'New draft' }
+  expect(await one.run(args, { task: 'Replace the draft' })).toBe('read the new value')
+  expect(act).toHaveBeenCalledWith(args, { task: 'Replace the draft' })
+  expect(desktopStepArgs('desktop_action', args)).toEqual({ ...args, expected: '[redacted]', text: '[redacted]' })
+  const target = { name: 'Draft', controlType: 'Edit', element: 'e1' }
+  expect(await batch.run({ snapshot: 'fresh', actions: [{ kind: 'replace', target, expected: '', text: 'Draft' }] }, { task: '' })).toBe('checked')
+  act.mockClear(); sequence.mockClear()
+  for (const invalid of [{ ...args, expected: undefined }, { ...args, expected: 'Bearer 123456789abc' }, { ...args, text: 'Bearer 123456789abc' },
+    { ...args, expected: 'x'.repeat(2001) }, { ...args, expected: 'bad\0value' }, { ...args, text: '' }, { ...args, text: 'New\nDraft' }])
+    await expect(one.run(invalid, { task: '' })).rejects.toThrow()
+  await expect(batch.run({ snapshot: 'fresh', actions: [{ kind: 'replace', element: 'e1', expected: '', text: 'Draft' }] }, { task: '' })).rejects.toThrow('guarded targets')
+  expect(act).not.toHaveBeenCalled()
+  expect(sequence).not.toHaveBeenCalled()
+})

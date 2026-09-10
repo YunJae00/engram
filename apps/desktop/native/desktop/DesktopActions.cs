@@ -114,6 +114,17 @@ internal sealed class DesktopActions
             Input.Send(state, new[] { InputDispatcher.Mouse(0, 0, unchecked((uint)(Math.Sign(delta) * 120)), 0x800) },
                 delegate { Prepare(state, snapshot); Automation.ClickPoint(observation, null, (int)point.X, (int)point.Y); });
     }
+    internal void Replace(LeaseState state, string snapshot, string element, string expected, string text)
+    {
+        ControlPolicy.Literal(text);
+        var observation = Prepare(state, snapshot);
+        var value = Automation.RequireReplacement(observation, element, expected);
+        Lease.Require(state);
+        Monitor.BeforeInput(state);
+        // This is a whole-field provider call, not interruptible keystrokes or compare-and-swap.
+        value.SetValue(text);
+        Lease.Require(state);
+    }
     internal void Key(LeaseState state, string snapshot, string key)
     {
         if (key == "Escape") { Lease.Revoke("Escape requested"); return; }
