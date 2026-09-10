@@ -1,7 +1,17 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import type { DesktopAction, DesktopGuardedAction } from 'core'
 import type { DesktopObservationDto, DesktopNodeDto } from '../shared/desktop.js'
-import { replacementTarget } from './desktop-replacement.js'
+
+export function replacementTarget(view: DesktopObservationDto, element: string, expected: string): DesktopNodeDto {
+  const matches = view.nodes.filter((node) => node.id === element)
+  const node = matches[0]
+  if (matches.length !== 1 || !node?.runtimeId || node.password || node.isPassword || node.enabled === false || node.offscreen === true
+    || view.protectedBounds?.length || node.actions?.replace !== true || view.focusedEditable !== true || view.focusedControl !== node.runtimeId)
+    throw new Error('Select an observed, focused field that supports replacement before replacing its contents.')
+  if (node.valueTruncated !== false || typeof node.value !== 'string' || node.value !== expected)
+    throw new Error('The complete current field value must match expected before replacement. Observe it again; do not overwrite changed content.')
+  return node
+}
 
 const geometry = (view: DesktopObservationDto) => JSON.stringify([view.bounds, view.captureBounds])
 const lines = (value?: string | null) => value?.replace(/\r\n?/g, '\n')

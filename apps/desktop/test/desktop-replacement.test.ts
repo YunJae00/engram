@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { DesktopAction, DesktopGuardedAction } from 'core'
 import type { DesktopObservationDto } from '../src/shared/desktop.js'
-import { replacementTarget } from '../src/main/desktop-replacement.js'
+import { replacementTarget } from '../src/main/desktop-guarded-sequence.js'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.js'
 
 const target = { name: 'Draft', controlType: 'Edit', element: 'e1' }

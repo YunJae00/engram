@@ -7,7 +7,7 @@ import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateContro
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
-import { replacementTarget } from './desktop-replacement.js'
+import { replacementTarget } from './desktop-guarded-sequence.js'
 
 // Control is taken by the comet's first reading of an app and given back by
 // an explicit stop. Pointer motion is harmless; native control separates
