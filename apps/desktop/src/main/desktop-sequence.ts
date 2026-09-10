@@ -15,7 +15,7 @@ function layout(view: DesktopObservationDto): string {
 export async function desktopSequence(lane: string, steps: DesktopSequenceAction[], signal?: AbortSignal): Promise<string> {
   if (!steps.length || steps.length > 12) throw new Error('Use 1 to 12 sequence steps.')
   if (steps.every((step) => 'target' in step)) return guardedSequence(desktopObservation(lane, steps[0]!.snapshot), steps,
-    () => readControlledDesktop(lane, signal, true), (action) => actOnDesktop(lane, action, signal), signal)
+    (focusedOnly) => readControlledDesktop(lane, signal, true, undefined, focusedOnly), (action) => actOnDesktop(lane, action, signal), signal)
   if (steps.some((step) => 'target' in step)) throw new Error('Do not mix named targets and element mode.')
   const actions = steps as DesktopAction[]
   const start = performance.now()

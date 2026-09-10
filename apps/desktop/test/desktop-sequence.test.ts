@@ -67,6 +67,22 @@ it('edits an anchored field in a large partial view without additional model cal
   expect(fake.act).toHaveBeenCalledTimes(3)
   expect(fake.read).toHaveBeenCalledTimes(4)
 })
+
+it('uses focused native reads only when every guarded target is the already-focused editor', async () => {
+  const current = editorView('fresh')
+  fake.original.mockReturnValue(editorView())
+  fake.read.mockResolvedValue(current)
+  const target = { name: 'Draft', controlType: 'Edit', element: 'e1' }
+  const result = JSON.parse(await desktopSequence('bot-test', [{ kind: 'type', snapshot: 'first', target, text: 'Draft' }]))
+  expect(result.completed).toBe(1)
+  expect(fake.read).toHaveBeenCalledWith('bot-test', undefined, true, undefined, true)
+  fake.read.mockClear()
+  const original = editorView()
+  original.focusedControl = 'other'
+  fake.original.mockReturnValue(original)
+  await desktopSequence('bot-test', [{ kind: 'click', snapshot: 'first', target }])
+  expect(fake.read).toHaveBeenCalledWith('bot-test', undefined, true, undefined, false)
+})
 it.each(['focus', 'runtime', 'bounds', 'password'] as const)('stops focused editing on a changed %s', async (change) => {
   fake.original.mockReturnValue(editorView())
   const changed = editorView('changed')

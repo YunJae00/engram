@@ -8,7 +8,7 @@ const lines = (value?: string | null) => value?.replace(/\r\n?/g, '\n')
 // ponytail: partial trees need explicit starting anchors; unseen controls require a complete view.
 export async function guardedSequence(
   original: DesktopObservationDto, actions: DesktopGuardedAction[],
-  read: () => Promise<DesktopObservationDto>, act: (action: DesktopAction) => Promise<unknown>, signal?: AbortSignal,
+  read: (focusedOnly?: boolean) => Promise<DesktopObservationDto>, act: (action: DesktopAction) => Promise<unknown>, signal?: AbortSignal,
 ): Promise<string> {
   const started = performance.now()
   let observation = original
@@ -17,6 +17,7 @@ export async function guardedSequence(
   let verified = 0
   let failedStep = 1
   let observationMayBeStale = false
+  let focusedOnly = false
   const identities = new Map<string, string>()
   const anchors = new Map<string, string>()
   const check = () => {
@@ -43,7 +44,7 @@ export async function guardedSequence(
   }
   const refresh = async () => {
     observationMayBeStale = true
-    observation = await read()
+    observation = await read(focusedOnly)
     observationMayBeStale = false
     check()
   }
@@ -57,6 +58,8 @@ export async function guardedSequence(
         || original.nodes.filter((one) => one.runtimeId === node.runtimeId).length !== 1) throw new Error('Every anchor must identify one available, unprotected control in the starting observation.')
       anchors.set(step.target.element, node.runtimeId)
     }
+    focusedOnly = original.focusedEditable === true && !!original.focusedControl
+      && actions.every((step) => !!step.target.element && anchors.get(step.target.element) === original.focusedControl)
     if (!actions.length || actions.length > 12 || !targetOf(actions[0]!)) throw new Error('Start with a target from the current observation, using 1 to 12 steps.')
     await refresh()
     for (const step of actions) {

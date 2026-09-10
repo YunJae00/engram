@@ -16,6 +16,7 @@ export interface DesktopNodeDto {
 }
 export interface DesktopObservationDto {
   snapshot: string
+  scope?: 'focus' | 'window'
   nodes: DesktopNodeDto[]
   bounds: { x: number; y: number; width: number; height: number }
   captureBounds?: { x: number; y: number; width: number; height: number }

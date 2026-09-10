@@ -111,7 +111,11 @@ internal static class Program
             if (method == "observe")
             {
                 if (state != null) { DesktopNative.Foreground(target); lease.Require(state); }
-                var observation = automation.Observe(target, state);
+                object focus;
+                if (request.TryGetValue("focusedOnly", out focus) && !(focus is bool)) throw new ArgumentException("Invalid observation scope");
+                var focusedOnly = focus is bool && (bool)focus;
+                if (focusedOnly) lease.Require(state);
+                var observation = automation.Observe(target, state, focusedOnly);
                 if (state != null) lease.Require(state);
                 Send(new { id = id, result = observation });
                 return;

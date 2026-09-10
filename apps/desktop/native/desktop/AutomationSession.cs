@@ -95,7 +95,7 @@ internal sealed class AutomationSession
                 type = Editable(element), scroll = element.TryGetCurrentPattern(ScrollPattern.Pattern, out pattern) }
         };
     }
-    internal object Observe(DesktopTarget target, LeaseState lease)
+    internal object Observe(DesktopTarget target, LeaseState lease, bool focusedOnly = false)
     {
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading its contents");
         var root = AutomationElement.FromHandle(target.Handle);
@@ -139,6 +139,7 @@ internal sealed class AutomationSession
                     if (!element.Current.IsOffscreen) protectedBounds.Add(Bounds(element.Current.BoundingRectangle));
                     continue;
                 }
+                if (focusedOnly) continue;
                 if (item.Item2 >= 32) { limited = true; continue; }
                 var child = Walker.GetFirstChild(element);
                 while (child != null && nodes.Count + pending.Count < MaxNodes && watch.ElapsedMilliseconds < DeadlineMs)
@@ -158,14 +159,14 @@ internal sealed class AutomationSession
         var focusedEditable = Inside(focused, rootId) && Editable(focused);
         observation.FocusedRuntime = Inside(focused, rootId) ? RuntimeId(focused) : null;
         Observation = observation;
-        observation.Partial = limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs;
+        observation.Partial = focusedOnly || limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs;
         return new
         {
             window = target.Id, pid = target.Pid, title = target.Title, snapshot = observation.Id,
             expiresInMs = 15000, bounds = Bounds(observation.Bounds), captureBounds = Bounds(observation.CaptureBounds), nodes = nodes, protectedBounds = protectedBounds,
             focusedEditable = focusedEditable,
             focusedControl = observation.FocusedRuntime,
-            truncated = observation.Partial,
+            truncated = observation.Partial, scope = focusedOnly ? "focus" : "window",
             captureSafe = !observation.Partial || CanCapturePartial(target)
         };
     }

@@ -301,14 +301,14 @@ export async function startDesktopControl(lane: string): Promise<DesktopControlS
   return desktopControlStatus()
 }
 
-async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string): Promise<DesktopObservationDto> {
+async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false): Promise<DesktopObservationDto> {
   signal?.throwIfAborted()
   const binding = agent ? await ensureDesktopControl(lane, { ...(app ? { app } : {}), ...(signal ? { signal } : {}) }) : desktopBinding(lane)
   if (!binding?.readable) throw new Error('No app is connected to this chat yet.')
   const revision = binding.revision
   const held = active?.binding === binding ? active : undefined
   const read = () => binding.host.request<DesktopObservationDto>('observe', {
-    window: binding.window, pid: binding.pid, ...(held?.native ? { lease: held.native } : {}),
+    window: binding.window, pid: binding.pid, ...(held?.native ? { lease: held.native } : {}), ...(focusedOnly ? { focusedOnly: true } : {}),
   })
   const result = agent && held ? await lease.run(held.token, lane, read) : await read()
   signal?.throwIfAborted()
@@ -319,10 +319,10 @@ async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = fals
   return result
 }
 
-export async function readControlledDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string): Promise<DesktopObservationDto> {
+export async function readControlledDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false): Promise<DesktopObservationDto> {
   const stop = () => { if (active?.binding.lane === lane) stopDesktopForLane(lane, 'This chat was cancelled.') }
   if (agent) signal?.addEventListener('abort', stop, { once: true })
-  try { return await readBoundDesktop(lane, signal, agent, app) }
+  try { return await readBoundDesktop(lane, signal, agent, app, focusedOnly) }
   catch (error) {
     if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.')
     throw error
