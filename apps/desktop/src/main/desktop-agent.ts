@@ -77,8 +77,13 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     act: (action, context) => withDesktopActivity(lane, async () => {
       await actOnDesktop(lane, action, context.signal)
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
-      const observation = await readControlledDesktop(lane, context.signal, true)
-      return JSON.stringify({ dispatched: true, observation, requiresVerification: true })
+      try {
+        const observation = await readControlledDesktop(lane, context.signal, true)
+        return JSON.stringify({ dispatched: true, observation, requiresVerification: true })
+      } catch (error) {
+        context.signal?.throwIfAborted()
+        return JSON.stringify({ dispatched: true, error: error instanceof Error ? error.message : String(error), observationMayBeStale: true, requiresVerification: true })
+      }
     }),
     sequence: (actions, context) => withDesktopActivity(lane, () => desktopSequence(lane, actions, context.signal)),
   })

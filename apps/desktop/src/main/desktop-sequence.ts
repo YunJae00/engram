@@ -41,8 +41,10 @@ export async function desktopSequence(lane: string, steps: DesktopSequenceAction
   let dispatched = 0
   let failedStep = 1
   let observation = original
+  let observationMayBeStale = true
   try {
     observation = await readControlledDesktop(lane, signal, true)
+    observationMayBeStale = false
     for (let index = 0; index < actions.length; index++) {
       failedStep = index + 1
       signal?.throwIfAborted()
@@ -55,15 +57,17 @@ export async function desktopSequence(lane: string, steps: DesktopSequenceAction
         if (matches.length !== 1) throw new Error('The next control is missing or ambiguous.')
         action = { kind: 'click', snapshot: observation.snapshot, element: matches[0]!.id }
       }
+      observationMayBeStale = true
       await actOnDesktop(lane, action, signal)
       dispatched++
       observation = await readControlledDesktop(lane, signal, true)
+      observationMayBeStale = false
       if (editing) verifyEditor(observation, true)
       completed++
     }
     return JSON.stringify({ completed, elapsedMs: Math.round(performance.now() - start), observation, requiresVerification: true })
   } catch (error) {
     signal?.throwIfAborted()
-    return JSON.stringify({ completed, dispatched, failedStep, error: error instanceof Error ? error.message : String(error), elapsedMs: Math.round(performance.now() - start), observation, observationMayBeStale: true })
+    return JSON.stringify({ completed, dispatched, failedStep, error: error instanceof Error ? error.message : String(error), elapsedMs: Math.round(performance.now() - start), observation, observationMayBeStale })
   }
 }

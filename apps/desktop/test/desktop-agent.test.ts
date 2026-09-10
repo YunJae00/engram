@@ -46,7 +46,17 @@ describe('desktop image consent and capture validation', () => {
     expect(fake.read).toHaveBeenCalledOnce()
     fake.act.mockClear(); fake.read.mockClear()
     fake.read.mockRejectedValueOnce(new Error('Readback unavailable'))
-    await expect(tool.run(args, { task: 'Replace the entire field' })).rejects.toThrow('Readback unavailable')
+    expect(JSON.parse(await tool.run(args, { task: 'Replace the entire field' }))).toEqual({
+      dispatched: true, error: 'Readback unavailable', observationMayBeStale: true, requiresVerification: true,
+    })
+    expect(fake.act).toHaveBeenCalledOnce()
+    expect(fake.read).toHaveBeenCalledOnce()
+  })
+  it('propagates cancellation during readback without presenting a recoverable result', async () => {
+    const controller = new AbortController()
+    fake.read.mockImplementationOnce(async () => { controller.abort(); throw new Error('Readback interrupted') })
+    const tool = desktopAgentTools('bot-one').find((one) => one.name === 'desktop_action')!
+    await expect(tool.run({ kind: 'type', snapshot: 'before', text: 'Draft' }, { task: 'Enter a draft', signal: controller.signal })).rejects.toThrow()
     expect(fake.act).toHaveBeenCalledOnce()
     expect(fake.read).toHaveBeenCalledOnce()
   })

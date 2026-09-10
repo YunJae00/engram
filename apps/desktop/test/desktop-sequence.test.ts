@@ -30,6 +30,8 @@ it('stops before the next input if a dialog or layout appears', async () => {
   ]))
   expect(result.completed).toBe(1)
   expect(result.error).toContain('interface changed')
+  expect(result.observationMayBeStale).toBe(false)
+  expect(result.observation.snapshot).toBe('dialog')
   expect(fake.act).toHaveBeenCalledOnce()
 })
 it('reports the first error without retrying or proceeding', async () => {
@@ -39,6 +41,7 @@ it('reports the first error without retrying or proceeding', async () => {
   ]))
   expect(result.error).toBe('Original native failure')
   expect(result.completed).toBe(0)
+  expect(result.observationMayBeStale).toBe(true)
   expect(fake.act).toHaveBeenCalledOnce()
 })
 it('does not inject after cancellation or an incomplete observation', async () => {
@@ -110,5 +113,12 @@ it('does not report successful editing when the final readback loses the target'
   expect(result.dispatched).toBe(3)
   expect(result.completed).toBe(2)
   expect(result.error).toContain('focus changed')
-  expect(result.observationMayBeStale).toBe(true)
+  expect(result.observationMayBeStale).toBe(false)
+})
+it('preserves acknowledged dispatch and marks the previous observation stale when readback fails', async () => {
+  fake.read.mockResolvedValueOnce(view('ready')).mockRejectedValueOnce(new Error('Readback failed'))
+  const result = JSON.parse(await desktopSequence('bot-test', [{ kind: 'click', snapshot: 'first', element: 'e1' }]))
+  expect(result).toMatchObject({ completed: 0, dispatched: 1, failedStep: 1, error: 'Readback failed', observationMayBeStale: true, observation: { snapshot: 'ready' } })
+  expect(fake.act).toHaveBeenCalledOnce()
+  expect(fake.read).toHaveBeenCalledTimes(2)
 })
