@@ -29,15 +29,17 @@ internal sealed class DesktopObservation
     internal readonly Dictionary<string, ObservedElement> Elements = new Dictionary<string, ObservedElement>();
 }
 
-internal sealed class AutomationSession
+internal sealed class AutomationSession : IDisposable
 {
     private readonly WindowGuard Guard;
+    private readonly PasswordScan Passwords = new PasswordScan();
     private static readonly TreeWalker Walker = TreeWalker.ControlViewWalker;
     private const int MaxNodes = 160;
     private const int DeadlineMs = 1800;
     private DesktopObservation Observation;
 
     internal AutomationSession(WindowGuard guard) { Guard = guard; }
+    public void Dispose() { Passwords.Dispose(); }
     internal void Invalidate() { Observation = null; }
     internal static string RuntimeId(AutomationElement element)
     {
@@ -190,15 +192,9 @@ internal sealed class AutomationSession
             Guard.Same(target);
             var root = AutomationElement.FromHandle(target.Handle);
             if (ControlPolicy.IsSensitive(target.Title) || ControlPolicy.IsSensitive(root.Current.Name)) return false;
-            return VisiblePassword(root) == null;
+            return !Passwords.HasVisiblePassword(target.Handle, root);
         }
         catch (ElementNotAvailableException) { return false; }
-    }
-    private static AutomationElement VisiblePassword(AutomationElement root)
-    {
-        return root.FindFirst(TreeScope.Descendants, new AndCondition(
-            new PropertyCondition(AutomationElement.IsPasswordProperty, true),
-            new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
     }
     private static bool Inside(AutomationElement element, string rootId)
     {
@@ -234,8 +230,7 @@ internal sealed class AutomationSession
         DesktopNative.Foreground(target);
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         var root = AutomationElement.FromHandle(target.Handle);
-        var password = VisiblePassword(root);
-        if (password != null) throw new InvalidOperationException("Password and authentication entry must be completed manually");
+        if (Passwords.HasVisiblePassword(target.Handle, root)) throw new InvalidOperationException("Password and authentication entry must be completed manually");
         if (ControlPolicy.IsSensitive(root.Current.Name)) throw new InvalidOperationException("This application surface requires manual control");
         var focused = AutomationElement.FocusedElement;
         if (focused != null && Inside(focused, RuntimeId(root))) SafeAncestors(focused, RuntimeId(root));

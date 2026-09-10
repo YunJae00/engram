@@ -32,8 +32,8 @@ internal static class AutomationProbe {
         var found = root.FindFirst(TreeScope.Descendants, condition);
         watch.Stop();
         if (index > 0) Console.Write(",");
-        Console.Write("{\\\"elapsedMs\\\":" + watch.Elapsed.TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
-          + ",\\\"password\\\":" + (found == null ? "false" : "true") + "}");
+        Console.Write("{\\"elapsedMs\\":" + watch.Elapsed.TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+          + ",\\"password\\":" + (found == null ? "false" : "true") + "}");
       }
       Console.WriteLine("]");
       return 0;

@@ -207,11 +207,15 @@ internal static class Program
                     var actions = new DesktopActions(lease, monitor, automation);
                     var worker = new Thread(delegate()
                     {
-                        foreach (var request in requests.GetConsumingEnumerable())
+                        try
                         {
-                            if (Volatile.Read(ref Closed) != 0) break;
-                            Receive(request, automation, guard, lease, monitor, actions);
+                            foreach (var request in requests.GetConsumingEnumerable())
+                            {
+                                if (Volatile.Read(ref Closed) != 0) break;
+                                Receive(request, automation, guard, lease, monitor, actions);
+                            }
                         }
+                        finally { automation.Dispose(); }
                     }) { IsBackground = true, Name = "Desktop accessibility worker" };
                     worker.SetApartmentState(ApartmentState.MTA);
                     worker.Start();
