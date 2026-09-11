@@ -45,5 +45,5 @@ export function officeContext(): string {
   // leaves the person their mouse. Reading and clicking the screen is the
   // last resort, for an application that offers no such tool. Which command
   // tools exist this run is what the menu already shows.
-  return 'Prefer available application command tools over screen input. Excel commands edit the explicitly named workbook and sheet; mail commands only create drafts. word_write and ppt_build generate NEW files, not edits to an open document. Verify results with the application before claiming completion. After interruption, inspect partial changes instead of replaying writes.'
+  return 'Prefer available application command tools over screen input. Excel commands edit the explicitly named workbook and sheet; mail commands only create drafts. word_write and ppt_build generate NEW files. For existing files use word_read/ppt_read then word_edit/ppt_edit with the returned revision; edits stay unsaved unless saving is requested. These text tools do not cover every object or visual layout. Verify results with the application before claiming completion. After interruption, inspect partial changes instead of replaying writes.'
 }

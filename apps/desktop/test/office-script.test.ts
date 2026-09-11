@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { resolve, join } from 'node:path'
 import { expect, it } from 'vitest'
 import { OFFICE_HOST_SCRIPT } from '../src/main/office-script.js'
 
@@ -18,8 +20,17 @@ function Workbook($x, $name) { return $null }
 function Sheet($wb, $name) { return $sheet }
 try { Op-ExcelRead ([pscustomobject]@{ range = 'A1:XFD1048576'; workbook = 'Book1'; sheet = 'Sheet1' }); throw 'UNBOUNDED_READ' }
 catch { if ($_.Exception.Message -notlike '*4000*') { throw }; Write-Output 'BOUNDED_BEFORE_VALUE' }
+$positions = LiteralPositions 'draft Draft draft' 'draft'
+if ($positions.Count -ne 2 -or $positions[1] -ne 12) { throw 'LITERAL_MATCH_FAILED' }
+try { LiteralPositions 'text' ''; throw 'EMPTY_FIND_ACCEPTED' } catch { if ($_.Exception.Message -notlike '*Empty replacement*') { throw } }
+$doc = [pscustomobject]@{ Content = [pscustomobject]@{ End = 100001 } }
+try { DocumentState $doc 'word'; throw 'OVERSIZED_DOCUMENT_READ' } catch { if ($_.Exception.Message -notlike '*read limit*') { throw } }
+try { EditDocument ([pscustomobject]@{revision='missing';file='C:\\missing.docx'}) 'word'; throw 'MISSING_REVISION_ACCEPTED' } catch { if ($_.Exception.Message -notlike '*Read this document*') { throw } }
 `
-  const command = Buffer.from(functions + checks, 'utf16le').toString('base64')
-  const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', command], { windowsHide: true, timeout: 30_000 })
+  await mkdir(resolve('tmp'), { recursive: true })
+  const dir = await mkdtemp(resolve('tmp/office-script-'))
+  const script = join(dir, 'check.ps1')
+  await writeFile(script, '\uFEFF' + functions + checks, 'utf8')
+  const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script], { windowsHide: true, timeout: 30_000 })
   expect(stdout).toContain('BOUNDED_BEFORE_VALUE')
 })

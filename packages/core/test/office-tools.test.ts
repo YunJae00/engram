@@ -4,7 +4,7 @@ import { isOfficeTool, officeStepSummary, officeTools, type OfficeOp } from '../
 const CONTEXT = { task: 'work in Office' }
 function setup() {
   const calls: { op: OfficeOp; args: Record<string, unknown> }[] = []
-  const run = vi.fn(async (op: OfficeOp, args: Record<string, unknown>) => { calls.push({ op, args }); return { echoed: op } })
+  const run = vi.fn(async (op: OfficeOp, args: Record<string, unknown>) => { calls.push({ op, args }); return { echoed: op, revision: 'a'.repeat(32) } })
   const tools = officeTools({ run })
   // A tool validates its arguments synchronously before it ever returns a
   // promise; wrapping the call turns that early throw into a rejection the
@@ -17,7 +17,7 @@ function setup() {
 describe('office tool surface', () => {
   it('offers exactly the four apps and marks them as office tools', () => {
     const { tools } = setup()
-    expect(tools.map((t) => t.name)).toEqual(['excel_workbooks', 'excel_read', 'excel_write', 'outlook_mail', 'outlook_read', 'outlook_draft', 'outlook_calendar', 'word_write', 'ppt_build'])
+    expect(tools.map((t) => t.name)).toEqual(['excel_workbooks', 'excel_read', 'excel_write', 'outlook_mail', 'outlook_read', 'outlook_draft', 'outlook_calendar', 'word_write', 'ppt_build', 'ppt_read', 'ppt_edit', 'word_read', 'word_edit'])
     expect(tools.every((t) => isOfficeTool(t.name))).toBe(true)
     expect(isOfficeTool('search_web')).toBe(false)
   })
@@ -94,6 +94,44 @@ describe('word_write blocks', () => {
     expect(calls[0]!.args['blocks']).toHaveLength(2)
     await expect(tool('word_write').run({ blocks: [{ kind: 'quote', text: 'x' }] })).rejects.toThrow()
     expect(run).toHaveBeenCalledOnce()
+  })
+})
+
+describe('editing an existing file', () => {
+  it('ppt_read and word_read pass the file path through', async () => {
+    const { tool, calls } = setup()
+    await tool('ppt_read').run({ file: 'C:\\d.pptx' })
+    await tool('word_read').run({ file: 'C:\\r.docx' })
+    expect(calls.map((c) => c.op)).toEqual(['ppt.read', 'word.read'])
+    expect(calls[0]!.args).toEqual({ file: 'C:\\d.pptx' })
+  })
+  it('ppt_edit validates each edit kind and forwards them', async () => {
+    const { tool, calls } = setup()
+    await tool('ppt_read').run({ file: 'C:\\d.pptx' })
+    await tool('ppt_edit').run({ file: 'C:\\d.pptx', revision: 'a'.repeat(32), edits: [{ kind: 'text', slide: 2, shape: 1, text: 'New title' }, { kind: 'replace', find: 'FY25', with: 'FY26' }, { kind: 'note', slide: 2, text: 'talk track' }], saveAs: 'C:\\d2.pptx' })
+    expect(calls[1]!.op).toBe('ppt.edit')
+    expect(calls[1]!.args['edits']).toHaveLength(3)
+    expect(calls[1]!.args['saveAs']).toBe('C:\\d2.pptx')
+  })
+  it.each([
+    { file: 'C:\\d.pptx', edits: [{ kind: 'text', slide: 1 }] },
+    { file: 'C:\\d.pptx', edits: [{ kind: 'replace', find: 'x' }] },
+    { file: 'C:\\d.pptx', edits: [{ kind: 'append', text: 'x' }] },
+    { file: 'C:\\d.pptx', edits: [] },
+    { edits: [{ kind: 'replace', find: 'a', with: 'b' }] },
+  ])('ppt_edit rejects a malformed request (%#)', async (args) => {
+    const { tool, run } = setup()
+    await expect(tool('ppt_edit').run(args)).rejects.toThrow()
+    expect(run).not.toHaveBeenCalled()
+  })
+  it('word_edit takes replace and append, rejects ppt-only kinds', async () => {
+    const { tool, calls } = setup()
+    await tool('word_read').run({ file: 'C:\\r.docx' })
+    await tool('word_edit').run({ file: 'C:\\r.docx', revision: 'a'.repeat(32), edits: [{ kind: 'replace', find: 'draft', with: 'final' }, { kind: 'append', text: 'Appendix' }] })
+    expect(calls[1]!.op).toBe('word.edit')
+    expect(calls[1]!.args['edits']).toHaveLength(2)
+    expect(calls[1]!.args['save']).toBeUndefined()
+    await expect(tool('word_edit').run({ file: 'C:\\r.docx', edits: [{ kind: 'text', slide: 1, shape: 1, text: 'x' }] })).rejects.toThrow()
   })
 })
 

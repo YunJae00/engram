@@ -1,3 +1,5 @@
+import { OFFICE_DOCUMENT_SCRIPT } from './office-document-script.js'
+
 // The office host: one PowerShell process that keeps the Office application
 // objects alive and answers fixed operations over JSON lines. The model never
 // writes code that runs here; it sends data to these operations, and every
@@ -183,6 +185,8 @@ function Op-OutlookCalendar($a) {
   return @{ days = $days; count = $out.Count; events = $out }
 }
 
+${OFFICE_DOCUMENT_SCRIPT}
+
 Send @{ type = 'ready'; protocol = 1 }
 while ($true) {
   $line = [Console]::In.ReadLine()
@@ -202,6 +206,10 @@ while ($true) {
       'outlook.read' { $result = Op-OutlookRead $params }
       'outlook.draft' { $result = Op-OutlookDraft $params }
       'outlook.calendar' { $result = Op-OutlookCalendar $params }
+      'ppt.read' { $result = Op-PptRead $params }
+      'ppt.edit' { $result = Op-PptEdit $params }
+      'word.read' { $result = Op-WordRead $params }
+      'word.edit' { $result = Op-WordEdit $params }
       default { throw "Unknown office operation '$($req.op)'." }
     }
     Send @{ id = $id; ok = $true; result = $result }
