@@ -2,6 +2,7 @@ import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { auditDeck, describeDeckFindings, type DeckSlide } from './deck-audit.js'
 import { validateWorkbookFormula } from './file-workbook.js'
 import { officeEditTools } from './office-edit-tools.js'
+import { resolveTheme, THEME_NEEDED, type OfficeTheme } from './office-theme.js'
 
 // Office through its own doors. Excel, Word, PowerPoint and Outlook each
 // expose what their menus do as commands; these tools speak to that, so the
@@ -45,6 +46,18 @@ function only(args: Record<string, unknown>, keys: string[], tool: string): void
 function text(value: unknown): string {
   if (typeof value === 'string') return value
   return JSON.stringify(value)
+}
+
+// A document renders in the look the model passes here - two brand colours and
+// the fonts - never one baked into the renderer. When the model gives no theme,
+// or gives one that is not usable, the tool asks the person instead of choosing
+// a look on its own.
+const THEME_SCHEMA = { type: 'object', additionalProperties: false, required: ['field', 'accent', 'fonts'], properties: { field: { type: 'string' }, accent: { type: 'string' }, ink: { type: 'string' }, paper: { type: 'string' }, chart: { type: 'array', maxItems: 12, items: { type: 'string' } }, fonts: { type: 'object', additionalProperties: false, required: ['title', 'body'], properties: { title: { type: 'string' }, body: { type: 'string' } } } } } as const
+const THEME_NOTE = 'theme carries the look: {field:"1F3B5B", accent:"C0603B", fonts:{title:"Georgia", body:"Segoe UI"}} - a main colour, an accent, and heading/body fonts; add chart:["hex", ...] only for a chart with many series. Without a usable theme the tool asks the person for one; pass what they choose.'
+// Resolves the model's theme, or returns the ask-the-person message so the
+// caller can hand it back to the model verbatim instead of building anything.
+function themeOrAsk(value: unknown): OfficeTheme | typeof THEME_NEEDED {
+  return resolveTheme(value) ?? THEME_NEEDED
 }
 
 function excelArgs(args: unknown, tool: string): Record<string, unknown> {
@@ -195,11 +208,11 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'word_write',
-      description: 'Compose a Word document as a designed file with a cover, headings, tables and a page-numbered footer. blocks in order: {kind:"title"|"subtitle"|"heading"|"subheading"|"paragraph", text}, {kind:"bullets"|"numbers", items:[...]}, {kind:"table", table:{rows:[["Item","Amount"],...]}} (first row is the header), or {kind:"pagebreak"}. title names the document and its file. saveAs names a file to save to.',
+      description: `Compose a Word document as a designed file with a cover, headings, tables and a page-numbered footer. blocks in order: {kind:"title"|"subtitle"|"heading"|"subheading"|"paragraph", text}, {kind:"bullets"|"numbers", items:[...]}, {kind:"table", table:{rows:[["Item","Amount"],...]}} (first row is the header), or {kind:"pagebreak"}. title names the document and its file. saveAs names a file to save to. ${THEME_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['blocks'],
         properties: {
-          title: { type: 'string' }, subject: { type: 'string' }, saveAs: { type: 'string' },
+          title: { type: 'string' }, subject: { type: 'string' }, saveAs: { type: 'string' }, theme: THEME_SCHEMA,
           blocks: {
             type: 'array', minItems: 1, maxItems: BLOCKS_CAP,
             items: {
@@ -215,7 +228,9 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
       },
       run: (args, context) => {
         if (!plain(args)) throw new Error('word_write takes an object.')
-        only(args, ['blocks', 'title', 'subject', 'saveAs'], 'word_write')
+        only(args, ['blocks', 'title', 'subject', 'saveAs', 'theme'], 'word_write')
+        const theme = themeOrAsk(args['theme'])
+        if (theme === THEME_NEEDED) return Promise.resolve(THEME_NEEDED)
         const blocks = args['blocks']
         if (!Array.isArray(blocks) || blocks.length === 0 || blocks.length > BLOCKS_CAP) throw new Error(`blocks must hold 1 to ${BLOCKS_CAP} entries.`)
         const listKinds = ['bullets', 'numbers']
@@ -237,7 +252,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
           if (!textKinds.includes(kind)) throw new Error('Unknown block kind.')
           return { kind, text: optionalText(block['text'], TEXT_CAP, 'text') ?? '' }
         })
-        const out: Record<string, unknown> = { blocks: clean }
+        const out: Record<string, unknown> = { blocks: clean, theme }
         const title = optionalText(args['title'], 200, 'title'); if (title) out['title'] = title
         const subject = optionalText(args['subject'], 400, 'subject'); if (subject) out['subject'] = subject
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs'); if (saveAs) out['saveAs'] = saveAs
@@ -246,10 +261,11 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'ppt_build',
-      description: `Build a slide deck in PowerPoint from slides: [{title, subtitle?, bullets?, table?, chart?, notes?}]. The first slide with no body is the title slide. A slide may carry a table {rows:[["Q","Rev"],["Q4","4.2"]]} (first row is the header) and/or a chart {type:"column|line|bar|pie", categories:[...], series:[{name, values:[...]}]}. Keep titles under 70 characters, bullets under 140, at most 7 per slide, and write only about the subject - never about the deck itself. The result carries an audit; if it lists problems, fix the content and build again. saveAs names a file to save to.`,
+      description: `Build a slide deck in PowerPoint from slides: [{title, subtitle?, bullets?, table?, chart?, notes?}]. The first slide with no body is the title slide. A slide may carry a table {rows:[["Q","Rev"],["Q4","4.2"]]} (first row is the header) and/or a chart {type:"column|line|bar|pie", categories:[...], series:[{name, values:[...]}]}. Keep titles under 70 characters, bullets under 140, at most 7 per slide, and write only about the subject - never about the deck itself. The result carries an audit; if it lists problems, fix the content and build again. saveAs names a file to save to. ${THEME_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['slides'],
         properties: {
+          theme: THEME_SCHEMA,
           slides: {
             type: 'array', minItems: 1, maxItems: SLIDES_CAP,
             items: {
@@ -266,7 +282,9 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
       },
       run: async (args, context) => {
         if (!plain(args)) throw new Error('ppt_build takes an object.')
-        only(args, ['slides', 'saveAs'], 'ppt_build')
+        only(args, ['slides', 'saveAs', 'theme'], 'ppt_build')
+        const theme = themeOrAsk(args['theme'])
+        if (theme === THEME_NEEDED) return THEME_NEEDED
         const slides = args['slides']
         if (!Array.isArray(slides) || slides.length === 0 || slides.length > SLIDES_CAP) throw new Error(`slides must hold 1 to ${SLIDES_CAP} entries.`)
         const clean: (DeckSlide & { notes?: string; table?: unknown; chart?: unknown })[] = slides.map((slide) => {
@@ -297,7 +315,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         // the words are the model's to change before PowerPoint is touched.
         if (findings.length > 0) return describeDeckFindings(findings)
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs')
-        return call('ppt.build', { slides: clean, ...(saveAs ? { saveAs } : {}) }, context)
+        return call('ppt.build', { slides: clean, theme, ...(saveAs ? { saveAs } : {}) }, context)
       },
     },
     ...officeEditTools(courier),
