@@ -54,6 +54,7 @@ function ReadDocument($a, $kind) {
   $file = DocumentPath $a.file $kind
   $prog = if ($kind -eq 'word') { 'Word.Application' } else { 'PowerPoint.Application' }
   $app = App $prog $true
+  if ($kind -eq 'word') { $app.Visible = $true }
   $doc = OpenDocument $app $file $kind
   $state = DocumentState $doc $kind
   $revision = [guid]::NewGuid().ToString('N')

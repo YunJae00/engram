@@ -27,13 +27,13 @@ try {
   Write-Output 'WORD_START'
   $word = New-Object -ComObject Word.Application
   Write-Output 'WORD_CREATED'
-  $word.Visible = $true
   $apps['Word.Application'] = $word
   $file = Join-Path $PSScriptRoot 'source.docx'
-  $doc = OpenDocument $word $file 'word'
-  Write-Output 'WORD_FIXTURE_OPENED'
   $original = FileDigest $file
   $read = Op-WordRead ([pscustomobject]@{file=$file})
+  $doc = $word.Documents.Item('source.docx')
+  Write-Output 'WORD_FIXTURE_OPENED'
+  Assert $word.Visible 'WORD_NOT_VISIBLE'
   Assert ($read.content[0].text.Length -gt 400) 'READ_TRUNCATED'
   $doc.Range(0,0).InsertBefore('user ')
   MustFail { Op-WordEdit (Request $file $read.revision @(@{kind='replace';find='draft';with='final'}) $null) } '*changed since*'
