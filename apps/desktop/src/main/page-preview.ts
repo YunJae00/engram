@@ -17,8 +17,9 @@ async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
   const viewport = metrics.visualViewport ?? { pageX: 0, pageY: 0, scale: 1 }
   let scale = captureScales.get(page) ?? 0
   const zoom = viewport.scale || 1
+  // A scaled clip needs a larger render surface, otherwise its outer area is white.
   const capture = () => cdp.send('Page.captureScreenshot', {
-    format: 'png', fromSurface: true, captureBeyondViewport: false,
+    format: 'png', fromSurface: true, captureBeyondViewport: Boolean(scale),
     ...(scale ? { clip: { x: viewport.pageX, y: viewport.pageY, width: size.width / zoom, height: size.height / zoom, scale: scale * zoom } } : {}),
   })
   let shot = await capture()

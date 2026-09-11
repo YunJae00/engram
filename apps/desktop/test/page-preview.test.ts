@@ -11,6 +11,17 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
+  it('renders the full high-resolution clip instead of clipping it to the unscaled surface', async () => {
+    const { page, cdp } = fixture()
+    const png = Buffer.alloc(24)
+    Buffer.from('89504e470d0a1a0a', 'hex').copy(png)
+    png.writeUInt32BE(1280, 16)
+    cdp.send.mockResolvedValue({ data: png.toString('base64') })
+    await captureSharpFrame(page, cdp)
+    expect(cdp.send).toHaveBeenLastCalledWith('Page.captureScreenshot', expect.objectContaining({
+      captureBeyondViewport: true, clip: { x: 0, y: 0, width: 1280, height: 860, scale: 2 },
+    }))
+  })
   it('shares a sharp capture between consumers with separate CDP sessions', async () => {
     const { page, cdp } = fixture()
     const other = fixture().cdp
