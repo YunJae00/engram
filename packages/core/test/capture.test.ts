@@ -16,7 +16,7 @@ describe('writeCapture — repeats do not become duplicate memories', () => {
   // The bug this exists for: one todo list captured five times in eight
   // seconds became five notes, each linking into every project it named.
   it('folds a burst of identical captures into one inbox item', async () => {
-    const text = '- bge search\n- Engram chronicle\n- hcompany UAT'
+    const text = '- bge search\n- Engram chronicle\n- sample-project UAT'
     const results = []
     for (let i = 0; i < 5; i++) results.push(await writeCapture(inbox, text))
 

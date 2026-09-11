@@ -23,7 +23,7 @@ describe('foldSample', () => {
 
   it('a window switch closes a long-enough span and opens the new one', () => {
     const held = span({ lastSeenAt: T + 120_000 })
-    const { next, closed } = foldSample(held, { app: 'chrome', title: 'SATURN-307' }, T + 135_000)
+    const { next, closed } = foldSample(held, { app: 'chrome', title: 'PROJECT-307' }, T + 135_000)
     expect(closed?.app).toBe('OUTLOOK')
     expect(next?.app).toBe('chrome')
     expect(next?.startedAt).toBe(T + 135_000)
@@ -61,6 +61,6 @@ describe('sanitizeTitle', () => {
   it('deny-listed titles are recorded as (private), the rest pass truncated', () => {
     expect(sanitizeTitle('은행 계좌 로그인')).toBe('(private)')
     expect(sanitizeTitle('password reset — Chrome')).toBe('(private)')
-    expect(sanitizeTitle('SATURN-307 딥리서치')).toBe('SATURN-307 딥리서치')
+    expect(sanitizeTitle('PROJECT-307 딥리서치')).toBe('PROJECT-307 딥리서치')
   })
 })

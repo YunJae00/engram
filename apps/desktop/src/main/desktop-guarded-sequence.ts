@@ -74,20 +74,20 @@ export async function guardedSequence(
     }
     focusedOnly = original.focusedEditable === true && !!original.focusedControl
       && actions.every((step) => !!step.target.element && anchors.get(step.target.element) === original.focusedControl)
-    if (!actions.length || actions.length > 12 || !targetOf(actions[0]!)) throw new Error('Start with a target from the current observation, using 1 to 12 steps.')
+    if (!actions.length || actions.length > 12 || (!targetOf(actions[0]!) && actions[0]!.kind !== 'wait')) throw new Error('Start with an observed target or an explicit wait, using 1 to 12 steps.')
     await refresh()
     for (const step of actions) {
       failedStep = completed + 1
       let node = targetOf(step)
-      if (step.kind === 'verify') {
-        const until = performance.now() + 2000
-        while (!node || node.valueTruncated === true || lines(node.value) !== lines(step.value)) {
-          if (performance.now() >= until) throw new Error('The expected field value was not observed. Inspect the result; do not repeat the input.')
+      if (step.kind === 'verify' || step.kind === 'wait') {
+        const until = performance.now() + (step.kind === 'wait' ? 5000 : 2000)
+        while (!node || (step.kind === 'verify' && (node.valueTruncated === true || lines(node.value) !== lines(step.value)))) {
+          if (performance.now() >= until) throw new Error(step.kind === 'wait' ? 'The expected control did not become available. Inspect the state; do not repeat earlier actions.' : 'The expected field value was not observed. Inspect the result; do not repeat the input.')
           await delay(80, undefined, { signal })
           await refresh()
           node = targetOf(step)
         }
-        verified++
+        if (step.kind === 'verify') verified++
       } else {
         if (!node?.runtimeId) throw new Error('The next target is missing or has no stable identity. Inspect the current state before continuing.')
         if (step.kind !== 'click' && observation.focusedControl !== node.runtimeId) throw new Error('The intended control does not have keyboard focus. Inspect the current state before continuing.')

@@ -2,10 +2,16 @@ import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 
 const READS = new Set(['read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
+  if (step.tool === 'read_live_document' || step.tool === 'edit_live_document') {
+    try {
+      const result = JSON.parse(step.observation) as { error?: unknown; live?: boolean; blocks?: unknown[]; completed?: unknown[]; completeReadback?: boolean }
+      return result.live === true && !result.error && (Array.isArray(result.blocks) || (result.completeReadback === true && Array.isArray(result.completed) && result.completed.length > 0))
+    } catch { return false }
+  }
   if (step.tool.startsWith('file_')) {
     try {
       const result = JSON.parse(step.observation) as { sha256?: unknown; error?: unknown; truncated?: boolean; completeReadback?: boolean }
-      const fullOutput = ['file_create_copy', 'file_create_workbook'].includes(step.tool) && result.completeReadback === true
+      const fullOutput = ['file_create_copy', 'file_create_workbook', 'file_edit_package'].includes(step.tool) && result.completeReadback === true
       return !result.error && (result.truncated !== true || fullOutput) && typeof result.sha256 === 'string' && /^[0-9a-f]{64}$/.test(result.sha256)
     } catch { return false }
   }

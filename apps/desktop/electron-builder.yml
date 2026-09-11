@@ -1,10 +1,7 @@
-# the old dev.strata.app identity keep their own uninstall entry — acceptable
-# while the audience is a handful of testers; do NOT change this again.
+# Keep the application identity stable across updates.
 appId: dev.engram.app
 productName: Engram
-# source stays private while the built installers + latest.yml are downloadable.
-# `--publish always` uploads there; every installed app reads its app-update.yml
-# (baked from this block) and self-updates. Update the token's repo, not this.
+# Installed apps use this repository for release assets and update metadata.
 publish:
   provider: github
   owner: YunJae00

@@ -5,14 +5,17 @@ type Cell = string | number | boolean | null | { formula: string }
 // Local formulas only. External references and executable spreadsheet features
 // are not emitted; unfamiliar formulas remain a job for the live application.
 const FUNCTIONS = new Set(['SUM', 'MIN', 'MAX', 'AVERAGE', 'COUNT', 'COUNTA', 'IF', 'AND', 'OR', 'NOT', 'ROUND', 'ROUNDUP', 'ROUNDDOWN', 'ABS'])
+export function validateWorkbookFormula(value: string): string {
+  const formula = value.toUpperCase()
+  if (!formula || formula.length > 1000 || !/^[A-Z0-9$():,+*/. <>=^%-]+$/.test(formula) || formula.startsWith('=')) throw new Error('Use a local formula without a leading = or external references.')
+  for (const match of formula.matchAll(/([A-Z][A-Z0-9_.]*)\s*\(/g)) if (!FUNCTIONS.has(match[1]!)) throw new Error(`Unsupported formula function: ${match[1]}. Use the live app instead.`)
+  return formula
+}
 function cell(value: unknown): Cell {
   if (value === null || typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.length <= 4000 && !value.includes('\0')) return value
   if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 1 && 'formula' in value && typeof value.formula === 'string') {
-    const formula = value.formula.toUpperCase()
-    if (!formula || formula.length > 1000 || !/^[A-Z0-9$():,+*/. <>=^%-]+$/.test(formula) || formula.startsWith('=')) throw new Error('Use a local formula without a leading = or external references.')
-    for (const match of formula.matchAll(/([A-Z][A-Z0-9_.]*)\s*\(/g)) if (!FUNCTIONS.has(match[1]!)) throw new Error(`Unsupported formula function: ${match[1]}. Use the live app instead.`)
-    return { formula }
+    return { formula: validateWorkbookFormula(value.formula) }
   }
   throw new Error('Cells must be text, finite numbers, booleans, null or {formula}.')
 }

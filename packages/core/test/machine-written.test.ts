@@ -39,12 +39,12 @@ describe('capture provenance', () => {
 
 describe('capture context — where a memory came from', () => {
   it('the folder label survives the trip into the capture file, next to origin', async () => {
-    const { file } = await writeCapture(paths.inbox, '# team 구조\n\nowner는 회사당 1명.', 'session', 'chatx')
+    const { file } = await writeCapture(paths.inbox, '# team 구조\n\nowner는 회사당 1명.', 'session', 'sample')
     const { readFile } = await import('node:fs/promises')
     const { join } = await import('node:path')
     const content = await readFile(join(paths.inbox, file), 'utf8')
     expect(readOrigin(content)).toBe('session')
-    expect(readContext(content)).toBe('chatx')
+    expect(readContext(content)).toBe('sample')
     // The engine-facing text carries neither marker — provenance is
     // bookkeeping, not something to be copied into a memory's body.
     const stripped = stripProvenanceMarkers(content)
@@ -59,10 +59,10 @@ describe('capture context — where a memory came from', () => {
   })
 
   it('the filed note keeps the label through frontmatter serialization', async () => {
-    const note = await createNote(paths, { id: 'n-ctx', body: '# Team\n\n본문.', origin: 'session', context: 'chatx' }, NOW)
-    expect(note.front.context).toBe('chatx')
+    const note = await createNote(paths, { id: 'n-ctx', body: '# Team\n\n본문.', origin: 'session', context: 'sample' }, NOW)
+    expect(note.front.context).toBe('sample')
     const { readNote } = await import('../src/notes.js')
-    expect((await readNote(paths, 'n-ctx')).front.context).toBe('chatx')
+    expect((await readNote(paths, 'n-ctx')).front.context).toBe('sample')
   })
 })
 

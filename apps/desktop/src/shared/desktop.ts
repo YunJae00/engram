@@ -5,6 +5,8 @@ export interface DesktopNodeDto {
   runtimeId?: string
   name: string
   controlType: string
+  acceleratorKey?: string
+  accessKey?: string
   value?: string | null
   valueTruncated?: boolean
   enabled?: boolean

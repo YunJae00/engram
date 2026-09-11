@@ -1,5 +1,23 @@
 import { expect, it, vi } from 'vitest'
 import { desktopTools, desktopStepArgs, isDesktopTool } from '../src/desktop-tools.js'
+
+it('accepts bounded target waits but not scripts, arbitrary delays or unscoped waits', async () => {
+  const sequence = vi.fn(async () => 'ready')
+  const tool = desktopTools({ read: async () => '', sequence }).find(one => one.name === 'desktop_sequence')!
+  const wait = { kind: 'wait', target: { name: 'Next', controlType: 'Button' } }
+  expect(await tool.run({ snapshot: 'fresh', actions: [wait] }, { task: '' })).toBe('ready')
+  sequence.mockClear()
+  for (const action of [{ kind: 'wait' }, { ...wait, milliseconds: 60000 }, { ...wait, code: 'run()' }])
+    await expect(tool.run({ snapshot: 'fresh', actions: [action] }, { task: '' })).rejects.toThrow()
+  expect(sequence).not.toHaveBeenCalled()
+})
+
+it.each(['Shift+Tab', 'Control+Tab', 'Control+Shift+Tab', 'F6', 'Shift+F6', 'Control+L', 'Control+N', 'Control+H'])('accepts the app navigation chord %s', async key => {
+  const act = vi.fn(async () => 'dispatched')
+  const tool = desktopTools({ read: async () => '', act }).find(one => one.name === 'desktop_action')!
+  await tool.run({ kind: 'key', snapshot: 'fresh', key }, { task: 'Navigate the chosen app' })
+  expect(act).toHaveBeenCalledOnce()
+})
 it('validates the entire sequence before sending any input and redacts its text', async () => {
   const sequence = vi.fn(async () => 'observed result')
   const tool = desktopTools({ read: async () => '', sequence }).find((one) => one.name === 'desktop_sequence')!

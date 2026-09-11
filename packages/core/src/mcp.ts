@@ -96,14 +96,14 @@ const TOOLS = [
   {
     name: 'engram_alias',
     description:
-      "Record that two or more names refer to the same thing in the user's world (a project and its codename, Korean/English spellings, 'myclient' = 'myclientology'). Use when the user says X and Y are the same thing. Search and the librarian then treat all the names as one.",
+      "Record that two or more names refer to the same thing in the user's world, such as an abbreviation and its full name or Korean/English spellings. Use when the user says X and Y are the same thing. Search and the librarian then treat all the names as one.",
     inputSchema: {
       type: 'object',
       properties: {
         terms: {
           type: 'array',
           items: { type: 'string' },
-          description: 'The equivalent names (2 or more), e.g. ["myclient", "myclientology"].',
+          description: 'Two or more equivalent names explicitly identified by the user.',
         },
       },
       required: ['terms'],

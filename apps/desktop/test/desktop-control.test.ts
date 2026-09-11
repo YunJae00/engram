@@ -386,6 +386,16 @@ describe('acting', () => {
     expect(JSON.stringify([result, control.desktopControlStatus(), deps.changed.mock.calls, deps.broadcast.mock.calls])).not.toContain(text)
   })
 
+  it('live document access uses the same window lease and cannot bypass Stop', async () => {
+    const host = binding()
+    await control.accessLiveDocument(lane, 'documentRead', { range: 'A1:D5' })
+    expect(host.request).toHaveBeenCalledWith('documentRead', { window: '100', pid: 200, lease: 'native-100', range: 'A1:D5' })
+    control.stopDesktopFromUi()
+    const count = host.request.mock.calls.length
+    await expect(control.accessLiveDocument(lane, 'documentEdit', { snapshot: 'previous', edits: [] })).rejects.toThrow(/cancelled|stopped|Esc/i)
+    expect(host.request.mock.calls).toHaveLength(count)
+  })
+
   it('an action that fails ends control without a resume', async () => {
     const host = binding()
     const read = await control.readControlledDesktop(lane, undefined, true)

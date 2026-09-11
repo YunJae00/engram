@@ -11,6 +11,44 @@ const base = (): DesktopObservationDto => ({ snapshot: 'first', truncated: false
 const step = (action: Omit<DesktopGuardedAction, 'snapshot' | 'target'> & { text?: string; key?: string; value?: string }, one = target) => ({ ...action, snapshot: 'first', target: one } as DesktopGuardedAction)
 afterEach(() => vi.restoreAllMocks())
 
+it.each(['Button', 'Edit', 'ComboBox'])('waits for an asynchronous %s without replaying earlier input', async controlType => {
+  const current = base(), future = { name: 'Ready control', controlType }
+  let reads = 0
+  const read = vi.fn(async () => {
+    if (++reads === 4) current.nodes.push({ ...current.nodes[0]!, ...future, id: 'e9', runtimeId: 'future' })
+    return current
+  })
+  const act = vi.fn(async () => undefined)
+  const result = JSON.parse(await guardedSequence(base(), [step({ kind: 'click' }), step({ kind: 'wait' }, future), step({ kind: 'click' }, future)], read, act))
+  expect(result).toMatchObject({ completed: 3, dispatched: 2, verified: 0 })
+  expect(act.mock.calls).toHaveLength(2)
+  expect(act.mock.calls[1]![0]).toMatchObject({ kind: 'click', element: 'e9' })
+})
+
+it('allows a read-only starting wait and then stops on a missing target without input', async () => {
+  let elapsed = 0
+  vi.spyOn(performance, 'now').mockImplementation(() => (elapsed += 1000))
+  const act = vi.fn()
+  const result = JSON.parse(await guardedSequence(base(), [step({ kind: 'wait' }, next), step({ kind: 'click' }, next)], async () => base(), act))
+  expect(result).toMatchObject({ completed: 0, dispatched: 0, observationMayBeStale: false })
+  expect(result.error).toContain('did not become available')
+  expect(act).not.toHaveBeenCalled()
+})
+
+it.each(['ambiguous', 'protected', 'cancelled'])('does not continue after an unsafe wait: %s', async cause => {
+  const controller = new AbortController(), current = base(), act = vi.fn()
+  const read = async () => {
+    if (cause === 'cancelled') controller.abort()
+    if (cause === 'protected') current.protectedBounds = [current.bounds]
+    if (cause === 'ambiguous') current.nodes.push(...[1, 2].map(n => ({ ...current.nodes[0]!, ...next, id: `e${n + 5}`, runtimeId: `next${n}` })))
+    return current
+  }
+  const result = guardedSequence(base(), [step({ kind: 'wait' }, next), step({ kind: 'click' }, next)], read, act, controller.signal)
+  if (cause === 'cancelled') await expect(result).rejects.toThrow()
+  else expect(JSON.parse(await result).error).toBeTruthy()
+  expect(act).not.toHaveBeenCalled()
+})
+
 it('uses unnamed anchored focus reads without authorizing window captures', async () => {
   const original = base()
   original.nodes[0]!.name = ''

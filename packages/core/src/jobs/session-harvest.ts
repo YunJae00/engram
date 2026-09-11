@@ -6,16 +6,7 @@ import type { VaultPaths } from '../vault.js'
 import { withPrompt } from './prompts.js'
 import type { JobSpec } from './runner.js'
 
-// J11 — watch the user work and keep only what they will need later.
-//
-// This is the job that decides what a permanent memory is, so its whole design
-// is a bias toward keeping NOTHING. The measured shape of this user's vault is
-// the argument: notes that record progress are recalled 26% of the time, facts
-// and decisions 44-57%. A harvester that writes down "currently trying X"
-// converts a memory into a log, and a log is what made them stop opening it.
-//
-// So the instruction spends most of its length on refusals, and returning an
-// empty list is stated as the ordinary outcome rather than a failure.
+// Retain reusable conclusions rather than transient progress. An empty result is valid.
 export const J11_INSTRUCTION = [
   "Below is a stretch of a work session the user just had with an AI assistant. Pick out ONLY what will be needed again later and turn it into notes.",
   "",

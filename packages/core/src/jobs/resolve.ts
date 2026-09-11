@@ -104,15 +104,7 @@ export function buildJ12(
         await holdCard(paths, card.id, 'verdict could not be read')
         return [`held quietly: ${card.id} (verdict could not be read)`]
       }
-      // "Not a contradiction after all" — the commonest true answer, and the
-      // one the first version of this job could not give. Probed against the
-      // real vault: a note measuring "64 sessions active in the last 2 hours"
-      // and one measuring "2,202 of 2,235 are self-generated" were read as
-      // conflicting numbers, when the second note's own last line says it
-      // EXPLAINS the first. With only resolve-or-escalate on offer, settling
-      // that correctly meant retiring one of them — and the loser held three
-      // findings the winner did not. Keeping both is not a compromise here, it
-      // is the right answer.
+      // Complementary findings can both remain current without retiring either note.
       if (parsed.verdict === 'keep-both') {
         // The two card types need opposite calls to reach the same outcome. On
         // a conflict, approving with 'both' verifies each note and retires
@@ -158,4 +150,3 @@ export function buildJ12(
     },
   }
 }
-

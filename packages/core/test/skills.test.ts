@@ -52,53 +52,53 @@ const procedureNotes = (folder: string, count: number, created = '2026-08-01T00:
 
 describe('skillCandidates', () => {
   it('needs ≥3 procedure-shaped conclusions in one folder — twice is coincidence', () => {
-    expect(skillCandidates([...procedureNotes('chatx', 2), note('일반 결정', { context: 'chatx' })], {})).toEqual([])
-    const found = skillCandidates(procedureNotes('chatx', 3), {})
+    expect(skillCandidates([...procedureNotes('sample', 2), note('일반 결정', { context: 'sample' })], {})).toEqual([])
+    const found = skillCandidates(procedureNotes('sample', 3), {})
     expect(found).toHaveLength(1)
-    expect(found[0]).toMatchObject({ slug: 'chatx', folder: 'chatx' })
+    expect(found[0]).toMatchObject({ slug: 'sample', folder: 'sample' })
   })
 
   it('nothing new since the last distillation → nothing to say', () => {
-    const ledger = { chatx: { folder: 'chatx', hash: 'h', distilledAt: '2026-08-02T00:00:00.000Z' } }
-    expect(skillCandidates(procedureNotes('chatx', 4), ledger)).toEqual([])
-    const fresh = [...procedureNotes('chatx', 3), note('새 함정 발견', { context: 'chatx', created: '2026-08-04T00:00:00.000Z' })]
+    const ledger = { sample: { folder: 'sample', hash: 'h', distilledAt: '2026-08-02T00:00:00.000Z' } }
+    expect(skillCandidates(procedureNotes('sample', 4), ledger)).toEqual([])
+    const fresh = [...procedureNotes('sample', 3), note('새 함정 발견', { context: 'sample', created: '2026-08-04T00:00:00.000Z' })]
     expect(skillCandidates(fresh, ledger)).toHaveLength(1)
   })
 
   it('a user-owned skill is never a candidate again', () => {
-    const ledger = { chatx: { folder: 'chatx', hash: 'h', distilledAt: '2026-07-01T00:00:00.000Z', userOwned: true } }
-    expect(skillCandidates(procedureNotes('chatx', 5), ledger)).toEqual([])
+    const ledger = { sample: { folder: 'sample', hash: 'h', distilledAt: '2026-07-01T00:00:00.000Z', userOwned: true } }
+    expect(skillCandidates(procedureNotes('sample', 5), ledger)).toEqual([])
   })
 })
 
 describe('installSkill', () => {
-  const draft = { title: '포팅 함정 체크리스트', description: 'When porting chatx modules', body: '## Steps\n- check installs' }
+  const draft = { title: '포팅 함정 체크리스트', description: 'When porting sample modules', body: '## Steps\n- check installs' }
 
   it('writes SKILL.md under the injectable home and stamps the ledger', async () => {
-    const [candidate] = skillCandidates(procedureNotes('chatx', 3), {})
+    const [candidate] = skillCandidates(procedureNotes('sample', 3), {})
     const result = await installSkill(home, paths, candidate!, draft, NOW)
     expect(result.installed).toBe(true)
-    const file = await readFile(join(home, '.claude', 'skills', 'engram-chatx', 'SKILL.md'), 'utf8')
-    expect(file).toContain('name: engram-chatx')
+    const file = await readFile(join(home, '.claude', 'skills', 'engram-sample', 'SKILL.md'), 'utf8')
+    expect(file).toContain('name: engram-sample')
     expect(file).toContain('## Steps')
     const ledger = await readSkillsLedger(paths)
-    expect(ledger['chatx']?.hash).toBe(skillContentHash(file))
+    expect(ledger['sample']?.hash).toBe(skillContentHash(file))
     expect(countRecentSkills(ledger, NOW.getTime() - 1000)).toBe(1)
   })
 
   it('A USER-EDITED FILE IS THEIRS FOREVER — hash mismatch flips ownership and refuses', async () => {
-    const [candidate] = skillCandidates(procedureNotes('chatx', 3), {})
+    const [candidate] = skillCandidates(procedureNotes('sample', 3), {})
     await installSkill(home, paths, candidate!, draft, NOW)
-    const file = join(home, '.claude', 'skills', 'engram-chatx', 'SKILL.md')
+    const file = join(home, '.claude', 'skills', 'engram-sample', 'SKILL.md')
     await writeFile(file, `${await readFile(file, 'utf8')}\n<!-- my own edit -->`)
     const again = await installSkill(home, paths, candidate!, { ...draft, body: 'new body' }, NOW)
     expect(again).toEqual({ installed: false, reason: 'user-owned' })
     expect((await readFile(file, 'utf8')).includes('my own edit')).toBe(true)
-    expect((await readSkillsLedger(paths))['chatx']?.userOwned).toBe(true)
+    expect((await readSkillsLedger(paths))['sample']?.userOwned).toBe(true)
   })
 
   it('secrets never leave the vault', async () => {
-    const [candidate] = skillCandidates(procedureNotes('chatx', 3), {})
+    const [candidate] = skillCandidates(procedureNotes('sample', 3), {})
     const leaky = { ...draft, body: 'set GH_TOKEN=ghp_abcdefghijklmnopqrst1234 first' }
     expect(await installSkill(home, paths, candidate!, leaky, NOW)).toEqual({ installed: false, reason: 'privacy' })
     expect(passesPrivacyLint('email me at a@b.co')).toBe(false)
@@ -107,8 +107,8 @@ describe('installSkill', () => {
 
 describe('renderSkillMd', () => {
   it('produces valid frontmatter with the engram marker', () => {
-    const md = renderSkillMd('chatx', 'chatx', { title: 'T', description: 'multi\nline desc', body: 'B' })
-    expect(md.startsWith('---\nname: engram-chatx\ndescription: multi line desc\n---\n')).toBe(true)
+    const md = renderSkillMd('sample', 'sample', { title: 'T', description: 'multi\nline desc', body: 'B' })
+    expect(md.startsWith('---\nname: engram-sample\ndescription: multi line desc\n---\n')).toBe(true)
     expect(md).toContain('<!-- engram:skill v1')
   })
 })

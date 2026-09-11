@@ -42,7 +42,7 @@ internal sealed class InputMonitor : IDisposable
         Loop.SetApartmentState(ApartmentState.STA);
         Loop.Start();
         if (!Ready.Wait(3000) || StartupError != null)
-            throw new InvalidOperationException("Desktop stop monitoring is unavailable", StartupError);
+            throw new InvalidOperationException("Desktop stop monitoring is unavailable: " + (StartupError == null ? "initialization timed out" : StartupError.Message), StartupError);
         Watchdog = new System.Threading.Timer(delegate
         {
             var state = Lease.State;

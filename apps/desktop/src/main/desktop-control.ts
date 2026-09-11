@@ -8,11 +8,7 @@ import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
 import { replacementTarget } from './desktop-guarded-sequence.js'
-
-// Control is taken by the comet's first reading of an app and given back by
-// an explicit stop. Pointer motion is harmless; native control separates
-// physical input from agent input. Esc, Stop, or a click outside the target
-// ends control for the turn. Interrupted preparation can wait for held keys.
+// Esc/Stop ends the turn's lease; native control separates physical and agent input.
 const LEASE_TTL_MS = 60 * 60_000
 const HANDS_STILL_MS = 4_000
 const HANDS_AT_MOST_MS = 5 * 60_000
@@ -20,7 +16,6 @@ const HANDS_POLL_MS = 250
 const REBIND_TRIES = 3
 const LABEL: Record<DesktopEngineId, string> = { claude: 'Claude', codex: 'ChatGPT' }
 const RESUMABLE = /returned control to the user|pointer target changed|window or desktop changed|control expired/i
-
 const lease = new DesktopControlLease({ onChange: desktopChanged, ttlMs: LEASE_TTL_MS })
 type DesktopEngine = Pick<Engine, 'id' | 'desktopToolIsolation'>
 let engineForControl: () => Promise<DesktopEngine | undefined> = async () => undefined
@@ -36,7 +31,6 @@ const operations = new Map<string, Promise<unknown>>()
 let launching: { lane: string; host: DesktopHost } | undefined
 
 setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, RESUMABLE.test(reason)))
-
 export function setDesktopEngineResolver(resolve: typeof engineForControl): void { engineForControl = resolve }
 export function assertDesktopChatEngine(lane: string, engine: DesktopEngine | undefined): void {
   if (!desktopBinding(lane)?.readable) return
@@ -47,7 +41,6 @@ export function assertDesktopChatEngine(lane: string, engine: DesktopEngine | un
 }
 
 function engineOf(id: string): DesktopEngineId { return id === 'codex' ? 'codex' : 'claude' }
-
 export function desktopControlStatus(): DesktopControlStatusDto {
   const state = lease.state()
   const engine = active?.engine ?? paused?.engine
@@ -99,13 +92,11 @@ export function assertDesktopTurnNotStopped(lane: string): void {
   if (stoppedTurns.has(lane)) throw stoppedError(lane)
 }
 
-// Esc or the Stop button: the person's word, for the rest of this turn.
 export function stopDesktopFromUi(): void {
   if (paused && !paused.resumable && !active) { cancellation++; paused.release?.(); lease.reset(); paused = undefined; announce() }
   else stopDesktopControl()
 }
 
-// The pill's "Resume now": the stillness wait ends here.
 export function resumeDesktopControl(): void { paused?.release?.() }
 
 export function stopDesktopForLane(lane: string, reason = 'This chat stopped.', resumable = false): void {
@@ -137,9 +128,6 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   }
 }
 
-// A turn's control ends with the turn. The app stays connected and readable,
-// so the next turn picks it up without asking; only the native hold, the
-// hooks and the banner go.
 export function endDesktopTurn(lane: string): void {
   stoppedTurns.delete(lane)
   if (active?.binding.lane !== lane && lease.state().lane !== lane && startingLane !== lane) return
@@ -184,8 +172,7 @@ async function beginNative(held: NonNullable<typeof active>): Promise<void> {
   } finally { held.bindingNative = false }
 }
 
-// Keep snapshots between tool calls, but never hold physical input while the
-// model is thinking, generating an answer, or running a non-desktop tool.
+// Release physical input between calls while keeping the loop's observation and banner.
 export async function withDesktopActivity<T>(lane: string, run: () => Promise<T>): Promise<T> {
   const previous = operations.get(lane)
   const operation = (async () => {
@@ -210,9 +197,6 @@ function cursor(): { x: number; y: number } | null {
   try { const point = screen.getCursorScreenPoint(); return { x: point.x, y: point.y } } catch { return null }
 }
 
-// The person's hands are on the machine: wait until the mouse has been still
-// for a moment, or until they press Resume. Typing is caught by the native
-// bind, which refuses while any key is down.
 async function awaitStillHands(signal?: AbortSignal): Promise<void> {
   const from = Date.now()
   let last = cursor()
@@ -252,9 +236,7 @@ async function takeControl(lane: string, engine: DesktopEngineId, check: () => v
   return binding
 }
 
-// The one door to the computer: the first reading takes it, a hands-on pause
-// waits and takes it again, and a different app is a re-take. Serialized so
-// two tool calls in flight cannot bind twice.
+// Serialize grants so concurrent calls cannot bind twice.
 export async function ensureDesktopControl(lane: string, options: { app?: string; signal?: AbortSignal } = {}): Promise<DesktopBinding> {
   const epoch = cancellation
   const check = () => {
@@ -298,7 +280,6 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
   try { return await run } finally { if (starting === run) { starting = undefined; startingLane = undefined } }
 }
 
-// Kept for the manual route: the same door, opened from the app itself.
 export async function startDesktopControl(lane: string): Promise<DesktopControlStatusDto> {
   stoppedTurns.delete(lane)
   if (paused?.lane === lane && !paused.resumable) { lease.reset(); paused = undefined }
@@ -338,6 +319,26 @@ export function desktopObservation(lane: string, snapshot: string): DesktopObser
   const observation = observations.get(lane)
   if (!observation || observation.snapshot !== snapshot) throw new Error('Observe the app again before acting. This snapshot is stale.')
   return observation
+}
+
+export async function accessLiveDocument(lane: string, method: 'documentRead' | 'documentEdit', args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted()
+  const { app, ...request } = args
+  await ensureDesktopControl(lane, { ...(typeof app === 'string' ? { app } : {}), ...(signal ? { signal } : {}) })
+  const held = active
+  const token = lease.tokenFor(lane)
+  if (!held?.native || !token || held.token !== token || held.binding.lane !== lane) throw new Error('Computer control is not active.')
+  const stop = () => { if (active?.token === token) stopDesktopForLane(lane, 'Document access was cancelled.') }
+  signal?.addEventListener('abort', stop, { once: true })
+  try {
+    return await lease.run(token, lane, async () => {
+      signal?.throwIfAborted()
+      const result = await held.binding.host.request(method, { ...request, window: held.binding.window, pid: held.binding.pid, lease: held.native })
+      signal?.throwIfAborted()
+      observations.delete(lane)
+      return JSON.stringify(result)
+    })
+  } finally { signal?.removeEventListener('abort', stop) }
 }
 
 export async function actOnDesktop(lane: string, action: DesktopAction, signal?: AbortSignal): Promise<string> {

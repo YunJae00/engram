@@ -47,7 +47,7 @@ internal static class Program
     }
 
     private static void Receive(DesktopRequest queued, AutomationSession automation, WindowGuard guard,
-        ControlLease lease, InputMonitor monitor, DesktopActions actions)
+        ControlLease lease, InputMonitor monitor, DesktopActions actions, LiveDocumentWorker documents)
     {
         var id = 0;
         var mutation = false;
@@ -58,7 +58,7 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
+            mutation = method == "documentEdit" || method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
@@ -109,6 +109,18 @@ internal static class Program
                 else monitor.Idle(state);
                 Send(new { id = id, result = new { working = method == "work" } });
                 return;
+            }
+            if (method == "documentRead" || method == "documentEdit")
+            {
+                lease.Require(state);
+                Action check = delegate
+                {
+                    lease.Require(state);
+                    if (Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Document access was cancelled");
+                    guard.Resolve(window, pid);
+                };
+                var result = documents.Run(document => method == "documentRead" ? document.Read(target, request, check) : document.Edit(target, request, check));
+                Send(new { id = id, result = result }); return;
             }
             if (method == "observe")
             {
@@ -216,6 +228,7 @@ internal static class Program
                     });
                 });
                 using (monitor = new InputMonitor(lease, guard))
+                using (var documents = new LiveDocumentWorker())
                 {
                     var automation = new AutomationSession(guard);
                     var actions = new DesktopActions(lease, monitor, automation);
@@ -226,7 +239,7 @@ internal static class Program
                             foreach (var request in requests.GetConsumingEnumerable())
                             {
                                 if (Volatile.Read(ref Closed) != 0) break;
-                                Receive(request, automation, guard, lease, monitor, actions);
+                                Receive(request, automation, guard, lease, monitor, actions, documents);
                             }
                         }
                         finally { automation.Dispose(); }

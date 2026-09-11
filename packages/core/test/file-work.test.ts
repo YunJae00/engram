@@ -57,7 +57,7 @@ it('does not even resolve an unapproved source, including metadata-only revision
   const call = tools(async () => false)
   const path = join(root, 'not-present.txt')
   await expect(call('file_read', { path })).rejects.toThrow('declined')
-  await expect(call('file_create_copy', { name: 'copy.txt', sourcePath: path, expectedSha256: '0'.repeat(64), content: 'x' })).rejects.toThrow('revision is missing')
+  await expect(call('file_create_copy', { name: 'copy.txt', sourcePath: path, expectedSha256: '0'.repeat(64), content: 'x' })).rejects.toThrow('declined')
   expect(await readdir(root)).toHaveLength(0)
 })
 

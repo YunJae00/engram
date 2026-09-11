@@ -128,8 +128,8 @@ describe('J9 topic hub synthesis', () => {
     const members = (await loadNotes(paths)).filter((n) => n.front.type !== 'hub')
     const stale = fakeNote('n-hub-0001', ['n-a', 'n-b'], 'hub')
     stale.body = '# 옛 이름\n\n낡은 종합'
-    expect(buildJ9(paths, '', members, stale, NOW, 'MyClientology').prompt).not.toContain('옛 이름')
-    expect(buildJ9(paths, '', members, stale, NOW, 'MyClientology').prompt).toContain('MyClientology')
+    expect(buildJ9(paths, '', members, stale, NOW, 'Workspace').prompt).not.toContain('옛 이름')
+    expect(buildJ9(paths, '', members, stale, NOW, 'Workspace').prompt).toContain('Workspace')
     // Same membership = the same topic, so the synthesis carries over.
     const same = fakeNote('n-hub-0002', ['n-d', 'n-c', 'n-b', 'n-a'], 'hub')
     same.body = '# 옛 이름\n\n낡은 종합'

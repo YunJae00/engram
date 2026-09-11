@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, open, realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative } from 'node:path'
 import type { AgentTool } from './agent-loop.js'
+import { documentTools, DOCUMENT_BYTES, DOCUMENT_EXTENSIONS } from './document-tools.js'
 
 const MAX_BYTES = 512_000
 const MAX_CHARS = 24_000
@@ -18,9 +19,9 @@ export interface FileWorkOptions {
   assertActive?(): void
 }
 
-function nameOf(value: unknown, workbook = false): string {
+function nameOf(value: unknown, document = false): string {
   if (typeof value !== 'string' || !/^[\p{L}\p{N}_][\p{L}\p{N}_. -]{0,119}$/u.test(value)
-    || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value) || !(TEXT.has(extname(value).toLowerCase()) || workbook && extname(value).toLowerCase() === '.xlsx')) {
+    || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value) || !(TEXT.has(extname(value).toLowerCase()) || document && DOCUMENT_EXTENSIONS.includes(extname(value).toLowerCase()))) {
     throw new Error('Use a plain filename ending in .txt, .md, .json, .csv or .tsv, without directories.')
   }
   return value
@@ -82,8 +83,34 @@ function textOf(data: Buffer, name: string): string {
 export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
   const inputs = new Map<string, { path: string; sha256: string }>()
   let declined = false
-  const inspect = async (path: string, signal?: AbortSignal, offset = 0) => {
-    const data = await boundedRead(path, signal)
+  const readSource = async (requested: string, signal?: AbortSignal, revision?: string) => {
+    options.assertActive?.()
+    signal?.throwIfAborted()
+    if (declined) throw new Error('File access was declined for this turn. Do not ask again or use another tool to bypass it.')
+    if (revision !== undefined && inputs.get(requested)?.sha256 !== revision) throw new Error('Read the approved source again; its revision is missing or changed. No output was written.')
+    if (!inputs.has(requested) && !await options.approveRead(requested, signal)) {
+      declined = true
+      throw new Error('File access was declined. No file content was read.')
+    }
+    signal?.throwIfAborted()
+    options.assertActive?.()
+    const path = await realpath(requested)
+    if (inputs.has(requested) && path !== requested) throw new Error('The approved file target changed. No content was read.')
+    await options.assertReadable?.(path)
+    const data = await boundedRead(path, signal, DOCUMENT_EXTENSIONS.includes(extname(path).toLowerCase()) ? DOCUMENT_BYTES : MAX_BYTES)
+    const sha256 = digest(data)
+    if (revision !== undefined && sha256 !== revision) throw new Error('The source revision changed. No output was written.')
+    inputs.set(path, { path, sha256 })
+    return { path, data, sha256 }
+  }
+  const save = async (name: string, data: Buffer, signal?: AbortSignal) => {
+    signal?.throwIfAborted()
+    options.assertActive?.()
+    const result = await saveArtifact(options.directory, name, data, signal)
+    inputs.set(result.path, { path: result.path, sha256: result.sha256 })
+    return result
+  }
+  const inspect = (data: Buffer, path: string, offset = 0) => {
     const content = textOf(data, path)
     return { sha256: digest(data), bytes: data.length, characters: content.length, offset,
       content: content.slice(offset, offset + MAX_CHARS), truncated: content.length > offset + MAX_CHARS,
@@ -100,20 +127,8 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
         if (typeof args['path'] !== 'string' || !isAbsolute(args['path']) || !TEXT.has(extname(args['path']).toLowerCase())) throw new Error('Supply an absolute path to a supported saved text file.')
         const offset = args['offset'] ?? 0
         if (!Number.isSafeInteger(offset) || (offset as number) < 0 || (offset as number) > MAX_BYTES) throw new Error('Invalid file offset.')
-        if (declined) throw new Error('File access was declined for this turn. Do not ask again or use another tool to bypass it.')
-        if (!inputs.has(args['path'])) {
-          if (!await options.approveRead(args['path'], context.signal)) {
-            declined = true
-            throw new Error('File access was declined. No file content was read.')
-          }
-        }
-        context.signal?.throwIfAborted()
-        options.assertActive?.()
-        const path = await realpath(args['path'])
-        if (inputs.has(args['path']) && path !== args['path']) throw new Error('The approved file target changed. No content was read.')
-        await options.assertReadable?.(path)
-        const result = await inspect(path, context.signal, offset as number)
-        inputs.set(path, { path, sha256: result.sha256 })
+        const { path, data } = await readSource(args['path'], context.signal)
+        const result = inspect(data, path, offset as number)
         return JSON.stringify({ path, ...result })
       },
     },
@@ -138,21 +153,17 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
         }
         if (args['sourcePath'] !== undefined || args['expectedSha256'] !== undefined) {
           if (typeof args['sourcePath'] !== 'string' || typeof args['expectedSha256'] !== 'string') throw new Error('A revision needs both sourcePath and expectedSha256.')
-          const input = inputs.get(args['sourcePath'])
-          if (!input || input.sha256 !== args['expectedSha256']) throw new Error('Read the approved source again; its revision is missing or changed. No output was written.')
-          const path = await realpath(input.path)
-          await options.assertReadable?.(path)
-          if (path !== input.path || digest(await boundedRead(path, context.signal)) !== input.sha256) throw new Error('Read the approved source again; its revision is missing or changed. No output was written.')
+          await readSource(args['sourcePath'], context.signal, args['expectedSha256'])
         }
         context.signal?.throwIfAborted()
         options.assertActive?.()
-        const result = await saveArtifact(options.directory, name, data, context.signal)
-        inputs.set(result.path, { path: result.path, sha256: result.sha256 })
+        const result = await save(name, data, context.signal)
         return JSON.stringify({ ...result,
           verified: 'saved bytes match the requested content; task meaning, formulas and application rendering are not verified',
-          ...await inspect(result.path, context.signal) })
+          ...inspect(data, result.path) })
       },
     },
+    ...documentTools(readSource, save),
   ]
 }
 

@@ -79,8 +79,7 @@ export function solvePositions(picked: NoteDto[]): SolvedSky {
     }
   }
 
-  // Spring forces need "who is node i connected to"; one adjacency list built
-  // once turns 260×N×E scans (measured 414ms on a real vault) into 23ms.
+  // Reuse adjacency lists instead of scanning all edges for each spring-force iteration.
   const neighbors = buildAdjacency(picked.length, edges)
 
   const pos = picked.map((n) => {

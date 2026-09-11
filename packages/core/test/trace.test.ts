@@ -30,12 +30,12 @@ beforeEach(async () => {
 describe('traceNote', () => {
   it('draws links out and in, each wearing its reason', async () => {
     await createNote(paths, { id: 'n-b', body: '# 담당파트너 반영\n\n본문.' }, NOW)
-    await createNote(paths, { id: 'n-a', body: '# Team owner는 1명\n\n본문.', context: 'chatx' }, NOW)
+    await createNote(paths, { id: 'n-a', body: '# Team owner는 1명\n\n본문.', context: 'sample' }, NOW)
     await createNote(paths, { id: 'n-c', body: '# 스코프 게이트\n\n본문.' }, NOW)
     await link(paths, 'n-a', 'n-b', 'team 유니크 제약이 owner를 1명으로 제한')
     await link(paths, 'n-c', 'n-a', '같은 팀 구조 전제')
     const map = traceNote(await loadNotes(paths), 'n-a')!
-    expect(map).toContain('folder: chatx')
+    expect(map).toContain('folder: sample')
     expect(map).toContain('→ [담당파트너 반영] (n-b')
     expect(map).toContain('team 유니크 제약이 owner를 1명으로 제한')
     expect(map).toContain('← [스코프 게이트] (n-c')

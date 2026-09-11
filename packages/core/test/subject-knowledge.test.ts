@@ -22,7 +22,7 @@ function chain(prefix: string, groups: number): { communities: string[][]; title
   return { communities, titles, adj }
 }
 
-const { communities, titles, adj } = chain('SATURN', 4)
+const { communities, titles, adj } = chain('PROJECT', 4)
 const titleOf = (id: string) => titles.get(id)!
 const merge = (known?: Parameters<typeof mergeBySubject>[3]) => mergeBySubject(communities, titleOf, adj, known)
 
@@ -32,17 +32,17 @@ describe('four linked clusters sharing one dominant word', () => {
   })
 
   it('stays split when the word is declared an umbrella', () => {
-    expect(merge({ umbrella: ['saturn'] })).toHaveLength(4)
+    expect(merge({ umbrella: ['project'] })).toHaveLength(4)
   })
 
   it('becomes one topic when the word is declared a name', () => {
-    const merged = merge({ aliases: [['SATURN', '새턴']] })
+    const merged = merge({ aliases: [['PROJECT', '프로젝트']] })
     expect(merged).toHaveLength(1)
-    expect(merged[0]!.subject).toBe('SATURN')
+    expect(merged[0]!.subject).toBe('PROJECT')
   })
 
   it('lets umbrella win over an alias entry, because refusing to merge is the safe error', () => {
-    expect(merge({ aliases: [['SATURN', '새턴']], umbrella: ['saturn'] })).toHaveLength(4)
+    expect(merge({ aliases: [['PROJECT', '프로젝트']], umbrella: ['project'] })).toHaveLength(4)
   })
 
   it('ignores declarations about words this vault does not use', () => {
@@ -52,11 +52,11 @@ describe('four linked clusters sharing one dominant word', () => {
   // A declaration is permission to merge, not a command: the clusters must
   // still be linked and the word must still be what each pile is about.
   it('does not merge clusters the link graph never joined', () => {
-    const loose = chain('SATURN', 3)
-    loose.adj.delete('SATURN0-0')
-    for (const set of loose.adj.values()) set.delete('SATURN0-0')
+    const loose = chain('PROJECT', 3)
+    loose.adj.delete('PROJECT0-0')
+    for (const set of loose.adj.values()) set.delete('PROJECT0-0')
     const merged = mergeBySubject(loose.communities, (id) => loose.titles.get(id)!, loose.adj, {
-      aliases: [['SATURN', '새턴']],
+      aliases: [['PROJECT', '프로젝트']],
     })
     expect(merged.length).toBeGreaterThan(1)
   })

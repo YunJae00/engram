@@ -13,7 +13,7 @@ const NOW = new Date('2026-07-27T00:00:00Z')
 describe('marking a note open by hand', () => {
   it('puts an unflagged note into the open loops, and takes it back out', async () => {
     const paths = await initVault(await tmpVaultRoot('open-loop-manual'), { git: false })
-    await createNote(paths, { id: 'n-backlog', body: '# ChatX 포팅 작업 백로그\n\n우선순위순.' }, NOW)
+    await createNote(paths, { id: 'n-backlog', body: '# Sample 포팅 작업 백로그\n\n우선순위순.' }, NOW)
 
     expect(openLoops(await loadNotes(paths), NOW)).toHaveLength(0)
 

@@ -24,6 +24,23 @@ const tools: AgentTool[] = [
   { name: 'ask_person', description: 'ask', argsSchema: { type: 'object', properties: { question: { type: 'string' } } }, run: async (args) => formatAsk(String(args['question']), ['A', 'B']) },
 ]
 
+it('offers method discovery for desktop and web work without saved-file tools', async () => {
+  const read = vi.fn(async () => 'Unneeded observation')
+  const available: AgentTool[] = ['read_desktop', 'desktop_sequence', 'open_page'].map(name => ({ name, description: name, argsSchema: {}, run: read }))
+  const engine = sessionBrain(async job => {
+    expect(job.system).toContain('not a fixed application recipe')
+    const capability = job.tools.find(tool => tool.name === 'work_capabilities')!
+    const result = JSON.parse(String(await capability.run({})).split('\n')[0]!)
+    expect(result.desktop).toEqual(['read_desktop', 'desktop_sequence'])
+    expect(result.web).toEqual(['open_page'])
+    expect(result.savedFiles).toEqual([])
+    expect(result.liveDocumentApi.available).toBe(false)
+    return { answer: 'Available methods inspected; no actions taken' }
+  })
+  await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: available }, 'Inspect available execution methods')
+  expect(read).not.toHaveBeenCalled()
+})
+
 describe('a tool session: the brain loops, the turn keeps the loop\'s shape', () => {
   it('hands the tools over with the persona in the system prompt and records every call as a step', async () => {
     const seen: { system: string; prompt: string; opening?: string; key?: string }[] = []
@@ -255,4 +272,17 @@ it.each(['desktop_action', 'read_desktop'])('does not retain an earlier desktop 
     { name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => '{"snapshot":"fresh","nodes":[]}' },
   ] }, 'Perform requested changes')
   expect(result.incomplete).toBeUndefined()
+})
+
+it.each([false, true])('requires fresh verification after a live document conflict (reread=%s)', async (reread) => {
+  const engine = sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'edit_live_document')!.run({})
+    if (reread) await job.tools.find(tool => tool.name === 'read_live_document')!.run({})
+    return { answer: 'The document is complete' }
+  })
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [
+    { name: 'edit_live_document', description: 'edit', argsSchema: {}, run: async () => JSON.stringify({ live: true, completed: [], completeReadback: false, error: 'Content changed', reobserveRequired: true }) },
+    { name: 'read_live_document', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ live: true, blocks: [{ id: 'b0', text: 'Observed result' }] }) },
+  ] }, 'Update the open document')
+  expect(!!result.incomplete).toBe(!reread)
 })

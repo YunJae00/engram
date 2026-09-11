@@ -4,7 +4,7 @@ $desktopRoot = Split-Path $PSScriptRoot -Parent
 $outputRoot = if ($OutputPath) { [IO.Path]::GetFullPath($OutputPath) } else { Join-Path $desktopRoot 'native-bin/desktop' }
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 $frameworkRoot = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319'
-$references = @('System.dll', 'System.Core.dll', 'System.Web.Extensions.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll')
+$references = @('System.dll', 'System.Core.dll', 'Microsoft.CSharp.dll', 'System.Web.Extensions.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll')
 $references += @('UIAutomationClient.dll', 'UIAutomationTypes.dll', 'WindowsBase.dll') | ForEach-Object { Join-Path $frameworkRoot "WPF/$_" }
 $compilerArgs = @('/nologo', '/target:exe', '/platform:x64', '/optimize+', '/out:EngramDesktop.exe')
 $compilerArgs += $references | ForEach-Object { "/reference:$_" }

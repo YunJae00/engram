@@ -113,6 +113,8 @@ internal sealed class AutomationSession : IDisposable
         {
             id = id, runtimeId = runtime, name = current.IsPassword ? "Password field" : TextBudget(current.Name, 512, ref remaining),
             controlType = current.ControlType.ProgrammaticName.Replace("ControlType.", ""),
+            acceleratorKey = current.IsPassword ? "" : TextBudget(current.AcceleratorKey, 80, ref remaining),
+            accessKey = current.IsPassword ? "" : TextBudget(current.AccessKey, 80, ref remaining),
             value = value, valueTruncated = valueTruncated, bounds = Bounds(current.BoundingRectangle), enabled = current.IsEnabled,
             password = current.IsPassword, isPassword = current.IsPassword, offscreen = current.IsOffscreen, depth = depth,
             actions = new { click = current.IsEnabled && !current.IsPassword && !current.IsOffscreen,

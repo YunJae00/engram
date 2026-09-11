@@ -154,7 +154,7 @@ function hardenWebContents(contents: WebContents): void {
   })
 }
 
-// Frameless, Claude-desktop-style window: the top bar IS the title bar.
+// Frameless window: the top bar is the title bar.
 // Native window controls overlay it on Windows/macOS; Linux keeps its normal
 // frame since overlay support there is unreliable.
 // The one ground the app is painted on, per theme. Opening a window used to

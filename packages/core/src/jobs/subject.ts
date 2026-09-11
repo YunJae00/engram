@@ -7,12 +7,12 @@ export interface TopicGroup {
   subject: string | null
 }
 
-// Ticket-shaped tokens ("SATURN-244", "[ENG-12]") are identifiers, not subject
+// Ticket-shaped tokens ("TASK-244", "[ISSUE-12]") are identifiers, not subject
 // words — a cluster of tickets shares its project prefix by accident.
 const TICKET_RE = /^\[?[A-Z]+-\d+\]?$/
 const NUMBER_RE = /^\d+$/
-// Wrapping punctuation/symbols come off token edges ("[SATURN-244]" →
-// "SATURN-244", "'quotes'" → "quotes") but intra-token hyphens survive so the
+// Wrapping punctuation/symbols come off token edges ("[TASK-244]" →
+// "TASK-244", "'quotes'" → "quotes") but intra-token hyphens survive so the
 // ticket filter still sees its shape.
 const EDGE_TRIM_RE = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu
 
@@ -26,8 +26,7 @@ export function titleTokens(title: string): string[] {
 }
 
 // Share of a community's titles a word must carry before it is what that
-// community is ABOUT rather than something it mentions. MyClientology carries
-// 17 of 22 titles in the big cluster (0.77) and 9 of 9 in the small one.
+// community is ABOUT rather than something it mentions.
 const DOMINANT_SHARE = 0.6
 // ...and it must carry at least two titles: one title is a coincidence.
 const MIN_SUBJECT_TITLES = 2
@@ -134,7 +133,7 @@ export function mergeBySubject(
   for (const term of [...present.keys()].sort()) {
     const where = present.get(term)!
     // Told this word spans different things → it can never justify a merge,
-    // no matter how dominant. This is the SATURN case.
+    // no matter how dominant.
     if (umbrella.has(term)) continue
     // Told this word names one thing → it may span any number of communities.
     // Otherwise fall back to the old, cautious rule: exactly two, because

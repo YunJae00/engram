@@ -25,15 +25,15 @@ function loop(id: string, body: string): Note {
 describe('what the brief gets to read about an open loop', () => {
   it('carries the note body, not just its title', () => {
     const notes = [
-      loop('n-port', '# hcompany 포팅 — 남은 것\n\n- **SATURN-162**: thinking 파라미터 게이트\n- **SATURN-124**: 관리자 hard delete\n'),
+      loop('n-backlog', '# sample-project backlog\n\n- **PROJECT-162**: review validation rules\n- **PROJECT-124**: verify archive behavior\n'),
     ]
     const { loops } = openLoopsForBrief(notes, NOW)
     expect(loops).toHaveLength(1)
     // the identifiers a useful next step is made of
-    expect(loops[0]!.excerpt).toContain('SATURN-162')
-    expect(loops[0]!.excerpt).toContain('SATURN-124')
+    expect(loops[0]!.excerpt).toContain('PROJECT-162')
+    expect(loops[0]!.excerpt).toContain('PROJECT-124')
     // the title line itself is dropped — it already travels as `title`
-    expect(loops[0]!.excerpt).not.toContain('# hcompany')
+    expect(loops[0]!.excerpt).not.toContain('# sample-project')
   })
 
   it('keeps the top of a prioritised backlog when the note is long', () => {
@@ -80,6 +80,11 @@ describe('J8 asks for the next step, not a restatement', () => {
   it('forbids inventing what the note does not say', () => {
     expect(J8_INSTRUCTION).toContain('do not invent one')
     expect(J8_INSTRUCTION).toContain('only be repeated from the excerpt')
+  })
+
+  it('requires evidence before folding work from different projects', () => {
+    expect(J8_INSTRUCTION).toContain('notes explicitly refer to the same work')
+    expect(J8_INSTRUCTION).toContain('Matching ticket numbers alone do not establish identity')
   })
 
   it('asks for an order once there are more than a few', () => {

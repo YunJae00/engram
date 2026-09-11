@@ -3,13 +3,7 @@ import { trimJsonlIfHuge } from './receipts.js'
 import { dirname, join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
-// M9-4 — the notification ledger, and the discipline it buys: SILENCE IS AN
-// ANSWER. Every floating card the nudge shows is recorded with what happened
-// to it (answered, or waved away with "later"), and a card TYPE the user
-// keeps waving away starts asking less often — snooze doubling to 8h, then
-// 24h. No settings page, no toggle: the user already answered by ignoring it,
-// and a prompt that cannot learn that is a prompt people learn to click away
-// blindly (nudge.ts rule 3, now with memory).
+// Record notification outcomes and increase snooze intervals for repeatedly deferred types.
 //
 // A jsonl ledger, not frontmatter: these are app-behaviour events, not
 // memories — they never enter the vault's notes, views or sync.

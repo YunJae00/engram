@@ -24,6 +24,26 @@ internal static class DesktopSelfTest
     {
         try
         {
+            foreach (var chord in new[] { "Shift+Tab", "Control+Tab", "Control+Shift+Tab", "F6", "Shift+F6", "Control+L", "Control+N", "Control+H" })
+                Check(ControlPolicy.Chord(chord).Length <= 3, "Navigation chords are bounded and release every modifier");
+            Check(LiveDocument.Replacement("Old title", "Old", "New") == "New title", "Document replacements preserve unrelated text");
+            Check(LiveDocument.Replacement("", "", "한글") == "한글", "Empty document insertion supports Unicode");
+            Reject(delegate { LiveDocument.Replacement("same same", "same", "new"); }, "Ambiguous document replacements are rejected");
+            Reject(delegate { LiveDocument.Replacement("old", "missing", "new"); }, "Missing fragments are rejected");
+            Reject(delegate { LiveDocument.Replacement("old", "", "new"); }, "Empty fragments cannot overwrite existing text");
+            foreach (var formula in new[] { "=SUM(A1:A3)", "=B2*C2", "=ROUNDUP(A1,2)" }) { LiveDocument.SafeFormula(formula); Assertions++; }
+            Check((string)LiveDocument.CellInput("007") == "'007", "Leading zeros are literal text");
+            Check((double)LiveDocument.CellInput("3") == 3, "Canonical numeric input remains numeric");
+            Check(LiveDocument.CellAddress(20, 27) == "$AA$20" && LiveDocument.CellAddress(1, 16384) == "$XFD$1", "Bulk cell addresses span column boundaries");
+            var cellMatrix = Array.CreateInstance(typeof(object), new[] { 2, 2 }, new[] { 1, 1 });
+            cellMatrix.SetValue("=A1", 2, 1);
+            Check((string)LiveDocument.CellValue(cellMatrix, 1, 0) == "=A1" && (string)LiveDocument.CellValue("single", 0, 0) == "single", "Bulk reads handle native one-based arrays and single cells");
+            dynamic conflict = LiveDocument.Result(new System.Collections.Generic.List<object>(), "Changed before editing", "b0");
+            Check(conflict.reobserveRequired && !conflict.completeReadback && conflict.completed.Count == 0, "A preflight conflict reports zero writes and requests observation, not cancellation");
+            dynamic documentPartial = LiveDocument.Result(new System.Collections.Generic.List<object> { new { id = "b0" } }, "Changed during editing", "b1");
+            Check(documentPartial.reobserveRequired && documentPartial.completed.Count == 1 && documentPartial.failedBlock == "b1", "A failed batch preserves its verified prefix");
+            foreach (var formula in new[] { "=WEBSERVICE(A1)", "=CMD|' /c calc'!A0", "=[other.xlsx]Sheet1!A1", "=DDE(A1)", "=HYPERLINK(A1)", "=SecretNamedFormula" })
+                Reject(delegate { LiveDocument.SafeFormula(formula); }, "External/executable formulas are rejected natively");
             Check(DesktopApps.Allowed("Example", "Example.App_123!App", ""), "Registered packaged apps are discoverable");
             Check(DesktopApps.Allowed("Example", "Example", @"C:\Apps\Example.exe"), "Registered desktop executables are discoverable");
             Check(!DesktopApps.Allowed("Example", "Example", @"C:\Windows\System32\cmd.exe"), "Terminal targets are excluded regardless of display name");

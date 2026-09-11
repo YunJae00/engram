@@ -4,7 +4,7 @@ import type { VaultPaths } from '../vault.js'
 
 export type JobKind = 'J1' | 'J2' | 'J3' | 'J4' | 'J5' | 'J6' | 'J7' | 'J8' | 'J9' | 'J10' | 'J11' | 'J12' | 'J13'
 
-// Prompts are assembled by QUOTING AGENTS.md (BUILD_PLAN M2-3): the schema,
+// Prompts quote AGENTS.md: the schema,
 // the procedure line for this job, the card JSON contract and the
 // prohibitions travel with every prompt so engine behaviour stays identical
 // across CLIs.

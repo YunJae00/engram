@@ -15,7 +15,7 @@ import { buildIndex, searchIndex } from '../search.js'
 import { traceNote } from '../trace.js'
 import { initVault, vaultPaths, type VaultPaths } from '../vault.js'
 
-// `engram` CLI (BUILD_PLAN M2-6). The Electron app is a shell over the same
+// The CLI and Electron app share the same
 // core calls — everything here must work without any GUI.
 
 export interface CliIO {

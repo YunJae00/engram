@@ -1,18 +1,6 @@
 import { defineConfig } from 'vitest/config'
 
-// Two lanes (2026-08-06, after three gates in one day each lost a DIFFERENT
-// timing test to full-suite load): the three files that assert on real
-// wall-clock behaviour — child-process watchdogs, disk-poll round trips —
-// run SEQUENTIALLY in their own project, because they stopped surviving 90
-// parallel files hammering the same disk. Everything else keeps full
-// parallelism. Each timing file still passes alone in seconds; this only
-// stops the herd from trampling them.
-// The membership rule, not a list of names: a file belongs here if it SPAWNS
-// REAL PROCESSES or measures the clock. Adding them one at a time as each
-// flaked was whack-a-mole (three rounds on 2026-08-10) — the whole family
-// goes in, and a new spawning test should be added here when it is written.
-// Every one of these passes in seconds alone; they only fail when 80 parallel
-// files are fighting them for the same disk and cores.
+// Run process and wall-clock tests sequentially, separately from filesystem-heavy tests.
 const TIMING_SENSITIVE = [
   'packages/core/test/engine-timeout.test.ts',
   'packages/core/test/reaper.test.ts',

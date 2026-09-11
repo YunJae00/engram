@@ -2,7 +2,7 @@ import { createNote } from './notes.js'
 import type { Note } from './schema.js'
 import { initVault, type VaultPaths } from './vault.js'
 
-// Deterministic sample vault (BUILD_PLAN M1-6): a 3-step supersede chain,
+// Deterministic sample vault: a 3-step supersede chain,
 // a disputed pair, an expired note, an undetermined-chronology note and a
 // pinned/inferred trio for interpolation demos. No git — fixtures live
 // inside the monorepo repo.

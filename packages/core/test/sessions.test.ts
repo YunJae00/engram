@@ -81,7 +81,7 @@ describe('what travels to the engine', () => {
 
 describe('naming the project a transcript belongs to', () => {
   it('recovers the working directory leaf from the flattened folder name', () => {
-    expect(projectOfTranscript('C--Users-ykwon060-Desktop-pjt-chatx')).toBe('chatx')
+    expect(projectOfTranscript('C--Users-example-Projects-sample')).toBe('sample')
     expect(projectOfTranscript('/home/me/.claude/projects/C--Users-me-Desktop-pjt-strata-strata')).toBe('strata')
   })
 })

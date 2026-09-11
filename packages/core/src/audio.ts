@@ -12,7 +12,7 @@ const TRANSCRIBE_TIMEOUT_MS = 20 * 60_000
 
 // Audio pipeline: whisper.cpp transcription with
 // first-use model download. When no whisper binary is available the caller
-// leaves the audio in the inbox — degrade, never break (docs/BLOCKERS.md).
+// leaves the audio in the inbox without blocking other captures.
 
 export class WhisperUnavailableError extends Error {
   constructor(detail: string) {

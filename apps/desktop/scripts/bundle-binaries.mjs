@@ -1,11 +1,11 @@
-// M8-3: assemble the binary bundle shipped under resources/bin.
+// Assemble the binary bundle shipped under resources/bin.
 //  - git (Windows): MinGit — the official minimal Git for Windows — downloaded
 //    and extracted into bundle/git so the packaged app never needs a system
 //    git. Override the source with ENGRAM_MINGIT_URL.
 //  - git (Linux/macOS): snapshot of the build machine's git (binary +
 //    git-core + templates).
 //  - whisper: downloaded from ENGRAM_WHISPER_URL when provided; otherwise the
-//    audio pipeline stays behind its feature flag (docs/BLOCKERS.md).
+//    audio pipeline stays behind its feature flag.
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -152,7 +152,7 @@ if (whisperUrl) {
   writeFileSync(join(target, 'main'), Buffer.from(await res.arrayBuffer()), { mode: 0o755 })
   console.log('bundle: whisper downloaded')
 } else {
-  console.log('bundle: ENGRAM_WHISPER_URL not set — audio pipeline stays feature-flagged (docs/BLOCKERS.md)')
+  console.log('bundle: ENGRAM_WHISPER_URL not set — audio pipeline stays feature-flagged')
 }
 
 {

@@ -1,8 +1,8 @@
 import { nativeImage } from 'electron'
-import { desktopTools, type AgentTool, type ToolOutcome } from 'core'
+import { desktopTools, liveDocumentTools, type AgentTool, type ToolOutcome } from 'core'
 import type { DesktopObservationDto } from '../shared/desktop.js'
 import { desktopBinding, desktopWindows } from './desktop-access.js'
-import { actOnDesktop, ensureDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
+import { accessLiveDocument, actOnDesktop, ensureDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
 
@@ -62,7 +62,7 @@ async function listWindows(signal?: AbortSignal): Promise<string> {
 // reading of an app is what takes control, and the banner is the notice.
 export function desktopAgentTools(lane: string): AgentTool[] {
   if (!DesktopHost.available()) return []
-  return desktopTools({
+  return [...desktopTools({
     apps: async (signal) => {
       const host = new DesktopHost()
       const abort = () => host.close()
@@ -86,7 +86,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       }
     }),
     sequence: (actions, context) => withDesktopActivity(lane, () => desktopSequence(lane, actions, context.signal)),
-  })
+  }), ...liveDocumentTools((method, args, context) => withDesktopActivity(lane, () => accessLiveDocument(lane, method, args, context.signal)))]
 }
 
 export function desktopContext(): string {
