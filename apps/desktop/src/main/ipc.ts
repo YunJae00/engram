@@ -117,6 +117,7 @@ import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
+import { officeAgentTools, officeContext } from './office-agent.js'
 import { cometFileTools, registerArtifactIpc } from './file-work.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { releaseDesktop } from './desktop-access.js'
@@ -2080,7 +2081,7 @@ export function registerIpc(ctx: VaultContext): void {
         open.on && open.url && open.url !== 'about:blank'
           ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
           : ''
-      const onScreen = [engine.desktopToolIsolation === true && settings.computerUse !== false ? desktopContext() : '', browserScreen].filter(Boolean).join('\n')
+      const onScreen = [engine.desktopToolIsolation === true && settings.computerUse !== false ? [officeContext(), desktopContext()].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
       try {
         assertDesktopChatEngine(channel, engine)
         const result = await runComet(
@@ -2158,7 +2159,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...(!guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel) : []), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? desktopAgentTools(channel) : [])],
+            }), ...(!guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel) : []), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {

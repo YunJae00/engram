@@ -36,6 +36,7 @@ import { registerWorkspaceIpc } from './workspaces.js'
 import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
 import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
+import { closeOfficeHost, primeOffice } from './office-host.js'
 import { stopDesktopControl } from './desktop-control.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
@@ -630,6 +631,8 @@ app.whenReady().then(async () => {
 
   registerBaseIpc()
   registerDesktopIpc()
+  // Which Office applications this machine has decides the comet's menu.
+  void primeOffice()
   // A design check needs the overlay without a real hold: the preview flag
   // shows it over the desk with a stand-in status. Development builds only.
   const preview = process.env['ENGRAM_OVERLAY_PREVIEW']
@@ -726,6 +729,7 @@ app.on('before-quit', (event) => {
 app.on('will-quit', () => {
   void closeAgentBrowser({ force: true })
   closeClaudeSessions()
+  closeOfficeHost()
   globalShortcut.unregisterAll()
   // Closing the app is the user saying "stop remembering from here".
   stopSessionWatch()
