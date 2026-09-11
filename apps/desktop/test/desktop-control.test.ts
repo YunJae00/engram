@@ -1,83 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DesktopBinding } from '../src/main/desktop-access.js'
-import type { DesktopHost, DesktopMethod } from '../src/main/desktop-host.js'
-import type { DesktopObservationDto } from '../src/shared/desktop.js'
-
-const deps = vi.hoisted(() => ({
-  bindings: new Map<string, unknown>(),
-  bind: vi.fn(), changed: vi.fn(), broadcast: vi.fn(),
-  overlay: { show: vi.fn(), prepare: vi.fn(), update: vi.fn(), hide: vi.fn(), pointer: vi.fn() },
-  cursor: { x: 10, y: 10 },
-  release: undefined as ((lane: string, reason: string) => void) | undefined,
-}))
-vi.mock('electron', () => ({ screen: { getCursorScreenPoint: () => ({ ...deps.cursor }), screenToDipPoint: (point: { x: number; y: number }) => point } }))
-vi.mock('../src/main/desktop-access.js', () => ({
-  desktopBinding: (lane: string) => deps.bindings.get(lane),
-  bindDesktopForLane: deps.bind,
-  desktopChanged: deps.changed,
-  setDesktopReleaseHook: (hook: typeof deps.release) => { deps.release = hook },
-}))
-vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
-vi.mock('../src/main/desktop-overlay.js', () => ({
-  showControlOverlay: deps.overlay.show, prepareControlOverlay: deps.overlay.prepare, updateControlOverlay: deps.overlay.update, hideControlOverlay: deps.overlay.hide, overlayPointer: deps.overlay.pointer,
-}))
-
-const lane = 'bot-first'
-const other = 'bot-second'
-let control: typeof import('../src/main/desktop-control.js')
-
-function observation(snapshot = 'snapshot-1'): DesktopObservationDto {
-  return { snapshot, nodes: [{ id: 'e0', name: 'Editor', controlType: 'Edit', bounds: { x: -1000, y: 20, width: 200, height: 100 } }], bounds: { x: -1000, y: 20, width: 200, height: 100 }, captureBounds: { x: -992, y: 44, width: 184, height: 68 } }
-}
-
-function binding(owner = lane, window = '100', name = 'Editor') {
-  let serial = 0
-  const request = vi.fn<(method: DesktopMethod, args: Record<string, unknown>) => Promise<unknown>>(async (method) => {
-    if (method === 'bind') return { lease: `native-${window}` }
-    if (method === 'observe') return observation(`snapshot-${++serial}`)
-    if (method === 'inputState') return { idleMs: 5000, escaped: false }
-    return { ok: true }
-  })
-  const close = vi.fn()
-  const value: DesktopBinding = { lane: owner, source: `window:${window}:0`, name, window, pid: 200, readable: false, stopped: false, revision: 0, host: { request, close, closed: false } as unknown as DesktopHost }
-  deps.bindings.set(owner, value)
-  return { value, request, close }
-}
-
-const binds = () => deps.bind.mock.calls.length
-const grants = (request: ReturnType<typeof binding>['request']) => request.mock.calls.filter(([method]) => method === 'bind').map(([, args]) => args['grant'])
-const status = () => deps.broadcast.mock.calls.map(([event]) => event).filter((event) => event.type === 'desktop:control').at(-1)?.control
-
-beforeEach(async () => {
-  vi.resetModules()
-  vi.useFakeTimers()
-  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
-  deps.bindings.clear()
-  deps.cursor = { x: 10, y: 10 }
-  deps.bind.mockReset().mockImplementation(async (owner: string, pick: { app?: string }) => {
-    const held = deps.bindings.get(owner) as DesktopBinding | undefined
-    if (!held) throw new Error('No app window is in front to work in.')
-    if (pick.app && !held.name.toLowerCase().includes(pick.app.toLowerCase())) {
-      const next = binding(owner, '101', pick.app)
-      next.value.readable = true
-      return next.value
-    }
-    held.readable = true
-    return held
-  })
-  deps.changed.mockReset()
-  deps.broadcast.mockReset()
-  for (const spy of Object.values(deps.overlay)) spy.mockReset()
-  deps.overlay.prepare.mockResolvedValue('900')
-  deps.release = undefined
-  control = await import('../src/main/desktop-control.js')
-  control.setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: true }))
-})
-afterEach(() => {
-  control.stopDesktopControl('Test cleanup')
-  vi.clearAllTimers()
-  vi.useRealTimers()
-})
+import { binding, binds, control, deps, grants, lane, other, status } from './desktop-control-fixture.js'
 
 describe('taking the computer', () => {
   it('refreshes an expired planned click and uses the fresh snapshot', async () => {
@@ -154,17 +77,42 @@ describe('taking the computer', () => {
     expect(control.desktopControlStatus()).toMatchObject({ state: 'running', inputActive: false })
   })
 
-  it('preserves a read failure on retry rather than blaming Esc or Stop', async () => {
+  it('preserves an activation error but allows a fresh observation without cancelling the turn', async () => {
     const host = binding()
     host.request.mockImplementation(async (method) => {
       if (method === 'bind') return { lease: 'native-100' }
       if (method === 'observe') throw new Error('The app did not acknowledge foreground activation')
+      if (method === 'inputState') return { idleMs: 5000, escaped: false }
       return { ok: true }
     })
     await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('foreground activation')
-    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('foreground activation')
-    expect(control.desktopControlStatus().reason).toBe('The app did not acknowledge foreground activation')
-    expect(host.request.mock.calls.filter(([method]) => method === 'bind')).toHaveLength(1)
+    expect(control.desktopControlStatus()).toMatchObject({ resumable: true, reason: 'The app did not acknowledge foreground activation' })
+    expect(() => control.assertDesktopTurnNotStopped(lane)).not.toThrow()
+    const retry = control.readControlledDesktop(lane, undefined, true)
+    const rejected = expect(retry).rejects.toThrow('foreground activation')
+    control.resumeDesktopControl()
+    await vi.advanceTimersByTimeAsync(5000)
+    await rejected
+    expect(host.request.mock.calls.filter(([method]) => method === 'bind')).toHaveLength(2)
+  })
+  it('retries a transient activation interruption with a fresh grant after input is idle', async () => {
+    const host = binding()
+    const run = host.request.getMockImplementation()!
+    let interrupted = false
+    host.request.mockImplementation(async (...args) => {
+      if (args[0] === 'bind' && !interrupted) {
+        interrupted = true
+        throw new Error('Keyboard input returned control to the user')
+      }
+      if (args[0] === 'inputState') return { idleMs: 5000, escaped: false }
+      return run(...args)
+    })
+    const read = control.readControlledDesktop(lane, undefined, true)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((await read).snapshot).toBe('snapshot-1')
+    const grants = host.request.mock.calls.filter(([method]) => method === 'bind').map(([, args]) => args.grant)
+    expect(grants).toHaveLength(2)
+    expect(new Set(grants).size).toBe(2)
   })
   it('the first reading takes control: no dialog, the overlay is told who holds it', async () => {
     const host = binding()

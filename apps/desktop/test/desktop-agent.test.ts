@@ -84,7 +84,7 @@ describe('desktop image consent and capture validation', () => {
     expect(desktopContext()).toBe('')
     fake.available = true
     const tools = desktopAgentTools('bot-one')
-    expect(tools.map((tool) => tool.name)).toEqual(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document'])
+    expect(tools.map((tool) => tool.name)).toEqual(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document', 'compose_live_document'])
     expect(desktopContext()).toContain('that is what takes control')
     expect(await tools.find((tool) => tool.name === 'list_windows')!.run({}, { task: 'Inspect the fixture' })).toBe('- Fixture (in front)' + String.fromCharCode(10) + '- Notes')
     expect(fake.binding.host.request).not.toHaveBeenCalled()

@@ -13,22 +13,45 @@ interface JsonSchema {
   items?: JsonSchema
   enum?: unknown[]
   additionalProperties?: boolean | JsonSchema
+  minimum?: number
+  maximum?: number
+  exclusiveMinimum?: number
+  minLength?: number
+  maxLength?: number
+  pattern?: string
+  minItems?: number
+  maxItems?: number
 }
 
 function fieldOf(schema: JsonSchema): ZodTypeAny {
   if (schema.enum && schema.enum.length > 0) return z.enum(schema.enum.map(String) as [string, ...string[]])
   switch (schema.type) {
-    case 'string':
-      return z.string()
+    case 'string': {
+      let value = z.string()
+      if (schema.minLength !== undefined) value = value.min(schema.minLength)
+      if (schema.maxLength !== undefined) value = value.max(schema.maxLength)
+      if (schema.pattern !== undefined) value = value.regex(new RegExp(schema.pattern))
+      return value
+    }
     case 'number':
-    case 'integer':
-      return z.number()
+    case 'integer': {
+      let value = schema.type === 'integer' ? z.number().int() : z.number()
+      if (schema.minimum !== undefined) value = value.min(schema.minimum)
+      if (schema.maximum !== undefined) value = value.max(schema.maximum)
+      if (schema.exclusiveMinimum !== undefined) value = value.gt(schema.exclusiveMinimum)
+      return value
+    }
     case 'boolean':
       return z.boolean()
-    case 'array':
-      return z.array(schema.items ? fieldOf(schema.items) : z.unknown())
+    case 'array': {
+      let value = z.array(schema.items ? fieldOf(schema.items) : z.unknown())
+      if (schema.minItems !== undefined) value = value.min(schema.minItems)
+      if (schema.maxItems !== undefined) value = value.max(schema.maxItems)
+      return value
+    }
     case 'object':
-      return schema.properties ? z.object(shapeOf(schema)).passthrough() : z.record(z.string(), z.unknown())
+      return schema.properties ? (schema.additionalProperties === false ? z.object(shapeOf(schema)).strict() : z.object(shapeOf(schema)).passthrough())
+        : z.record(z.string(), typeof schema.additionalProperties === 'object' ? fieldOf(schema.additionalProperties) : z.unknown())
     default:
       return z.unknown()
   }

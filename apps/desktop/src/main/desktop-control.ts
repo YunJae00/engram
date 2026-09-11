@@ -8,6 +8,7 @@ import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
 import { replacementTarget } from './desktop-guarded-sequence.js'
+import { recoverableDesktopFailure } from './desktop-recovery.js'
 // Esc/Stop ends the turn's lease; native control separates physical and agent input.
 const LEASE_TTL_MS = 60 * 60_000
 const HANDS_STILL_MS = 4_000
@@ -15,7 +16,6 @@ const HANDS_AT_MOST_MS = 5 * 60_000
 const HANDS_POLL_MS = 250
 const REBIND_TRIES = 3
 const LABEL: Record<DesktopEngineId, string> = { claude: 'Claude', codex: 'ChatGPT' }
-const RESUMABLE = /returned control to the user|pointer target changed|window or desktop changed|control expired/i
 const lease = new DesktopControlLease({ onChange: desktopChanged, ttlMs: LEASE_TTL_MS })
 type DesktopEngine = Pick<Engine, 'id' | 'desktopToolIsolation'>
 let engineForControl: () => Promise<DesktopEngine | undefined> = async () => undefined
@@ -30,7 +30,7 @@ const observationTimes = new WeakMap<DesktopObservationDto, number>()
 const operations = new Map<string, Promise<unknown>>()
 let launching: { lane: string; host: DesktopHost } | undefined
 
-setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, RESUMABLE.test(reason)))
+setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, recoverableDesktopFailure(reason)))
 export function setDesktopEngineResolver(resolve: typeof engineForControl): void { engineForControl = resolve }
 export function assertDesktopChatEngine(lane: string, engine: DesktopEngine | undefined): void {
   if (!desktopBinding(lane)?.readable) return
@@ -229,7 +229,7 @@ async function takeControl(lane: string, engine: DesktopEngineId, check: () => v
   lease.activate(token)
   try { await beginNative(held) }
   catch (error) {
-    if (active === held) stopDesktopControl(error instanceof Error ? error.message : 'Computer control did not start.', /user input changed|release your keyboard/i.test(String(error)))
+    if (active === held) stopDesktopControl(error instanceof Error ? error.message : 'Computer control did not start.', recoverableDesktopFailure(String(error)))
     throw error
   }
   announce()
@@ -271,7 +271,7 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
       check()
       try { return await takeControl(lane, id, check, options.app) }
       catch (error) {
-        if (++tries >= REBIND_TRIES || !/user input changed|release your keyboard/i.test(String(error))) throw error
+        if (++tries >= REBIND_TRIES || !recoverableDesktopFailure(String(error))) throw error
       }
     }
   })()
@@ -310,7 +310,7 @@ export async function readControlledDesktop(lane: string, signal?: AbortSignal, 
   if (agent) signal?.addEventListener('abort', stop, { once: true })
   try { return await readBoundDesktop(lane, signal, agent, app, focusedOnly) }
   catch (error) {
-    if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.')
+    if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.', recoverableDesktopFailure(String(error)))
     throw error
   } finally { signal?.removeEventListener('abort', stop) }
 }
@@ -321,7 +321,7 @@ export function desktopObservation(lane: string, snapshot: string): DesktopObser
   return observation
 }
 
-export async function accessLiveDocument(lane: string, method: 'documentRead' | 'documentEdit', args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+export async function accessLiveDocument(lane: string, method: 'documentRead' | 'documentEdit' | 'documentCompose', args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted()
   const { app, ...request } = args
   await ensureDesktopControl(lane, { ...(typeof app === 'string' ? { app } : {}), ...(signal ? { signal } : {}) })

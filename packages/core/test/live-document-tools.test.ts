@@ -6,6 +6,35 @@ import { workCapabilities } from '../src/work-capabilities.js'
 const snapshot = 'a'.repeat(32)
 const context = { task: 'Edit the test document.' }
 describe('live document boundary', () => {
+  it('offers model-designed composition across documents with redacted receipts', async () => {
+    const native = vi.fn(async () => '{}')
+    const tools = liveDocumentTools(native)
+    const compose = tools.find(tool => tool.name === 'compose_live_document')!
+    for (const payload of [
+      { paragraphs: [{ text: 'A new section', fontSize: 18, bold: true, color: '#102030' }] },
+      { format: { autoFit: true, numberFormat: '#,##0' } },
+      { slides: [{ boxes: [{ text: 'A new idea', x: 30, y: 30, width: 700, height: 60, fontSize: 28, color: '102030' }] }] },
+    ]) await compose.run({ snapshot, ...payload }, context)
+    expect(native).toHaveBeenCalledTimes(3)
+    expect(isDesktopTool(compose.name)).toBe(true)
+    expect(desktopStepArgs(compose.name, { snapshot, paragraphs: [{ text: 'private' }] })).toEqual({ snapshot, composition: '[redacted]' })
+    expect(JSON.parse(await workCapabilities(tools).run({}, context)).liveDocumentApi.tools.map((tool: {name: string}) => tool.name)).toContain(compose.name)
+  })
+  it('refuses malformed composition, arbitrary code and unbounded layouts before dispatch', async () => {
+    const native = vi.fn(async () => '{}')
+    const compose = liveDocumentTools(native).find(tool => tool.name === 'compose_live_document')!
+    const box = { text: 'Title', x: 0, y: 0, width: 200, height: 50, fontSize: 30, color: '000000' }
+    for (const payload of [
+      {}, { paragraphs: [] }, { paragraphs: [{ text: '\u0000' }] },
+      { paragraphs: [{ text: 'ok', script: 'execute' }] },
+      { paragraphs: [{ text: 'ok' }], format: { bold: true } },
+      { slides: [{ boxes: [{ ...box, width: Infinity }] }] },
+      { slides: [{ boxes: [{ ...box, fontSize: 0 }] }] },
+      { slides: [{ boxes: [{ ...box, color: 'red' }] }] },
+      { format: { numberFormat: '[external]' } }, { format: {} },
+    ]) await expect(compose.run({ snapshot, ...payload }, context)).rejects.toThrow()
+    expect(native).not.toHaveBeenCalled()
+  })
   it('routes bounded native reads and bulk edits, never app scripts', async () => {
     const native = vi.fn(async () => '{"live":true}')
     const tools = liveDocumentTools(native)

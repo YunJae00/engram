@@ -58,7 +58,7 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "documentEdit" || method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
+            mutation = method == "documentEdit" || method == "documentCompose" || method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
@@ -110,7 +110,7 @@ internal static class Program
                 Send(new { id = id, result = new { working = method == "work" } });
                 return;
             }
-            if (method == "documentRead" || method == "documentEdit")
+            if (method == "documentRead" || method == "documentEdit" || method == "documentCompose")
             {
                 lease.Require(state);
                 Action check = delegate
@@ -119,7 +119,7 @@ internal static class Program
                     if (Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Document access was cancelled");
                     guard.Resolve(window, pid);
                 };
-                var result = documents.Run(document => method == "documentRead" ? document.Read(target, request, check) : document.Edit(target, request, check));
+                var result = documents.Run(document => method == "documentRead" ? document.Read(target, request, check) : method == "documentCompose" ? document.Compose(target, request, check) : document.Edit(target, request, check));
                 Send(new { id = id, result = result }); return;
             }
             if (method == "observe")

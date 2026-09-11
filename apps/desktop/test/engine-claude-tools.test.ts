@@ -23,4 +23,17 @@ describe('the comet tools in the runtime\'s shape', () => {
   it('names every tool through the server, and nothing else', () => {
     expect(allowedToolNames([{ name: 'search_memory', description: '', argsSchema: {}, run: async () => '' }])).toEqual(['mcp__engram__search_memory'])
   })
+
+  it('preserves nested limits so planning and execution receive the same constraints', () => {
+    const schema = z.object(shapeOf({ properties: {
+      items: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'object', additionalProperties: false, required: ['color', 'size'], properties: {
+        color: { type: 'string', pattern: '^[0-9A-F]{6}$', maxLength: 6 },
+        size: { type: 'integer', minimum: 8, maximum: 120 },
+      } } },
+    } }))
+    expect(schema.parse({ items: [{ color: '112233', size: 20 }] })).toBeTruthy()
+    for (const items of [[], [{ color: '#112233', size: 20 }], [{ color: '112233', size: 7 }], [{ color: '112233', size: 20.5 }], [{ color: '112233', size: 20, script: 'run' }]]) {
+      expect(schema.safeParse({ items }).success).toBe(false)
+    }
+  })
 })

@@ -1,10 +1,11 @@
-import { readFile, readdir, rename, writeFile } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { generateNoteId } from './id.js'
 import type { DecayLevel, Note, NoteFrontmatter, NoteStatus, TimelineMode } from './schema.js'
 import { parseNote, serializeNote } from './schema.js'
 import { verificationWindowDays } from './freshness.js'
 import type { VaultPaths } from './vault.js'
+import { renameWithRetry } from './rename-with-retry.js'
 
 // The one place a note id becomes a filesystem path — so it is the one place
 // that has to prove the id cannot leave notes/. Nothing checked before this,
@@ -37,7 +38,7 @@ export async function writeNote(paths: VaultPaths, note: Note): Promise<void> {
   const target = notePath(paths, note.front.id)
   const tmp = `${target}.tmp-${process.pid}`
   await writeFile(tmp, serializeNote(note))
-  await rename(tmp, target)
+  await renameWithRetry(tmp, target)
 }
 
 // Recall reinforcement (Engram redesign): stamp last_recalled when a memory is

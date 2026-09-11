@@ -1,8 +1,9 @@
 import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { validateWorkbookFormula } from './file-workbook.js'
 import { carriesSecret, secretsIn } from './secrets.js'
+import { liveDocumentCompose } from './live-document-compose.js'
 
-export function liveDocumentTools(run: (method: 'documentRead' | 'documentEdit', args: Record<string, unknown>, context: AgentToolContext) => Promise<string>): AgentTool[] {
+export function liveDocumentTools(run: (method: 'documentRead' | 'documentEdit' | 'documentCompose', args: Record<string, unknown>, context: AgentToolContext) => Promise<string>): AgentTool[] {
   const text = { type: 'string', maxLength: 8000 }
   return [{
     name: 'read_live_document',
@@ -39,5 +40,5 @@ export function liveDocumentTools(run: (method: 'documentRead' | 'documentEdit',
       }
       return run('documentEdit', args, context)
     },
-  }]
+  }, liveDocumentCompose((args, context) => run('documentCompose', args, context))]
 }

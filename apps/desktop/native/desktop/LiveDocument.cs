@@ -13,7 +13,7 @@ internal sealed class LiveBlock
     internal string Id, Text, Label, Address;
 }
 
-internal sealed class LiveDocument : IDisposable
+internal sealed partial class LiveDocument : IDisposable
 {
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumChild callback, IntPtr data);
     private delegate bool EnumChild(IntPtr window, IntPtr data);
@@ -22,7 +22,7 @@ internal sealed class LiveDocument : IDisposable
     [DllImport("oleacc.dll")] private static extern int AccessibleObjectFromWindow(IntPtr window, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IDispatch)] out object result);
     private readonly List<object> References = new List<object>();
     private readonly Dictionary<string, LiveBlock> Blocks = new Dictionary<string, LiveBlock>();
-    private dynamic NativeWindow, Document, Sheet, SingletonApplication;
+    private dynamic NativeWindow, Document, Sheet, ForegroundApplication;
     private string Kind, Snapshot, Target, SheetName;
     private int Pid, TextBudget;
     private bool Omitted;
@@ -70,14 +70,13 @@ internal sealed class LiveDocument : IDisposable
                 try { handle = new IntPtr(Convert.ToInt64(candidate.HWND)); }
                 catch (Exception)
                 {
-                    if ((int)windows.Count != 1) throw new InvalidOperationException("This version cannot identify one of multiple presentation windows. Use desktop tools.");
-                    try { handle = new IntPtr(Convert.ToInt64(application.HWND)); }
-                    catch (Exception)
-                    {
-                        RequireSingletonPresentation(target.Pid, application);
-                        SingletonApplication = application;
-                        handle = target.Handle;
-                    }
+                    // Some Office versions omit HWND. The active COM window is
+                    // usable only while the exact selected native window is in
+                    // front and there is a single local presentation process.
+                    candidate = Keep(application.ActiveWindow);
+                    RequireActivePresentation(target, application, candidate);
+                    ForegroundApplication = application;
+                    handle = target.Handle;
                 }
                 if (handle == target.Handle || GetAncestor(handle, 2) == target.Handle) { found = candidate; break; }
             }
@@ -149,17 +148,20 @@ internal sealed class LiveDocument : IDisposable
         {
             dynamic slides = Keep(Document.Slides);
             var slideIndex = Number(request, "slide", 1, 10000);
-            if (slideIndex < 1 || slideIndex > (int)slides.Count) throw new ArgumentException("Choose an existing slide.");
-            dynamic slide = Keep(slides[slideIndex]); dynamic shapes = Keep(slide.Shapes);
-            count = (int)shapes.Count;
-            for (var index = offset + 1; index <= count && index <= offset + 80; index++)
+            if ((int)slides.Count > 0)
             {
-                check(); dynamic shape = Keep(shapes[index]);
-                if (Convert.ToInt32(shape.HasTextFrame) == 0) continue;
-                dynamic frame = Keep(shape.TextFrame);
-                Add(Keep(frame.TextRange), "slide " + slideIndex + " shape " + Text(shape.Id) + " " + Text(shape.Name), output, frame);
+                if (slideIndex < 1 || slideIndex > (int)slides.Count) throw new ArgumentException("Choose an existing slide.");
+                dynamic slide = Keep(slides[slideIndex]); dynamic shapes = Keep(slide.Shapes);
+                count = (int)shapes.Count;
+                for (var index = offset + 1; index <= count && index <= offset + 80; index++)
+                {
+                    check(); dynamic shape = Keep(shapes[index]);
+                    if (Convert.ToInt32(shape.HasTextFrame) == 0) continue;
+                    dynamic frame = Keep(shape.TextFrame);
+                    Add(Keep(frame.TextRange), "slide " + slideIndex + " shape " + Text(shape.Id) + " " + Text(shape.Name), output, frame);
+                }
+                if (offset + 80 < count) next = offset + 80;
             }
-            if (offset + 80 < count) next = offset + 80;
         }
         else
         {
@@ -181,29 +183,39 @@ internal sealed class LiveDocument : IDisposable
                 }
             }
         }
-        check(); Snapshot = Guid.NewGuid().ToString("N"); Created = Stopwatch.GetTimestamp();
+        check(); Structure = StructureStamp(); ReadAddress = Kind == "excel" ? (request.ContainsKey("range") ? RequestText(request, "range") : "A1:L20") : null;
+        Snapshot = Guid.NewGuid().ToString("N"); Created = Stopwatch.GetTimestamp();
         return new { snapshot = Snapshot, application = Kind, document = Text(Document.Name), blocks = output, total = count, nextOffset = next < 0 ? (int?)null : next,
+            slideCount = Kind == "powerpoint" ? (int?)Document.Slides.Count : null,
+            pageWidth = Kind == "powerpoint" ? (double?)Document.PageSetup.SlideWidth : null,
+            pageHeight = Kind == "powerpoint" ? (double?)Document.PageSetup.SlideHeight : null,
             truncated = next >= 0 || Omitted, live = true, verification = "Native document values, including unsaved edits. Visual layout is not verified." };
     }
     private void SameDocument(DesktopTarget target)
     {
         if (Target != target.Id || Pid != target.Pid) throw new InvalidOperationException("The document belongs to another window.");
-        if (SingletonApplication != null) RequireSingletonPresentation(target.Pid, SingletonApplication);
+        if (ForegroundApplication != null) RequireActivePresentation(target, ForegroundApplication, NativeWindow);
         dynamic current = Kind == "word" ? Keep(NativeWindow.Document) : Kind == "powerpoint" ? Keep(NativeWindow.Presentation) : Keep(NativeWindow.ActiveSheet);
         object expected = Kind == "excel" ? (object)Sheet : (object)Document;
         IntPtr left = Marshal.GetIUnknownForObject((object)current), right = Marshal.GetIUnknownForObject(expected);
         try { if (left != right) throw new InvalidOperationException("The active document or sheet changed. Read it again."); }
         finally { Marshal.Release(left); Marshal.Release(right); }
     }
-    private static void RequireSingletonPresentation(int targetPid, dynamic application)
+    private static void RequireActivePresentation(DesktopTarget selected, dynamic application, dynamic candidate)
     {
         int count = 0;
-        using (var target = Process.GetProcessById(targetPid))
+        using (var target = Process.GetProcessById(selected.Pid))
         {
             foreach (var process in Process.GetProcessesByName("POWERPNT")) using (process)
-                if (process.SessionId == target.SessionId) { count++; if (process.Id != targetPid) throw new InvalidOperationException("Multiple presentation processes require desktop tools."); }
+                if (process.SessionId == target.SessionId) { count++; if (process.Id != selected.Pid) throw new InvalidOperationException("Multiple presentation processes require desktop tools."); }
         }
-        if (count != 1 || (int)application.Windows.Count != 1) throw new InvalidOperationException("Cannot uniquely bind this presentation. Use desktop tools.");
+        if (count != 1) throw new InvalidOperationException("Cannot uniquely bind this presentation. Use desktop tools.");
+        DesktopNative.Foreground(selected);
+        object current = application.ActiveWindow;
+        IntPtr left = Marshal.GetIUnknownForObject(current), right = Marshal.GetIUnknownForObject((object)candidate);
+        try { if (left != right) throw new InvalidOperationException("The active presentation changed. Read it again."); }
+        finally { Marshal.Release(left); Marshal.Release(right); if (Marshal.IsComObject(current)) Marshal.ReleaseComObject(current); }
+        DesktopNative.Foreground(selected);
     }
     internal static string Replacement(string expected, string before, string after)
     {
@@ -289,7 +301,7 @@ internal sealed class LiveDocument : IDisposable
     }
     public void Dispose()
     {
-        Blocks.Clear(); Snapshot = null; TextBudget = 0; Omitted = false; NativeWindow = null; Document = null; Sheet = null; SingletonApplication = null;
+        Blocks.Clear(); Snapshot = null; Structure = null; ReadAddress = null; TextBudget = 0; Omitted = false; NativeWindow = null; Document = null; Sheet = null; ForegroundApplication = null;
         for (int index = References.Count - 1; index >= 0; index--) try { Marshal.ReleaseComObject(References[index]); } catch (InvalidComObjectException) { }
         References.Clear();
     }

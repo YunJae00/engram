@@ -134,7 +134,7 @@ export class DesktopControlLease {
       let result: T
       try { result = await work() }
       catch (error) {
-        if (this.grant?.token === token) this.pause('The desktop action failed. Allow control again to continue.')
+        if (this.grant?.token === token) this.pause(error instanceof Error ? error.message : 'The desktop action failed. Allow control again to continue.')
         throw error
       }
       this.assertActive(token, lane)

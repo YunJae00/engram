@@ -25,7 +25,7 @@ const SESSION_MAX_CALLS = 40
 export const SESSION_TURN_MS = 600_000
 const SESSION_SOFT_MS = 480_000
 
-const CONTENT_TOOLS = new Set(['file_read', 'file_read_package', 'read_live_document', 'edit_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
+const CONTENT_TOOLS = new Set(['file_read', 'file_read_package', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
@@ -49,11 +49,11 @@ function outputLinks(steps: AgentLoopStep[], answer: string): string {
 }
 
 function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined {
-  const step = steps.filter((one) => one.tool.startsWith('file_') || ['desktop_action', 'desktop_sequence', 'read_desktop', 'look_desktop', 'read_live_document', 'edit_live_document'].includes(one.tool)).at(-1)
+  const step = steps.filter((one) => one.tool.startsWith('file_') || ['desktop_action', 'desktop_sequence', 'read_desktop', 'look_desktop', 'read_live_document', 'edit_live_document', 'compose_live_document'].includes(one.tool)).at(-1)
   if (!step) return undefined
   const incomplete = 'The last computer or file result failed or may be stale and has not been verified.'
   if (step.observation.startsWith('that did not work:')) return incomplete
-  if (!['desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document'].includes(step.tool)) return undefined
+  if (!['desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document', 'compose_live_document'].includes(step.tool)) return undefined
   try {
     const result = JSON.parse(step.observation) as { error?: unknown; observationMayBeStale?: unknown; reobserveRequired?: unknown; completeReadback?: unknown }
     if (result.error || result.observationMayBeStale === true || result.reobserveRequired === true || (step.tool === 'edit_live_document' && result.completeReadback !== true)) return incomplete

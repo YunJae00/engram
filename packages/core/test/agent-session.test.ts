@@ -274,14 +274,17 @@ it.each(['desktop_action', 'read_desktop'])('does not retain an earlier desktop 
   expect(result.incomplete).toBeUndefined()
 })
 
-it.each([false, true])('requires fresh verification after a live document conflict (reread=%s)', async (reread) => {
+it.each([
+  ['edit_live_document', false], ['edit_live_document', true],
+  ['compose_live_document', false], ['compose_live_document', true],
+] as const)('requires fresh verification after %s (reread=%s)', async (method, reread) => {
   const engine = sessionBrain(async (job) => {
-    await job.tools.find(tool => tool.name === 'edit_live_document')!.run({})
+    await job.tools.find(tool => tool.name === method)!.run({})
     if (reread) await job.tools.find(tool => tool.name === 'read_live_document')!.run({})
     return { answer: 'The document is complete' }
   })
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [
-    { name: 'edit_live_document', description: 'edit', argsSchema: {}, run: async () => JSON.stringify({ live: true, completed: [], completeReadback: false, error: 'Content changed', reobserveRequired: true }) },
+    { name: method, description: 'edit', argsSchema: {}, run: async () => JSON.stringify({ live: true, completed: [], completeReadback: false, error: method === 'edit_live_document' ? 'Content changed' : null, reobserveRequired: true }) },
     { name: 'read_live_document', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ live: true, blocks: [{ id: 'b0', text: 'Observed result' }] }) },
   ] }, 'Update the open document')
   expect(!!result.incomplete).toBe(!reread)

@@ -168,6 +168,7 @@ internal sealed class InputMonitor : IDisposable
     internal LeaseState Bind(DesktopTarget target, string grant, long intervention, Func<bool> permitted)
     {
         LeaseState state = null;
+        Func<bool> current = null;
         OnLoop(delegate
         {
             state = Lease.State;
@@ -176,12 +177,22 @@ internal sealed class InputMonitor : IDisposable
             if (!Preparing || PreparedGrant != grant || state.Target.Id != target.Id || state.Target.Pid != target.Pid)
                 throw new InvalidOperationException("Prepare the selected application before taking control");
             Guard.Same(state.Target);
-            Func<bool> current = delegate { return intervention == Intervention && permitted() && Lease.Valid(state); };
+            current = delegate { return intervention == Intervention && permitted() && Lease.Valid(state); };
             if (!current()) throw new InvalidOperationException("Desktop approval was cancelled before focus changed");
-            if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
-                throw new InvalidOperationException("Bring the chosen application to the foreground and grant control again");
-            DesktopNative.AwaitForeground(target);
+        });
+        // Provider calls stay off the input-monitor thread so Esc remains responsive.
+        if (target.Minimized) DesktopNative.ShowWindowAsync(target.Handle, 9); // SW_RESTORE
+        if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while restoring the app");
+        Guard.Same(state.Target);
+        if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
+            System.Windows.Automation.AutomationElement.FromHandle(target.Handle).SetFocus();
+        DesktopNative.AwaitForeground(target);
+        OnLoop(delegate
+        {
+            Lease.Require(state);
             if (!current()) throw new InvalidOperationException("Desktop approval was cancelled while the app was becoming active");
+            Guard.Same(state.Target);
+            DesktopNative.Foreground(target);
             Preparing = false;
             PreparedGrant = null;
         });

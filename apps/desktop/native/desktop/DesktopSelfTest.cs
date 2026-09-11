@@ -28,6 +28,12 @@ internal static class DesktopSelfTest
                 Check(ControlPolicy.Chord(chord).Length <= 3, "Navigation chords are bounded and release every modifier");
             Check(LiveDocument.Replacement("Old title", "Old", "New") == "New title", "Document replacements preserve unrelated text");
             Check(LiveDocument.Replacement("", "", "한글") == "한글", "Empty document insertion supports Unicode");
+            var json = new System.Web.Script.Serialization.JavaScriptSerializer();
+            Check(LiveDocument.ValidateComposition(json.Deserialize<System.Collections.Generic.Dictionary<string, object>>("{\"paragraphs\":[{\"text\":\"Report\",\"color\":\"#123456\"}]}")) == "paragraphs", "Standard prefixed RGB colors remain bounded");
+            foreach (var spec in new[] { "{\"paragraphs\":[{\"text\":\"Report\",\"fontSize\":18}]}", "{\"format\":{\"numberFormat\":\"#,##0\",\"autoFit\":true}}", "{\"slides\":[{\"boxes\":[{\"text\":\"Title\",\"x\":20,\"y\":20,\"width\":200,\"height\":50,\"fontSize\":24,\"color\":\"123456\"}]}]}" })
+                Check(LiveDocument.ValidateComposition(json.Deserialize<System.Collections.Generic.Dictionary<string, object>>(spec)) != null, "Native composition accepts bounded document operations");
+            foreach (var spec in new[] { "{}", "{\"paragraphs\":[]}", "{\"paragraphs\":[{\"text\":\"x\",\"script\":\"x\"}]}", "{\"format\":{\"fontSize\":0}}", "{\"format\":{\"numberFormat\":\"external\"}}", "{\"format\":{\"bold\":\"true\"}}", "{\"paragraphs\":[{\"text\":\"x\"}],\"format\":{\"bold\":true}}" })
+                Reject(delegate { LiveDocument.ValidateComposition(json.Deserialize<System.Collections.Generic.Dictionary<string, object>>(spec)); }, "Native composition rejects unsafe or ambiguous operations");
             Reject(delegate { LiveDocument.Replacement("same same", "same", "new"); }, "Ambiguous document replacements are rejected");
             Reject(delegate { LiveDocument.Replacement("old", "missing", "new"); }, "Missing fragments are rejected");
             Reject(delegate { LiveDocument.Replacement("old", "", "new"); }, "Empty fragments cannot overwrite existing text");
@@ -104,6 +110,8 @@ internal static class DesktopSelfTest
             gate.End(packet);
             Check(!gate.Admit(packet.Marker, 65, false, true), "Expired own markers must remain blocked");
             lease.Revoke("Repeated stop");
+            Check(state.Reason == "Physical input", "The first interruption reason must survive later stop messages");
+            try { lease.Require(state); } catch (InvalidOperationException error) { Check(error.Message == "Physical input", "Reads report the actual interruption reason"); }
             Check(revocations == 1, "Revocation event must be emitted once");
             Reject(delegate { lease.Require(state); }, "Revoked lease cannot resume");
             Reject(delegate { lease.Bind(target, grant); }, "Approval grants cannot be reused");

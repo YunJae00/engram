@@ -65,6 +65,23 @@ afterEach(() => {
 })
 
 describe('desktop native readiness and request lifetime', () => {
+  it('never resumes explicit cancellation even when its message includes a transient failure', async () => {
+    const { recoverableDesktopFailure } = await import('../src/main/desktop-recovery.js')
+    for (const reason of ['Esc pressed', 'Control expired or was stopped', 'Computer control was cancelled', 'Permission denied', 'The computer connection closed']) {
+      expect(recoverableDesktopFailure(`Bring the chosen application to the foreground and grant control again. ${reason}`)).toBe(false)
+    }
+  })
+  it('keeps a helper available after a transient bind error without claiming user cancellation', async () => {
+    const first = host.request('bind', { ...target, grant: 'first' })
+    const rejected = expect(first).rejects.toThrow('no longer in the foreground')
+    await ready()
+    respond({ id: latest('bind'), error: 'The selected application is no longer in the foreground' })
+    await rejected
+    expect(host.closed).toBe(false)
+    expect(revoked).not.toHaveBeenCalled()
+    await bind('recovered')
+    expect(host.closed).toBe(false)
+  })
   it('renews foreground delegation for the exact helper before binding', async () => {
     child.pid = 321
     const request = host.request('bind', { ...target, grant: 'user-grant' })

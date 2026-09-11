@@ -33,7 +33,7 @@ export interface DesktopCourier {
   sequence?(actions: DesktopSequenceAction[], context: AgentToolContext): Promise<string>
 }
 
-const DESKTOP_TOOLS = new Set(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document'])
+const DESKTOP_TOOLS = new Set(['list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document', 'compose_live_document'])
 const KINDS = new Set(['click', 'type', 'replace', 'scroll', 'key'])
 const KEYS = ['Enter', 'Escape', 'Tab', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Space']
 KEYS.push('Control+A', 'Control+B', 'Control+I', 'Control+U', 'Control+F', 'Control+Home', 'Control+End', 'Control+ArrowLeft', 'Control+ArrowRight', 'Shift+Home', 'Shift+End', 'Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Control+Shift+Home', 'Control+Shift+End', 'Control+Shift+ArrowLeft', 'Control+Shift+ArrowRight')
@@ -151,6 +151,7 @@ export function desktopScopeTools(tools: AgentTool[]): AgentTool[] { return tool
 
 export function desktopStepArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
   if (name === 'edit_live_document') return { snapshot: args['snapshot'], edits: '[redacted]' }
+  if (name === 'compose_live_document') return { snapshot: args['snapshot'], composition: '[redacted]' }
   if (name.startsWith('file_')) return Object.fromEntries(Object.entries(args).filter(([key]) => ['path', 'name', 'sheet', 'offset', 'sourcePath', 'expectedSha256'].includes(key)))
   if (name === 'desktop_sequence') return { snapshot: args['snapshot'], actions: '[redacted]' }
   if (name !== 'desktop_action') return args

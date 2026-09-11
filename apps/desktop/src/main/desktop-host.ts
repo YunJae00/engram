@@ -5,9 +5,10 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { flog } from './flog.js'
+import { recoverableDesktopFailure } from './desktop-recovery.js'
 
-export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit'
-const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit'])
+export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit' | 'documentCompose'
+const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose'])
 // Everything else names one window; these two speak about the session.
 const UNSCOPED = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'stop'])
 
@@ -99,7 +100,7 @@ export class DesktopHost {
           const error = new Error(typeof message.error === 'string' ? message.error.slice(0, 500) : 'The desktop request failed.')
           flog('desktop-native-error', `${pending.method}: ${error.message}`)
           pending.reject(error)
-          if (pending.method === 'bind' || (pending.method === 'prepare' && !/user input changed|release your keyboard/i.test(error.message))) this.close(error)
+          if ((pending.method === 'bind' || pending.method === 'prepare') && !recoverableDesktopFailure(error.message)) this.close(error)
           return
         }
         if (pending.method === 'bind') {
@@ -182,7 +183,7 @@ export class DesktopHost {
         }
         pending.timer = setTimeout(() => {
           if (this.pending.get(id) === pending) this.close(new Error('This app stopped responding. Computer control was stopped.'))
-        }, 8000)
+        }, method === 'documentCompose' ? 30000 : 8000)
         try {
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }
@@ -192,7 +193,7 @@ export class DesktopHost {
         reject(error instanceof Error ? error : new Error('The desktop helper could not start.'))
       }).catch((error: unknown) => {
         if (this.pending.get(id) !== pending) return
-        if (error instanceof Error && /user input changed|release your keyboard/i.test(error.message)) {
+        if (error instanceof Error && recoverableDesktopFailure(error.message)) {
           this.pending.delete(id)
           reject(error)
         } else this.close(error instanceof Error ? error : new Error('Foreground delegation failed.'))
