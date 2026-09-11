@@ -72,6 +72,7 @@ export async function renderDoc(spec: DocSpec, open = true, signal?: AbortSignal
   const doc = new Document({
     creator: 'Engram',
     title: spec.title ?? '',
+    background: { color: t.colors.paper },
     numbering: { config: [{ reference: 'ordered', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.START }] }] },
     styles: { default: { document: { run: { font: t.fonts.body, size: 22, color: t.colors.ink } } } },
     sections: [{ footers: { default: footer }, children }],

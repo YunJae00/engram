@@ -20,7 +20,7 @@ describe('resolveTheme', () => {
     // With no extra hues the palette is exactly the two brand colours plus the
     // neutral - nothing brand-like is fabricated.
     expect(plain.colors.chart).toEqual(['1F3B5B', 'C0603B', '6B7280'])
-    const rich = resolveTheme({ field: '1F3B5B', accent: 'C0603B', chart: ['#2FA98C', 'e8a317', 'bad'], fonts: { title: 'Georgia', body: 'Segoe UI' } })!
+    const rich = resolveTheme({ field: '1F3B5B', accent: 'C0603B', chart: ['#2FA98C', 'e8a317'], fonts: { title: 'Georgia', body: 'Segoe UI' } })!
     expect(rich.colors.chart).toEqual(['1F3B5B', 'C0603B', '6B7280', '2FA98C', 'E8A317'])
   })
 
@@ -45,5 +45,13 @@ describe('resolveTheme', () => {
 
   it('carries an ask-the-person message for when nothing was passed', () => {
     expect(THEME_NEEDED).toContain('Ask the person')
+  })
+
+  it('keeps text readable on light fields and rejects malformed optional values', () => {
+    const input = { field: 'FFFFCC', accent: '445566', fonts: { title: 'Georgia', body: 'Arial' } }
+    expect(resolveTheme(input)!.colors.onField).toBe('000000')
+    for (const invalid of [{ ink: 'red' }, { paper: null }, { chart: ['bad'] }, { chart: '112233' }, { chart: Array(13).fill('112233') }, { unexpected: true }, { fonts: { ...input.fonts, body: 'Arial\u0000' } }, { fonts: { ...input.fonts, unknown: 'font' } }]) {
+      expect(resolveTheme({ ...input, ...invalid })).toBeNull()
+    }
   })
 })

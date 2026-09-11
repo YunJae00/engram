@@ -32,26 +32,38 @@ const PAPER = 'FFFFFF'
 const MUTE = '6B7280'
 const HAIR = 'D8DCE4'
 const ZEBRA = 'F4F6FA'
-const ON_FIELD = 'FFFFFF'
+function onField(color: string): string {
+  const channels = [0, 2, 4].map((offset) => {
+    const value = parseInt(color.slice(offset, offset + 2), 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  const luminance = channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722
+  return luminance > 0.179 ? '000000' : 'FFFFFF'
+}
 
 // Expands the brand the model gave into a full theme, or null if what it gave
 // is not a usable brand (so the caller can ask again).
 export function resolveTheme(input: unknown): OfficeTheme | null {
   if (!plain(input) || !plain(input['fonts'])) return null
+  if (Object.keys(input).some((key) => !['field', 'accent', 'fonts', 'ink', 'paper', 'chart'].includes(key))) return null
   const field = hex(input['field'])
   const accent = hex(input['accent'])
   const fonts = input['fonts'] as Record<string, unknown>
+  if (Object.keys(fonts).some((key) => !['title', 'body'].includes(key))) return null
   const title = typeof fonts['title'] === 'string' && fonts['title'].trim() && fonts['title'].length <= 60 ? fonts['title'].trim() : null
   const body = typeof fonts['body'] === 'string' && fonts['body'].trim() && fonts['body'].length <= 60 ? fonts['body'].trim() : null
   if (!field || !accent || !title || !body) return null
+  if ([...title, ...body].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return null
+  if (['ink', 'paper'].some((key) => input[key] !== undefined && !hex(input[key]))) return null
   const ink = hex(input['ink']) ?? INK
   const paper = hex(input['paper']) ?? PAPER
   // The chart palette is the brand's own colours; extra hues for many-series
-  // charts come from the model, never invented here. Bad entries are dropped.
-  const extra = Array.isArray(input['chart']) ? input['chart'].map(hex).filter((c): c is string => Boolean(c)) : []
+  // charts come from the model, never invented here.
+  if (input['chart'] !== undefined && (!Array.isArray(input['chart']) || input['chart'].length > 12 || input['chart'].some((color) => !hex(color)))) return null
+  const extra = Array.isArray(input['chart']) ? input['chart'].map((color) => hex(color)!) : []
   const chart = [...new Set([field, accent, MUTE, ...extra])]
   return {
-    colors: { field, accent, ink, paper, mute: MUTE, hair: HAIR, zebra: ZEBRA, onField: ON_FIELD, chart },
+    colors: { field, accent, ink, paper, mute: MUTE, hair: HAIR, zebra: ZEBRA, onField: onField(field), chart },
     fonts: { title, body },
   }
 }

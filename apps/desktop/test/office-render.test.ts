@@ -49,7 +49,7 @@ it('allocates a larger bullet box and rejects overflowing tables without creatin
 it('renders in the brand the caller passes, not a look of its own', async () => {
   // Two unrelated brands; each file must carry its own colours and neither the
   // other's - proof the design is data the caller supplies, not baked in here.
-  const brand = resolveTheme({ field: '7A1F3B', accent: '2FA98C', fonts: { title: 'Cambria', body: 'Verdana' } })!
+  const brand = resolveTheme({ field: '7A1F3B', accent: '2FA98C', paper: 'FAF7F0', fonts: { title: 'Cambria', body: 'Verdana' } })!
   const deck = await renderDeck({ slides: [{ title: 'Plan', subtitle: 'Q4' }, { title: 'Steps', bullets: ['Ship', 'Measure'] }], theme: brand, saveAs: join(fake.directory, 'branded.pptx') }, false)
   const deckZip = await JSZip.loadAsync(await readFile(deck.path))
   const slideXml = await deckZip.file('ppt/slides/slide1.xml')!.async('string') + await deckZip.file('ppt/slides/slide2.xml')!.async('string')
@@ -60,6 +60,7 @@ it('renders in the brand the caller passes, not a look of its own', async () => 
   const docXml = await (await JSZip.loadAsync(await readFile(docResult.path))).file('word/document.xml')!.async('string')
   expect(docXml).toContain('7A1F3B')
   expect(docXml).toContain('Verdana')
+  expect(docXml).toContain('<w:background w:color="FAF7F0"')
   expect(docXml).not.toContain('1F3B5B')
 })
 
