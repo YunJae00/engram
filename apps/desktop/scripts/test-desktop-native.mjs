@@ -361,5 +361,5 @@ try {
   if (cleanupError) { result.passed = false; result.cleanupError = String(cleanupError) }
   writeFileSync(path.join(output, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
   console.log(`Native desktop CI evidence: ${output}`)
-  if (cleanupError && !result.error) throw cleanupError
+  if (cleanupError) process.exitCode = 1
 }
