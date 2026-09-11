@@ -84,13 +84,14 @@ class Channel {
     })
   }
   async close() {
-    if (this.child.exitCode !== null) return
+    const exited = () => this.child.exitCode !== null || this.child.signalCode !== null
+    if (exited()) return
     const exit = new Promise(resolve => this.child.once('exit', resolve))
     this.child.stdin.end()
     await Promise.race([exit, new Promise(resolve => setTimeout(resolve, 2500))])
-    if (this.child.exitCode === null) this.child.kill()
+    if (!exited()) this.child.kill()
     await Promise.race([exit, new Promise(resolve => setTimeout(resolve, 2500))])
-    assert.notEqual(this.child.exitCode, null, 'Owned test process did not exit')
+    assert.ok(exited(), 'Owned test process did not exit')
   }
 }
 
@@ -352,9 +353,13 @@ try {
   try { result.fixtureState = await fixture.request('state') } catch { result.fixtureUnavailable = true }
   throw error
 } finally {
-  if (helper) await helper.close()
-  if (overlayOwner) await overlayOwner.close()
-  await fixture.close()
+  let cleanupError
+  for (const channel of [helper, overlayOwner, fixture]) {
+    try { await channel?.close() }
+    catch (error) { cleanupError ??= error }
+  }
+  if (cleanupError) { result.passed = false; result.cleanupError = String(cleanupError) }
   writeFileSync(path.join(output, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
   console.log(`Native desktop CI evidence: ${output}`)
+  if (cleanupError && !result.error) throw cleanupError
 }
