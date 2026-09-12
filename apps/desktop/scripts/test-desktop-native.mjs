@@ -163,14 +163,18 @@ try {
   await fixture.request('foreignInput')
   await until(() => helper.request('inputState'), state => state.idleMs >= 150, 'Fixture input did not settle')
   assert.equal((await fixture.request('away')).foreground, false)
-  await fixture.request('grantForeground', { pid: helper.child.pid })
-  const activation = await helper.request('activateWindow', target)
-  assert.equal(activation.foreground, true)
-  assert.ok(activation.visualBounds.width > 0 && activation.visualBounds.width <= activation.bounds.width)
-  assert.equal((await helper.request('inputState')).working, false)
-  assert.equal((await fixture.request('state')).foreground, true)
+  result.stage = 'application-activation'
+  for (let handoff = 0; handoff < 3; handoff++) {
+    await fixture.request('grantForeground', { pid: helper.child.pid })
+    const activation = await helper.request('activateWindow', target)
+    assert.equal(activation.foreground, true)
+    assert.ok(activation.visualBounds.width > 0 && activation.visualBounds.width <= activation.bounds.width)
+    assert.equal((await helper.request('inputState')).working, false)
+    assert.equal((await fixture.request('state')).foreground, true)
+    assert.equal((await fixture.request('away')).foreground, false)
+  }
   result.applicationActivationPassed = true
-  assert.equal((await fixture.request('away')).foreground, false)
+  result.stage = 'bind'
   const activationInput = await helper.request('inputState')
   const cancelledGrant = { ...target, grant: randomUUID(), intervention: activationInput.intervention }
   await helper.request('prepare', cancelledGrant)

@@ -70,6 +70,9 @@ internal static class DesktopNative
         // Cross-thread activation completes when the target services its queue.
         if (SendMessageTimeout(target.Handle, 0, UIntPtr.Zero, IntPtr.Zero, 2, 250, out result) == IntPtr.Zero)
             throw new InvalidOperationException("The app did not acknowledge foreground activation");
+        var started = unchecked((uint)Environment.TickCount);
+        while (GetForegroundWindow() != target.Handle && unchecked((uint)Environment.TickCount - started) < 250)
+            System.Threading.Thread.Sleep(10);
         Foreground(target);
     }
     internal static void IdleKeys()
