@@ -56,6 +56,7 @@ function ReadDocument($a, $kind) {
   $app = App $prog $true
   if ($kind -eq 'word') { $app.Visible = $true }
   $doc = OpenDocument $app $file $kind
+  ShowWork $doc $kind (Prop $a 'compact' $null)
   $state = DocumentState $doc $kind
   $revision = [guid]::NewGuid().ToString('N')
   if ($documentReads.Count -ge 32) { $documentReads.Clear() }
@@ -84,6 +85,7 @@ function EditDocument($a, $kind) {
   $documentReads.Remove([string]$a.revision)
   if ($null -eq $grant -or $grant.kind -ne $kind -or $grant.file -ne $a.file) { throw 'Read this document again before editing.' }
   $doc = $grant.doc; $file = $grant.file
+  ShowWork $doc $kind $null
   if ($doc.FullName -ne $file -or $doc.ReadOnly) { throw 'Observed document is no longer writable at that path.' }
   $state = DocumentState $doc $kind
   if ((DocumentFingerprint $state) -cne $grant.state -or (FileDigest $file) -ne $grant.disk) { throw 'Document changed since the read. Read it again before editing.' }

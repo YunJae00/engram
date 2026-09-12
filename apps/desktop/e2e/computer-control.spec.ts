@@ -88,6 +88,10 @@ test('the overlay pill renders and its resume and stop buttons reach the host', 
     await expect(overlay.getByTestId('control-pill')).toContainText('Claude is controlling your computer')
     await control({ state: 'running', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', inputActive: false })
     await expect(overlay.getByTestId('control-pill')).toContainText('Planning next action')
+    await control({ state: 'running', lane: 'bot-one', inputActive: false, application: { name: 'PowerPoint', bounds: { x: 100, y: 100, width: 800, height: 600 }, visible: true } })
+    await expect(overlay.getByTestId('control-pill')).toContainText('Working in PowerPoint')
+    await expect(overlay.getByTestId('control-pill')).toContainText('Your mouse and keyboard stay yours')
+    await expect(overlay.getByTestId('control-pill')).not.toContainText('controlling your computer')
     await control({ state: 'running', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude' })
     await expect(overlay.getByTestId('control-pill')).toContainText('Claude is controlling your computer')
     await overlay.getByTestId('overlay-stop').click()
@@ -102,6 +106,34 @@ test.beforeEach(async () => {
   })
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
+})
+
+test('application glow follows its window and pointer movement has no ghost copies', async () => {
+  const nextWindow = app.waitForEvent('window')
+  await app.evaluate(async ({ BrowserWindow }, { target, preload }) => {
+    const surface = new BrowserWindow({ show: false, frame: false, width: 1000, height: 750, webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: false } })
+    await surface.loadURL(target)
+  }, { target: page.url().split('#')[0]! + '#overlay', preload: fileURLToPath(new URL('../out/preload/index.mjs', import.meta.url)) })
+  const surface = await nextWindow
+  try {
+    await control({ state: 'running', application: { name: 'PowerPoint', bounds: { x: 80, y: 90, width: 800, height: 600 }, visible: true } })
+    const glow = surface.locator('.control-overlay-glow')
+    await expect(glow).toHaveCSS('width', '800px')
+    await expect(glow).toHaveCSS('left', '80px')
+    await expect(surface.locator('.control-overlay-mark')).toHaveCount(0)
+    await control({ state: 'running', engine: 'claude' })
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('engram:event', { type: 'desktop:pointer', x: 100, y: 200 })
+        win.webContents.send('engram:event', { type: 'desktop:pointer', x: 200, y: 300, press: true })
+      }
+    })
+    await expect(surface.locator('.control-overlay-mark')).toHaveCount(1)
+    await expect(surface.locator('.control-overlay-ghost')).toHaveCount(0)
+    await expect(surface.locator('.control-overlay-mark')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 214, 312)')
+    await control({ state: 'idle' })
+    await expect(surface.locator('.control-overlay-glow')).toHaveCount(0)
+  } finally { await surface.close() }
 })
 
 async function state() { return app.evaluate(() => (globalThis as MockGlobal).desktopMock) }

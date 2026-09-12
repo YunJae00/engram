@@ -121,13 +121,10 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     if (window.innerWidth <= 900) onToggle()
   }
 
-  const createComet = async () => {
-    const bot = await api.botCreate({ name: t('bots.untitled'), purpose: '' }).catch(() => null)
-    if (!bot) return
+  const createComet = () => {
     setActivity('bots')
-    selectComet(bot.id)
+    selectComet(null)
     setChatsOpen(true)
-    await reload()
   }
 
   const openMenu = (kind: 'chat' | 'routine', id: string) => {

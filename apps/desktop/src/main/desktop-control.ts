@@ -92,6 +92,11 @@ export function assertDesktopTurnNotStopped(lane: string): void {
   if (stoppedTurns.has(lane)) throw stoppedError(lane)
 }
 
+export function cancelDesktopTurn(lane: string, reason: string): void {
+  stoppedTurns.set(lane, reason)
+  stopDesktopForLane(lane, reason)
+}
+
 export function stopDesktopFromUi(): void {
   if (paused && !paused.resumable && !active) { cancellation++; paused.release?.(); lease.reset(); paused = undefined; announce() }
   else stopDesktopControl()

@@ -4,6 +4,7 @@ import { DesktopHost } from './desktop-host.js'
 import { captureSource, chooseDesktop, desktopBindings, desktopOwner, desktopVisible, desktopWindows, releaseDesktop, setDesktopReadAccess } from './desktop-access.js'
 import { desktopControlStatus, readControlledDesktop, resumeDesktopControl, startDesktopControl, stopDesktopFromUi } from './desktop-control.js'
 import { overlayStatus, overlayWindowIds } from './desktop-overlay.js'
+import { stopApplicationWork } from './application-work.js'
 
 const requests = new Map<number, { lane: string; source: string; token: string; expires: number; capturing?: boolean }>()
 function allowed(sender: WebContents): boolean { return desktopOwner()?.webContents === sender }
@@ -35,7 +36,7 @@ export function registerDesktopIpc(): void {
   handle('desktop:observe', (lane: string) => readControlledDesktop(lane))
   handle('desktop:controlStatus', desktopControlStatus)
   handle('desktop:controlStart', startDesktopControl)
-  handle('desktop:controlStop', stopDesktopFromUi)
+  handle('desktop:controlStop', () => { if (!stopApplicationWork()) stopDesktopFromUi() })
   handle('desktop:controlResume', resumeDesktopControl)
   handle('desktop:overlayStatus', overlayStatus)
   handle('desktop:prepare', (lane: string) => {

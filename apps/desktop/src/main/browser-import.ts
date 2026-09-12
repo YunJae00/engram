@@ -30,7 +30,7 @@ export interface BrowserSource {
   running: boolean
 }
 
-function sources(): Omit<BrowserSource, 'running'>[] {
+export function browserProfileRoots(): Omit<BrowserSource, 'running'>[] {
   const local = process.env['LOCALAPPDATA'] ?? ''
   if (process.platform === 'win32')
     return [
@@ -53,7 +53,7 @@ function sources(): Omit<BrowserSource, 'running'>[] {
 // from process names, the check is the copy itself — see importBrowserSession.
 export async function listBrowserSources(): Promise<BrowserSource[]> {
   const found: BrowserSource[] = []
-  for (const source of sources()) {
+  for (const source of browserProfileRoots()) {
     const locked = await isLocked(join(source.userData, 'Default', 'Network', 'Cookies'))
     found.push({ ...source, running: locked })
   }
@@ -81,7 +81,7 @@ export interface ImportResult {
 // Copies the session across. Refuses rather than half-copies: a cookie jar
 // that arrives without its key store is a profile that silently knows nobody.
 export async function importBrowserSession(id: string): Promise<ImportResult> {
-  const source = sources().find((one) => one.id === id)
+  const source = browserProfileRoots().find((one) => one.id === id)
   if (!source) return { ok: false, error: 'that browser is not installed here' }
   const target = join(app.getPath('userData'), 'agent-browser-profile')
   const cookies = join(source.userData, 'Default', 'Network', 'Cookies')
@@ -124,7 +124,7 @@ export async function autoImportSession(preferredName: string | null): Promise<v
   if (process.env['ENGRAM_USERDATA']) return
   const last = await importedAt()
   if (last && Date.now() - new Date(last).getTime() < AUTO_IMPORT_EVERY_MS) return
-  const all = sources()
+  const all = browserProfileRoots()
   // The browser the person picked to work in is the one whose sign-ins they
   // mean; with no pick and several sources, freshest-cookie-jar wins is a
   // guess this code refuses to make, so it takes the single obvious one only.

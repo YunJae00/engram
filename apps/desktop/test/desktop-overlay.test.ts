@@ -51,6 +51,7 @@ const fake = vi.hoisted(() => {
     cursor: { x: 10, y: 10 },
     getAllDisplays: vi.fn(() => screen.displays),
     getCursorScreenPoint: vi.fn(() => screen.cursor),
+    getDisplayMatching: vi.fn(() => ({ workArea: { x: 1280, y: 0, width: 1920, height: 1040 } })),
     on: vi.fn(),
   }
   const app = { on: vi.fn() }
@@ -99,6 +100,15 @@ afterEach(() => {
 })
 
 describe('control overlay windows', () => {
+  it('anchors application activity to its own window and never paints a mouse companion', () => {
+    overlay.showControlOverlay({ state: 'running', lane: 'office', application: { name: 'PowerPoint', bounds: { x: 1400, y: 120, width: 900, height: 640 }, visible: true } })
+    expect(pill().setBounds).toHaveBeenLastCalledWith({ x: 1630, y: 68, width: 440, height: 60 })
+    const event = sentEvents(glows()[1]!).at(-1) as { control: DesktopControlStatusDto }
+    expect(event.control.application?.bounds).toEqual({ x: 120, y: 120, width: 900, height: 640 })
+    const before = glows()[1]!.webContents.send.mock.calls.length
+    overlay.overlayPointer({ x: 1500, y: 200 })
+    expect(glows()[1]!.webContents.send.mock.calls).toHaveLength(before)
+  })
   it('waits for the visible pill before handing its native handle to input control', async () => {
     const pending = overlay.prepareControlOverlay(running)
     await vi.advanceTimersByTimeAsync(6000)

@@ -207,7 +207,7 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect(page.getByTestId('app-sidebar')).toBeVisible()
 
   await page.getByTestId('bots-new').click()
-  await expect(page.locator('.bots-row.active')).toContainText('New comet')
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const scout = page.getByTestId('bots-suggestion').filter({ hasText: 'Research scout' })
   await expect(scout).toBeVisible()
   await scout.getByTestId('bots-suggestion-dismiss').click()

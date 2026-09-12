@@ -39,21 +39,22 @@ const LAUNCH_MIN_FREE = 2.5e9
 // away - megabytes that no reading and no watching needs.
 const BLOCKED_RESOURCES = new Set(['media'])
 
-// The page's own width, fixed for every machine and every pane.
+// Initial page width, before its visible pane requests a viewport.
 export const VIEW_WIDTH = 1280
 // Each lane keeps the viewport requested by its own conversation pane.
-const VIEW_HEIGHT_MIN = 620
+const VIEW_HEIGHT_MIN = 240
 const VIEW_HEIGHT_MAX = 2200
 const viewHeight = 860
 
-export async function setViewHeight(height: number, lane = activeLaneName()): Promise<boolean> {
+export async function setViewHeight(height: number, lane = activeLaneName(), width = VIEW_WIDTH): Promise<boolean> {
   const wanted = Math.round(Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_MAX, height)))
+  const wantedWidth = Math.round(Math.max(360, Math.min(1920, width)))
   const page = lanePage(lane)
-  if (!page || isNativePage(page) || page.viewportSize()?.height === wanted) return false
-  await page.setViewportSize({ width: VIEW_WIDTH, height: wanted }).catch((err: unknown) => {
+  if (!page || isNativePage(page) || (page.viewportSize()?.height === wanted && page.viewportSize()?.width === wantedWidth)) return false
+  await page.setViewportSize({ width: wantedWidth, height: wanted }).catch((err: unknown) => {
     flog('agent-browser', `could not lay a page out at ${wanted}: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   })
-  flog('agent-browser', `lane ${lane} laid out at ${VIEW_WIDTH}x${wanted}`)
+  flog('agent-browser', `lane ${lane} laid out at ${wantedWidth}x${wanted}`)
   return true
 }
 

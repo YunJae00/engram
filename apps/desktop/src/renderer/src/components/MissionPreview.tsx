@@ -1,11 +1,12 @@
 import { ArrowRight, Monitor } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FrameScreen } from './FrameScreen.js'
 import { onMissionFrame } from '../lib/missionFramesLive.js'
 import { t } from '../i18n.js'
 import { NativeSurface } from './NativeSurface.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { api } from '../api.js'
+import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 
 export function MissionPreview({ lane, name, open }: { lane: string; name: string; open(): void }) {
   const native = useNativeBrowser()
@@ -21,6 +22,8 @@ export function MissionPreview({ lane, name, open }: { lane: string; name: strin
     return () => { alive = false; clearInterval(timer) }
   }, [lane, native])
   const [painted, setPainted] = useState(false)
+  const viewport = useRef<HTMLButtonElement>(null)
+  useBrowserViewport(viewport, lane, !native && painted)
   const source = useCallback((paint: (data: string) => void) => {
     let started = false
     return onMissionFrame(lane, (frame) => {
@@ -45,7 +48,7 @@ export function MissionPreview({ lane, name, open }: { lane: string; name: strin
     </div>
   )
   return (
-    <button className="mission-preview" aria-label={t('mission.open', { name })} onClick={open}>
+    <button ref={viewport} className="mission-preview" aria-label={t('mission.open', { name })} onClick={open}>
       <FrameScreen source={source} />
       {!painted && <div className="mission-text"><Monitor size={26} strokeWidth={1.4} /><p>{t('mission.chat')}</p></div>}
     </button>

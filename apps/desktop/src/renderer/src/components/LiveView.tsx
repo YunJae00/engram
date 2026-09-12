@@ -9,6 +9,7 @@ import { t } from '../i18n.js'
 import { NativeSurface } from './NativeSurface.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { useApp } from '../state.js'
+import { BrowserActions } from './BrowserActions.js'
 
 // The agent browser, seen from inside the app: while a comet works, the page
 // sits at the foot of the thread, as wide as the conversation and stuck
@@ -151,6 +152,7 @@ function Address({ url }: { url?: string }) {
 // the turn runs, even between windows, so it does not blink in and out.
 // children: what belongs beside the page (the question, a wall's Continue).
 export function LiveView({ open = false, keep = false, children }: { open?: boolean; keep?: boolean; children?: ReactNode }) {
+  const { showToast } = useApp()
   const native = useNativeBrowser()
   const { on, url, frame, width, height, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   const size = { width, height }
@@ -254,7 +256,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
               data-testid="live-refresh"
               aria-label={t('live.refresh')}
               title={t('live.refresh')}
-              onClick={() => void api.agentRefresh().catch(() => {})}
+              onClick={() => void api.agentNavigate(lane, 'reload').catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not reload the page'))}
             >
               <RotateCw size={12} aria-hidden />
             </button>
@@ -283,9 +285,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
             >
               <div className="live-panel-bar">
                 <Address url={url} />
-                <button className="secondary live-panel-window" onClick={() => void api.agentRefresh().catch(() => {})}>
-                  <RotateCw size={12} aria-hidden /> {t('live.refresh')}
-                </button>
+                <BrowserActions lane={lane} url={url} live={on} />
                 {!native && <button className="secondary live-panel-window" onClick={callWindow}>
                   <AppWindow size={12} aria-hidden /> {t(windowOut ? 'live.hideWindow' : 'live.openWindow')}
                 </button>}

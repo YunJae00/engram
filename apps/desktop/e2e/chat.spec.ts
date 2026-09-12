@@ -82,7 +82,7 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
 
   await page.getByTestId('bots-new').click()
 
-  const composer = page.locator('.bots-write textarea')
+  const composer = page.getByTestId('welcome-input')
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
   await composer.press('Enter')
@@ -207,8 +207,10 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
 })
 
 test('the selected comet is remembered across tabs', async () => {
+  const count = await page.locator('.bots-row').count()
   await page.getByTestId('bots-new').click()
-  await expect(page.locator('.bots-row.active')).toContainText('New comet')
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
+  await expect(page.locator('.bots-row')).toHaveCount(count)
   // Pick the comet that is NOT first in the rail, then leave and come back.
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')

@@ -20,6 +20,7 @@ let page: Page
 let server: Server
 let siteUrl: string
 let browserPort: number
+const requests = new Map<string, number>()
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -32,6 +33,7 @@ test.beforeAll(async () => {
   // A form that carries what was typed into its address, and a page whose
   // one link fills the top of the window so a click on the mirror finds it.
   server = createServer((req, res) => {
+    requests.set(req.url ?? '/', (requests.get(req.url ?? '/') ?? 0) + 1)
     res.setHeader('content-type', 'text/html')
     if (req.url?.startsWith('/typed'))
       res.end(
@@ -81,6 +83,40 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app?.close()
   await new Promise<void>((resolve) => server.close(() => resolve()))
+})
+
+test('browser controls navigate history, reload the website and open imported bookmarks', async () => {
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId('activity-bots').click()
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
+  const lane = await page.evaluate(async () => `bot-${(await window.engram.botsList()).find((bot) => bot.name === 'Watching')!.id}`)
+  await page.evaluate(async ({ lane, url }) => {
+    await window.engram.agentGo(url, lane)
+    await window.engram.agentGo(`${url}clicked`, lane)
+  }, { lane, url: siteUrl })
+  const pane = page.getByTestId('web-pane')
+  await expect(pane).toBeVisible({ timeout: 60000 })
+  await expect(pane.getByRole('button', { name: 'Back', exact: true })).toBeEnabled()
+  await pane.getByRole('button', { name: 'Back', exact: true }).click()
+  await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
+  await pane.getByRole('button', { name: 'Forward', exact: true }).click()
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`)
+  const before = requests.get('/clicked') ?? 0
+  await pane.getByRole('button', { name: 'Reload page', exact: true }).click()
+  await expect.poll(() => requests.get('/clicked') ?? 0).toBeGreaterThan(before)
+  await expect(pane.getByTestId('live-reset')).toHaveCount(0)
+  await app.evaluate(({ ipcMain }, url) => {
+    ipcMain.removeHandler('bookmarks:sources'); ipcMain.removeHandler('bookmarks:list'); ipcMain.removeHandler('bookmarks:import')
+    ipcMain.handle('bookmarks:sources', () => [{ id: 'fixture', name: 'Chrome · Test profile' }])
+    ipcMain.handle('bookmarks:list', () => [])
+    ipcMain.handle('bookmarks:import', () => [{ title: 'Fixture bookmark', url, folder: 'Work' }])
+  }, siteUrl)
+  await pane.getByRole('button', { name: 'Bookmarks', exact: true }).click()
+  const bookmarks = page.getByRole('dialog', { name: 'Bookmarks', exact: true })
+  await bookmarks.getByRole('button', { name: 'Chrome · Test profile' }).click()
+  await bookmarks.getByRole('button', { name: /Fixture bookmark/ }).click()
+  await expect(bookmarks).toHaveCount(0)
+  await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
 })
 
 test('the mirror is watchable and acted in: the address, the keys and the clicks all reach the window', async () => {
@@ -222,18 +258,19 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
   await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)
+  const sharpWidth = await page.locator('.web-pane-stage').evaluate((node) => Math.max(360, Math.min(1920, Math.round(node.getBoundingClientRect().width / 8) * 8)) * 2)
   // Navigation commits before the new document can receive wheel input.
   await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
     const canvas = node as HTMLCanvasElement
     const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
     return { format: canvas.dataset.format, width: canvas.width, pixel: Array.from(pixel) }
-  }), { timeout: 20000 }).toEqual({ format: 'png', width: 2560, pixel: [240, 40, 40, 255] })
+  }), { timeout: 20000 }).toEqual({ format: 'png', width: sharpWidth, pixel: [240, 40, 40, 255] })
   await page.evaluate((id) => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }, `bot-${id}`), bots[3]!.id)
-  await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
+  await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node, width) => {
     const canvas = node as HTMLCanvasElement
     const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
-    return canvas.dataset.format === 'png' && canvas.width >= 2560 && pixel[2]! > 180 && pixel[0]! < 60
-  }), { timeout: 20000 }).toBe(true)
+    return canvas.dataset.format === 'png' && canvas.width === width && pixel[2]! > 180 && pixel[0]! < 60
+  }, sharpWidth), { timeout: 20000 }).toBe(true)
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
 })
 

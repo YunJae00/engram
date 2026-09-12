@@ -6,13 +6,40 @@ import { expect, it } from 'vitest'
 import { Document, Packer, Paragraph } from 'docx'
 import { OFFICE_HOST_SCRIPT } from '../src/main/office-script.js'
 
-it.skipIf(process.platform !== 'win32' || process.env['ENGRAM_OFFICE_LIVE_TEST'] !== '1').each(['word', 'ppt'])('edits only owned existing %s fixtures with readback and save protection', async (kind) => {
+it.skipIf(process.platform !== 'win32' || process.env['ENGRAM_OFFICE_LIVE_TEST'] !== '1').each(['word', 'ppt', 'excel'])('edits only owned existing %s fixtures with readback and save protection', async (kind) => {
   await mkdir(resolve('tmp'), { recursive: true })
   const dir = await mkdtemp(resolve('tmp/office-document-'))
   const script = join(dir, 'check.ps1')
   if (kind === 'word') await writeFile(join(dir, 'source.docx'), await Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph('draft Draft ^p draft ' + 'long '.repeat(90))] }] })))
   const checks = String.raw`
 function Assert($ok, $message) { if (-not $ok) { throw $message } }
+function CheckWorkWindow($owned, $kind) {
+  $script:req = [pscustomobject]@{ activity = $true }; $script:id = 11
+  $inputStream = [Console]::In
+  try {
+    [Console]::SetIn((New-Object IO.StringReader('{"activity":11}')))
+    ShowWork $owned $kind ([pscustomobject]@{x=60;y=80;width=720;height=480})
+    $window = $owned.Windows.Item(1)
+    if ($kind -eq 'ppt') { $window = $owned.Application }
+    Assert ([long]$window.Hwnd -gt 0) 'WINDOW_HANDLE_MISSING'
+    Assert ([Math]::Abs($window.Width - 720) -lt 10) 'WINDOW_NOT_COMPACT'
+    $start = New-Object Diagnostics.ProcessStartInfo
+    $start.FileName = $nativeHost; $start.Arguments = "--owner-pid $PID"
+    $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+    $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
+    $probe = [Diagnostics.Process]::Start($start)
+    try {
+      $ready = ConvertFrom-Json $probe.StandardOutput.ReadLine()
+      Assert ($ready.type -eq 'ready') 'NATIVE_NOT_READY'
+      $packet = (New-Object Text.UTF8Encoding($false)).GetBytes((ConvertTo-Json -Compress @{id=1;method='inspectWindow';window=([string]$window.Hwnd);pid=0}) + [char]10)
+      $probe.StandardInput.BaseStream.Write($packet, 0, $packet.Length); $probe.StandardInput.BaseStream.Flush()
+      $reply = ConvertFrom-Json $probe.StandardOutput.ReadLine()
+      Assert ($null -eq $reply.error -and $reply.result.bounds.width -gt 100 -and $reply.result.bounds.height -gt 100) ('NATIVE_APP_GEOMETRY_UNAVAILABLE ' + (ConvertTo-Json -Compress $reply))
+      Write-Output ('APP_GEOMETRY ' + (ConvertTo-Json -Compress $reply.result.bounds))
+    } finally { $probe.StandardInput.Close(); if (-not $probe.WaitForExit(2000)) { $probe.Kill() }; $probe.Dispose() }
+  } finally { [Console]::SetIn($inputStream); $script:req = $null }
+}
 function MustFail($action, $pattern) {
   try { & $action; throw 'EXPECTED_FAILURE' } catch { if ($_.Exception.Message -notlike $pattern) { throw } }
 }
@@ -21,9 +48,22 @@ function Request($file, $revision, $edits, $extra) {
   if ($extra) { foreach ($key in $extra.Keys) { $a[$key] = $extra[$key] } }
   return [pscustomobject]$a
 }
-$word = $null; $doc = $null; $ppt = $null; $deck = $null
+$word = $null; $doc = $null; $ppt = $null; $deck = $null; $excel = $null; $book = $null
 try {
-  if ($testKind -eq 'word') {
+  if ($testKind -eq 'excel') {
+  $excel = New-Object -ComObject Excel.Application
+  $apps['Excel.Application'] = $excel
+  $book = $excel.Workbooks.Add(); $excel.Visible = $true
+  CheckWorkWindow $book 'excel'
+  $sheet = $book.Worksheets.Item(1)
+  $result = Op-ExcelWrite ([pscustomobject]@{workbook=$book.Name;sheet=$sheet.Name;cells=@(
+    [pscustomobject]@{cell='A1';value=3},[pscustomobject]@{cell='B1';value=2500},[pscustomobject]@{cell='C1';value='=A1*B1'}
+  )})
+  Assert ($result.written -eq 3 -and $null -eq $result.saved) 'EXCEL_WRITE_OR_SAVE'
+  $read = Op-ExcelRead ([pscustomobject]@{workbook=$book.Name;sheet=$sheet.Name;range='A1:C1'})
+  Assert ($read.rows[0][2] -eq 7500 -and $sheet.Range('C1').Formula -eq '=A1*B1') 'EXCEL_READBACK'
+  Write-Output 'EXCEL_VERIFIED'
+  } elseif ($testKind -eq 'word') {
   Write-Output 'WORD_START'
   $word = New-Object -ComObject Word.Application
   Write-Output 'WORD_CREATED'
@@ -34,6 +74,7 @@ try {
   $doc = $word.Documents.Item('source.docx')
   Write-Output 'WORD_FIXTURE_OPENED'
   Assert $word.Visible 'WORD_NOT_VISIBLE'
+  CheckWorkWindow $doc 'word'
   Assert ($read.content[0].text.Length -gt 400) 'READ_TRUNCATED'
   $doc.Range(0,0).InsertBefore('user ')
   MustFail { Op-WordEdit (Request $file $read.revision @(@{kind='replace';find='draft';with='final'}) $null) } '*changed since*'
@@ -70,6 +111,7 @@ try {
   $deck.SaveAs($file)
   $original = FileDigest $file
   $read = Op-PptRead ([pscustomobject]@{file=$file})
+  CheckWorkWindow $deck 'ppt'
   Assert ($read.content[0].text.Length -gt 400) 'PPT_TRUNCATED'
   $result = Op-PptEdit (Request $file $read.revision @(@{kind='replace';find='draft';with='draft draft'}, @{kind='note';slide=1;text='Speaker notes'}) $null)
   Assert ($result.applied -eq 3 -and $null -eq $result.saved) 'PPT_COUNTS_OR_SAVE'
@@ -92,13 +134,16 @@ try {
   Write-Output 'PPT_VERIFIED'
   }
 } finally {
+  if ($null -ne $book) { $book.Close($false) }
+  if ($null -ne $excel -and $excel.Workbooks.Count -eq 0) { $excel.Quit() }
   if ($null -ne $doc) { $doc.Close(0) }
   if ($null -ne $word -and $word.Documents.Count -eq 0) { $word.Quit() }
   if ($null -ne $deck) { $deck.Saved = -1; $deck.Close() }
   if ($null -ne $ppt -and $ppt.Presentations.Count -eq 0) { $ppt.Quit() }
 }
 `
-  await writeFile(script, '\uFEFF' + OFFICE_HOST_SCRIPT.split("Send @{ type = 'ready'; protocol = 1 }")[0]! + `\n$testKind = '${kind}'\n` + checks, 'utf8')
+  const nativeHost = resolve('apps/desktop/native-bin/desktop/EngramDesktop.exe').replace(/'/g, "''")
+  await writeFile(script, '\uFEFF' + OFFICE_HOST_SCRIPT.split("Send @{ type = 'ready'; protocol = 1 }")[0]! + `\n$nativeHost = '${nativeHost}'\n$testKind = '${kind}'\n` + checks, 'utf8')
   const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script], { windowsHide: true, timeout: 180_000 }).catch((error: Error & { stdout?: string }) => { throw new Error(`${error.message}\n${error.stdout ?? ''}`) })
   expect(stdout).toContain(`${kind.toUpperCase()}_VERIFIED`)
 }, 190_000)

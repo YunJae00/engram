@@ -9,7 +9,7 @@ vi.mock('node:child_process', () => ({ spawn: fake.spawn }))
 
 function worker() {
   const proc = Object.assign(new EventEmitter(), {
-    stdin: { write: vi.fn((_line: string, done: (error?: Error) => void) => done()) },
+    stdin: { write: vi.fn((_line: string, done?: (error?: Error) => void) => done?.()) },
     stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null as number | null, signalCode: null,
     kill: vi.fn(() => true),
   })
@@ -107,4 +107,38 @@ it('terminates the worker on request timeout', async () => {
   await vi.advanceTimersByTimeAsync(90_001)
   expect((await timed as Error).message).toContain('did not finish in time')
   expect(proc.kill).toHaveBeenCalledOnce()
+})
+
+it('acknowledges an application window only after its visible activity handler is ready', async () => {
+  let show!: () => void
+  const activity = vi.fn(() => new Promise<void>((resolve) => { show = resolve }))
+  const result = host.officeRequest('ppt.read', {}, undefined, undefined, activity)
+  await ready()
+  await vi.waitFor(() => expect(proc.stdin.write).toHaveBeenCalledOnce())
+  const request = JSON.parse(proc.stdin.write.mock.calls[0]![0])
+  expect(request.activity).toBe(true)
+  proc.stdout.write(JSON.stringify({ type: 'activity', id: request.id, window: '123', name: 'PowerPoint' }) + '\n')
+  await vi.waitFor(() => expect(activity).toHaveBeenCalledWith('123', 'PowerPoint'))
+  expect(proc.stdin.write).toHaveBeenCalledOnce()
+  show()
+  await vi.waitFor(() => expect(proc.stdin.write).toHaveBeenCalledTimes(2))
+  expect(JSON.parse(proc.stdin.write.mock.calls[1]![0])).toEqual({ activity: request.id })
+  proc.stdout.write(JSON.stringify({ id: request.id, ok: true, result: 'read' }) + '\n')
+  expect(await result).toBe('read')
+})
+
+it('does not acknowledge a window if the request is cancelled while the overlay loads', async () => {
+  let show!: () => void
+  const activity = vi.fn(() => new Promise<void>((resolve) => { show = resolve }))
+  const controller = new AbortController()
+  const result = host.officeRequest('ppt.read', {}, controller.signal, undefined, activity).catch((e: Error) => e)
+  await ready()
+  await vi.waitFor(() => expect(proc.stdin.write).toHaveBeenCalledOnce())
+  const request = JSON.parse(proc.stdin.write.mock.calls[0]![0])
+  proc.stdout.write(JSON.stringify({ type: 'activity', id: request.id, window: '123', name: 'PowerPoint' }) + '\n')
+  await vi.waitFor(() => expect(activity).toHaveBeenCalled())
+  controller.abort(); show()
+  expect(await result).toBeInstanceOf(Error)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(proc.stdin.write).toHaveBeenCalledOnce()
 })

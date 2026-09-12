@@ -1,5 +1,6 @@
 import { api } from '../api.js'
 import { cometChannel, cometOfChannel, createCometThreads } from './cometThreads.js'
+import { webPane } from './webPane.js'
 
 const SELECTED_KEY = 'engram.comets.selected'
 
@@ -32,7 +33,19 @@ export async function loadCometThread(id: string): Promise<void> {
   if (active.includes(cometChannel(id)) && cometThreads.thread(id).doneSeen === seenBefore) cometThreads.adopt(id)
 }
 
+let webPhase: string | null = null
 api.onEvent((event) => {
+  const selected = cometThreads.getSnapshot().selectedId
+  if (selected && 'channel' in event && event.channel === cometChannel(selected)) {
+    if (event.type === 'chat:done' || event.type === 'chat:error') webPhase = null
+    if (event.type === 'comet:step') {
+      const tool = /^([a-z_]+):/.exec(event.line)?.[1]
+      if (tool && /^(open|read|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) {
+        if (webPhase !== event.channel) webPane.open()
+        webPhase = event.channel
+      } else if (tool && /^(excel_|ppt_|word_|outlook_|desktop_|read_desktop|look_desktop|open_app)/.test(tool)) webPhase = null
+    }
+  }
   const adoptedBefore = 'channel' in event ? cometThreads.thread(cometOfChannel(event.channel)).adopted : false
   const handled = cometThreads.handleEvent(event)
   if (handled) {

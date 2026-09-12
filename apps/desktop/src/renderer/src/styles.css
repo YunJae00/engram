@@ -1616,6 +1616,17 @@ body.bubble-host { background: transparent; }
 .web-pane.frozen .web-pane-inner { opacity: 0.72; }
 .web-pane-bar { display: flex; align-items: center; gap: 6px; min-height: var(--toolbar-height); padding: 6px 10px; flex: none; }
 .web-pane-bar .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); height: 32px; padding: 0 10px; border-radius: var(--radius-s); border-color: transparent; background: var(--hover-bg); }
+.browser-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.browser-actions button:disabled { opacity: 0.3; cursor: default; }
+.browser-bookmarks { position: fixed; z-index: 2000; width: min(340px, calc(100vw - 24px)); max-height: min(480px, 60vh); display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel-bg); color: var(--fg); border: 1px solid var(--border-soft); border-radius: var(--radius-l); box-shadow: var(--shadow-float); }
+.browser-bookmarks > input { width: 100%; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: var(--radius-s); background: var(--canvas-bg); color: var(--fg); }
+.browser-bookmark-list { min-height: 40px; overflow-y: auto; }
+.browser-bookmark-list button { display: flex; flex-direction: column; width: 100%; align-items: flex-start; gap: 3px; padding: 8px; border-radius: var(--radius-s); text-align: left; }
+.browser-bookmark-list button:hover, .browser-bookmark-import button:hover { background: var(--hover-bg); }
+.browser-bookmark-list span, .browser-bookmark-list small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-bookmarks small, .browser-bookmarks p, .browser-bookmark-import > span { color: var(--fg-dim); font-size: var(--fs-small); }
+.browser-bookmark-import { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.browser-bookmark-import button { text-align: left; padding: 7px 8px; border-radius: var(--radius-s); }
 .web-pane-stop {
   display: inline-flex; align-items: center; gap: 5px; flex: none;
   height: 26px; padding: 0 11px; border-radius: 999px; font-size: var(--fs-small); font-weight: 600;

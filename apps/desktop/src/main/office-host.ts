@@ -15,7 +15,7 @@ const REQUEST_MS = 90_000
 const IDLE_MS = 5 * 60_000
 const LINE_CAP = 2_000_000
 
-interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
+interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; activity?: (window: string, name: string) => Promise<void> }
 type Probe = { excel: boolean; word: boolean; powerpoint: boolean; outlook: boolean }
 
 let child: ChildProcessWithoutNullStreams | undefined
@@ -89,13 +89,22 @@ async function start(): Promise<void> {
     proc.once('exit', gone)
     createInterface({ input: proc.stdout }).on('line', (line) => {
       if (child !== proc || line.length > LINE_CAP) return
-      let message: { type?: string; id?: number; ok?: boolean; result?: unknown; error?: string }
+      let message: { type?: string; id?: number; ok?: boolean; result?: unknown; error?: string; window?: string; name?: string }
       try { message = JSON.parse(line) as typeof message } catch { return }
       if (!message || typeof message !== 'object') return
       if (message.type === 'ready') { clearTimeout(timer); resolve(); return }
       if (!Number.isSafeInteger(message.id)) return
       const request = pending.get(message.id!)
       if (!request) return
+      if (message.type === 'activity') {
+        if (typeof message.window !== 'string' || !/^\d{1,20}$/.test(message.window) || typeof message.name !== 'string') { fail(new Error('Invalid application window')); return }
+        void Promise.resolve().then(() => request.activity?.(message.window!, message.name!)).then(() => {
+          if (child === proc && pending.get(message.id!) === request) proc.stdin.write(JSON.stringify({ activity: message.id }) + '\n', (error) => { if (error && child === proc) fail(error) })
+        }).catch((error: unknown) => {
+          if (child === proc && pending.get(message.id!) === request) fail(error instanceof Error ? error : new Error('Application activity could not start'))
+        })
+        return
+      }
       clearTimeout(request.timer)
       pending.delete(message.id!)
       if (message.ok) request.resolve(message.result)
@@ -106,7 +115,7 @@ async function start(): Promise<void> {
 }
 
 // Office objects are single-threaded and one person's; requests take turns.
-export function officeRequest(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
+export function officeRequest(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void, activity?: (window: string, name: string) => Promise<void>): Promise<unknown> {
   const run = async (): Promise<unknown> => {
     signal?.throwIfAborted()
     assertActive?.()
@@ -118,14 +127,14 @@ export function officeRequest(op: OfficeOp, args: Record<string, unknown>, signa
     if (!proc) throw new Error('The office host is not running.')
     touch()
     const id = ++serial
-    const line = JSON.stringify({ id, op, args }) + '\n'
+    const line = JSON.stringify({ id, op, args, activity: !!activity }) + '\n'
     return new Promise<unknown>((resolve, reject) => {
       const stop = (reason: string) => fail(new Error(`${reason} The worker was stopped; changes may be partial. Read the document before continuing; do not replay the write.`))
       const timer = setTimeout(() => stop(`${op} did not finish in time.`), REQUEST_MS)
       const abort = () => stop('canceled')
       const guard = assertActive ? setInterval(() => { try { assertActive() } catch { stop('Computer control was stopped.') } }, 100) : undefined
       const clean = () => { if (guard) clearInterval(guard); signal?.removeEventListener('abort', abort) }
-      pending.set(id, { resolve: (value) => { clean(); resolve(value) }, reject: (error) => { clean(); reject(error) }, timer })
+      pending.set(id, { resolve: (value) => { clean(); resolve(value) }, reject: (error) => { clean(); reject(error) }, timer, activity })
       signal?.addEventListener('abort', abort, { once: true })
       proc.stdin.write(line, (error) => { if (error) { signal?.removeEventListener('abort', abort); fail(error) } })
     })

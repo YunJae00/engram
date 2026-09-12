@@ -40,6 +40,7 @@ export interface DesktopControlStatusDto {
   engine?: DesktopEngineId
   engineLabel?: string
   inputActive?: boolean
+  application?: { name: string; bounds: { x: number; y: number; width: number; height: number }; visible: boolean }
   // Paused because a hand touched the mouse or keyboard: the comet carries on
   // once that hand has been still for a moment. Esc and Stop are not resumable.
   resumable?: boolean

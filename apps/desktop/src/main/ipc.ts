@@ -124,6 +124,9 @@ import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, 
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
+import { browserHistory, browserNavigate, browserResize } from './browser-navigation.js'
+import { bookmarkSources, importBookmarks, savedBookmarks } from './browser-bookmarks.js'
+import { clearApplicationWork } from './application-work.js'
 import { missionFrames, watchMission } from './mission-control.js'
 import { titleFor } from './comet-title.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -1406,6 +1409,12 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
   ipcMain.handle('agent:go', (_e, url: string, lane?: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048), lane))
   ipcMain.handle('agent:refresh', () => refreshAgentView())
+  ipcMain.handle('agent:history', (_e, lane: string) => browserHistory(String(lane)))
+  ipcMain.handle('agent:navigate', (_e, lane: string, direction: string) => browserNavigate(String(lane), String(direction)))
+  ipcMain.handle('agent:resize', (_e, lane: string, width: number, height: number) => browserResize(String(lane), width, height))
+  ipcMain.handle('bookmarks:sources', () => bookmarkSources())
+  ipcMain.handle('bookmarks:list', () => savedBookmarks())
+  ipcMain.handle('bookmarks:import', (_e, id: string) => importBookmarks(String(id)))
   // The pane says how tall it is; the pages lay themselves out to fit it, so
   // the picture fills the space instead of leaving half of it empty.
   ipcMain.handle('mission:frames', (_e, lanes: string[]) => missionFrames(Array.isArray(lanes) ? lanes : []))
@@ -2183,6 +2192,7 @@ export function registerIpc(ctx: VaultContext): void {
             onStep: (line) => {
               broadcast({ type: 'comet:step', channel, line })
               const said = /^([a-z_]+): ([^]*)$/.exec(line)
+              if (said && /^(open|read|look|press|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
             onToken: (text) => broadcast({ type: 'chat:token', channel, text }),
@@ -2198,6 +2208,7 @@ export function registerIpc(ctx: VaultContext): void {
           },
         )
         if (signal.aborted) return
+        clearApplicationWork(channel)
         endDesktopTurn(channel)
         // A model that was pushed to act may announce that it acted. The
         // record is corrected here, in the same breath as the answer, so the
@@ -2319,6 +2330,7 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
+        clearApplicationWork(channel)
         endDesktopTurn(channel)
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the

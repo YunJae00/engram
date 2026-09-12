@@ -71,8 +71,8 @@ export function ControlPill() {
         <div className="control-pill-copy">
           {running ? (
             <>
-              <strong>{who} is controlling your computer</strong>
-              <span>{status.inputActive === false ? 'Planning next action · ' : ''}Esc to take over</span>
+              <strong>{status.application ? `Working in ${status.application.name}` : `${who} is controlling your computer`}</strong>
+              <span>{status.application ? 'Your mouse and keyboard stay yours · Esc to stop' : `${status.inputActive === false ? 'Planning next action · ' : ''}Esc to take over`}</span>
             </>
           ) : (
             <>

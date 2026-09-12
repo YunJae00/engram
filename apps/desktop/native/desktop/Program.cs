@@ -75,7 +75,8 @@ internal static class Program
             DesktopTarget target;
             using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
             if (method == "inspectWindow")
-            { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized } }); return; }
+            { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized,
+                foreground = target.Handle == DesktopNative.GetForegroundWindow(), bounds = AutomationSession.Bounds(DesktopNative.Bounds(target.Handle)) } }); return; }
             if (method == "bind" || method == "prepare")
             {
                 if (request.ContainsKey("intervention") && Text(request, "intervention", 20) != queued.Intervention.ToString(CultureInfo.InvariantCulture))

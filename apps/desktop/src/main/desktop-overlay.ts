@@ -50,6 +50,11 @@ function statusEvent(): EngramEvent {
 
 function send(win: BrowserWindow | null, event: EngramEvent): void {
   if (!win || win.isDestroyed()) return
+  if (event.type === 'desktop:control' && event.control.application) {
+    const glow = glows.find((one) => one.win === win)
+    const application = event.control.application
+    if (glow) event = { ...event, control: { ...event.control, application: { ...application, bounds: { ...application.bounds, x: application.bounds.x - glow.bounds.x, y: application.bounds.y - glow.bounds.y } } } }
+  }
   win.webContents.send('engram:event', event)
 }
 
@@ -157,6 +162,11 @@ function pillBounds(): Rectangle {
   const displays = screen.getAllDisplays()
   const cursor = screen.getCursorScreenPoint()
   const home = displays.find((display) => contains(display.bounds, cursor))?.bounds ?? displays[0]?.bounds ?? { x: 0, y: 0, width: PILL_WIDTH, height: PILL_HEIGHT }
+  if (status.application) {
+    const bounds = status.application.bounds
+    const work = screen.getDisplayMatching(bounds).workArea
+    return { x: Math.max(work.x, Math.min(work.x + work.width - PILL_WIDTH, bounds.x + Math.round((bounds.width - PILL_WIDTH) / 2))), y: Math.max(work.y + 4, bounds.y - PILL_HEIGHT + 8), width: PILL_WIDTH, height: PILL_HEIGHT }
+  }
   return { x: home.x + Math.round((home.width - PILL_WIDTH) / 2), y: home.y + PILL_TOP_INSET, width: PILL_WIDTH, height: PILL_HEIGHT }
 }
 
@@ -190,9 +200,13 @@ function stopTimers(): void {
 }
 
 function sendPointer(point: Point, press?: boolean): void {
+  if (status.application) return
+  const previous = lastPoint && glows.find((glow) => contains(glow.bounds, lastPoint!))
   lastPoint = point
   const target = glows.find((glow) => contains(glow.bounds, point))
   if (!target) return
+  if (previous && previous !== target) send(previous.win, { type: 'desktop:control', control: { state: 'idle' } })
+  if (previous && previous !== target) send(previous.win, statusEvent())
   const local = { x: point.x - target.bounds.x, y: point.y - target.bounds.y }
   send(target.win, press === undefined ? { type: 'desktop:pointer', ...local } : { type: 'desktop:pointer', ...local, press })
 }

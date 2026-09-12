@@ -1,4 +1,4 @@
-import { ChevronsRight, Globe, RotateCw, Square, X } from 'lucide-react'
+import { ChevronsRight, Globe, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -9,6 +9,8 @@ import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { t } from '../i18n.js'
 import { useShellState } from '../state-slices.js'
 import { useApp } from '../state.js'
+import { BrowserActions } from './BrowserActions.js'
+import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 
 // The page the comet works on, standing beside the conversation as its own
 // half of the screen. Trust comes from being able to SEE the work and stop
@@ -20,10 +22,6 @@ import { useApp } from '../state.js'
 const WIDTH_KEY = 'engram.webpane.width'
 const MIN_W = 380
 const MAX_SHARE = 0.72
-// The page's own width, fixed - the pane only ever changes its height.
-const VIEW_WIDTH = 1280
-// A drag settles before the pages are asked to lay out again.
-const SETTLE_MS = 260
 // How long the pane takes to leave when folded away.
 const FOLD_MS = 170
 // What the page gets of the window before anyone drags the divider.
@@ -139,39 +137,12 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
   }
-  // The window is opened in the shape of this pane: the pages lay themselves
-  // out to its height, so the picture fills what the person gave it. Only the
-  // height travels - the width is fixed, or a narrow pane would drop sites to
-  // their phone layout and a taught procedure would meet a page it never saw.
+  // Match the visible pane so text stays readable without scaling a desktop
+  // layout down to a narrow picture. Native surfaces already resize directly.
   const stage = useRef<HTMLDivElement>(null)
   const frozen = !on && frameHere
   const paneShown = (liveHere || frozen) && !folded
-  useEffect(() => {
-    const box = stage.current
-    if (!box || !paneShown || native) return
-    let asked = 0
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const tell = () => {
-      const rect = box.getBoundingClientRect()
-      if (rect.width < 40 || rect.height < 40) return
-      // The height the page needs to fill this box at the fixed width, rounded
-      // so a drag of a few pixels is not a hundred relayouts.
-      const wanted = Math.round((VIEW_WIDTH * rect.height) / rect.width / 20) * 20
-      if (wanted === asked) return
-      asked = wanted
-      void api.agentHeight(wanted, channel).catch(() => {})
-    }
-    const watch = new ResizeObserver(() => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(tell, SETTLE_MS)
-    })
-    watch.observe(box)
-    tell()
-    return () => {
-      if (timer) clearTimeout(timer)
-      watch.disconnect()
-    }
-  }, [paneShown, channel, native])
+  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && activity === 'bots')
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
@@ -198,18 +169,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
             <ChevronsRight size={13} aria-hidden />
           </button>
           <Address key={channel} channel={channel} url={mine ? url : ''} />
-          {!frozen && (
-            <>
-              <button className="live-dock-act" data-testid="live-refresh" aria-label={t('live.refresh')} title={t('live.refresh')} onClick={() => void api.agentRefresh().catch(() => {})}>
-                <RotateCw size={13} aria-hidden />
-              </button>
-              {/* The page has got somewhere neither the person nor the comet
-                  can get back from: close it, and the next ask starts clean. */}
-              <button className="live-dock-act" data-testid="live-reset" aria-label={t('live.reset')} title={t('live.reset')} onClick={() => void api.agentReset(channel).catch(() => {})}>
-                <X size={13} aria-hidden />
-              </button>
-            </>
-          )}
+          <BrowserActions key={channel} lane={channel} url={mine ? url : undefined} live={liveHere} />
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>
               <Square size={10} strokeWidth={2.5} aria-hidden /> {t('bubble.stop')}

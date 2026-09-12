@@ -27,6 +27,21 @@ function App($progId, $attach) {
 function Cap($value, $n) { if ($null -eq $value) { return '' }; $s = [string]$value; if ($s.Length -gt $n) { return $s.Substring(0, $n) + '...' }; return $s }
 function Prop($obj, $name, $default) { if ($null -ne $obj -and $null -ne $obj.PSObject.Properties[$name]) { return $obj.$name }; return $default }
 function Send($payload) { [Console]::Out.WriteLine((ConvertTo-Json -InputObject $payload -Compress -Depth 8)); [Console]::Out.Flush() }
+function ShowWork($doc, $kind, $compact) {
+  if (-not (Prop $req 'activity' $false)) { return }
+  $window = $doc.Windows.Item(1)
+  $window.Activate()
+  if ($kind -eq 'ppt') { $window = $doc.Application }
+  if ($compact) {
+    $window.WindowState = $(if ($kind -eq 'excel') { -4143 } elseif ($kind -eq 'word') { 0 } else { 1 })
+    $window.Left = [single]$compact.x; $window.Top = [single]$compact.y
+    $window.Width = [single]$compact.width; $window.Height = [single]$compact.height
+  }
+  $name = if ($kind -eq 'excel') { 'Excel' } elseif ($kind -eq 'word') { 'Word' } else { 'PowerPoint' }
+  Send @{ type = 'activity'; id = $id; window = ([string]$window.Hwnd); name = $name }
+  $ack = ConvertFrom-Json -InputObject ([Console]::In.ReadLine())
+  if ($ack.activity -ne $id) { throw 'Application work was not acknowledged.' }
+}
 
 function Op-Probe {
   return @{ excel = (Registered 'Excel.Application'); word = (Registered 'Word.Application'); powerpoint = (Registered 'PowerPoint.Application'); outlook = (Registered 'Outlook.Application') }
@@ -55,6 +70,8 @@ function Op-ExcelRead($a) {
   $x = App 'Excel.Application' $true
   $wb = Workbook $x (Prop $a 'workbook' $null)
   $sh = Sheet $wb (Prop $a 'sheet' $null)
+  if (Prop $req 'activity' $false) { $sh.Activate() }
+  ShowWork $wb 'excel' $null
   $rng = $sh.Range($a.range)
   if ([double]$rng.CountLarge -gt $CELL_CAP) { throw "Read at most $CELL_CAP cells at a time." }
   $rows = @()
@@ -81,6 +98,8 @@ function Op-ExcelWrite($a) {
   $x = App 'Excel.Application' $true
   $wb = TargetWorkbook $x $a
   $sh = TargetSheet $wb $a
+  if (Prop $req 'activity' $false) { $sh.Activate() }
+  ShowWork $wb 'excel' $(if ((Prop $a 'workbook' '') -eq 'new') { Prop $a 'compact' $null } else { $null })
   $n = 0
   foreach ($cell in $a.cells) {
     $target = $sh.Range($cell.cell)

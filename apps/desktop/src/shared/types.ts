@@ -515,6 +515,12 @@ export interface EngramApi extends DesktopApi {
   // Take the picture again now: for a view left on a page that went still
   // half-drawn. sharp asks for every device pixel, for a view being read.
   agentRefresh(): Promise<void>
+  agentHistory(lane: string): Promise<{ back: boolean; forward: boolean }>
+  agentNavigate(lane: string, direction: 'back' | 'forward' | 'reload'): Promise<void>
+  agentResize(lane: string, width: number, height: number): Promise<void>
+  bookmarksSources(): Promise<{ id: string; name: string }[]>
+  bookmarksList(): Promise<{ title: string; url: string; folder: string }[]>
+  bookmarksImport(id: string): Promise<{ title: string; url: string; folder: string }[]>
   // How tall the pages should lay themselves out, from the pane showing them.
   agentHeight(height: number, lane?: string): Promise<void>
   missionFrames(lanes: string[]): Promise<MissionFrameDto[]>

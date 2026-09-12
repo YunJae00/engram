@@ -10,8 +10,6 @@ import { Comet } from '../components/Icon.js'
 const COMPANION_DX = 14
 const COMPANION_DY = 12
 const COMPANION_REST_MS = 1800
-const TRAIL_SETTLE_MS = 160
-const TRAIL_LENGTH = 2
 
 interface Point { x: number; y: number }
 type Mode = 'running' | 'paused' | 'off'
@@ -36,14 +34,10 @@ function place(point: Point): { transform: string } {
 export function ControlOverlay() {
   const [status, setStatus] = useState<DesktopControlStatusDto>({ state: 'idle' })
   const [pointer, setPointer] = useState<Point | null>(null)
-  // Where the pointer just was, newest first: the ghost copies sit there.
-  const [trail, setTrail] = useState<Point[]>([])
   const [awake, setAwake] = useState(false)
   // Counts presses; the mark remounts on each so its pulse plays once.
   const [presses, setPresses] = useState(0)
   const restTimer = useRef<number | undefined>(undefined)
-  const trailTimer = useRef<number | undefined>(undefined)
-  const lastPointer = useRef<Point | null>(null)
 
   useEffect(() => {
     // The broadcast may have landed before this mounted; ask once.
@@ -53,46 +47,34 @@ export function ControlOverlay() {
       if (event.type === 'desktop:control') {
         stale = true
         setStatus(event.control)
+        if (event.control.state !== 'running') setPointer(null)
         return
       }
       if (event.type !== 'desktop:pointer') return
       const point = { x: event.x, y: event.y }
-      const previous = lastPointer.current
-      lastPointer.current = point
       setPointer(point)
-      if (previous && (previous.x !== point.x || previous.y !== point.y)) setTrail((older) => [previous, ...older].slice(0, TRAIL_LENGTH))
       setAwake(true)
       if (event.press) setPresses((count) => count + 1)
       window.clearTimeout(restTimer.current)
       restTimer.current = window.setTimeout(() => setAwake(false), COMPANION_REST_MS)
-      window.clearTimeout(trailTimer.current)
-      trailTimer.current = window.setTimeout(() => setTrail([]), TRAIL_SETTLE_MS)
     })
     return () => {
       stale = true
       off()
       window.clearTimeout(restTimer.current)
-      window.clearTimeout(trailTimer.current)
     }
   }, [])
 
   const mode = modeOf(status)
-  const companion = mode === 'running' && pointer !== null
+  const companion = mode === 'running' && pointer !== null && !status.application
+  const appBounds = status.application?.bounds
   return (
     <div className="control-overlay" data-testid="control-overlay" data-state={mode} data-engine={status.engine ?? 'default'}>
-      {mode !== 'off' && <div className="control-overlay-glow" />}
+      {mode !== 'off' && (!status.application || status.application.visible) && <div className="control-overlay-glow" style={appBounds ? { inset: 'auto', left: appBounds.x, top: appBounds.y, width: appBounds.width, height: appBounds.height, borderRadius: 8 } : undefined} />}
       {companion && (
         <div className="control-overlay-cursor" data-awake={awake ? 'true' : 'false'}>
-          {Array.from({ length: TRAIL_LENGTH }, (_, index) => {
-            const ghost = trail[index]
-            return (
-              <span key={index} className="control-overlay-ghost" data-order={ghost ? index + 1 : undefined} style={place(ghost ?? pointer)}>
-                <Comet size={22} />
-              </span>
-            )
-          })}
-          <span key={presses} className="control-overlay-mark" data-pressed={presses > 0 ? 'true' : undefined} style={place(pointer)}>
-            <Comet size={22} />
+          <span className="control-overlay-mark" style={place(pointer)}>
+            <span key={presses} data-pressed={presses > 0 ? 'true' : undefined}><Comet size={22} /></span>
           </span>
         </div>
       )}

@@ -31,6 +31,8 @@ const STEP_LABEL: Record<string, StringKey> = {
 export function stepLabel(t: Translate, line: string): string {
   if (isSaidLine(line)) return line.slice(SAID.length)
   const match = /^([a-z_]+): ([^]*)$/.exec(line)
+  const work: Record<string, string> = { ppt_build: 'Creating a presentation in PowerPoint', ppt_read: 'Checking the presentation', ppt_edit: 'Updating the open presentation', word_write: 'Creating a document in Word', word_read: 'Checking the document', word_edit: 'Updating the open document', excel_write: 'Updating the workbook in Excel', excel_read: 'Checking the workbook', excel_workbooks: 'Finding the workbook' }
+  if (match && work[match[1]!]) return work[match[1]!]!
   const key = match ? STEP_LABEL[match[1]!] : undefined
   return key && match ? t(key, { arg: match[2]! }) : line
 }
