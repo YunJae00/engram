@@ -22,6 +22,7 @@ function identity(tool: string, result: Record<string, unknown>): string | undef
 }
 
 function cells(range: unknown): string[] {
+  if (typeof range === 'string') range = range.trim()
   if (typeof range !== 'string' || !/^[A-Z]{1,3}[1-9]\d{0,6}(:[A-Z]{1,3}[1-9]\d{0,6})?$/i.test(range)) return []
   const ends = range.toUpperCase().split(':').map(part => {
     const [, letters, row] = /^([A-Z]+)(\d+)$/.exec(part)!

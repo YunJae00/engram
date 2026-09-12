@@ -32,7 +32,7 @@ it.each(['ppt', 'word'])('uses the resulting save-as target for %s edits', app =
 
 it('requires fresh read coverage for all changed cells, sheets and workbooks', () => {
   const target = { workbook: 'Book1', sheet: 'Sales' }
-  const written = step('excel_write', { ...target, written: 2 }, { cells: [{ cell: 'A1', value: 1 }, { cell: 'C2', value: 2 }], formats: [{ range: 'A1:B1', bold: true }] })
+  const written = step('excel_write', { ...target, written: 2 }, { cells: [{ cell: 'A1', value: 1 }, { cell: ' C2 ', value: 2 }], formats: [{ range: ' A1:B1 ', bold: true }] })
   const first = step('excel_read', { ...target, range: 'A1:B1', rows: [[1, null]] })
   const last = step('excel_read', { ...target, range: 'C2', rows: [[2]] })
   expect(officeWriteUnverified([written, first])).toBeDefined()
