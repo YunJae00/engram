@@ -73,6 +73,12 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
       const host = node.closest('.bots-chat')!.getBoundingClientRect()
       return Math.abs((box.left - host.left) - (host.right - box.right))
     })).toBeLessThanOrEqual(1)
+    expect(await page.locator('.bots-chat').evaluate((node) => {
+      const thread = node.querySelector('.bots-thread')!
+      const style = getComputedStyle(thread)
+      const content = thread.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      return node.querySelector('.bots-write')!.getBoundingClientRect().width - content
+    })).toBeGreaterThanOrEqual(30)
     await page.getByTestId('composer-web').click()
     await expect(page.getByTestId('web-pane')).toBeVisible()
     await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')

@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ModelChoiceDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -36,7 +36,33 @@ export function ModelPicker() {
   const [model, setModel] = useState(AUTO)
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
   const rows = useModelChoices()
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      if (!box.current || !menu.current) return
+      const anchor = box.current.getBoundingClientRect()
+      const host = box.current.closest('.bots-chat, .cosmos-chat, .bots-main')?.getBoundingClientRect()
+      const left = Math.max(0, host?.left ?? 0) + 8
+      const right = Math.min(innerWidth, host?.right ?? innerWidth) - 8
+      const width = Math.min(300, right - left)
+      const above = Math.max(0, anchor.top - Math.max(8, host?.top ?? 8) - 6)
+      const below = Math.max(0, Math.min(innerHeight - 8, host?.bottom ?? innerHeight - 8) - anchor.bottom - 6)
+      const down = above < 120 && below > above
+      Object.assign(menu.current.style, {
+        width: `${width}px`, left: `${Math.max(left, Math.min(anchor.left, right - width)) - anchor.left}px`,
+        maxHeight: `${Math.min(360, down ? below : above)}px`,
+        top: down ? 'calc(100% + 6px)' : 'auto', bottom: down ? 'auto' : 'calc(100% + 6px)',
+        transformOrigin: down ? 'top left' : 'bottom left',
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [open, rows])
 
   const read = () =>
     void api
@@ -88,13 +114,15 @@ export function ModelPicker() {
         data-testid="model-picker"
         title={t(engine === 'codex' ? 'model.pickChatGPT' : 'model.pick')}
         disabled={engine === 'codex'}
+        aria-expanded={open}
+        aria-haspopup="menu"
         onClick={() => setOpen(!open)}
       >
         {label}
         {engine === 'claude' && <ChevronDown size={11} strokeWidth={2.2} aria-hidden />}
       </button>
       {open && engine === 'claude' && (
-        <div className="model-picker-menu" role="menu" data-testid="model-picker-menu">
+        <div className="model-picker-menu" ref={menu} role="menu" data-testid="model-picker-menu">
           {choices.map((row) => (
             <button
               key={row.value || 'auto'}

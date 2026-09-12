@@ -19,7 +19,13 @@ let page: Page
 let paths: VaultPaths
 
 async function screenshot(name: string) {
+  await expect(page.locator('#boot')).toHaveCount(0)
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.evaluate(() => {
+    for (const animation of document.getAnimations()) {
+      if (Number.isFinite(animation.effect?.getTiming().iterations)) animation.finish()
+    }
+  })
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find((one) => one.webContents.getURL().includes('index.html'))!
     await window.webContents.capturePage()
@@ -52,6 +58,12 @@ test.beforeAll(async () => {
     },
   })
   page = await app.firstWindow()
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('models:list')
+    ipcMain.handle('models:list', () => Array.from({ length: 12 }, (_, index) => ({
+      value: `fixture-${index}`, label: `Model ${index + 1}`, detail: 'A long model description for checking menu boundaries and scrolling.',
+    })))
+  })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
@@ -90,8 +102,8 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   expect((await page.evaluate(() => window.engram.botsList())).length).toBe(previous.length)
   await page.setViewportSize({ width: 1280, height: 840 })
   await screenshot('ui-welcome.png')
-  await page.getByRole('button', { name: 'Research a topic', exact: true }).click()
-  await expect(page.getByTestId('welcome-input')).toBeFocused()
+  await expect(page.getByTestId('comet-welcome').getByRole('heading')).toHaveText('What’s next?')
+  await expect(page.locator('.welcome-starters')).toHaveCount(0)
   await page.getByTestId('welcome-input').fill('Summarize our deploy procedure')
   await page.getByTestId('welcome-input-send').click()
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
@@ -115,7 +127,7 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
     const style = getComputedStyle(thread)
     return { composer: composer.width, content: thread.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) }
   })
-  expect(geometry.composer).toBeLessThan(geometry.content)
+  expect(geometry.composer).toBeGreaterThan(geometry.content + 30)
   await screenshot('ui-conversation.png')
   await page.getByTestId('activity-settings').click()
   await expect(page.getByTestId('setting-autostart')).toBeVisible()
@@ -125,6 +137,37 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   await screenshot('ui-settings.png')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   expect((await page.evaluate(() => window.engram.settingsGet())).computerUse).toBe(true)
+  await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
+})
+
+test('welcome model choices stay inside the main surface at every window size', async () => {
+  await page.reload()
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
+  for (const size of [{ width: 1280, height: 840 }, { width: 948, height: 620 }, { width: 620, height: 480 }]) {
+    await page.setViewportSize(size)
+    if (size.width <= 900 && await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
+    const picker = page.getByTestId('comet-welcome').getByTestId('model-picker')
+    await picker.click()
+    const menu = page.getByTestId('model-picker-menu')
+    await expect(menu).toBeVisible()
+    await expect.poll(() => menu.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const host = document.querySelector('.bots-main')!.getBoundingClientRect()
+      return rect.left >= host.left && rect.right <= host.right && rect.top >= host.top && rect.bottom <= innerHeight
+    })).toBe(true)
+    await screenshot(`ui-welcome-model-${size.width}.png`)
+    await expect(page.getByTestId('model-pick-fixture-11')).toHaveCount(1)
+    await page.getByTestId('model-pick-fixture-11').click()
+    await expect(picker).toHaveText('Model 12')
+    await picker.click()
+    await page.getByTestId('model-pick-auto').click()
+    await expect(picker).toHaveText('Auto')
+    await picker.click()
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+  }
+  await page.setViewportSize({ width: 1280, height: 840 })
+  if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
 })
 

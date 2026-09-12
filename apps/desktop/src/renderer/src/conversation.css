@@ -7,10 +7,6 @@
 .conversation-thread > * { flex-shrink: 0; }
 .conversation-dock { background: var(--panel-bg); }
 .cosmos-chat-write.conversation-dock { flex: none; }
-.conversation-dock .model-picker-menu {
-  left: 0; right: auto; transform-origin: bottom left;
-  max-height: min(360px, 50vh); max-width: min(300px, calc(100vw - 64px)); overflow-y: auto;
-}
 .web-pane-empty {
   flex: 1; min-width: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px;
@@ -19,10 +15,7 @@
 }
 .web-pane-empty p { margin: 0; font-size: var(--fs-body); color: var(--fg-dim); }
 .web-pane-empty span { font-size: var(--fs-small); line-height: 1.5; }
-.comet-welcome { width: min(740px, calc(100% - 48px)); margin: auto; padding: 32px 0 64px; text-align: center; }
-.comet-welcome h1 { font-size: clamp(24px, 3vw, 32px); font-weight: 550; letter-spacing: -0.025em; color: var(--fg-strong); }
+.comet-welcome { width: min(var(--composer-width), calc(100% - 48px)); margin: auto; padding: 32px 0 64px; text-align: center; }
+.comet-welcome h1 { margin: 0 0 32px; font-size: clamp(24px, 3vw, 32px); font-weight: 550; letter-spacing: -0.025em; color: var(--fg-strong); }
 .comet-welcome > p { margin: 12px 0 28px; color: var(--fg-dim); }
 .comet-welcome .chat-write { text-align: left; padding: 16px; box-shadow: var(--shadow-card-rest); }
-.welcome-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 24px; }
-.welcome-starters button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-soft); border-radius: 999px; font-size: var(--fs-small); color: var(--fg-dim); }
-.welcome-starters button:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
