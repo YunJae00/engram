@@ -13,6 +13,13 @@ const restoredAt = new WeakMap<Page, number>()
 
 async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
+  const checkSize = () => {
+    const current = page.viewportSize()
+    if (current && (current.width !== size.width || current.height !== size.height)) {
+      captureScales.delete(page)
+      throw new Error('Browser viewport changed during capture')
+    }
+  }
   const metrics = await cdp.send('Page.getLayoutMetrics')
   const viewport = metrics.visualViewport ?? { pageX: 0, pageY: 0, scale: 1 }
   let scale = captureScales.get(page) ?? 0
@@ -23,14 +30,16 @@ async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
     ...(scale ? { clip: { x: viewport.pageX, y: viewport.pageY, width: size.width / zoom, height: size.height / zoom, scale: scale * zoom } } : {}),
   })
   let shot = await capture()
+  checkSize()
   // CDP sessions do not all inherit the context's device scale. Measure
   // the PNG rather than upscaling a low-resolution bitmap on the canvas.
   if (shot.data.startsWith('iVBOR')) {
     const width = Buffer.from(shot.data, 'base64').readUInt32BE(16)
-    if (width > 0 && width < size.width * 2) {
+    if (width > 0 && Math.abs(width - size.width * 2) > 1) {
       scale = (scale || 1) * size.width * 2 / width
       captureScales.set(page, scale)
       shot = await capture()
+      checkSize()
     }
   }
   return { data: shot.data, ...size }
@@ -113,6 +122,8 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     changed = now
     settled = false
     lastStream = ''
+    clearTimeout(motionTimer)
+    motionFrame = undefined
     void cdp.send('Page.stopScreencast').then(() => (alive ? cdp.send('Page.startScreencast', CAST) : undefined)).catch(() => undefined)
   }
   const deliver = (frame: CastFrame) => {
@@ -153,7 +164,10 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   const navigated = () => { changed = Date.now(); settled = false }
   page.on('framenavigated', navigated)
   page.on('domcontentloaded', navigated)
+  let shape = JSON.stringify(page.viewportSize())
   const timer = setInterval(() => {
+    const next = JSON.stringify(page.viewportSize())
+    if (next !== shape) { shape = next; recast() }
     if (!settled && Date.now() - changed > 300) void still()
   }, 150).unref()
   let stopping: Promise<void> | undefined

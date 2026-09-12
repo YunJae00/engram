@@ -11,6 +11,28 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
+  it('refreshes a settled shared stream when the pane resizes without a compositor event', async () => {
+    vi.useFakeTimers()
+    const { page, cdp } = fixture()
+    const receive = vi.fn()
+    const stop = await startPagePreview(page, receive)
+    await vi.advanceTimersByTimeAsync(500)
+    vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 360, height: 296 })
+    cdp.send.mockResolvedValue({ data: 'resized' })
+    await vi.advanceTimersByTimeAsync(1200)
+    expect(receive).toHaveBeenLastCalledWith({ data: 'resized', width: 360, height: 296 })
+    expect(cdp.send).toHaveBeenCalledWith('Page.stopScreencast')
+    stop()
+    await vi.advanceTimersByTimeAsync(200)
+  })
+  it('rejects a capture measured against a viewport that changed while capturing', async () => {
+    const { page, cdp } = fixture()
+    cdp.send.mockImplementation(async () => {
+      vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 360, height: 296 })
+      return { data: 'stale' }
+    })
+    await expect(captureSharpFrame(page, cdp)).rejects.toThrow('viewport changed')
+  })
   it('renders the full high-resolution clip instead of clipping it to the unscaled surface', async () => {
     const { page, cdp } = fixture()
     const png = Buffer.alloc(24)
