@@ -1,0 +1,42 @@
+import { beforeEach, expect, it, vi } from 'vitest'
+const fake = vi.hoisted(() => ({ login: vi.fn(), open: vi.fn().mockResolvedValue(undefined), broadcast: vi.fn() }))
+vi.mock('electron', () => ({ shell: { openExternal: fake.open } }))
+vi.mock('../src/main/engine-cloud.js', () => ({ cloudEngine: () => ({ login: fake.login }) }))
+vi.mock('../src/main/engine-health.js', () => ({ broadcast: fake.broadcast }))
+beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
+it('accepts only provider-owned HTTPS authorization links', async () => {
+  const { loginUrl } = await import('../src/main/engine-signin.js')
+  expect(loginUrl('claude', 'https://claude.ai/oauth/authorize?state=test')).toBeTruthy()
+  expect(loginUrl('codex', 'https://auth.openai.com/oauth/authorize?state=test')).toBeTruthy()
+  for (const url of ['http://auth.openai.com/oauth/authorize', 'https://auth.openai.com.evil.test/oauth/authorize', 'https://auth.openai.com/account', 'file:///x', 'https://x@auth.openai.com/oauth/authorize']) expect(loginUrl('codex', url)).toBeUndefined()
+})
+it('shares a pending sign-in, offers browser recovery and does not leak its URL to renderer state', async () => {
+  let finish!: (value: { ok: boolean }) => void
+  fake.login.mockImplementation(({ onUrl }: { onUrl(url: string): void }) => {
+    onUrl('https://auth.openai.com/oauth/authorize?state=private')
+    return new Promise((resolve) => { finish = resolve })
+  })
+  const signin = await import('../src/main/engine-signin.js')
+  const first = signin.connectEngine('codex')
+  expect(signin.connectEngine('codex')).toBe(first)
+  expect(fake.login).toHaveBeenCalledOnce()
+  expect(fake.open).toHaveBeenCalledOnce()
+  expect(JSON.stringify(signin.engineLogins())).not.toContain('private')
+  expect(signin.engineLogins()[0]).toMatchObject({ phase: 'browser', canOpen: true })
+  await signin.reopenEngineLogin('codex')
+  expect(fake.open).toHaveBeenCalledTimes(2)
+  finish({ ok: true })
+  await first
+  expect(signin.engineLogins()[0]).toMatchObject({ phase: 'connected', canOpen: false })
+})
+it('cancels just the chosen login and allows a fresh attempt', async () => {
+  fake.login.mockImplementation(({ signal }: { signal: AbortSignal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })))
+  const signin = await import('../src/main/engine-signin.js')
+  const first = signin.connectEngine('claude')
+  signin.cancelEngineLogin('claude')
+  expect(await first).toEqual({ ok: false, message: undefined })
+  expect(signin.engineLogins()[0]?.phase).toBe('idle')
+  fake.login.mockResolvedValueOnce({ ok: true })
+  expect(await signin.connectEngine('claude')).toEqual({ ok: true })
+  expect(fake.open).not.toHaveBeenCalled()
+})

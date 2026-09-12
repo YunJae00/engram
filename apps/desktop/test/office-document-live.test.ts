@@ -23,6 +23,11 @@ function CheckWorkWindow($owned, $kind) {
     if ($kind -eq 'ppt') { $window = $owned.Application }
     Assert ([long]$window.Hwnd -gt 0) 'WINDOW_HANDLE_MISSING'
     Assert ([Math]::Abs($window.Width - 720) -lt 10) 'WINDOW_NOT_COMPACT'
+    $window.Left = 160; $window.Top = 140
+    $placedLeft = $window.Left; $placedTop = $window.Top
+    [Console]::SetIn((New-Object IO.StringReader('{"activity":11}')))
+    ShowWork $owned $kind ([pscustomobject]@{x=60;y=80;width=720;height=480})
+    Assert ([Math]::Abs($window.Left - $placedLeft) -lt 2 -and [Math]::Abs($window.Top - $placedTop) -lt 2) 'USER_WINDOW_POSITION_WAS_RESET'
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = $nativeHost; $start.Arguments = "--owner-pid $PID"
     $start.UseShellExecute = $false; $start.CreateNoWindow = $true

@@ -1772,9 +1772,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   font-size: var(--fs-small); color: var(--fg);
 }
 .brief-box input.settings-input { width: min(320px, 100%); }
-.brain-pick { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; margin: 2px 0 10px; border-radius: 999px; background: var(--hover-bg); }
-.brain-pick .brain-choice { height: 30px; padding: 0 18px; border: none; background: transparent; color: var(--fg-dim); font-weight: 500; }
-.brain-pick .brain-choice:hover:not(.armed) { background: transparent; color: var(--fg); }
 .settings-more { order: 5; margin: 4px 0; }
 .settings-more .settings-group-head { margin-top: 14px; margin-bottom: 2px; }
 .settings-more > summary { cursor: pointer; font-size: var(--fs-body); color: var(--fg-dim); padding: 6px 0; list-style: none; }
@@ -1782,7 +1779,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .settings-more[open] > summary { margin-bottom: 8px; }
 .settings-more > summary::before { content: '›'; display: inline-block; margin-right: 6px; transition: transform 120ms ease; }
 .settings-more[open] > summary::before { transform: rotate(90deg); }
-.brain-pick .brain-choice.armed { background: var(--panel-bg); color: var(--fg-strong); box-shadow: 0 1px 3px rgba(43, 43, 51, 0.14); }
 .composer-cosmos {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px;
   border-radius: 999px; color: var(--fg-faint); font-size: var(--fs-micro); font-weight: 600;

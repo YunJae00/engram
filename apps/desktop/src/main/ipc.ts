@@ -113,7 +113,9 @@ import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { cloudEngine } from './engine-cloud.js'
-import { claudeModels, fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
+import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
+import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
+import { connectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2389,24 +2391,25 @@ export function registerEngineIpc(): void {
     return id
   }
   ipcMain.handle('engines:states', () => engineStates())
-  // The models the signed-in plan offers. Empty until the runtime has been
-  // asked, which starts here if it has not; the answer is announced.
-  ipcMain.handle('models:list', () => {
-    const known = claudeModels()
-    if (known.length === 0)
-      void fetchClaudeModels().then((rows) => {
-        if (rows.length > 0) broadcast({ type: 'models:changed' })
-      })
-    return known
-  })
+  ipcMain.handle('models:list', (_e, id: unknown = 'claude') => cloudId(id) === 'claude' ? fetchClaudeModels() : fetchCodexModels())
+  ipcMain.handle('engines:logins', () => engineLogins())
+  ipcMain.handle('engines:cancelLogin', (_e, id: unknown) => cancelEngineLogin(cloudId(id)))
+  ipcMain.handle('engines:openLogin', (_e, id: unknown) => reopenEngineLogin(cloudId(id)))
   ipcMain.handle('engines:connect', async (_e, id: unknown) => {
-    const result = await cloudEngine(cloudId(id)).login()
+    const result = await connectEngine(cloudId(id))
+    if (result.ok) {
+      if (id === 'claude') forgetClaudeModels()
+      else forgetCodexModels()
+      broadcast({ type: 'models:changed' })
+    }
     await onEnginesChanged?.()
     return result
   })
   ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
     await cloudEngine(cloudId(id)).logout()
     if (id === 'claude') forgetClaudeModels()
+    else forgetCodexModels()
+    broadcast({ type: 'models:changed' })
     await onEnginesChanged?.()
   })
 }

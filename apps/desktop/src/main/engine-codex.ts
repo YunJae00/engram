@@ -1,6 +1,6 @@
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
-import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine } from './engine-cloud.js'
-import { flog } from './flog.js'
+import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
+import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
@@ -59,15 +59,13 @@ export class CodexEngine implements CloudEngine {
     })
   }
 
-  async login(): Promise<{ ok: boolean; message?: string }> {
-    const binary = codexBinary()
-    if (!binary) return { ok: false, message: 'the ChatGPT runtime is not part of this build' }
-    const { code, out } = await runText(binary, ['login'], LOGIN_TIMEOUT_MS, withHelpersOnPath(binary))
-    this.status.forget()
-    const status = await this.detect()
-    if (status.loggedIn) return { ok: true }
-    flog('engine-codex', `login did not complete (exit ${code ?? 'timeout'}): ${out.slice(-300)}`)
-    return { ok: false, message: out.trim().split('\n').pop() ?? 'sign-in did not complete' }
+  async login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }> {
+    const account = new CodexAccount(options?.signal ?? new AbortController().signal, LOGIN_TIMEOUT_MS)
+    try {
+      await account.login((url) => options?.onUrl?.(url))
+      this.status.forget()
+      return { ok: (await this.detect()).loggedIn }
+    } finally { account.close() }
   }
 
   async logout(): Promise<void> {

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AppSettingsDto, EngineStatusDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
+import type { AppSettingsDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { DiagnosticsView } from './DiagnosticsView.js'
-import { useModelChoices } from '../components/ModelPicker.js'
+import { EngineSettings } from '../components/EngineSettings.js'
 import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
@@ -12,10 +12,8 @@ import { ComputerSettings } from '../components/ComputerSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 
-const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
-// The sheet opens at once, empty, and its rows fill in together when every
-// one of them knows its state - none of them is shown half-known. A load
-// that hangs does not keep the rows blank for good.
+// Only local settings gate the sheet. Network and runtime probes fill their
+// own sections without blocking navigation.
 const READY_WAIT_MS = 8_000
 
 export function SettingsView({ onClose }: { onClose(): void }) {
@@ -32,34 +30,14 @@ export function SettingsView({ onClose }: { onClose(): void }) {
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
-  // Every brain this build carries, signed in or not - the cloud rows read
-  // their state off this, and the sign-in flows refresh it.
-  const [brains, setBrains] = useState<EngineStatusDto[]>([])
-  const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
-  const claudeChoices = useModelChoices()
-  const [connectFail, setConnectFail] = useState<Record<string, string>>({})
-  const refreshBrains = () => void api.engineStates().then(setBrains).catch(() => {})
-  const connect = async (id: 'claude' | 'codex') => {
-    setConnecting(id)
-    setConnectFail((prior) => ({ ...prior, [id]: '' }))
-    const result = await api.engineConnect(id).catch((err: unknown) => ({ ok: false, message: String((err as Error).message ?? err) }))
-    setConnecting(null)
-    if (!result.ok) setConnectFail((prior) => ({ ...prior, [id]: result.message ?? t('settings.brainConnectFailed') }))
-    refreshBrains()
-  }
-  const disconnect = async (id: 'claude' | 'codex') => {
-    await api.engineDisconnect(id).catch(() => undefined)
-    refreshBrains()
-  }
   const [ready, setReady] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let alive = true
     const loads = [
-      api.settingsGet().then((value) => { if (alive) setSettings(value) }),
+      api.settingsGet().then((value) => { if (alive) { setSettings(value); setReady(true) } }).catch(() => { if (alive) setReady(true) }),
       api.appVersion().then(setVersion),
-      api.engineStates().then(setBrains),
       api.activityGet().then(setDeskJournal),
       api.sessionWatchGet().then(setSessionWatch),
       // What the updater already knows, shown without a click — a downloaded
@@ -141,7 +119,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
   if (!settings || !ready)
     return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
-  const patch = (p: Partial<AppSettingsDto>) => setSettings({ ...settings, ...p })
+  const patch = (p: Partial<AppSettingsDto>) => setSettings((current) => current ? { ...current, ...p } : current)
 
   const save = async () => {
     try {
@@ -224,92 +202,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
         </section>
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
         <h2>AI connection</h2>
-        <div className="settings-group">
-          <div className="setting-note">{t('settings.brainHint')}</div>
-          <div className="brain-pick" role="radiogroup" aria-label={t('settings.brainUse')}>
-            {(['claude', 'codex'] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="radio"
-                aria-checked={settings.defaultEngine === id}
-                className={`secondary brain-choice${settings.defaultEngine === id ? ' armed' : ''}`}
-                data-testid={`brain-use-${id}`}
-                onClick={() => patch({ defaultEngine: id })}
-              >
-                {t(BRAIN_NAME[id])}
-              </button>
-            ))}
-          </div>
-          {(['claude', 'codex'] as const).map((id) => {
-            const state = brains.find((b) => b.id === id)
-            const connected = state?.installed === true && state.loggedIn
-            const carried = state?.installed === true
-            return (
-              <div key={id} className="settings-fact">
-                <span className="settings-fact-key">{t(BRAIN_NAME[id])}</span>
-                <span className="settings-fact-value" data-testid={`brain-${id}-status`}>
-                  {connecting === id
-                    ? t('settings.brainConnecting')
-                    : connected
-                      ? t('settings.brainConnected')
-                      : carried
-                        ? t('settings.brainNotConnected')
-                        : t('settings.brainMissing')}
-                  {carried && !connected && connecting !== id && (
-                    <button className="secondary" data-testid={`brain-${id}-connect`} onClick={() => void connect(id)}>
-                      {t('settings.brainConnect')}
-                    </button>
-                  )}
-                  {connected && (
-                    <button className="secondary" data-testid={`brain-${id}-disconnect`} onClick={() => void disconnect(id)}>
-                      {t('settings.brainDisconnect')}
-                    </button>
-                  )}
-                  {connectFail[id] && <span className="settings-fact-sub">{connectFail[id]}</span>}
-                </span>
-              </div>
-            )
-          })}
-          {/* Which model each brain answers with. Claude names sizes; the
-              default follows the app's own spread (mid-size for the work,
-              small for chores). ChatGPT takes a model id, or its plan's own
-              default when left empty. */}
-          <div className="settings-fact">
-            <span className="settings-fact-key">{t('settings.modelClaude')}</span>
-            <span className="settings-fact-value">
-              <select className="settings-input" data-testid="model-claude" value={settings.claudeModel ?? ''} onChange={(e) => patch({ claudeModel: e.target.value })}>
-                <option value="">{t('settings.modelAuto')}</option>
-                {claudeChoices.map((row) => (
-                  <option key={row.value} value={row.value}>
-                    {row.label}
-                  </option>
-                ))}
-                {settings.claudeModel && !claudeChoices.some((row) => row.value === settings.claudeModel) && (
-                  <option value={settings.claudeModel}>{settings.claudeModel}</option>
-                )}
-              </select>
-            </span>
-          </div>
-          <div className="settings-fact">
-            <span className="settings-fact-key">{t('settings.modelChatGPT')}</span>
-            <span className="settings-fact-value">
-              <input
-                className="settings-input"
-                data-testid="model-codex"
-                placeholder={t('settings.modelAuto')}
-                defaultValue={settings.codexModel ?? ''}
-                onBlur={(e) => {
-                  const value = e.target.value.trim()
-                  if (value !== (settings.codexModel ?? '')) patch({ codexModel: value })
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                }}
-              />
-            </span>
-          </div>
-        </div>
+        {section === 'ai' && <EngineSettings settings={settings} onChange={patch} />}
         </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         <details className="settings-more" data-testid="settings-more">

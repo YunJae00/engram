@@ -103,7 +103,8 @@ export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = proce
 }
 
 // One command of the runtime, its output collected, ended after the budget.
-export function runText(binary: string, args: string[], timeoutMs: number, env?: Record<string, string>): Promise<RunText> {
+export function runText(binary: string, args: string[], timeoutMs: number, env?: Record<string, string>, login?: CloudLoginOptions): Promise<RunText> {
+  login?.signal?.throwIfAborted()
   return new Promise((resolve) => {
     let out = ''
     let done = false
@@ -111,6 +112,7 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
       if (done) return
       done = true
       clearTimeout(timer)
+      login?.signal?.removeEventListener('abort', cancel)
       resolve({ code, out })
     }
     let child: ReturnType<typeof spawn>
@@ -125,8 +127,14 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
       child.kill()
       finish(null)
     }, timeoutMs)
-    child.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()))
-    child.stderr?.on('data', (chunk: Buffer) => (out += chunk.toString()))
+    const cancel = (): void => { child.kill(); finish(null) }
+    login?.signal?.addEventListener('abort', cancel, { once: true })
+    const receive = (chunk: Buffer): void => {
+      out = (out + chunk.toString()).slice(-65536)
+      if (login?.onUrl) for (const url of out.match(/https:\/\/[\w./?=&%+~:#@!-]+/g) ?? []) login.onUrl(url)
+    }
+    child.stdout?.on('data', receive)
+    child.stderr?.on('data', receive)
     child.on('error', (err) => {
       out += err.message
       finish(null)
@@ -154,29 +162,36 @@ export const STATUS_TTL_MS = 60_000
 export class StatusCache {
   private probing: Promise<EngineDetection> | null = null
   private known: { at: number; detection: EngineDetection } | null = null
+  private generation = 0
 
   async read(probe: () => Promise<EngineDetection>, now = Date.now()): Promise<EngineDetection> {
     if (this.known?.detection.loggedIn && now - this.known.at < STATUS_TTL_MS) return this.known.detection
     if (this.probing) return this.probing
-    this.probing = probe().finally(() => {
-      this.probing = null
+    const generation = this.generation
+    const pending = probe().finally(() => {
+      if (this.probing === pending) this.probing = null
     })
-    const detection = await this.probing
-    this.known = { at: now, detection }
+    this.probing = pending
+    const detection = await pending
+    if (generation === this.generation) this.known = { at: now, detection }
     return detection
   }
 
   forget(): void {
     this.known = null
+    this.probing = null
+    this.generation++
   }
 }
 
 export interface CloudEngine extends Engine {
   readonly id: CloudEngineId
   readonly label: string
-  login(): Promise<{ ok: boolean; message?: string }>
+  login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }>
   logout(): Promise<void>
 }
+
+export interface CloudLoginOptions { signal?: AbortSignal; onUrl?: (url: string) => void }
 
 const instances = new Map<CloudEngineId, CloudEngine>()
 

@@ -121,7 +121,7 @@ test('application glow follows its window and pointer movement has no ghost copi
     await control({ state: 'running', application: { name: 'PowerPoint', bounds: { x: 80, y: 90, width: 800, height: 600 }, visible: true } })
     const glow = surface.locator('.control-overlay-glow')
     await expect(glow).toHaveCSS('width', '800px')
-    await expect(glow).toHaveCSS('left', '80px')
+    await expect(glow).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 80, 90)')
     await expect(surface.locator('.control-overlay-mark')).toHaveCount(0)
     await control({ state: 'running', engine: 'claude' })
     await app.evaluate(({ BrowserWindow }) => {

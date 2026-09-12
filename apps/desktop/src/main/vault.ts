@@ -88,14 +88,12 @@ export async function engineStates(): Promise<EngineStatusDto[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') return [{ id: 'mock', installed: true, loggedIn: true }]
   if (engineFlag === 'none') return [{ id: 'claude', installed: false, loggedIn: false }]
-  const states: EngineStatusDto[] = []
-  for (const id of ENGINE_ORDER) {
+  return Promise.all(ENGINE_ORDER.map(async (id) => {
     const detection = await createEngine(id)
       .detect()
       .catch(() => ({ installed: false, loggedIn: false }))
-    states.push({ id, installed: detection.installed, loggedIn: detection.loggedIn })
-  }
-  return states
+    return { id, installed: detection.installed, loggedIn: detection.loggedIn }
+  }))
 }
 
 // Re-detects engines in place (e.g. right after the user logs a CLI in via

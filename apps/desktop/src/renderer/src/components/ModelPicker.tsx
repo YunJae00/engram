@@ -10,25 +10,33 @@ import { t } from '../i18n.js'
 // model for one hard question should not have to go and find a settings
 // screen.
 //
-// The list is the plan's own, as the Claude runtime reports it: the names
-// its menu shows, the ids it takes. Nothing here knows a model by name.
-// ChatGPT's runtime does not report a list, so there the button says what
-// is in force and sends the person to Settings to change it.
+// Model names and ids come from each runtime's catalog.
 
 // Until the plan's list arrives (a cold start of the runtime), the only
 // honest choice is the runtime's own default.
 const AUTO = ''
 
-export function useModelChoices(): ModelChoiceDto[] {
-  const [rows, setRows] = useState<ModelChoiceDto[]>([])
+export function useModelChoices(engine: 'claude' | 'codex' | null) {
+  const [result, setResult] = useState<{ engine: typeof engine; rows: ModelChoiceDto[]; loading: boolean; error: boolean }>({ engine, rows: [], loading: true, error: false })
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    const read = () => void api.modelsList().then(setRows).catch(() => {})
+    let alive = true
+    let serial = 0
+    if (!engine) return
+    const read = () => {
+      const at = ++serial
+      setResult((prior) => ({ engine, rows: prior.engine === engine ? prior.rows : [], loading: true, error: false }))
+      void api.modelsList(engine).then((rows) => {
+        if (alive && at === serial) setResult({ engine, rows, loading: false, error: rows.length === 0 })
+      }).catch(() => { if (alive && at === serial) setResult({ engine, rows: [], loading: false, error: true }) })
+    }
     read()
-    return api.onEvent((event) => {
-      if (event.type === 'models:changed' || event.type === 'engines:detected') read()
+    const off = api.onEvent((event) => {
+      if (event.type === 'models:changed') read()
     })
-  }, [])
-  return rows
+    return () => { alive = false; off() }
+  }, [engine, attempt])
+  return { ...(result.engine === engine ? result : { rows: [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
 }
 
 export function ModelPicker() {
@@ -37,7 +45,8 @@ export function ModelPicker() {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
-  const rows = useModelChoices()
+  const { rows, loading, error, refresh } = useModelChoices(engine)
+  const [saveError, setSaveError] = useState(false)
 
   useLayoutEffect(() => {
     if (!open) return
@@ -97,14 +106,14 @@ export function ModelPicker() {
   }, [open])
 
   if (engine === null) return null
-  const label = engine === 'codex' ? model || t('settings.modelAuto') : (rows.find((r) => r.value === model)?.label ?? (model || t('settings.modelAuto')))
+  const label = rows.find((r) => r.value === model)?.label ?? (model || t('settings.modelAuto'))
   const choose = (next: string) => {
-    setModel(next)
-    setOpen(false)
+    setSaveError(false)
     void api
       .settingsGet()
-      .then((s) => api.settingsSet({ ...s, claudeModel: next }))
-      .catch(() => {})
+      .then((s) => api.settingsSet({ ...s, [engine === 'codex' ? 'codexModel' : 'claudeModel']: next }))
+      .then(() => { setModel(next); setOpen(false) })
+      .catch(() => setSaveError(true))
   }
   const choices: ModelChoiceDto[] = [{ value: AUTO, label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows]
   return (
@@ -112,16 +121,15 @@ export function ModelPicker() {
       <button
         className="model-picker-btn"
         data-testid="model-picker"
-        title={t(engine === 'codex' ? 'model.pickChatGPT' : 'model.pick')}
-        disabled={engine === 'codex'}
+        title={t('model.pick')}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen(!open)}
       >
         {label}
-        {engine === 'claude' && <ChevronDown size={11} strokeWidth={2.2} aria-hidden />}
+        <ChevronDown size={11} strokeWidth={2.2} aria-hidden />
       </button>
-      {open && engine === 'claude' && (
+      {open && (
         <div className="model-picker-menu" ref={menu} role="menu" data-testid="model-picker-menu">
           {choices.map((row) => (
             <button
@@ -139,7 +147,9 @@ export function ModelPicker() {
               </span>
             </button>
           ))}
-          {rows.length === 0 && <div className="model-picker-note">{t('model.listing')}</div>}
+          {loading && <div className="model-picker-note" role="status">Loading models…</div>}
+          {error && <button className="model-picker-item" role="menuitem" onClick={refresh}>Models unavailable · Retry</button>}
+          {saveError && <div className="model-picker-note" role="alert">Could not save the model. Try again.</div>}
         </div>
       )}
     </div>

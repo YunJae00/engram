@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.Encoding]::UTF8
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $apps = @{}
+$lastWorkDocument = ''
 $CELL_CAP = 4000
 $TEXT_CAP = 20000
 
@@ -30,12 +31,16 @@ function Send($payload) { [Console]::Out.WriteLine((ConvertTo-Json -InputObject 
 function ShowWork($doc, $kind, $compact) {
   if (-not (Prop $req 'activity' $false)) { return }
   $window = $doc.Windows.Item(1)
-  $window.Activate()
   if ($kind -eq 'ppt') { $window = $doc.Application }
-  if ($compact) {
-    $window.WindowState = $(if ($kind -eq 'excel') { -4143 } elseif ($kind -eq 'word') { 0 } else { 1 })
-    $window.Left = [single]$compact.x; $window.Top = [single]$compact.y
-    $window.Width = [single]$compact.width; $window.Height = [single]$compact.height
+  $key = "$kind|$($doc.FullName)|$($window.Hwnd)"
+  if ($script:lastWorkDocument -ne $key) {
+    $doc.Windows.Item(1).Activate()
+    if ($compact) {
+      $window.WindowState = $(if ($kind -eq 'excel') { -4143 } elseif ($kind -eq 'word') { 0 } else { 1 })
+      $window.Left = [single]$compact.x; $window.Top = [single]$compact.y
+      $window.Width = [single]$compact.width; $window.Height = [single]$compact.height
+    }
+    $script:lastWorkDocument = $key
   }
   $name = if ($kind -eq 'excel') { 'Excel' } elseif ($kind -eq 'word') { 'Word' } else { 'PowerPoint' }
   Send @{ type = 'activity'; id = $id; window = ([string]$window.Hwnd); name = $name }

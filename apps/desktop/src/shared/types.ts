@@ -361,6 +361,7 @@ export type EngramEvent =
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
   | { type: 'models:changed' }
+  | { type: 'engines:login'; login: EngineLoginDto }
   | { type: 'sweep:start' }
   | { type: 'sweep:job'; job: string; index: number; total: number }
   | { type: 'sweep:done'; report: SweepReportDto }
@@ -534,7 +535,7 @@ export interface EngramApi extends DesktopApi {
   chatFresh(botId: string): Promise<void>
   // The models the signed-in plan offers, in the runtime's own words; empty
   // until the runtime has been asked.
-  modelsList(): Promise<ModelChoiceDto[]>
+  modelsList(id?: 'claude' | 'codex'): Promise<ModelChoiceDto[]>
   // Whether a window is being mirrored, without joining the watch.
   agentState(): Promise<{ on: boolean; url?: string; lane?: string }>
   // workspace registry/switcher (app-level vaults)
@@ -639,6 +640,9 @@ export interface EngramApi extends DesktopApi {
   enginesRefresh(): Promise<EngineStatusDto[]>
   // Sign in to / out of a cloud brain through the vendor's own flow.
   engineConnect(id: 'claude' | 'codex'): Promise<{ ok: boolean; message?: string }>
+  engineLogins(): Promise<EngineLoginDto[]>
+  engineCancelLogin(id: 'claude' | 'codex'): Promise<void>
+  engineOpenLogin(id: 'claude' | 'codex'): Promise<void>
   engineDisconnect(id: 'claude' | 'codex'): Promise<void>
   // Every brain this build carries, signed in or not.
   engineStates(): Promise<EngineStatusDto[]>
@@ -750,6 +754,13 @@ export interface ModelChoiceDto {
   value: string
   label: string
   detail: string
+}
+
+export interface EngineLoginDto {
+  id: 'claude' | 'codex'
+  phase: 'idle' | 'opening' | 'browser' | 'connected' | 'error'
+  canOpen: boolean
+  message?: string
 }
 
 // One browser found on this machine, offered rather than assumed.

@@ -36,6 +36,7 @@ describe('desktop grant lifetime when choosing an AI connection', () => {
     expect(fake.nativeTheme.themeSource).toBe('dark')
   })
   it('turning computer use off stops input before settings are persisted', async () => {
+    fake.load.mockResolvedValue({ ...settings, computerUse: true })
     await fake.handlers.get('settings:set')!(null, { ...settings, computerUse: false })
     expect(fake.stop).toHaveBeenCalledExactlyOnceWith('Computer use was turned off in Settings.')
     expect(fake.stop.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
@@ -48,7 +49,8 @@ describe('desktop grant lifetime when choosing an AI connection', () => {
   })
 
   it('does not interrupt a grant for an unrelated settings save', async () => {
-    await fake.handlers.get('settings:set')!(null, { ...settings, autoStart: true })
+    fake.load.mockResolvedValue({ ...settings, computerUse: false })
+    await fake.handlers.get('settings:set')!(null, { ...settings, autoStart: true, computerUse: false })
     expect(fake.stop).not.toHaveBeenCalled()
     expect(fake.changed).not.toHaveBeenCalled()
   })

@@ -33,7 +33,7 @@ function applicationStatus(held: Activity, target: WindowInfo): DesktopControlSt
   if (!visibleBounds || !Object.values(visibleBounds).every(Number.isFinite) || visibleBounds.width <= 0 || visibleBounds.height <= 0) throw new Error('The application window has no valid bounds')
   const rect = Object.fromEntries(Object.entries(visibleBounds).map(([key, value]) => [key, Math.round(value)])) as Bounds
   const bounds = target.minimized && held.status?.application ? held.status.application.bounds : screen.screenToDipRect(null, rect)
-  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized && target.foreground } }
+  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized } }
 }
 
 async function track(held: Activity, revision: number): Promise<void> {
@@ -48,7 +48,7 @@ async function track(held: Activity, revision: number): Promise<void> {
     if (active !== held || held.revision !== revision || held.controller.signal.aborted) return
     const status = applicationStatus(held, target)
     if (JSON.stringify(status) !== JSON.stringify(held.status)) { held.status = status; updateControlOverlay(status) }
-    held.timer = setTimeout(() => void track(held, revision), 100)
+    held.timer = setTimeout(() => void track(held, revision), 16)
   } catch {
     if (active === held && held.revision === revision) stopApplicationWork('The application window could no longer be verified.')
   }
@@ -70,9 +70,10 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       const revision = ++held.revision
       let target = await held.host.request<WindowInfo>('inspectWindow', { window, pid: 0 })
       combined.throwIfAborted()
-      if (!target.foreground || target.minimized) target = await held.host.request<WindowInfo>('activateWindow', { window: target.window, pid: target.pid })
+      const entering = held.target?.window !== target.window || held.target.pid !== target.pid
+      if (entering && (!target.foreground || target.minimized)) target = await held.host.request<WindowInfo>('activateWindow', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
-      if (!target.foreground || target.minimized) throw new Error('The application did not come to the foreground.')
+      if (entering && (!target.foreground || target.minimized)) throw new Error('The application did not come to the foreground.')
       if (active !== held) throw new Error('Application work changed before the window was ready')
       held.target = target
       held.name = name
@@ -81,10 +82,10 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       combined.throwIfAborted()
       const input = await held.host.request<{ escaped: boolean }>('inputState', {})
       if (input.escaped) { stopApplicationWork(); combined.throwIfAborted() }
-      const current = await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
+      await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
-      if (!current.foreground || current.minimized) throw new Error('The application left the foreground before work began.')
-      held.timer = setTimeout(() => void track(held, revision), 100)
+      // Document commands are bound to this verified window, not foreground input.
+      held.timer = setTimeout(() => void track(held, revision), 16)
     },
   }
 }

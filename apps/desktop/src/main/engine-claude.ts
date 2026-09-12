@@ -1,6 +1,6 @@
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
-import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine } from './engine-cloud.js'
+import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 
@@ -59,18 +59,16 @@ export interface ClaudeModelChoice {
 }
 let knownModels: ClaudeModelChoice[] = []
 let fetchingModels: Promise<ClaudeModelChoice[]> | null = null
+let modelsGeneration = 0
 const MODELS_TIMEOUT_MS = 60_000
-
-export function claudeModels(): ClaudeModelChoice[] {
-  return knownModels
-}
 
 export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
   if (knownModels.length > 0) return Promise.resolve(knownModels)
   if (fetchingModels) return fetchingModels
   const binary = claudeBinary()
   if (!binary) return Promise.resolve([])
-  fetchingModels = (async () => {
+  const generation = modelsGeneration
+  const pending = (async () => {
     const abort = new AbortController()
     const timer = setTimeout(() => abort.abort(), MODELS_TIMEOUT_MS)
     try {
@@ -89,6 +87,7 @@ export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
         handle.supportedModels(),
         new Promise<never>((_, reject) => abort.signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true })),
       ])
+      if (generation !== modelsGeneration) return []
       knownModels = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description }))
       flog('engine-claude', `the plan offers ${knownModels.length} models: ${knownModels.map((m) => m.value).join(', ')}`)
       return knownModels
@@ -98,14 +97,17 @@ export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
     } finally {
       clearTimeout(timer)
       abort.abort()
-      fetchingModels = null
+      if (modelsGeneration === generation) fetchingModels = null
     }
   })()
-  return fetchingModels
+  fetchingModels = pending
+  return pending
 }
 
 export function forgetClaudeModels(): void {
   knownModels = []
+  fetchingModels = null
+  modelsGeneration++
 }
 
 export class ClaudeEngine implements CloudEngine {
@@ -124,15 +126,16 @@ export class ClaudeEngine implements CloudEngine {
     })
   }
 
-  async login(): Promise<{ ok: boolean; message?: string }> {
+  async login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }> {
     const binary = claudeBinary()
     if (!binary) return { ok: false, message: 'the Claude runtime is not part of this build' }
-    const { code, out } = await runText(binary, ['auth', 'login', '--claudeai'], LOGIN_TIMEOUT_MS)
+    const { code } = await runText(binary, ['auth', 'login', '--claudeai'], LOGIN_TIMEOUT_MS, undefined, options)
+    options?.signal?.throwIfAborted()
     this.status.forget()
     const status = await this.detect()
     if (status.loggedIn) return { ok: true }
-    flog('engine-claude', `login did not complete (exit ${code ?? 'timeout'}): ${out.slice(-300)}`)
-    return { ok: false, message: out.trim().split('\n').pop() ?? 'sign-in did not complete' }
+    flog('engine-claude', `login did not complete (exit ${code ?? 'timeout'})`)
+    return { ok: false, message: 'Claude sign-in did not complete. Try again and finish the browser steps.' }
   }
 
   async logout(): Promise<void> {

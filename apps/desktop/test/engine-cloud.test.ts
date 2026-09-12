@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readAuthStatus, textOf } from '../src/main/engine-claude.js'
 import { claudeBinary, cloudErrorKind, codexBinary, StatusCache, STATUS_TTL_MS, unpackedPath, withHelpersOnPath } from '../src/main/engine-cloud.js'
 import { readLoginStatus, strictSchema } from '../src/main/engine-codex.js'
+import { CodexAccount } from '../src/main/codex-account.js'
 
 // The runtimes speak for themselves; these pin down how their words are read.
 describe('readAuthStatus', () => {
@@ -38,11 +39,32 @@ describe('bundled runtimes', () => {
     expect(claudeBinary()).not.toBeNull()
     expect(codexBinary()).not.toBeNull()
   })
+  it.skipIf(process.env['ENGRAM_CODEX_CATALOG_TEST'] !== '1')('reads the bundled runtime model catalog without creating a turn', async () => {
+    const account = new CodexAccount(new AbortController().signal)
+    try {
+      const models = await account.models()
+      expect(models.length).toBeGreaterThan(0)
+      expect(models.every((row) => row.value.length > 0 && row.label.length > 0)).toBe(true)
+      console.log('Runtime model catalog:', models.map((row) => row.label).join(', '))
+    } finally { account.close() }
+  }, 35000)
 })
 
 // Detection is asked constantly; a sign-in seen a minute ago is not asked
 // again, a probe in flight is shared, and a "not signed in" is re-asked.
 describe('StatusCache', () => {
+  it('does not reuse or cache an old account probe after sign-in changes', async () => {
+    const cache = new StatusCache()
+    let finish!: (value: { installed: boolean; loggedIn: boolean; conclusive: boolean }) => void
+    const old = cache.read(() => new Promise((resolve) => { finish = resolve }))
+    cache.forget()
+    const fresh = vi.fn(async () => ({ installed: true, loggedIn: false, conclusive: true }))
+    expect((await cache.read(fresh)).loggedIn).toBe(false)
+    finish({ installed: true, loggedIn: true, conclusive: true })
+    await old
+    expect((await cache.read(fresh)).loggedIn).toBe(false)
+    expect(fresh).toHaveBeenCalledTimes(2)
+  })
   it('keeps a positive answer for a while and shares an in-flight probe', async () => {
     const cache = new StatusCache()
     let probes = 0

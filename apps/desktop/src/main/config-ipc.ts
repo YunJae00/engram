@@ -26,10 +26,10 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
-    if (settings.computerUse === false) stopDesktopControl('Computer use was turned off in Settings.')
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()
+    if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
     await saveSettings({
       ...held,
       ...settings,
