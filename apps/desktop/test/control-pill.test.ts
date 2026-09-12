@@ -25,12 +25,12 @@ beforeEach(() => {
 })
 
 describe('control pill copy', () => {
-  it('names the engine and the way out while it is running, with Stop only', async () => {
+  it('names Comets and the way out while it is running, with Stop only', async () => {
     const html = await render({ state: 'running', engine: 'claude', engineLabel: 'Claude' })
     expect(html).toContain('data-testid="control-pill"')
     expect(html).toContain('data-state="running"')
     expect(html).toContain('data-engine="claude"')
-    expect(html).toContain('<strong>Claude is controlling your computer</strong>')
+    expect(html).toContain('<strong>Comets using your computer</strong>')
     expect(html).toContain('<span>Esc to take over</span>')
     expect(html).toContain('data-testid="overlay-stop"')
     expect(html).not.toContain('data-testid="overlay-resume"')
@@ -40,7 +40,7 @@ describe('control pill copy', () => {
     const html = await render({ state: 'paused', resumable: true, engine: 'codex', engineLabel: 'ChatGPT' })
     expect(html).toContain('data-state="paused"')
     expect(html).toContain('<strong>You took over</strong>')
-    expect(html).toContain('<span>ChatGPT continues when your hands are still</span>')
+    expect(html).toContain('<span>Comets will wait for your hands to be still</span>')
     expect(html).toContain('data-testid="overlay-resume"')
     expect(html).toContain('Resume now')
     expect(html).toContain('data-testid="overlay-stop"')
@@ -56,8 +56,8 @@ describe('control pill copy', () => {
     expect(await render(status)).toBe('')
   })
 
-  it('falls back to the app name when no engine label is known', async () => {
-    expect(await render({ state: 'running' })).toContain('<strong>Engram is controlling your computer</strong>')
+  it('uses the same product wording without an engine label', async () => {
+    expect(await render({ state: 'running' })).toContain('<strong>Comets using your computer</strong>')
   })
 
   it('keeps a status event that landed during the initial query', async () => {
@@ -74,11 +74,11 @@ describe('control pill copy', () => {
     const stop = watchControlStatus(changed)
     deliver({ type: 'desktop:control', control: { state: 'running', engineLabel: 'Claude' } })
     expect(changed).toHaveBeenCalledOnce()
-    expect(renderToStaticMarkup(createElement(ControlPill))).toContain('Claude is controlling your computer')
+    expect(renderToStaticMarkup(createElement(ControlPill))).toContain('Comets using your computer')
     // The older answer arrives after the event and must not roll it back.
     resolve({ state: 'idle' })
     await priming
-    expect(renderToStaticMarkup(createElement(ControlPill))).toContain('Claude is controlling your computer')
+    expect(renderToStaticMarkup(createElement(ControlPill))).toContain('Comets using your computer')
     stop()
     fake.api.onEvent.mockImplementation(() => () => {})
   })

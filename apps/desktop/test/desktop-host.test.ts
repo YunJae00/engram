@@ -65,6 +65,15 @@ afterEach(() => {
 })
 
 describe('desktop native readiness and request lifetime', () => {
+  it('delegates foreground activation without acquiring or preparing an input lease', async () => {
+    child.pid = 321
+    const request = host.request('activateWindow', target)
+    await ready(); await flush()
+    expect(deps.execFile).toHaveBeenCalledWith(expect.any(String), ['--owner-pid', String(process.pid), '--grant-foreground', '321'], expect.objectContaining({ windowsHide: true }), expect.any(Function))
+    expect(messages().map((message) => message.method)).toEqual(['activateWindow'])
+    respond({ id: latest('activateWindow'), result: { ...target, foreground: true } })
+    await expect(request).resolves.toMatchObject({ foreground: true })
+  })
   it('never resumes explicit cancellation even when its message includes a transient failure', async () => {
     const { recoverableDesktopFailure } = await import('../src/main/desktop-recovery.js')
     for (const reason of ['Esc pressed', 'Control expired or was stopped', 'Computer control was cancelled', 'Permission denied', 'The computer connection closed']) {

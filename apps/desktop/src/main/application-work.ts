@@ -4,7 +4,8 @@ import { hideControlOverlay, overlayStatus, prepareControlOverlay, updateControl
 import type { DesktopControlStatusDto } from '../shared/desktop.js'
 import { cancelDesktopTurn } from './desktop-control.js'
 
-type WindowInfo = { window: string; pid: number; minimized: boolean; foreground: boolean; bounds: { x: number; y: number; width: number; height: number } }
+type Bounds = { x: number; y: number; width: number; height: number }
+type WindowInfo = { window: string; pid: number; minimized: boolean; foreground: boolean; bounds: Bounds; visualBounds?: Bounds }
 type Activity = { lane: string; controller: AbortController; host: DesktopHost; revision: number; timer?: ReturnType<typeof setTimeout>; target?: WindowInfo; name?: string; status?: DesktopControlStatusDto }
 let active: Activity | undefined
 
@@ -28,8 +29,9 @@ export function stopApplicationWork(reason = 'You stopped application work.'): b
 }
 
 function applicationStatus(held: Activity, target: WindowInfo): DesktopControlStatusDto {
-  if (!target.bounds || !Object.values(target.bounds).every(Number.isFinite) || target.bounds.width <= 0 || target.bounds.height <= 0) throw new Error('The application window has no valid bounds')
-  const rect = Object.fromEntries(Object.entries(target.bounds).map(([key, value]) => [key, Math.round(value)])) as WindowInfo['bounds']
+  const visibleBounds = target.visualBounds ?? target.bounds
+  if (!visibleBounds || !Object.values(visibleBounds).every(Number.isFinite) || visibleBounds.width <= 0 || visibleBounds.height <= 0) throw new Error('The application window has no valid bounds')
+  const rect = Object.fromEntries(Object.entries(visibleBounds).map(([key, value]) => [key, Math.round(value)])) as Bounds
   const bounds = target.minimized && held.status?.application ? held.status.application.bounds : screen.screenToDipRect(null, rect)
   return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized && target.foreground } }
 }
@@ -66,14 +68,22 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       combined.throwIfAborted()
       clearTimeout(held.timer)
       const revision = ++held.revision
-      const target = await held.host.request<WindowInfo>('inspectWindow', { window, pid: 0 })
+      let target = await held.host.request<WindowInfo>('inspectWindow', { window, pid: 0 })
       combined.throwIfAborted()
+      if (!target.foreground || target.minimized) target = await held.host.request<WindowInfo>('activateWindow', { window: target.window, pid: target.pid })
+      combined.throwIfAborted()
+      if (!target.foreground || target.minimized) throw new Error('The application did not come to the foreground.')
       if (active !== held) throw new Error('Application work changed before the window was ready')
       held.target = target
       held.name = name
       held.status = applicationStatus(held, target)
       await prepareControlOverlay(held.status)
       combined.throwIfAborted()
+      const input = await held.host.request<{ escaped: boolean }>('inputState', {})
+      if (input.escaped) { stopApplicationWork(); combined.throwIfAborted() }
+      const current = await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
+      combined.throwIfAborted()
+      if (!current.foreground || current.minimized) throw new Error('The application left the foreground before work began.')
       held.timer = setTimeout(() => void track(held, revision), 100)
     },
   }

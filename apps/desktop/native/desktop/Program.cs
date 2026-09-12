@@ -58,7 +58,7 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
-            mutation = method == "documentEdit" || method == "documentCompose" || method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
+            mutation = method == "activateWindow" || method == "documentEdit" || method == "documentCompose" || method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
             if (method == "listWindows") { Send(new { id = id, result = new { windows = DesktopNative.List(guard) } }); return; }
@@ -74,9 +74,21 @@ internal static class Program
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             DesktopTarget target;
             using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
-            if (method == "inspectWindow")
+            if (method == "activateWindow")
+            {
+                if (monitor.Escaped) throw new InvalidOperationException("Escape pressed");
+                if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
+                if (target.Minimized) DesktopNative.ShowWindowAsync(target.Handle, 9);
+                if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
+                    throw new InvalidOperationException("The application could not be brought to the foreground.");
+                DesktopNative.AwaitForeground(target);
+                guard.Same(target);
+                target = guard.Resolve(window, pid);
+            }
+            if (method == "inspectWindow" || method == "activateWindow")
             { Send(new { id = id, result = new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized,
-                foreground = target.Handle == DesktopNative.GetForegroundWindow(), bounds = AutomationSession.Bounds(DesktopNative.Bounds(target.Handle)) } }); return; }
+                foreground = target.Handle == DesktopNative.GetForegroundWindow(), bounds = AutomationSession.Bounds(DesktopNative.Bounds(target.Handle)),
+                visualBounds = AutomationSession.Bounds(DesktopNative.VisualBounds(target.Handle)) } }); return; }
             if (method == "bind" || method == "prepare")
             {
                 if (request.ContainsKey("intervention") && Text(request, "intervention", 20) != queued.Intervention.ToString(CultureInfo.InvariantCulture))

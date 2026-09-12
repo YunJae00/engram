@@ -1,7 +1,7 @@
 import { Globe } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { agentMirror } from '../lib/agentMirrorLive.js'
-import { webPane } from '../lib/webPane.js'
+import { useWebPane, webPane } from '../lib/webPane.js'
 import { t } from '../i18n.js'
 import { selectDesktopSurface, useDesktopSurface } from '../lib/desktopSession.js'
 
@@ -10,21 +10,23 @@ import { selectDesktopSurface, useDesktopSurface } from '../lib/desktopSession.j
 // blank with its address field when nothing is open yet. A dot says a page
 // is live; it pulses while the comet's hands are on it.
 export function WebPaneButton({ busy, lane }: { busy: boolean; lane: string }) {
-  const { on, frame } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
-  const { folded, wanted } = useSyncExternalStore(webPane.subscribe, webPane.getSnapshot)
+  const mirror = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const on = mirror.lane === lane && mirror.on
+  const frame = mirror.lane === lane && mirror.frame
+  const { folded, wanted, phase } = useWebPane(lane)
   const surface = useDesktopSurface(lane)
   const showing = surface === 'browser' && !folded && (on || frame || wanted)
   return (
     <button
-      className={`composer-web${showing ? ' showing' : ''}${busy ? ' working' : ''}`}
+      className={`composer-web${showing ? ' showing' : ''}${busy && phase === 'working' ? ' working' : ''}`}
       data-testid="composer-web"
       aria-label={t(showing ? 'web.hide' : 'web.show')}
       title={t(showing ? 'web.hide' : 'web.show')}
       aria-pressed={showing}
-      onClick={() => { if (showing) webPane.fold(); else { selectDesktopSurface(lane, 'browser'); webPane.open() } }}
+      onClick={() => { if (showing) webPane.fold(lane); else { selectDesktopSurface(lane, 'browser'); webPane.open(lane) } }}
     >
       <Globe size={15} strokeWidth={1.9} aria-hidden />
-      {(on || busy) && <span className="composer-web-dot" aria-hidden />}
+      {(on || phase === 'working') && <span className="composer-web-dot" aria-hidden />}
     </button>
   )
 }

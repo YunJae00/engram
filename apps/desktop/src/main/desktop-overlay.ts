@@ -12,9 +12,10 @@ import { allowNavigation } from './security.js'
 // controlled) and dies with the app. Input must not start without a visible
 // stop window; an unavailable overlay fails preparation closed.
 
-const PILL_WIDTH = 440
-// The pill is 44 tall; the rest is room for its floating shadow.
-const PILL_HEIGHT = 60
+const PILL_WIDTH = 480
+// The pill is 60 tall; the rest is room for its floating shadow.
+const PILL_HEIGHT = 80
+const FADE_MS = 220
 const PILL_TOP_INSET = 56
 const POINTER_POLL_MS = 33
 // Windows' topmost band is last-set-wins: whichever window asked most recently
@@ -39,6 +40,7 @@ const ready = new Set<BrowserWindow>()
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let topTimer: ReturnType<typeof setInterval> | null = null
 let rebuildTimer: ReturnType<typeof setTimeout> | null = null
+let hideTimer: ReturnType<typeof setTimeout> | undefined
 
 function contains(bounds: Rectangle, point: Point): boolean {
   return point.x >= bounds.x && point.x < bounds.x + bounds.width && point.y >= bounds.y && point.y < bounds.y + bounds.height
@@ -237,6 +239,7 @@ function startTimers(): void {
 }
 
 function destroyAll(): void {
+  clearTimeout(hideTimer)
   stopTimers()
   if (rebuildTimer) clearTimeout(rebuildTimer)
   rebuildTimer = null
@@ -276,6 +279,7 @@ function hook(): void {
 
 export function showControlOverlay(next: DesktopControlStatusDto): void {
   try {
+    clearTimeout(hideTimer)
     hook()
     status = next
     shown = true
@@ -323,7 +327,11 @@ export function hideControlOverlay(): void {
     lastPoint = null
     stopTimers()
     broadcast(statusEvent())
-    for (const win of liveWindows()) win.hide()
+    clearTimeout(hideTimer)
+    // Input has already stopped. Only the non-interactive visual tail remains.
+    hideTimer = setTimeout(() => {
+      if (!shown) for (const win of liveWindows()) win.hide()
+    }, FADE_MS)
   } catch (error) {
     console.error('control overlay could not be hidden', error)
   }

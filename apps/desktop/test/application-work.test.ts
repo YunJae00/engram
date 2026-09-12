@@ -58,3 +58,29 @@ it('never overwrites another physical-control overlay', async () => {
   expect(() => applicationWork('one')).toThrow('using the screen')
   fake.status = { state: 'idle' }
 })
+
+it('brings a hidden app forward once and uses the visible frame, not invisible resize borders', async () => {
+  const visualBounds = { x: 18, y: 20, width: 884, height: 592 }
+  fake.request.mockResolvedValueOnce({ ...target, foreground: false }).mockResolvedValueOnce({ ...target, visualBounds })
+  const work = applicationWork('one')
+  await work.show('100', 'Excel')
+  expect(fake.request).toHaveBeenNthCalledWith(2, 'activateWindow', { window: '100', pid: 23 })
+  expect(fake.status.application?.bounds).toEqual(visualBounds)
+  await vi.advanceTimersByTimeAsync(101)
+  expect(fake.request.mock.calls.filter(([method]) => method === 'activateWindow')).toHaveLength(1)
+})
+it('does not acknowledge work when foreground activation fails', async () => {
+  fake.request.mockResolvedValueOnce({ ...target, foreground: false }).mockRejectedValueOnce(new Error('Activation refused'))
+  await expect(applicationWork('one').show('100', 'Excel')).rejects.toThrow('Activation refused')
+  expect(fake.prepare).not.toHaveBeenCalled()
+})
+it('honors Escape during overlay startup before acknowledging any document work', async () => {
+  fake.request.mockResolvedValueOnce(target).mockResolvedValueOnce({ escaped: true })
+  await expect(applicationWork('one').show('100', 'Excel')).rejects.toThrow('stopped application work')
+  expect(fake.cancel).toHaveBeenCalledOnce()
+  expect(fake.status.state).toBe('idle')
+})
+it('does not acknowledge a window that lost focus while the overlay loaded', async () => {
+  fake.request.mockResolvedValueOnce(target).mockResolvedValueOnce({ escaped: false }).mockResolvedValueOnce({ ...target, foreground: false })
+  await expect(applicationWork('one').show('100', 'Excel')).rejects.toThrow('left the foreground')
+})

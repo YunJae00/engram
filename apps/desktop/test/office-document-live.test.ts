@@ -36,6 +36,7 @@ function CheckWorkWindow($owned, $kind) {
       $probe.StandardInput.BaseStream.Write($packet, 0, $packet.Length); $probe.StandardInput.BaseStream.Flush()
       $reply = ConvertFrom-Json $probe.StandardOutput.ReadLine()
       Assert ($null -eq $reply.error -and $reply.result.bounds.width -gt 100 -and $reply.result.bounds.height -gt 100) ('NATIVE_APP_GEOMETRY_UNAVAILABLE ' + (ConvertTo-Json -Compress $reply))
+      Assert ($reply.result.visualBounds.width -gt 100 -and $reply.result.visualBounds.width -le $reply.result.bounds.width) 'VISIBLE_FRAME_INVALID'
       Write-Output ('APP_GEOMETRY ' + (ConvertTo-Json -Compress $reply.result.bounds))
     } finally { $probe.StandardInput.Close(); if (-not $probe.WaitForExit(2000)) { $probe.Kill() }; $probe.Dispose() }
   } finally { [Console]::SetIn($inputStream); $script:req = $null }

@@ -121,7 +121,7 @@ function Stage({ frame, size, live, lane }: { frame: boolean; size: { width: num
   )
 }
 
-function Address({ url }: { url?: string }) {
+function Address({ url, lane }: { url?: string; lane: string }) {
   const { showToast } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
@@ -138,7 +138,7 @@ function Address({ url }: { url?: string }) {
         if (e.key !== 'Enter') return
         const typed = shown.trim()
         if (!typed) return
-        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website'))
+        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, lane).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website'))
         setDraft(null)
         e.currentTarget.blur()
       }}
@@ -284,7 +284,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
               onClick={(e) => e.stopPropagation()}
             >
               <div className="live-panel-bar">
-                <Address url={url} />
+                <Address key={lane} url={url} lane={lane} />
                 <BrowserActions lane={lane} url={url} live={on} />
                 {!native && <button className="secondary live-panel-window" onClick={callWindow}>
                   <AppWindow size={12} aria-hidden /> {t(windowOut ? 'live.hideWindow' : 'live.openWindow')}

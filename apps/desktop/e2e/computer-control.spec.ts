@@ -74,7 +74,7 @@ test('the overlay pill renders and its resume and stop buttons reach the host', 
   const url = page.url().split('#')[0]! + '#overlay-pill'
   const nextWindow = app.waitForEvent('window')
   await app.evaluate(async ({ BrowserWindow }, { target, preload }) => {
-    const overlay = new BrowserWindow({ show: false, frame: false, autoHideMenuBar: true, width: 440, height: 60, webPreferences: {
+    const overlay = new BrowserWindow({ show: false, frame: false, autoHideMenuBar: true, width: 480, height: 80, webPreferences: {
       preload, contextIsolation: true, nodeIntegration: false, sandbox: false,
     } })
     await overlay.loadURL(target)
@@ -85,18 +85,20 @@ test('the overlay pill renders and its resume and stop buttons reach the host', 
     await overlay.getByTestId('overlay-resume').click()
     await expect.poll(() => app.evaluate(() => (globalThis as MockGlobal).desktopMock.resumes)).toBe(1)
     await control({ state: 'running', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude' })
-    await expect(overlay.getByTestId('control-pill')).toContainText('Claude is controlling your computer')
+    await expect(overlay.getByTestId('control-pill')).toContainText('Comets using your computer')
     await control({ state: 'running', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', inputActive: false })
-    await expect(overlay.getByTestId('control-pill')).toContainText('Planning next action')
+    await expect(overlay.getByTestId('control-pill')).toContainText('Planning the next move')
     await control({ state: 'running', lane: 'bot-one', inputActive: false, application: { name: 'PowerPoint', bounds: { x: 100, y: 100, width: 800, height: 600 }, visible: true } })
-    await expect(overlay.getByTestId('control-pill')).toContainText('Working in PowerPoint')
-    await expect(overlay.getByTestId('control-pill')).toContainText('Your mouse and keyboard stay yours')
+    await expect(overlay.getByTestId('control-pill')).toContainText('Comets at work · PowerPoint')
+    await expect(overlay.getByTestId('control-pill')).toContainText('Your mouse stays yours')
+    await overlay.screenshot({ path: join(TMP, 'comets-control-pill.png') })
     await expect(overlay.getByTestId('control-pill')).not.toContainText('controlling your computer')
     await control({ state: 'running', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude' })
-    await expect(overlay.getByTestId('control-pill')).toContainText('Claude is controlling your computer')
+    await expect(overlay.getByTestId('control-pill')).toContainText('Comets using your computer')
     await overlay.getByTestId('overlay-stop').click()
     await expect.poll(() => app.evaluate(() => (globalThis as MockGlobal).desktopMock.stops)).toBe(1)
-    await expect(overlay.getByTestId('control-pill')).toHaveCount(0)
+    await expect(overlay.locator('.control-pill-stage')).toHaveCSS('opacity', '0')
+    await expect(overlay.getByTestId('overlay-stop')).toBeDisabled()
   } finally { await overlay.close() }
 })
 test.beforeEach(async () => {
@@ -132,7 +134,7 @@ test('application glow follows its window and pointer movement has no ghost copi
     await expect(surface.locator('.control-overlay-ghost')).toHaveCount(0)
     await expect(surface.locator('.control-overlay-mark')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 214, 312)')
     await control({ state: 'idle' })
-    await expect(surface.locator('.control-overlay-glow')).toHaveCount(0)
+    await expect(surface.locator('.control-overlay-glow')).toHaveCSS('opacity', '0')
   } finally { await surface.close() }
 })
 

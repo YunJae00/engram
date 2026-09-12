@@ -14,6 +14,8 @@ export class BrowserLanes {
 
   set(lane: string, page: Page): void {
     if (page.isClosed()) return
+    const owner = this.owners.get(page)
+    if (owner && owner !== lane) throw new Error('This browser page belongs to another conversation')
     this.current.set(lane, page)
     if (this.owners.has(page)) return
     this.owners.set(page, lane)

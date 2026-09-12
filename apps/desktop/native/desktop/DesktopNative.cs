@@ -30,6 +30,7 @@ internal static class DesktopNative
     [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr hwnd, out Rectangle rect);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out Rectangle rect, int size);
     [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] internal static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll")] internal static extern int GetSystemMetrics(int index);
@@ -46,6 +47,13 @@ internal static class DesktopNative
         Rectangle rect;
         if (!GetWindowRect(window, out rect) || rect.Right <= rect.Left || rect.Bottom <= rect.Top)
             throw new InvalidOperationException("The selected window has no current visible bounds");
+        return new Rect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+    }
+    internal static Rect VisualBounds(IntPtr window)
+    {
+        Rectangle rect;
+        if (DwmGetWindowAttribute(window, 9, out rect, Marshal.SizeOf(typeof(Rectangle))) != 0 || rect.Right <= rect.Left || rect.Bottom <= rect.Top)
+            return Bounds(window);
         return new Rect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
     }
     internal static bool AtTarget(IntPtr window, int x, int y)

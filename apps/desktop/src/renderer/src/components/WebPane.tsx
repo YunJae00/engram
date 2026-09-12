@@ -2,7 +2,8 @@ import { ChevronsRight, Globe, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
-import { webPane } from '../lib/webPane.js'
+import { useWebPane, webPane } from '../lib/webPane.js'
+import { Comet } from './Icon.js'
 import { MirrorSurface } from './MirrorSurface.js'
 import { NativeSurface } from './NativeSurface.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
@@ -23,7 +24,7 @@ const WIDTH_KEY = 'engram.webpane.width'
 const MIN_W = 380
 const MAX_SHARE = 0.72
 // How long the pane takes to leave when folded away.
-const FOLD_MS = 170
+const FOLD_MS = 220
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
@@ -74,21 +75,18 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   }, [])
   // Folding plays the pane out to the right edge before the tab takes its
   // place, so the fold reads as the pane leaving, not vanishing.
-  const [closing, setClosing] = useState(false)
-  const foldTimer = useRef<ReturnType<typeof setTimeout>>()
-  const fold = () => {
-    clearTimeout(foldTimer.current)
-    setClosing(true)
-    foldTimer.current = setTimeout(() => {
-      setClosing(false)
-      webPane.fold()
-    }, FOLD_MS)
-  }
+  const { folded, wanted, phase } = useWebPane(channel)
+  const [present, setPresent] = useState(!folded)
+  const closing = folded && present
+  const fold = () => webPane.fold(channel)
   useEffect(() => {
-    setClosing(false)
+    if (!folded) { setPresent(true); return }
+    const timer = setTimeout(() => setPresent(false), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : FOLD_MS)
+    return () => clearTimeout(timer)
+  }, [folded, channel])
+  useEffect(() => {
     agentMirror.select(channel)
     void api.agentLane(channel).catch(() => {})
-    return () => clearTimeout(foldTimer.current)
   }, [channel])
   const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   // What the store holds is whoever was mirrored last; it belongs on this
@@ -97,7 +95,6 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   const mine = lane === channel
   const liveHere = on && mine
   const frameHere = frame && mine
-  const { folded, wanted } = useSyncExternalStore(webPane.subscribe, webPane.getSnapshot)
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
   // What is open, asked once when the pane first mounts: the last picture and
   // address survive a walk to another tab and back.
@@ -148,11 +145,13 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   // browser opens on a blank tab - and folded it is simply gone; the globe
   // by the composer is where it comes back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
-  if (folded) return null
+  if (folded && !present) return null
   return (
     <aside
       className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}`}
       data-testid="web-pane"
+      data-work={busy ? phase : 'idle'}
+      ref={(element) => { if (element) element.inert = closing }}
       style={width ? ({ '--web-pane-width': `${width}px` } as CSSProperties) : undefined}
     >
       <div className="web-pane-grip" onMouseDown={drag} aria-hidden />
@@ -176,6 +175,9 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
             </button>
           )}
         </div>
+        <div className="web-work-status" data-testid="web-work-status" role="status" aria-live="polite" aria-hidden={!busy || phase === 'idle'}>
+          <div><Comet size={15} /><strong>{phase === 'aside' ? 'You have the page' : 'Comets at work'}</strong><span>{phase === 'aside' ? 'Comets will wait for you' : 'Click or type to take over'}</span></div>
+        </div>
         {/* The picture keeps the page's own shape: the stage is exactly as
             tall as the frame is wide, so nothing is letterboxed inside a
             field and the space left over is simply the pane. */}
@@ -183,7 +185,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           className="web-pane-stage"
           ref={stage}
         >
-          {!liveHere && !frameHere ? <div className="web-pane-empty"><Globe size={24} strokeWidth={1.4} aria-hidden /><p>Where would you like to go?</p><span>Enter a website above to get started.</span></div> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere} hasFrame={frameHere} />}
+          {!liveHere && !frameHere ? <div className="web-pane-empty"><Globe size={24} strokeWidth={1.4} aria-hidden /><p>Where would you like to go?</p><span>Enter a website above to get started.</span></div> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing} hasFrame={frameHere} />}
         </div>
         {frozen && <div className="web-pane-note">{t('live.closed')}</div>}
         {children}

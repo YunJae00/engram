@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { flog } from './flog.js'
 import { recoverableDesktopFailure } from './desktop-recovery.js'
 
-export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit' | 'documentCompose'
-const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose'])
+export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'activateWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit' | 'documentCompose'
+const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'activateWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose'])
 // Everything else names one window; these two speak about the session.
 const UNSCOPED = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'stop'])
 
@@ -161,12 +161,14 @@ export class DesktopHost {
       try { ready = this.start() }
       catch (error) { this.close(error instanceof Error ? error : new Error('The desktop helper could not start.')); return }
       void ready.then(async () => {
-        if (method === 'bind' && this.pending.get(id) === pending && this.child?.pid) {
+        if ((method === 'bind' || method === 'activateWindow') && this.pending.get(id) === pending && this.child?.pid) {
           const pid = this.child.pid
-          const input = await this.request<{ intervention: string }>('prepare', args)
-          if (!/^\d{1,20}$/.test(input.intervention)) throw new Error('Desktop input monitoring could not be verified.')
-          if (this.pending.get(id) !== pending || this.ended) return
-          line = JSON.stringify({ ...args, id, method, intervention: input.intervention }) + '\n'
+          if (method === 'bind') {
+            const input = await this.request<{ intervention: string }>('prepare', args)
+            if (!/^\d{1,20}$/.test(input.intervention)) throw new Error('Desktop input monitoring could not be verified.')
+            if (this.pending.get(id) !== pending || this.ended) return
+            line = JSON.stringify({ ...args, id, method, intervention: input.intervention }) + '\n'
+          }
           await new Promise<void>((done) => {
             execFile(DesktopHost.path(), ['--owner-pid', String(process.pid), '--grant-foreground', String(pid)],
               { windowsHide: true, timeout: 1500 }, (error) => {

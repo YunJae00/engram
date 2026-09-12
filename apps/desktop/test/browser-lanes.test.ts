@@ -10,6 +10,13 @@ function page() {
 }
 
 describe('browser lane ownership', () => {
+  it('refuses to attach a page already owned by another chat', () => {
+    const lanes = new BrowserLanes(vi.fn()), first = page(), second = page()
+    lanes.set('one', first); lanes.set('two', second)
+    expect(() => lanes.set('two', first)).toThrow('another conversation')
+    expect(lanes.get('two')).toBe(second)
+    expect(lanes.pages('one')).toEqual([first])
+  })
   it('returns to the opener when a popup closes without switching another lane', async () => {
     const restored = vi.fn(), lanes = new BrowserLanes(restored)
     const first = page(), second = page(), popup = page(), nested = page()

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { DesktopControlStatusDto } from '../../../shared/desktop.js'
 import { api } from '../api.js'
 import { Comet } from '../components/Icon.js'
@@ -53,7 +53,11 @@ function snapshot(): DesktopControlStatusDto {
 }
 
 export function ControlPill() {
-  const status = useSyncExternalStore(watchControlStatus, snapshot, snapshot)
+  const currentStatus = useSyncExternalStore(watchControlStatus, snapshot, snapshot)
+  const visible = currentStatus.state === 'running' || (currentStatus.state === 'paused' && currentStatus.resumable === true)
+  const lastVisible = useRef(currentStatus)
+  if (visible) lastVisible.current = currentStatus
+  const status = lastVisible.current
   useEffect(() => {
     void primeControlStatus()
   }, [])
@@ -61,32 +65,31 @@ export function ControlPill() {
   const running = status.state === 'running'
   const paused = status.state === 'paused' && status.resumable === true
   if (!running && !paused) return null
-  const who = status.engineLabel ?? 'Engram'
   return (
-    <div className="control-pill-stage">
+    <div className="control-pill-stage" data-visible={visible} aria-hidden={!visible}>
       <div className="control-pill" data-testid="control-pill" data-state={running ? 'running' : 'paused'} data-engine={status.engine ?? 'default'}>
         <span className="control-pill-mark">
-          <Comet size={20} />
+          <Comet size={24} />
         </span>
         <div className="control-pill-copy">
           {running ? (
             <>
-              <strong>{status.application ? `Working in ${status.application.name}` : `${who} is controlling your computer`}</strong>
-              <span>{status.application ? 'Your mouse and keyboard stay yours · Esc to stop' : `${status.inputActive === false ? 'Planning next action · ' : ''}Esc to take over`}</span>
+              <strong>{status.application ? `Comets at work · ${status.application.name}` : 'Comets using your computer'}</strong>
+              <span>{status.application ? 'Your mouse stays yours · Esc to stop' : `${status.inputActive === false ? 'Planning the next move · ' : ''}Esc to take over`}</span>
             </>
           ) : (
             <>
               <strong>You took over</strong>
-              <span>{who} continues when your hands are still</span>
+              <span>Comets will wait for your hands to be still</span>
             </>
           )}
         </div>
         {paused && (
-          <button type="button" className="control-pill-resume" data-testid="overlay-resume" onClick={() => void api.desktopControlResume()}>
+          <button type="button" disabled={!visible} className="control-pill-resume" data-testid="overlay-resume" onClick={() => void api.desktopControlResume()}>
             Resume now
           </button>
         )}
-        <button type="button" className="control-pill-stop" data-testid="overlay-stop" onClick={() => void api.desktopControlStop()}>
+        <button type="button" disabled={!visible} className="control-pill-stop" data-testid="overlay-stop" onClick={() => void api.desktopControlStop()}>
           Stop
         </button>
       </div>

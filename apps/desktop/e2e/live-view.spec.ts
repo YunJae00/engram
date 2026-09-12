@@ -46,7 +46,7 @@ test.beforeAll(async () => {
     else if (req.url === '/clicked' || req.url === '/popup') res.end('<html><head><title>Clicked</title></head><body><main><h1>Clicked</h1></main></body></html>')
     else
       res.end(
-        '<html><head><title>Form</title></head><body><main><h1>Form</h1>' +
+        '<html><head><title>Form</title></head><body style="min-height:4000px"><main><h1>Form</h1>' +
           '<form action="/typed"><input name="q" aria-label="Query" style="position:fixed;left:0;top:0;width:100%;height:40%;font-size:40px"/></form>' +
           '<a href="/popup" target="_blank" style="position:fixed;left:0;top:50%;width:100%;height:30%;display:block">Open popup</a></main></body></html>',
       )
@@ -357,6 +357,8 @@ test('window and chat handoffs preserve independent input, composition and monit
     await page.keyboard.type('second')
     await expect(secondPage.locator('input')).toHaveValue('second')
     await expect(firstPage.locator('input')).toHaveValue('한글 입력 123')
+    await firstPage.evaluate(() => window.scrollTo(0, 360))
+    await secondPage.evaluate(() => window.scrollTo(0, 720))
     for (let turn = 0; turn < 3; turn++) {
       await page.getByTestId('activity-mission').click()
       await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2)
@@ -367,6 +369,8 @@ test('window and chat handoffs preserve independent input, composition and monit
     await page.keyboard.press('End')
     await page.keyboard.insertText(' 유지')
     await expect(secondPage.locator('input')).toHaveValue('second 유지')
+    expect(await firstPage.evaluate(() => window.scrollY)).toBe(360)
+    expect(await secondPage.evaluate(() => window.scrollY)).toBe(720)
     const opened = secondPage.waitForEvent('popup')
     await secondPage.getByRole('link', { name: 'Open popup' }).click()
     const popup = await opened
@@ -375,4 +379,52 @@ test('window and chat handoffs preserve independent input, composition and monit
     await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
     await expect(secondPage.locator('input')).toHaveValue('second 유지')
   } finally { await browser.close() }
+})
+
+test('web phases auto-open only their own conversation and folds never leak across chats', async () => {
+  const bots = await page.evaluate(() => window.engram.botsList())
+  const first = `bot-${bots.find((bot) => bot.name === 'Watching')!.id}`
+  const second = `bot-${bots.find((bot) => bot.name === 'Parallel watch')!.id}`
+  await app.evaluate(({ ipcMain }, lanes) => {
+    ipcMain.removeHandler('chat:active')
+    ipcMain.handle('chat:active', () => lanes)
+  }, [first, second])
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId('activity-bots').click()
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
+  const step = (channel: string, tool: string) => app.evaluate(({ BrowserWindow }, { channel, tool }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'comet:step', channel, line: `${tool}: page` })
+  }, { channel, tool })
+  const pane = page.getByTestId('web-pane')
+  await expect(pane).toBeVisible()
+  await page.getByTestId('web-pane-fold').click()
+  await expect(pane).toHaveCount(0)
+  await step(first, 'open_page')
+  await expect(pane).toBeVisible()
+  await expect(pane.getByTestId('web-work-status')).toHaveAttribute('aria-hidden', 'false')
+  await expect(pane).toHaveAttribute('data-work', 'working')
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
+  await step(first, 'aside')
+  await expect(pane.getByTestId('web-work-status')).toContainText('You have the page')
+  await step(first, 'resume')
+  await page.getByTestId('web-pane-fold').click()
+  await expect(pane).toHaveCount(0)
+  await step(second, 'read_open_page')
+  await expect(pane).toHaveCount(0)
+  await page.locator('.bots-row', { hasText: 'Parallel watch' }).click()
+  await expect(pane).toBeVisible()
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
+  await expect(pane.getByTestId('web-work-status')).toContainText('Comets at work')
+  await page.screenshot({ path: join(REPO_TMP, 'web-work-visibility.png') })
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
+  await expect(pane).toHaveCount(0)
+  await step(first, 'scroll')
+  await expect(pane).toHaveCount(0)
+  await page.getByTestId('composer-web').click()
+  await expect(pane).toBeVisible()
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
+  await step(first, 'excel_write')
+  await expect(pane.getByTestId('web-work-status')).toHaveAttribute('aria-hidden', 'true')
+  await expect(pane).toBeVisible()
 })

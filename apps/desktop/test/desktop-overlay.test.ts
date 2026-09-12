@@ -102,7 +102,7 @@ afterEach(() => {
 describe('control overlay windows', () => {
   it('anchors application activity to its own window and never paints a mouse companion', () => {
     overlay.showControlOverlay({ state: 'running', lane: 'office', application: { name: 'PowerPoint', bounds: { x: 1400, y: 120, width: 900, height: 640 }, visible: true } })
-    expect(pill().setBounds).toHaveBeenLastCalledWith({ x: 1630, y: 68, width: 440, height: 60 })
+    expect(pill().setBounds).toHaveBeenLastCalledWith({ x: 1610, y: 48, width: 480, height: 80 })
     const event = sentEvents(glows()[1]!).at(-1) as { control: DesktopControlStatusDto }
     expect(event.control.application?.bounds).toEqual({ x: 120, y: 120, width: 900, height: 640 })
     const before = glows()[1]!.webContents.send.mock.calls.length
@@ -145,12 +145,12 @@ describe('control overlay windows', () => {
       expect(glow.loadFile).toHaveBeenCalledWith(expect.stringMatching(/renderer[\\/]index\.html$/), { hash: 'overlay' })
     }
     const pillWin = pill()
-    expect(pillWin.options).toMatchObject({ transparent: true, frame: false, focusable: false, skipTaskbar: true, type: 'toolbar', width: 440 })
+    expect(pillWin.options).toMatchObject({ transparent: true, frame: false, focusable: false, skipTaskbar: true, type: 'toolbar', width: 480 })
     expect(pillWin.setIgnoreMouseEvents).not.toHaveBeenCalled()
     expect(pillWin.setContentProtection).toHaveBeenCalledWith(true)
     expect(pillWin.loadFile).toHaveBeenCalledWith(expect.anything(), { hash: 'overlay-pill' })
     // Top-centre of the display under the pointer (the first one here).
-    expect(pillWin.options).toMatchObject({ x: 420, y: 56 })
+    expect(pillWin.options).toMatchObject({ x: 400, y: 56 })
   })
 
   it('shows windows without activating them once they are ready, and never before', () => {
@@ -208,6 +208,7 @@ describe('control overlay pointer', () => {
     vi.advanceTimersByTime(200)
     expect(sentEvents(first)).toHaveLength(before)
     overlay.hideControlOverlay()
+    vi.advanceTimersByTime(220)
     for (const win of windows()) expect(win.hide).toHaveBeenCalledOnce()
     for (const win of windows()) expect(sentEvents(win).at(-1)).toEqual({ type: 'desktop:control', control: { state: 'idle' } })
     const afterHide = sentEvents(first).length
@@ -267,7 +268,9 @@ describe('control overlay lifetime', () => {
     overlay.hideControlOverlay()
     const count = fake.WindowDouble.all.length
     overlay.showControlOverlay(running)
+    vi.advanceTimersByTime(250)
     expect(fake.WindowDouble.all).toHaveLength(count)
+    for (const win of windows()) expect(win.hide).not.toHaveBeenCalled()
     for (const win of windows()) expect(win.destroy).not.toHaveBeenCalled()
   })
 

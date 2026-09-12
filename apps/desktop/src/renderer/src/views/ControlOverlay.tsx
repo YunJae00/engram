@@ -66,11 +66,14 @@ export function ControlOverlay() {
   }, [])
 
   const mode = modeOf(status)
+  const lastApplication = useRef(status.application)
+  if (mode !== 'off') lastApplication.current = status.application
+  const application = mode === 'off' ? lastApplication.current : status.application
   const companion = mode === 'running' && pointer !== null && !status.application
-  const appBounds = status.application?.bounds
+  const appBounds = application?.bounds
   return (
-    <div className="control-overlay" data-testid="control-overlay" data-state={mode} data-engine={status.engine ?? 'default'}>
-      {mode !== 'off' && (!status.application || status.application.visible) && <div className="control-overlay-glow" style={appBounds ? { inset: 'auto', left: appBounds.x, top: appBounds.y, width: appBounds.width, height: appBounds.height, borderRadius: 8 } : undefined} />}
+    <div className="control-overlay" data-testid="control-overlay" data-state={mode} data-scope={application ? 'application' : 'desktop'} data-engine={status.engine ?? 'default'}>
+      <div className="control-overlay-glow" data-visible={mode !== 'off' && (!application || application.visible)} style={appBounds ? { inset: 'auto', left: appBounds.x, top: appBounds.y, width: appBounds.width, height: appBounds.height, borderRadius: 8 } : undefined} />
       {companion && (
         <div className="control-overlay-cursor" data-awake={awake ? 'true' : 'false'}>
           <span className="control-overlay-mark" style={place(pointer)}>
