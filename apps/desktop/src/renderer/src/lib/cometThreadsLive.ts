@@ -5,7 +5,7 @@ const SELECTED_KEY = 'engram.comets.selected'
 
 // One store for the renderer's lifetime. The view mounts and unmounts with
 // the tab; the conversations do not.
-export const cometThreads = createCometThreads(localStorage.getItem(SELECTED_KEY))
+export const cometThreads = createCometThreads(null)
 
 export function selectComet(id: string | null): void {
   cometThreads.select(id)

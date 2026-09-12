@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
 import { answerHtml } from '../markdown.js'
+import { Copy, Check } from 'lucide-react'
 
 // One answer, drawn from its own words. While a reply streams, the thread
 // re-renders on every few characters; without this every older message in
@@ -9,7 +10,13 @@ import { answerHtml } from '../markdown.js'
 
 export const Answer = memo(function Answer({ text }: { text: string }) {
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+  const copy = (value: string) => {
+    void navigator.clipboard.writeText(value).then(() => { setCopied(true); setError('') }).catch(() => setError('Could not copy. Select the text and copy it manually.'))
+  }
   return <><div className="bubble-msg-body" onClick={(event) => {
+    const codeButton = event.target instanceof Element ? event.target.closest('[data-copy-code]') : null
+    if (codeButton) { copy(codeButton.closest('.answer-code')?.querySelector('pre code')?.textContent ?? ''); return }
     const link = event.target instanceof Element ? event.target.closest('a')?.getAttribute('href') : null
     if (!link?.startsWith('engram-artifact:')) return
     event.preventDefault()
@@ -19,5 +26,5 @@ export const Answer = memo(function Answer({ text }: { text: string }) {
       void window.engram.artifactReveal(decodeURIComponent(link.slice('engram-artifact:'.length)))
         .catch(() => setError('This output file is unavailable. Ask the comet to check it.'))
     } catch { setError('This output link is invalid.') }
-  }} dangerouslySetInnerHTML={{ __html: answerHtml(text) }} />{error && <p role="alert">{error}</p>}</>
+  }} dangerouslySetInnerHTML={{ __html: answerHtml(text) }} /><div className="answer-actions"><button onClick={() => copy(text)} aria-label="Copy answer" title="Copy answer">{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}</button>{copied && <span role="status">Copied</span>}</div>{error && <p role="alert">{error}</p>}</>
 })

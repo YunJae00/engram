@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { appendBotTurn, createBot, createNote, fileWorkTools, initVault, type VaultPaths } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,6 +17,18 @@ const MOCK_DIR = fileURLToPath(new URL('../../../fixtures/mock-responses', impor
 let app: ElectronApplication
 let page: Page
 let paths: VaultPaths
+
+async function screenshot(name: string) {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const png = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find((one) => one.webContents.getURL().includes('index.html'))!
+    await window.webContents.capturePage()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    return (await window.webContents.capturePage()).toPNG().toString('base64')
+  })
+  await writeFile(join(REPO_TMP, name), Buffer.from(png, 'base64'))
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+}
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -69,6 +81,50 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
   // Wait for the END of the canned answer, not its start — only then has the
   // stream fully rendered.
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 30_000 })
+})
+
+test('starts fresh without losing chats, sends from welcome, and renders long titles and code', async () => {
+  const previous = await page.evaluate(() => window.engram.botsList())
+  await page.reload()
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
+  expect((await page.evaluate(() => window.engram.botsList())).length).toBe(previous.length)
+  await page.setViewportSize({ width: 1280, height: 840 })
+  await screenshot('ui-welcome.png')
+  await page.getByRole('button', { name: 'Research a topic', exact: true }).click()
+  await expect(page.getByTestId('welcome-input')).toBeFocused()
+  await page.getByTestId('welcome-input').fill('Summarize our deploy procedure')
+  await page.getByTestId('welcome-input-send').click()
+  await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
+  await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept', { timeout: 30_000 })
+  expect((await page.evaluate(() => window.engram.botsList())).length).toBe(previous.length + 1)
+  const bot = await createBot(paths, { name: '팀의 주간 보고서와 제안서 작성 결과를 검토하고 수정하는 아주 긴 대화 제목' })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', at: new Date().toISOString(), text: '수정된 제안서의 백업은 `Engram_도입_제안.pptx.e1b9abd7fa904dd291589bfd2e0d7de6.bak`입니다.\n\n```python\nif ready:\n    run()\n```' })
+  await page.reload()
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  const title = page.getByTestId(`bot-${bot.id}`).locator('span').last()
+  await expect(title).toHaveCSS('text-overflow', 'ellipsis')
+  expect(await title.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true)
+  await expect(page.locator('.answer-code pre')).toContainText('    run()')
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { document.documentElement.dataset.copied = value } } }))
+  await page.getByRole('button', { name: 'Copy code', exact: true }).click()
+  expect(await page.evaluate(() => document.documentElement.dataset.copied)).toBe('if ready:\n    run()\n')
+  const geometry = await page.locator('.bots-chat').evaluate((node) => {
+    const composer = node.querySelector('.bots-write')!.getBoundingClientRect()
+    const thread = node.querySelector('.bots-thread')!
+    const style = getComputedStyle(thread)
+    return { composer: composer.width, content: thread.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) }
+  })
+  expect(geometry.composer).toBeLessThan(geometry.content)
+  await screenshot('ui-conversation.png')
+  await page.getByTestId('activity-settings').click()
+  await expect(page.getByTestId('setting-autostart')).toBeVisible()
+  await page.evaluate(async () => { await window.engram.settingsSet({ ...await window.engram.settingsGet(), computerUse: true }) })
+  await expect(page.getByTestId('setting-computer-use')).toBeChecked()
+  await screenshot('ui-settings.png')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await page.evaluate(() => window.engram.settingsGet())).computerUse).toBe(true)
+  await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
 })
 
 test('the conversation survives leaving and re-entering the tab', async () => {

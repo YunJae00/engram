@@ -60,6 +60,8 @@ await page.evaluate(async () => {
 })
 await page.getByTestId('activity-bots').click()
 await page.waitForTimeout(600)
+await shot('welcome')
+await page.locator('.bots-row', { hasText: 'Research scout' }).click()
 await layout('comets-open')
 await shot('comets-open')
 await page.getByTestId('help-button').click()

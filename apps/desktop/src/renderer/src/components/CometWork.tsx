@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, FileText, Monitor, Search, Wrench, MessageCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Thinking } from './Thinking.js'
 import { isSaidLine, stepLabel } from '../lib/pendingStatus.js'
@@ -28,7 +28,12 @@ export function CometWork({ busy, status, since, lines, kept }: { busy: boolean;
             // Keyed by place alone: the list only ever grows during a turn,
             // so a line keeps its node and nothing re-enters on each step.
             <li key={i} className={`comet-work-line${isSaidLine(line) ? ' said' : ''}${busy && i === shown.length - 1 ? ' current' : ''}`}>
-              {stepLabel(t, line)}
+              {(() => {
+                const tool = line.split(':', 1)[0] ?? ''
+                const Icon = isSaidLine(line) ? MessageCircle : /^(search|find)/.test(tool) ? Search : /^(read_desktop|look_desktop|desktop_|open_app|list_windows)/.test(tool) ? Monitor : /^(word_|ppt_|excel_|.*document|.*file)/.test(tool) ? FileText : /^(open_page|read_open_page|search_web|press|scroll|look)/.test(tool) ? Globe : Wrench
+                return <Icon size={14} aria-hidden />
+              })()}
+              <span>{stepLabel(t, line)}</span>
             </li>
           ))}
         </ol>

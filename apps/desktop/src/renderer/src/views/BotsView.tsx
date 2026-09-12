@@ -20,6 +20,7 @@ import { SubmitGate } from '../components/SubmitGate.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { useCometState } from '../state-slices.js'
 import { t } from '../i18n.js'
+import { CometWelcome } from '../components/CometWelcome.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -67,7 +68,7 @@ export const BotsView = memo(function BotsView() {
     setBots(list)
     setLoaded(true)
     const current = cometThreads.getSnapshot().selectedId
-    if (!keepSelection || !list.some((b) => b.id === current)) selectComet(list[0]?.id ?? null)
+    if (!keepSelection || (current && !list.some((b) => b.id === current))) selectComet(null)
   }
 
   useEffect(() => {
@@ -297,10 +298,7 @@ export const BotsView = memo(function BotsView() {
           </CometSurface>
           </>
         ) : loaded ? (
-          <div className="bots-empty">
-            <div className="bots-empty-title">{t('bots.emptyTitle')}</div>
-            <div className="bots-empty-hint">{t('bots.emptyHint')}</div>
-          </div>
+          <CometWelcome />
         ) : (
           <div className="bots-empty bots-loading" data-testid="bots-loading" aria-busy="true">
             <ThinkingDots />

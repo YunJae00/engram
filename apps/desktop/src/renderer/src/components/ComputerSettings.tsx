@@ -28,14 +28,15 @@ export function ComputerSettings() {
     setSettings(next)
     try { await api.settingsSet(next) } catch (cause) { setError(desktopError(cause)); setSettings(settings) }
   }
-  const value = available === null ? 'Checking…' : available === false ? 'Unavailable on this build' : !enabled ? 'Off' : active && control ? computerStateLabel(control) : 'Ready when a task needs it'
+  const value = available === null ? 'Checking…' : available === false ? 'Unavailable on this build' : !enabled ? 'Off' : active && control ? computerStateLabel(control) : 'Ready'
   return <section className="computer-settings" aria-label="Computer use" data-testid="computer-settings">
     <div className="settings-group-head">Computer use</div>
     <label className="setting-row">
-      <span className="computer-settings-label"><Monitor size={15} aria-hidden /><span>Let comets use this computer<small>{value}</small></span></span>
+      <span className="computer-settings-label"><Monitor size={18} aria-hidden /><span>Control apps<small>{value}</small></span></span>
       <input type="checkbox" className="switch" data-testid="setting-computer-use" checked={enabled} disabled={!settings || available === false} onChange={(event) => void toggle(event.target.checked)} />
     </label>
-    <p className="computer-settings-description">When a task needs an app, the comet brings it forward and works in it with your real mouse and keyboard. A banner on the screen names the brain at work. Move the mouse or type to pause it; press Esc or Stop to end it. Passwords, sign-in pages and security settings are never touched.</p>
+    <p className="computer-settings-description">Use your mouse and keyboard to work in apps. Press <kbd>Esc</kbd> to stop.</p>
+    <details className="computer-settings-details"><summary>How control works</summary><p>A desktop banner shows who is controlling the computer. Move the mouse or type to pause; press Esc or Stop to end control. Passwords, sign-in pages and security settings remain off limits.</p></details>
     {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? 'Dismiss' : 'Stop computer control'}{!dismiss && <kbd>Esc</kbd>}</button>}
     {error && <p className="computer-error" role="alert">{error}</p>}
   </section>

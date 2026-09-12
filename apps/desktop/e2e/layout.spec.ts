@@ -29,6 +29,7 @@ test.beforeAll(async () => {
     }
     localStorage.setItem('engram.mission.slots', JSON.stringify(ids))
   })
+  await page.locator('.bots-row', { hasText: 'Research scout' }).click()
 })
 
 test.afterAll(async () => { await app?.close() })

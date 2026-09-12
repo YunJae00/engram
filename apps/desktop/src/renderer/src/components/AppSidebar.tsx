@@ -65,7 +65,7 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     setRoutines(nextRoutines)
     setSuggestions(nextSuggestions)
     const current = cometThreads.getSnapshot().selectedId
-    if (!nextBots.some((bot) => bot.id === current)) selectComet(nextBots[0]?.id ?? null)
+    if (current && !nextBots.some((bot) => bot.id === current)) selectComet(null)
   }
 
   useEffect(() => {

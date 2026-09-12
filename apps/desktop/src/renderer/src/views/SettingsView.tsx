@@ -65,6 +65,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
+      if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, computerUse: event.settings.computerUse } : event.settings)
       if (event.type === 'update:ready') {
         setUpdate({ state: 'ready', version: event.version, selfInstalls: event.selfInstalls })
       }
@@ -205,6 +206,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             />
           </label>
         </div>
+        <details className="setting-hint"><summary>What gets remembered</summary><p>App activity records foreground app and window titles. Coding sessions are collected from connected coding tools for your memory.</p></details>
         <div className="settings-group-head">{t('settings.brainTitle')}</div>
         <div className="settings-group">
           <div className="setting-note">{t('settings.brainHint')}</div>

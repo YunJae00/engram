@@ -244,6 +244,7 @@ test('a saved wide page panel stays inside the conversation on a compact window'
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId('activity-bots').click()
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
   await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 30_000 })
 
   await expect(page.getByTestId('web-pane')).toHaveCSS('transform', 'none')

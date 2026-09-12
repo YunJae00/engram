@@ -19,3 +19,10 @@
 }
 .web-pane-empty p { margin: 0; font-size: var(--fs-body); color: var(--fg-dim); }
 .web-pane-empty span { font-size: var(--fs-small); line-height: 1.5; }
+.comet-welcome { width: min(740px, calc(100% - 48px)); margin: auto; padding: 32px 0 64px; text-align: center; }
+.comet-welcome h1 { font-size: clamp(24px, 3vw, 32px); font-weight: 550; letter-spacing: -0.025em; color: var(--fg-strong); }
+.comet-welcome > p { margin: 12px 0 28px; color: var(--fg-dim); }
+.comet-welcome .chat-write { text-align: left; padding: 16px; box-shadow: 0 8px 32px -20px var(--accent); }
+.welcome-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 24px; }
+.welcome-starters button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-soft); border-radius: 999px; font-size: var(--fs-small); color: var(--fg-dim); }
+.welcome-starters button:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }

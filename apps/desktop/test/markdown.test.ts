@@ -19,6 +19,13 @@ describe('answerHtml', () => {
     expect(html).toContain('<pre>')
   })
 
+  it('keeps a standalone code fence and its indentation with a copy action', () => {
+    const html = answerHtml('```python\nif ready:\n    run()\n```')
+    expect(html).toContain('language-python')
+    expect(html).toContain('    run()')
+    expect(html).toContain('data-copy-code="true"')
+  })
+
   it('dedents an indented answer so prose stays prose', () => {
     const html = answerHtml('    We decided to split the worker.\n    It works now.')
     expect(html).not.toContain('<pre>')
