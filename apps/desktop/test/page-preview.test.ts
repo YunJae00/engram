@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { Page } from 'playwright-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { captureSharpFrame, startPagePreview } from '../src/main/page-preview.js'
+import { captureSharpFrame, resizePreview, startPagePreview } from '../src/main/page-preview.js'
 
 function fixture() {
   const cdp = Object.assign(new EventEmitter(), { send: vi.fn(async () => ({ data: 'lossless' })), detach: vi.fn(async () => undefined) })
@@ -11,6 +11,42 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
+  it('orders viewport updates after capture restoration without blocking other pages', async () => {
+    const { page, cdp } = fixture()
+    let finish!: () => void
+    cdp.send.mockImplementation(async () => { await new Promise<void>((resolve) => { finish = resolve }); return { data: 'frame' } })
+    const resize = vi.fn(async () => undefined)
+    page.setViewportSize = resize
+    const frame = captureSharpFrame(page, cdp)
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    const changed = resizePreview(page, { width: 720, height: 600 })
+    expect(resize).not.toHaveBeenCalled()
+    const other = fixture()
+    await expect(captureSharpFrame(other.page, other.cdp)).resolves.toMatchObject({ data: 'lossless' })
+    finish()
+    await vi.waitFor(() => expect(cdp.send).toHaveBeenCalledTimes(2))
+    expect(resize).not.toHaveBeenCalled()
+    finish()
+    await frame
+    expect(await changed).toBe(true)
+    expect(resize).toHaveBeenCalledExactlyOnceWith({ width: 720, height: 600 })
+  })
+  it('waits for the real resize before measuring and capturing the next frame', async () => {
+    const { page, cdp } = fixture()
+    let finish!: () => void
+    page.setViewportSize = async () => {
+      await new Promise<void>((resolve) => { finish = resolve })
+      vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 720, height: 600 })
+    }
+    const changed = resizePreview(page, { width: 720, height: 600 })
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    const frame = captureSharpFrame(page, cdp)
+    expect(cdp.send).not.toHaveBeenCalled()
+    finish()
+    await changed
+    expect(await frame).toMatchObject({ width: 720, height: 600 })
+    expect(await resizePreview(page, { width: 720, height: 600 })).toBe(false)
+  })
   it('refreshes a settled shared stream when the pane resizes without a compositor event', async () => {
     vi.useFakeTimers()
     const { page, cdp } = fixture()

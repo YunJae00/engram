@@ -1,6 +1,7 @@
 import type { CDPSession, Page } from 'playwright-core'
 import { flog } from './flog.js'
 import { createPreviewPool } from './preview-pool.js'
+import { serialWork } from './serial-work.js'
 
 export interface PreviewFrame { data: string; width: number; height: number }
 interface CastFrame { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
@@ -10,6 +11,24 @@ interface CastFrame { data: string; sessionId: number; metadata: { deviceWidth: 
 const captureScales = new WeakMap<Page, number>()
 const captures = new WeakMap<Page, Promise<PreviewFrame>>()
 const restoredAt = new WeakMap<Page, number>()
+const pageWork = new WeakMap<Page, ReturnType<typeof serialWork>>()
+function workFor(page: Page): ReturnType<typeof serialWork> {
+  let work = pageWork.get(page)
+  if (!work) { work = serialWork(); pageWork.set(page, work) }
+  return work
+}
+
+// A screenshot temporarily resizes the compositor; its restore must finish
+// before a real viewport update, or it can put the old dimensions back.
+export function resizePreview(page: Page, size: { width: number; height: number }): Promise<boolean> {
+  return workFor(page).run(async () => {
+    const current = page.viewportSize()
+    if (current?.width === size.width && current.height === size.height) return false
+    await page.setViewportSize(size)
+    captureScales.delete(page)
+    return true
+  })
+}
 
 async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
@@ -48,7 +67,7 @@ async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
 export function captureSharpFrame(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
   const held = captures.get(page)
   if (held) return held
-  const pending = capture(page, cdp).finally(() => {
+  const pending = workFor(page).run(() => capture(page, cdp)).finally(() => {
     captures.delete(page)
     restoredAt.set(page, Date.now() + 60)
   })

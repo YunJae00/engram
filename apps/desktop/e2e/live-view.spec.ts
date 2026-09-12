@@ -258,22 +258,46 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
   await page.getByRole('button', { name: 'Open Fourth watch', exact: true }).first().click()
   await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
+  await page.setViewportSize({ width: 1680, height: 950 })
   await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)
   await page.getByTestId('web-pane').evaluate(async (node) => { await Promise.all(node.getAnimations().map((animation) => animation.finished)) })
+  await page.evaluate(async (lane) => {
+    const rect = document.querySelector('.web-pane-stage')!.getBoundingClientRect()
+    const width = Math.round(rect.width / 8) * 8, height = Math.round(rect.height / 8) * 8
+    for (let resize = 0; resize < 8; resize++) {
+      await Promise.all([window.engram.agentResize(lane, width - 64, height), window.engram.agentRefresh()])
+      await Promise.all([window.engram.agentResize(lane, width, height), window.engram.agentRefresh()])
+    }
+  }, `bot-${bots[3]!.id}`)
   const sharpWidth = await page.locator('.web-pane-stage').evaluate((node) => Math.max(360, Math.min(1920, Math.round(node.getBoundingClientRect().width / 8) * 8)) * 2)
   // Navigation commits before the new document can receive wheel input.
-  await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
-    const canvas = node as HTMLCanvasElement
-    const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
-    return { format: canvas.dataset.format, width: canvas.width, pixel: Array.from(pixel) }
-  }), { timeout: 20000 }).toEqual({ format: 'png', width: sharpWidth, pixel: [240, 40, 40, 255] })
-  await page.evaluate((id) => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }, `bot-${id}`), bots[3]!.id)
-  await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node, width) => {
-    const canvas = node as HTMLCanvasElement
-    const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
-    return canvas.dataset.format === 'png' && canvas.width === width && pixel[2]! > 180 && pixel[0]! < 60
-  }, sharpWidth), { timeout: 20000 }).toBe(true)
+  try {
+    await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
+      const canvas = node as HTMLCanvasElement
+      const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
+      return { format: canvas.dataset.format, width: canvas.width, pixel: Array.from(pixel) }
+    }), { timeout: 20000 }).toEqual({ format: 'png', width: sharpWidth, pixel: [240, 40, 40, 255] })
+    await page.evaluate((id) => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }, `bot-${id}`), bots[3]!.id)
+    await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node, width) => {
+      const canvas = node as HTMLCanvasElement
+      const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
+      return canvas.dataset.format === 'png' && canvas.width === width && pixel[2]! > 180 && pixel[0]! < 60
+    }, sharpWidth), { timeout: 20000 }).toBe(true)
+  } catch (error) {
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${browserPort}`)
+    try {
+      const actual = browser.contexts()[0]!.pages().find((entry) => entry.url() === `${siteUrl}scroll`)!
+      const cdp = await actual.context().newCDPSession(actual)
+      console.log('capture diagnostics', JSON.stringify({ viewport: actual.viewportSize(), metrics: await cdp.send('Page.getLayoutMetrics'), document: await actual.evaluate(() => ({ width: innerWidth, height: innerHeight, y: scrollY, scale: devicePixelRatio, html: document.body.innerHTML })) }))
+      const mirror = await page.getByTestId('web-pane').locator('canvas').evaluate((node) => (node as HTMLCanvasElement).toDataURL().split(',')[1]!)
+      await test.info().attach('mirrored-page', { body: Buffer.from(mirror, 'base64'), contentType: 'image/png' })
+      const shot = await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
+      await test.info().attach('direct-page', { body: Buffer.from(shot.data, 'base64'), contentType: 'image/png' })
+      await cdp.detach()
+    } finally { await browser.close() }
+    throw error
+  }
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
 })
 

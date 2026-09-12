@@ -13,6 +13,7 @@ import { createWindowPage } from './browser-window-page.js'
 import { BrowserLanes } from './browser-lanes.js'
 import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
 import { nativePagesVisible } from './native-layout.js'
+import { resizePreview } from './page-preview.js'
 
 // Native and external browser pages share the same CDP automation and lane
 // ownership. Each backend keeps its own persistent profile under userData.
@@ -50,12 +51,13 @@ export async function setViewHeight(height: number, lane = activeLaneName(), wid
   const wanted = Math.round(Math.max(VIEW_HEIGHT_MIN, Math.min(VIEW_HEIGHT_MAX, height)))
   const wantedWidth = Math.round(Math.max(360, Math.min(1920, width)))
   const page = lanePage(lane)
-  if (!page || isNativePage(page) || (page.viewportSize()?.height === wanted && page.viewportSize()?.width === wantedWidth)) return false
-  await page.setViewportSize({ width: wantedWidth, height: wanted }).catch((err: unknown) => {
+  if (!page || isNativePage(page)) return false
+  const changed = await resizePreview(page, { width: wantedWidth, height: wanted }).catch((err: unknown) => {
     flog('agent-browser', `could not lay a page out at ${wanted}: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
+    return false
   })
-  flog('agent-browser', `lane ${lane} laid out at ${wantedWidth}x${wanted}`)
-  return true
+  if (changed) flog('agent-browser', `lane ${lane} laid out at ${wantedWidth}x${wanted}`)
+  return changed
 }
 
 type Ctx = import('playwright-core').BrowserContext
