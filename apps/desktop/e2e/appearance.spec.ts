@@ -50,7 +50,7 @@ test('appearance survives restart, follows the system only when chosen, and keep
   await page.getByTestId('activity-settings').click()
   await page.getByRole('radio', { name: 'Use system setting' }).check()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
+  await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
   await page.emulateMedia({ colorScheme: 'dark' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.emulateMedia({ colorScheme: 'light' })
