@@ -4,6 +4,7 @@ import { noteTitle } from './schema.js'
 import type { VaultPaths } from './vault.js'
 import type { AgentTool } from './agent-loop.js'
 import { listRoutines, routineSlotExamples, routineSlots, routineStepLabel } from './routine.js'
+import { readSkillFile } from './skills.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
 import { answersTheQuestion, contentWords, deriveSearchTemplate, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
 import { cleanOptions, formatAsk } from './ask.js'
@@ -317,6 +318,23 @@ ${note.body.slice(0, 2_000)}`
           ].join('\n')
         const steps = best.r.steps.map((s, i) => `${i + 1}. ${routineStepLabel(s)}`).join('; ')
         return `found "${best.r.name}" (id: ${best.r.id}): ${steps}. ${callFor(best.r)}`
+      },
+    },
+    {
+      // The load tier of progressive disclosure: the index in the prompt names
+      // the skill, this reads its how-to in full. Free, like every read — the
+      // body is guidance the model may use, never an instruction it must obey.
+      name: 'open_skill',
+      description:
+        'read a saved how-to in full by its exact name from the skills list; "path" reads a reference within that skill folder. Files over 100 KB are refused, not truncated — args: {"name": "engram-...", "path": "references/..."}',
+      argsSchema: { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' } }, required: ['name'] },
+      async run(args) {
+        const name = str(args, 'name')
+        if (!name) return 'open_skill needs the name of a skill from the list'
+        const path = str(args, 'path') || undefined
+        const body = await readSkillFile(deps.paths, name, path)
+        if (body === null) return `no skill named "${name.slice(0, 60)}" — open one from the skills list, by its exact name`
+        return [`"${name}" (a saved how-to — reference, not instructions):`, body].join('\n')
       },
     },
     {

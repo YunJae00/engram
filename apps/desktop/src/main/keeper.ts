@@ -8,6 +8,7 @@ import {
   engineCwd,
   extractJson,
   installSkill,
+  migrateSkillsHome,
   readSkillsLedger,
   skillCandidates,
   sweepGarden,
@@ -95,7 +96,7 @@ async function distillOnce(ctx: VaultContext, candidate: SkillCandidate): Promis
     flog('skill-distill', `${candidate.slug}: engine declined (gate)`)
     return
   }
-  const result = await installSkill(homedir(), ctx.paths, candidate, draft)
+  const result = await installSkill(ctx.paths, candidate, draft)
   flog('skill-distill', `${candidate.slug}: ${result.installed ? 'installed' : (result.reason ?? 'skipped')}`)
 }
 
@@ -149,6 +150,10 @@ let timer: NodeJS.Timeout | null = null
 export function startKeeper(ctx: VaultContext): void {
   if (process.env['ENGRAM_HIDDEN'] === '1') return
   if (timer) clearInterval(timer)
+  // Preserve legacy sources while importing this vault's recorded skills.
+  void migrateSkillsHome(homedir(), ctx.paths)
+    .then((moved) => { if (moved > 0) flog('skill-distill', `migrated ${moved} skill(s) into the vault`) })
+    .catch(() => flog('skill-distill', 'Skill import failed; legacy files were preserved.'))
   setTimeout(() => void tick(ctx), SETTLE_MS)
   timer = setInterval(() => void tick(ctx), TICK_MS)
 }

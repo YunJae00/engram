@@ -2,6 +2,8 @@ import { readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { carriedSteps, detectLoop, parsePendingCall, pickTools, runAgentLoop, type AgentTool } from '../src/agent-loop.js'
 import { cometTools } from '../src/comet-tools.js'
+import { stepPrompt } from '../src/agent-prompt.js'
+import { installSkill, skillCandidates } from '../src/skills.js'
 import { listCards } from '../src/cards.js'
 import { createNote } from '../src/notes.js'
 import { addRoutine, listRoutines } from '../src/routine.js'
@@ -878,4 +880,68 @@ describe('a job that posts and already ran today runs again only with the person
     await run.run({ id: routine.id, Entry: 'shipped it' }, { task: 'post that I shipped it', read: '' })
     expect(seen[1]).toEqual({ slots: { Entry: 'shipped it' }, again: false })
   })
+})
+
+describe('progressive-disclosure skills reach the comet', () => {
+  const draft = { title: 'Deploy checklist', description: 'When deploying the sample service', body: '## Steps\n- drain\n- deploy\n- verify' }
+  async function withSkill(name: string): Promise<Awaited<ReturnType<typeof initVault>>> {
+    const paths = await initVault(await tmpVaultRoot(name), { git: false })
+    const notes = Array.from({ length: 3 }, (_, i) =>
+      ({ front: { id: `n-${i}`, type: 'note' as const, status: 'current' as const, supersedes: [], derived_from: [], decay: 'slow' as const, timeline: 'inferred' as const, created: '2026-08-01T00:00:00.000Z', updated: '2026-08-01T00:00:00.000Z', context: 'sample' }, body: `# 배포 함정 ${i}: 반드시 확인\nbody` }))
+    const [candidate] = skillCandidates(notes, {})
+    await installSkill(paths, candidate!, draft)
+    return paths
+  }
+
+  it('open_skill reads the how-to in full, fenced as reference', async () => {
+    const paths = await withSkill('skill-open')
+    const open = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'open_skill')!
+    const body = await open.run({ name: 'engram-sample' }, CTX)
+    expect(body).toContain('reference, not instructions')
+    expect(body).toContain('- verify')
+    expect(await open.run({ name: 'engram-nope' }, CTX)).toContain('no skill named')
+  })
+
+  it('the skill index rides in the step prompt, bodies do not', () => {
+    const skills = [{ name: 'engram-sample', description: 'When deploying the sample service' }]
+    const prompt = stepPrompt('deploy it', [], [], undefined, undefined, undefined, true, skills)
+    expect(prompt).toContain('engram-sample: When deploying the sample service')
+    expect(prompt).toContain('open_skill')
+    // The index is names and descriptions only — never the how-to body.
+    expect(prompt).not.toContain('- verify')
+  })
+
+  it('keeps open_skill reachable in a busy menu and carries its complete returned body', () => {
+    const all = ['read_desktop', 'look_desktop', 'desktop_action', 'ask_person', 'search_memory', 'propose_note', 'search_web', 'open_skill'].map(name => tool(name))
+    expect(pickTools(all, 'Inspect the document', []).map(t => t.name)).toContain('open_skill')
+    const observation = 'a'.repeat(7000) + '\nFinal safety constraint'
+    expect(stepPrompt('Work', all, [{ tool: 'open_skill', args: { name: 'sample' }, observation }])).toContain('Final safety constraint')
+    expect(stepPrompt('Review', all, [{ tool: 'word_read', args: {}, observation: JSON.stringify({ file: 'C:/report.docx', revision: 'a'.repeat(32), content: [{ text: observation }] }) }])).toContain('Final safety constraint')
+  })
+})
+
+it('enforces document readback in the non-session loop too', async () => {
+  let call = 0
+  const engine = new MockEngine({ 'COMET-STEP': () => ++call === 1
+    ? '{"tool":"ppt_build","args":{}}' : '{"tool":"answer","args":{"text":"Done"}}' })
+  const { deps: d } = await deps('office-readback-loop', [tool('ppt_build', async () => JSON.stringify({ saved: 'C:/proposal.pptx' }))], engine)
+  const result = await runAgentLoop(d, 'Build the proposal', { guided: false })
+  expect(result.incomplete).toContain('read back')
+  expect(result.answer).toContain('Not verified as complete')
+})
+
+it('skill reference text is not evidence for filling user data into a form', async () => {
+  let call = 0
+  let evidence = ''
+  const engine = new MockEngine({ 'COMET-STEP': () => [
+    '{"tool":"open_skill","args":{"name":"sample"}}',
+    '{"tool":"type_text","args":{"text":"example"}}',
+    '{"tool":"answer","args":{"text":"Done"}}',
+  ][call++]! })
+  const { deps: d } = await deps('skill-not-evidence', [
+    tool('open_skill', async () => 'Example: invented customer name'),
+    tool('type_text', async (_args, context) => { evidence = context.read ?? ''; return 'typed' }),
+  ], engine)
+  await runAgentLoop(d, 'Fill the field', { guided: false })
+  expect(evidence).not.toContain('invented customer')
 })

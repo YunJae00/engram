@@ -5,6 +5,7 @@ import { withoutSecrets } from './secrets.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { screenPrompt, textStepTools } from './agent-screen.js'
 import { collectResult, DESKTOP_TOOL_ISOLATION_MESSAGE, extractJson, type Engine, type EngineCwd } from './engine/types.js'
+import { checkOfficeResult } from './office-verification.js'
 
 // The comet's working loop: think → pick ONE tool → run it → look at what
 // came back, a handful of times, then answer. Open-ended agent loops drift,
@@ -63,6 +64,10 @@ export interface AgentLoopOptions {
   // What this comet remembers about the person, rendered once by the caller
   // before the turn; the same bytes ride in every prompt of the turn.
   memory?: string
+  // The skills this vault holds, as a name+description index. Carried in the
+  // prompt so the model knows what it can open; the bodies cost nothing until
+  // open_skill asks for one.
+  skills?: { name: string; description: string }[]
   // Guided: the loop narrows the menu each step, seeds what it knows, nudges
   // and budgets tightly - the hand-holding a small on-device model needs to
   // finish a job. Off, the model sees every tool and plans for itself.
@@ -220,7 +225,7 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false), options.onScreen, deps.tools),
+    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills), options.onScreen, deps.tools),
     workdir: deps.workdir,
     disallowTools: true,
     ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),
@@ -291,7 +296,11 @@ async function followRead(
   return true
 }
 
-export async function runAgentLoop(
+export async function runAgentLoop(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
+  return checkOfficeResult(await agentLoop(deps, task, options))
+}
+
+async function agentLoop(
   deps: AgentLoopDeps,
   task: string,
   options: AgentLoopOptions = {},
@@ -346,7 +355,7 @@ export async function runAgentLoop(
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
-        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided), options.onScreen, deps.tools),
+        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills), options.onScreen, deps.tools),
         workdir: deps.workdir,
         disallowTools: true,
         ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),

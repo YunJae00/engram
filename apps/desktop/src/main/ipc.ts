@@ -74,6 +74,7 @@ import {
   UNTITLED_BOT_NAME,
   secretsIn,
   listRoutines,
+  listSkills,
   loadBotMemory,
   renderMemory,
   removeRoutine,
@@ -2164,6 +2165,9 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
+            // The vault's skills as a name+description index; the comet opens
+            // any body on demand with open_skill.
+            skills: await listSkills(paths),
             persona: bot.purpose
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
@@ -2241,7 +2245,7 @@ export function registerIpc(ctx: VaultContext): void {
         const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
         const ran = ranId ? (await listRoutines(paths)).find((r) => r.id === ranId) : undefined
         const standing =
-          ran && !routineWrites(ran) && routineSlots(ran.steps).length === 0 && !(bot.declined ?? []).includes(askKey(request.message))
+          finished && ran && !routineWrites(ran) && routineSlots(ran.steps).length === 0 && !(bot.declined ?? []).includes(askKey(request.message))
             ? repeatedAsk(
                 (await readBotTranscript(paths, bot.id)).filter((turn) => turn.role === 'user'),
                 request.message,
@@ -2265,7 +2269,7 @@ export function registerIpc(ctx: VaultContext): void {
         // offer-writing below.
         lastTurns.set(bot.id, {
           message: request.message,
-          steps: result.steps.map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
+          steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
         })
         // The words they typed name this morning, not the work. Asked after
         // the answer is out, it writes the offer, which follows on its own.

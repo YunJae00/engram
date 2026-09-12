@@ -16,6 +16,7 @@ export interface TurnStep {
 
 // A move whose own report says it went nowhere is not part of the path.
 const WENT_NOWHERE = [
+  'that did not work:',
   'could not',
   'nothing on the page changed',
   'was not pressed',
@@ -26,6 +27,7 @@ const WENT_NOWHERE = [
 ]
 
 function worked(observation: string): boolean {
+  try { if (JSON.parse(observation)?.error) return false } catch { /* Browser receipts also use plain text. */ }
   const head = observation.slice(0, 200).toLowerCase()
   return !WENT_NOWHERE.some((sign) => head.includes(sign))
 }

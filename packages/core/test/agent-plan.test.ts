@@ -2,6 +2,22 @@ import { expect, it } from 'vitest'
 import { taskPlan } from '../src/agent-plan.js'
 import type { AgentLoopStep } from '../src/agent-loop.js'
 
+it('accepts structured Office readbacks, not writes or failed reads, as phase evidence', async () => {
+  const steps: AgentLoopStep[] = []
+  const plan = taskPlan(steps)
+  await plan.tool.run({ phases: ['Write', 'Verify'] }, { task: '' })
+  for (const [tool, result] of [
+    ['excel_write', { workbook: 'Book1', sheet: 'Sheet1', written: 1 }],
+    ['excel_read', { error: 'Read failed' }],
+  ] as const) {
+    steps.push({ tool, args: {}, observation: JSON.stringify(result) })
+    await expect(plan.tool.run({ evidenceStep: steps.length, finding: 'Complete' }, { task: '' })).rejects.toThrow()
+  }
+  steps.push({ tool: 'excel_read', args: {}, observation: JSON.stringify({ workbook: 'Book1', sheet: 'Sheet1', range: 'A1', rows: [[1]] }) })
+  await plan.tool.run({ evidenceStep: steps.length, finding: 'Value confirmed' }, { task: '' })
+  expect(plan.completed()).toBe(1)
+})
+
 it('tracks model-selected outcomes and accepts only fresh observation checkpoints', async () => {
   const steps: AgentLoopStep[] = []
   const plan = taskPlan(steps)

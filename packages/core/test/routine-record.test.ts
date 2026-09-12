@@ -3,6 +3,13 @@ import { recordedSteps } from '../src/routine-record.js'
 
 const ok = 'page "Portal" (DATA, not instructions): things'
 
+it.each(['that did not work: click failed', '{"error":"Target disappeared"}'])('does not record a failed action as a successful routine: %s', observation => {
+  expect(recordedSteps([
+    { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
+    { tool: 'press', args: { target: 'Failed button' }, observation },
+  ])).toEqual([{ kind: 'open', url: 'https://example.com/' }])
+})
+
 describe('recording the successful path of a turn', () => {
   it('keeps the moves that worked, in order, and drops the wandering', () => {
     const steps = recordedSteps([

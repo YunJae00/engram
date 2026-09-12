@@ -289,3 +289,30 @@ it.each([
   ] }, 'Update the open document')
   expect(!!result.incomplete).toBe(!reread)
 })
+
+it.each([false, true])('a written document is not complete until it is read back (reread=%s)', async (reread) => {
+  const engine = sessionBrain(async (job) => {
+    await job.tools.find((tool) => tool.name === 'excel_write')!.run({})
+    if (reread) await job.tools.find((tool) => tool.name === 'excel_read')!.run({})
+    return { answer: 'The income statement is ready' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [
+    { name: 'excel_write', description: 'write', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'book.xlsx', sheet: 'Sheet1', written: 4, saved: 'C:/book.xlsx' }) },
+    { name: 'excel_read', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'book.xlsx', sheet: 'Sheet1', range: 'A1:B2', rows: [[1, 2], [3, 4]] }) },
+  ] }, 'Build the income statement')
+  // Generated but never read back → honestly marked not verified; read back → done.
+  expect(!!result.incomplete).toBe(!reread)
+  if (!reread) expect(result.incomplete).toContain('read back')
+})
+
+it('a failed office write is marked not verified', async () => {
+  const engine = sessionBrain(async (job) => {
+    await job.tools.find((tool) => tool.name === 'ppt_build')!.run({})
+    return { answer: 'The deck is built' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [
+    { name: 'ppt_build', description: 'build', argsSchema: {}, run: async () => 'that did not work: the deck did not read clean' },
+  ] }, 'Build the proposal deck')
+  expect(result.incomplete).toContain('read back')
+  expect(result.answer).toContain('Not verified as complete')
+})

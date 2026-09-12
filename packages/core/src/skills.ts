@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, relative } from 'node:path'
+import matter from 'gray-matter'
 import { noteTitle } from './schema.js'
 import type { Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
@@ -10,6 +11,8 @@ const MIN_NOTES = 3
 const CANDIDATE_CAP = 2
 const MAX_AUTO_SKILLS = 8
 const BODY_CAP = 6_000
+const OPEN_BYTES = 100_000
+const DESC_CAP = 200
 // Secrets and identities never leave the vault inside a skill file.
 const PRIVACY_RE = /[\w.+-]+@[\w-]+\.[a-z]{2,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]+|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}/i
 
@@ -42,15 +45,20 @@ function ledgerFile(paths: VaultPaths): string {
 
 export async function readSkillsLedger(paths: VaultPaths): Promise<SkillsLedger> {
   try {
-    return JSON.parse(await readFile(ledgerFile(paths), 'utf8')) as SkillsLedger
+    const ledger = JSON.parse(await readFile(ledgerFile(paths), 'utf8'))
+    if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) return {}
+    return Object.fromEntries(Object.entries(ledger).filter(([, entry]) => {
+      const value = entry as Partial<SkillLedgerEntry> | null
+      return value && typeof value.folder === 'string' && typeof value.hash === 'string' && typeof value.distilledAt === 'string'
+    })) as SkillsLedger
   } catch {
     return {}
   }
 }
 
 export async function writeSkillsLedger(paths: VaultPaths, ledger: SkillsLedger): Promise<void> {
-  await mkdir(join(paths.workspace, '.engram'), { recursive: true }).catch(() => undefined)
-  await writeFile(ledgerFile(paths), JSON.stringify(ledger, null, 2)).catch(() => undefined)
+  await mkdir(join(paths.workspace, '.engram'), { recursive: true })
+  await writeFile(ledgerFile(paths), JSON.stringify(ledger, null, 2))
 }
 
 // Folders worth distilling: enough procedure-shaped conclusions, and at least
@@ -112,7 +120,7 @@ export function renderSkillMd(slug: string, folder: string, draft: SkillDraft): 
   return [
     '---',
     `name: engram-${slug}`,
-    `description: ${draft.description.replace(/\n/g, ' ').trim()}`,
+    `description: ${JSON.stringify(draft.description.replace(/[\r\n]+/g, ' ').trim())}`,
     '---',
     '',
     `<!-- engram:skill v1 folder=${folder} — distilled by Engram from your own notes; edit freely, edits are never overwritten -->`,
@@ -137,27 +145,94 @@ export interface InstallResult {
   reason?: 'user-owned' | 'privacy' | 'too-long'
 }
 
-// Install into <home>/.claude/skills/engram-<slug>/SKILL.md — injectable home
-// so tests (and the CLI) never touch the real one. The hash in the ledger is
-// the ownership proof: a file on disk that no longer matches it was edited by
-// the user, and from then on it is theirs.
+// Skills live in the vault, the way routines do — the app's own home, not a
+// vendor's. One folder per skill under .engram/skills, so a skill is portable
+// with the vault and reachable by the comet without depending on whatever
+// engine happens to be driving it.
+export function skillsDir(paths: VaultPaths): string {
+  return join(paths.workspace, '.engram', 'skills')
+}
+
+function frontMatter(content: string): { name?: string; description?: string; body: string } {
+  // Accept plain YAML delimiters only; metadata must never select an executable parser.
+  if (!/^---\r?\n/.test(content)) return { body: content.trim() }
+  const parsed = matter(content, { language: 'yaml' })
+  return { description: typeof parsed.data['description'] === 'string' ? parsed.data['description'] : undefined, body: parsed.content.trim() }
+}
+
+const SKILL_NAME = /^[A-Za-z0-9가-힣_-]+$/
+function inside(base: string, target: string): boolean {
+  const path = relative(base, target)
+  return path !== '' && path !== '..' && !path.startsWith(`..\\`) && !path.startsWith('../') && !isAbsolute(path)
+}
+
+async function skillContent(paths: VaultPaths, name: string, path: string): Promise<string | null> {
+  if (!SKILL_NAME.test(name) || isAbsolute(path)) return null
+  const root = await realpath(skillsDir(paths)).catch(() => null)
+  if (!root) return null
+  const base = await realpath(join(root, name)).catch(() => null)
+  if (!base || !inside(root, base)) return null
+  const target = await realpath(join(base, path)).catch(() => null)
+  if (!target || !inside(base, target)) return null
+  const info = await stat(target)
+  if (!info.isFile()) return null
+  if (info.size > OPEN_BYTES) throw new Error('Skill file exceeds 100 KB. Split it into smaller reference files; no partial content was returned.')
+  return readFile(target, 'utf8')
+}
+
+export interface SkillCard {
+  name: string
+  description: string
+}
+
+// The index tier: every skill's name and one-line description, cheap enough to
+// carry in the prompt so the model knows what it can open without any of the
+// bodies costing a token until one is needed.
+export async function listSkills(paths: VaultPaths): Promise<SkillCard[]> {
+  const dir = skillsDir(paths)
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  const cards: SkillCard[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !SKILL_NAME.test(entry.name)) continue
+    const content = await skillContent(paths, entry.name, 'SKILL.md').catch(() => null)
+    if (content === null) continue
+    try {
+      const { description } = frontMatter(content)
+      if (description) cards.push({ name: entry.name, description: description.replace(/\s+/g, ' ').trim().slice(0, DESC_CAP) })
+    } catch { /* Invalid metadata is not advertised as an available skill. */ }
+  }
+  return cards.sort((a, b) => (a.name < b.name ? -1 : 1))
+}
+
+// The load tier: one skill's how-to in full, by the name the index gave. A
+// reference file inside the skill can be asked for by relative path, kept
+// inside the skill's own folder so a name can never reach elsewhere.
+export async function readSkillFile(paths: VaultPaths, name: string, path?: string): Promise<string | null> {
+  const content = await skillContent(paths, name, path ?? 'SKILL.md')
+  return content === null ? null : path === undefined ? frontMatter(content).body : content
+}
+
+// Install into <vault>/.engram/skills/engram-<slug>/SKILL.md. The hash in the
+// ledger is the ownership proof: a file on disk that no longer matches it was
+// edited by the user, and from then on it is theirs.
 export async function installSkill(
-  home: string,
   paths: VaultPaths,
   candidate: SkillCandidate,
   draft: SkillDraft,
   now: Date = new Date(),
 ): Promise<InstallResult> {
+  if (!SKILL_NAME.test(candidate.slug)) throw new Error('Invalid skill slug.')
   const content = renderSkillMd(candidate.slug, candidate.folder, draft)
   if (content.length > BODY_CAP) return { installed: false, reason: 'too-long' }
   if (!passesPrivacyLint(content)) return { installed: false, reason: 'privacy' }
   const ledger = await readSkillsLedger(paths)
   const entry = ledger[candidate.slug]
-  const dir = join(home, '.claude', 'skills', `engram-${candidate.slug}`)
+  const dir = join(skillsDir(paths), `engram-${candidate.slug}`)
   const file = join(dir, 'SKILL.md')
+  if ((await lstat(dir).catch(() => null))?.isSymbolicLink() || (await lstat(file).catch(() => null))?.isSymbolicLink()) return { installed: false, reason: 'user-owned' }
   const existing = await readFile(file, 'utf8').catch(() => null)
-  if (existing !== null && entry !== undefined && skillContentHash(existing) !== entry.hash) {
-    ledger[candidate.slug] = { ...entry, userOwned: true }
+  if (entry?.userOwned || (existing !== null && (!entry || skillContentHash(existing) !== entry.hash))) {
+    ledger[candidate.slug] = { folder: candidate.folder, hash: existing === null ? '' : skillContentHash(existing), distilledAt: now.toISOString(), ...entry, userOwned: true }
     await writeSkillsLedger(paths, ledger)
     return { installed: false, reason: 'user-owned' }
   }
@@ -166,6 +241,25 @@ export async function installSkill(
   ledger[candidate.slug] = { folder: candidate.folder, hash: skillContentHash(content), distilledAt: now.toISOString() }
   await writeSkillsLedger(paths, ledger)
   return { installed: true }
+}
+
+// Copy only skills recorded by this vault. Preserve legacy sources and all
+// destination conflicts; another vault or a user may still depend on them.
+export async function migrateSkillsHome(home: string, paths: VaultPaths): Promise<number> {
+  const legacy = join(home, '.claude', 'skills')
+  const ledger = await readSkillsLedger(paths)
+  const entries = await readdir(legacy, { withFileTypes: true }).catch(() => [])
+  let moved = 0
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith('engram-') || !SKILL_NAME.test(entry.name) || !Object.hasOwn(ledger, entry.name.slice(7))) continue
+    const from = join(legacy, entry.name)
+    const to = join(skillsDir(paths), entry.name)
+    if (await lstat(to).catch(() => null)) continue
+    await mkdir(skillsDir(paths), { recursive: true })
+    await cp(from, to, { recursive: true, force: false, errorOnExist: true, verbatimSymlinks: true })
+    moved++
+  }
+  return moved
 }
 
 // The brief's receipt: skills distilled/refreshed in the window.
