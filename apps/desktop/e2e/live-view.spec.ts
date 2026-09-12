@@ -260,6 +260,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
   await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)
+  await page.getByTestId('web-pane').evaluate(async (node) => { await Promise.all(node.getAnimations().map((animation) => animation.finished)) })
   const sharpWidth = await page.locator('.web-pane-stage').evaluate((node) => Math.max(360, Math.min(1920, Math.round(node.getBoundingClientRect().width / 8) * 8)) * 2)
   // Navigation commits before the new document can receive wheel input.
   await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
