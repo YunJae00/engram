@@ -187,14 +187,18 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.getByTestId('mission-add-1').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Third watch' }).click()
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2, { timeout: 15000 })
-  await expect.poll(() => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width)), { timeout: 15000 }).toEqual([2560, 2560])
+  const previewsSharp = () => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.every((node) => {
+    const width = node.closest('.mission-preview')!.getBoundingClientRect().width
+    return (node as HTMLCanvasElement).width === Math.max(360, Math.min(1920, Math.round(width / 8) * 8)) * 2
+  }))
+  await expect.poll(previewsSharp, { timeout: 15000 }).toBe(true)
   await expect(page.locator('.mini-chat')).toHaveCount(2)
   await page.getByTestId('mission-add-2').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Watching', exact: true }).click()
   await page.getByTestId('mission-add-3').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(4, { timeout: 20000 })
-  await expect.poll(() => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width)), { timeout: 20000 }).toEqual([2560, 2560, 2560, 2560])
+  await expect.poll(previewsSharp, { timeout: 20000 }).toBe(true)
   const simultaneous = await page.evaluate(async ({ url, ids }) => {
     const lanes = ids.map((id) => `bot-${id}`)
     const counts = lanes.map(() => 0)
