@@ -6,7 +6,7 @@ import {
   ENGINE_BUDGETS,
   engineBackoff,
   engineCwd,
-  extractJson,
+  parseSkillDraft,
   installSkill,
   migrateSkillsHome,
   readSkillsLedger,
@@ -14,7 +14,6 @@ import {
   sweepGarden,
   type Engine,
   type SkillCandidate,
-  type SkillDraft,
 } from 'core'
 import { writeCapture } from 'core'
 import { app } from 'electron'
@@ -68,30 +67,11 @@ async function collectResult(engine: Engine, prompt: string, workdir: ReturnType
   return finalText ?? (streamed || null)
 }
 
-// The engine either refuses ({"skip": true}) or answers structurally —
-// anything else (prose, half-JSON, empty) reads as a refusal. No slop.
-function parseDraft(raw: string | null): SkillDraft | null {
-  if (!raw) return null
-  try {
-    const value = extractJson(raw) as Record<string, unknown> | null
-    if (!value || typeof value !== 'object') return null
-    if (value['skip'] === true) return null
-    const title = value['title']
-    const description = value['description']
-    const body = value['body']
-    if (typeof title !== 'string' || typeof description !== 'string' || typeof body !== 'string') return null
-    if (!title.trim() || !description.trim() || body.trim().length < 100) return null
-    return { title, description, body }
-  } catch {
-    return null
-  }
-}
-
 async function distillOnce(ctx: VaultContext, candidate: SkillCandidate): Promise<void> {
   const engine = ctx.engines[0]
   if (!engine) return
   const raw = await collectResult(engine, distillPrompt(candidate), engineCwd(ctx.paths)).catch(() => null)
-  const draft = parseDraft(raw)
+  const draft = parseSkillDraft(raw)
   if (!draft) {
     flog('skill-distill', `${candidate.slug}: engine declined (gate)`)
     return
@@ -109,9 +89,7 @@ async function tick(ctx: VaultContext): Promise<void> {
     let log = composeWorklog(yesterday, spans)
     let logged = true
     if (log) {
-      // The web trail and recent documents join the day's note (PLAN-LOCAL-
-      // FIRST §3.5): in the webmail era the browser's page titles are often
-      // the only on-device record of what the office day was about.
+      // Local page titles and recent filenames supplement foreground activity.
       const dayStart = new Date(yesterday + 'T00:00:00').getTime()
       const trail = foldWebTrail(await readWebTrail(dayStart).catch(() => []))
       const files = await recentFileNames(dayStart).catch(() => [])
@@ -136,8 +114,8 @@ async function tick(ctx: VaultContext): Promise<void> {
     await writeState({ gardenedAt: now })
   }
   // Engine work is opportunistic: absent or quota-gated → try next tick, the
-  // weekly stamp only advances when a pass actually ran.
-  if (now - (state.distilledAt ?? 0) >= WEEK_MS && ctx.engines.length > 0 && engineBackoff.blockedMs() === 0) {
+  // refresh stamp only advances when a pass actually ran.
+  if (now - (state.distilledAt ?? 0) >= TICK_MS && ctx.engines.length > 0 && engineBackoff.blockedMs() === 0) {
     const ledger = await readSkillsLedger(ctx.paths)
     const candidates = skillCandidates(ctx.store.getAll(), ledger)
     for (const candidate of candidates) await distillOnce(ctx, candidate).catch(() => undefined)

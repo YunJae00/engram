@@ -1,6 +1,6 @@
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
 import { runAgentLoop, said } from './agent-loop.js'
-import { conversationLines, DESKTOP_TASK_RULE, openRuleLines, personaLines, skillIndexLines } from './agent-prompt.js'
+import { conversationLines, DESKTOP_TASK_RULE, openRuleLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
 import { parseAsk } from './ask.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
 import { withoutSecrets } from './secrets.js'
@@ -9,6 +9,7 @@ import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool }
 import { taskPlan } from './agent-plan.js'
 import { workCapabilities, WORK_METHOD_RULE } from './work-capabilities.js'
 import { DOCUMENT_CHECK_RULE, officeWriteUnverified } from './office-verification.js'
+import { officeArithmeticFault } from './office-arithmetic.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
 // the whole turn in one session: every step then costs one exchange instead
@@ -185,6 +186,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     // fills the turn wins by weight alone unless this is said last - and
     // said by name, not left to be read off the ask.
     prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
+      ...resumeLines(options.resume),
       ...(desktop ? ['Prior-turn desktop observations are historical: use read_desktop or look_desktop before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
       `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
@@ -201,7 +203,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (session.error) throw new Error(session.error)
-  const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? officeWriteUnverified(steps))
+  const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || steps.length >= allowance()
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`

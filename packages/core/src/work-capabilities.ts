@@ -11,7 +11,7 @@ export function workCapabilities(tools: AgentTool[]): AgentTool {
     async run(_args, context) {
       context.signal?.throwIfAborted()
       return JSON.stringify({
-        savedFiles: tools.filter((tool) => tool.name.startsWith('file_')).map((tool) => ({ name: tool.name, description: tool.description })),
+        savedFiles: tools.filter((tool) => tool.name.startsWith('file_') || tool.name === 'find_files').map((tool) => ({ name: tool.name, description: tool.description })),
         web: tools.filter((tool) => ['open_page', 'read_open_page', 'press', 'type_text', 'look'].includes(tool.name)).map((tool) => tool.name),
         desktop: tools.filter((tool) => isDesktopTool(tool.name)).map((tool) => tool.name),
         liveDocumentApi: { available: tools.some(tool => tool.name === 'read_live_document'), tools: tools.filter(tool => ['read_live_document', 'edit_live_document', 'compose_live_document'].includes(tool.name)).map(tool => ({ name: tool.name, description: tool.description })), fallback: 'Use available desktop tools for unsupported applications and operations. Never edit the on-disk file to modify an open unsaved document.' },

@@ -75,6 +75,14 @@ import {
   secretsIn,
   listRoutines,
   listSkills,
+  annotateStaleCards,
+  readSkillsLedger,
+  installSkill,
+  turnSkillPrompt,
+  parseSkillDraft,
+  turnSkillCandidate,
+  resumeCheckpoint,
+  successfulTurnSteps,
   loadBotMemory,
   renderMemory,
   removeRoutine,
@@ -646,9 +654,6 @@ const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 // after that - what to remember from it, what to offer - and that work is
 // still cancellable, but it is not something to wait on.
 const answering = new Set<string>()
-// The last finished turn per comet: what was asked and what was done, held
-// so that keeping the job as a routine can record the path that worked.
-const lastTurns = new Map<string, { message: string; steps: TurnStep[] }>()
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
@@ -919,6 +924,31 @@ export function registerIpc(ctx: VaultContext): void {
   scheduleAutoTidy(ctx, 120_000)
 
   const { paths } = ctx
+  const resumeState = new Map<string, string>()
+  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; engine: Engine; keepGoal?: string }>()
+
+  // Only an explicitly kept, completed turn can supply reusable guidance.
+  const SKILL_FROM_TURN_MIN = 3
+  const distillTurnSkill = async (name: string, goal: string, steps: TurnStep[], engine: Engine): Promise<void> => {
+    const done = successfulTurnSteps(steps)
+    if (engineBackoff.blockedMs() > 0 || done.length < SKILL_FROM_TURN_MIN) return
+    const lines = done.map((step) => {
+      const arg = String(Object.values(step.args).find((value) => typeof value === 'string') ?? '').slice(0, 80)
+      return `- ${step.tool}${arg ? `: ${arg}` : ''} -> ${step.observation.slice(0, 100).replace(/\s+/g, ' ')}`
+    })
+    const raw = await collectResult(engine, {
+      prompt: turnSkillPrompt(goal, lines),
+      workdir: engineCwd(paths),
+      disallowTools: true,
+      timeoutMs: 45_000,
+      modelHint: 'fast',
+      maxTokens: 900,
+    }).catch(() => null)
+    const draft = parseSkillDraft(raw)
+    if (!draft) { flog('skill-distill', `turn "${name.slice(0, 40)}": engine declined`); return }
+    const result = await installSkill(paths, turnSkillCandidate(name, goal), draft)
+    flog('skill-distill', `turn "${name.slice(0, 40)}": ${result.installed ? 'installed a how-to' : (result.reason ?? 'skipped')}`)
+  }
 
   // The Brain computes topics in the renderer (it cannot import core), so the
   // declared names must travel to it or the two would group differently.
@@ -1141,6 +1171,8 @@ export function registerIpc(ctx: VaultContext): void {
     abortAllChat(`bot-${id}`)
     releaseDesktop(`bot-${id}`)
     await deleteBot(paths, id)
+    resumeState.delete(id)
+    lastTurns.delete(id)
     broadcast({ type: 'bots:changed' })
   })
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
@@ -1164,6 +1196,11 @@ export function registerIpc(ctx: VaultContext): void {
       }
     }
     const task = await addBotTask(paths, botId, { ...input, ...(routineId ? { routineId } : {}) })
+    // Beside the exact-replay routine, learn the general how-to from the same
+    // kept turn — in the background, so keeping stays instant.
+    const kept = lastTurns.get(botId)
+    lastTurns.delete(botId)
+    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, kept.message, kept.steps, kept.engine).catch(() => undefined)
     broadcast({ type: 'bots:changed' })
     return task
   })
@@ -2095,12 +2132,15 @@ export function registerIpc(ctx: VaultContext): void {
       const onScreen = [engine.desktopToolIsolation === true && settings.computerUse !== false ? [officeContext(), desktopContext()].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
       try {
         assertDesktopChatEngine(channel, engine)
+        const resume = resumeState.get(bot.id)
+        resumeState.delete(bot.id)
         const result = await runComet(
           {
             engine,
             workdir: engineCwd(paths),
             tools: [...cometTools({
               paths,
+              skillNotes: () => ctx.store.getAll(),
               // The web is on the menu whenever a browser is installed. Whether
               // the machine can afford to open it is decided at the moment of
               // opening - where the model can step aside to make room - not
@@ -2175,9 +2215,10 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
-            // The vault's skills as a name+description index; the comet opens
-            // any body on demand with open_skill.
-            skills: await listSkills(paths),
+            // Index only; bodies and current staleness are checked on open_skill.
+            skills: annotateStaleCards(await listSkills(paths), await readSkillsLedger(paths), ctx.store.getAll()),
+            // Historical context cannot override a new request or restore permission.
+            ...(resume ? { resume } : {}),
             persona: bot.purpose
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
@@ -2244,6 +2285,10 @@ export function registerIpc(ctx: VaultContext): void {
         // nothing. The note is the person's to approve, like any other.
         const HANDS = new Set(['press', 'type_text', 'choose', 'press_point', 'reveal'])
         const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete
+        // Keep only the latest unfinished checkpoint within this vault session.
+        const checkpoint = resumeCheckpoint(request.message, result)
+        if (checkpoint) resumeState.set(bot.id, checkpoint)
+        else resumeState.delete(bot.id)
         const handled = finished && result.steps.some((step) => HANDS.has(step.tool))
         // What to offer is read off what happened, never off a fixed row of
         // buttons: a job it was never shown asks to be taught, a procedure
@@ -2279,10 +2324,13 @@ export function registerIpc(ctx: VaultContext): void {
         // What this turn did, held the moment the answer is out: a keep that
         // follows right away must find the path to record, not wait out the
         // offer-writing below.
-        lastTurns.set(bot.id, {
+        const completed = {
           message: request.message,
+          engine,
           steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
-        })
+          keepGoal: undefined as string | undefined,
+        }
+        lastTurns.set(bot.id, completed)
         // The words they typed name this morning, not the work. Asked after
         // the answer is out, it writes the offer, which follows on its own.
         const proposal =
@@ -2306,8 +2354,11 @@ export function registerIpc(ctx: VaultContext): void {
                 .catch(() => null)
             : null
         if (keepable || handled) flog('comet', `a button for this turn: ${proposal ? proposal.name : 'not worth one'}`)
-        if (!result.asked && !standing && !routine && proposal)
-          broadcast({ type: 'chat:offer', channel, offer: { kind: 'keep', name: proposal.name, goal: proposal.goal, does: proposal.does } })
+        if (lastTurns.get(bot.id) === completed && !signal.aborted && proposal) {
+          completed.keepGoal = proposal.goal
+          if (!result.asked && !standing && !routine)
+            broadcast({ type: 'chat:offer', channel, offer: { kind: 'keep', name: proposal.name, goal: proposal.goal, does: proposal.does } })
+        }
         // After the answer is out, while the model is still held: what of
         // this turn is worth keeping about the person.
         if (!result.asked)

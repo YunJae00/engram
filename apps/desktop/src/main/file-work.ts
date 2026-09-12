@@ -1,7 +1,7 @@
-import { dialog, ipcMain, shell } from 'electron'
+import { app, dialog, ipcMain, shell } from 'electron'
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
-import { fileWorkTools, workbookTool, resolveArtifact, type VaultPaths, type AgentTool } from 'core'
+import { fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool } from 'core'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 
 const within = (root: string, path: string) => {
@@ -18,6 +18,7 @@ export function cometFileTools(paths: VaultPaths, lane: string) {
     directory: artifactDirectory(paths),
     assertActive: () => assertDesktopTurnNotStopped(lane),
     assertReadable,
+    findFiles: (query, signal) => findLocalFiles(['documents', 'desktop', 'downloads'].map((dir) => app.getPath(dir as 'documents' | 'desktop' | 'downloads')), paths.privateDir, query, signal),
     approveRead: async (path, signal) => {
       signal?.throwIfAborted()
       await assertReadable(path)

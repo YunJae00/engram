@@ -68,6 +68,10 @@ export interface AgentLoopOptions {
   // prompt so the model knows what it can open; the bodies cost nothing until
   // open_skill asks for one.
   skills?: { name: string; description: string }[]
+  // What a previous turn left unfinished, when this turn is a continuation of
+  // it: the model is told to resume from the last confirmed state and not
+  // repeat work already done, rather than starting the long job over.
+  resume?: string
   // Guided: the loop narrows the menu each step, seeds what it knows, nudges
   // and budgets tightly - the hand-holding a small on-device model needs to
   // finish a job. Off, the model sees every tool and plans for itself.
@@ -225,7 +229,7 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills), options.onScreen, deps.tools),
+    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills, options.resume), options.onScreen, deps.tools),
     workdir: deps.workdir,
     disallowTools: true,
     ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),
@@ -355,7 +359,7 @@ async function agentLoop(
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
-        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills), options.onScreen, deps.tools),
+        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills, options.resume), options.onScreen, deps.tools),
         workdir: deps.workdir,
         disallowTools: true,
         ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),

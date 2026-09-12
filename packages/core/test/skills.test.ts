@@ -2,24 +2,29 @@ import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  annotateStaleCards,
   countRecentSkills,
   installSkill,
   listSkills,
   migrateSkillsHome,
+  staleSkills,
   passesPrivacyLint,
   readSkillFile,
   readSkillsLedger,
+  parseSkillDraft,
   renderSkillMd,
   skillCandidates,
   skillContentHash,
   skillsDir,
+  turnSkillCandidate,
+  turnSkillPrompt,
   writeSkillsLedger,
 } from '../src/skills.js'
 import { tmpVaultRoot } from './helpers.js'
 import type { Note } from '../src/schema.js'
 import type { VaultPaths } from '../src/vault.js'
 
-// J14: the vault's recurring know-how becomes a skill file in the vault itself.
+// The vault's recurring know-how becomes a skill file in the vault itself.
 // The gates matter more than the generation — no repetition no skill, a
 // user-edited file is theirs forever, secrets never leave the vault.
 
@@ -214,4 +219,81 @@ it('never executes a metadata language directive', async () => {
   expect(await listSkills(paths)).toEqual([])
   expect(await readSkillFile(paths, 'unsafe')).toBe(content)
   expect(Reflect.get(globalThis, 'engramSkillExecuted')).toBeUndefined()
+})
+
+describe('living skills — stale when the folder moves on', () => {
+  const draft = { title: '체크리스트', description: 'When porting sample modules', body: '## Steps\n- check' }
+
+  it('re-distills a folder that changed after the last distillation (edit, not just new note)', () => {
+    const base = procedureNotes('sample', 3, '2026-08-01T00:00:00.000Z')
+    const ledger = { sample: { folder: 'sample', hash: 'h', distilledAt: '2026-08-02T00:00:00.000Z' } }
+    // No new note, but one was edited after distillation → still a candidate.
+    const edited = base.map((note, i) => (i === 0 ? { ...note, front: { ...note.front, updated: '2026-08-09T00:00:00.000Z' } } : note))
+    expect(skillCandidates(edited, ledger)).toHaveLength(1)
+  })
+
+  it('names an installed skill stale once its folder changes, and marks the index', async () => {
+    const notes = procedureNotes('sample', 3)
+    const [candidate] = skillCandidates(notes, {})
+    await installSkill(paths, candidate!, draft, NOW)
+    const ledger = await readSkillsLedger(paths)
+    // Nothing changed since distillation → not stale.
+    expect(staleSkills(ledger, notes)).toEqual([])
+    // A newer note in the folder → stale, and the card carries a caution.
+    const changed = [...procedureNotes('sample', 3), note('새 함정 발견 주의', { context: 'sample', created: '2026-08-10T00:00:00.000Z' })]
+    expect(staleSkills(ledger, changed)).toEqual(['sample'])
+    const cards = annotateStaleCards([{ name: 'engram-sample', description: 'When porting sample modules' }], ledger, changed)
+    expect(cards[0]!.description).toContain('may be outdated')
+    // A skill whose folder is unchanged is left alone.
+    expect(annotateStaleCards([{ name: 'engram-sample', description: 'x' }], ledger, notes)[0]!.description).toBe('x')
+    expect(staleSkills(ledger, notes.slice(1))).toEqual(['sample'])
+    expect(staleSkills(ledger, [])).toEqual(['sample'])
+    expect(staleSkills(ledger, notes.map((note, i) => i ? note : { ...note, body: 'Edited without a timestamp change' }))).toEqual(['sample'])
+    expect(skillCandidates(notes.map((note, i) => i ? note : { ...note, body: '# Updated procedure must be checked' }), ledger)).toHaveLength(1)
+  })
+})
+
+describe('learning a how-to from a kept turn', () => {
+  it('turnSkillCandidate keeps a collision-resistant namespace without writing the private goal', () => {
+    const cand = turnSkillCandidate('Weekly report upload', 'upload this week\'s report to the portal')
+    expect(cand.slug.startsWith('turn--')).toBe(true)
+    expect(cand.folder).toBe('Kept tasks')
+    expect(cand.source).toBe('turn')
+    expect(turnSkillCandidate('Weekly report upload', 'another goal').slug).not.toBe(cand.slug)
+    expect(cand.notes).toEqual([])
+  })
+
+  it('turnSkillPrompt carries the goal, the gate and the steps', () => {
+    const prompt = turnSkillPrompt('file the VAT return', ['- open_page: portal', '- type_text: amount'])
+    expect(prompt).toContain('file the VAT return')
+    expect(prompt).toContain('{"skip": true}')
+    expect(prompt).toContain('type_text: amount')
+  })
+
+  it('parseSkillDraft accepts a structured draft and refuses a stub, a skip, or prose', () => {
+    const good = JSON.stringify({ title: 'File the VAT return', description: 'when filing VAT', body: '## When to use\n' + 'x'.repeat(120) })
+    expect(parseSkillDraft(good)).toMatchObject({ title: 'File the VAT return' })
+    // Embedded in chatter still parses.
+    expect(parseSkillDraft('sure!\n' + good + '\nhope that helps')).toMatchObject({ title: 'File the VAT return' })
+    expect(parseSkillDraft('{"skip": true}')).toBeNull()
+    expect(parseSkillDraft('here is a nice skill for you')).toBeNull()
+    expect(parseSkillDraft(JSON.stringify({ title: 'T', description: 'd', body: 'too short' }))).toBeNull()
+    expect(parseSkillDraft(null)).toBeNull()
+  })
+
+  it('a distilled turn how-to installs into the vault skills index', async () => {
+    const cand = turnSkillCandidate('reconcile ledger', 'reconcile the month-end ledger')
+    const draft = { title: 'Reconcile the ledger', description: 'when reconciling month-end', body: '## Steps\n' + 'do the thing\n'.repeat(20) }
+    expect((await installSkill(paths, cand, draft, NOW)).installed).toBe(true)
+    expect((await listSkills(paths)).some((s) => s.name === `engram-${cand.slug}`)).toBe(true)
+    expect(staleSkills(await readSkillsLedger(paths), [])).toEqual([])
+  })
+})
+
+it('serializes concurrent installations and enforces the shared automatic-skill cap', async () => {
+  const results = await Promise.all(Array.from({ length: 12 }, (_, i) => installSkill(paths, turnSkillCandidate(`Task ${i}`, `Goal ${i}`), { title: 'Reusable task', description: 'When needed', body: 'Verify the current input and result.' }, NOW)))
+  expect(results.filter(result => result.installed)).toHaveLength(8)
+  expect(results.filter(result => result.reason === 'limit')).toHaveLength(4)
+  expect(Object.keys(await readSkillsLedger(paths))).toHaveLength(8)
+  expect(await listSkills(paths)).toHaveLength(8)
 })

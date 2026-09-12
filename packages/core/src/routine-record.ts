@@ -27,9 +27,13 @@ const WENT_NOWHERE = [
 ]
 
 function worked(observation: string): boolean {
-  try { if (JSON.parse(observation)?.error) return false } catch { /* Browser receipts also use plain text. */ }
+  try { const value = JSON.parse(observation); if (value?.error || value?.reobserveRequired || value?.observationMayBeStale || value?.completeReadback === false) return false } catch { /* Browser receipts also use plain text. */ }
   const head = observation.slice(0, 200).toLowerCase()
   return !WENT_NOWHERE.some((sign) => head.includes(sign))
+}
+
+export function successfulTurnSteps(steps: TurnStep[]): TurnStep[] {
+  return steps.filter(step => !step.seeded && worked(step.observation))
 }
 
 function words(args: Record<string, unknown>, key: string): string {
@@ -43,8 +47,7 @@ function words(args: Record<string, unknown>, key: string): string {
 // not wrong, because the replay reads the page and the model fills gaps.
 export function recordedSteps(steps: TurnStep[]): RoutineStep[] {
   const out: RoutineStep[] = []
-  for (const step of steps) {
-    if (step.seeded || !worked(step.observation)) continue
+  for (const step of successfulTurnSteps(steps)) {
     if (step.tool === 'open_page') {
       const url = words(step.args, 'url')
       if (/^https?:\/\//i.test(url)) {

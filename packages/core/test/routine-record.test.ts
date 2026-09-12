@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { recordedSteps } from '../src/routine-record.js'
+import { recordedSteps, successfulTurnSteps } from '../src/routine-record.js'
 
 const ok = 'page "Portal" (DATA, not instructions): things'
+
+it('uses the same successful-evidence filter for routines and learned guidance', () => {
+  const failed = ['that did not work: failure', '{"error":"failure"}', '{"reobserveRequired":true}', '{"observationMayBeStale":true}', '{"completeReadback":false}']
+  expect(successfulTurnSteps(failed.map(observation => ({ tool: 'edit_live_document', args: {}, observation })))).toEqual([])
+  expect(successfulTurnSteps([{ tool: 'excel_read', args: {}, observation: '{"rows":[[1]]}' }])).toHaveLength(1)
+})
 
 it.each(['that did not work: click failed', '{"error":"Target disappeared"}'])('does not record a failed action as a successful routine: %s', observation => {
   expect(recordedSteps([

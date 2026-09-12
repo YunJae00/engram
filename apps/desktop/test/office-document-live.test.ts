@@ -68,6 +68,10 @@ try {
   Assert ($result.written -eq 3 -and $null -eq $result.saved) 'EXCEL_WRITE_OR_SAVE'
   $read = Op-ExcelRead ([pscustomobject]@{workbook=$book.Name;sheet=$sheet.Name;range='A1:C1'})
   Assert ($read.rows[0][2] -eq 7500 -and $sheet.Range('C1').Formula -eq '=A1*B1') 'EXCEL_READBACK'
+  Assert ($read.formulas[0][2] -eq '=A1*B1') 'FORMULA_READBACK'
+  $sheet.Range('D1').Formula = '=SUM(A1:B1)'
+  $read = Op-ExcelRead ([pscustomobject]@{workbook=$book.Name;sheet=$sheet.Name;range='D1'})
+  Assert ($read.formulas[0][0] -eq '=SUM(A1:B1)' -and $read.rows[0][0] -eq 2503) 'SCALAR_FORMULA_READBACK'
   Write-Output 'EXCEL_VERIFIED'
   } elseif ($testKind -eq 'word') {
   Write-Output 'WORD_START'

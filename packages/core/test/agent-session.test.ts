@@ -316,3 +316,30 @@ it('a failed office write is marked not verified', async () => {
   expect(result.incomplete).toContain('read back')
   expect(result.answer).toContain('Not verified as complete')
 })
+
+it('resumes an unfinished job instead of restarting it', async () => {
+  let seenPrompt = ''
+  const engine = sessionBrain(async (job) => { seenPrompt = job.prompt; return { answer: 'Continuing from where it stopped' } })
+  await runToolSession({ engine, workdir: WORKDIR, tools }, 'keep going', {
+    guided: false,
+    resume: 'Unverified phase 2/3: post the reconciled totals',
+  })
+  expect(seenPrompt).toContain('Historical checkpoint')
+  expect(seenPrompt).toContain('post the reconciled totals')
+  expect(seenPrompt).toContain('do only the unfinished work')
+  expect(seenPrompt).toContain('new or unrelated request, ignore it')
+})
+
+it('applies arithmetic verification to the real tool-session path and accepts corrected readback', async () => {
+  for (const corrected of [false, true]) {
+    let calls = 0
+    const engine = sessionBrain(async (job) => {
+      const read = job.tools.find(tool => tool.name === 'excel_read')!
+      await read.run({})
+      if (corrected) await read.run({})
+      return { answer: 'Done' }
+    })
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'excel_read', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'B', sheet: 'S', range: 'A1:A3', rows: [[10], [20], [++calls > 1 ? 30 : 99]], formulas: [[10], [20], ['=SUM(A1:A2)']] }) }] }, 'Verify the total')
+    expect(!!result.incomplete).toBe(!corrected)
+  }
+})

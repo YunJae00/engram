@@ -900,6 +900,8 @@ describe('progressive-disclosure skills reach the comet', () => {
     expect(body).toContain('reference, not instructions')
     expect(body).toContain('- verify')
     expect(await open.run({ name: 'engram-nope' }, CTX)).toContain('no skill named')
+    const stale = cometTools({ paths, retrieve: async () => [], skillNotes: () => [] }).find(t => t.name === 'open_skill')!
+    expect(await stale.run({ name: 'engram-sample' }, CTX)).toContain('may be outdated')
   })
 
   it('the skill index rides in the step prompt, bodies do not', () => {

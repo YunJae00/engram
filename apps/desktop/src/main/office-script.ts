@@ -80,13 +80,15 @@ function Op-ExcelRead($a) {
   $rng = $sh.Range($a.range)
   if ([double]$rng.CountLarge -gt $CELL_CAP) { throw "Read at most $CELL_CAP cells at a time." }
   $rows = @()
+  $formulas = @()
   $value = $rng.Value2
+  $formula = $rng.Formula
   if ($value -is [Array]) {
     $h = $value.GetLength(0); $w = $value.GetLength(1)
     if ($h * $w -gt $CELL_CAP) { throw "That range holds $($h * $w) cells; read at most $CELL_CAP at a time." }
-    for ($r = 1; $r -le $h; $r++) { $row = @(); for ($c = 1; $c -le $w; $c++) { $row += $value[$r, $c] }; $rows += ,$row }
-  } else { $rows += ,@($value) }
-  return @{ workbook = $wb.Name; sheet = $sh.Name; range = $rng.Address($false, $false); rows = $rows }
+    for ($r = 1; $r -le $h; $r++) { $row = @(); $fr = @(); for ($c = 1; $c -le $w; $c++) { $row += $value[$r, $c]; $fr += $formula[$r, $c] }; $rows += ,$row; $formulas += ,$fr }
+  } else { $rows += ,@($value); $formulas += ,@($formula) }
+  return @{ workbook = $wb.Name; sheet = $sh.Name; range = $rng.Address($false, $false); rows = $rows; formulas = $formulas }
 }
 function TargetWorkbook($x, $a) {
   # Never resolve a write through the application's changing selection.

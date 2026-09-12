@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { resolve, join } from 'node:path'
 import { fileWorkTools, resolveArtifact } from '../src/file-work.js'
 import { workbookTool } from '../src/file-workbook.js'
+import { workCapabilities } from '../src/work-capabilities.js'
 
 let root: string
 beforeEach(async () => { await mkdir('tmp', { recursive: true }); root = await mkdtemp(resolve('tmp/file-work-')) })
@@ -137,4 +138,28 @@ it('checks control again before saving and verifies all rows beyond the preview 
   expect(output.truncated).toBe(true)
   expect(output.rowCount).toBe(100)
   expect(output.completeReadback).toBe(true)
+})
+
+it('find_files returns name/path candidates only when a finder is available, and is absent otherwise', async () => {
+  const seen: string[] = []
+  const withFinder = fileWorkTools({
+    directory: join(root, 'outputs'),
+    approveRead: async () => true,
+    findFiles: async (query) => { seen.push(query); return { matches: query.includes('budget') ? [{ path: join(root, 'Q3 budget.xlsx'), name: 'Q3 budget.xlsx', folder: root, modified: '2026-09-01T00:00:00.000Z' }] : [], limited: false } },
+  })
+  const find = withFinder.find((tool) => tool.name === 'find_files')!
+  const methods = JSON.parse(await workCapabilities(withFinder).run({}, context))
+  expect(methods.savedFiles.map((tool: { name: string }) => tool.name)).toContain('find_files')
+  const hit = JSON.parse(await find.run({ query: 'budget' }, { task: 'find it' }))
+  expect(seen).toEqual(['budget'])
+  expect(hit.matches).toHaveLength(1)
+  expect(hit.matches[0].name).toBe('Q3 budget.xlsx')
+  // No content is ever returned by a look — only paths and names.
+  expect(JSON.stringify(hit)).not.toContain('content')
+  const miss = JSON.parse(await find.run({ query: 'nowhere' }, { task: 'find it' }))
+  expect(miss.matches).toEqual([])
+  await expect(find.run({ query: '' }, { task: 'find it' })).rejects.toThrow()
+  await expect(find.run({ query: 'x'.repeat(121) }, { task: 'find it' })).rejects.toThrow()
+  // Without a finder dependency the tool is not offered at all.
+  expect(fileWorkTools({ directory: join(root, 'outputs'), approveRead: async () => true }).some((tool) => tool.name === 'find_files')).toBe(false)
 })

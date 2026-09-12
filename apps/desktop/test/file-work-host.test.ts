@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promise
 import { resolve, join } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
-const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn() }))
-vi.mock('electron', () => ({ dialog: { showMessageBox: state.confirm }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
+const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), getPath: vi.fn() }))
+vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.confirm }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { cometFileTools } from '../src/main/file-work.js'
 
@@ -15,6 +15,7 @@ beforeEach(async () => {
   await mkdir(join(root, 'private'))
   state.stopped = false
   state.confirm.mockReset().mockResolvedValue({ response: 1 })
+  state.getPath.mockReset().mockImplementation(() => root)
 })
 afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
@@ -53,4 +54,14 @@ it('does not bypass a cancelled desktop turn by switching to file creation', asy
     await expect(tools.find((tool) => tool.name === name)!.run({}, { task: 'Keep working.' })).rejects.toThrow('Stopped')
   }
   expect(await readdir(root)).toEqual(['private'])
+})
+
+it('uses operating-system document folders for discovery without approving or reading content', async () => {
+  await writeFile(join(root, 'budget.pdf'), 'content stays local')
+  const tool = cometFileTools(vaultPaths(root), 'lane').find(tool => tool.name === 'find_files')!
+  const result = JSON.parse(await tool.run({ query: 'budget' }, { task: 'Find the budget file' }))
+  expect(result.matches[0].path).toBe(join(root, 'budget.pdf'))
+  expect(state.getPath.mock.calls.map(call => call[0])).toEqual(['documents', 'desktop', 'downloads'])
+  expect(state.confirm).not.toHaveBeenCalled()
+  expect(JSON.stringify(result)).not.toContain('content stays local')
 })
