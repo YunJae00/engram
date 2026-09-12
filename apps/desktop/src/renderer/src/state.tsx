@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AbsorbStatusDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto } from '../../shared/types.js'
+import type { AbsorbStatusDto, AppSettingsDto, CardDto, EngineStatusDto, InboxDto, NoteDto, PendingWorkDto, BrainFabricDto } from '../../shared/types.js'
 import { api } from './api.js'
 import { t } from './i18n.js'
 import { useAppEvents } from './lib/useAppEvents.js'
@@ -26,12 +26,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [vaultReady, setVaultReady] = useState(false)
   const [vaultError, setVaultError] = useState<{ message: string; root: string } | null>(null)
 
-  // live OS theme follow
+  // Explicit appearance wins; only the system choice follows OS changes.
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => setTheme(media.matches ? 'dark' : 'light')
+    let preference: NonNullable<AppSettingsDto['theme']> = 'system'
+    let alive = true, updated = false
+    const onChange = () => setTheme(preference === 'system' ? (media.matches ? 'dark' : 'light') : preference)
+    const accept = (value: AppSettingsDto) => { preference = value.theme ?? 'system'; onChange() }
+    const off = api.onEvent((event) => {
+      if (event.type === 'settings:changed' && event.settings.theme !== undefined) { updated = true; accept(event.settings) }
+    })
+    void api.settingsGet().then((value) => { if (alive && !updated) accept(value) }).catch(() => undefined)
     media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
+    return () => { alive = false; off(); media.removeEventListener('change', onChange) }
   }, [])
   // Notes live in a ref Map keyed by id and mutated by notes:delta events; the
   // public `notes` array is a derived, id-sorted snapshot republished on every

@@ -163,7 +163,7 @@ function hardenWebContents(contents: WebContents): void {
 // title bar's, the boot screen's and the app's - and a person sees every one
 // of them as a flash. There is one value each now, and everything that can
 // paint before React does uses it.
-const GROUND = { dark: '#222329', light: '#ffffff' } as const
+const GROUND = { dark: '#1c1c1c', light: '#ffffff' } as const
 
 export function appGround(): string {
   return nativeTheme.shouldUseDarkColors ? GROUND.dark : GROUND.light
@@ -250,6 +250,7 @@ async function createMainWindow(hash?: string): Promise<void> {
   hardenWebContents(mainWin.webContents)
   // keep the overlay controls in step with the OS theme
   nativeTheme.on('updated', () => {
+    if (mainWin && !mainWin.isDestroyed()) mainWin.setBackgroundColor(appGround())
     if (framelessOk && mainWin && !mainWin.isDestroyed()) {
       try {
         mainWin.setTitleBarOverlay({ ...titleBarColors(), height: 44 })
@@ -276,6 +277,9 @@ async function createMainWindow(hash?: string): Promise<void> {
   // macOS fullscreen hides the traffic lights — tell the renderer so the top
   // bar can drop the left padding it reserves for them (and restore on exit).
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
+  mainWin.on('focus', () => broadcast({ type: 'window:focus', value: true }))
+  mainWin.on('blur', () => broadcast({ type: 'window:focus', value: false }))
+  mainWin.webContents.on('did-finish-load', () => broadcast({ type: 'window:focus', value: mainWin?.isFocused() ?? false }))
   mainWin.on('leave-full-screen', () => broadcast({ type: 'window:fullscreen', value: false }))
   mainWin.on('close', (event) => {
     stopDesktopControl('Engram was closed.')
@@ -598,6 +602,7 @@ app.whenReady().then(async () => {
   // Lost the single-instance race: quit was already requested above, so boot
   // nothing — no window, no vault, no watchers on a vault another process owns.
   if (!singleInstance) return
+  nativeTheme.themeSource = (await loadSettings()).theme
   watchResponsiveness()
   // Engine child bookkeeping, before anything can spawn one: every spawn is
   // ledgered as it happens, and whatever a CRASHED previous run left listed

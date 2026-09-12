@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AppSettingsDto, EngineStatusDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
@@ -9,6 +9,8 @@ import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
+import { AppearanceSettings } from '../components/AppearanceSettings.js'
+import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 
 const BRAIN_NAME = { claude: 'settings.brainClaude', codex: 'settings.brainChatGPT' } as const
 // The sheet opens at once, empty, and its rows fill in together when every
@@ -18,6 +20,9 @@ const READY_WAIT_MS = 8_000
 
 export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
+  const [section, setSection] = useState<SettingsSection>('general')
+  const scroll = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0 }, [section])
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
   const [sessionWatch, setSessionWatch] = useState<boolean | null>(null)
@@ -153,17 +158,16 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     <div className="brief-overlay" onClick={onClose}>
       {/* settings-loaded: the skeleton gives way with a short rise instead
           of the rows swapping between two frames. */}
-      <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view">
+      <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view" role="dialog" aria-label={t('settings.title')} aria-modal="true">
         <DialogHeader closeLabel={t('settings.cancel')} onClose={onClose}>{t('settings.title')}</DialogHeader>
 
-        {/* ⑥ the quick-capture hotkey is fixed now, and ⑧ team sync moved into
-            the GitHub backup dialog — it decides whether to auto-push to a
-            remote only that dialog can create, and with no remote it silently
-            did nothing three sections away from what it depends on. */}
-
-        <div className="settings-scroll">
-        <ComputerSettings />
-        <div className="settings-group-head">{t('settings.generalTitle')}</div>
+        <div className="settings-body">
+        <SettingsNavigation selected={section} onSelect={setSection} />
+        <div className="settings-scroll" ref={scroll}>
+        <section className="settings-panel" hidden={section !== 'general'} aria-label="General">
+        <h2>General</h2>
+        <p className="setting-hint">Make Engram feel at home.</p>
+        <AppearanceSettings value={settings.theme} onChange={(theme) => patch({ theme })} />
         <div className="settings-group">
           <label className="setting-row">
             <span>{t('settings.autoStart')}</span>
@@ -175,6 +179,16 @@ export function SettingsView({ onClose }: { onClose(): void }) {
               onChange={(e) => patch({ autoStart: e.target.checked })}
             />
           </label>
+        </div>
+        </section>
+        <section className="settings-panel" hidden={section !== 'computer'} aria-label="Computer use">
+        <h2>Computer use</h2>
+        <ComputerSettings />
+        </section>
+        <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
+        <h2>Memory &amp; data</h2>
+        <p className="setting-hint">Choose what Engram remembers.</p>
+        <div className="settings-group">
           <label className="setting-row">
             <span>{t('settings.deskJournal')}</span>
             <input
@@ -207,7 +221,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           </label>
         </div>
         <details className="setting-hint"><summary>What gets remembered</summary><p>App activity records foreground app and window titles. Coding sessions are collected from connected coding tools for your memory.</p></details>
-        <div className="settings-group-head">{t('settings.brainTitle')}</div>
+        </section>
+        <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
+        <h2>AI connection</h2>
         <div className="settings-group">
           <div className="setting-note">{t('settings.brainHint')}</div>
           <div className="brain-pick" role="radiogroup" aria-label={t('settings.brainUse')}>
@@ -294,7 +310,8 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             </span>
           </div>
         </div>
-
+        </section>
+        <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         <details className="settings-more" data-testid="settings-more">
           <summary>{t('settings.more')}</summary>
           <div className="settings-group-head">{t('settings.groupConnections')}</div>
@@ -311,7 +328,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             </div>
             {mcpStatus && <div className="setting-hint" data-testid="mcp-status">{mcpStatus}</div>}
           </div>
-          <div className="setting-row column" data-testid="setting-session-watch">
+          <div className="setting-row column">
             <span>{t('settings.watchTitle')}</span>
             <div className="setting-hint">{t('settings.watchHint')}</div>
           </div>
@@ -341,8 +358,9 @@ export function SettingsView({ onClose }: { onClose(): void }) {
             </div>
           </div>
         </details>
-
-        <div className="settings-group-head">{t('settings.appTitle')}</div>
+        </section>
+        <section className="settings-panel" hidden={section !== 'about'} aria-label="About">
+        <h2>About Engram</h2>
         <div className="settings-app-section">
           <div className="settings-support-actions">
             <button className="secondary" onClick={() => setShowDiagnostics(true)}>
@@ -360,6 +378,8 @@ export function SettingsView({ onClose }: { onClose(): void }) {
           onCheckingUpdate={setCheckingUpdate}
           onUpdate={setUpdate}
           />
+        </div>
+        </section>
         </div>
         </div>
 

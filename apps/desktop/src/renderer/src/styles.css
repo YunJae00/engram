@@ -4,6 +4,7 @@
 @import './orbit.css';
 @import './conversation.css';
 @import './desktop.css';
+@import './settings.css';
 
 :root {
   /* Type scale: every font-size in this file resolves to one of these. */
@@ -43,7 +44,7 @@
 }
 
 [data-theme='light'] {
-  /* White content surfaces with cool navigation and blue action accents. */
+  color-scheme: light;
   --ink: #2b2b33;
   --app-bg: #ffffff;
   --canvas-bg: #ffffff;
@@ -55,8 +56,8 @@
   --tab-border: rgba(43, 43, 51, 0.16);
   --fg: #2b2b33;
   --fg-strong: #1c1c22;
-  --fg-dim: #586779;
-  --fg-faint: #6e7c8d;
+  --fg-dim: #606060;
+  --fg-faint: #747474;
   --border: rgba(43, 43, 51, 0.13);
   --border-soft: rgba(43, 43, 51, 0.08);
   --input-bg: #ffffff;
@@ -64,14 +65,15 @@
   --hover-bg: rgba(43, 43, 51, 0.05);
   /* Rails and docked panels: the page's white, barely tinted with the ink,
      so a sidebar reads as a surface without a line drawn around it. */
-  --rail-bg: #f3f8fd;
-  --selected-soft: #e6effa;
+  --rail-bg: #f6f6f6;
+  --selected-soft: rgba(0, 0, 0, 0.07);
   --selected-bg: #2b2b33;
   --selected-fg: #ffffff;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: rgba(37, 99, 235, 0.07);
-  --accent-line: rgba(37, 99, 235, 0.3);
+  --accent: #242424;
+  --accent-hover: #080808;
+  --accent-soft: rgba(0, 0, 0, 0.05);
+  --accent-line: rgba(0, 0, 0, 0.22);
+  --sidebar-tint: linear-gradient(165deg, #edf5fc 0%, #f2f6fa 48%, #f4f8ee 100%);
   --button-bg: #2b2b33;
   --button-hover: #1c1c22;
   --button-fg: #ffffff;
@@ -83,7 +85,7 @@
   --gild: #a9832f;
   --teal: #3c6b66;
   --ok: #5f8a4c;
-  --focus-ring: #2563eb;
+  --focus-ring: #555555;
   --widget-bg: #ffffff;
   --widget-border: rgba(43, 43, 51, 0.16);
   --card-top: #ffffff;
@@ -100,49 +102,51 @@
 }
 
 [data-theme='dark'] {
-  --app-bg: #1f2025;
-  --canvas-bg: #25262c;
-  --editor-bg: #2e2f36;
-  --sidebar-bg: #292a30;
-  --activity-bg: #1d1e23;
-  --panel-bg: #222329;
-  --tab-inactive-bg: #2b2c33;
-  --tab-border: #3b3c45;
-  --fg: #d6d7de;
-  --fg-strong: #f3f4f8;
-  --fg-dim: #9a9ba6;
-  --fg-faint: #6f717c;
-  --border: #3b3c45;
-  --border-soft: #34353d;
-  --input-bg: #26272d;
-  --input-border: #3b3c45;
-  --hover-bg: #35363e;
-  --rail-bg: #26272d;
-  --selected-soft: #3d3e47;
-  --selected-bg: #c9cbd6;
-  --selected-fg: #222329;
-  --accent: #c9cbd6;
-  --accent-hover: #dcdee6;
-  --accent-soft: #3a3b44;
-  --accent-line: #4a4b55;
-  --button-bg: #c9cbd6;
-  --button-hover: #dcdee6;
-  --button-fg: #222329;
-  --statusbar-bg: #c9cbd6;
-  --statusbar-fg: #222329;
+  color-scheme: dark;
+  --app-bg: #1c1c1c;
+  --canvas-bg: #1c1c1c;
+  --editor-bg: #242424;
+  --sidebar-bg: #202020;
+  --activity-bg: #181818;
+  --panel-bg: #1c1c1c;
+  --tab-inactive-bg: #242424;
+  --tab-border: #3c3c3c;
+  --fg: #dedede;
+  --fg-strong: #f5f5f5;
+  --fg-dim: #b0b0b0;
+  --fg-faint: #909090;
+  --border: #3c3c3c;
+  --border-soft: #323232;
+  --input-bg: #262626;
+  --input-border: #444444;
+  --hover-bg: #333333;
+  --rail-bg: #202020;
+  --selected-soft: #363636;
+  --selected-bg: #eeeeee;
+  --selected-fg: #1c1c1c;
+  --accent: #eeeeee;
+  --accent-hover: #ffffff;
+  --accent-soft: #303030;
+  --accent-line: #555555;
+  --sidebar-tint: linear-gradient(165deg, #202a35 0%, #22272c 48%, #262b24 100%);
+  --button-bg: #eeeeee;
+  --button-hover: #ffffff;
+  --button-fg: #1c1c1c;
+  --statusbar-bg: #eeeeee;
+  --statusbar-fg: #1c1c1c;
   --danger: #c07b57;
   --clay: #c07b57;
   --clay-soft: #3d332c;
   --gild: #c29c4a;
   --teal: #5d938c;
   --ok: #7fa96b;
-  --focus-ring: #8a8c94;
-  --widget-bg: #2e2f36;
-  --widget-border: #3b3c45;
-  --card-top: #33343b;
-  --card-bot: #2b2c33;
-  --chrome-top: #2f3037;
-  --chrome-bot: #26272d;
+  --focus-ring: #aaaaaa;
+  --widget-bg: #242424;
+  --widget-border: #3c3c3c;
+  --card-top: #2c2c2c;
+  --card-bot: #242424;
+  --chrome-top: #262626;
+  --chrome-bot: #202020;
   --canvas-dot: rgba(255, 255, 255, 0.042);
   --shadow-card-rest: 0 2px 6px -3px rgba(0, 0, 0, 0.5);
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 26px -12px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.35);
@@ -314,6 +318,10 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
   opacity: 1; transform: none; visibility: visible; pointer-events: auto;
   transition-delay: 0s;
 }
+.app-sidebar { isolation: isolate; }
+.app-sidebar::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--sidebar-tint); opacity: 0; transition: opacity 320ms ease; }
+:root[data-window-focused='true'] .app-sidebar::before { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .app-sidebar::before { transition: none; } }
 .app-sidebar-head {
   height: var(--titlebar-height); padding: 0 var(--space-2); flex: none;
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
@@ -1410,7 +1418,7 @@ body.bubble-host { background: transparent; }
   transition: transform 140ms ease;
 }
 .switch:checked { background: var(--accent); }
-.switch:checked::after { transform: translateX(14px); }
+.switch:checked::after { transform: translateX(14px); background: var(--button-fg); }
 .switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 /* A column row is a small paragraph: a title, a few lines under it, then
    its buttons - with room between one and the next, and a measure the eye

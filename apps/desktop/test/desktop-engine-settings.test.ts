@@ -3,10 +3,10 @@ import type { AppSettingsDto } from '../src/shared/types.js'
 
 const fake = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, settings: AppSettingsDto) => Promise<void>>(),
-  load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(),
+  load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), nativeTheme: { themeSource: 'system' },
 }))
 vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [] }))
-vi.mock('electron', () => ({ app: { isPackaged: false }, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: AppSettingsDto) => Promise<void>) => fake.handlers.set(name, handler) } }))
+vi.mock('electron', () => ({ app: { isPackaged: false }, nativeTheme: fake.nativeTheme, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: AppSettingsDto) => Promise<void>) => fake.handlers.set(name, handler) } }))
 vi.mock('../src/main/ipc.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/installer.js', () => ({ detectApiKeyEnv: vi.fn() }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, saveSettings: fake.save }))
@@ -26,6 +26,15 @@ beforeEach(() => {
 })
 
 describe('desktop grant lifetime when choosing an AI connection', () => {
+  it('saves appearance before applying it and rejects invalid themes', async () => {
+    await fake.handlers.get('settings:set')!(null, { ...settings, theme: 'dark' })
+    expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'dark' }))
+    expect(fake.nativeTheme.themeSource).toBe('dark')
+    await expect(fake.handlers.get('settings:set')!(null, { ...settings, theme: 'blue' } as unknown as AppSettingsDto)).rejects.toThrow('Invalid appearance')
+    fake.save.mockRejectedValueOnce(new Error('disk unavailable'))
+    await expect(fake.handlers.get('settings:set')!(null, { ...settings, theme: 'light' })).rejects.toThrow('disk unavailable')
+    expect(fake.nativeTheme.themeSource).toBe('dark')
+  })
   it('turning computer use off stops input before settings are persisted', async () => {
     await fake.handlers.get('settings:set')!(null, { ...settings, computerUse: false })
     expect(fake.stop).toHaveBeenCalledExactlyOnceWith('Computer use was turned off in Settings.')

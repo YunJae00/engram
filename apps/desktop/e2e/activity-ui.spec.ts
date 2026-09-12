@@ -182,7 +182,9 @@ test('settings loading uses the same padded header and content on compact and wi
       const box = node.getBoundingClientRect()
       const title = node.querySelector('.dialog-title')!.getBoundingClientRect()
       const row = node.querySelector('.settings-skeleton-row')!.getBoundingClientRect()
-      return { aligned: Math.abs(title.left - row.left) <= 1, padded: row.left - box.left >= 16 && box.right - row.right >= 16, fits: box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight }
+      const scroll = node.querySelector('.settings-scroll')!
+      const contentLeft = scroll.getBoundingClientRect().left + parseFloat(getComputedStyle(scroll).paddingLeft)
+      return { aligned: Math.abs(contentLeft - row.left) <= 1 && title.left > box.left, padded: row.left - box.left >= 16 && box.right - row.right >= 16, fits: box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight }
     })).toEqual({ aligned: true, padded: true, fits: true })
     await page.screenshot({ path: join(TMP, `settings-loading-${width}.png`) })
     await app.evaluate(() => {

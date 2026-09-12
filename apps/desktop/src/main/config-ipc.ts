@@ -1,5 +1,5 @@
 import { createEngine, ENGINE_ORDER } from 'core'
-import { app, dialog, ipcMain, shell } from 'electron'
+import { app, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { cp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import os from 'node:os'
@@ -25,6 +25,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
 
   ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
+    if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
     if (settings.computerUse === false) stopDesktopControl('Computer use was turned off in Settings.')
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
@@ -32,11 +33,13 @@ export function registerSettingsIpc(): void {
     await saveSettings({
       ...held,
       ...settings,
+      theme: settings.theme ?? held.theme,
       searchTemplate: settings.searchTemplate ?? held.searchTemplate,
       agentBrowser: settings.agentBrowser ?? held.agentBrowser,
       claudeModel: settings.claudeModel ?? held.claudeModel,
       codexModel: settings.codexModel ?? held.codexModel,
     })
+    nativeTheme.themeSource = settings.theme ?? held.theme ?? 'system'
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
     if (settings.defaultEngine !== held.defaultEngine) {
       stopDesktopControl('The AI connection changed. Allow computer control again for the selected connection.')

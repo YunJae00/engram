@@ -19,6 +19,7 @@ document.documentElement.dataset['theme'] = window.matchMedia('(prefers-color-sc
 // traffic lights). Fullscreen on macOS hides those lights, so track it too.
 document.documentElement.dataset['platform'] = api.platform
 api.onEvent((event) => {
+  if (event.type === 'window:focus') document.documentElement.dataset['windowFocused'] = String(event.value)
   if (event.type !== 'window:fullscreen') return
   if (event.value) document.documentElement.dataset['fullscreen'] = 'true'
   else delete document.documentElement.dataset['fullscreen']

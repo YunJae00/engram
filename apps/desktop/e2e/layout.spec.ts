@@ -100,7 +100,8 @@ test('settings header, rows and footer share an inset without nested modal paddi
   for (const width of [1280, 620]) {
     await page.setViewportSize({ width, height: 720 })
     await navigate('settings')
-    await expect(page.getByTestId('setting-desk-journal')).toBeVisible()
+    await page.getByTestId('settings-nav-ai').click()
+    await expect(page.getByTestId('model-claude')).toBeVisible()
     const box = page.locator('.brief-box.settings-box')
     await expect(box).toHaveCSS('padding', '0px')
     await expect(box).toHaveCSS('gap', '0px')
@@ -111,9 +112,9 @@ test('settings header, rows and footer share an inset without nested modal paddi
       const inset = (element: Element) => element.getBoundingClientRect().left + parseFloat(getComputedStyle(element).paddingLeft)
       const model = node.querySelector('[data-testid="model-codex"]')!.getBoundingClientRect()
       const select = node.querySelector('[data-testid="model-claude"]')!.getBoundingClientRect()
-      const valueColumns = [...node.querySelectorAll('.settings-fact-value')].map((value) => value.getBoundingClientRect().left)
+      const valueColumns = [...node.querySelectorAll('.settings-panel:not([hidden]) .settings-fact-value')].map((value) => value.getBoundingClientRect().left)
       return {
-        contentAligned: Math.abs(inset(head) - inset(scroll)) <= 1,
+        contentAligned: Math.abs(inset(scroll) - node.querySelector('.settings-panel:not([hidden]) h2')!.getBoundingClientRect().left) <= 1,
         footerAligned: Math.abs(inset(head) - inset(foot)) <= 1,
         fieldsAligned: Math.abs(model.width - select.width) <= 1,
         columnsAligned: valueColumns.every((left) => Math.abs(left - select.left) <= 1),

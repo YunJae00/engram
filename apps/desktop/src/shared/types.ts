@@ -444,6 +444,7 @@ export type EngramEvent =
   // usable, and `reason` says which sentence (and which button) the user gets
   | { type: 'engine:health'; id: string; healthy: boolean; reason?: EngineHealthReason }
   | { type: 'window:fullscreen'; value: boolean }
+  | { type: 'window:focus'; value: boolean }
   // A delegated errand (core's runErrand) moving through its fixed phases — the
   // top bar narrates it and the toast fires on done/failed. `error` rides only
   // on 'failed'; `goal` labels the run so a late subscriber knows what it is.
@@ -716,6 +717,7 @@ export interface OnboardPayload {
 }
 
 export interface AppSettingsDto {
+  theme?: 'system' | 'light' | 'dark'
   // Which brain answers: this disk, or one of the two the person signed in to.
   defaultEngine: 'claude' | 'codex'
   autoStart: boolean

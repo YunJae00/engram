@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 interface AppSettings {
+  theme: 'system' | 'light' | 'dark'
   // Which brain answers: the one on this disk, or one of the two the person
   // signed in to. Chosen once, never switched behind their back.
   defaultEngine: 'claude' | 'codex'
@@ -26,6 +27,7 @@ interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'system',
   defaultEngine: 'claude',
   autoStart: false,
   teamSync: 'auto',
@@ -48,6 +50,7 @@ export async function loadSettings(): Promise<AppSettings> {
     // this disk is the safe reading.
     if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
     merged.computerUse = merged.computerUse === true
+    if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }

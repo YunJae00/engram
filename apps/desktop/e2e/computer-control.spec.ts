@@ -174,6 +174,7 @@ test('settings carry one switch for computer use, and its state', async () => {
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId('activity-settings').click()
+  await page.getByTestId('settings-nav-computer').click()
   const settings = page.getByTestId('computer-settings')
   await expect(settings).toContainText('Control apps')
   await expect(settings).not.toContainText('select a window')
