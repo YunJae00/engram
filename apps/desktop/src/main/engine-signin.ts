@@ -32,6 +32,14 @@ export function cancelEngineLogin(id: CloudEngineId): void {
   login.url = undefined
   publish(login, 'idle')
 }
+export async function disconnectEngine(id: CloudEngineId): Promise<void> {
+  cancelEngineLogin(id)
+  await logins.get(id)?.result
+  await cloudEngine(id).logout()
+  const login = logins.get(id)
+  logins.delete(id)
+  if (login) publish(login, 'idle')
+}
 export function connectEngine(id: CloudEngineId): Promise<{ ok: boolean; message?: string }> {
   const previous = logins.get(id)
   if (previous?.result) return previous.result

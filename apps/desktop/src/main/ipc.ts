@@ -112,10 +112,9 @@ import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
-import { cloudEngine } from './engine-cloud.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
-import { connectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
+import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2406,7 +2405,7 @@ export function registerEngineIpc(): void {
     return result
   })
   ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
-    await cloudEngine(cloudId(id)).logout()
+    await disconnectEngine(cloudId(id))
     if (id === 'claude') forgetClaudeModels()
     else forgetCodexModels()
     broadcast({ type: 'models:changed' })

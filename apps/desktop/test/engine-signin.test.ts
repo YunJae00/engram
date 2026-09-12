@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-const fake = vi.hoisted(() => ({ login: vi.fn(), open: vi.fn().mockResolvedValue(undefined), broadcast: vi.fn() }))
+const fake = vi.hoisted(() => ({ login: vi.fn(), logout: vi.fn().mockResolvedValue(undefined), open: vi.fn().mockResolvedValue(undefined), broadcast: vi.fn() }))
 vi.mock('electron', () => ({ shell: { openExternal: fake.open } }))
-vi.mock('../src/main/engine-cloud.js', () => ({ cloudEngine: () => ({ login: fake.login }) }))
+vi.mock('../src/main/engine-cloud.js', () => ({ cloudEngine: () => ({ login: fake.login, logout: fake.logout }) }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: fake.broadcast }))
 beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
 it('accepts only provider-owned HTTPS authorization links', async () => {
@@ -28,6 +28,10 @@ it('shares a pending sign-in, offers browser recovery and does not leak its URL 
   finish({ ok: true })
   await first
   expect(signin.engineLogins()[0]).toMatchObject({ phase: 'connected', canOpen: false })
+  await signin.disconnectEngine('codex')
+  expect(fake.logout).toHaveBeenCalledOnce()
+  expect(signin.engineLogins()).toEqual([])
+  expect(fake.broadcast).toHaveBeenLastCalledWith({ type: 'engines:login', login: { id: 'codex', phase: 'idle', canOpen: false } })
 })
 it('cancels just the chosen login and allows a fresh attempt', async () => {
   fake.login.mockImplementation(({ signal }: { signal: AbortSignal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })))
