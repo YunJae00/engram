@@ -1,4 +1,4 @@
-import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import { openActivity } from './navigation.js'
 import { createCard, createNote, initVault, parseNote, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
@@ -274,14 +274,35 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
     const folder = (await page.evaluate(() => window.engram.sidebarLayout()))[kind].folders[0]!
     const box = page.getByTestId(`sidebar-folder-${folder.id}`)
     const item = (id: string) => page.getByTestId(kind === 'chat' ? `bot-${id}` : `sidebar-routine-run-${id}`)
+    // Hidden windows cannot reliably complete native drag interception; exercise the HTML5 lifecycle.
+    const drag = async (id: string, destination: Locator, after = false) => {
+      const source = item(id).locator('xpath=..'), collection = page.getByTestId(`sidebar-${kind}-collection`)
+      await expect(source).toBeVisible(); await expect(source).toHaveAttribute('draggable', 'true')
+      await expect(destination).toBeVisible()
+      const dataTransfer = await page.evaluateHandle(() => new DataTransfer())
+      try {
+        await source.dispatchEvent('dragstart', { dataTransfer })
+        expect(await dataTransfer.evaluate(data => JSON.parse(data.getData('application/x-engram-sidebar')))).toEqual({ type: 'item', id, kind })
+        await expect(collection).toHaveClass(/dragging/)
+        const point = await destination.evaluate((node, after) => { const rect = node.getBoundingClientRect(); return { clientX: rect.left + Math.min(40, rect.width / 2), clientY: rect.top + (after ? rect.height - 3 : 3) } }, after)
+        await destination.dispatchEvent('dragenter', { dataTransfer, ...point })
+        expect(await destination.evaluate((node, init) => { const event = new DragEvent('dragover', { ...init, bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented }, { dataTransfer, ...point })).toBe(true)
+        await expect.poll(() => destination.evaluate(node => !!node.closest('.sidebar-drop-target'))).toBe(true)
+        await destination.dispatchEvent('drop', { dataTransfer, ...point })
+      } finally {
+        await source.dispatchEvent('dragend', { dataTransfer })
+        await dataTransfer.dispose()
+      }
+      await expect(collection).not.toHaveClass(/dragging/)
+      await expect(collection.locator('.sidebar-drop-target')).toHaveCount(0)
+    }
     for (const id of ids) {
-      await item(id).dragTo(box.locator('.sidebar-folder-head'))
+      await drag(id, box.locator('.sidebar-folder-head'))
       await expect(box).toContainText(id === ids[0] ? `${kind} Alpha` : `${kind} Beta`)
     }
-    await item(ids[1]!).dragTo(item(ids[0]!), { targetPosition: { x: 40, y: 3 } })
+    await drag(ids[1]!, item(ids[0]!))
     await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual([ids[1], ids[0]])
-    const target = await item(ids[0]!).boundingBox()
-    await item(ids[1]!).dragTo(item(ids[0]!), { targetPosition: { x: 40, y: target!.height - 3 } })
+    await drag(ids[1]!, item(ids[0]!), true)
     await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual(ids)
     await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
     await expect(item(ids[0]!)).not.toBeVisible()
