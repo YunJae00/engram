@@ -30,6 +30,30 @@ describe('cometThreads', () => {
     unsubscribe()
   })
 
+  it('keeps attachment drafts isolated across chat switches and clears only the sent chat', () => {
+    const store = createCometThreads(BOT)
+    const file = { id: 'attachment-one', name: 'brief.pdf', size: 100 }
+    store.setAttachments(BOT, [file])
+    store.select('other')
+    expect(store.thread('other').attachments).toEqual([])
+    store.select(BOT)
+    expect(store.thread(BOT).attachments).toEqual([file])
+    store.begin('other', 'A separate question')
+    expect(store.thread(BOT).attachments).toEqual([file])
+    store.begin(BOT, 'Read the file')
+    expect(store.thread(BOT).attachments).toEqual([])
+  })
+
+  it('retains attachment IDs through sends, disk reloads and follow-up history', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'Read the attached file', ['cached-id'])
+    store.handleEvent({ type: 'chat:done', channel, text: 'Read it.' })
+    expect(store.begin(BOT, 'Now summarize it')[0]!.attachments).toEqual(['cached-id'])
+    const reloaded = createCometThreads(BOT)
+    reloaded.load(BOT, [{ role: 'user', text: 'Read the attached file', attachments: ['cached-id'] }, { role: 'assistant', text: 'Read it.' }])
+    expect(reloaded.begin(BOT, 'Now summarize it')[0]!.attachments).toEqual(['cached-id'])
+  })
+
   it('keeps selected conversation snapshots stable while another chat streams', () => {
     const store = createCometThreads(BOT)
     store.load(BOT, [{ role: 'assistant', text: 'settled answer' }])
@@ -74,6 +98,28 @@ describe('cometThreads', () => {
     expect(thread.workLines).toEqual([])
     expect(thread.offer).toEqual({ kind: 'teach' })
     expect(thread.messages.at(-1)).toEqual({ role: 'assistant', text: 'ab!', streaming: false })
+  })
+
+  it('does not duplicate a routine request persisted before its replay finishes', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'Run notices.')
+    store.load(BOT, [{ role: 'user', text: 'Run notices.' }])
+    expect(store.thread(BOT).messages.map((message) => message.text)).toEqual(['Run notices.', ''])
+    store.handleEvent({ type: 'chat:done', channel, text: 'Finished notices.' })
+    expect(store.thread(BOT).messages.map((message) => message.text)).toEqual(['Run notices.', 'Finished notices.'])
+  })
+
+  it('accepts a finished transcript before its done event without replaying the pending pair', () => {
+    const store = createCometThreads(BOT)
+    const completed = [{ role: 'user' as const, text: 'Run notices.' }, { role: 'assistant' as const, text: 'Finished notices.' }]
+    store.begin(BOT, 'Run notices.')
+    store.load(BOT, completed)
+    store.handleEvent({ type: 'chat:done', channel, text: 'Finished notices.' })
+    expect(store.thread(BOT).messages).toEqual(completed)
+    store.begin(BOT, 'Run notices.')
+    store.load(BOT, completed)
+    expect(store.thread(BOT).messages).toHaveLength(4)
+    expect(store.thread(BOT).messages.at(-1)?.streaming).toBe(true)
   })
 
   it('ignores events for a comet that is not busy and for other surfaces', () => {

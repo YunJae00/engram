@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import type { SidebarChange, SidebarKind, SidebarLayout } from '../../../shared/types.js'
 import { SidebarDisclosure } from './SidebarDisclosure.js'
 
-interface Item { id: string; name: string; active?: boolean; leading?: ReactNode }
+interface Item { id: string; name: string; active?: boolean; leading?: ReactNode; content?: ReactNode }
 interface Props {
   kind: SidebarKind; items: Item[]; layout: SidebarLayout[SidebarKind]; newFolder: number
   onChange(change: SidebarChange['change']): Promise<void>
@@ -101,7 +101,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
   const rows = (folder: string | null) => <ul className="sidebar-list" data-testid={folder === null ? `sidebar-${kind === 'chat' ? 'chats' : 'routines'}` : undefined}>{itemRows(folder).map((item, index, siblings) => <li key={item.id} className={`sidebar-item${item.active ? ' active' : ''}${over === item.id ? ' sidebar-drop-target' : ''}`} draggable={!editing && !saving}
     onDragStart={event => start(event, { type: 'item', id: item.id })} onDragEnd={() => { drag.current = null; setOver(null) }} onDragOver={event => accept(event, item.id)}
     onDrop={event => { const after = event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2; drop(event, folder, after ? siblings[index + 1]?.id : item.id) }}>
-    {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ''}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} onClick={() => onOpen(item.id)}>{item.leading}<span>{item.name}</span></button>}
+    {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ''}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} onClick={() => onOpen(item.id)}>{item.content ?? <>{item.leading}<span>{item.name}</span></>}</button>}
     {controls({ type: 'item', id: item.id }, item.name, folder)}
   </li>)}</ul>
   return <div className={`sidebar-collection${dragging ? ' dragging' : ''}`} data-testid={`sidebar-${kind}-collection`} aria-busy={saving} onDragEnd={() => setDragging(false)} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(null) }}>

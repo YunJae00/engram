@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, User, Users } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Check, ChevronDown, List, Orbit, Repeat, Search, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { DialogHeader } from './DialogHeader.js'
+import { Comet, OrbitMark } from './Icon.js'
 
 // Top-bar vault selector: swaps between registered workspaces. Switching,
 // creating, or joining all relaunch the app into the chosen vault, so there is
@@ -12,7 +14,12 @@ type DialogMode = 'none' | 'new' | 'join'
 
 type Registry = { current: string | null; vaults: WorkspaceInfoDto[] }
 
-export function WorkspaceSwitcher() {
+export function WorkspaceSwitcher({ activity, onNavigate, onOpenRoutines, onOpenPalette }: {
+  activity: string
+  onNavigate(activity: 'bots' | 'sky' | 'list' | 'mission'): void
+  onOpenRoutines(): void
+  onOpenPalette(): void
+}) {
   // Empty registry is a valid state (e2e/onboarding run with ENGRAM_VAULT and no
   // registered workspaces) — the switcher still renders with the New/Join rows.
   const [registry, setRegistry] = useState<Registry>({ current: null, vaults: [] })
@@ -25,6 +32,21 @@ export function WorkspaceSwitcher() {
   // tear the window down); non-null renders the full-screen restart notice.
   const [switching, setSwitching] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const anchor = rootRef.current?.getBoundingClientRect(), menu = menuRef.current
+      if (!anchor || !menu) return
+      menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - menu.offsetWidth - 8))}px`
+      menu.style.top = `${Math.min(anchor.bottom + 6, innerHeight - 80)}px`
+      menu.style.maxHeight = `${Math.max(64, innerHeight - anchor.bottom - 14)}px`
+    }
+    place()
+    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open])
 
   useEffect(() => {
     void api
@@ -38,12 +60,13 @@ export function WorkspaceSwitcher() {
   useEffect(() => {
     if (!open && dialog === 'none') return
     const onDown = (event: MouseEvent) => {
-      if (open && rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+      if (open && !rootRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false)
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setOpen(false)
       setDialog('none')
+      rootRef.current?.querySelector('button')?.focus()
     }
     window.addEventListener('mousedown', onDown)
     window.addEventListener('keydown', onKey)
@@ -97,14 +120,37 @@ export function WorkspaceSwitcher() {
         className="workspace-trigger"
         data-testid="workspace-switcher"
         onClick={() => setOpen((v) => !v)}
-        title={t('ws.switch')}
+        title="Engram menu"
+        aria-label="Engram menu"
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
         <span className="workspace-name">{currentName}</span>
         <ChevronDown className="workspace-chevron" size={13} strokeWidth={1.8} aria-hidden />
       </button>
 
-      {open && (
-        <div className="workspace-menu" data-testid="workspace-menu">
+      {open && createPortal(
+        <div className="workspace-menu" ref={menuRef} role="dialog" aria-label="Engram menu" data-testid="workspace-menu" onKeyDown={event => {
+          if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+          const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('button, summary')].filter(row => row.getClientRects().length > 0 && !row.hasAttribute('disabled'))
+          if (!rows.length) return
+          event.preventDefault()
+          const at = rows.indexOf(document.activeElement as HTMLElement)
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : (at + (event.key === 'ArrowUp' ? -1 : 1) + rows.length) % rows.length
+          rows[next]?.focus()
+        }}>
+          <nav className="sidebar-nav" aria-label="Explore Engram">
+            {([
+              ['bots', t('topbar.tabBots'), <Comet key="bots" size={17} />],
+              ['sky', t('topbar.tabSky'), <Orbit key="sky" size={17} aria-hidden />],
+              ['list', t('activity.list'), <List key="list" size={17} aria-hidden />],
+              ['mission', t('mission.title'), <OrbitMark key="mission" size={17} />],
+            ] as const).map(([key, label, icon]) => <button key={key} className={`sidebar-nav-row${activity === key ? ' active' : ''}`} aria-current={activity === key ? 'page' : undefined} data-testid={`activity-${key}`} onClick={() => { setOpen(false); onNavigate(key) }}>{icon}<span>{label}</span></button>)}
+            <button className="sidebar-nav-row" onClick={() => { setOpen(false); onOpenRoutines() }}><Repeat size={17} aria-hidden /><span>Routines</span></button>
+            <button className="sidebar-nav-row" onClick={() => { setOpen(false); onOpenPalette() }}><Search size={17} aria-hidden /><span>{t('sidebar.search')}</span></button>
+          </nav>
+          <div className="workspace-divider" />
+          <details className="workspace-management"><summary>Workspaces<ChevronDown size={13} aria-hidden /></summary>
           {registry.vaults.map((v) => (
             <button key={v.id} className="workspace-row" onClick={() => onSwitch(v.id)}>
               {v.kind === 'team' ? (
@@ -142,7 +188,8 @@ export function WorkspaceSwitcher() {
               </button>
             </>
           )}
-        </div>
+          </details>
+        </div>, document.body
       )}
 
       {dialog !== 'none' && (

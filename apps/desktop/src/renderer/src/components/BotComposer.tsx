@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
@@ -7,6 +7,7 @@ import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { WebPaneButton } from './WebPaneButton.js'
 import { cometChannel } from '../lib/cometThreads.js'
+import type { ChatAttachmentDto } from '../../../shared/types.js'
 
 interface Props {
   botId: string
@@ -16,12 +17,13 @@ interface Props {
   locked: boolean
   memoryOpen: boolean
   onToggleMemory(): void
-  onSend(message: string): void
+  onSend(message: string, attachments: ChatAttachmentDto[]): void
   onStop(): void
 }
 
 export function BotComposer({ botId, botName, initialDraft, busy, locked, memoryOpen, onToggleMemory, onSend, onStop }: Props) {
   const [value, setValue] = useState(initialDraft)
+  const attachments = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).attachments)
   const valueRef = useRef(value)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -45,7 +47,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
     if (initialDraft === valueRef.current) return
     valueRef.current = initialDraft
     setValue(initialDraft)
-  }, [initialDraft])
+  }, [initialDraft, busy])
 
   useEffect(() => {
     if (!memoryOpen) return
@@ -71,11 +73,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
 
   const send = () => {
     const message = value.trim()
-    if (!message || busy || locked) return
-    valueRef.current = ''
-    setValue('')
-    cometThreads.setDraft(botId, '')
-    onSend(message)
+    if ((!message && !attachments.length) || busy || locked) return
+    onSend(message, attachments)
   }
 
   return (
@@ -89,6 +88,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         maxLength={2000}
         busy={busy}
         disabled={locked}
+        attachments={attachments}
+        onAttachmentsChange={(next) => cometThreads.setAttachments(botId, next)}
         onChange={change}
         onSend={send}
         onStop={onStop}

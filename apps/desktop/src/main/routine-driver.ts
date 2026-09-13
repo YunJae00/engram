@@ -92,7 +92,7 @@ async function act(
 
 // One driver per lane: a replay run for a comet drives that comet's own
 // tab, so two comets can each be mid-procedure without taking each other's
-// page - and the sheet's Run button keeps the shared default.
+// page. Scheduled runs use the shared default.
 export function routineDriver(lane: string = DEFAULT_LANE): RoutineDriver {
   return {
     location: () => lanePage(lane)?.url() ?? null,

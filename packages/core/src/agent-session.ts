@@ -186,6 +186,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     // fills the turn wins by weight alone unless this is said last - and
     // said by name, not left to be read off the ask.
     prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
+      ...(options.attachmentContext ? [options.attachmentContext] : []),
       ...resumeLines(options.resume),
       ...(desktop ? ['Prior-turn desktop observations are historical: use read_desktop or look_desktop before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
       `Task: ${task}`, answerLanguageLine(task)].join('\n'),

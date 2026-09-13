@@ -101,7 +101,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const copyMcpConfig = async () => {
     try {
       const info = await api.mcpInfo()
-      await navigator.clipboard.writeText(info.configJson)
+      await api.copyText(info.configJson)
       setMcpStatus(t('settings.mcpCopied'))
     } catch (err) {
       setMcpStatus(t('settings.mcpCopyFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))

@@ -34,8 +34,13 @@ export async function loadCometThread(id: string): Promise<void> {
 }
 
 api.onEvent((event) => {
+  if (event.type === 'routine:chat') {
+    cometThreads.fresh(event.botId)
+    cometThreads.begin(event.botId, event.message)
+    return
+  }
   webPane.handleEvent(event)
-  const adoptedBefore = 'channel' in event ? cometThreads.thread(cometOfChannel(event.channel)).adopted : false
+  const adoptedBefore = 'channel' in event && event.channel ? cometThreads.thread(cometOfChannel(event.channel)).adopted : false
   const handled = cometThreads.handleEvent(event)
   if (handled) {
     // A seat taken for someone else's send only ever held the reply; the

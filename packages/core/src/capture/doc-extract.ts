@@ -13,6 +13,7 @@ import { extname } from 'node:path'
 // is to capture the skeleton only), and the plain-text family.
 
 export type ExtractableKind = 'docx' | 'xlsx' | 'pptx' | 'pdf' | 'hwpx' | 'text'
+export interface DocumentExtractOptions { minLength?: number; onLimit?(message: string): void }
 
 const TEXT_EXTS = new Set(['.txt', '.md', '.csv', '.log', '.json'])
 
@@ -36,8 +37,9 @@ export function isTransientArtifact(path: string): boolean {
 
 const MAX_CHARS = 60_000
 
-function clip(text: string): string {
+function clip(text: string, options: DocumentExtractOptions): string {
   const squeezed = text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  if (squeezed.length > MAX_CHARS) options.onLimit?.('Text extraction is limited to 60,000 characters.')
   return squeezed.length > MAX_CHARS ? `${squeezed.slice(0, MAX_CHARS)}\n…(clipped)` : squeezed
 }
 
@@ -47,14 +49,16 @@ async function extractDocx(path: string): Promise<string> {
   return result.value ?? ''
 }
 
-async function extractXlsx(path: string): Promise<string> {
+async function extractXlsx(path: string, options: DocumentExtractOptions): Promise<string> {
   const XLSX = await import('xlsx')
   const wb = XLSX.read(await readFile(path), { type: 'buffer' })
   const parts: string[] = []
+  if (wb.SheetNames.length > 12) options.onLimit?.('Only the first 12 worksheets were extracted.')
   for (const name of wb.SheetNames.slice(0, 12)) {
     const sheet = wb.Sheets[name]
     if (!sheet) continue
     const csv = XLSX.utils.sheet_to_csv(sheet).trim()
+    if (csv.length > 8_000) options.onLimit?.(`Worksheet ${JSON.stringify(name)} was limited to 8,000 characters.`)
     if (csv) parts.push(`## ${name}\n${csv.slice(0, 8_000)}`)
   }
   return parts.join('\n\n')
@@ -99,11 +103,12 @@ async function zipXmlTexts(path: string, entryMatch: RegExp): Promise<string> {
   return parts.join('\n\n')
 }
 
-async function extractPdf(path: string): Promise<string> {
+async function extractPdf(path: string, options: DocumentExtractOptions): Promise<string> {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const doc = await getDocument({ data: new Uint8Array(await readFile(path)), useSystemFonts: true }).promise
   const parts: string[] = []
   const pages = Math.min(doc.numPages, 40)
+  if (doc.numPages > pages) options.onLimit?.('Only the first 40 PDF pages were extracted.')
   for (let i = 1; i <= pages; i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
@@ -115,19 +120,23 @@ async function extractPdf(path: string): Promise<string> {
 
 // One entry point: kind-dispatched, clipped, throw-free (a document that
 // cannot be read yields null — the caller records the skeleton only).
-export async function extractDocumentText(path: string): Promise<string | null> {
+export async function extractDocumentText(path: string, options: DocumentExtractOptions = {}): Promise<string | null> {
   const kind = extractableKind(path)
   if (!kind || isTransientArtifact(path)) return null
   try {
     let text = ''
-    if (kind === 'text') text = (await readFile(path, 'utf8')).slice(0, MAX_CHARS * 2)
+    if (kind === 'text') {
+      const raw = await readFile(path, 'utf8')
+      if (raw.length > MAX_CHARS * 2) options.onLimit?.('Source text was limited before normalization.')
+      text = raw.slice(0, MAX_CHARS * 2)
+    }
     else if (kind === 'docx') text = await extractDocx(path)
-    else if (kind === 'xlsx') text = await extractXlsx(path)
+    else if (kind === 'xlsx') text = await extractXlsx(path, options)
     else if (kind === 'pptx') text = await zipXmlTexts(path, /^ppt\/(slides|notesSlides)\/[^/]+\.xml$/)
     else if (kind === 'hwpx') text = await zipXmlTexts(path, /^Contents\/section\d+\.xml$/i)
-    else if (kind === 'pdf') text = await extractPdf(path)
-    const clipped = clip(text)
-    return clipped.length >= 20 ? clipped : null
+    else if (kind === 'pdf') text = await extractPdf(path, options)
+    const clipped = clip(text, options)
+    return clipped.length >= Math.max(1, options.minLength ?? 20) ? clipped : null
   } catch {
     return null
   }

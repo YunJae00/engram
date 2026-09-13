@@ -42,6 +42,7 @@ export interface BotTurn {
   role: 'user' | 'assistant'
   text: string
   at: string
+  attachments?: string[]
 }
 
 export interface BotSuggestion {

@@ -10,7 +10,7 @@ const within = (root: string, path: string) => {
 }
 export const artifactDirectory = (paths: VaultPaths) => join(paths.cache, 'artifacts')
 
-export function cometFileTools(paths: VaultPaths, lane: string) {
+export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = []) {
   const assertReadable = async (path: string) => {
     if (within(await realpath(paths.privateDir), path)) throw new Error('Private vault files are not available to the agent.')
   }
@@ -22,6 +22,7 @@ export function cometFileTools(paths: VaultPaths, lane: string) {
     approveRead: async (path, signal) => {
       signal?.throwIfAborted()
       await assertReadable(path)
+      if (attachedPaths.includes(path) && await realpath(path) === path) return true
       const result = await dialog.showMessageBox({
         type: 'question', buttons: ['Cancel', 'Read file'], defaultId: 0, cancelId: 0,
         message: 'Allow this chat to read this saved file?',

@@ -11,7 +11,7 @@ import { loadSettings } from './settings.js'
 interface CodexSdk {
   Codex: new (options: { codexPathOverride?: string; env?: Record<string, string> }) => {
     startThread(options: Record<string, unknown>): {
-      run(input: string, options: { outputSchema?: unknown; signal?: AbortSignal }): Promise<{ finalResponse: string }>
+      run(input: string | ({ type: 'text'; text: string } | { type: 'local_image'; path: string })[], options: { outputSchema?: unknown; signal?: AbortSignal }): Promise<{ finalResponse: string }>
     }
   }
 }
@@ -105,7 +105,8 @@ export class CodexEngine implements CloudEngine {
         // default - their plan's - otherwise.
         ...(codexModel ? { model: codexModel } : {}),
       })
-      const turn = await thread.run(job.prompt, {
+      const input = job.imagePaths?.length ? [{ type: 'text' as const, text: job.prompt }, ...job.imagePaths.map(path => ({ type: 'local_image' as const, path }))] : job.prompt
+      const turn = await thread.run(input, {
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
         signal: abort.signal,
       })

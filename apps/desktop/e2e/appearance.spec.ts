@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { initVault } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -23,7 +24,7 @@ test.beforeEach(async () => {
 test.afterEach(async () => { await app?.close() })
 
 test('appearance survives restart, follows the system only when chosen, and keeps sections usable', async () => {
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await page.getByRole('radio', { name: 'Dark', exact: true }).check()
   await page.getByTestId('setting-autostart').check()
   for (const section of ['ai', 'computer', 'memory', 'about', 'general']) {
@@ -41,13 +42,13 @@ test('appearance survives restart, follows the system only when chosen, and keep
   await app.close()
   await start()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await expect(page.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()
   await page.getByRole('radio', { name: 'Light', exact: true }).check()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('light')
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await page.getByRole('radio', { name: 'Use system setting' }).check()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
@@ -56,7 +57,7 @@ test('appearance survives restart, follows the system only when chosen, and keep
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.setViewportSize({ width: 620, height: 720 })
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-about').click()
   await expect(page.getByTestId('settings-feedback')).toBeVisible()
   expect(await page.getByTestId('settings-view').evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)

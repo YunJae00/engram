@@ -72,14 +72,16 @@ export interface AppState {
   routine: {
     running: boolean
     routineId?: string
+    channel?: string
     name?: string
     step?: { index: number; total: number; label: string }
     steps: { label: string; at: number }[]
   }
-  routineWall: { routineId: string; wall: 'login' | 'captcha' } | null
+  routineWall: { routineId: string; channel?: string; wall: 'login' | 'captcha' } | null
   answerRoutineWall(verdict: 'resolved' | 'skip'): void
   routineSubmit: {
     routineId: string
+    channel?: string
     name: string
     filled: { label: string; text: string }[]
     host: string | null
@@ -93,7 +95,7 @@ export interface AppState {
     name: string,
     force?: boolean,
     slots?: Record<string, string>,
-  ): Promise<{ ok: boolean; blocked?: RoutineBlockDto }>
+  ): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto; botId?: string }>
   toast: string | null
   showToast(message: string): void
   t: Translate

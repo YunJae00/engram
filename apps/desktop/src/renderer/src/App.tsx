@@ -8,8 +8,10 @@ import { ComputerStatus } from './components/ComputerStatus.js'
 import { TOUR_DONE_KEY } from './lib/tour.js'
 import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
-import { useShellState } from './state-slices.js'
+import { useCometState, useShellState } from './state-slices.js'
 import { t } from './i18n.js'
+import { selectComet } from './lib/cometThreadsLive.js'
+import type { SettingsSection } from './components/SettingsNavigation.js'
 
 // Only what the first screen needs is in the first bundle. An editor, a sky
 // full of stars, a settings sheet and a walkthrough are all real weight, and
@@ -39,13 +41,14 @@ const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: 
 
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
+  const { startRoutine } = useCometState()
   const [palette, setPalette] = useState<PaletteMode>(null)
   // What the panel should open with — a question to send outright, or a
   // scaffold to write into. Held here because the panel is unmounted while it
   // rests: a window event fired at a closed panel has nobody listening.
   const [action, setAction] = useState<PaletteAction | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'help'>('general')
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('general')
   const [diagOpen, setDiagOpen] = useState(false)
   // "Back up to GitHub" — reachable from the workspace switcher, settings, and
   // the command palette; they all raise this one window intent.
@@ -81,7 +84,11 @@ function Shell() {
       // A citation clicked in another window: the main process already
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
-      else if (e.type === 'brain:setup') setSettingsOpen(true)
+      else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
+      else if (e.type === 'routine:chat') {
+        selectComet(e.botId); setActivity('bots'); setRoutinesOpen(false)
+        if (window.innerWidth <= 900) setSidebarOpen(false)
+      }
     })
   }, [openNote])
 
@@ -139,6 +146,11 @@ function Shell() {
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
     const openRoutines = () => setRoutinesOpen(true)
+    const runRoutine = (event: Event) => {
+      const request = (event as CustomEvent<{ routineId?: string; name?: string }>).detail
+      if (!request?.routineId) return
+      void startRoutine(request.routineId, request.name ?? 'Routine')
+    }
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
@@ -152,7 +164,7 @@ function Shell() {
     }
     window.addEventListener('engram:toggle-chat', toggleChat)
     window.addEventListener('engram:open-palette', openPalette)
-    const openBrainSetup = () => { setSettingsSection('general'); setSettingsOpen(true) }
+    const openBrainSetup = () => { setSettingsSection('ai'); setSettingsOpen(true) }
     const openHelp = () => { setSettingsSection('help'); setSettingsOpen(true) }
     window.addEventListener('engram:open-help', openHelp)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
@@ -161,6 +173,7 @@ function Shell() {
     window.addEventListener('engram:open-digest', openDigest)
     window.addEventListener('engram:open-errand', openErrand)
     window.addEventListener('engram:open-routines', openRoutines)
+    window.addEventListener('engram:run-routine', runRoutine)
     window.addEventListener('engram:focus-capture', focusCapture)
     window.addEventListener('engram:sky-focus', focusSky)
     return () => {
@@ -173,6 +186,7 @@ function Shell() {
       window.removeEventListener('engram:open-digest', openDigest)
       window.removeEventListener('engram:open-errand', openErrand)
       window.removeEventListener('engram:open-routines', openRoutines)
+      window.removeEventListener('engram:run-routine', runRoutine)
       window.removeEventListener('engram:focus-capture', focusCapture)
       window.removeEventListener('engram:sky-focus', focusSky)
     }

@@ -1,12 +1,14 @@
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { addBotTask, createBot, loadBots, type VaultPaths } from 'core'
 import { standingTick } from '../src/main/standing.js'
 
 async function tempPaths(): Promise<VaultPaths> {
-  const root = await mkdtemp(join(tmpdir(), 'engram-standing-'))
+  const dir = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(dir, { recursive: true })
+  const root = await mkdtemp(join(dir, 'engram-standing-'))
   return { root, workspace: root, cache: join(root, '.engram') } as unknown as VaultPaths
 }
 
@@ -16,7 +18,7 @@ describe('standingTick', () => {
   it('starts a due task once and leaves the rest alone', async () => {
     const paths = await tempPaths()
     const bot = await createBot(paths, { name: 'Desk', purpose: 'chores' })
-    const due = await addBotTask(paths, bot.id, { name: 'Notice', goal: '포털 공지 확인', routineId: 'rt-1', schedule: { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 } })
+    const due = await addBotTask(paths, bot.id, { name: 'Notice', goal: 'Check portal notices', routineId: 'rt-1', schedule: { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 } })
     await addBotTask(paths, bot.id, { name: 'Later', goal: 'x', routineId: 'rt-2', schedule: { days: [1, 2, 3, 4, 5], hour: 15, minute: 0 } })
     await addBotTask(paths, bot.id, { name: 'Plain', goal: 'y' })
     const ran: string[] = []

@@ -133,6 +133,7 @@ export interface BotDto {
   name: string
   purpose: string
   createdAt: string
+  lastMessage?: { role: 'user' | 'assistant'; text: string; at: string }
   webSites?: { origin: string; visits: number }[]
   // The work this comet repeats — saved once, run with one click.
   tasks?: BotTaskDto[]
@@ -142,6 +143,7 @@ export interface BotTurnDto {
   role: 'user' | 'assistant'
   text: string
   at: string
+  attachments?: string[]
 }
 
 export interface BotSuggestionDto {
@@ -232,12 +234,14 @@ export interface EngineStatusDto {
 export interface ChatTurnDto {
   role: 'user' | 'assistant'
   text: string
+  attachments?: string[]
 }
 
 export interface ChatRequestDto {
   engineId: string
   message: string
   history: ChatTurnDto[]
+  attachments?: string[]
   // the note the panel is focused on, if any
   noteId?: string
   // Which surface is asking. Chat events broadcast to every window, so each
@@ -246,6 +250,12 @@ export interface ChatRequestDto {
   channel?: string
   // Answer as this bot: its charter rides ahead of the chat rules.
   botId?: string
+}
+
+export interface ChatAttachmentDto {
+  id: string
+  name: string
+  size: number
 }
 
 export interface SweepReportDto {
@@ -384,7 +394,7 @@ export type EngramEvent =
       // 'run' — a saved procedure matches this request, one press away.
 
       offer?:
-        | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string> }
+        | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string>; force?: boolean }
         // A job that took real work is worth keeping: the loop says so, the
         // person decides. Nothing here is a form to fill.
         // A button the comet wrote for a job it just did: what it would be
@@ -420,6 +430,7 @@ export type EngramEvent =
   | {
       type: 'routine:submit'
       routineId: string
+      channel?: string
       name: string
       filled: { label: string; text: string }[]
       // The site being posted to, and whether an approval could be
@@ -470,9 +481,10 @@ export type EngramEvent =
   | { type: 'errand:wall'; url: string; wall: 'login' | 'captcha' }
   // Routine replay progress: one event per step, then one logged event with
   // the outcome. A wall parks the run until routineWallDone answers.
-  | { type: 'routine:step'; routineId: string; index: number; total: number; label: string }
-  | { type: 'routine:wall'; routineId: string; wall: 'login' | 'captcha' }
-  | { type: 'routine:logged'; routineId: string; name: string; outcome: 'done' | 'failed' | 'aborted'; cardId?: string; error?: string }
+  | { type: 'routine:chat'; routineId: string; botId: string; name: string; message: string }
+  | { type: 'routine:step'; routineId: string; channel?: string; index: number; total: number; label: string }
+  | { type: 'routine:wall'; routineId: string; channel?: string; wall: 'login' | 'captcha' }
+  | { type: 'routine:logged'; routineId: string; channel?: string; name: string; outcome: 'done' | 'failed' | 'aborted'; cardId?: string; error?: string }
   | { type: 'vault:ready' }
   // The floating question asked the shell to open Review instead.
   // Opening the vault failed outright. Without this the shell has no way to
@@ -611,13 +623,13 @@ export interface EngramApi extends DesktopApi {
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
   routineRemove(id: string): Promise<void>
-  // Detached like errandStart: resolves once the replay has started (or was
-  // refused); steps and the outcome arrive as routine:* events.
+  // Opens a fresh chat before replay; routine:chat identifies it immediately.
+  // Progress and the persisted result arrive on that chat's channel.
   routineRun(
     id: string,
     force?: boolean,
     slots?: Record<string, string>,
-  ): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto }>
+  ): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto; botId?: string }>
   routineAbort(): Promise<void>
   routineWallDone(routineId: string, verdict: 'resolved' | 'skip'): Promise<void>
   // The person's answer to "may this be posted?" — nothing is submitted
@@ -658,6 +670,8 @@ export interface EngramApi extends DesktopApi {
   pathForFile(file: File): string
   // chat panel & context packs
   chatSend(request: ChatRequestDto): Promise<void>
+  chatAttach(name: string, data: Uint8Array): Promise<ChatAttachmentDto>
+  copyText(text: string): Promise<void>
   activityToday(): Promise<{ totalMs: number; apps: { app: string; ms: number; topTitles: string[] }[] }>
   // Desk journal switch (settings ⑨ + tray share the same state).
   activityGet(): Promise<boolean>

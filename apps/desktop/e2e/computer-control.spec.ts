@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -147,7 +148,7 @@ async function control(next: DesktopControlStatusDto) {
 }
 async function orbit() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-  await page.getByTestId('activity-mission').click()
+  await openActivity(page, 'mission')
   await page.getByTestId('mission-layout-2').click()
 }
 
@@ -207,7 +208,7 @@ test('settings carry one switch for computer use, and its state', async () => {
   await orbit()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-computer').click()
   const settings = page.getByTestId('computer-settings')
   await expect(settings).toContainText('Control apps')

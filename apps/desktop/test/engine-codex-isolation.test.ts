@@ -40,6 +40,11 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('passes attached images using the native local_image SDK input', async () => {
+    const image = 'C:/fixture/workspace/.engram/chat-attachments/chart.png'
+    await collect(new CodexEngine().run({ prompt: 'Read this chart', workdir: WORKDIR, imagePaths: [image], disallowTools: true }))
+    expect(fixture.run).toHaveBeenCalledWith([{ type: 'text', text: 'Read this chart' }, { type: 'local_image', path: image }], expect.objectContaining({ signal: expect.any(AbortSignal) }))
+  })
   it('bars inherited MCP and built-in tools in an isolated plain-text request', async () => {
     const engine = new ClaudeEngine()
     expect(engine.desktopToolIsolation).toBe(true)

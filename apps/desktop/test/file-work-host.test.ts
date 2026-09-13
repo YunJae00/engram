@@ -47,6 +47,14 @@ it('requires an exact-path native consent and honors Stop during the consent dia
   expect(state.confirm.mock.calls[0]![0].defaultId).toBe(0)
 })
 
+it('reads explicitly attached copies without asking to approve their contents again', async () => {
+  const path = join(root, 'input.json')
+  await writeFile(path, '{"safe":true}')
+  const tool = cometFileTools(vaultPaths(root), 'lane', [path]).find((tool) => tool.name === 'file_read')!
+  expect(JSON.parse(await tool.run({ path }, { task: 'Read the attached file.' })).content).toBe('{"safe":true}')
+  expect(state.confirm).not.toHaveBeenCalled()
+})
+
 it('does not bypass a cancelled desktop turn by switching to file creation', async () => {
   state.stopped = true
   const tools = cometFileTools(vaultPaths(root), 'lane')

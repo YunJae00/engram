@@ -2,6 +2,7 @@ import { Check, LoaderCircle } from 'lucide-react'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
 import { useTopBarState } from '../state-slices.js'
+import { ModelPicker } from './ModelPicker.js'
 
 function sweepLabel(translate: Translate, status: SweepStatus): string {
   switch (status.kind) {
@@ -21,14 +22,6 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
 
 export function SidebarStatus() {
   const { engines, sweepStatus, filing, absorb, sweepJob, errand } = useTopBarState()
-  const engine = engines[0]
-  const engineName = engine?.id === 'codex' ? t('settings.brainChatGPT') : engine?.id === 'claude' ? t('settings.brainClaude') : engine?.id
-  const engineLabel = !engine
-    ? t('topbar.engineConnectShort')
-    : engine.healthy === false
-      ? t('sidebar.aiAttention', { name: engineName ?? engine.id })
-      : t('sidebar.aiConnected', { name: engineName ?? engine.id })
-
   const jobKey: StringKey | null = sweepJob?.job && /^J[1-8]$/.test(sweepJob.job) ? (`topbar.job${sweepJob.job}` as StringKey) : null
   const jobSuffix = jobKey ? ` · ${t(jobKey)}` : ''
   const filingOnly = filing && !sweepStatus.running
@@ -54,15 +47,7 @@ export function SidebarStatus() {
 
   return (
     <div className="sidebar-status-block">
-      <button
-        className="sidebar-status-row sidebar-engine-status"
-        data-testid="engine-status"
-        title={engineLabel}
-        onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}
-      >
-        <span className="sidebar-status-icon"><span className={`engine-dot${!engine ? '' : engine.healthy === false ? ' warn' : ' on'}`} /></span>
-        <span>{engineLabel}</span>
-      </button>
+      <ModelPicker variant="sidebar" />
       {activityText && (
         <div className={`sidebar-status-row sidebar-work-status${working ? ' working' : ''}`} data-testid="sweep-status" role="status" title={activityText}>
           <span className="sidebar-status-icon">{working ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>

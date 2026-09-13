@@ -1,4 +1,4 @@
-import type { ChatTurnDto, EngramEvent } from '../../../shared/types.js'
+import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
 
 // Every comet's conversation as the screen shows it, kept outside the view:
 // the tab unmounts on each switch, and an answer that is mid-sentence has to
@@ -26,6 +26,7 @@ export interface CometThread {
   keptWork: string[]
   offer: CometOffer | null
   draft: string
+  attachments: ChatAttachmentDto[]
   // The seat was taken for an answer this renderer never sent (a reload
   // mid-answer): once it lands, disk is the only complete record of it.
   adopted: boolean
@@ -49,7 +50,7 @@ export interface CometThreadsSnapshot {
 
 export type CometThreadsStore = ReturnType<typeof createCometThreads>
 
-const EMPTY: CometThread = { messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
+const EMPTY: CometThread = { messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', attachments: [], adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
 const CHANNEL_PREFIX = 'bot-'
 const WORK_LINES_KEPT = 64
 
@@ -143,13 +144,20 @@ export function createCometThreads(initialSelected: string | null = null) {
     load(id: string, turns: ChatTurnDto[]): void {
       const current = thread(id)
       const tail = current.busy ? pendingTail(current.messages) : []
-      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text })), ...tail], loaded: true })
+      const last = turns.at(-1)
+      const previous = turns.at(-2)
+      if (tail[0]?.role === 'user' && last?.role === 'assistant' && previous?.role === 'user' && previous.text === tail[0].text && turns.length >= current.messages.length) tail.length = 0
+      else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
+      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}) })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
       const current = thread(id)
       if (current.draft === draft) return
       // Preserve the draft without notifying the conversation tree per keystroke.
       snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...current, draft } } }
+    },
+    setAttachments(id: string, attachments: ChatAttachmentDto[]): void {
+      patch(id, { attachments })
     },
     append(id: string, message: CometMessage): void {
       patch(id, { messages: [...thread(id).messages, message] })
@@ -164,11 +172,11 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     // Takes the seat for a send and hands back the history to ship with it:
     // settled turns only, never a half answer or an error bubble.
-    begin(id: string, message: string): ChatTurnDto[] {
+    begin(id: string, message: string, attachments: string[] = []): ChatTurnDto[] {
       const current = thread(id)
       const history = current.messages
         .filter((m) => !m.streaming && !m.error)
-        .map((m) => ({ role: m.role, text: m.text }))
+        .map((m) => ({ role: m.role, text: m.text, ...(m.attachments?.length ? { attachments: m.attachments } : {}) }))
       patch(id, {
         busy: true,
         adopted: false,
@@ -178,7 +186,8 @@ export function createCometThreads(initialSelected: string | null = null) {
         keptWork: [],
         offer: null,
         draft: '',
-        messages: [...current.messages, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }],
+        attachments: [],
+        messages: [...current.messages, { role: 'user', text: message, ...(attachments.length ? { attachments } : {}) }, { role: 'assistant', text: '', streaming: true }],
       })
       return history
     },
@@ -216,7 +225,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     // comet's id when the event was consumed here; null means nobody in this
     // store was waiting for it.
     handleEvent(event: EngramEvent): string | null {
-      if (!('channel' in event)) return null
+      if (!('channel' in event) || !event.channel) return null
       const id = cometOfChannel(event.channel)
       if (!id) return null
       const current = thread(id)

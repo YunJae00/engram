@@ -25,6 +25,7 @@ type CometState = Pick<
   | 'answerPressAsk'
   | 'routineSubmit'
   | 'routineWall'
+  | 'answerRoutineWall'
   | 'answerRoutineSubmit'
 >
 
@@ -100,6 +101,7 @@ export function StateSlices({ state, children }: { state: AppState; children: Re
       answerPressAsk: state.answerPressAsk,
       routineSubmit: state.routineSubmit,
       routineWall: state.routineWall,
+      answerRoutineWall: state.answerRoutineWall,
       answerRoutineSubmit: state.answerRoutineSubmit,
     }),
     [
@@ -110,6 +112,7 @@ export function StateSlices({ state, children }: { state: AppState; children: Re
       state.answerPressAsk,
       state.routineSubmit,
       state.routineWall,
+      state.answerRoutineWall,
       state.answerRoutineSubmit,
     ],
   )

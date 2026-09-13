@@ -1,6 +1,7 @@
 import { Clock, Play, X } from 'lucide-react'
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { BotDto } from '../../../shared/types.js'
+import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
+import { sendCometMessage } from '../lib/attachments.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
 import { CometOffer } from '../components/CometOffer.js'
@@ -17,8 +18,9 @@ import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { PressGate } from '../components/PressGate.js'
 import { SubmitGate } from '../components/SubmitGate.js'
+import { RoutineProgress } from '../components/RoutineProgress.js'
 import { BotComposer } from '../components/BotComposer.js'
-import { useCometState } from '../state-slices.js'
+import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
 
@@ -40,6 +42,7 @@ const PHASE_LABEL: Record<string, StringKey> = {
 
 export const BotsView = memo(function BotsView() {
   const { errand, routine, startRoutine } = useCometState()
+  const { showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [memoryOpen, setMemoryOpen] = useState(false)
   // What the model is doing, from main's own word. Only 'loading' changes
@@ -63,42 +66,25 @@ export const BotsView = memo(function BotsView() {
   // and the screen says nothing rather than "no comets" - a claim it cannot
   // make - before turning into the list a moment later.
   const [loaded, setLoaded] = useState(false)
-  const reload = async (keepSelection = true) => {
+  const reloadGeneration = useRef(0)
+  const reload = async () => {
+    const generation = ++reloadGeneration.current
+    const selectedBefore = cometThreads.getSnapshot().selectedId
     const list = await api.botsList()
+    if (generation !== reloadGeneration.current) return
     setBots(list)
     setLoaded(true)
     const current = cometThreads.getSnapshot().selectedId
-    if (!keepSelection || (current && !list.some((b) => b.id === current))) selectComet(null)
+    if (current && current === selectedBefore && !list.some((b) => b.id === current)) selectComet(null)
   }
 
   useEffect(() => {
     void reload()
     // A comet named by its first words shows the new name without a press.
-    return api.onEvent((event) => {
+    const off = api.onEvent((event) => {
       if (event.type === 'bots:changed') void reload()
     })
-  }, [])
-  // The sidebar asks for a routine by id; the comet that keeps it runs it
-  // as an ordinary turn in its own thread. A routine no comet keeps runs
-  // on the selected one.
-  useEffect(() => {
-    const run = (event: Event) => {
-      const routineId = (event as CustomEvent<{ routineId: string }>).detail?.routineId
-      if (!routineId) return
-      void api.botsList().then((list) => {
-        const owner = list.find((bot) => (bot.tasks ?? []).some((one) => one.routineId === routineId))
-        const task = owner ? (owner.tasks ?? []).find((one) => one.routineId === routineId) : undefined
-        const botId = owner?.id ?? cometThreads.getSnapshot().selectedId ?? list[0]?.id
-        if (!botId || cometThreads.thread(botId).busy) return
-        selectComet(botId)
-        const goal = task?.goal ?? `Run the saved procedure with id "${routineId}" and tell me what it found.`
-        if (task) void api.botTaskRan(botId, task.id).catch(() => undefined)
-        const history = cometThreads.begin(botId, goal)
-        void api.chatSend({ engineId: '', message: goal, history, channel: cometChannel(botId), botId }).catch(() => undefined)
-      })
-    }
-    window.addEventListener('engram:run-routine', run)
-    return () => window.removeEventListener('engram:run-routine', run)
+    return () => { reloadGeneration.current++; off() }
   }, [])
 
   // Selecting a comet shows what the store already holds and refreshes it
@@ -114,16 +100,9 @@ export const BotsView = memo(function BotsView() {
 
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
-  const sendText = async (message: string) => {
-    if (!message || busy || !selected) return
-    const id = selected.id
-    const history = cometThreads.begin(id, message)
-    try {
-      await api.chatSend({ engineId: '', message, history, channel: cometChannel(id), botId: id })
-    } catch (err) {
-      // main may already have said so over chat:error; do not say it twice.
-      if (cometThreads.thread(id).busy) cometThreads.fail(id, String((err as Error).message ?? err))
-    }
+  const sendText = async (message: string, attachments: ChatAttachmentDto[] = []) => {
+    if ((!message && !attachments.length) || busy || !selected) return
+    await sendCometMessage(api, cometThreads, selected.id, message, attachments)
   }
 
   const stop = async () => {
@@ -132,19 +111,22 @@ export const BotsView = memo(function BotsView() {
     await api.chatAbort(cometChannel(selected.id)).catch(() => undefined)
   }
 
-  // A task is the repeated work itself: saved on the comet, one click to run.
-  // The errand pipeline is only the engine underneath.
-  // A routine is the job done again IN ITS CHAT: the goal goes through the
-  // ordinary turn, where the comet finds the recorded procedure and replays
-  // the path that worked, filling in by hand only where the page differs.
-  // The person watches it in the thread like any other ask.
-  const runTask = (task: { id: string; name: string; goal: string }) => {
-    if (!selected || cometThreads.thread(selected.id).busy) return
-    void api.botTaskRan(selected.id, task.id).catch(() => undefined)
-    const history = cometThreads.begin(selected.id, task.goal)
-    void api
-      .chatSend({ engineId: '', message: task.goal, history, channel: cometChannel(selected.id), botId: selected.id })
-      .catch(() => cometThreads.fail?.(selected.id, 'the turn could not start'))
+  const taskPending = useRef(false)
+  const runTask = async (task: { id: string; name: string; goal: string; routineId?: string }) => {
+    if (!selected || taskPending.current) return
+    taskPending.current = true
+    try {
+      if (task.routineId) {
+        await startRoutine(task.routineId, task.name)
+        return
+      }
+      const bot = await api.botCreate({ name: task.name, purpose: '' })
+      await api.botTaskRan(selected.id, task.id).catch(() => undefined)
+      const history = cometThreads.begin(bot.id, task.goal)
+      selectComet(bot.id)
+      try { await api.chatSend({ engineId: '', message: task.goal, history, channel: cometChannel(bot.id), botId: bot.id }) }
+      catch (error) { if (cometThreads.thread(bot.id).busy) cometThreads.fail(bot.id, String(error)) }
+    } finally { taskPending.current = false }
   }
 
   // What a chat answer leaves you wanting: the web, when the vault did not
@@ -180,7 +162,7 @@ export const BotsView = memo(function BotsView() {
                   className="bots-task"
                   data-testid={`bot-task-${task.id}`}
                   title={task.goal}
-                  onClick={() => runTask(task)}
+                  onClick={() => void runTask(task).catch(error => showToast(String(error)))}
                 >
                   {task.schedule ? <Clock size={11} strokeWidth={2.2} aria-hidden /> : <Play size={11} strokeWidth={2.2} aria-hidden />}
                   {task.name}
@@ -243,7 +225,7 @@ export const BotsView = memo(function BotsView() {
                   }}
                   onRun={(wanted) => {
                     cometThreads.clearOffer(selected.id)
-                    void startRoutine(wanted.routineId, wanted.name, false, wanted.slots)
+                    void startRoutine(wanted.routineId, wanted.name, wanted.force === true, wanted.slots)
                   }}
                   onStand={(wanted) => {
                     cometThreads.clearOffer(selected.id)
@@ -256,7 +238,8 @@ export const BotsView = memo(function BotsView() {
                   onDismiss={() => cometThreads.clearOffer(selected.id)}
                 />
               )}
-              <SubmitGate />
+              <RoutineProgress channel={cometChannel(selected.id)} />
+              <SubmitGate channel={cometChannel(selected.id)} />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <ThinkingDots />
@@ -287,7 +270,7 @@ export const BotsView = memo(function BotsView() {
               locked={locked}
               memoryOpen={memoryOpen}
               onToggleMemory={() => setMemoryOpen((value) => !value)}
-              onSend={(message) => void sendText(message)}
+              onSend={(message, attachments) => void sendText(message, attachments)}
               onStop={() => void stop()}
             />
           </div>

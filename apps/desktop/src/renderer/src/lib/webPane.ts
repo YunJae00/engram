@@ -30,9 +30,14 @@ export const webPane = {
   fold(lane: string): void { set(lane, { folded: true }) },
   // Tool names are the protocol, not the human-readable step summary.
   handleEvent(event: EngramEvent): boolean {
-    if (!('channel' in event)) return false
+    if (!('channel' in event) || !event.channel) return false
     const lane = event.channel
     if (event.type === 'chat:done' || event.type === 'chat:error') set(lane, { phase: 'idle' })
+    if (event.type === 'routine:step') {
+      const entering = state(lane).phase === 'idle'
+      set(lane, { phase: 'working', ...(entering ? { folded: false, wanted: true } : {}) })
+      return entering
+    }
     if (event.type !== 'comet:step') return false
     const tool = /^([a-z_]+):/.exec(event.line)?.[1] ?? ''
     if (/^(open_page|search_web|read_open_page|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal|click_on|type_into)$/.test(tool)) {

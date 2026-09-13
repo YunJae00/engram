@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { createNote, initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -47,7 +48,7 @@ async function screenshot(name: string) {
 
 async function navigate(view: string) {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-  await page.getByTestId(`activity-${view}`).click()
+  await openActivity(page, view)
   if (view !== 'settings' && (page.viewportSize()?.width ?? 1280) <= 900) {
     await expect(page.getByTestId('app-sidebar')).not.toBeVisible()
   }

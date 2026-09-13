@@ -1,13 +1,14 @@
-import { AlertTriangle, Play, Repeat, Square, X } from 'lucide-react'
+import { AlertTriangle, Play, Repeat, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { ApprovalRuleDto, RoutineBlockDto, RoutineDto } from '../../../shared/types.js'
+import type { ApprovalRuleDto, RoutineDto } from '../../../shared/types.js'
 import { ApprovalChips } from './ApprovalChips.js'
-import { LiveView } from './LiveView.js'
-import { SubmitGate } from './SubmitGate.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { DialogHeader } from './DialogHeader.js'
+import { LiveView } from './LiveView.js'
+import { RoutineProgress } from './RoutineProgress.js'
+import { SubmitGate } from './SubmitGate.js'
 
 // The jobs a comet has learned to do on a website, and what it is allowed to
 // press there. Nothing is authored here: a comet does the job itself, and
@@ -15,11 +16,9 @@ import { DialogHeader } from './DialogHeader.js'
 // run again, or forget.
 
 export function RoutinesSheet({ onClose }: { onClose(): void }) {
-  const { routine, routineWall, answerRoutineWall, startRoutine, errand, t } = useApp()
+  const { t, routine, routineWall, answerRoutineWall } = useApp()
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [armedDelete, setArmedDelete] = useState<string | null>(null)
-  // A refused rerun is a question, asked right where it was answered.
-  const [ask, setAsk] = useState<{ id: string; name: string; blocked: RoutineBlockDto } | null>(null)
   const [rules, setRules] = useState<ApprovalRuleDto[]>([])
 
   useEscape(onClose, true)
@@ -38,12 +37,9 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
     })
   }, [])
 
-  const busy = routine.running || errand.running
-
-  const run = async (id: string, name: string, force = false) => {
-    setAsk(null)
-    const result = await startRoutine(id, name, force)
-    if (result.blocked) setAsk({ id, name, blocked: result.blocked })
+  const run = (routineId: string) => {
+    onClose()
+    window.dispatchEvent(new CustomEvent('engram:run-routine', { detail: { routineId } }))
   }
 
   const remove = (id: string) => {
@@ -70,63 +66,14 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
         </DialogHeader>
         <div className="errands-hint">{t('routines.hint')}</div>
 
-        {routine.running && (
-          <div className="errand-live" data-testid="routine-live">
-            <div className="errand-live-goal">{routine.name ?? t('routines.running')}</div>
-            <ul className="errand-steps">
-              {routine.steps.map((step, i) => {
-                const current = i === routine.steps.length - 1
-                return (
-                  <li key={`${i}-${step.label}`} className={`errand-step${current ? ' current' : ' passed'}`}>
-                    {step.label}
-                    {current && routine.step && (
-                      <span className="errand-step-detail">{`${routine.step.index + 1}/${routine.step.total}`}</span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-            {routineWall && (
-              <div className="errand-wall-inline">
-                <span>{t(routineWall.wall === 'login' ? 'routines.wallLogin' : 'routines.wallCaptcha')}</span>
-                <button className="errand-wall-done" data-testid="routine-wall-done" onClick={() => answerRoutineWall('resolved')}>
-                  {t('routines.wallDone')}
-                </button>
-                <button className="errand-wall-skip" onClick={() => answerRoutineWall('skip')}>
-                  {t('routines.wallStop')}
-                </button>
-              </div>
-            )}
-            <LiveView open={routineWall !== null}>
-              {routineWall && (
-                <button className="errand-wall-done" data-testid="routine-wall-done-live" onClick={() => answerRoutineWall('resolved')}>
-                  {t('routines.wallDone')}
-                </button>
-              )}
-            </LiveView>
-            <SubmitGate />
-            <button className="secondary errand-stop" onClick={() => void api.routineAbort()}>
-              <Square size={11} strokeWidth={2.5} aria-hidden /> {t('routines.stop')}
-            </button>
-          </div>
-        )}
-
-        {ask && (
-          <div className="routine-ask" data-testid="routine-ask">
-            <AlertTriangle size={14} aria-hidden />
-            <span className="routine-ask-text">
-              {t(ask.blocked === 'already-ran-today' ? 'routines.askRanToday' : 'routines.askUnfinished', {
-                name: ask.name,
-              })}
-            </span>
-            <button className="primary" data-testid="routine-ask-yes" onClick={() => void run(ask.id, ask.name, true)}>
-              {t('routines.askRun')}
-            </button>
-            <button className="secondary" onClick={() => setAsk(null)}>
-              {t('routines.cancel')}
-            </button>
-          </div>
-        )}
+        {routine.running && !routine.channel && <>
+          <RoutineProgress />
+          <LiveView open={routineWall !== null && !routineWall.channel}>
+            {routineWall && !routineWall.channel && <button className="errand-wall-done" data-testid="scheduled-routine-wall-done" onClick={() => answerRoutineWall('resolved')}>{t('routines.wallDone')}</button>}
+          </LiveView>
+          <SubmitGate />
+          <button className="secondary" data-testid="scheduled-routine-stop" onClick={() => void api.routineAbort()}>Stop</button>
+        </>}
 
         {routines.length === 0 ? (
           <div className="errands-empty">{t('routines.empty')}</div>
@@ -154,8 +101,7 @@ export function RoutinesSheet({ onClose }: { onClose(): void }) {
                 <button
                   className="secondary routine-run"
                   data-testid={`routine-run-${r.id}`}
-                  disabled={busy}
-                  onClick={() => void run(r.id, r.name)}
+                  onClick={() => run(r.id)}
                 >
                   <Play size={11} strokeWidth={2.5} aria-hidden /> {t('routines.run')}
                 </button>

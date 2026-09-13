@@ -111,7 +111,6 @@ import {
   type EngineEvent,
   type JobFailure,
   type Note,
-  type RoutineBlock,
   type RoutineStep,
   type RoutineRunResult,
   type RunReport,
@@ -122,6 +121,7 @@ import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
+import { botPreviews } from './bot-previews.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -133,6 +133,7 @@ import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, h
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
 import { cometFileTools, registerArtifactIpc } from './file-work.js'
+import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
@@ -145,6 +146,7 @@ import { titleFor } from './comet-title.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
+import { startRoutineChat, type RoutineRunReply, type RoutineStartOptions } from './routine-chat.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { app, ipcMain, shell } from 'electron'
 import { open, readdir, readFile, mkdir } from 'node:fs/promises'
@@ -611,11 +613,13 @@ let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 
 // Routines share the agent browser with errands, so the two runs exclude
 // each other; same single-flight/abort/wall trio as the errand's.
-// One replay per lane: the sheet's Run holds the default lane, a comet's
-// run_procedure holds its own, and two comets replay side by side. Walls
+// One replay per lane: manual runs and run_procedure hold their chat's lane,
+// while schedules hold the default lane. Walls
 // and submit questions are held per running routine, so an answer reaches
 // the run that asked.
 const routineLanes = new Map<string, AbortController>()
+const runningRoutineIds = new Set<string>()
+let manualRoutineClaimed = false
 const routineWallWaiters = new Map<string, (verdict: 'resolved' | 'skip') => void>()
 // Set while a replay waits for permission to post; answered by
 // routines:submitDone, and by an abort with 'cancel' so it cannot wedge.
@@ -664,6 +668,9 @@ const answering = new Set<string>()
 export function abortAllChat(channel?: string): void {
   if (channel) stopDesktopForLane(channel)
   else stopDesktopControl('All chat work was stopped.')
+  for (const [lane, claim] of routineLanes) {
+    if (channel === undefined || channel === lane) claim.abort()
+  }
   for (const entry of chatAborts) {
     if (channel !== undefined && entry.channel !== channel) continue
     entry.controller.abort()
@@ -1010,7 +1017,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (errandRunning) return { ok: false, error: 'An errand is already running.' }
     // The errand drives the shared default lane; only a replay on that same
     // lane collides with it. A comet's replay runs on its own tab.
-    if (routineLanes.has(DEFAULT_LANE)) return { ok: false, error: 'A routine is using the browser right now — try again when it finishes.' }
+    if (routineLanes.has(DEFAULT_LANE) || manualRoutineClaimed) return { ok: false, error: 'A routine is using the browser right now — try again when it finishes.' }
     if (ctx.engines.length === 0) return { ok: false, error: 'No engine available — connect an AI first.' }
     // Claimed before the first await: two clicks a millisecond apart both
     // passed the check above while the floors were still being measured.
@@ -1171,7 +1178,7 @@ export function registerIpc(ctx: VaultContext): void {
     const bots = await loadBots(paths)
     visitedOrigins.clear()
     for (const bot of bots) for (const site of bot.webSites ?? []) visitedOrigins.add(site.origin)
-    return bots
+    return botPreviews(paths, bots)
   })
   ipcMain.handle('site:icon', async (_event, origin: unknown) => {
     if (typeof origin !== 'string' || origin.length > 2048) return null
@@ -1265,10 +1272,10 @@ export function registerIpc(ctx: VaultContext): void {
   // the memory gate is only the browser's own slice — a routine still works
   // on a machine too tight for any inference.
   const ROUTINE_MIN_FREE = 4e9
-  type RoutineRunReply = { ok: boolean; error?: string; blocked?: RoutineBlock }
 
   const approvals = approvalsStore(app.getPath('userData'))
   registerArtifactIpc(ctx.paths)
+  registerChatAttachmentIpc(ctx.paths)
   ipcMain.handle('routines:list', () => listRoutines(paths))
   ipcMain.handle('routines:add', async (_e, input: { name: string; steps: RoutineStep[] }) => {
     const routine = await addRoutine(paths, input)
@@ -1292,17 +1299,20 @@ export function registerIpc(ctx: VaultContext): void {
   // again, so a caller can act on the result without racing the guard.
   async function beginRoutine(
     id: string,
-    opts: { force?: boolean; slots?: Record<string, string>; lane?: string } = {},
+    opts: RoutineStartOptions = {},
   ): Promise<RoutineRunReply & { done?: Promise<RoutineRunResult> }> {
     const lane = opts.lane ?? DEFAULT_LANE
-    if (routineLanes.has(lane)) return { ok: false, error: 'A routine is already running.' }
+    if (manualRoutineClaimed && !opts.manual) return { ok: false, error: 'A routine is already running.' }
+    if (routineLanes.has(lane) || runningRoutineIds.has(id)) return { ok: false, error: 'A routine is already running.' }
     if (lane === DEFAULT_LANE && errandRunning)
       return { ok: false, error: 'An errand is using the browser right now — try again when it finishes.' }
     // Claimed before the first await, or two fast clicks both get past this.
     const claim = new AbortController()
     routineLanes.set(lane, claim)
+    runningRoutineIds.add(id)
     const release = (): void => {
       routineLanes.delete(lane)
+      runningRoutineIds.delete(id)
     }
     if (!agentBrowserAvailable()) {
       release()
@@ -1316,7 +1326,7 @@ export function registerIpc(ctx: VaultContext): void {
         error: `Not enough free memory for a routine right now (${(free / 1e9).toFixed(1)}GB free, needs ~${Math.ceil(ROUTINE_MIN_FREE / 1e9)}GB) — close some apps and try again.`,
       }
     }
-    const saved = (await listRoutines(paths)).find((r) => r.id === id)
+    const saved = (await listRoutines(paths).catch((error: unknown) => { release(); throw error })).find((r) => r.id === id)
     if (!saved) {
       release()
       return { ok: false, error: 'That routine no longer exists.' }
@@ -1333,22 +1343,30 @@ export function registerIpc(ctx: VaultContext): void {
     // placeholders for tomorrow.
     const routine = opts.slots ? { ...saved, steps: fillSlots(saved.steps, opts.slots) } : saved
     const signal = claim.signal
+    const channel = lane === DEFAULT_LANE ? {} : { channel: lane }
     let finished: Extract<EngramEvent, { type: 'routine:logged' }> | null = null
     const done = runRoutine(paths, routineDriver(lane), routine, {
       signal,
       force: opts.force === true,
-      onStep: (index, total, label) => broadcast({ type: 'routine:step', routineId: routine.id, index, total, label }),
+      onStep: (index, total, label) => {
+        broadcast({ type: 'routine:step', routineId: routine.id, ...channel, index, total, label })
+        if (channel.channel) broadcast({ type: 'comet:step', channel: lane, line: `${index + 1}/${total}: ${label}` })
+      },
       // Same parking spot as the errand's wall: the run waits on the user's
       // verdict, and abort answers with skip so it can never deadlock here.
       onWall: (wall) =>
         new Promise((resolve) => {
+          if (signal.aborted) { resolve('skip'); return }
           const keepOpen = holdAgentBrowser()
+          const abort = () => routineWallWaiters.get(routine.id)?.('skip')
+          signal.addEventListener('abort', abort, { once: true })
           routineWallWaiters.set(routine.id, (verdict) => {
             routineWallWaiters.delete(routine.id)
+            signal.removeEventListener('abort', abort)
             keepOpen()
             resolve(verdict)
           })
-          broadcast({ type: 'routine:wall', routineId: routine.id, wall: wall.wall })
+          broadcast({ type: 'routine:wall', routineId: routine.id, ...channel, wall: wall.wall })
         }),
       // Nothing is posted until the person has read what would be posted -
       // or has already said, for this procedure on this site, that it may go.
@@ -1363,9 +1381,13 @@ export function registerIpc(ctx: VaultContext): void {
           return 'approve'
         }
         return new Promise((resolve) => {
+          if (signal.aborted) { resolve('cancel'); return }
           const keepOpen = holdAgentBrowser()
+          const abort = () => routineSubmitWaiters.get(routine.id)?.('cancel')
+          signal.addEventListener('abort', abort, { once: true })
           routineSubmitWaiters.set(routine.id, (verdict) => {
             routineSubmitWaiters.delete(routine.id)
+            signal.removeEventListener('abort', abort)
             keepOpen()
             if (verdict === 'always' && action) void approvals.add(ruleFor(action))
             resolve(verdict)
@@ -1373,6 +1395,7 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({
             type: 'routine:submit',
             routineId: routine.id,
+            ...channel,
             name: preview.routine,
             filled: preview.filled,
             host,
@@ -1394,6 +1417,7 @@ export function registerIpc(ctx: VaultContext): void {
         finished = {
           type: 'routine:logged',
           routineId: routine.id,
+          ...channel,
           name: routine.name,
           outcome: result.ok ? 'done' : signal.aborted || result.blocked ? 'aborted' : 'failed',
           ...(result.cardId ? { cardId: result.cardId } : {}),
@@ -1415,9 +1439,16 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle(
     'routines:run',
     async (_e, id: string, force?: boolean, slots?: Record<string, string>): Promise<RoutineRunReply> => {
-      const { done, ...reply } = await beginRoutine(id, { force: force === true, ...(slots ? { slots } : {}) })
-      void done
-      return reply
+      return startRoutineChat(paths, id, { force: force === true, ...(slots ? { slots } : {}) }, {
+        begin: beginRoutine,
+        broadcast,
+        active: (channel, running) => { if (running) answering.add(channel); else answering.delete(channel) },
+        claim: () => {
+          if (manualRoutineClaimed || routineLanes.size > 0 || errandRunning) return null
+          manualRoutineClaimed = true
+          return () => { manualRoutineClaimed = false }
+        },
+      })
     },
   )
 
@@ -1961,6 +1992,8 @@ export function registerIpc(ctx: VaultContext): void {
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
     const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
+    const attachmentIds = chatAttachmentIds(request.attachments, bot ? await readBotTranscript(paths, bot.id) : request.history)
+    const attachments = await readChatAttachments(paths, attachmentIds, signal)
     const rules: string[] = [
       // A bot is the librarian wearing a charter: same grounding, same
       // honesty rules, narrowed to one concern the user named.
@@ -2019,7 +2052,7 @@ export function registerIpc(ctx: VaultContext): void {
     const history = request.history
       .slice(-CHAT_HISTORY_TURNS)
       .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.text.slice(0, CHAT_TURN_CHARS)}`)
-    const ask = `User: ${request.message}`
+    const ask = [attachments.context, `User: ${request.message}`].filter(Boolean).join('\n\n')
     const coldPrompt = [...rules, clock, ...background, ...evidence, ...history, ask].filter(Boolean).join('\n\n')
 
     // Dedup guard: the claude adapter emits the answer as EITHER incremental
@@ -2086,7 +2119,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at }).catch(() => undefined)
+        await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
@@ -2159,6 +2192,7 @@ export function registerIpc(ctx: VaultContext): void {
         const result = await runComet(
           {
             engine,
+            ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
             tools: [...cometTools({
               paths,
@@ -2232,7 +2266,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...(!guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel) : []), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            }), ...attachments.tools, ...(!guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2245,6 +2279,7 @@ export function registerIpc(ctx: VaultContext): void {
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
             guided,
+            ...(attachments.context ? { attachmentContext: attachments.context } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
@@ -2426,6 +2461,7 @@ export function registerIpc(ctx: VaultContext): void {
       await pump(
         engine.run({
           prompt: coldPrompt,
+          ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
           workdir: engineCwd(paths),
           disallowTools: true,
           timeoutMs: ENGINE_BUDGETS.chat,

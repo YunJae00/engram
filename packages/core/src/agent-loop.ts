@@ -50,10 +50,12 @@ export interface AgentLoopDeps {
   engine: Engine
   workdir: EngineCwd
   tools: AgentTool[]
+  imagePaths?: string[]
 }
 
 export interface AgentLoopOptions {
   signal?: AbortSignal
+  attachmentContext?: string
   // One line of identity ("You are <name>... charter: ...") carried at the
   // top of every prompt the loop sends.
   persona?: string
@@ -229,8 +231,9 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills, options.resume), options.onScreen, deps.tools),
+    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills, options.resume), options.onScreen, deps.tools, options.attachmentContext),
     workdir: deps.workdir,
+    ...(deps.imagePaths?.length ? { imagePaths: deps.imagePaths } : {}),
     disallowTools: true,
     ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),
     timeoutMs: CALL_TIMEOUT_MS,
@@ -359,8 +362,9 @@ async function agentLoop(
     let raw: string
     try {
       raw = await collectResult(deps.engine, {
-        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills, options.resume), options.onScreen, deps.tools),
+        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills, options.resume), options.onScreen, deps.tools, options.attachmentContext),
         workdir: deps.workdir,
+        ...(deps.imagePaths?.length ? { imagePaths: deps.imagePaths } : {}),
         disallowTools: true,
         ...(deps.tools.some((tool) => isDesktopTool(tool.name)) ? { requireToolIsolation: true } : {}),
         timeoutMs: CALL_TIMEOUT_MS,

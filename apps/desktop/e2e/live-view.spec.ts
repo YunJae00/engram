@@ -1,4 +1,5 @@
 import { expect, test, chromium, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
@@ -87,7 +88,7 @@ test.afterAll(async () => {
 
 test('browser controls navigate history, reload the website and open imported bookmarks', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   const lane = await page.evaluate(async () => `bot-${(await window.engram.botsList()).find((bot) => bot.name === 'Watching')!.id}`)
   await page.evaluate(async ({ lane, url }) => {
@@ -128,7 +129,7 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   })
   // The app watches the agent browser and sends it to the page - the same
   // two calls the thread's live card makes when a comet opens something.
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   await page.evaluate(() => window.engram.agentWatch(true))
   await page.evaluate((url) => window.engram.agentGo(url), siteUrl)
@@ -178,7 +179,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
     return ready.every((preview) => Boolean(preview.data))
   }, { timeout: 30000 }).toBe(true)
   expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
-  await page.getByTestId('activity-mission').click()
+  await openActivity(page, 'mission')
   await expect(page.locator('.mission-tile')).toHaveCount(4)
   // Nothing is running in this vault, so the seats are open pluses; seat
   // two chats by hand and watch their pages arrive beside their chats.
@@ -249,12 +250,12 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   expect(motion).toBeGreaterThan(10)
   await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
   await expect(page.locator('.bots-head-name')).toHaveText('Parallel watch')
-  await page.getByTestId('activity-mission').click()
+  await openActivity(page, 'mission')
   await expect(page.getByTestId('mission-tile-0').locator('.mission-name')).toHaveText('Parallel watch')
   await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
-  await page.getByTestId('activity-mission').click()
+  await openActivity(page, 'mission')
   await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
   await page.getByRole('button', { name: 'Open Fourth watch', exact: true }).first().click()
   await expect(page.locator('.bots-head-name')).toHaveText('Fourth watch')
@@ -307,7 +308,7 @@ test('a saved wide page panel stays inside the conversation on a compact window'
   await page.setViewportSize({ width: 948, height: 760 })
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 30_000 })
 
@@ -385,7 +386,7 @@ test('window and chat handoffs preserve independent input, composition and monit
     await firstPage.evaluate(() => window.scrollTo(0, 360))
     await secondPage.evaluate(() => window.scrollTo(0, 720))
     for (let turn = 0; turn < 3; turn++) {
-      await page.getByTestId('activity-mission').click()
+      await openActivity(page, 'mission')
       await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2)
       await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
       await expect(page.getByTestId('web-pane').locator('canvas[data-painted]')).toBeVisible()
@@ -416,7 +417,7 @@ test('web phases auto-open only their own conversation and folds never leak acro
   }, [first, second])
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   const step = (channel: string, tool: string) => app.evaluate(({ BrowserWindow }, { channel, tool }) => {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'comet:step', channel, line: `${tool}: page` })

@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { appendBotTurn, createBot, createNote, fileWorkTools, initVault, recordBotSites, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -114,13 +115,14 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   await page.reload()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await page.getByTestId(`bot-${bot.id}`).click()
-  const title = page.getByTestId(`bot-${bot.id}`).locator('span').last()
+  const title = page.getByTestId(`bot-${bot.id}`).locator('.sidebar-conversation-name')
   await expect(title).toHaveCSS('text-overflow', 'ellipsis')
   expect(await title.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true)
   await expect(page.locator('.answer-code pre')).toContainText('    run()')
-  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { document.documentElement.dataset.copied = value } } }))
   await page.getByRole('button', { name: 'Copy code', exact: true }).click()
-  expect(await page.evaluate(() => document.documentElement.dataset.copied)).toBe('if ready:\n    run()\n')
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('if ready:\n    run()\n')
+  await page.getByRole('button', { name: 'Copy answer', exact: true }).click()
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toContain('```python\nif ready:\n    run()\n```')
   const geometry = await page.locator('.bots-chat').evaluate((node) => {
     const composer = node.querySelector('.bots-write')!.getBoundingClientRect()
     const thread = node.querySelector('.bots-thread')!
@@ -129,7 +131,7 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   })
   expect(geometry.composer).toBeGreaterThan(geometry.content + 30)
   await screenshot('ui-conversation.png')
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await expect(page.getByTestId('setting-autostart')).toBeVisible()
   await page.getByTestId('settings-nav-computer').click()
   await page.evaluate(async () => { await window.engram.settingsSet({ ...await window.engram.settingsGet(), computerUse: true }) })
@@ -172,11 +174,11 @@ test('welcome model choices stay inside the main surface at every window size', 
 })
 
 test('the conversation survives leaving and re-entering the tab', async () => {
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
   // The view stays mounted and hidden now - coming back is instant and the
   // thread is exactly where it was.
   await expect(page.getByTestId('bots-view')).toBeHidden()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
   // The thread is held outside the view and refreshed from the transcript
   // main persists — this is what makes a comet a colleague, not a popup.
@@ -214,11 +216,11 @@ test('the selected comet is remembered across tabs', async () => {
   // Pick the comet that is NOT first in the rail, then leave and come back.
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
-  await page.getByTestId('activity-list').click()
+  await openActivity(page, 'list')
   // The view stays mounted and hidden now - coming back is instant and the
   // thread is exactly where it was.
   await expect(page.getByTestId('bots-view')).toBeHidden()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
     'Record this if you want it kept',
@@ -231,19 +233,19 @@ test('a question just sent and a draft not yet sent both survive a tab switch', 
   await composer.fill('Where do we deploy from?')
   await composer.press('Enter')
   // Leave at once - before main has written anything to disk.
-  await page.getByTestId('activity-list').click()
+  await openActivity(page, 'list')
   // The view stays mounted and hidden now - coming back is instant and the
   // thread is exactly where it was.
   await expect(page.getByTestId('bots-view')).toBeHidden()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').last()).toContainText('Where do we deploy from?')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
     'Record this if you want it kept',
     { timeout: 30_000 },
   )
   await composer.fill('unsent thought')
-  await page.getByTestId('activity-sky').click()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'sky')
+  await openActivity(page, 'bots')
   await expect(page.locator('.bots-write textarea')).toHaveValue('unsent thought')
 })
 
@@ -257,7 +259,7 @@ test('created file links reveal only generated artifacts and reject escaping lin
   })
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'File output verification' }).click()
   await page.getByRole('link', { name: '검증 결과.json', exact: true }).click()
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as { revealedArtifact: string }).revealedArtifact)).toBe(artifact.path)

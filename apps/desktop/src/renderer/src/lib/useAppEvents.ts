@@ -185,7 +185,11 @@ export function useAppEvents(options: AppEventsOptions): void {
           latest.current.showToast(latest.current.t('toast.errandFailed', { reason: event.error ?? '' }))
         }
       }
-      if (event.type === 'routine:wall') setters.routineWall({ routineId: event.routineId, wall: event.wall })
+      if (event.type === 'routine:chat') setters.routine({ running: true, routineId: event.routineId, channel: `bot-${event.botId}`, name: event.name, steps: [] })
+      if (event.type === 'chat:done' || event.type === 'chat:error') {
+        setters.routine((previous) => previous.channel === event.channel ? { running: false, steps: [] } : previous)
+      }
+      if (event.type === 'routine:wall') setters.routineWall({ routineId: event.routineId, channel: event.channel, wall: event.wall })
       if (event.type === 'press:ask') {
         setters.pressAsks((held) => [
           ...held.filter((ask) => ask.channel !== event.channel),
@@ -195,6 +199,7 @@ export function useAppEvents(options: AppEventsOptions): void {
       if (event.type === 'routine:submit') {
         setters.routineSubmit({
           routineId: event.routineId,
+          channel: event.channel,
           name: event.name,
           filled: event.filled,
           host: event.host,
@@ -215,12 +220,13 @@ export function useAppEvents(options: AppEventsOptions): void {
         )
       }
       if (event.type === 'routine:step') {
-        setters.routineWall(null)
+        setters.routineWall((previous) => previous?.routineId === event.routineId ? null : previous)
         setters.routine((previous) => {
           const fresh = event.index === 0 || previous.routineId !== event.routineId
           return {
             running: true,
             routineId: event.routineId,
+            channel: event.channel,
             name: previous.routineId === event.routineId ? previous.name : undefined,
             step: { index: event.index, total: event.total, label: event.label },
             steps: [...(fresh ? [] : previous.steps), { label: event.label, at: Date.now() }],
@@ -228,9 +234,9 @@ export function useAppEvents(options: AppEventsOptions): void {
         })
       }
       if (event.type === 'routine:logged') {
-        setters.routineWall(null)
-        setters.routineSubmit(null)
-        setters.routine({ running: false, steps: [] })
+        setters.routineWall((previous) => previous?.routineId === event.routineId ? null : previous)
+        setters.routineSubmit((previous) => previous?.routineId === event.routineId ? null : previous)
+        setters.routine((previous) => previous.routineId === event.routineId ? { running: false, steps: [] } : previous)
         if (event.outcome === 'done') {
           latest.current.showToast(
             latest.current.t(event.cardId ? 'toast.routineDoneReview' : 'toast.routineDone', {

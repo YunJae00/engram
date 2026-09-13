@@ -14,7 +14,7 @@ export const Answer = memo(function Answer({ text, compact = false }: { text: st
   const [copied, setCopied] = useState(false)
   const sites = compact ? [] : answerSites(text)
   const copy = (value: string) => {
-    void navigator.clipboard.writeText(value).then(() => { setCopied(true); setError('') }).catch(() => setError('Could not copy. Select the text and copy it manually.'))
+    void window.engram.copyText(value).then(() => { setCopied(true); setError('') }).catch(() => setError('Could not copy. Select the text and copy it manually.'))
   }
   return <><div className="bubble-msg-body" onClick={(event) => {
     const codeButton = event.target instanceof Element ? event.target.closest('[data-copy-code]') : null

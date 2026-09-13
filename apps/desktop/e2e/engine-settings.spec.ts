@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -42,7 +43,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await app?.close() })
 
 test('settings stays usable while a runtime probe never answers', async () => {
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await expect(page.getByTestId('settings-nav-ai')).toBeEnabled({ timeout: 2000 })
   await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-claude-status')).toContainText('Checking connection')
@@ -54,12 +55,12 @@ test('settings stays usable while a runtime probe never answers', async () => {
 test('both sign-in cards survive reopening settings and offer cancel and browser recovery', async () => {
   await app.evaluate(() => { (globalThis as Global).engineFixture.delayed = false })
   for (const id of ['claude', 'codex']) {
-    await page.getByTestId('activity-settings').click()
+    await openActivity(page, 'settings')
     await page.getByTestId('settings-nav-ai').click()
     await page.getByTestId(`brain-${id}-connect`).click()
     await expect(page.getByTestId(`brain-${id}-status`)).toContainText('Finish signing in')
     await page.keyboard.press('Escape')
-    await page.getByTestId('activity-settings').click()
+    await openActivity(page, 'settings')
     await page.getByTestId('settings-nav-ai').click()
     await expect(page.getByTestId(`brain-${id}-status`)).toContainText('Finish signing in')
     await page.getByRole('button', { name: 'Open browser' }).click()
@@ -82,7 +83,7 @@ test('ChatGPT models can be selected in the composer without changing the Claude
   await page.getByTestId('model-pick-codex-fast').click()
   await expect(picker).toContainText('Quick')
   expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.claudeModel, settings.codexModel] })).toEqual(['claude-deep', 'codex-fast'])
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!
@@ -90,5 +91,68 @@ test('ChatGPT models can be selected in the composer without changing the Claude
     return (await window.webContents.capturePage()).toPNG().toString('base64')
   })
   await writeFile(join(TMP, 'engine-settings-light.png'), Buffer.from(png, 'base64'))
+  await page.keyboard.press('Escape')
+})
+
+test('composer and sidebar switch providers with icons and retain each model', async () => {
+  const picker = page.getByTestId('model-picker')
+  await picker.click()
+  await expect(page.getByTestId('provider-pick-claude')).toContainText('Connected')
+  await page.getByTestId('provider-pick-claude').click()
+  await expect(page.getByTestId('model-pick-claude-deep')).toHaveAttribute('aria-checked', 'true')
+  await page.getByTestId('model-pick-claude-fast').click()
+  await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
+  await expect(page.getByTestId('engine-status')).toContainText('Claude')
+  await page.getByTestId('engine-status').click()
+  await expect(page.getByTestId('provider-pick-codex')).toContainText('Connected')
+  await page.getByTestId('provider-pick-codex').click()
+  await expect(page.getByTestId('model-pick-codex-fast')).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('engine-status')).toBeFocused()
+  await expect(picker.locator('[data-provider="codex"]')).toHaveCount(1)
+  expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.defaultEngine, settings.claudeModel, settings.codexModel] })).toEqual(['codex', 'claude-fast', 'codex-fast'])
+})
+
+test('provider menu supports keyboard selection and stays within compact windows', async () => {
+  const sidebar = page.getByTestId('app-sidebar')
+  for (const size of [{ width: 1280, height: 880 }, { width: 620, height: 480 }]) {
+    await page.setViewportSize(size)
+    if (size.width < 900 && await sidebar.getAttribute('aria-hidden') === 'false') {
+      await page.getByTestId('app-sidebar-close').click()
+      await expect(sidebar).toBeHidden()
+    }
+    const picker = page.getByTestId('model-picker')
+    await picker.focus()
+    await page.keyboard.press('ArrowDown')
+    const menu = page.getByTestId('model-picker-menu')
+    await expect(page.getByTestId('provider-pick-claude')).toBeFocused()
+    await page.keyboard.press('ArrowDown')
+    await expect(page.getByTestId('provider-pick-codex')).toBeFocused()
+    await page.keyboard.press('End')
+    await expect(menu.getByRole('menuitem', { name: 'AI settings', exact: true })).toBeFocused()
+    await expect.poll(() => menu.evaluate((node) => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight })).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    await expect(picker).toBeFocused()
+    if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+    await expect(sidebar).toBeVisible()
+    await page.getByTestId('engine-status').click()
+    await expect.poll(() => page.getByTestId('provider-picker-menu').evaluate((node) => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight })).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('engine-status')).toBeFocused()
+  }
+  await page.setViewportSize({ width: 1280, height: 880 })
+  if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+})
+
+test('a disconnected provider opens AI settings without changing accounts or provider', async () => {
+  await app.evaluate(() => { (globalThis as Global).engineFixture.signed.claude = false })
+  await page.getByTestId('model-picker').click()
+  await expect(page.getByTestId('provider-pick-claude')).toContainText('Connect in settings')
+  await page.getByTestId('provider-pick-claude').click()
+  await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('brain-claude-connect')).toBeEnabled()
+  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('codex')
+  expect(await app.evaluate(() => { const state = (globalThis as Global).engineFixture; return { signed: state.signed, login: state.login } })).toEqual({ signed: { claude: false, codex: true }, login: [{ id: 'codex', phase: 'connected', canOpen: false }] })
   await page.keyboard.press('Escape')
 })

@@ -15,7 +15,8 @@ export function useCometActivity() {
     const state = states.get(bot.id) ?? (active ? 'running' : 'ready')
     if (state !== 'running') return state
     const waiting = pressAsks.some((ask) => ask.channel === cometChannel(bot.id))
-      || bot.tasks?.some((task) => task.routineId && (task.routineId === routineSubmit?.routineId || task.routineId === routineWall?.routineId))
+      || routineSubmit?.channel === cometChannel(bot.id)
+      || routineWall?.channel === cometChannel(bot.id)
     return waiting ? 'waiting' : state
   }
 }

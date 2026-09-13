@@ -52,6 +52,7 @@ export const ENGINE_BUDGETS = {
 
 export interface EngineJobInput {
   prompt: string
+  imagePaths?: string[]
   workdir: EngineCwd
   // Total-duration budget. Unset = the adapter's default (job tier).
   timeoutMs?: number

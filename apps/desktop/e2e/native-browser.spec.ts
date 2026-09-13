@@ -1,4 +1,5 @@
 import { test, expect, chromium, _electron as electron, type ElectronApplication, type Browser, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -66,7 +67,7 @@ test('four native pages share the agent connection and keep independent input', 
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
   const context = browser.contexts()[0]!
   await expect.poll(() => context.pages().filter((page) => page.url().startsWith(url)).length).toBe(4)
-  await shell.getByTestId('activity-mission').click()
+  await openActivity(shell, 'mission')
   await expect(shell.locator('.mission-preview').getByTestId('native-browser-surface')).toHaveCount(4)
   for (let i = 0; i < 4; i++) {
     const page = context.pages().find((page) => page.url() === `${url}/?pane=${i}`)!
@@ -93,7 +94,7 @@ test('resize and chat handoffs retain the live pages and scroll', async () => {
   await shell.getByRole('button', { name: 'Open Native 1', exact: true }).first().click()
   await expect(shell.getByTestId('web-pane')).toBeVisible()
   await expect(shell.getByTestId('live-address')).toHaveValue(`${url}/?pane=0`)
-  await shell.getByTestId('activity-mission').click()
+  await openActivity(shell, 'mission')
   for (let i = 0; i < 4; i++) {
     const page = pages.find((page) => page.url() === `${url}/?pane=${i}`)!
     await expect(page.getByRole('textbox', { name: 'Entry' })).toHaveValue(`Pane ${i} 한글`)

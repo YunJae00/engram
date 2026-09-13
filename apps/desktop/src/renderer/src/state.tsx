@@ -83,7 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [errand, setErrand] = useState<AppState['errand']>({ running: false, timeline: [] })
   const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
   const [routine, setRoutine] = useState<AppState['routine']>({ running: false, steps: [] })
-  const [routineWall, setRoutineWall] = useState<{ routineId: string; wall: 'login' | 'captcha' } | null>(null)
+  const [routineWall, setRoutineWall] = useState<AppState['routineWall']>(null)
   const [routineSubmit, setRoutineSubmit] = useState<AppState['routineSubmit']>(null)
   const [pressAsks, setPressAsks] = useState<AppState['pressAsks']>([])
   const [toast, setToast] = useState<string | null>(null)
@@ -251,18 +251,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [routineSubmit],
   )
 
-  // Kick off a routine replay. main runs it detached and reports back over
-  // routine:* events — so this only surfaces the refusal (browser busy, tight).
+  // Manual replays create their own chat; progress and refusals arrive there.
   const startRoutine = useCallback(
-    async (id: string, name: string, force?: boolean, slots?: Record<string, string>) => {
-      setRoutine({ running: true, routineId: id, name, steps: [] })
-      const result = await api.routineRun(id, force, slots)
-      if (!result.ok) {
-        setRoutine({ running: false, steps: [] })
-        // A refusal that is really a question stays quiet here: a toast would
-        // scroll away, and the answer belongs next to the Run button.
-        if (!result.blocked) showToast(result.error ?? t('toast.routineFailed', { reason: '' }))
-      }
+    async (id: string, _name: string, force?: boolean, slots?: Record<string, string>) => {
+      const result = await api.routineRun(id, force, slots).catch<Awaited<ReturnType<typeof api.routineRun>>>(error => ({ ok: false, error: String(error) }))
+      if (!result.ok && !result.botId && !result.blocked) showToast(result.error ?? t('toast.routineFailed', { reason: '' }))
       return result
     },
     [showToast],

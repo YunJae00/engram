@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { createCard, createNote, initVault, parseNote, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -95,7 +96,7 @@ test('boots into the minimal shell on a temp vault', async () => {
   await expect(page.getByTestId('topbar')).toBeVisible()
   // Comets are home: the app opens on the work, and the sky is one tab over.
   await expect(page.getByTestId('bots-view')).toBeVisible()
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
   await expect(page.getByTestId('sky-view')).toBeVisible()
   // The seeded memories render as stars.
   await expect(page.getByTestId('brain-graph')).toBeVisible()
@@ -130,6 +131,9 @@ test('workspace switcher shows the active workspace', async () => {
   // to 'Engram' but the menu still renders the New/Join rows.
   await page.getByTestId('workspace-switcher').click()
   await expect(page.getByTestId('workspace-menu')).toBeVisible()
+  await expect(page.getByTestId('workspace-menu').getByRole('button', { name: /New workspace/ })).not.toBeVisible()
+  await page.getByTestId('workspace-menu').locator('summary').click()
+  await expect(page.getByTestId('workspace-menu').getByRole('button', { name: /New workspace/ })).toBeVisible()
   await expect(page.getByTestId('workspace-menu')).toContainText('New workspace')
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('workspace-menu')).toHaveCount(0)
@@ -137,7 +141,7 @@ test('workspace switcher shows the active workspace', async () => {
 
 test('help lives in Settings without duplicate quick actions', async () => {
   await expect(page.getByTestId('help-button')).toHaveCount(0)
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-help').click()
   const panel = page.getByTestId('help-panel')
   await expect(panel).toBeVisible()
@@ -149,7 +153,7 @@ test('help lives in Settings without duplicate quick actions', async () => {
 
 
 test('the cosmos chat collapses and comes back', async () => {
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
   await expect(page.getByTestId('cosmos-chat')).toBeVisible()
   const openSkyWidth = (await page.getByTestId('sky-view').boundingBox())!.width
   await page.getByTitle('Hide', { exact: true }).click()
@@ -164,19 +168,21 @@ test('the cosmos chat collapses and comes back', async () => {
 test('the app sidebar groups chats and routines, renames them, and folds away', async () => {
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
-  await expect(page.getByTestId('app-sidebar')).toContainText('Search Cosmos')
   const sidebar = page.getByTestId('app-sidebar')
+  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
+  await expect(sidebar.locator('.sidebar-nav')).toHaveCount(0)
   const engineStatus = sidebar.getByTestId('engine-status')
   await expect(engineStatus).toBeVisible()
-  const [navBox, engineBox, footerBox] = await Promise.all([
-    sidebar.locator('.sidebar-nav').boundingBox(),
+  const [scrollBox, engineBox, footerBox] = await Promise.all([
+    sidebar.locator('.sidebar-scroll').boundingBox(),
     engineStatus.boundingBox(),
     sidebar.locator('.sidebar-footer').boundingBox(),
   ])
-  expect(engineBox!.y).toBeGreaterThanOrEqual(navBox!.y + navBox!.height)
-  expect(engineBox!.y).toBeLessThan(footerBox!.y)
+  expect(footerBox!.y).toBeGreaterThanOrEqual(scrollBox!.y + scrollBox!.height - 1)
+  expect(engineBox!.y).toBeGreaterThanOrEqual(footerBox!.y)
+  expect(engineBox!.y + engineBox!.height).toBeLessThanOrEqual(footerBox!.y + footerBox!.height)
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await expect(page.getByTestId('sidebar-chats')).toContainText('Scout')
 
   await page.getByTestId(`sidebar-chat-menu-${bot.id}`).click()
@@ -187,6 +193,8 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect.poll(async () => (await page.evaluate(() => window.engram.botsList())).some((item) => item.name === 'Field Scout')).toBe(true)
 
   const routine = await page.evaluate(() => window.engram.routineAdd({ name: 'Portal notices', steps: [{ kind: 'open', url: 'https://example.com/notices' }] }))
+  await expect(page.getByTestId('sidebar-routines-toggle')).toHaveAttribute('aria-expanded', 'false')
+  await page.getByTestId('sidebar-routines-toggle').click()
   await expect(page.getByTestId('sidebar-routines')).toContainText('Portal notices')
   await page.getByTestId(`sidebar-routine-menu-${routine.id}`).click()
   await page.getByTestId(`sidebar-routine-rename-${routine.id}`).click()
@@ -214,16 +222,16 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect(scout).toHaveCount(0)
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   await expect(page.getByTestId('bots-view')).toBeVisible()
   await expect(page.getByTestId('bots-suggestion').filter({ hasText: 'Research scout' })).toHaveCount(0)
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
 })
 
 test('help is reachable through Settings on every view', async () => {
   for (const view of ['bots', 'sky']) {
-    await page.getByTestId(`activity-${view}`).click()
-    await page.getByTestId('activity-settings').click()
+    await openActivity(page, view)
+    await openActivity(page, 'settings')
     await page.getByTestId('settings-nav-help').click()
     await expect(page.getByTestId('help-panel')).toBeVisible()
     await page.keyboard.press('Escape')
@@ -243,7 +251,7 @@ test('commands open Help in Settings instead of redundant quick actions', async 
 })
 
 test('folders support dragging, keyboard organization, persistence, and non-destructive removal', async () => {
-  await page.getByTestId('activity-bots').click()
+  await openActivity(page, 'bots')
   for (const kind of ['chat', 'routine'] as const) {
     const ids = await page.evaluate(async kind => {
       const result: string[] = []
@@ -285,7 +293,7 @@ test('folders support dragging, keyboard organization, persistence, and non-dest
     await expect(box).toHaveCount(0)
     for (const id of ids) await expect(item(id)).toBeVisible()
   }
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
 })
 
 test('Ctrl+L is the door to the comets tab', async () => {
@@ -293,13 +301,13 @@ test('Ctrl+L is the door to the comets tab', async () => {
   await expect(page.getByTestId('bots-view')).toBeVisible()
   // and the cosmos furniture stays off this tab
   await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
   await expect(page.getByTestId('cosmos-chat')).toBeVisible()
 })
 
 test('clicking a star in the cosmos opens the note sheet with editor and meta bar', async () => {
   // The sky is home — every seeded memory renders as a clickable star.
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
   await expect(page.getByTestId('sky-view')).toBeVisible()
   await page.getByTestId('cosmos-chat-collapse').click()
   await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
@@ -317,7 +325,7 @@ test('hovering a star lights its neighbours and lets the rest of the sky recede'
   // derived_from n-argo-0001, so that one burns with it; n-hello-0001 is a
   // stranger and dims. The canvas draws the alpha field; the ghosts carry the
   // settled state so a driver (and a screen reader) can read it.
-  await page.getByTestId('activity-sky').click()
+  await openActivity(page, 'sky')
   await expect(page.getByTestId('sky-view')).toBeVisible()
   await page.locator('[data-node-id="n-argo-0002"]').hover()
   await expect(page.locator('[data-node-id="n-argo-0002"]')).toHaveAttribute('data-sky-state', 'emph')
@@ -366,7 +374,7 @@ test('file and text drops do not capture memories or navigate the app', async ()
 })
 
 test('list view: rows render chronologically, the filter narrows them, a row opens the note sheet', async () => {
-  await page.getByTestId('activity-list').click()
+  await openActivity(page, 'list')
   await expect(page.getByTestId('list-view')).toBeVisible()
   // the seeded living notes show up as rows
   await expect.poll(() => page.getByTestId('list-row').count()).toBeGreaterThan(1)

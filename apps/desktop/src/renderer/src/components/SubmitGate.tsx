@@ -4,9 +4,9 @@ import { useCometState } from '../state-slices.js'
 
 // The last thing between a procedure and a post. It shows the actual words
 // that will go into the page, because "approve?" without them is not consent.
-export function SubmitGate() {
+export function SubmitGate({ channel }: { channel?: string }) {
   const { routineSubmit, answerRoutineSubmit } = useCometState()
-  if (!routineSubmit) return null
+  if (!routineSubmit || routineSubmit.channel !== channel) return null
   return (
     <div className="routine-submit" data-testid="routine-submit">
       <div className="routine-submit-head">

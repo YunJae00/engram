@@ -122,7 +122,7 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
                 pick(() =>
                   void api
                     .buildPack()
-                    .then((p) => navigator.clipboard.writeText(p.content).then(() => showToast(t('toast.contextPack', { file: p.file }))))
+                    .then((p) => api.copyText(p.content).then(() => showToast(t('toast.contextPack', { file: p.file }))))
                     .catch((err: unknown) => showToast(t('toast.actionFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))),
                 )
               }

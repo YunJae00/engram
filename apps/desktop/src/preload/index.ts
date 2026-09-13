@@ -34,6 +34,8 @@ const api: EngramApi = {
   hideQuickCapture: () => ipcRenderer.send('quick:hide'),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   chatSend: (request: ChatRequestDto) => ipcRenderer.invoke('chat:send', request),
+  chatAttach: (name, data) => ipcRenderer.invoke('chat:attach', name, data),
+  copyText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
   // fire-and-forget: drag deltas at pointer-move rate must never await
   activityToday: () => ipcRenderer.invoke('activity:today'),
   activityGet: () => ipcRenderer.invoke('activity:get'),

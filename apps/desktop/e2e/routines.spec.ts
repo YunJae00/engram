@@ -5,11 +5,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// The routine replayer end to end: build a routine in the sheet, TEACH one by
-// doing the work in a real Chrome, and replay through a login wall that a
-// person clears mid-run. The agent browser is a real Chrome the main process
-// drives; the test reaches into that window over CDP to stand in for the
-// person's hands.
+// Saved routines open fresh conversations and preserve the replay's gates.
 
 test.describe.configure({ mode: 'serial' })
 
@@ -128,10 +124,19 @@ test('a saved routine appears on the sheet as a note in the vault', async () => 
   await expect.poll(async () => (await listRoutines(paths)).map((r) => r.name)).toEqual(['Portal notices'])
 })
 
-test('running the routine drives a real Chrome and lands the reading in review', async () => {
+test('running a saved routine opens a new chat and lands its reading in the chat and review', async () => {
+  const previous = await page.evaluate(() => window.engram.botsList())
   await page.locator('[data-testid^="routine-run-"]').click()
+  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
+  await expect(page.getByTestId('bots-thread')).toContainText('Run Portal notices.')
   await expect(page.getByTestId('routine-live')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
+  await expect(page.getByTestId('bots-thread')).toContainText('the office closes early on Friday')
+  const after = await page.evaluate(() => window.engram.botsList())
+  expect(after).toHaveLength(previous.length + 1)
+  const created = after.find((bot) => !previous.some((old) => old.id === bot.id))!
+  const turns = await page.evaluate((id) => window.engram.botTranscript(id), created.id)
+  expect(turns.map((turn) => turn.role)).toEqual(['user', 'assistant'])
 
   await expect
     .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
@@ -162,6 +167,22 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
     .toContain('The quarterly numbers landed safely')
   expect((await listRoutines(paths)).find((r) => r.id === gated.id)!.lastOutcome).toBe('done')
+})
+
+test('stopping a routine from its chat releases a waiting login gate', async () => {
+  gateUnlocked = false
+  const gated = await addRoutine(paths, { name: 'Cancel reports', steps: [{ kind: 'open', url: `${siteUrl}gate` }, { kind: 'read' }] })
+  await openSheet()
+  await page.getByTestId(`routine-run-${gated.id}`).click()
+  await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
+  await page.getByTestId('web-pane-stop').click()
+  await expect(page.getByTestId('routine-wall-done-live')).toHaveCount(0, { timeout: 60_000 })
+  await expect.poll(async () => (await listRoutines(paths)).find((routine) => routine.id === gated.id)?.lastOutcome).toBe('aborted')
+  gateUnlocked = true
+  await openSheet()
+  await page.getByTestId(`routine-run-${gated.id}`).click()
+  await expect.poll(async () => (await listRoutines(paths)).find((routine) => routine.id === gated.id)?.lastOutcome, { timeout: 90_000 }).toBe('done')
+  await expect(page.getByTestId('bots-thread')).toContainText('The quarterly numbers landed safely')
 })
 
 // The one place a wrong click costs something the person cannot take back.
@@ -195,4 +216,39 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   await page.getByTestId('routine-submit-approve').click()
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
   await expect.poll(() => posted, { timeout: 20_000 }).toEqual(['shipped the replayer'])
+
+  await openSheet()
+  await page.getByTestId(`routine-run-${writer.id}`).click()
+  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
+  await expect(page.getByTestId('bots-thread')).toContainText('already ran today')
+  await expect(page.getByTestId('bots-offer-run')).toBeVisible()
+  expect(posted).toEqual(['shipped the replayer'])
+  await page.getByTestId('bots-offer-run').click()
+  await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
+  await page.getByTestId('routine-submit-cancel').click()
+  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 60_000 })
+  expect(posted).toEqual(['shipped the replayer'])
+})
+
+test('scheduled gates stay in the routine sheet and never appear in an unrelated chat', async () => {
+  const before = (await page.evaluate(() => window.engram.botsList())).length
+  await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]!
+    window.webContents.send('engram:event', { type: 'routine:step', routineId: 'scheduled-fixture', index: 0, total: 2, label: 'Open scheduled page' })
+    window.webContents.send('engram:event', { type: 'routine:wall', routineId: 'scheduled-fixture', wall: 'login' })
+    window.webContents.send('engram:event', { type: 'routine:submit', routineId: 'scheduled-fixture', name: 'Scheduled fixture', filled: [{ label: 'Entry', text: 'Fixture content' }], host: 'example.com', canRemember: false })
+  })
+  await expect(page.getByTestId('bots-thread').getByTestId('routine-live')).toHaveCount(0)
+  await expect(page.getByTestId('bots-thread').getByTestId('routine-submit')).toHaveCount(0)
+  await openSheet()
+  const sheet = page.getByTestId('routines-sheet')
+  await expect(sheet.getByTestId('routine-live')).toContainText('Open scheduled page')
+  await expect(sheet.getByTestId('routine-wall-done-live')).toBeVisible()
+  await expect(sheet.getByTestId('routine-submit')).toContainText('Fixture content')
+  await expect(sheet.getByTestId('scheduled-routine-stop')).toBeVisible()
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'routine:logged', routineId: 'scheduled-fixture', name: 'Scheduled fixture', outcome: 'aborted' }))
+  await expect(sheet.getByTestId('routine-live')).toHaveCount(0)
+  await expect(sheet.getByTestId('routine-submit')).toHaveCount(0)
+  expect((await page.evaluate(() => window.engram.botsList())).length).toBe(before)
+  await page.keyboard.press('Escape')
 })

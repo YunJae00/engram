@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { initVault } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -61,16 +62,18 @@ test('low memory rejects a new embedded browser without blocking the app', async
   expect(await page.evaluate(() => window.engram.botsList())).toHaveLength(4)
 })
 
-test('sidebar navigation and activity indicators share the same icon and label columns', async () => {
+test('Engram keeps navigation in its menu with aligned icons and leaves status in the sidebar footer', async () => {
+  const sidebar = page.getByTestId('app-sidebar')
+  await expect(sidebar.locator('.sidebar-nav-row')).toHaveCount(0)
+  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
+  await page.getByTestId('workspace-switcher').click()
+  const menu = page.getByTestId('workspace-menu')
   const orbitIcon = page.getByTestId('activity-mission').locator('svg')
   await expect(orbitIcon).toHaveAttribute('data-icon', 'orbit')
   await expect(orbitIcon).toHaveAttribute('viewBox', '0 0 24 24')
   await expect(orbitIcon).toHaveAttribute('aria-hidden', 'true')
   expect(await orbitIcon.innerHTML()).not.toBe(await page.getByTestId('activity-sky').locator('svg').innerHTML())
-  await emit({ type: 'filing:start' })
-  await expect(page.getByTestId('sweep-status')).toBeVisible()
-  const positions = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll('.sidebar-nav-row, .sidebar-status-row')]
+  const positions = await menu.locator('.sidebar-nav-row').evaluateAll((rows) => {
     return rows.map((row) => {
       const icon = row.firstElementChild!.getBoundingClientRect()
       return { center: icon.left + icon.width / 2, label: row.lastElementChild!.getBoundingClientRect().left }
@@ -79,11 +82,16 @@ test('sidebar navigation and activity indicators share the same icon and label c
   expect(positions).toHaveLength(6)
   expect(Math.max(...positions.map((p) => p.center)) - Math.min(...positions.map((p) => p.center))).toBeLessThanOrEqual(1)
   expect(Math.max(...positions.map((p) => p.label)) - Math.min(...positions.map((p) => p.label))).toBeLessThanOrEqual(1)
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await emit({ type: 'filing:start' })
+  await expect(sidebar.locator('.sidebar-footer').getByTestId('sweep-status')).toBeVisible()
+  await expect(sidebar.locator('.sidebar-footer').getByTestId('engine-status')).toBeVisible()
   await emit({ type: 'filing:done' })
 })
 
 test('each chat and mission border tracks running, input needed, error and completion independently', async () => {
-  await page.getByTestId('activity-mission').click()
+  await openActivity(page, 'mission')
   await expect(page.locator('.mission-tile .mini-chat')).toHaveCount(4)
   for (const id of ids.slice(0, 3)) {
     const input = page.getByTestId(`mini-chat-${id}`).locator('input')
@@ -128,24 +136,35 @@ test('sidebar groups animate height, remain interruptible and remove collapsed c
   for (const group of ['chats', 'routines']) {
     const toggle = page.getByTestId(`sidebar-${group}-toggle`)
     const content = page.locator(`#sidebar-${group}-content`)
+    if (group === 'routines') {
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await expect(content).not.toBeVisible()
+      await toggle.click()
+      await expect(content).toHaveAttribute('data-settled', 'true')
+    }
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     const heights = await page.evaluate(async (name) => {
       const panel = document.getElementById(`sidebar-${name}-content`)!
       const button = document.querySelector<HTMLButtonElement>(`[data-testid="sidebar-${name}-toggle"]`)!
+      // The settled flag uses a timer; hidden Electron windows can still have an opening transition pending.
+      const beforeOpeningFinished = panel.getBoundingClientRect().height
+      for (const animation of panel.getAnimations()) animation.finish()
       const start = panel.getBoundingClientRect().height
       button.click()
       await new Promise((resolve) => setTimeout(resolve, 0))
       const motion = panel.getAnimations().find((animation) => animation instanceof CSSTransition && animation.transitionProperty === 'grid-template-rows')
-      if (!motion) return [start, start, panel.getBoundingClientRect().height]
+      if (!motion) return { group: name, beforeOpeningFinished, start, middle: start, end: panel.getBoundingClientRect().height }
       motion.pause()
       motion.currentTime = 110
       const middle = panel.getBoundingClientRect().height
       motion.finish()
-      return [start, middle, panel.getBoundingClientRect().height]
+      return { group: name, beforeOpeningFinished, start, middle, end: panel.getBoundingClientRect().height }
     }, group)
-    expect(heights[1]).toBeGreaterThan(0)
-    expect(heights[1]).toBeLessThan(heights[0]!)
-    expect(heights.at(-1)).toBe(0)
+    const diagnostic = JSON.stringify(heights)
+    expect(heights.start, diagnostic).toBeGreaterThan(0)
+    expect(heights.middle, diagnostic).toBeGreaterThan(0)
+    expect(heights.middle, diagnostic).toBeLessThan(heights.start)
+    expect(heights.end, diagnostic).toBe(0)
     await expect(content).not.toBeVisible()
     expect(await content.locator('.sidebar-disclosure-content').evaluate((node) => (node as HTMLElement).inert)).toBe(true)
     await toggle.click()
@@ -175,7 +194,7 @@ test('settings loading uses the same padded header and content on compact and wi
   for (const width of [1280, 620]) {
     await page.setViewportSize({ width, height: 720 })
     if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-    await page.getByTestId('activity-settings').click()
+    await openActivity(page, 'settings')
     const loading = page.getByTestId('settings-loading')
     await expect(loading).toBeVisible()
     expect(await loading.evaluate((node) => {
@@ -204,7 +223,7 @@ test('settings loading uses the same padded header and content on compact and wi
     ipcMain.removeHandler('settings:get')
     ipcMain.handle('settings:get', () => { throw new Error('Settings unavailable') })
   })
-  await page.getByTestId('activity-settings').click()
+  await openActivity(page, 'settings')
   await expect(page.getByRole('alert')).toContainText('Settings could not be loaded')
   await app.evaluate(({ ipcMain }, value) => {
     ipcMain.removeHandler('settings:get')
