@@ -113,6 +113,44 @@ it.each(['rejection', 'event'] as const)('restores an exact draft and attachment
   expect(unsubscribe).toHaveBeenCalledTimes(2)
 })
 
+it.each(['before', 'after'] as const)('ignores a settled turn’s late rejection %s the next same-chat failure', async (timing) => {
+  const store = createCometThreads('first')
+  const oldFile = { id: 'old-file', name: 'old.txt', size: 10 }
+  const nextFile = { id: 'next-file', name: 'next.txt', size: 10 }
+  const listeners = new Set<(event: EngramEvent) => void>()
+  const emit = (event: EngramEvent) => { store.handleEvent(event); for (const listener of listeners) listener(event) }
+  let rejectOld!: (error: Error) => void
+  let resolveNext!: () => void
+  const oldRequest = new Promise<void>((_resolve, reject) => { rejectOld = reject })
+  const nextRequest = new Promise<void>(resolve => { resolveNext = resolve })
+  const api: Pick<EngramApi, 'chatSend' | 'onEvent'> = {
+    onEvent: listener => { listeners.add(listener); return () => { listeners.delete(listener) } },
+    chatSend: vi.fn().mockReturnValueOnce(oldRequest).mockReturnValueOnce(nextRequest),
+  }
+  const oldSend = sendCometMessage(api, store, 'first', 'Old completed question', [oldFile])
+  emit({ type: 'chat:done', channel: 'bot-first', text: 'Completed answer' })
+  const nextSend = sendCometMessage(api, store, 'first', 'New question to restore', [nextFile])
+  expect(store.thread('first').busy).toBe(true)
+  if (timing === 'before') {
+    rejectOld(new Error('Delayed old post-processing failure'))
+    await oldSend
+    expect(store.thread('first').busy).toBe(true)
+    expect(store.thread('first').draft).toBe('')
+  }
+  emit({ type: 'chat:error', channel: 'bot-first', message: 'New request failed' })
+  if (timing === 'after') {
+    rejectOld(new Error('Delayed old post-processing failure'))
+    await oldSend
+  }
+  expect(store.thread('first').busy).toBe(false)
+  expect(store.thread('first').draft).toBe('New question to restore')
+  expect(store.thread('first').attachments).toEqual([nextFile])
+  expect(store.thread('first').messages.filter(message => message.error).map(message => message.text)).toEqual(['New request failed'])
+  resolveNext()
+  await nextSend
+  expect(listeners.size).toBe(0)
+})
+
 it('rejects unsupported, empty, oversized, malformed and traversing attachments', async () => {
   const paths = vaultPaths(root)
   const file = await saveChatAttachment(paths, 'safe.md', Buffer.from('safe'))

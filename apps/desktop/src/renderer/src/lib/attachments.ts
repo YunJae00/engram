@@ -10,16 +10,19 @@ export async function sendCometMessage(api: Pick<EngramApi, 'chatSend' | 'onEven
   if (!message || store.thread(botId).busy) return
   const ids = attachments.map(one => one.id)
   const history = store.begin(botId, message, ids)
-  let failed = false
+  let settled = false
   const fail = (reason: string) => {
-    if (failed) return
-    failed = true
+    if (settled) return
+    settled = true
     if (store.thread(botId).busy) store.fail(botId, reason)
     if (!store.thread(botId).draft) store.setDraft(botId, draft)
     if (!store.thread(botId).attachments.length) store.setAttachments(botId, attachments)
   }
   const channel = cometChannel(botId)
-  const unsubscribe = api.onEvent(event => { if (event.type === 'chat:error' && event.channel === channel) fail(event.message) })
+  const unsubscribe = api.onEvent(event => {
+    if (event.type === 'chat:done' && event.channel === channel) settled = true
+    else if (event.type === 'chat:error' && event.channel === channel) fail(event.message)
+  })
   try {
     await api.chatSend({ engineId: '', message, history, attachments: ids, channel, botId })
   } catch (cause) { fail(cause instanceof Error ? cause.message : String(cause)) }
