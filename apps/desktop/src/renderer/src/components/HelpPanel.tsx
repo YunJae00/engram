@@ -4,8 +4,8 @@ import { MOD_LABEL } from '../i18n.js'
 const places = [
   ['Comets', 'Ask a question or hand over a task. Follow the work as it happens.'],
   ['Cosmos', 'Keep useful context, decisions, and things worth remembering.'],
-  ['Routines', 'Keep a successful task and reuse its steps when you need them.'],
-  ['Orbit', 'Watch up to four conversations and their work, side by side.'],
+  ['Routines', 'Open Routines from the Engram menu, review the saved steps, then run in a new conversation.'],
+  ['Split view', 'Use the controls above a conversation to open two or four panes, then add a chat to each.'],
 ]
 const shortcuts = [
   [[MOD_LABEL, 'P'], 'Search Cosmos'],
@@ -21,7 +21,7 @@ export function HelpPanel() {
     <p className="setting-hint">A place for your ideas, memories, and work.</p>
     <dl className="help-places">{places.map(([name, description]) => <div key={name}><dt>{name}</dt><dd>{description}</dd></div>)}</dl>
     <h3>Make it yours</h3>
-    <p>Use the + beside Chats or Routines to create a folder. Drag a conversation or routine to move it, or use its menu to organize it with the keyboard. Removing a folder keeps everything inside.</p>
+    <p>Use the folder button beside search to create a folder. Drag conversations or routines to move them. A conversation’s menu lets you rename, pin, or delete it. Removing a folder keeps everything inside.</p>
     <h3>Stay in control</h3>
     <p>Watch the work indicator to see where a comet is working. Press Esc or Stop to end computer control. Check important results before you use or share them.</p>
     <h3>Keyboard shortcuts</h3>

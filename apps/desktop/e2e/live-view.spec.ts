@@ -386,6 +386,7 @@ test('window and chat handoffs preserve independent input, composition and monit
     await secondPage.evaluate(() => window.scrollTo(0, 720))
     for (let turn = 0; turn < 3; turn++) {
       await openActivity(page, 'mission')
+      await page.getByTestId('mission-layout-2').click()
       await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2)
       await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
       await expect(page.getByTestId('web-pane').locator('canvas[data-painted]')).toBeVisible()

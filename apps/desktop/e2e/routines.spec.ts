@@ -160,6 +160,7 @@ test('Routines replaces the workspace and selecting a saved case shows its recor
   await expect(page.getByTestId('routine-recorded-steps')).toContainText('Click Notices')
   await page.getByText('Saved description', { exact: true }).click()
   await expect(page.getByTestId('routine-description')).toContainText('A saved procedure')
+  await page.screenshot({ path: test.info().outputPath('routine-library.png') })
   await expect(page.getByTestId('sidebar-chat-collection')).toHaveCount(0)
   await expect(page.getByTestId('bots-new')).toHaveCount(0)
   const search = page.getByRole('textbox', { name: 'Search routines', exact: true })
