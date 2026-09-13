@@ -143,6 +143,8 @@ try {
   try {
     await frameHelper.ready
     const foreground = (await fixture.request('state')).foreground
+    await assert.rejects(frameHelper.request('applicationFrame', target), /Select this window/)
+    await frameHelper.request('inspectWindow', { window: target.window, pid: 0 })
     assert.match((await frameHelper.request('applicationFrame', target)).window, /^\d+$/)
     assert.equal((await fixture.request('state')).foreground, foreground)
     result.applicationFramePassed = true
