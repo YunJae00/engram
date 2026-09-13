@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronDown, Columns2, Grid2X2, Monitor, PanelRight, Plus } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, Globe, PanelRight, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -7,13 +7,12 @@ import { MiniChat } from '../components/MiniChat.js'
 import { CometActivityIndicator, cometActivityLabel } from '../components/CometActivityIndicator.js'
 import { OrbitSurface } from '../components/OrbitSurface.js'
 import { cometChannel } from '../lib/cometThreads.js'
-import { selectComet } from '../lib/cometThreadsLive.js'
+import { cometThreads, selectComet } from '../lib/cometThreadsLive.js'
 import { useCometActivity } from '../lib/useCometActivity.js'
 import { fillSeats, readSeats, replaceSeat } from '../lib/missionSeats.js'
 import { useShellState } from '../state-slices.js'
 import { SidebarDisclosure } from '../components/SidebarDisclosure.js'
 
-type Layout = 1 | 2 | 4
 const SEATS_KEY = 'engram.mission.slots'
 const FOLDED_KEY = 'engram.mission.folded-chats'
 
@@ -24,20 +23,22 @@ function readFoldedChats(): Set<string> {
   } catch { return new Set() }
 }
 
-export function MissionControl() {
+export function MissionControl({ layout }: { layout: 2 | 4 }) {
   const { setActivity } = useShellState()
   const activityOf = useCometActivity()
   const [bots, setBots] = useState<BotDto[]>([])
   const [active, setActive] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
-  const [seats, setSeats] = useState(() => readSeats(localStorage.getItem(SEATS_KEY)))
+  const [seats, setSeats] = useState(() => {
+    const saved = readSeats(localStorage.getItem(SEATS_KEY))
+    const selected = cometThreads.getSnapshot().selectedId
+    return selected ? replaceSeat(saved, 0, selected) : saved
+  })
   const [adding, setAdding] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [foldedChats, setFoldedChats] = useState(readFoldedChats)
-  const [layout, setLayout] = useState<Layout>(() => {
-    const saved = Number(localStorage.getItem('engram.mission.layout'))
-    return saved === 1 || saved === 2 ? saved : 4
-  })
+  const [pages, setPages] = useState<Set<string>>(() => new Set())
+  const [openedPages, setOpenedPages] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -72,8 +73,8 @@ export function MissionControl() {
     void refresh()
     return () => { alive = false; clearTimeout(timer) }
   }, [])
-  useEffect(() => localStorage.setItem('engram.mission.layout', String(layout)), [layout])
   useEffect(() => localStorage.setItem(SEATS_KEY, JSON.stringify(seats)), [seats])
+  useEffect(() => { if (loaded && seats[0]) selectComet(seats[0]) }, [loaded, seats[0]])
   useEffect(() => localStorage.setItem(FOLDED_KEY, JSON.stringify([...foldedChats])), [foldedChats])
   const statusOf = (bot: BotDto) => activityOf(bot, active.includes(cometChannel(bot.id)))
   const running = bots.filter((bot) => ['running', 'waiting'].includes(statusOf(bot))).map((bot) => bot.id)
@@ -118,20 +119,13 @@ export function MissionControl() {
   )
 
   return (
-    <section className="mission-control" data-testid="mission-control" aria-label={t('mission.title')}>
-      <header className="mission-head">
-        <div><p>{t('mission.summary', { count: running.length })}</p></div>
-        <div className="mission-actions"><div className="mission-layout" aria-label={t('mission.layout')}>
-          {([1, 2, 4] as const).map((count) => {
-            const Icon = count === 1 ? Monitor : count === 2 ? Columns2 : Grid2X2
-            return <button key={count} aria-pressed={layout === count} aria-label={t('mission.panels', { count })} title={t('mission.panels', { count })} data-testid={`mission-layout-${count}`} onClick={() => setLayout(count)}><Icon size={16} /></button>
-          })}
-        </div></div>
-      </header>
+    <section className="mission-control" data-testid="mission-control" aria-label="Split conversations">
       {error && <p className="mission-error" role="status">{t('mission.error')}</p>}
       <div className={`mission-grid mission-grid-${layout}`}>
         {seats.slice(0, layout).map((id, index) => {
           const bot = bots.find((item) => item.id === id)
+          const webOpen = Boolean(id && (pages.has(id) || openedPages.has(id)))
+          const chatFolded = Boolean(id && webOpen && foldedChats.has(id))
           if (!bot) return (
             <article className="mission-tile mission-open-seat" key={index} data-testid={`mission-tile-${index}`}>
               <button className="mission-add" data-testid={`mission-add-${index}`} aria-label={t('mission.add')} aria-expanded={adding === index} onClick={() => setAdding(adding === index ? null : index)}><Plus size={22} strokeWidth={1.6} aria-hidden /><span>{t('mission.add')}</span></button>
@@ -143,7 +137,8 @@ export function MissionControl() {
               <header className="mission-tile-head">
                 <button className="mission-name mission-change" title={t('mission.change')} aria-label={t('mission.choose', { count: index + 1 })} aria-expanded={adding === index} onClick={() => setAdding(adding === index ? null : index)}><span>{bot.name}</span><ChevronDown size={13} /></button>
                 <span className="mission-status" role="status"><CometActivityIndicator state={statusOf(bot)} />{cometActivityLabel(statusOf(bot))}</span>
-                <button className="mission-chat-toggle" data-testid={`mission-chat-toggle-${index}`} title={foldedChats.has(bot.id) ? 'Show conversation' : 'Hide conversation'} aria-label={foldedChats.has(bot.id) ? 'Show conversation' : 'Hide conversation'} aria-expanded={!foldedChats.has(bot.id)} aria-controls={`mission-chat-${index}`} onClick={() => setFoldedChats((previous) => {
+                {!pages.has(bot.id) && <button className="mission-web-toggle" aria-label={webOpen ? 'Hide website' : 'Show website'} title={webOpen ? 'Hide website' : 'Show website'} aria-expanded={webOpen} onClick={() => setOpenedPages(previous => { const next = new Set(previous); if (next.has(bot.id)) next.delete(bot.id); else next.add(bot.id); return next })}><Globe size={15} aria-hidden /></button>}
+                <button className="mission-chat-toggle" data-testid={`mission-chat-toggle-${index}`} disabled={!webOpen} title={chatFolded ? 'Show conversation' : 'Hide conversation'} aria-label={chatFolded ? 'Show conversation' : 'Hide conversation'} aria-expanded={!chatFolded} aria-controls={`mission-chat-${index}`} onClick={() => setFoldedChats((previous) => {
                   const next = new Set(previous)
                   if (next.has(bot.id)) next.delete(bot.id)
                   else next.add(bot.id)
@@ -152,9 +147,9 @@ export function MissionControl() {
                 <button className="mission-enter" aria-label={t('mission.open', { name: bot.name })} title={t('mission.open', { name: bot.name })} onClick={() => open(bot.id)}><ArrowUpRight size={15} aria-hidden /></button>
               </header>
               {chooser(index)}
-              <div className="mission-tile-body" key={bot.id} data-chat-open={!foldedChats.has(bot.id)}>
-                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} open={() => open(bot.id)} />
-                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={foldedChats.has(bot.id)} ref={(node) => { if (node) node.inert = foldedChats.has(bot.id) }}><MiniChat botId={bot.id} /></div>
+              <div className="mission-tile-body" key={bot.id} data-chat-open={!chatFolded} data-web-open={webOpen}>
+                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} open={() => open(bot.id)} onLiveChange={live => setPages(previous => { if (previous.has(bot.id) === live) return previous; const next = new Set(previous); if (live) next.add(bot.id); else next.delete(bot.id); return next })} />
+                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} /></div>
               </div>
             </article>
           )

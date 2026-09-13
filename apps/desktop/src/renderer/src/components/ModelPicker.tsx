@@ -161,9 +161,9 @@ export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | '
       aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open} aria-haspopup="menu" aria-controls={open ? menuId : undefined}
       onClick={() => { focusLast.current = false; setOpen(!open) }}
       onKeyDown={(event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true) } }}>
-      <ProviderIcon provider={engine ?? 'claude'} size={sidebar ? 16 : 14} />
+      <ProviderIcon provider={engine ?? 'claude'} size={16} />
       {sidebar ? <span className="provider-picker-status"><span>{providerName}</span><small>{status}</small></span> : <span className="provider-picker-label">{label}</span>}
-      <ChevronDown className="provider-picker-chevron" size={12} strokeWidth={1.8} aria-hidden />
+      <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
     </button>
     {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label="Provider and model" data-testid={sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
       <div className="provider-picker-heading">Provider</div>

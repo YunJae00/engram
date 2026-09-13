@@ -141,8 +141,9 @@ test('mission tiles preserve usable previews and inputs instead of clipping at n
     await expect.poll(() => page.locator('.mission-tile').evaluateAll((tiles) => tiles.every((tile) => {
       const bounds = tile.getBoundingClientRect()
       const preview = tile.querySelector('.mission-preview')!.getBoundingClientRect()
-      const input = tile.querySelector('.mini-chat-write input')!.getBoundingClientRect()
-      return preview.width >= 140 && input.width >= 120 && input.left >= bounds.left && input.right <= bounds.right
+      const input = tile.querySelector('.mini-chat-write textarea')!.getBoundingClientRect()
+      const webOpen = tile.querySelector('.mission-tile-body')!.getAttribute('data-web-open') === 'true'
+      return (!webOpen || preview.width >= 140) && input.width >= 120 && input.left >= bounds.left && input.right <= bounds.right
         && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight + 1
     }))).toBe(true)
     await screenshot(`orbit-layout-${width}.png`)
@@ -155,7 +156,8 @@ test('tile conversations and chat pickers unfold without losing the draft', asyn
     await navigate('mission')
     const tile = page.getByTestId('mission-tile-0')
     const toggle = page.getByTestId('mission-chat-toggle-0')
-    const input = tile.locator('.mini-chat-write input')
+    const input = tile.locator('.mini-chat-write textarea')
+    if (await toggle.isDisabled()) await tile.getByRole('button', { name: 'Show website', exact: true }).click()
     await input.fill('Keep this draft 한글')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -171,7 +173,7 @@ test('tile conversations and chat pickers unfold without losing the draft', asyn
     await expect(choose).toBeFocused()
     await expect(tile.locator('.mission-add-menu')).toBeHidden()
     await choose.click()
-    await page.locator('.mission-head').click({ position: { x: 10, y: 10 } })
+    await page.locator('.topbar-title').click()
     await expect(tile.locator('.mission-add-menu')).toBeHidden()
     await expect(input).toHaveValue('Keep this draft 한글')
     await input.fill('')

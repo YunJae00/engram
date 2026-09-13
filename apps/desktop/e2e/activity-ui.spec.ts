@@ -68,18 +68,19 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
-  const orbitIcon = page.getByTestId('activity-mission').locator('svg')
-  await expect(orbitIcon).toHaveAttribute('data-icon', 'orbit')
-  await expect(orbitIcon).toHaveAttribute('viewBox', '0 0 24 24')
-  await expect(orbitIcon).toHaveAttribute('aria-hidden', 'true')
-  expect(await orbitIcon.innerHTML()).not.toBe(await page.getByTestId('activity-sky').locator('svg').innerHTML())
+  await expect(menu.getByTestId('activity-mission')).toHaveCount(0)
+  const routinesIcon = page.getByTestId('activity-routines').locator('svg')
+  await expect(routinesIcon).toHaveClass(/lucide-repeat/)
+  await expect(routinesIcon).toHaveAttribute('viewBox', '0 0 24 24')
+  await expect(routinesIcon).toHaveAttribute('aria-hidden', 'true')
+  expect(await routinesIcon.innerHTML()).not.toBe(await page.getByTestId('activity-sky').locator('svg').innerHTML())
   const positions = await menu.locator('.sidebar-nav-row').evaluateAll((rows) => {
     return rows.map((row) => {
       const icon = row.firstElementChild!.getBoundingClientRect()
       return { center: icon.left + icon.width / 2, label: row.lastElementChild!.getBoundingClientRect().left }
     })
   })
-  expect(positions).toHaveLength(6)
+  expect(positions).toHaveLength(5)
   expect(Math.max(...positions.map((p) => p.center)) - Math.min(...positions.map((p) => p.center))).toBeLessThanOrEqual(1)
   expect(Math.max(...positions.map((p) => p.label)) - Math.min(...positions.map((p) => p.label))).toBeLessThanOrEqual(1)
   await page.keyboard.press('Escape')
@@ -94,7 +95,7 @@ test('each chat and mission border tracks running, input needed, error and compl
   await openActivity(page, 'mission')
   await expect(page.locator('.mission-tile .mini-chat')).toHaveCount(4)
   for (const id of ids.slice(0, 3)) {
-    const input = page.getByTestId(`mini-chat-${id}`).locator('input')
+    const input = page.getByTestId(`mini-chat-${id}`).locator('textarea')
     await expect(input).toBeEnabled()
     await input.fill('Review the current task')
     await input.press('Enter')
@@ -118,62 +119,88 @@ test('each chat and mission border tracks running, input needed, error and compl
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId(`bot-${ids[0]}`).locator('.comet-activity-icon')).toHaveCSS('animation-name', 'none')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  const retry = page.getByTestId(`mini-chat-${ids[2]}`).locator('input')
+  const retry = page.getByTestId(`mini-chat-${ids[2]}`).locator('textarea')
   await retry.fill('Try again')
   await retry.press('Enter')
   await expect(page.getByTestId('mission-tile-2')).toHaveAttribute('data-state', 'running')
   for (const id of ids.slice(0, 3)) await emit({ type: 'chat:done', channel: `bot-${id}`, text: 'Complete' })
   await expect(page.locator('.mission-tile[data-state="ready"]')).toHaveCount(4)
   await expect(page.locator('.sidebar-item-main .comet-activity-icon')).toHaveCount(0)
-  const next = page.getByTestId(`mini-chat-${ids[1]}`).locator('input')
+  const next = page.getByTestId(`mini-chat-${ids[1]}`).locator('textarea')
   await next.fill('A new task')
   await next.press('Enter')
   await expect(page.getByTestId('mission-tile-1')).toHaveAttribute('data-state', 'running')
   await emit({ type: 'chat:done', channel: `bot-${ids[1]}`, text: 'Complete' })
 })
 
-test('sidebar groups animate height, remain interruptible and remove collapsed controls from focus', async () => {
-  for (const group of ['chats', 'routines']) {
-    const toggle = page.getByTestId(`sidebar-${group}-toggle`)
-    const content = page.locator(`#sidebar-${group}-content`)
-    if (group === 'routines') {
-      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-      await expect(content).not.toBeVisible()
-      await toggle.click()
-      await expect(content).toHaveAttribute('data-settled', 'true')
-    }
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    const heights = await page.evaluate(async (name) => {
-      const panel = document.getElementById(`sidebar-${name}-content`)!
-      const button = document.querySelector<HTMLButtonElement>(`[data-testid="sidebar-${name}-toggle"]`)!
-      // The settled flag uses a timer; hidden Electron windows can still have an opening transition pending.
-      const beforeOpeningFinished = panel.getBoundingClientRect().height
-      for (const animation of panel.getAnimations()) animation.finish()
-      const start = panel.getBoundingClientRect().height
+test('sidebar folders animate height, remain interruptible and remove collapsed controls from focus', async () => {
+  await openActivity(page, 'bots')
+  const folderId = await page.evaluate(async id => {
+    const layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Motion checks' } })
+    const folder = layout.chat.folders.find(one => one.name === 'Motion checks')!
+    await window.engram.sidebarChange({ kind: 'chat', change: { action: 'move-item', id, folder: folder.id } })
+    return folder.id
+  }, ids[0]!)
+  const folder = page.getByTestId(`sidebar-folder-${folderId}`)
+  const toggle = folder.locator('.sidebar-folder-head > .sidebar-item-main')
+  const content = page.locator(`#folder-${folderId}`)
+  await expect(content.getByTestId(`bot-${ids[0]}`)).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  const heights = await page.evaluate(async id => {
+    const panel = document.getElementById(`folder-${id}`)!
+    const button = document.querySelector<HTMLButtonElement>(`[aria-controls="folder-${id}"]`)!
+    // The settled flag uses a timer; hidden Electron windows can still have an opening transition pending.
+    const beforeOpeningFinished = panel.getBoundingClientRect().height
+    for (const animation of panel.getAnimations()) animation.finish()
+    const start = panel.getBoundingClientRect().height
+    // Folder folds persist through IPC before React applies the new expanded state.
+    await new Promise<void>(resolve => {
+      const observer = new MutationObserver(() => {
+        if (button.getAttribute('aria-expanded') === 'false') { observer.disconnect(); resolve() }
+      })
+      observer.observe(button, { attributes: true, attributeFilter: ['aria-expanded'] })
       button.click()
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      const motion = panel.getAnimations().find((animation) => animation instanceof CSSTransition && animation.transitionProperty === 'grid-template-rows')
-      if (!motion) return { group: name, beforeOpeningFinished, start, middle: start, end: panel.getBoundingClientRect().height }
-      motion.pause()
-      motion.currentTime = 110
-      const middle = panel.getBoundingClientRect().height
-      motion.finish()
-      return { group: name, beforeOpeningFinished, start, middle, end: panel.getBoundingClientRect().height }
-    }, group)
-    const diagnostic = JSON.stringify(heights)
-    expect(heights.start, diagnostic).toBeGreaterThan(0)
-    expect(heights.middle, diagnostic).toBeGreaterThan(0)
-    expect(heights.middle, diagnostic).toBeLessThan(heights.start)
-    expect(heights.end, diagnostic).toBe(0)
-    await expect(content).not.toBeVisible()
-    expect(await content.locator('.sidebar-disclosure-content').evaluate((node) => (node as HTMLElement).inert)).toBe(true)
-    await toggle.click()
-    await toggle.click()
-    await toggle.click()
-    await expect(content).toBeVisible()
-    await expect(content).toHaveAttribute('data-settled', 'true')
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  }
+    })
+    const motion = panel.getAnimations().find(animation => animation instanceof CSSTransition && animation.transitionProperty === 'grid-template-rows')
+    if (!motion) return { beforeOpeningFinished, start, middle: start, end: panel.getBoundingClientRect().height }
+    motion.pause()
+    motion.currentTime = 110
+    const middle = panel.getBoundingClientRect().height
+    motion.finish()
+    return { beforeOpeningFinished, start, middle, end: panel.getBoundingClientRect().height }
+  }, folderId)
+  const diagnostic = JSON.stringify(heights)
+  expect(heights.start, diagnostic).toBeGreaterThan(0)
+  expect(heights.middle, diagnostic).toBeGreaterThan(0)
+  expect(heights.middle, diagnostic).toBeLessThan(heights.start)
+  expect(heights.end, diagnostic).toBe(0)
+  await expect(content).not.toBeVisible()
+  await expect(content.locator('.sidebar-disclosure-content')).toHaveJSProperty('inert', true)
+  const opening = await toggle.evaluate(async button => {
+    const panel = document.getElementById(button.getAttribute('aria-controls')!)!
+    await new Promise<void>(resolve => {
+      const observer = new MutationObserver(() => {
+        if (button.getAttribute('aria-expanded') === 'true') { observer.disconnect(); resolve() }
+      })
+      observer.observe(button, { attributes: true, attributeFilter: ['aria-expanded'] })
+      ;(button as HTMLButtonElement).click()
+    })
+    const motion = panel.getAnimations().find(animation => animation instanceof CSSTransition && animation.transitionProperty === 'grid-template-rows')
+    if (!motion) return null
+    motion.pause(); motion.currentTime = 110
+    return panel.getBoundingClientRect().height
+  })
+  expect(opening).not.toBeNull()
+  expect(opening!).toBeGreaterThan(0)
+  expect(opening!).toBeLessThan(heights.start)
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await content.evaluate(panel => { for (const animation of panel.getAnimations()) animation.finish() })
+  await expect(content).toBeVisible()
+  await expect(content).toHaveAttribute('data-settled', 'true')
+  await expect(content.locator('.sidebar-disclosure-content')).toHaveJSProperty('inert', false)
 })
 
 test('settings loading uses the same padded header and content on compact and wide screens', async () => {

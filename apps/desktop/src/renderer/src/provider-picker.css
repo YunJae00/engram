@@ -1,7 +1,6 @@
 .provider-icon { display: block; flex: none; fill: currentColor; }
 .provider-icon[data-provider="claude"] { color: #c57655; }
-.model-picker-btn .provider-icon { margin-right: 3px; }
-.provider-picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-picker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .provider-picker-chevron { flex: none; margin-left: auto; color: var(--fg-faint); }
 .provider-picker-sidebar { min-width: 0; width: 100%; }
 .provider-picker-sidebar .sidebar-engine-status { width: 100%; gap: 9px; }

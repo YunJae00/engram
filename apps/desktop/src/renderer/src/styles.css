@@ -7,6 +7,7 @@
 @import './desktop.css';
 @import './settings.css';
 @import './provider-picker.css';
+@import './routine-workspace.css';
 
 :root {
   /* Type scale: every font-size in this file resolves to one of these. */
@@ -1253,13 +1254,7 @@ body.bubble-host { background: transparent; }
 .chat-engine-pill:hover { background: var(--hover-bg); }
 .chat-engine-chevron { position: absolute; right: 5px; color: var(--fg-faint); pointer-events: none; }
 /* ── Composer: one look wherever a message is typed ───────────────── */
-/* A one-line textarea and the send button are the same height by
-   construction: 20px line + 4px padding + 1px border is the 30px control the
-   app's buttons already use. flex-end then centres the button on a single
-   line and pins it to the bottom edge once the box has grown; there is no
-   offset to keep in step with the font. */
-/* The composer is one field: words on the left, the one button on the
-   right, inside a single rounded outline that lifts a little on focus. */
+/* Footer controls share a fixed height; the draft grows above them. */
 .chat-write {
   --write-control: 32px;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px;
@@ -1278,18 +1273,20 @@ body.bubble-host { background: transparent; }
 }
 .chat-write textarea:focus { border: none; box-shadow: none; outline: none; }
 .chat-write-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--write-control); }
-.chat-write-tools { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.chat-write-tools { display: flex; align-items: center; flex: 1; gap: 4px; min-width: 0; }
+.chat-write-tools > button > svg { display: block; flex: none; width: 16px; height: 16px; }
 /* Which model answers, beside the composer: quiet until wanted, and a plain
    menu when it is. */
 /* The page's own button, beside the composer: the one place the panel is
    summoned from and the one light that says a page is open or being worked.
    A quiet globe; a dot when a page is live; a pulse while hands are on it. */
-.composer-web {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border-radius: 999px; color: var(--fg-faint);
+.chat-attach-button, .composer-web {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  width: var(--write-control, 32px); height: var(--write-control, 32px); border-radius: 999px; color: var(--fg-dim);
   flex: none;
 }
-.composer-web:hover { background: var(--hover-bg); color: var(--fg); }
+.composer-web { position: relative; }
+.chat-attach-button:hover:not(:disabled), .composer-web:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
 .composer-web.showing { color: var(--fg-dim); background: var(--selected-soft); }
 .composer-web-dot {
   position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; border-radius: 50%;
@@ -1302,11 +1299,10 @@ body.bubble-host { background: transparent; }
   50% { opacity: 1; }
 }
 
-/* On the 32px send button's centre line: 4 + 24/2 = 16px. */
-.model-picker { position: relative; flex: none; }
+.model-picker { position: relative; display: flex; flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .model-picker-btn {
-  display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px; line-height: 16px;
-  border-radius: 999px; font-size: var(--fs-micro); font-weight: 600; color: var(--fg-dim);
+  display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: var(--write-control, 32px); padding: 0 8px; line-height: 16px;
+  border-radius: 999px; font-size: var(--fs-small); font-weight: 600; color: var(--fg-dim);
 }
 .model-picker-btn:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg-dim); }
 .model-picker-btn:disabled { cursor: default; }
@@ -1788,8 +1784,8 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .settings-more > summary::before { content: '›'; display: inline-block; margin-right: 6px; transition: transform 120ms ease; }
 .settings-more[open] > summary::before { transform: rotate(90deg); }
 .composer-cosmos {
-  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px;
-  border-radius: 999px; color: var(--fg-faint); font-size: var(--fs-micro); font-weight: 600;
+  display: inline-flex; align-items: center; flex: none; gap: 6px; height: var(--write-control, 32px); padding: 0 8px; line-height: 16px;
+  border-radius: 999px; color: var(--fg-dim); font-size: var(--fs-small); font-weight: 600;
 }
 .composer-cosmos:hover, .composer-cosmos.armed { background: var(--selected-soft); color: var(--fg); }
 .settings-app-section { padding: 0; }

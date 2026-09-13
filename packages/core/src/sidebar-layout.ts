@@ -8,7 +8,7 @@ import { renameWithRetry } from './rename-with-retry.js'
 const id = z.string().min(1).max(128).regex(/^[\w-]+$/)
 const name = z.string().trim().min(1).max(80).refine(value => [...value].every(character => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127))
 const folder = z.object({ id, name, collapsed: z.boolean().optional() })
-const group = z.object({ folders: z.array(folder).max(100), items: z.array(z.object({ id, folder: id.nullable() })).max(10000) })
+const group = z.object({ folders: z.array(folder).max(100), items: z.array(z.object({ id, folder: id.nullable(), pinned: z.boolean().optional() })).max(10000) })
 const layout = z.object({ chat: group, routine: group })
 export type SidebarLayout = z.infer<typeof layout>
 export type SidebarKind = keyof SidebarLayout
@@ -20,6 +20,7 @@ const action = z.discriminatedUnion('action', [
   z.object({ action: z.literal('fold-folder'), id, collapsed: z.boolean() }).strict(),
   z.object({ action: z.literal('move-folder'), id, before: id.optional() }).strict(),
   z.object({ action: z.literal('move-item'), id, folder: id.nullable(), before: id.optional() }).strict(),
+  z.object({ action: z.literal('pin-item'), id, pinned: z.boolean() }).strict(),
 ])
 export const sidebarChange = z.object({ kind: z.enum(['chat', 'routine']), change: action }).strict()
 export type SidebarChange = z.infer<typeof sidebarChange>
@@ -55,6 +56,12 @@ export async function changeSidebarLayout(paths: VaultPaths, input: SidebarChang
     if (change.action === 'create-folder') {
       if (current.folders.length >= 100) throw new Error('This section already has 100 folders.')
       current.folders.push({ id: randomUUID(), name: change.name })
+    } else if (change.action === 'pin-item') {
+      if (request.kind !== 'chat') throw new Error('Only conversations can be pinned.')
+      const item = current.items.find(one => one.id === change.id)
+      if (!item) throw new Error('This item no longer exists.')
+      if (change.pinned) item.pinned = true
+      else delete item.pinned
     } else if (change.action === 'move-item') {
       const item = current.items.find(one => one.id === change.id)
       if (!item) throw new Error('This item no longer exists.')

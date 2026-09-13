@@ -101,7 +101,7 @@ export const ChatComposer = memo(
         <div className="chat-write-footer">
           <div className="chat-write-tools">{onAttachmentsChange && <>
             <input ref={fileRef} type="file" hidden multiple accept={ATTACHMENT_ACCEPT} data-testid={testId ? `${testId}-files` : undefined} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void attach(files) }} />
-            <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || busy || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={15} aria-hidden /></button>
+            <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || busy || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} strokeWidth={1.9} aria-hidden /></button>
           </>}{tools}</div>
           {busy ? (
             <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={onStop}>

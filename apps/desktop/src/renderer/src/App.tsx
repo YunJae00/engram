@@ -27,7 +27,7 @@ const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) 
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
 const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
-const RoutinesSheet = lazy(() => import('./components/RoutinesSheet.js').then((m) => ({ default: m.RoutinesSheet })))
+const RoutinesView = lazy(() => import('./views/RoutinesView.js').then((m) => ({ default: m.RoutinesView })))
 const GithubConnect = lazy(() => import('./components/GithubConnect.js').then((m) => ({ default: m.GithubConnect })))
 const DiagnosticsView = lazy(() => import('./views/DiagnosticsView.js').then((m) => ({ default: m.DiagnosticsView })))
 const InboxOverlay = lazy(() => import('./views/InboxOverlay.js').then((m) => ({ default: m.InboxOverlay })))
@@ -58,7 +58,8 @@ function Shell() {
   const [digestOpen, setDigestOpen] = useState(false)
   // "Delegate an errand…" from the command palette raises this one window intent.
   const [errandOpen, setErrandOpen] = useState(false)
-  const [routinesOpen, setRoutinesOpen] = useState(false)
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null)
+  const [splitLayout, setSplitLayout] = useState<2 | 4>(2)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
@@ -86,7 +87,7 @@ function Shell() {
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
       else if (e.type === 'routine:chat') {
-        selectComet(e.botId); setActivity('bots'); setRoutinesOpen(false)
+        selectComet(e.botId); setActivity('bots')
         if (window.innerWidth <= 900) setSidebarOpen(false)
       }
     })
@@ -145,7 +146,7 @@ function Shell() {
     const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
-    const openRoutines = () => setRoutinesOpen(true)
+    const openRoutines = () => setActivity('routines')
     const runRoutine = (event: Event) => {
       const request = (event as CustomEvent<{ routineId?: string; name?: string }>).detail
       if (!request?.routineId) return
@@ -204,11 +205,13 @@ function Shell() {
         onToggle={() => setSidebarOpen((value) => !value)}
         onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
         onOpenPalette={() => setPalette('search')}
-        onOpenRoutines={() => setRoutinesOpen(true)}
+        onOpenRoutines={() => setActivity('routines')}
+        selectedRoutineId={selectedRoutineId}
+        onSelectRoutine={setSelectedRoutineId}
       />
       {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
       <main className="app-main">
-        <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} />
+        <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} splitLayout={activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
         <AppNotices
           engines={engines}
           enginesDetected={enginesDetected}
@@ -249,7 +252,8 @@ function Shell() {
             <div className="canvas-slot" hidden={activity !== 'bots'}>
               <BotsView />
             </div>
-            {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl /></Suspense>}
+            {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
+            {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
                 <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />
@@ -271,7 +275,6 @@ function Shell() {
         <NoteSheet />
         {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
         {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
-        {routinesOpen && <RoutinesSheet onClose={() => setRoutinesOpen(false)} />}
         <ReviewOverlay />
         <InboxOverlay />
         {palette && <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />}

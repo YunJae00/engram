@@ -87,7 +87,8 @@ test('resize and chat handoffs retain the live pages and scroll', async () => {
   await first.mouse.wheel(0, 400)
   await expect.poll(() => first.evaluate(() => scrollY)).toBeGreaterThan(100)
   await shell.getByTestId('mission-layout-1').click()
-  await expect(shell.locator('.mission-preview').getByTestId('native-browser-surface')).toHaveCount(1)
+  await expect(shell.getByTestId('mission-control')).toHaveCount(0)
+  await expect(shell.getByTestId('web-pane').getByTestId('native-browser-surface')).toHaveCount(1)
   await expect.poll(() => first.evaluate(() => innerWidth)).toBeGreaterThan(500)
   await shell.getByTestId('mission-layout-4').click()
   await expect(shell.locator('.mission-preview').getByTestId('native-browser-surface')).toHaveCount(4)
@@ -156,7 +157,7 @@ test('folding a tile conversation and dismissing its picker keep the native page
   const tile = shell.getByTestId('mission-tile-0')
   const first = browser.contexts()[0]!.pages().find((page) => page.url() === `${url}/?pane=0`)!
   const before = await first.evaluate(() => innerHeight)
-  const draft = tile.locator('.mini-chat-write input')
+  const draft = tile.locator('.mini-chat-write textarea')
   await draft.fill('Keep the conversation draft')
   await shell.getByTestId('mission-chat-toggle-0').click()
   await expect(tile.locator('.mission-chat-slot')).toBeHidden()

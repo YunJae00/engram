@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { openActivity } from './navigation.js'
 
 // Saved routines open fresh conversations and preserve the replay's gates.
 
@@ -91,15 +92,16 @@ test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 
-async function openSheet(): Promise<void> {
-  // Close whatever overlay an earlier test left, so the sheet mounts fresh
-  // and reads the routine list of THIS moment.
+async function openRoutines(id?: string): Promise<void> {
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
-  await expect(async () => {
-    await page.evaluate(() => window.dispatchEvent(new Event('engram:open-routines')))
-    await expect(page.getByTestId('routines-sheet')).toBeVisible({ timeout: 2_000 })
-  }).toPass({ timeout: 30_000 })
+  await openActivity(page, 'routines')
+  const view = page.getByTestId('routines-view')
+  await expect(view).toBeVisible()
+  expect(await view.evaluate(node => node.closest('.brief-overlay, [role="dialog"]') === null)).toBe(true)
+  if (!id) return
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+  await page.getByTestId(`sidebar-routine-run-${id}`).click()
+  await expect(page.getByTestId(`routine-detail-${id}`)).toBeVisible()
 }
 
 async function expectRoutineControlReachable(testId: string): Promise<void> {
@@ -132,13 +134,12 @@ async function resizeForRoutine(width: number): Promise<void> {
   }
 }
 
-test('a saved routine appears on the sheet as a note in the vault', async () => {
+test('Routines replaces the workspace and selecting a saved case shows its recorded steps without running', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
-  await openSheet()
+  await openRoutines()
+  await expect(page.getByTestId('routines-overview')).toContainText('Saved routines')
 
-  // Nothing is authored on the sheet: what a comet learned is written to the
-  // vault, which is how the one this run replays is handed in.
-  await page.evaluate(
+  const routine = await page.evaluate(
     (url) =>
       window.engram.routineAdd({
         name: 'Portal notices',
@@ -150,18 +151,32 @@ test('a saved routine appears on the sheet as a note in the vault', async () => 
       }),
     siteUrl,
   )
-  // The sheet reads the list when it opens; a note written past it is seen
-  // on the next opening.
-  await openSheet()
-
-  await expect(page.locator('[data-testid^="routine-row-"]')).toHaveCount(1)
+  const before = await page.evaluate(() => window.engram.botsList())
+  await openRoutines(routine.id)
+  await expect(page.getByTestId(`routine-detail-${routine.id}`).getByRole('heading', { name: 'Portal notices', exact: true })).toBeVisible()
+  await expect(page.getByTestId('routine-recorded-steps').locator(':scope > li')).toHaveCount(3)
+  expect(await page.getByTestId('routine-recorded-steps').locator(':scope > li').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-kind')))).toEqual(['open', 'click', 'read'])
+  await expect(page.getByTestId('routine-recorded-steps')).toContainText(siteUrl)
+  await expect(page.getByTestId('routine-recorded-steps')).toContainText('Click Notices')
+  await page.getByText('Saved description', { exact: true }).click()
+  await expect(page.getByTestId('routine-description')).toContainText('A saved procedure')
+  await expect(page.getByTestId('sidebar-chat-collection')).toHaveCount(0)
+  await expect(page.getByTestId('bots-new')).toHaveCount(0)
+  const search = page.getByRole('textbox', { name: 'Search routines', exact: true })
+  await search.fill('unrelated routine name')
+  await expect(page.getByTestId(`sidebar-routine-run-${routine.id}`)).toHaveCount(0)
+  await search.fill('PORTAL')
+  await expect(page.getByTestId(`sidebar-routine-run-${routine.id}`)).toBeVisible()
+  await search.fill('')
+  expect(await page.evaluate(() => window.engram.botsList())).toEqual(before)
+  expect(await page.evaluate(() => window.engram.chatActive())).toEqual([])
   await expect.poll(async () => (await listRoutines(paths)).map((r) => r.name)).toEqual(['Portal notices'])
 })
 
 test('running a saved routine opens a new chat and lands its reading in the chat and review', async () => {
   const previous = await page.evaluate(() => window.engram.botsList())
   await page.locator('[data-testid^="routine-run-"]').click()
-  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
+  await expect(page.getByTestId('routines-view')).toHaveCount(0)
   await expect(page.getByTestId('bots-thread')).toContainText('Run Portal notices.')
   await expect(page.getByTestId('routine-live')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
@@ -186,7 +201,7 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     steps: [{ kind: 'open', url: `${siteUrl}gate` }, { kind: 'read' }],
   })
 
-  await openSheet()
+  await openRoutines(gated.id)
   await page.getByTestId(`routine-run-${gated.id}`).click()
   // The wall surfaces as a question in the live block, not as a failure.
   // A wall brings the large view up by itself, with Continue beside the page.
@@ -219,14 +234,14 @@ test('a login wall pauses the replay, and the run resumes from that step once th
 test('stopping a routine from its chat releases a waiting login gate', async () => {
   gateUnlocked = false
   const gated = await addRoutine(paths, { name: 'Cancel reports', steps: [{ kind: 'open', url: `${siteUrl}gate` }, { kind: 'read' }] })
-  await openSheet()
+  await openRoutines(gated.id)
   await page.getByTestId(`routine-run-${gated.id}`).click()
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
   await page.getByTestId('web-pane-stop').click()
   await expect(page.getByTestId('routine-wall-done-live')).toHaveCount(0, { timeout: 60_000 })
   await expect.poll(async () => (await listRoutines(paths)).find((routine) => routine.id === gated.id)?.lastOutcome).toBe('aborted')
   gateUnlocked = true
-  await openSheet()
+  await openRoutines(gated.id)
   await page.getByTestId(`routine-run-${gated.id}`).click()
   await expect.poll(async () => (await listRoutines(paths)).find((routine) => routine.id === gated.id)?.lastOutcome, { timeout: 90_000 }).toBe('done')
   await expect(page.getByTestId('bots-thread')).toContainText('The quarterly numbers landed safely')
@@ -244,7 +259,8 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
     ],
   })
 
-  await openSheet()
+  await openRoutines(writer.id)
+  await expect(page.getByTestId('routine-step-value')).toHaveText('shipped the replayer')
   await page.getByTestId(`routine-run-${writer.id}`).click()
 
   // The gate shows the actual words that would be posted.
@@ -264,16 +280,16 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   await page.setViewportSize({ width: 1280, height: 840 })
 
   // Asked again (the refused run left no success stamp), approving posts once.
-  await openSheet()
+  await openRoutines(writer.id)
   await page.getByTestId(`routine-run-${writer.id}`).click()
   await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
   await page.getByTestId('routine-submit-approve').click()
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
   await expect.poll(() => posted, { timeout: 20_000 }).toEqual(['shipped the replayer'])
 
-  await openSheet()
+  await openRoutines(writer.id)
   await page.getByTestId(`routine-run-${writer.id}`).click()
-  await expect(page.getByTestId('routines-sheet')).toHaveCount(0)
+  await expect(page.getByTestId('routines-view')).toHaveCount(0)
   await expect(page.getByTestId('bots-thread')).toContainText('already ran today')
   await expect(page.getByTestId('bots-offer-run')).toBeVisible()
   expect(posted).toEqual(['shipped the replayer'])
@@ -284,7 +300,7 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   expect(posted).toEqual(['shipped the replayer'])
 })
 
-test('scheduled gates stay in the routine sheet and never appear in an unrelated chat', async () => {
+test('scheduled gates stay in the routine workspace and never appear in an unrelated chat', async () => {
   const before = (await page.evaluate(() => window.engram.botsList())).length
   await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!
@@ -294,15 +310,28 @@ test('scheduled gates stay in the routine sheet and never appear in an unrelated
   })
   await expect(page.locator('.bots-chat').getByTestId('routine-live')).toHaveCount(0)
   await expect(page.locator('.bots-chat').getByTestId('routine-submit')).toHaveCount(0)
-  await openSheet()
-  const sheet = page.getByTestId('routines-sheet')
-  await expect(sheet.getByTestId('routine-live')).toContainText('Open scheduled page')
-  await expect(sheet.getByTestId('routine-wall-done-live')).toBeVisible()
-  await expect(sheet.getByTestId('routine-submit')).toContainText('Fixture content')
-  await expect(sheet.getByTestId('scheduled-routine-stop')).toBeVisible()
+  await openRoutines()
+  const view = page.getByTestId('routines-view')
+  await expect(view.getByTestId('routine-live')).toContainText('Open scheduled page')
+  await expect(view.getByTestId('routine-wall-done-live')).toBeVisible()
+  await expect(view.getByTestId('routine-submit')).toContainText('Fixture content')
+  await expect(view.getByTestId('scheduled-routine-stop')).toBeVisible()
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'routine:logged', routineId: 'scheduled-fixture', name: 'Scheduled fixture', outcome: 'aborted' }))
-  await expect(sheet.getByTestId('routine-live')).toHaveCount(0)
-  await expect(sheet.getByTestId('routine-submit')).toHaveCount(0)
+  await expect(view.getByTestId('routine-live')).toHaveCount(0)
+  await expect(view.getByTestId('routine-submit')).toHaveCount(0)
   expect((await page.evaluate(() => window.engram.botsList())).length).toBe(before)
   await page.keyboard.press('Escape')
+})
+
+test('an unavailable saved description does not hide the recorded steps or block Run', async () => {
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('notes:readBody')
+    ipcMain.handle('notes:readBody', () => { throw new Error('The fixture description is unavailable') })
+  })
+  const routine = (await listRoutines(paths))[0]!
+  await openRoutines(routine.id)
+  await expect(page.getByTestId('routine-description-error')).toBeVisible()
+  await expect(page.getByTestId('routine-recorded-steps').locator(':scope > li')).toHaveCount(routine.steps.length)
+  await expect(page.getByTestId(`routine-run-${routine.id}`)).toBeEnabled()
+  await page.getByTestId(`routine-run-${routine.id}`).click({ trial: true })
 })

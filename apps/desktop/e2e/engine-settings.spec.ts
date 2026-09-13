@@ -10,7 +10,7 @@ test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
-type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void }
+type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void; longModelLabel?: string }
 type Global = typeof globalThis & { engineFixture: Fixture }
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
@@ -29,7 +29,7 @@ test.beforeAll(async () => {
     const handle = (name: string, fn: (...args: unknown[]) => unknown) => { ipcMain.removeHandler(name); ipcMain.handle(name, (_event, ...args) => fn(...args)) }
     handle('engines:states', () => state.delayed ? new Promise(() => undefined) : ['claude', 'codex'].map((id) => ({ id, installed: true, loggedIn: state.signed[id] })))
     handle('engines:logins', () => state.login)
-    handle('models:list', (id) => [{ value: `${id}-fast`, label: 'Quick', detail: 'For everyday work' }, { value: `${id}-deep`, label: 'Thorough', detail: 'For harder tasks' }])
+    handle('models:list', (id) => [{ value: `${id}-fast`, label: state.longModelLabel ?? 'Quick', detail: 'For everyday work' }, { value: `${id}-deep`, label: 'Thorough', detail: 'For harder tasks' }])
     handle('engines:connect', (value) => {
       const id = value as 'claude' | 'codex'
       tell({ id, phase: 'browser', canOpen: true })
@@ -155,4 +155,65 @@ test('a disconnected provider opens AI settings without changing accounts or pro
   expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('codex')
   expect(await app.evaluate(() => { const state = (globalThis as Global).engineFixture; return { signed: state.signed, login: state.login } })).toEqual({ signed: { claude: false, codex: true }, login: [{ id: 'codex', phase: 'connected', canOpen: false }] })
   await page.keyboard.press('Escape')
+})
+
+test('welcome and conversation footer controls align and keep long model names inside narrow composers', async () => {
+  const label = 'Quick model with an intentionally long catalog label for compact layouts'
+  await app.evaluate(({ BrowserWindow }, name) => {
+    ;(globalThis as Global).engineFixture.longModelLabel = name
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'models:changed' })
+  }, label)
+  await page.evaluate(async () => window.engram.settingsSet({ ...await window.engram.settingsGet(), defaultEngine: 'codex', codexModel: 'codex-fast' }))
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.getByTestId('bots-new').click()
+  for (const surface of ['welcome', 'conversation']) {
+    if (surface === 'conversation') {
+      await page.setViewportSize({ width: 1280, height: 880 })
+      if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+      const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Composer alignment', purpose: '' }))
+      await page.getByTestId(`bot-${bot.id}`).click()
+    }
+    const input = page.getByTestId(surface === 'welcome' ? 'welcome-input' : 'bots-input')
+    for (const width of [1280, 620, 380]) {
+      await page.setViewportSize({ width, height: 880 })
+      const sidebar = page.getByTestId('app-sidebar')
+      if (await sidebar.getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
+      await expect(sidebar).toBeHidden()
+      await expect(input).toBeVisible()
+      const composer = page.locator('.chat-write').filter({ has: input })
+      await expect(composer.getByTestId('model-picker')).toContainText(label)
+      const geometry = await composer.evaluate(node => {
+        const footer = node.querySelector('.chat-write-footer')!.getBoundingClientRect()
+        const tools = node.querySelector('.chat-write-tools')!
+        const buttons = [...node.querySelectorAll('.chat-write-footer button')].map(button => button.getBoundingClientRect())
+        const icons = [...node.querySelectorAll('.chat-write-footer button > svg')].map(icon => icon.getBoundingClientRect())
+        const picker = node.querySelector('.model-picker-btn')!.getBoundingClientRect()
+        const name = node.querySelector('.provider-picker-label')!
+        const labelBox = name.getBoundingClientRect()
+        const children = [...tools.children].filter(child => child.tagName !== 'INPUT').map(child => child.getBoundingClientRect())
+        const centers = [...icons, labelBox].map(box => box.top + box.height / 2)
+        return {
+          buttons: buttons.map(box => box.height), icons: icons.map(box => [box.width, box.height]),
+          centerSpread: Math.max(...centers) - Math.min(...centers),
+          gaps: children.slice(1).map((box, index) => box.left - children[index]!.right),
+          contained: footer.left >= 0 && footer.right <= innerWidth && buttons.every(box => box.left >= footer.left && box.right <= footer.right),
+          labelContained: labelBox.width > 0 && labelBox.left >= picker.left && labelBox.right <= picker.right,
+          toolsOverflow: tools.scrollWidth - tools.clientWidth,
+          ellipsis: getComputedStyle(name).textOverflow,
+          truncated: name.scrollWidth > name.clientWidth,
+        }
+      })
+      const diagnostic = JSON.stringify({ surface, width, ...geometry })
+      expect(geometry.buttons, diagnostic).toEqual(geometry.buttons.map(() => 32))
+      expect(geometry.icons, diagnostic).toEqual(geometry.icons.map(() => [16, 16]))
+      expect(geometry.centerSpread, diagnostic).toBeLessThanOrEqual(0.5)
+      expect(geometry.gaps, diagnostic).toEqual(geometry.gaps.map(() => 4))
+      expect(geometry.contained && geometry.labelContained, diagnostic).toBe(true)
+      expect(geometry.toolsOverflow, diagnostic).toBeLessThanOrEqual(1)
+      expect(geometry.ellipsis, diagnostic).toBe('ellipsis')
+      if (width === 380) expect(geometry.truncated, diagnostic).toBe(true)
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 880 })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
 })

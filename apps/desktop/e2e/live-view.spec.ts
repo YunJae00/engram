@@ -181,9 +181,8 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
   await openActivity(page, 'mission')
   await expect(page.locator('.mission-tile')).toHaveCount(4)
-  // Nothing is running in this vault, so the seats are open pluses; seat
-  // two chats by hand and watch their pages arrive beside their chats.
-  await page.getByTestId('mission-add-0').click()
+  // The selected conversation occupies the first pane; replace it deliberately.
+  await page.getByTestId('mission-tile-0').locator('.mission-change').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Parallel watch' }).click()
   await page.getByTestId('mission-add-1').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Third watch' }).click()

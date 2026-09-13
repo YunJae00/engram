@@ -165,12 +165,14 @@ test('the cosmos chat collapses and comes back', async () => {
   await expect(page.getByTestId('cosmos-chat-input')).toBeVisible()
 })
 
-test('the app sidebar groups chats and routines, renames them, and folds away', async () => {
+test('the app sidebar switches between chats and saved routines, renames them, and folds away', async () => {
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
-  if (await page.getByTestId('app-sidebar-open').count()) await page.getByTestId('app-sidebar-open').click()
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   const sidebar = page.getByTestId('app-sidebar')
   await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
   await expect(sidebar.locator('.sidebar-nav')).toHaveCount(0)
+  await expect(page.getByTestId('sidebar-chats-toggle')).toHaveCount(0)
+  await expect(page.getByTestId('sidebar-routines-toggle')).toHaveCount(0)
   const engineStatus = sidebar.getByTestId('engine-status')
   await expect(engineStatus).toBeVisible()
   const [scrollBox, engineBox, footerBox] = await Promise.all([
@@ -186,6 +188,7 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect(page.getByTestId('sidebar-chats')).toContainText('Scout')
 
   await page.getByTestId(`sidebar-chat-menu-${bot.id}`).click()
+  await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Pin', 'Delete'])
   await page.getByTestId(`sidebar-chat-rename-${bot.id}`).click()
   await page.getByTestId(`sidebar-chat-name-${bot.id}`).fill('Field Scout')
   await page.getByTestId(`sidebar-chat-name-${bot.id}`).press('Enter')
@@ -193,20 +196,25 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect.poll(async () => (await page.evaluate(() => window.engram.botsList())).some((item) => item.name === 'Field Scout')).toBe(true)
 
   const routine = await page.evaluate(() => window.engram.routineAdd({ name: 'Portal notices', steps: [{ kind: 'open', url: 'https://example.com/notices' }] }))
-  await expect(page.getByTestId('sidebar-routines-toggle')).toHaveAttribute('aria-expanded', 'false')
-  await page.getByTestId('sidebar-routines-toggle').click()
+  await expect(page.getByTestId('sidebar-routines')).toHaveCount(0)
+  await openActivity(page, 'routines')
+  await expect(sidebar.getByRole('textbox', { name: 'Search routines' })).toBeVisible()
+  await expect(page.getByTestId('sidebar-chats')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-routines')).toContainText('Portal notices')
   await page.getByTestId(`sidebar-routine-menu-${routine.id}`).click()
+  await expect(page.getByRole('dialog', { name: 'Options for Portal notices' }).getByRole('button')).toHaveText(['Rename', 'Delete'])
   await page.getByTestId(`sidebar-routine-rename-${routine.id}`).click()
   await page.getByTestId(`sidebar-routine-name-${routine.id}`).fill('Morning portal')
   await page.getByTestId(`sidebar-routine-name-${routine.id}`).press('Enter')
   await expect(page.getByTestId('sidebar-routines')).toContainText('Morning portal')
+  const chatsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
+  await page.getByTestId(`sidebar-routine-run-${routine.id}`).click()
+  await expect(page.getByTestId(`routine-detail-${routine.id}`).getByRole('heading', { name: 'Morning portal' })).toBeVisible()
+  expect(await page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(chatsBefore)
 
-  await page.getByTestId('sidebar-chats-toggle').click()
-  await expect(page.getByTestId('sidebar-chats')).not.toBeVisible()
-  await expect(page.getByTestId('sidebar-chats-toggle')).toHaveAttribute('aria-expanded', 'false')
-  await page.getByTestId('sidebar-chats-toggle').click()
+  await openActivity(page, 'bots')
   await expect(page.getByTestId('sidebar-chats')).toBeVisible()
+  await expect(page.getByTestId('sidebar-routines')).toHaveCount(0)
 
   await page.getByTestId('app-sidebar-close').click()
   await expect(page.getByTestId('app-sidebar')).not.toBeVisible()
@@ -223,6 +231,7 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await expect(page.getByTestId('bots-view')).toBeVisible()
   await expect(page.getByTestId('bots-suggestion')).toHaveCount(0)
   await expect(page.getByTestId(`bot-${bot.id}`)).toContainText('Field Scout')
+  await openActivity(page, 'routines')
   await expect(page.getByTestId('sidebar-routines')).toContainText('Morning portal')
   await openActivity(page, 'sky')
 })
@@ -249,9 +258,9 @@ test('commands open Help in Settings instead of redundant quick actions', async 
   await page.keyboard.press('Escape')
 })
 
-test('folders support dragging, keyboard organization, persistence, and non-destructive removal', async () => {
-  await openActivity(page, 'bots')
+test('folders support drag reordering, keyboard rename cancellation, persistence, and non-destructive removal', async () => {
   for (const kind of ['chat', 'routine'] as const) {
+    await openActivity(page, kind === 'chat' ? 'bots' : 'routines')
     const ids = await page.evaluate(async kind => {
       const result: string[] = []
       for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
@@ -271,13 +280,13 @@ test('folders support dragging, keyboard organization, persistence, and non-dest
     }
     await item(ids[1]!).dragTo(item(ids[0]!), { targetPosition: { x: 40, y: 3 } })
     await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual([ids[1], ids[0]])
-    await page.getByTestId(`sidebar-${kind}-menu-${ids[1]}`).click()
-    await page.getByRole('button', { name: 'Move down', exact: true }).click()
-    await page.keyboard.press('Escape')
+    const target = await item(ids[0]!).boundingBox()
+    await item(ids[1]!).dragTo(item(ids[0]!), { targetPosition: { x: 40, y: target!.height - 3 } })
     await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual(ids)
     await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
     await expect(item(ids[0]!)).not.toBeVisible()
     await page.reload()
+    await openActivity(page, kind === 'chat' ? 'bots' : 'routines')
     await expect(box).toBeVisible()
     await expect(item(ids[0]!)).not.toBeVisible()
     await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
@@ -288,7 +297,10 @@ test('folders support dragging, keyboard organization, persistence, and non-dest
     await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).press('Escape')
     await expect(item(ids[0]!)).toHaveAttribute('title', `${kind} Alpha`)
     await box.getByRole('button', { name: `Options for ${kind} Work`, exact: true }).click()
-    await page.getByRole('button', { name: 'Remove folder · keep items', exact: true }).click()
+    const menu = page.getByRole('dialog', { name: `Options for ${kind} Work`, exact: true })
+    await menu.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect(box).toBeVisible()
+    await menu.getByRole('button', { name: 'Delete folder · keep items?', exact: true }).click()
     await expect(box).toHaveCount(0)
     for (const id of ids) await expect(item(id)).toBeVisible()
   }

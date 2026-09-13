@@ -88,3 +88,25 @@ test('rejects unsupported inputs visibly and accepts an image', async () => {
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByTestId('bots-input-send')).toBeEnabled()
 })
+
+test('splitting a conversation preserves and sends its multiline draft and attachments', async () => {
+  const id = await page.evaluate(() => localStorage.getItem('engram.comets.selected'))
+  expect(id).toBeTruthy()
+  const draft = 'Review the attached image.\nKeep this second line separate.'
+  await page.getByTestId('bots-input').fill(draft)
+  await page.getByTestId('mission-layout-2').click()
+  const mini = page.getByTestId(`mini-chat-${id}`)
+  await expect(mini.getByRole('textbox')).toHaveValue(draft)
+  await expect(mini.getByLabel('Attached files')).toContainText('pixel.png')
+  await mini.getByTestId(`mini-input-${id}-send`).click()
+  await expect(mini.getByRole('textbox')).toHaveValue('')
+  await expect(mini.getByLabel('Attached files')).toHaveCount(0)
+  await expect(mini.locator('.mini-msg.assistant').last()).toContainText('Record this if you want it kept')
+  const turns = await page.evaluate(id => window.engram.botTranscript(id!), id)
+  const sent = turns.filter(turn => turn.role === 'user').at(-1)!
+  expect(sent.text).toBe(`${draft}\n\nAttached: pixel.png`)
+  expect(sent.attachments).toHaveLength(1)
+  await page.getByTestId('mission-layout-1').click()
+  await expect(page.getByTestId('bots-input')).toHaveValue('')
+  await expect(page.locator('.bots-view .bubble-msg.user').last()).toHaveText(`${draft}\n\nAttached: pixel.png`)
+})

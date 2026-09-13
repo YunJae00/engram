@@ -1,8 +1,17 @@
 .sidebar-collection { position: relative; min-width: 0; }
-.sidebar-section-head { gap: 2px; }
-.sidebar-section-toggle { flex: 1; min-width: 0; }
+.sidebar-library-tools { display: flex; align-items: center; gap: 6px; margin: 0 16px 8px; }
+.sidebar-library-tools .sidebar-search { flex: 1; min-width: 0; margin: 0; }
+.sidebar-library-tools .sidebar-icon-button { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border-radius: 8px; color: var(--fg-dim); }
+.sidebar-library-tools .sidebar-icon-button:hover { background: var(--hover-bg); color: var(--fg); }
+.sidebar-library-title { margin: 4px 20px 8px; color: var(--fg-faint); font-size: var(--fs-micro); font-weight: 600; }
 .sidebar-folder { margin: 3px 0; border-radius: 10px; }
-.sidebar-folder .sidebar-list { padding-left: 14px; }
+.sidebar-folder > .sidebar-disclosure { margin-left: 18px; padding-left: 7px; border-left: 1px solid var(--border-soft); }
+.sidebar-folder .sidebar-list { padding-left: 0; }
+.sidebar-collection .sidebar-item-main { padding-right: 4px; }
+.sidebar-row-actions { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; margin-right: 4px; }
+.sidebar-collection .sidebar-more { position: static; display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 8px; }
+.sidebar-collection .sidebar-item:focus-within .sidebar-more, .sidebar-collection .sidebar-more[aria-expanded='true'] { opacity: 1; }
+.sidebar-pin { display: grid; place-items: center; color: var(--fg-faint); }
 .sidebar-folder-head .sidebar-item-main { gap: 6px; }
 .sidebar-item-main > .site-icon { margin-right: 8px; }
 .sidebar-folder-head .sidebar-item-main > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -13,12 +22,11 @@
 .sidebar-folder-head small { flex: none; margin-left: auto; color: var(--fg-faint); font-size: var(--fs-micro); }
 .sidebar-folder-create { display: flex; align-items: center; gap: 6px; padding: 4px 10px; }
 .sidebar-folder-empty, .sidebar-unfile { padding: 8px 16px; font-size: var(--fs-micro); color: var(--fg-faint); border-radius: 8px; }
-.sidebar-unfile { display: none; }
-.sidebar-collection.dragging .sidebar-unfile { display: block; }
 .sidebar-item[draggable='true'] { cursor: grab; }
 .sidebar-drop-target { background: var(--hover-bg); outline: 1px dashed var(--fg-faint); outline-offset: -1px; }
-.sidebar-move-label { display: flex; flex-direction: column; gap: 5px; padding: 7px 10px; font-size: var(--fs-small); color: var(--fg-dim); }
-.sidebar-move-label select { width: 100%; min-width: 0; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--panel-bg); color: var(--fg); padding: 6px; }
+.sidebar-collection .sidebar-item-main > .sidebar-routine-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sidebar-routine-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); font-weight: 550; }
+.sidebar-routine-copy small { color: var(--fg-faint); font-size: var(--fs-micro); }
 .settings-help h3 { margin: 24px 0 10px; color: var(--fg-strong); font-size: var(--fs-body); font-weight: 600; }
 .settings-help p { max-width: 58ch; color: var(--fg-dim); line-height: 1.65; }
 .help-places { margin: 24px 0; display: grid; gap: 18px; }
@@ -34,9 +42,8 @@
 .sidebar-search input { width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; outline: none; box-shadow: none; color: var(--fg); font-size: var(--fs-small); }
 .sidebar-search:focus-within { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 .sidebar-search button { display: grid; place-items: center; flex: none; padding: 3px; color: var(--fg-faint); }
-.sidebar-conversations .bots-row { height: 64px; padding: 8px 12px; gap: 10px; }
-.sidebar-conversations .sidebar-more { top: 4px; right: 3px; height: 25px; width: 25px; background: var(--rail-bg); border-radius: 8px; }
-.sidebar-conversations .sidebar-item:focus-within .sidebar-more { opacity: 1; }
+.sidebar-conversations .bots-row { height: 64px; padding: 8px 4px 8px 12px; gap: 10px; }
+.sidebar-conversations .bots-row ~ .sidebar-row-actions { display: grid; grid-template-rows: 28px 16px; align-content: center; align-self: stretch; }
 .sidebar-conversations .sidebar-item-main > .sidebar-conversation-content { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
 .sidebar-conversation-avatar { position: relative; flex: none; display: inline-flex; }
 .sidebar-conversation-avatar > .comet-activity-icon { position: absolute; right: -3px; bottom: -3px; margin: 0; border: 2px solid var(--rail-bg); border-radius: 50%; background: var(--rail-bg); box-sizing: content-box; }
@@ -70,5 +77,3 @@
 .chat-attachment > button { display: grid; place-items: center; padding: 2px; color: var(--fg-faint); }
 .chat-attachment-error { margin: 6px 0; color: var(--danger); font-size: var(--fs-small); }
 .chat-attachment-status { margin: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }
-.chat-attach-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; color: var(--fg-dim); }
-.chat-attach-button:hover { color: var(--fg); background: var(--hover-bg); }

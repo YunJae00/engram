@@ -1,0 +1,36 @@
+.routines-view { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; background: var(--panel-bg); }
+.routine-workspace-content { width: min(100%, 900px); margin: 0 auto; padding: 32px var(--page-gutter) 48px; box-sizing: border-box; }
+.routine-overview { max-width: 560px; margin: 12vh auto 0; color: var(--fg-dim); }
+.routine-overview > svg { color: var(--fg); }
+.routine-overview h1, .routine-detail h1 { margin: 10px 0 14px; font-size: clamp(24px, 3vw, 32px); line-height: 1.2; color: var(--fg-strong); font-weight: 550; letter-spacing: -0.025em; overflow-wrap: anywhere; }
+.routine-overview p, .routine-description p { line-height: 1.65; }
+.routine-run-hint { margin-top: 24px; font-size: var(--fs-small); color: var(--fg-faint); }
+.routine-detail { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.routine-detail-head, .routine-scheduled-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.routine-detail-head > div { min-width: 0; flex: 1 1 240px; }
+.routine-detail-head h1 { margin-bottom: 0; }
+.routine-detail-head button, .routine-scheduled-head button { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+.routine-eyebrow { color: var(--fg-faint); font-size: var(--fs-small); }
+.routine-detail-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--fg-faint); font-size: var(--fs-small); }
+.routine-detail h2, .routine-scheduled h2 { font-size: var(--fs-body); font-weight: 600; color: var(--fg); margin: 0 0 10px; }
+.routine-description { color: var(--fg-dim); }
+.routine-saved-description { font-size: var(--fs-small); }
+.routine-saved-description summary, .routine-step-selectors summary { cursor: pointer; color: var(--fg-dim); }
+.routine-saved-description p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.routine-recorded-steps { display: flex; flex-direction: column; gap: 12px; padding-left: 28px; margin: 0; }
+.routine-recorded-steps > li { padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: var(--radius-card); min-width: 0; overflow-wrap: anywhere; }
+.routine-recorded-steps > li::marker { color: var(--fg-faint); font-size: var(--fs-small); }
+.routine-recorded-steps h3 { font-size: var(--fs-body); font-weight: 550; color: var(--fg); margin: 0; }
+.routine-recorded-steps p { color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.6; margin: 6px 0 0; }
+.routine-step-value { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-small); line-height: 1.6; padding: 10px; margin: 10px 0 0; background: var(--hover-bg); border-radius: var(--radius-s); }
+.routine-step-selectors { font-size: var(--fs-small); margin-top: 8px; }
+.routine-step-selectors code { display: block; margin-top: 6px; white-space: pre-wrap; }
+.routine-pending-warning { display: flex; align-items: flex-start; gap: 8px; color: var(--clay); font-size: var(--fs-small); line-height: 1.6; }
+.routine-pending-warning svg { flex: none; margin-top: 3px; }
+.routine-scheduled { display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid var(--border-soft); border-radius: var(--radius-card); }
+.routine-scheduled-head h2 { margin: 0; }
+.routine-scheduled .dialog-actions { flex-wrap: wrap; }
+.routine-scheduled .dialog-actions button { white-space: normal; }
+.routine-workspace-error { margin-bottom: 24px; color: var(--clay); overflow-wrap: anywhere; }
+.routine-workspace-empty { color: var(--fg-dim); }
+@media (max-width: 700px) { .routine-workspace-content { padding-top: 20px; } .routine-overview { margin-top: 7vh; } .routine-recorded-steps > li { padding: 12px; } }

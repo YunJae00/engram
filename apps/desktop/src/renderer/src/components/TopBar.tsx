@@ -1,4 +1,4 @@
-import { Globe, PanelLeftOpen } from 'lucide-react'
+import { Columns2, Globe, Grid2X2, PanelLeftOpen, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import { t, type Translate } from '../i18n.js'
@@ -19,9 +19,11 @@ function syncLabel(t: Translate, status: SyncStatusDto | null): string {
 
 // The title strip keeps the current view visible without competing with its
 // content header. Ongoing work is grouped with the engine in the sidebar.
-export function TopBar({ sidebarOpen, onToggleSidebar }: {
+export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit }: {
   sidebarOpen: boolean
   onToggleSidebar(): void
+  splitLayout: 1 | 2 | 4
+  onSplit(count: 1 | 2 | 4): void
 }) {
   const { activity, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
@@ -85,10 +87,17 @@ export function TopBar({ sidebarOpen, onToggleSidebar }: {
         </button>
       )}
       <span className="topbar-title">
-        {activity === 'bots' ? <CometTitle ready={vaultReady} /> : activity === 'sky' ? t('topbar.tabSky') : activity === 'mission' ? t('mission.title') : t('activity.list')}
+        {activity === 'bots' || activity === 'mission' ? <CometTitle ready={vaultReady} /> : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : t('activity.list')}
       </span>
 
       <div className="topbar-spacer" />
+      {(activity === 'bots' || activity === 'mission') && <div className="mission-layout" aria-label="Split conversation view">
+        {([1, 2, 4] as const).map(count => {
+          const Icon = count === 1 ? Square : count === 2 ? Columns2 : Grid2X2
+          const label = count === 1 ? 'Single conversation' : `${count} panes`
+          return <button key={count} aria-label={label} title={label} aria-pressed={splitLayout === count} data-testid={`mission-layout-${count}`} disabled={!vaultReady} onClick={() => onSplit(count)}><Icon size={15} aria-hidden /></button>
+        })}
+      </div>}
 
       {errandWall && (
         <span className="topbar-status live errand-wall" data-testid="errand-wall" title={errandWall.url}>

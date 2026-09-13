@@ -5,7 +5,7 @@ import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { DialogHeader } from './DialogHeader.js'
-import { Comet, OrbitMark } from './Icon.js'
+import { Comet } from './Icon.js'
 
 // Top-bar vault selector: swaps between registered workspaces. Switching,
 // creating, or joining all relaunch the app into the chosen vault, so there is
@@ -144,9 +144,8 @@ export function WorkspaceSwitcher({ activity, onNavigate, onOpenRoutines, onOpen
               ['bots', t('topbar.tabBots'), <Comet key="bots" size={17} />],
               ['sky', t('topbar.tabSky'), <Orbit key="sky" size={17} aria-hidden />],
               ['list', t('activity.list'), <List key="list" size={17} aria-hidden />],
-              ['mission', t('mission.title'), <OrbitMark key="mission" size={17} />],
             ] as const).map(([key, label, icon]) => <button key={key} className={`sidebar-nav-row${activity === key ? ' active' : ''}`} aria-current={activity === key ? 'page' : undefined} data-testid={`activity-${key}`} onClick={() => { setOpen(false); onNavigate(key) }}>{icon}<span>{label}</span></button>)}
-            <button className="sidebar-nav-row" onClick={() => { setOpen(false); onOpenRoutines() }}><Repeat size={17} aria-hidden /><span>Routines</span></button>
+            <button className={`sidebar-nav-row${activity === 'routines' ? ' active' : ''}`} aria-current={activity === 'routines' ? 'page' : undefined} data-testid="activity-routines" onClick={() => { setOpen(false); onOpenRoutines() }}><Repeat size={17} aria-hidden /><span>Routines</span></button>
             <button className="sidebar-nav-row" onClick={() => { setOpen(false); onOpenPalette() }}><Search size={17} aria-hidden /><span>{t('sidebar.search')}</span></button>
           </nav>
           <div className="workspace-divider" />

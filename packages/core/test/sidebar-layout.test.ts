@@ -41,3 +41,40 @@ it('serializes concurrent changes, orders folders and reconciles added and remov
   expect(moved.chat.folders.map(folder => folder.name)).toEqual(['Second', 'First'])
   expect((await readSidebarLayout(paths, { chat: ['b', 'c'], routine: [] })).chat.items.map(item => item.id)).toEqual(['b', 'c'])
 })
+
+it('persists conversation pins per workspace without changing folders or manual order', async () => {
+  const paths = await initVault(await tmpVaultRoot('sidebar-pins'), { git: false })
+  const other = await initVault(await tmpVaultRoot('sidebar-pins-other'), { git: false })
+  const ids = { chat: ['one', 'two', 'three'], routine: ['daily'] }
+  const initial = await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'create-folder', name: 'Work' } }, ids)
+  const folder = initial.chat.folders[0]!.id
+  await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'move-item', id: 'two', folder } }, ids)
+  const before = await readSidebarLayout(paths, ids)
+  await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'pin-item', id: 'two', pinned: true } }, ids)
+  await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'pin-item', id: 'one', pinned: true } }, ids)
+  const pinned = await readSidebarLayout(paths, ids)
+  expect(pinned.chat.items.map(({ id, folder }) => ({ id, folder }))).toEqual(before.chat.items)
+  expect(pinned.chat.items.find(item => item.id === 'two')).toEqual({ id: 'two', folder, pinned: true })
+  expect((await readSidebarLayout(other, ids)).chat.items.every(item => !item.pinned)).toBe(true)
+  const moved = await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'move-item', id: 'two', folder: null, before: 'one' } }, ids)
+  expect(moved.chat.items[0]).toEqual({ id: 'two', folder: null, pinned: true })
+  const unpinned = await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'pin-item', id: 'two', pinned: false } }, ids)
+  expect(unpinned.chat.items[0]).toEqual({ id: 'two', folder: null })
+  expect(unpinned.chat.items.find(item => item.id === 'one')?.pinned).toBe(true)
+  expect((await readSidebarLayout(paths, { ...ids, chat: ['two', 'three', 'new'] })).chat.items.map(item => item.id)).toEqual(['two', 'three', 'new'])
+})
+
+it('keeps pinned folder contents on removal and rejects invalid pin changes without writing', async () => {
+  const paths = await initVault(await tmpVaultRoot('sidebar-pin-validation'), { git: false })
+  const ids = { chat: ['one'], routine: ['daily'] }
+  const initial = await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'create-folder', name: 'Work' } }, ids)
+  const folder = initial.chat.folders[0]!.id
+  await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'move-item', id: 'one', folder } }, ids)
+  await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'pin-item', id: 'one', pinned: true } }, ids)
+  await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'remove-folder', id: folder } }, ids)
+  expect((await readSidebarLayout(paths, ids)).chat.items).toEqual([{ id: 'one', folder: null, pinned: true }])
+  const file = join(paths.cache, 'sidebar-layout.json'), before = await readFile(file, 'utf8')
+  await expect(changeSidebarLayout(paths, { kind: 'routine', change: { action: 'pin-item', id: 'daily', pinned: true } }, ids)).rejects.toThrow('Only conversations')
+  await expect(changeSidebarLayout(paths, { kind: 'chat', change: { action: 'pin-item', id: 'missing', pinned: true } }, ids)).rejects.toThrow('no longer exists')
+  expect(await readFile(file, 'utf8')).toBe(before)
+})

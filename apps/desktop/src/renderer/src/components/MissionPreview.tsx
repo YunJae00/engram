@@ -8,7 +8,7 @@ import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { api } from '../api.js'
 import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 
-export function MissionPreview({ lane, name, open }: { lane: string; name: string; open(): void }) {
+export function MissionPreview({ lane, name, open, onLiveChange }: { lane: string; name: string; open(): void; onLiveChange?(live: boolean): void }) {
   const native = useNativeBrowser()
   const [live, setLive] = useState(false)
   const [address, setAddress] = useState('')
@@ -16,17 +16,19 @@ export function MissionPreview({ lane, name, open }: { lane: string; name: strin
   useEffect(() => {
     if (!native) return
     let alive = true
-    const update = () => { void api.missionFrames([lane]).then(([frame]) => { if (alive) setLive(Boolean(frame?.on)) }).catch(() => undefined) }
+    const update = () => { void api.missionFrames([lane]).then(([frame]) => { if (alive) setLive(Boolean(frame?.on && frame.url && frame.url !== 'about:blank')) }).catch(() => undefined) }
     update()
     const timer = setInterval(update, 1000)
     return () => { alive = false; clearInterval(timer) }
   }, [lane, native])
   const [painted, setPainted] = useState(false)
+  useEffect(() => onLiveChange?.(native ? live : painted), [native, live, painted, onLiveChange])
   const viewport = useRef<HTMLButtonElement>(null)
   useBrowserViewport(viewport, lane, !native && painted)
   const source = useCallback((paint: (data: string) => void) => {
     let started = false
     return onMissionFrame(lane, (frame) => {
+      if (!frame.on || !frame.url || frame.url === 'about:blank') { started = false; setPainted(false); return }
       if (!frame.data) return
       paint(frame.data)
       if (!started) { started = true; setPainted(true) }
