@@ -452,4 +452,16 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await step(first, 'excel_write')
   await expect(pane.getByTestId('web-work-status')).toHaveAttribute('aria-hidden', 'true')
   await expect(pane).toBeVisible()
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${browserPort}`)
+  try {
+    const web = browser.contexts()[0]!.pages().find(one => one.url() === `${siteUrl}?lane=first`)!
+    await web.goto('about:blank')
+    await openActivity(page, 'mission')
+    const tile = page.getByTestId('mission-tile-0')
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+    await expect(tile.locator('.mission-preview canvas')).toBeHidden()
+    await web.goto(`${siteUrl}?lane=first`)
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
+    await expect(tile.locator('.mission-preview canvas[data-painted]')).toBeVisible()
+  } finally { await browser.close() }
 })

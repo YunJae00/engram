@@ -175,4 +175,11 @@ test('folding a tile conversation and dismissing its picker keep the native page
     const box = node.getBoundingClientRect()
     return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === node
   })).toBe(true)
+  await first.goto('about:blank')
+  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+  await expect(tile.getByTestId('native-browser-surface')).toHaveCount(0)
+  await expect(draft).toHaveValue('Keep the conversation draft')
+  await first.goto(`${url}/?pane=0`)
+  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
+  await expect(tile.getByTestId('native-browser-surface')).toBeVisible()
 })

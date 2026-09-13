@@ -50,7 +50,7 @@ export function MissionPreview({ lane, name, open, onLiveChange }: { lane: strin
     </div>
   )
   return (
-    <button ref={viewport} className="mission-preview" aria-label={t('mission.open', { name })} onClick={open}>
+    <button ref={viewport} className="mission-preview" data-live={painted} aria-label={t('mission.open', { name })} onClick={open}>
       <FrameScreen source={source} />
       {!painted && <div className="mission-text"><Monitor size={26} strokeWidth={1.4} /><p>{t('mission.chat')}</p></div>}
     </button>
