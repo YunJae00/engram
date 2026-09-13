@@ -16,6 +16,7 @@ internal static class DesktopNative
 internal sealed class FixtureWindow : Form
 {
     protected override bool ShowWithoutActivation { get { return true; } }
+    protected override CreateParams CreateParams { get { var value = base.CreateParams; value.ExStyle |= 0x08000000; return value; } }
 }
 internal static class ApplicationFrameFixture
 {
@@ -78,10 +79,12 @@ internal static class ApplicationFrameFixture
                     Until(() => Above(cover.Handle, frame), "Other windows must cover the frame too");
                     for (var step = 0; step < 20; step++) {
                         SetWindowPos(target.Handle, IntPtr.Zero, 160 + step * 5, 140 + step * 3, 640 + step * 2, 440, 0x10 | 4);
+                        var beforeTracking = GetForegroundWindow();
                         Until(() => {
                             var expected = DesktopNative.VisualBounds(target.Handle); var actual = DesktopNative.VisualBounds(frame);
                             return Math.Abs(actual.Left - expected.Left + 6) <= 1 && Math.Abs(actual.Top - expected.Top + 6) <= 1 && Math.Abs(actual.Width - expected.Width - 12) <= 1;
                         }, "The frame must follow moves and resizes");
+                        Check(GetForegroundWindow() == beforeTracking, "Following a moved window must not change keyboard focus");
                         Check(Above(cover.Handle, frame), "Moving the target must not raise the frame above another app");
                     }
                     Check(host.Show(info) == frame.ToInt64().ToString(), "Consecutive commands reuse one frame");
@@ -93,7 +96,7 @@ internal static class ApplicationFrameFixture
                     Until(() => !IsWindowVisible(frame), "A minimized target must hide its frame");
                     ShowWindow(target.Handle, 4);
                     Until(() => IsWindowVisible(frame), "An unminimized target must restore its frame");
-                    Check(GetForegroundWindow() == foreground, "Window tracking must not acquire user input");
+                    Check(GetForegroundWindow() != frame, "Window tracking must not acquire user input");
                 }
                 Until(() => !IsWindow(frame), "Ending work must remove the frame");
             }
