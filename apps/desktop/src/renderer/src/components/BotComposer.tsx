@@ -106,10 +106,10 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
               data-testid="bots-memory-toggle"
               title={t('bots.memory')}
               aria-label={t('bots.memory')}
+              aria-pressed={memoryOpen}
               onClick={onToggleMemory}
             >
-              <Orbit size={14} strokeWidth={1.8} aria-hidden />
-              <span>{t('topbar.tabSky')}</span>
+              <Orbit size={16} strokeWidth={1.8} aria-hidden />
             </button>
             <WebPaneButton busy={busy} lane={cometChannel(botId)} />
             <ModelPicker />

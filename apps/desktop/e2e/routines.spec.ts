@@ -1,7 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { addRoutine, initVault, listCards, listRoutines, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openActivity } from './navigation.js'
@@ -92,6 +92,17 @@ test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 
+async function capture(name: string): Promise<void> {
+  const png = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+    // Wake the hidden window's compositor before capturing the current frame.
+    await window.webContents.capturePage()
+    await new Promise(resolve => setTimeout(resolve, 400))
+    return (await window.webContents.capturePage()).toPNG().toString('base64')
+  })
+  await writeFile(test.info().outputPath(name), Buffer.from(png, 'base64'))
+}
+
 async function openRoutines(id?: string): Promise<void> {
   await page.keyboard.press('Escape')
   await openActivity(page, 'routines')
@@ -160,7 +171,7 @@ test('Routines replaces the workspace and selecting a saved case shows its recor
   await expect(page.getByTestId('routine-recorded-steps')).toContainText('Click Notices')
   await page.getByText('Saved description', { exact: true }).click()
   await expect(page.getByTestId('routine-description')).toContainText('A saved procedure')
-  await page.screenshot({ path: test.info().outputPath('routine-library.png') })
+  await capture('routine-library.png')
   await expect(page.getByTestId('sidebar-chat-collection')).toHaveCount(0)
   await expect(page.getByTestId('bots-new')).toHaveCount(0)
   const search = page.getByRole('textbox', { name: 'Search routines', exact: true })
@@ -212,7 +223,7 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     await resizeForRoutine(width)
     await expectRoutineControlReachable('routine-wall-done-live')
   }
-  await page.screenshot({ path: test.info().outputPath('routine-login-compact.png') })
+  await capture('routine-login-compact.png')
   await page.getByTestId('web-pane-fold').click()
   await expect(page.getByTestId('web-pane')).toHaveCount(0)
   await expectRoutineControlReachable('routine-wall-done-live')
@@ -272,7 +283,7 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
     await expectRoutineControlReachable('routine-submit-cancel')
     await expectRoutineControlReachable('routine-submit-approve')
   }
-  await page.screenshot({ path: test.info().outputPath('routine-approval-compact.png') })
+  await capture('routine-approval-compact.png')
 
   // "Not yet" stops the run with the site untouched.
   await page.getByTestId('routine-submit-cancel').click()

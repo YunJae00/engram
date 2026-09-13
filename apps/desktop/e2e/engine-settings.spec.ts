@@ -182,6 +182,16 @@ test('welcome and conversation footer controls align and keep long model names i
       await expect(input).toBeVisible()
       const composer = page.locator('.chat-write').filter({ has: input })
       await expect(composer.getByTestId('model-picker')).toContainText(label)
+      if (surface === 'conversation') {
+        const memory = composer.getByTestId('bots-memory-toggle')
+        await expect(memory).toHaveText('')
+        await expect(memory).toHaveAttribute('title', /\S/)
+        await expect(memory).toHaveAttribute('aria-label', /\S/)
+        await memory.click()
+        await expect(memory).toHaveAttribute('aria-pressed', 'true')
+        await memory.click()
+        await expect(memory).toHaveAttribute('aria-pressed', 'false')
+      }
       const geometry = await composer.evaluate(node => {
         const footer = node.querySelector('.chat-write-footer')!.getBoundingClientRect()
         const tools = node.querySelector('.chat-write-tools')!
@@ -194,6 +204,7 @@ test('welcome and conversation footer controls align and keep long model names i
         const centers = [...icons, labelBox].map(box => box.top + box.height / 2)
         return {
           buttons: buttons.map(box => box.height), icons: icons.map(box => [box.width, box.height]),
+          iconButtons: [...tools.querySelectorAll(':scope > button')].map(button => button.getBoundingClientRect().width),
           centerSpread: Math.max(...centers) - Math.min(...centers),
           gaps: children.slice(1).map((box, index) => box.left - children[index]!.right),
           contained: footer.left >= 0 && footer.right <= innerWidth && buttons.every(box => box.left >= footer.left && box.right <= footer.right),
@@ -205,6 +216,7 @@ test('welcome and conversation footer controls align and keep long model names i
       })
       const diagnostic = JSON.stringify({ surface, width, ...geometry })
       expect(geometry.buttons, diagnostic).toEqual(geometry.buttons.map(() => 32))
+      expect(geometry.iconButtons, diagnostic).toEqual(geometry.iconButtons.map(() => 32))
       expect(geometry.icons, diagnostic).toEqual(geometry.icons.map(() => [16, 16]))
       expect(geometry.centerSpread, diagnostic).toBeLessThanOrEqual(0.5)
       expect(geometry.gaps, diagnostic).toEqual(geometry.gaps.map(() => 4))
@@ -212,6 +224,15 @@ test('welcome and conversation footer controls align and keep long model names i
       expect(geometry.toolsOverflow, diagnostic).toBeLessThanOrEqual(1)
       expect(geometry.ellipsis, diagnostic).toBe('ellipsis')
       if (width === 380) expect(geometry.truncated, diagnostic).toBe(true)
+      if (surface === 'conversation' && width === 620) {
+        const png = await app.evaluate(async ({ BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0]!
+          await window.webContents.capturePage()
+          await new Promise(resolve => setTimeout(resolve, 400))
+          return (await window.webContents.capturePage()).toPNG().toString('base64')
+        })
+        await writeFile(join(TMP, 'composer-controls-620.png'), Buffer.from(png, 'base64'))
+      }
     }
   }
   await page.setViewportSize({ width: 1280, height: 880 })

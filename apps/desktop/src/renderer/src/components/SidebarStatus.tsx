@@ -47,13 +47,13 @@ export function SidebarStatus() {
 
   return (
     <div className="sidebar-status-block">
-      <ModelPicker variant="sidebar" />
       {activityText && (
         <div className={`sidebar-status-row sidebar-work-status${working ? ' working' : ''}`} data-testid="sweep-status" role="status" title={activityText}>
           <span className="sidebar-status-icon">{working ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
           <span>{activityText}</span>
         </div>
       )}
+      <ModelPicker variant="sidebar" />
     </div>
   )
 }

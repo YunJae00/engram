@@ -62,7 +62,7 @@
 .sidebar-conversation-preview[data-active='true'] { color: var(--fg-dim); }
 .conversation-title { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
 .sidebar-footer > .sidebar-status-block { margin: 0; padding: 0; border: 0; min-width: 0; }
-.sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; }
+.sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: end; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }
 .workspace-management > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; color: var(--fg-dim); cursor: pointer; border-radius: 8px; }

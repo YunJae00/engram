@@ -1,7 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { openActivity } from './navigation.js'
 import { initVault } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { EngramEvent } from '../src/shared/types.js'
@@ -85,10 +85,42 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   expect(Math.max(...positions.map((p) => p.label)) - Math.min(...positions.map((p) => p.label))).toBeLessThanOrEqual(1)
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
+  const footer = sidebar.locator('.sidebar-footer')
+  const work = footer.getByTestId('sweep-status')
+  const engine = footer.getByTestId('engine-status')
+  const settings = footer.getByTestId('activity-settings')
+  const expectFooterAlignment = async (withWork: boolean) => {
+    await expect(engine).toBeVisible()
+    await expect(settings).toBeVisible()
+    await expect.poll(async () => {
+      const [engineBox, settingsBox, workBox] = await Promise.all([engine.boundingBox(), settings.boundingBox(), withWork ? work.boundingBox() : Promise.resolve(null)])
+      return {
+        settingsAligned: Boolean(engineBox && settingsBox && Math.abs(engineBox.y + engineBox.height / 2 - settingsBox.y - settingsBox.height / 2) <= 1),
+        workAbove: withWork ? Boolean(engineBox && workBox && workBox.y + workBox.height <= engineBox.y + 1) : workBox === null,
+      }
+    }).toEqual({ settingsAligned: true, workAbove: true })
+  }
+  await expect(work).toHaveCount(0)
+  await expectFooterAlignment(false)
   await emit({ type: 'filing:start' })
-  await expect(sidebar.locator('.sidebar-footer').getByTestId('sweep-status')).toBeVisible()
-  await expect(sidebar.locator('.sidebar-footer').getByTestId('engine-status')).toBeVisible()
+  await expect(work).toHaveText('Filing your capture…')
+  await expectFooterAlignment(true)
   await emit({ type: 'filing:done' })
+  await expect(work).toHaveCount(0)
+  await expectFooterAlignment(false)
+  await emit({ type: 'sweep:start' })
+  await expect(work).toHaveText('Filing your notes…')
+  await expectFooterAlignment(true)
+  await emit({ type: 'sweep:done', report: { executed: 2, skipped: 0, failed: 0, deferred: 0, briefWritten: false } })
+  await expect(work).toHaveText('Filing done')
+  await expectFooterAlignment(true)
+  const png = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+    await window.webContents.capturePage()
+    await new Promise(resolve => setTimeout(resolve, 400))
+    return (await window.webContents.capturePage()).toPNG().toString('base64')
+  })
+  await writeFile(join(TMP, 'sidebar-filing-done.png'), Buffer.from(png, 'base64'))
 })
 
 test('each chat and mission border tracks running, input needed, error and completion independently', async () => {
