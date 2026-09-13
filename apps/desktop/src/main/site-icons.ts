@@ -1,4 +1,4 @@
-import { nativeImage, net } from 'electron'
+import { net } from 'electron'
 
 const icons = new Map<string, Promise<string | null>>()
 const LIMIT = 128 * 1024
@@ -12,7 +12,7 @@ export function siteIcon(origin: string): Promise<string | null> {
   if (held) return held
   const pending = (async () => {
     try {
-      const response = await net.fetch(`${origin}/favicon.ico`, { credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(4000) })
+      const response = await net.fetch(`${origin}/favicon.ico`, { credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(10_000) })
       if (!response.ok || !response.body || !/^image\/(?:png|x-icon|vnd\.microsoft\.icon|jpeg|webp)(?:;|$)/i.test(response.headers.get('content-type') ?? '') || Number(response.headers.get('content-length')) > LIMIT) { await response.body?.cancel(); return null }
       const chunks: Uint8Array[] = []
       const reader = response.body.getReader()
@@ -26,9 +26,8 @@ export function siteIcon(origin: string): Promise<string | null> {
           chunks.push(value)
         }
       } finally { await reader.cancel() }
-      const icon = nativeImage.createFromBuffer(Buffer.concat(chunks))
-      if (icon.isEmpty()) return null
-      return icon.resize({ width: 32, height: 32 }).toDataURL()
+      const mime = response.headers.get('content-type')!.split(';', 1)[0]!.toLowerCase()
+      return `data:${mime};base64,${Buffer.concat(chunks).toString('base64')}`
     } catch { return null }
   })()
   if (icons.size >= 128) icons.delete(icons.keys().next().value!)
