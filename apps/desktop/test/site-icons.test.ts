@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 const decode = vi.hoisted(() => vi.fn(() => ({ isEmpty: () => false, resize: () => ({ toDataURL: () => 'data:image/png;base64,icon' }) })))
-vi.mock('electron', () => ({ nativeImage: { createFromBuffer: decode } }))
+vi.mock('electron', () => ({ nativeImage: { createFromBuffer: decode }, net: { fetch: (...args: Parameters<typeof fetch>) => fetch(...args) } }))
 import { siteIcon } from '../src/main/site-icons.js'
 afterEach(() => vi.unstubAllGlobals())
 it('bounds icon downloads, uses no credentials, refuses redirects, and reuses decoded icons', async () => {
