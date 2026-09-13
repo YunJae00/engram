@@ -6,4 +6,3 @@ const PATHS = {
 export function ProviderIcon({ provider, size = 16 }: { provider: 'claude' | 'codex'; size?: number }) {
   return <svg className="provider-icon" data-provider={provider} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d={PATHS[provider]} /></svg>
 }
-
