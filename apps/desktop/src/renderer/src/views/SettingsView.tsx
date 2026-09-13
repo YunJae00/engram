@@ -10,15 +10,17 @@ import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
+import { HelpPanel } from '../components/HelpPanel.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 
 // Only local settings gate the sheet. Network and runtime probes fill their
 // own sections without blocking navigation.
 const READY_WAIT_MS = 8_000
 
-export function SettingsView({ onClose }: { onClose(): void }) {
+export function SettingsView({ onClose, initialSection = 'general' }: { onClose(): void; initialSection?: SettingsSection }) {
   const { showToast, t } = useApp()
-  const [section, setSection] = useState<SettingsSection>('general')
+  const [section, setSection] = useState<SettingsSection>(initialSection)
+  useEffect(() => setSection(initialSection), [initialSection])
   const scroll = useRef<HTMLDivElement>(null)
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0 }, [section])
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
@@ -142,6 +144,7 @@ export function SettingsView({ onClose }: { onClose(): void }) {
         <div className="settings-body">
         <SettingsNavigation selected={section} onSelect={setSection} />
         <div className="settings-scroll" ref={scroll}>
+        <section className="settings-panel" hidden={section !== 'help'} aria-label="Help"><HelpPanel /></section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="General">
         <h2>General</h2>
         <p className="setting-hint">Make Engram feel at home.</p>

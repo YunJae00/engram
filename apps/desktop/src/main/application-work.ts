@@ -33,7 +33,7 @@ function applicationStatus(held: Activity, target: WindowInfo): DesktopControlSt
   if (!visibleBounds || !Object.values(visibleBounds).every(Number.isFinite) || visibleBounds.width <= 0 || visibleBounds.height <= 0) throw new Error('The application window has no valid bounds')
   const rect = Object.fromEntries(Object.entries(visibleBounds).map(([key, value]) => [key, Math.round(value)])) as Bounds
   const bounds = target.minimized && held.status?.application ? held.status.application.bounds : screen.screenToDipRect(null, rect)
-  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized } }
+  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized, nativeFrame: true } }
 }
 
 async function track(held: Activity, revision: number): Promise<void> {
@@ -48,7 +48,7 @@ async function track(held: Activity, revision: number): Promise<void> {
     if (active !== held || held.revision !== revision || held.controller.signal.aborted) return
     const status = applicationStatus(held, target)
     if (JSON.stringify(status) !== JSON.stringify(held.status)) { held.status = status; updateControlOverlay(status) }
-    held.timer = setTimeout(() => void track(held, revision), 16)
+    held.timer = setTimeout(() => void track(held, revision), 100)
   } catch {
     if (active === held && held.revision === revision) stopApplicationWork('The application window could no longer be verified.')
   }
@@ -80,12 +80,14 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       held.status = applicationStatus(held, target)
       await prepareControlOverlay(held.status)
       combined.throwIfAborted()
+      await held.host.request('applicationFrame', { window: target.window, pid: target.pid })
+      combined.throwIfAborted()
       const input = await held.host.request<{ escaped: boolean }>('inputState', {})
       if (input.escaped) { stopApplicationWork(); combined.throwIfAborted() }
       await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
       // Document commands are bound to this verified window, not foreground input.
-      held.timer = setTimeout(() => void track(held, revision), 16)
+      held.timer = setTimeout(() => void track(held, revision), 100)
     },
   }
 }

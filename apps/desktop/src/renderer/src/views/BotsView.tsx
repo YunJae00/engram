@@ -108,7 +108,7 @@ export const BotsView = memo(function BotsView() {
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
-  useStickToBottom(listRef, messages)
+  useStickToBottom(listRef, messages, selectedId)
   // The bubble the current work belongs to: the last one the comet wrote.
   const lastAssistant = messages.reduce((found, m, i) => (m.role === 'assistant' ? i : found), -1)
 

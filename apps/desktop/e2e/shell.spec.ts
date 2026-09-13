@@ -135,16 +135,16 @@ test('workspace switcher shows the active workspace', async () => {
   await expect(page.getByTestId('workspace-menu')).toHaveCount(0)
 })
 
-test('help panel opens with quick actions and legend', async () => {
-  await page.getByTestId('help-button').click()
+test('help lives in Settings without duplicate quick actions', async () => {
+  await expect(page.getByTestId('help-button')).toHaveCount(0)
+  await page.getByTestId('activity-settings').click()
+  await page.getByTestId('settings-nav-help').click()
   const panel = page.getByTestId('help-panel')
   await expect(panel).toBeVisible()
-  await expect(panel).toContainText('How Engram works')
-  await expect(panel).toContainText('Legend')
-  // the Remember quick action focuses the cosmos chat box
-  await panel.getByRole('button', { name: 'Remember' }).click()
-  await expect(page.getByTestId('cosmos-chat-input')).toBeFocused()
-  await expect(page.getByTestId('help-panel')).toHaveCount(0)
+  await expect(panel).toContainText('A small guide to Engram')
+  await expect(panel).toContainText('Keyboard shortcuts')
+  await expect(panel.getByRole('button', { name: 'Remember' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
 })
 
 
@@ -220,32 +220,72 @@ test('the app sidebar groups chats and routines, renames them, and folds away', 
   await page.getByTestId('activity-sky').click()
 })
 
-test('help is reachable from the sidebar on every view', async () => {
-  await expect(page.getByTestId('help-panel')).toHaveCount(0)
-  await page.getByTestId('help-button').click()
-  await expect(page.getByTestId('help-panel')).toBeVisible()
-  // Escape closes it, and it is reachable from any tab because the bar is.
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('help-panel')).toHaveCount(0)
-  await page.getByTestId('activity-bots').click()
-  await page.getByTestId('help-button').click()
-  await expect(page.getByTestId('help-panel')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await page.getByTestId('activity-sky').click()
+test('help is reachable through Settings on every view', async () => {
+  for (const view of ['bots', 'sky']) {
+    await page.getByTestId(`activity-${view}`).click()
+    await page.getByTestId('activity-settings').click()
+    await page.getByTestId('settings-nav-help').click()
+    await expect(page.getByTestId('help-panel')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('help-panel')).toHaveCount(0)
+  }
 })
 
-test('the weekly digest reads on demand from the command palette', async () => {
-  await page.evaluate(() => window.scrollTo(0, 0))
+test('commands open Help in Settings instead of redundant quick actions', async () => {
   await page.keyboard.press('ControlOrMeta+Shift+p')
   await expect(page.getByTestId('palette-input')).toBeVisible()
-  await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(0)
   await page.getByTestId('palette-input').fill('weekly digest')
-  await expect(page.getByRole('option', { name: 'Read the weekly digest' })).toBeVisible()
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('digest-sheet')).toBeVisible()
-  await expect(page.getByTestId('weekly-digest')).toContainText('pricing notes')
+  await expect(page.getByRole('option', { name: 'Read the weekly digest' })).toHaveCount(0)
+  await page.getByTestId('palette-input').fill('Help')
+  await page.getByRole('option', { name: 'Help', exact: true }).click()
+  await expect(page.getByTestId('help-panel')).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('digest-sheet')).toHaveCount(0)
+})
+
+test('folders support dragging, keyboard organization, persistence, and non-destructive removal', async () => {
+  await page.getByTestId('activity-bots').click()
+  for (const kind of ['chat', 'routine'] as const) {
+    const ids = await page.evaluate(async kind => {
+      const result: string[] = []
+      for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
+      return result
+    }, kind)
+    await page.getByRole('button', { name: kind === 'chat' ? 'New chat folder' : 'New routine folder' }).click()
+    const input = page.getByTestId(`sidebar-${kind}-folder-name`)
+    await input.fill(`${kind} Work`)
+    await input.press('Enter')
+    await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].folders.length).toBe(1)
+    const folder = (await page.evaluate(() => window.engram.sidebarLayout()))[kind].folders[0]!
+    const box = page.getByTestId(`sidebar-folder-${folder.id}`)
+    const item = (id: string) => page.getByTestId(kind === 'chat' ? `bot-${id}` : `sidebar-routine-run-${id}`)
+    for (const id of ids) {
+      await item(id).dragTo(box.locator('.sidebar-folder-head'))
+      await expect(box).toContainText(id === ids[0] ? `${kind} Alpha` : `${kind} Beta`)
+    }
+    await item(ids[1]!).dragTo(item(ids[0]!), { targetPosition: { x: 40, y: 3 } })
+    await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual([ids[1], ids[0]])
+    await page.getByTestId(`sidebar-${kind}-menu-${ids[1]}`).click()
+    await page.getByRole('button', { name: 'Move down', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual(ids)
+    await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
+    await expect(item(ids[0]!)).not.toBeVisible()
+    await page.reload()
+    await expect(box).toBeVisible()
+    await expect(item(ids[0]!)).not.toBeVisible()
+    await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
+    await expect(item(ids[0]!)).toBeVisible()
+    await page.getByTestId(`sidebar-${kind}-menu-${ids[0]}`).click()
+    await page.getByTestId(`sidebar-${kind}-rename-${ids[0]}`).click()
+    await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).fill('Do not save this')
+    await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).press('Escape')
+    await expect(item(ids[0]!)).toHaveAttribute('title', `${kind} Alpha`)
+    await box.getByRole('button', { name: `Options for ${kind} Work`, exact: true }).click()
+    await page.getByRole('button', { name: 'Remove folder · keep items', exact: true }).click()
+    await expect(box).toHaveCount(0)
+    for (const id of ids) await expect(item(id)).toBeVisible()
+  }
+  await page.getByTestId('activity-sky').click()
 })
 
 test('Ctrl+L is the door to the comets tab', async () => {

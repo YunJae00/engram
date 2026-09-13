@@ -31,6 +31,7 @@ export interface Bot {
   name: string
   purpose: string
   createdAt: string
+  webSites?: { origin: string; visits: number }[]
   tasks?: BotTask[]
   // Asks the person refused to make standing, by ask key: offered once, not
   // every third morning.
@@ -112,6 +113,20 @@ function serialized<T>(paths: VaultPaths, work: () => Promise<T>): Promise<T> {
 
 export async function loadBots(paths: VaultPaths): Promise<Bot[]> {
   return (await readBotsFile(paths)).bots
+}
+
+export function recordBotSites(paths: VaultPaths, botId: string, urls: string[]): Promise<void> {
+  const origins = urls.flatMap(value => {
+    try { const url = new URL(value); return /^https?:$/.test(url.protocol) && !url.username && !url.password ? [url.origin] : [] } catch { return [] }
+  })
+  if (!origins.length) return Promise.resolve()
+  return mutateBots(paths, bots => {
+    const bot = bots.find(one => one.id === botId)
+    if (!bot) return
+    const counts = new Map((bot.webSites ?? []).map(site => [site.origin, site.visits]))
+    for (const origin of origins) counts.set(origin, (counts.get(origin) ?? 0) + 1)
+    bot.webSites = [...counts].map(([origin, visits]) => ({ origin, visits })).sort((a, b) => b.visits - a.visits).slice(0, 8)
+  })
 }
 
 // Read, change, write - as one turn of the queue. Two callers arriving

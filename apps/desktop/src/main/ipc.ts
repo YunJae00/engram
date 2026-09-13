@@ -24,6 +24,7 @@ import {
   loadAliasGroups,
   addBotTask,
   loadBots,
+  recordBotSites,
   markBotTaskRun,
   createBot,
   deleteBot,
@@ -82,6 +83,8 @@ import {
   parseSkillDraft,
   turnSkillCandidate,
   resumeCheckpoint,
+  readSidebarLayout,
+  changeSidebarLayout,
   successfulTurnSteps,
   loadBotMemory,
   renderMemory,
@@ -118,6 +121,7 @@ import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { flog } from './flog.js'
+import { siteIcon } from './site-icons.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -924,6 +928,13 @@ export function registerIpc(ctx: VaultContext): void {
   scheduleAutoTidy(ctx, 120_000)
 
   const { paths } = ctx
+  const sidebarIds = async () => ({ chat: (await loadBots(paths)).map(one => one.id), routine: (await listRoutines(paths)).map(one => one.id) })
+  ipcMain.handle('sidebar:layout', async () => readSidebarLayout(paths, await sidebarIds()))
+  ipcMain.handle('sidebar:change', async (_event, request) => {
+    const value = await changeSidebarLayout(paths, request, await sidebarIds())
+    broadcast({ type: 'bots:changed' })
+    return value
+  })
   const resumeState = new Map<string, string>()
   const lastTurns = new Map<string, { message: string; steps: TurnStep[]; engine: Engine; keepGoal?: string }>()
 
@@ -1155,7 +1166,18 @@ export function registerIpc(ctx: VaultContext): void {
   // Bots: named colleagues. The charter (purpose) is the whole configuration —
   // answering borrows the same retrieval and engine every chat uses.
   registerCometMemoryIpc(paths)
-  ipcMain.handle('bots:list', () => loadBots(paths))
+  const visitedOrigins = new Set<string>()
+  ipcMain.handle('bots:list', async () => {
+    const bots = await loadBots(paths)
+    visitedOrigins.clear()
+    for (const bot of bots) for (const site of bot.webSites ?? []) visitedOrigins.add(site.origin)
+    return bots
+  })
+  ipcMain.handle('site:icon', async (_event, origin: unknown) => {
+    if (typeof origin !== 'string' || origin.length > 2048) return null
+    if (!visitedOrigins.has(origin)) return null
+    return siteIcon(origin)
+  })
   // Creation and deletion say so, like every other change: the views stay
   // mounted across tabs now, so nothing re-reads the list by remounting.
   ipcMain.handle('bots:create', async (_e, input: { name: string; purpose?: string }) => {
@@ -2290,6 +2312,12 @@ export function registerIpc(ctx: VaultContext): void {
         if (checkpoint) resumeState.set(bot.id, checkpoint)
         else resumeState.delete(bot.id)
         const handled = finished && result.steps.some((step) => HANDS.has(step.tool))
+        const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
+        if (visited.length) {
+          await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
+          for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch { /* Invalid addresses have no icon. */ } }
+          broadcast({ type: 'bots:changed' })
+        }
         // What to offer is read off what happened, never off a fixed row of
         // buttons: a job it was never shown asks to be taught, a procedure
         // it found asks to be run, and a job that took real work - several

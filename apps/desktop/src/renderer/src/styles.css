@@ -3,6 +3,7 @@
 @import './activity-motion.css';
 @import './orbit.css';
 @import './conversation.css';
+@import './sidebar-organization.css';
 @import './desktop.css';
 @import './settings.css';
 
@@ -455,7 +456,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
   .bots-chat, .canvas-slot, .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
   .bots-memory, .comet-keep, .routine-submit, .bots-tasks, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
   .web-pane, .web-pane.closing, .bots-working, .comet-work-toggle, .settings-loaded, .topbar-status.live { animation: none; }
-  .toast, .help-panel, .vault-opening { animation: none; }
+  .toast, .vault-opening { animation: none; }
   .composer-web.working .composer-web-dot { animation: none; opacity: 1; }
   .tour-highlight { transition: none; }
   .mirror-screen { transition: none; }
@@ -710,17 +711,23 @@ body.bubble-host { background: transparent; }
 
 .bubble-msg {
   max-width: 94%; box-sizing: border-box; min-width: 0;
-  font-size: var(--fs-chat); line-height: 1.6; border-radius: 18px; padding: 9px 14px;
+  font-size: var(--fs-chat); line-height: 1.75; border-radius: 18px; padding: 9px 14px;
   overflow-wrap: anywhere;
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 64px;
 }
 .bubble-msg.user { align-self: flex-end; max-width: 78%; background: var(--selected-soft); color: var(--fg-strong); }
 .bubble-msg.assistant { align-self: flex-start; max-width: 100%; padding: 4px 2px; background: transparent; color: var(--fg); }
 .bubble-msg.error { background: var(--clay-soft); color: var(--clay); }
-.bubble-msg-body :is(p, ul, ol) { margin: 0 0 6px; }
+.bubble-msg-body :is(p, ul, ol) { margin: 0 0 14px; }
+.bubble-msg-body :is(h1, h2, h3, h4) { font-size: 1.12em; line-height: 1.5; letter-spacing: -0.02em; font-weight: 650; margin: 22px 0 10px; color: var(--fg-strong); }
+.bubble-msg-body :is(h1, h2, h3, h4):first-child { margin-top: 0; }
+.bubble-msg-body strong { font-weight: 650; color: var(--fg-strong); }
+.bubble-msg-body li { padding-left: 3px; margin: 5px 0; }
+.bubble-msg-body li::marker { color: var(--fg-dim); }
+.bubble-msg-body li :is(p, ul, ol) { margin-bottom: 6px; }
+.bubble-msg-body blockquote { margin: 14px 0; padding: 0 0 0 15px; border-left: 2px solid var(--border); color: var(--fg-dim); }
+.bubble-msg-body hr { border: 0; border-top: 1px solid var(--border-soft); margin: 22px 0; }
 .bubble-msg-body :is(p, ul, ol):last-child { margin-bottom: 0; }
-.bubble-msg-body :is(ul, ol) { padding-left: 18px; }
+.bubble-msg-body :is(ul, ol) { padding-left: 22px; }
 .bubble-msg-body code { font-family: var(--mono); font-size: 0.9em; line-height: inherit; overflow-wrap: anywhere; background: var(--hover-bg); padding: 2px 5px; border-radius: 5px; }
 /* A narrow floating window has nowhere to scroll sideways to — wrap instead,
    so a long line is always readable rather than clipped. */
@@ -731,8 +738,9 @@ body.bubble-host { background: transparent; }
 .bubble-msg-body pre:last-child { margin-bottom: 0; }
 .bubble-msg-body pre code { background: transparent; padding: 0; border-radius: 0; }
 .bubble-msg-body :is(table, img) { max-width: 100%; }
-.bubble-msg-body table { display: block; overflow-x: auto; border-collapse: collapse; font-size: var(--fs-small); }
-.bubble-msg-body :is(th, td) { border: 1px solid var(--border-soft); padding: 3px 7px; text-align: left; }
+.bubble-msg-body table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.92em; margin: 16px 0; }
+.bubble-msg-body :is(th, td) { border-bottom: 1px solid var(--border-soft); padding: 9px 12px; text-align: left; }
+.bubble-msg-body th { font-weight: 600; color: var(--fg-strong); }
 .bubble-msg-body a { color: inherit; text-decoration: underline; cursor: pointer; }
 /* A citation is a thing you click, not a word you read past. */
 .bubble-msg-body a[href^="note://"] {
@@ -2053,60 +2061,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .workspace-switching-title { font-size: var(--fs-lead); font-weight: 600; color: var(--fg); margin-top: 6px; }
 .workspace-switching-sub { font-size: var(--fs-small); color: var(--fg-dim); }
 
-/* ── Help panel (floating cheatsheet) ────────────────────────── */
-/* Below the chat slide-over (z 30) so the composer's send button is never
-   intercepted when the button rests in its default bottom-right corner; still
-   above canvas content. */
-/* The panel positions itself; the dock is only its anchor for outside-click. */
-.help-dock { position: relative; }
-/* Help button + panel share the unified floating-chrome treatment. */
-/* First-run discoverability: an accent dot until the panel is opened once.
-   Deliberately static — an infinite animation stalls hidden-window rendering
-   (e2e runs under ENGRAM_HIDDEN) and would be noise anyway. */
-.help-panel {
-  position: fixed; left: 12px; bottom: 116px; z-index: 190; width: min(340px, calc(100vw - 24px));
-  max-height: calc(100vh - 140px); overflow-y: auto;
-  display: flex; flex-direction: column; gap: 16px; padding: 16px;
-  background: var(--widget-bg); border: 1px solid var(--border-soft);
-  border-radius: var(--radius-panel); box-shadow: var(--shadow-float);
-  animation: slide-in 140ms ease;
-}
-.help-section { display: flex; flex-direction: column; gap: 8px; }
-.help-heading {
-  font-size: var(--fs-badge); font-weight: 600; letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--fg-faint);
-}
-.help-quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.help-quick {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: var(--radius-s);
-  background: var(--hover-bg); color: var(--fg);
-  transition: background 100ms ease, color 100ms ease;
-}
-.help-quick:hover { background: var(--accent-soft); color: var(--fg-strong); }
-.help-quick svg { color: var(--fg-dim); flex-shrink: 0; }
-.help-steps { display: flex; flex-direction: column; gap: 5px; padding-left: 18px; color: var(--fg-dim); line-height: 1.45; }
-.help-legend { display: flex; flex-direction: column; gap: 6px; list-style: none; }
-.help-legend li { display: flex; align-items: center; gap: 9px; color: var(--fg-dim); }
-.help-subheading {
-  margin-top: 4px;
-  font-size: var(--fs-badge); font-weight: 600; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--fg-faint);
-}
-/* the card-type set wraps into a compact two-up row rather than a tall column */
-.help-legend-types { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
-.help-legend-types li { gap: 7px; }
-.help-legend-types .help-glyph { color: var(--fg-dim); }
-.help-glyph { width: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-small); }
-.help-shortcuts { width: 100%; border-collapse: collapse; }
-.help-shortcuts td { padding: 3px 0; vertical-align: middle; color: var(--fg-dim); }
-.help-shortcuts td.help-keys { white-space: nowrap; width: 1%; padding-right: 16px; }
-.help-shortcuts kbd {
-  font-family: var(--mono); font-size: var(--fs-micro);
-  padding: 1px 6px; border-radius: var(--radius-s);
-  background: var(--hover-bg); color: var(--fg); border: 1px solid var(--border);
-}
-.help-plus { color: var(--fg-faint); margin: 0 3px; font-size: var(--fs-badge); }
 
 /* ── Web errand: the human-wall strip in the top bar ────────────────────── */
 /* The errand is parked in main until one of these buttons answers. */
@@ -2183,13 +2137,22 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .comet-work { display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: 100%; margin: 0 0 2px; }
 /* Nothing to say and no page to show: the strip takes no room at all. */
 .comet-work:empty { display: none; }
-.comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .comet-work-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--fs-small); color: var(--fg-dim); padding: 5px 0; position: relative; }
-.comet-work-line > svg { flex: none; margin-top: 3px; color: var(--accent); }
+.comet-work-line > svg { flex: none; margin-top: 3px; color: var(--fg-faint); }
 .comet-work-line > span { min-width: 0; overflow-wrap: anywhere; }
 .comet-work-line.current { color: var(--fg-dim); }
 /* What it said between actions: its own words, kept, set apart from the steps. */
-.comet-work-line.said { font-style: italic; color: var(--fg-faint); white-space: pre-wrap; }
+.comet-work-line.said { display: block; padding: 6px 0; font-size: var(--fs-chat); line-height: 1.75; color: var(--fg); }
+.work-group summary { display: flex; align-items: center; gap: 9px; color: var(--fg-faint); cursor: pointer; font-size: var(--fs-small); padding: 5px 0; list-style: none; }
+.work-group summary::-webkit-details-marker { display: none; }
+.work-group summary > svg { flex: none; }
+.work-group summary > span { min-width: 0; overflow-wrap: anywhere; }
+.work-group summary > small { margin-left: auto; font-size: var(--fs-micro); white-space: nowrap; }
+.work-group summary:hover { color: var(--fg-dim); }
+.work-group > ol { list-style: none; padding: 6px 0 2px 22px; margin: 0; }
+.work-group[open] summary > svg:last-child { transform: rotate(90deg); }
+.work-group summary > svg:last-child { transition: transform 160ms ease; }
 .comet-work.done { gap: 4px; }
 .comet-work-toggle {
   display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;

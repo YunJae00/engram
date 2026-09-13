@@ -11,6 +11,7 @@ import { testDesktopPartial } from './test-desktop-partial.mjs'
 import { testDesktopReplace } from './test-desktop-replace.mjs'
 import { testDesktopRemoteBytecode } from './test-desktop-remote-bytecode.mjs'
 import { testDesktopScanner } from './test-desktop-scanner.mjs'
+import { testApplicationFrame } from './test-application-frame.mjs'
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.ts'
 
 if (process.platform !== 'win32' || process.env.CI !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -34,6 +35,7 @@ if (process.env.ENGRAM_DESKTOP_MEDIUM_CHILD !== 'true') {
   process.exit(0)
 }
 console.log(JSON.stringify({ remoteBytecode: testDesktopRemoteBytecode(desktop, output) }))
+testApplicationFrame()
 execFileSync('powershell.exe', ['-NoProfile', '-File', path.join(desktop, 'scripts/build-desktop.ps1'), '-OutputPath', output], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(output, 'EngramDesktop.exe'), ['--self-test'], { stdio: 'inherit', windowsHide: true })
 execFileSync(path.join(framework, 'csc.exe'), ['/nologo', '/target:exe', '/platform:x64', '/reference:System.dll',
@@ -136,6 +138,15 @@ try {
   assert.ok(launchedView.snapshot)
   result.appLaunchPassed = true
   const target = { window: ready.window, pid: ready.pid }
+  result.stage = 'application-frame'
+  const frameHelper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
+  try {
+    await frameHelper.ready
+    const foreground = (await fixture.request('state')).foreground
+    assert.match((await frameHelper.request('applicationFrame', target)).window, /^\d+$/)
+    assert.equal((await fixture.request('state')).foreground, foreground)
+    result.applicationFramePassed = true
+  } finally { await frameHelper.close() }
   result.stage = 'scanner-lifecycle'
   result.scanner = await testDesktopScanner(desktop, output, target)
   result.stage = 'inspect-window'

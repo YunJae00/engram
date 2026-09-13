@@ -47,7 +47,7 @@ internal static class Program
     }
 
     private static void Receive(DesktopRequest queued, AutomationSession automation, WindowGuard guard,
-        ControlLease lease, InputMonitor monitor, DesktopActions actions, LiveDocumentWorker documents)
+        ControlLease lease, InputMonitor monitor, DesktopActions actions, LiveDocumentWorker documents, ApplicationFrameHost frame)
     {
         var id = 0;
         var mutation = false;
@@ -74,6 +74,10 @@ internal static class Program
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             DesktopTarget target;
             using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
+            if (method == "applicationFrame") {
+                if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
+                Send(new { id = id, result = new { window = frame.Show(target) } }); return;
+            }
             if (method == "activateWindow")
             {
                 if (monitor.Escaped) throw new InvalidOperationException("Escape pressed");
@@ -242,6 +246,7 @@ internal static class Program
                 });
                 using (monitor = new InputMonitor(lease, guard))
                 using (var documents = new LiveDocumentWorker())
+                using (var frame = new ApplicationFrameHost())
                 {
                     var automation = new AutomationSession(guard);
                     var actions = new DesktopActions(lease, monitor, automation);
@@ -252,7 +257,7 @@ internal static class Program
                             foreach (var request in requests.GetConsumingEnumerable())
                             {
                                 if (Volatile.Read(ref Closed) != 0) break;
-                                Receive(request, automation, guard, lease, monitor, actions, documents);
+                                Receive(request, automation, guard, lease, monitor, actions, documents, frame);
                             }
                         }
                         finally { automation.Dispose(); }

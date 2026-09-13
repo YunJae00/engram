@@ -127,6 +127,7 @@ function fit(win: BrowserWindow): void {
 
 function reveal(win: BrowserWindow): void {
   if (win.isDestroyed()) return
+  if (status.application?.nativeFrame && glows.some(one => one.win === win)) { win.hide(); return }
   // showInactive, not show: even a focusable window would stay behind the
   // controlled app's foreground claim this way.
   win.showInactive()
@@ -167,6 +168,7 @@ function pillBounds(): Rectangle {
   if (status.application) {
     const bounds = status.application.bounds
     const work = screen.getDisplayMatching(bounds).workArea
+    if (status.application.nativeFrame) return { x: work.x + Math.round((work.width - PILL_WIDTH) / 2), y: work.y + 12, width: PILL_WIDTH, height: PILL_HEIGHT }
     return { x: Math.max(work.x, Math.min(work.x + work.width - PILL_WIDTH, bounds.x + Math.round((bounds.width - PILL_WIDTH) / 2))), y: Math.max(work.y + 4, bounds.y - PILL_HEIGHT + 8), width: PILL_WIDTH, height: PILL_HEIGHT }
   }
   return { x: home.x + Math.round((home.width - PILL_WIDTH) / 2), y: home.y + PILL_TOP_INSET, width: PILL_WIDTH, height: PILL_HEIGHT }
@@ -178,8 +180,7 @@ function placePill(): void {
 }
 
 function build(): void {
-  if (glows.length > 0 || pill) return
-  for (const display of screen.getAllDisplays()) {
+  if (!status.application?.nativeFrame && glows.length === 0) for (const display of screen.getAllDisplays()) {
     const bounds = display.bounds
     // A see-through window the exact size of its display is taken for a
     // fullscreen one and loses its transparency; one row short keeps it.
@@ -187,7 +188,7 @@ function build(): void {
     win.setIgnoreMouseEvents(true)
     glows.push({ win, bounds })
   }
-  pill = createWindow(pillBounds(), 'overlay-pill')
+  pill ??= createWindow(pillBounds(), 'overlay-pill')
 }
 
 function showAll(): void {

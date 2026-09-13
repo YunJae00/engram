@@ -15,7 +15,7 @@ import { useStickToBottom } from '../lib/useStickToBottom.js'
 export function MiniChat({ botId }: { botId: string }) {
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId))
   const listRef = useRef<HTMLDivElement>(null)
-  useStickToBottom(listRef, thread.messages)
+  useStickToBottom(listRef, thread.messages, botId)
   // A comet seated here may never have been opened in the full view, so its
   // words on disk have to be asked for before the tile can show them.
   useEffect(() => {

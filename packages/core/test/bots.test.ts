@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { addBotTask, appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
+import { recordBotSites } from '../src/bots.js'
+
+it('keeps a bounded origin-only website history per comet without overwriting concurrent renames', async () => {
+  const paths = await initVault(await tmpVaultRoot('bot-sites'), { git: false })
+  const bot = await createBot(paths, { name: 'Scout' })
+  await Promise.all([
+    recordBotSites(paths, bot.id, ['https://example.com/private?token=secret', 'https://example.com/next', 'file:///private', 'https://user:pass@example.net']),
+    renameBot(paths, bot.id, 'Research'),
+  ])
+  const saved = (await loadBots(paths))[0]!
+  expect(saved.name).toBe('Research')
+  expect(saved.webSites).toEqual([{ origin: 'https://example.com', visits: 2 }])
+  await recordBotSites(paths, bot.id, Array.from({ length: 20 }, (_, i) => `https://site${i}.example`))
+  expect((await loadBots(paths))[0]!.webSites).toHaveLength(8)
+})
 
 describe('bots — named colleagues with charters and their own conversations', () => {
   it('created, listed, deleted', async () => {

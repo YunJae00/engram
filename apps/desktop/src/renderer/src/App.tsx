@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { api } from './api.js'
 import { AppNotices } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
-import { HelpPanel } from './components/HelpPanel.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
@@ -46,6 +45,7 @@ function Shell() {
   // rests: a window event fired at a closed panel has nobody listening.
   const [action, setAction] = useState<PaletteAction | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<'general' | 'help'>('general')
   const [diagOpen, setDiagOpen] = useState(false)
   // "Back up to GitHub" — reachable from the workspace switcher, settings, and
   // the command palette; they all raise this one window intent.
@@ -152,7 +152,9 @@ function Shell() {
     }
     window.addEventListener('engram:toggle-chat', toggleChat)
     window.addEventListener('engram:open-palette', openPalette)
-    const openBrainSetup = () => setSettingsOpen(true)
+    const openBrainSetup = () => { setSettingsSection('general'); setSettingsOpen(true) }
+    const openHelp = () => { setSettingsSection('help'); setSettingsOpen(true) }
+    window.addEventListener('engram:open-help', openHelp)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
     window.addEventListener('engram:open-github', openGithub)
@@ -165,6 +167,7 @@ function Shell() {
       window.removeEventListener('engram:toggle-chat', toggleChat)
       window.removeEventListener('engram:open-palette', openPalette)
       window.removeEventListener('engram:open-brain-setup', openBrainSetup)
+      window.removeEventListener('engram:open-help', openHelp)
       window.removeEventListener('engram:open-diagnostics', openDiag)
       window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:open-digest', openDigest)
@@ -185,7 +188,7 @@ function Shell() {
       <AppSidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
         onOpenPalette={() => setPalette('search')}
         onOpenRoutines={() => setRoutinesOpen(true)}
       />
@@ -199,7 +202,7 @@ function Shell() {
           updateReady={updateReady}
           updateSelfInstalls={updateSelfInstalls}
           vaultReady={vaultReady}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
         />
         <div className="canvas">
         {/* While a big vault is still being read the views would all claim
@@ -245,7 +248,6 @@ function Shell() {
             <Suspense fallback={null}>{activity === 'sky' && <CosmosChat />}</Suspense>
           </>
         )}
-          <HelpPanel />
         </div>
       </main>
 
@@ -261,7 +263,7 @@ function Shell() {
         {palette && <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />}
         {action && <ActionDialog action={action} onClose={() => setAction(null)} />}
         {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
-        {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
         {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
       </Suspense>

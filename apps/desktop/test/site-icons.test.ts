@@ -1,0 +1,20 @@
+import { afterEach, expect, it, vi } from 'vitest'
+const decode = vi.hoisted(() => vi.fn(() => ({ isEmpty: () => false, resize: () => ({ toDataURL: () => 'data:image/png;base64,icon' }) })))
+vi.mock('electron', () => ({ nativeImage: { createFromBuffer: decode } }))
+import { siteIcon } from '../src/main/site-icons.js'
+afterEach(() => vi.unstubAllGlobals())
+it('bounds icon downloads, uses no credentials, refuses redirects, and reuses decoded icons', async () => {
+  const request = vi.fn(async () => new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/png' } }))
+  vi.stubGlobal('fetch', request)
+  expect(await siteIcon('https://icons.example')).toBe('data:image/png;base64,icon')
+  await siteIcon('https://icons.example')
+  expect(request).toHaveBeenCalledOnce()
+  expect(request).toHaveBeenCalledWith('https://icons.example/favicon.ico', expect.objectContaining({ credentials: 'omit', redirect: 'error' }))
+  for (const url of ['file:///secret', 'http://intranet', 'https://user:password@example.com', 'https://example.com/private', 'https://example.com:8443']) expect(await siteIcon(url)).toBeNull()
+  expect(request).toHaveBeenCalledOnce()
+  request.mockImplementation(async () => new Response(new Uint8Array(129 * 1024), { headers: { 'content-type': 'image/png' } }))
+  expect(await siteIcon('https://large.example')).toBeNull()
+  request.mockImplementation(async () => new Response('<svg/>', { headers: { 'content-type': 'image/svg+xml' } }))
+  expect(await siteIcon('https://vector.example')).toBeNull()
+  expect(decode).toHaveBeenCalledOnce()
+})

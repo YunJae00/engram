@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, createNote, fileWorkTools, initVault, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, createNote, fileWorkTools, initVault, recordBotSites, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -102,7 +102,7 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   expect((await page.evaluate(() => window.engram.botsList())).length).toBe(previous.length)
   await page.setViewportSize({ width: 1280, height: 840 })
   await screenshot('ui-welcome.png')
-  await expect(page.getByTestId('comet-welcome').getByRole('heading')).toHaveText('What’s next?')
+  await expect(page.getByTestId('comet-welcome').getByRole('heading')).toHaveText('A spark starts here.')
   await expect(page.locator('.welcome-starters')).toHaveCount(0)
   await page.getByTestId('welcome-input').fill('Summarize our deploy procedure')
   await page.getByTestId('welcome-input-send').click()
@@ -264,4 +264,52 @@ test('created file links reveal only generated artifacts and reject escaping lin
   await page.getByRole('link', { name: 'Unavailable output', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('This output file is unavailable')
   expect(await app.evaluate(() => (globalThis as unknown as { revealedArtifact: string }).revealedArtifact)).toBe(artifact.path)
+})
+
+test('conversation keeps narration between compact activity groups and shows visited website icons', async () => {
+  await expect(page.getByTestId('bots-new')).toBeEnabled({ timeout: 60_000 })
+  const bot = await createBot(paths, { name: 'Research and review' })
+  await recordBotSites(paths, bot.id, ['https://example.com/research'])
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('chat:send')
+    ipcMain.handle('chat:send', () => ({ ok: true }))
+    ipcMain.removeHandler('site:icon')
+    ipcMain.handle('site:icon', () => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+  })
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  await expect(page.getByTestId(`bot-${bot.id}`).locator('img.site-icon')).toBeVisible()
+  await page.getByTestId('bots-input').fill('Compare the options and prepare a short review.')
+  await page.getByTestId('bots-input').press('Enter')
+  const lines = ['said: I will check the source and compare the available options.', 'open_page: https://example.com/research', 'read_open_page: https://example.com/research', 'said: The source is checked. I am now preparing the review.', 'file_create_copy: review.md']
+  await app.evaluate(({ BrowserWindow }, { id, lines }) => {
+    for (const line of lines) BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel: `bot-${id}`, line })
+  }, { id: bot.id, lines })
+  const work = page.getByTestId('comet-work')
+  await expect(work.locator('.comet-work-lines > li')).toHaveCount(4)
+  await expect(work.locator('.comet-work-lines > li').nth(0)).toContainText('I will check the source')
+  await expect(work.locator('.comet-work-lines > li').nth(2)).toContainText('The source is checked')
+  await expect(work.locator('.work-group')).toHaveCount(2)
+  await expect(work.locator('.work-group').first()).not.toHaveAttribute('open')
+  await work.locator('.work-group summary').first().click()
+  await expect(work.locator('.work-group').first().locator('ol > li')).toHaveCount(2)
+  await work.locator('.work-group summary').first().click()
+  await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
+    type: 'chat:done', channel: `bot-${id}`, text: '## The review is ready\n\nThe options are compared and the source is available for your review.\n\n- Check the assumptions before choosing.\n- Keep the original document unchanged.\n\nSource: https://example.com/research\n\nBackup: `검토_결과.pptx.e1b9abd7fa904dd291589bfd2e0d7de6.bak`',
+  }), bot.id)
+  await expect(page.getByTestId('comet-work-done')).toContainText('Activity · 3 actions')
+  await expect(page.locator('.answer-sites .answer-site')).toHaveText('example.com')
+  await expect(page.locator('.answer-sites img.site-icon')).toBeVisible()
+  expect(await page.locator('.bubble-msg-body h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize) / parseFloat(getComputedStyle(node.parentElement!).fontSize))).toBeCloseTo(1.12)
+  await page.getByRole('button', { name: 'Hide the page panel', exact: true }).click()
+  await expect(page.locator('.web-pane')).toBeHidden()
+  await screenshot('ui-conversation-activity.png')
+  await page.evaluate(() => document.documentElement.dataset.theme = 'dark')
+  await screenshot('ui-conversation-activity-dark.png')
+  await page.evaluate(() => document.documentElement.dataset.theme = 'light')
+  await page.setViewportSize({ width: 620, height: 720 })
+  if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
+  expect(await page.locator('.bots-thread').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+  await screenshot('ui-conversation-activity-compact.png')
 })

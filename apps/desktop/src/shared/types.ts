@@ -2,6 +2,8 @@
 // the filesystem — only these.
 // MCP hookup (satellites): the generated client config + connect outcomes.
 import type { DesktopApi, DesktopControlStatusDto } from './desktop.js'
+import type { SidebarLayout, SidebarChange } from 'core'
+export type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
 
 export interface McpInfoDto {
@@ -131,6 +133,7 @@ export interface BotDto {
   name: string
   purpose: string
   createdAt: string
+  webSites?: { origin: string; visits: number }[]
   // The work this comet repeats — saved once, run with one click.
   tasks?: BotTaskDto[]
 }
@@ -582,6 +585,9 @@ export interface EngramApi extends DesktopApi {
   // engine); progress and the eventual outcome arrive as errand:phase events.
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
+  siteIcon(origin: string): Promise<string | null>
+  sidebarLayout(): Promise<SidebarLayout>
+  sidebarChange(request: SidebarChange): Promise<SidebarLayout>
   botCreate(input: { name: string; purpose?: string }): Promise<BotDto>
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>

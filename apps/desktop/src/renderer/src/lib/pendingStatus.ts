@@ -43,6 +43,30 @@ export function isSaidLine(line: string): boolean {
   return line.startsWith(SAID)
 }
 
+export function workBlocks(lines: string[]): ({ type: 'said'; text: string } | { type: 'tools'; lines: string[] })[] {
+  const blocks: ReturnType<typeof workBlocks> = []
+  for (const line of lines) {
+    if (isSaidLine(line)) blocks.push({ type: 'said', text: line.slice(SAID.length) })
+    else {
+      const last = blocks.at(-1)
+      if (last?.type === 'tools') last.lines.push(line)
+      else blocks.push({ type: 'tools', lines: [line] })
+    }
+  }
+  return blocks
+}
+
+export function workLabel(line: string): string {
+  const tool = line.split(':', 1)[0] ?? ''
+  if (/^(search_web|open_page|read_open_page|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
+  if (/^(desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps)/.test(tool)) return 'Using the computer'
+  if (/^(excel_|word_|ppt_|.*live_document)/.test(tool)) return 'Working with documents'
+  if (/^(search_memory|read_note|find_procedure|open_skill)/.test(tool)) return 'Using your memory'
+  if (/^(task_plan|work_capabilities)$/.test(tool)) return 'Planning the work'
+  if (/file|artifact/.test(tool)) return 'Working with files'
+  return tool.includes(' ') || !/^[a-z_]+$/.test(tool) ? line : tool.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase())
+}
+
 // One sentence for the wait: the last step line if there is one - that is
 // what the work is actually doing - and otherwise the generic word, which is
 // only ever shown before the first step lands.

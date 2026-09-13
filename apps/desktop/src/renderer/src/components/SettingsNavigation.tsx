@@ -1,4 +1,4 @@
-import { Settings, Brain, Monitor, Database, Info } from 'lucide-react'
+import { Settings, Brain, Monitor, Database, Info, CircleHelp } from 'lucide-react'
 
 const SECTIONS = [
   { id: 'general', label: 'General', icon: Settings },
@@ -6,6 +6,7 @@ const SECTIONS = [
   { id: 'computer', label: 'Computer use', icon: Monitor },
   { id: 'memory', label: 'Memory & data', icon: Database },
   { id: 'about', label: 'About', icon: Info },
+  { id: 'help', label: 'Help', icon: CircleHelp },
 ] as const
 export type SettingsSection = typeof SECTIONS[number]['id']
 

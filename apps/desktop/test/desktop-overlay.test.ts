@@ -229,6 +229,21 @@ describe('control overlay pointer', () => {
 })
 
 describe('control overlay lifetime', () => {
+  it('uses only a stable stop pill for a native-owned application frame and restores physical-control glows', () => {
+    const status: DesktopControlStatusDto = { state: 'running', application: { name: 'Editor', bounds: { x: 1400, y: 200, width: 700, height: 500 }, visible: true, nativeFrame: true } }
+    overlay.showControlOverlay(status)
+    for (const win of windows()) win.emit('ready-to-show')
+    expect(glows()).toHaveLength(0)
+    const first = pill().setBounds.mock.lastCall
+    overlay.showControlOverlay({ ...status, application: { ...status.application!, bounds: { x: 1520, y: 320, width: 600, height: 400 } } })
+    expect(pill().setBounds.mock.lastCall).toEqual(first)
+    overlay.showControlOverlay(running)
+    for (const win of windows()) win.emit('ready-to-show')
+    expect(glows()).toHaveLength(2)
+    overlay.showControlOverlay(status)
+    expect(glows().every(win => !win.visible)).toBe(true)
+    expect(pill().visible).toBe(true)
+  })
   it('renews the topmost claim every five seconds while shown', () => {
     overlay.showControlOverlay(running)
     for (const win of windows()) win.emit('ready-to-show')

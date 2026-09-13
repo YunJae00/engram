@@ -73,7 +73,7 @@ export function ControlOverlay() {
   const appBounds = application?.bounds
   return (
     <div className="control-overlay" data-testid="control-overlay" data-state={mode} data-scope={application ? 'application' : 'desktop'} data-engine={status.engine ?? 'default'}>
-      <div className="control-overlay-glow" data-visible={mode !== 'off' && (!application || application.visible)} style={appBounds ? { inset: 'auto', left: 0, top: 0, transform: `translate(${appBounds.x}px, ${appBounds.y}px)`, width: appBounds.width, height: appBounds.height, borderRadius: 8 } : undefined} />
+      <div className="control-overlay-glow" data-visible={mode !== 'off' && !application?.nativeFrame && (!application || application.visible)} style={appBounds ? { inset: 'auto', left: 0, top: 0, transform: `translate(${appBounds.x}px, ${appBounds.y}px)`, width: appBounds.width, height: appBounds.height, borderRadius: 8 } : undefined} />
       {companion && (
         <div className="control-overlay-cursor" data-awake={awake ? 'true' : 'false'}>
           <span className="control-overlay-mark" style={place(pointer)}>

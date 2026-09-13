@@ -225,6 +225,35 @@ test('the last answer stays above the composer and its soft scroll edge as the d
   await screenshot('cosmos-compact.png')
 })
 
+test('tool activity follows smoothly, readers keep their place, and sending returns to the newest turn', async () => {
+  await navigate('bots')
+  const thread = page.locator('.bots-thread'), input = page.getByTestId('bots-input')
+  const id = await page.evaluate(async () => (await window.engram.botsList())[0]!.id)
+  await input.fill('Continue with a new task')
+  await input.press('Enter')
+  await expect.poll(() => thread.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThanOrEqual(2)
+  await thread.evaluate(node => {
+    const work = document.createElement('ol')
+    work.dataset.scrollFixture = 'work'
+    work.style.height = '1000px'
+    work.textContent = 'Tool activity grew'
+    node.append(work)
+  })
+  await expect.poll(() => thread.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThanOrEqual(2)
+  await thread.evaluate(node => { node.scrollTop = 100 })
+  await expect.poll(() => thread.evaluate(node => node.scrollTop)).toBe(100)
+  await thread.evaluate(node => { (node.querySelector('[data-scroll-fixture]') as HTMLElement).style.height = '1800px' })
+  await expect.poll(() => thread.evaluate(node => node.scrollTop)).toBe(100)
+  await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'chat:done', channel: `bot-${id}`, text: 'The task ended.' }), id)
+  await expect(page.locator('.bots-write .bubble-stop')).toHaveCount(0)
+  await thread.evaluate(node => { node.scrollTop = 100 })
+  await input.fill('One more task')
+  await input.press('Enter')
+  await expect.poll(() => thread.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThanOrEqual(2)
+  await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'chat:done', channel: `bot-${id}`, text: 'Finished.' }), id)
+  await thread.evaluate(node => node.querySelector('[data-scroll-fixture]')?.remove())
+})
+
 test('long chat pickers scroll inside the tile and leave the last choice reachable', async () => {
   await page.evaluate(async () => {
     for (let i = 1; i <= 12; i++) await window.engram.botCreate({ name: `Extra project ${i}`, purpose: '' })

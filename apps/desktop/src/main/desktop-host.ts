@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { flog } from './flog.js'
 import { recoverableDesktopFailure } from './desktop-recovery.js'
 
-export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'activateWindow' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit' | 'documentCompose'
-const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'activateWindow', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose'])
+export type DesktopMethod = 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'activateWindow' | 'applicationFrame' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit' | 'documentCompose'
+const METHODS = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'activateWindow', 'applicationFrame', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose'])
 // Everything else names one window; these two speak about the session.
 const UNSCOPED = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'listWindows', 'stop'])
 

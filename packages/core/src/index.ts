@@ -77,6 +77,8 @@ export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRout
 export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
 export { runComet, runToolSession, SESSION_TURN_MS } from './agent-session.js'
 export { resumeCheckpoint } from './agent-resume.js'
+export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type SidebarChange, type SidebarKind } from './sidebar-layout.js'
+export { recordBotSites } from './bots.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
 export { choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'

@@ -116,9 +116,7 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
           <>
             <Command.Item onSelect={() => pick(openReview)}>{t('palette.openReview')}</Command.Item>
             <Command.Item onSelect={() => pick(openInbox)}>{t('palette.openInbox')}</Command.Item>
-            {/* The weekly digest's only door since it left the Today sheet —
-                same window-intent idiom as the GitHub backup below. */}
-            <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-digest')))}>{t('palette.openDigest')}</Command.Item>
+            <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-help')))}>Help</Command.Item>
             <Command.Item
               onSelect={() =>
                 pick(() =>
