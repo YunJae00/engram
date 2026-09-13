@@ -59,7 +59,11 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     return () => { reloadGeneration.current++; window.clearTimeout(debounce); off() }
   }, [vaultReady])
   const library = activity === 'routines'
-  useEffect(() => setQuery(''), [library])
+  useEffect(() => {
+    setQuery('')
+    // Routine files can change while this persistent sidebar shows conversations.
+    if (library) void reload().catch(error => showToast(String(error)))
+  }, [library])
   const navigate = (next: 'bots' | 'sky' | 'list' | 'mission') => { setActivity(next); if (window.innerWidth <= 900) onToggle() }
   const change = async (kind: SidebarKind, change: SidebarChange['change']) => { setLayout(await api.sidebarChange({ kind, change })) }
   const rename = async (kind: SidebarKind, id: string, name: string) => { if (kind === 'chat') await api.botRename(id, name); else await api.routineRename(id, name); await reload() }

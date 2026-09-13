@@ -213,6 +213,7 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     steps: [{ kind: 'open', url: `${siteUrl}gate` }, { kind: 'read' }],
   })
 
+  expect((await page.evaluate(() => window.engram.routinesList())).map(routine => routine.id)).toContain(gated.id)
   await openRoutines(gated.id)
   await page.getByTestId(`routine-run-${gated.id}`).click()
   // The wall surfaces as a question in the live block, not as a failure.
