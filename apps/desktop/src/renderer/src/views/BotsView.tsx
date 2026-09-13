@@ -17,8 +17,6 @@ import { StreamingAnswer } from '../components/StreamingAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { PressGate } from '../components/PressGate.js'
-import { SubmitGate } from '../components/SubmitGate.js'
-import { RoutineProgress } from '../components/RoutineProgress.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
@@ -238,8 +236,6 @@ export const BotsView = memo(function BotsView() {
                   onDismiss={() => cometThreads.clearOffer(selected.id)}
                 />
               )}
-              <RoutineProgress channel={cometChannel(selected.id)} />
-              <SubmitGate channel={cometChannel(selected.id)} />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <ThinkingDots />

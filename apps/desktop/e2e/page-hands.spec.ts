@@ -98,7 +98,7 @@ test('scrolls both axes inside a modal without moving the page underneath', asyn
     node.addEventListener('scroll', () => { node.setAttribute('data-scroll-steps', String(Number(node.getAttribute('data-scroll-steps') ?? 0) + 1)) })
   })
   expect(await scrollPage(page, 'right')).toMatchObject({ ok: true })
-  expect(Number(await page.locator('[role="dialog"]').getAttribute('data-scroll-steps'))).toBeGreaterThan(1)
+  await expect.poll(async () => Number(await page.locator('[role="dialog"]').getAttribute('data-scroll-steps'))).toBeGreaterThan(1)
   expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollLeft)).toBeGreaterThan(0)
   expect(await scrollPage(page, 'down')).toMatchObject({ ok: true })
   expect(await page.locator('[role="dialog"]').evaluate((node) => node.scrollTop)).toBeGreaterThan(0)

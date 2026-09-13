@@ -83,6 +83,10 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  if (page && !page.isClosed()) {
+    await page.evaluate(() => window.engram.chatAbort()).catch(() => undefined)
+    await expect.poll(() => page.evaluate(() => window.engram.chatActive()), { timeout: 10_000 }).toEqual([]).catch(() => undefined)
+  }
   await app?.close()
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
@@ -96,6 +100,36 @@ async function openSheet(): Promise<void> {
     await page.evaluate(() => window.dispatchEvent(new Event('engram:open-routines')))
     await expect(page.getByTestId('routines-sheet')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
+}
+
+async function expectRoutineControlReachable(testId: string): Promise<void> {
+  const control = page.getByTestId(testId)
+  await control.scrollIntoViewIfNeeded()
+  await expect(control).toBeInViewport()
+  await expect.poll(() => control.evaluate(node => {
+    const box = node.getBoundingClientRect()
+    const dock = node.closest('.bots-write')!.getBoundingClientRect()
+    const pane = document.querySelector('.web-pane')?.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+    return {
+      reachable: node.contains(hit),
+      insideDock: box.left >= dock.left && box.right <= dock.right,
+      insideViewport: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+      clearOfWebPane: innerWidth > 1180 || !pane || pane.bottom <= dock.top + 1,
+    }
+  })).toEqual({ reachable: true, insideDock: true, insideViewport: true, clearOfWebPane: true })
+  await control.click({ trial: true })
+}
+
+async function resizeForRoutine(width: number): Promise<void> {
+  await page.setViewportSize({ width, height: 720 })
+  const actual = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+  console.info(`[routine layout] requested ${width}x720; actual ${actual.width}x${actual.height}`)
+  expect(actual.width).toBeLessThanOrEqual(1180)
+  if (actual.width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') {
+    await page.getByTestId('app-sidebar-close').click()
+    await expect(page.getByTestId('app-sidebar')).toHaveAttribute('aria-hidden', 'true')
+  }
 }
 
 test('a saved routine appears on the sheet as a note in the vault', async () => {
@@ -158,6 +192,18 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   // A wall brings the large view up by itself, with Continue beside the page.
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
 
+  for (const width of [1180, 1050, 948, 620, 360]) {
+    await resizeForRoutine(width)
+    await expectRoutineControlReachable('routine-wall-done-live')
+  }
+  await page.screenshot({ path: test.info().outputPath('routine-login-compact.png') })
+  await page.getByTestId('web-pane-fold').click()
+  await expect(page.getByTestId('web-pane')).toHaveCount(0)
+  await expectRoutineControlReachable('routine-wall-done-live')
+  await page.getByTestId('composer-web').click()
+  await expect(page.getByTestId('web-pane')).toBeVisible()
+  await expectRoutineControlReachable('routine-wall-done-live')
+
   // The person signs in (the gate opens), then tells the run to continue.
   gateUnlocked = true
   await page.getByTestId('routine-wall-done-live').click()
@@ -167,6 +213,7 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     .poll(async () => (await listCards(paths)).map((c) => c.proposed).join('\n'), { timeout: 20_000 })
     .toContain('The quarterly numbers landed safely')
   expect((await listRoutines(paths)).find((r) => r.id === gated.id)!.lastOutcome).toBe('done')
+  await page.setViewportSize({ width: 1280, height: 840 })
 })
 
 test('stopping a routine from its chat releases a waiting login gate', async () => {
@@ -203,11 +250,18 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   // The gate shows the actual words that would be posted.
   await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
   await expect(page.getByTestId('routine-submit')).toContainText('shipped the replayer')
+  for (const width of [1180, 948, 620, 360]) {
+    await resizeForRoutine(width)
+    await expectRoutineControlReachable('routine-submit-cancel')
+    await expectRoutineControlReachable('routine-submit-approve')
+  }
+  await page.screenshot({ path: test.info().outputPath('routine-approval-compact.png') })
 
   // "Not yet" stops the run with the site untouched.
   await page.getByTestId('routine-submit-cancel').click()
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 60_000 })
   expect(posted).toEqual([])
+  await page.setViewportSize({ width: 1280, height: 840 })
 
   // Asked again (the refused run left no success stamp), approving posts once.
   await openSheet()
@@ -238,8 +292,8 @@ test('scheduled gates stay in the routine sheet and never appear in an unrelated
     window.webContents.send('engram:event', { type: 'routine:wall', routineId: 'scheduled-fixture', wall: 'login' })
     window.webContents.send('engram:event', { type: 'routine:submit', routineId: 'scheduled-fixture', name: 'Scheduled fixture', filled: [{ label: 'Entry', text: 'Fixture content' }], host: 'example.com', canRemember: false })
   })
-  await expect(page.getByTestId('bots-thread').getByTestId('routine-live')).toHaveCount(0)
-  await expect(page.getByTestId('bots-thread').getByTestId('routine-submit')).toHaveCount(0)
+  await expect(page.locator('.bots-chat').getByTestId('routine-live')).toHaveCount(0)
+  await expect(page.locator('.bots-chat').getByTestId('routine-submit')).toHaveCount(0)
   await openSheet()
   const sheet = page.getByTestId('routines-sheet')
   await expect(sheet.getByTestId('routine-live')).toContainText('Open scheduled page')

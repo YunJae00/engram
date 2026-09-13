@@ -32,3 +32,10 @@
 .answer-sites { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .answer-site { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 4px 8px; border-radius: 7px; background: var(--hover-bg); color: var(--fg-dim); font-size: var(--fs-small); }
 .answer-site > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bots-run-status { display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow: auto; overflow-wrap: anywhere; margin-bottom: 8px; }
+.bots-run-status:empty { display: none; }
+.bots-run-status > * { flex: none; }
+.bots-run-status .dialog-actions { flex-wrap: wrap; }
+.bots-run-status .dialog-actions button { white-space: normal; }
+.bots-run-status .routine-submit-label { min-width: 0; flex: 0 0 30%; }
+.bots-run-status .routine-submit-value { min-width: 0; }

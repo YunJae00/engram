@@ -6,6 +6,8 @@ import { ChatComposer } from './ChatComposer.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { WebPaneButton } from './WebPaneButton.js'
+import { RoutineProgress } from './RoutineProgress.js'
+import { SubmitGate } from './SubmitGate.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 
@@ -31,7 +33,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
     const composer = rootRef.current
     const host = composer?.closest<HTMLElement>('.bots-main')
     if (!composer || !host) return
-    // The compact web sheet ends above the actual draft, including multiline input.
+    // The compact web sheet ends above the draft and any waiting routine controls.
     const measure = () => {
       const style = getComputedStyle(composer)
       const space = composer.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
@@ -80,6 +82,10 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   return (
     <div className="bots-write conversation-dock" ref={rootRef}>
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
+      <div className="bots-run-status">
+        <RoutineProgress channel={cometChannel(botId)} />
+        <SubmitGate channel={cometChannel(botId)} />
+      </div>
       <ChatComposer
         testId="bots-input"
         autoFocus
