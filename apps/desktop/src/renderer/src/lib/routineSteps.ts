@@ -17,5 +17,7 @@ export function stepLine(step: RoutineStepDto): string {
       return step.target.text ? `Type into "${step.target.text}"` : 'Type into a field'
     case 'read':
       return 'Read the page'
+    case 'key':
+      return `Press ${step.key}`
   }
 }

@@ -12,6 +12,7 @@ import { useApp } from '../state.js'
 function RecordedStep({ step }: { step: RoutineStepDto }) {
   if (step.kind === 'open') return <><h3>Open page</h3><p>{step.url}</p></>
   if (step.kind === 'read') return <><h3>Read page</h3><p>Collect the readable text from the current page.</p></>
+  if (step.kind === 'key') return <h3>Press {step.key}</h3>
   return <>
     <h3>{step.kind === 'click' ? 'Click' : 'Type into'} {step.target.text || 'the recorded element'}</h3>
     {step.kind === 'type' && <pre className="routine-step-value" data-testid="routine-step-value">{step.text}</pre>}

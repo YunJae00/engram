@@ -1,4 +1,6 @@
-import type { RoutineStep } from './routine-model.js'
+import { ROUTINE_KEYS, type RoutineStep } from './routine-model.js'
+
+const REPLAYABLE_KEYS = new Set<string>(ROUTINE_KEYS)
 
 // A turn that got a web job done leaves a trail of steps - dead ends,
 // retries, looks - and somewhere in it the path that worked. This distils
@@ -43,10 +45,11 @@ function words(args: Record<string, unknown>, key: string): string {
 
 // The successful path, as replayable steps. A control named only by its
 // number (#12) is left out - numbers are the order of one reading and mean
-// nothing on the next visit; a step like that makes the recording shorter,
-// not wrong, because the replay reads the page and the model fills gaps.
+// nothing on the next visit. Keys cannot depend on an omitted interaction.
 export function recordedSteps(steps: TurnStep[]): RoutineStep[] {
   const out: RoutineStep[] = []
+  let keyContextRecorded = true
+  const pushRead = (): void => { if (out.length === 0 || out[out.length - 1]!.kind !== 'read') out.push({ kind: 'read' }) }
   for (const step of successfulTurnSteps(steps)) {
     if (step.tool === 'open_page') {
       const url = words(step.args, 'url')
@@ -55,23 +58,46 @@ export function recordedSteps(steps: TurnStep[]): RoutineStep[] {
         // pressed in between; a re-open after clicks is part of the path.
         if (out.length > 0 && out[out.length - 1]!.kind === 'open') out.pop()
         out.push({ kind: 'open', url })
+        keyContextRecorded = true
       }
       continue
     }
     if (step.tool === 'press') {
       const target = words(step.args, 'target')
       if (target && !target.startsWith('#')) out.push({ kind: 'click', target: { text: target } })
+      else keyContextRecorded = false
       continue
     }
     if (step.tool === 'type_text') {
       const target = words(step.args, 'target')
       const text = words(step.args, 'text')
-      if (target && text && !target.startsWith('#')) out.push({ kind: 'type', target: { text: target }, text })
+      if (target && text && !target.startsWith('#')) {
+        out.push({ kind: 'type', target: { text: target }, text })
+        // Preserve the key that requested the search results.
+        if (step.args['enter'] === true) {
+          if (!keyContextRecorded) return []
+          out.push({ kind: 'key', key: 'Enter' })
+        }
+      } else {
+        if (step.args['enter'] === true) return []
+        keyContextRecorded = false
+      }
       continue
     }
-    // Everything else - looks, reads, scrolls, hovers, memory searches - is
-    // how the path was found, not the path itself.
+    if (step.tool === 'press_key') {
+      const key = words(step.args, 'key')
+      if (!keyContextRecorded) return []
+      if (REPLAYABLE_KEYS.has(key)) out.push({ kind: 'key', key })
+      else keyContextRecorded = false
+      continue
+    }
+    // Keep explicit observations and collapse only adjacent reads.
+    if (step.tool === 'read_open_page' || step.tool === 'look') { pushRead(); continue }
+    if (['choose', 'press_point', 'hover', 'reveal'].includes(step.tool)) keyContextRecorded = false
   }
   // A recording that never opens a page replays nothing worth keeping.
-  return out.some((step) => step.kind === 'open') ? out : []
+  if (!out.some((step) => step.kind === 'open')) return []
+  // Include the final state even when the turn did not explicitly read it.
+  pushRead()
+  return out
 }

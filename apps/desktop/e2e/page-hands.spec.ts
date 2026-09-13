@@ -172,6 +172,41 @@ test('a select, a hover menu, an endless page and a key', async () => {
   expect((await pressKey(page, 'F5')).ok).toBe(false)
 })
 
+test('activation keys inspect focused controls in forms, frames and shadow roots', async () => {
+  const before = posted
+  const form = '<form id="post-form" action="/post" method="post"><input aria-label="Entry" name="entry" /></form>'
+  for (const placement of ['page', 'frame', 'shadow', 'external']) {
+    if (placement === 'frame') {
+      await page.setContent(`<iframe srcdoc='${form}'></iframe>`)
+      await page.frameLocator('iframe').getByLabel('Entry').fill('must stay local')
+    } else if (placement === 'shadow') {
+      await page.setContent('<div id="host"></div>')
+      await page.locator('#host').evaluate((node, html) => { node.attachShadow({ mode: 'open' }).innerHTML = html }, form)
+      await page.getByLabel('Entry').fill('must stay local')
+    } else {
+      await page.setContent(placement === 'external' ? '<form id="post-form" method="post" action="/post"></form><input aria-label="Entry" name="entry" form="post-form" />' : form)
+      await page.getByLabel('Entry').fill('must stay local')
+    }
+    for (const key of ['Enter', 'Space'])
+      expect(await pressKey(page, key), `${placement}: ${key}`).toMatchObject({ ok: false, refused: expect.stringContaining('commit') })
+  }
+  await page.setContent('<button onclick="fetch(\'/post\', {method:\'POST\'})">Send</button>')
+  await page.getByRole('button').focus()
+  expect(await pressKey(page, 'Enter')).toMatchObject({ ok: false })
+  expect(posted).toBe(before)
+  await page.goto(siteUrl)
+  await page.getByLabel('Search', { exact: true }).fill('how to send invoices')
+  const abort = new AbortController()
+  abort.abort()
+  await expect(pressKey(page, 'Enter', abort.signal)).rejects.toThrow('canceled')
+  await expect(page).toHaveTitle('Patterns')
+  expect(await pressKey(page, 'Enter')).toMatchObject({ ok: true })
+  await expect(page).toHaveTitle('Results')
+  await expect(page.locator('main')).toContainText('how to send invoices')
+  await page.close()
+  expect(await pressKey(page, 'Enter')).toMatchObject({ ok: false })
+})
+
 test('a link that opens a new tab is followed', async () => {
   const [opened] = await Promise.all([page.context().waitForEvent('page'), pressOn(page, 'Open elsewhere')])
   await opened.waitForLoadState('domcontentloaded')

@@ -1,4 +1,5 @@
 import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } from 'core'
+import { pressKey } from './page-actions.js'
 import { agentAbortable, agentPage, readAgentPage, DEFAULT_LANE, lanePage } from './agent-browser.js'
 
 // The routine's hands: the same agent Chrome the errand courier drives, so a
@@ -121,6 +122,18 @@ export function routineDriver(lane: string = DEFAULT_LANE): RoutineDriver {
     async type(target, text, signal): Promise<RoutineStepResult> {
       const page = await agentPage(signal, lane)
       return act(page, target, 'type', (locator) => locator.fill(text, { timeout: FIND_TIMEOUT_MS }), signal)
+    },
+    async key(key, signal): Promise<RoutineStepResult> {
+      const page = await agentPage(signal, lane)
+      try {
+        const result = await agentAbortable(pressKey(page, key, signal), signal)
+        if (!result.ok) return { ok: false, error: result.refused ?? result.error ?? `could not press ${key}` }
+        const wall = await wallOf(page, signal)
+        return wall ? { ok: true, wall } : { ok: true }
+      } catch (err) {
+        if (err instanceof Error && err.message === 'canceled') throw err
+        return { ok: false, error: `could not press ${key}` }
+      }
     },
     async read(signal): Promise<RoutineReading & { wall?: 'login' | 'captcha' }> {
       const page = await agentPage(signal, lane)

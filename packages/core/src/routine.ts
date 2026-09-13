@@ -46,6 +46,8 @@ async function runStep(
       return driver.click(step.target, signal)
     case 'type':
       return driver.type(step.target, step.text, signal)
+    case 'key':
+      return driver.key(step.key, signal)
     case 'read': {
       const reading = await driver.read(signal)
       if (reading.wall) return { ok: false, wall: reading.wall }
@@ -86,9 +88,11 @@ export async function runRoutine(
   const now = options.now ?? (() => new Date())
   const invalid = validateRoutineSteps(routine.steps)
   const readings: RoutineReading[] = []
+  // Approval alone is not evidence that the submit succeeded.
+  let posted = false
   const finish = async (result: RoutineRunResult): Promise<RoutineRunResult> => {
     const outcome = result.ok ? 'done' : result.error === 'canceled' ? 'aborted' : 'failed'
-    await markRoutineRun(paths, routine.id, outcome, now()).catch(() => undefined)
+    await markRoutineRun(paths, routine.id, outcome, now(), posted).catch(() => undefined)
     return result
   }
   if (invalid) return finish({ ok: false, readings, error: invalid })
@@ -153,6 +157,7 @@ export async function runRoutine(
           return finish({ ok: false, readings, error: 'the page still wants a login — the routine stopped there' })
       }
       if (!result.ok) return finish({ ok: false, readings, error: result.error ?? 'a step failed' })
+      if (writeSteps.has(i) && step.kind === 'click') posted = true
     }
     if (readings.length === 0) return finish({ ok: true, readings })
     const card = await createCard(

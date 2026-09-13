@@ -178,6 +178,7 @@ export type RoutineStepDto =
   | { kind: 'open'; url: string }
   | { kind: 'click'; target: RoutineTargetDto }
   | { kind: 'type'; target: RoutineTargetDto; text: string }
+  | { kind: 'key'; key: string }
   | { kind: 'read' }
 
 // Why a rerun was refused. Not a failure — a question for the person.
@@ -191,6 +192,7 @@ export interface RoutineDto {
   lastRunAt?: string
   lastOutcome?: 'done' | 'failed' | 'aborted'
   lastSuccessAt?: string
+  posts?: boolean
   // Present when a run died between "about to submit" and the outcome.
   pendingWrite?: { at: string; step: number; label: string }
 }

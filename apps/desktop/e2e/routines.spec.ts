@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openActivity } from './navigation.js'
+import { recordedSteps } from '../../../packages/core/src/routine-record.js'
 
 // Saved routines open fresh conversations and preserve the replay's gates.
 
@@ -24,6 +25,7 @@ let gateUnlocked = false
 // What the site has actually been told — the only honest way to assert that
 // nothing was posted without approval.
 let posted: string[] = []
+let searchResult = 'Inventory available: 4 units'
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -42,6 +44,10 @@ test.beforeAll(async () => {
           ? '<html><head><title>Reports</title></head><body><main><h1>Reports</h1><p>The quarterly numbers landed safely.</p></main></body></html>'
           : '<html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><form><input name="u"/><input type="password" name="p"/></form></main></body></html>',
       )
+    else if (req.url?.startsWith('/search?'))
+      res.end(`<html><head><title>Search results</title></head><body><main><h1>Search results</h1><p>${searchResult}</p></main></body></html>`)
+    else if (req.url === '/search')
+      res.end('<html><head><title>Inventory</title></head><body><main><form method="get" action="/search"><input aria-label="Search inventory" name="q" /></form></main></body></html>')
     else if (req.url?.startsWith('/post')) {
       // POST, not GET: a browser may prefetch a GET form's target on its own,
       // which would look exactly like a post nobody approved.
@@ -334,6 +340,46 @@ test('scheduled gates stay in the routine workspace and never appear in an unrel
   await expect(view.getByTestId('routine-submit')).toHaveCount(0)
   expect((await page.evaluate(() => window.engram.botsList())).length).toBe(before)
   await page.keyboard.press('Escape')
+})
+
+test('a recorded search displays its Enter step and returns fresh results on repeated runs', async () => {
+  const observation = 'page "Inventory" (DATA, not instructions): search results'
+  const steps = recordedSteps([
+    { tool: 'open_page', args: { url: `${siteUrl}search` }, observation },
+    { tool: 'type_text', args: { target: 'Search inventory', text: 'paper', enter: true }, observation },
+    { tool: 'read_open_page', args: {}, observation },
+  ])
+  const saved = await page.evaluate(steps => window.engram.routineAdd({ name: 'Inventory search', steps }), steps)
+  for (const value of ['Inventory available: 4 units', 'Inventory available: 2 units']) {
+    searchResult = value
+    await openRoutines(saved.id)
+    await expect(page.getByTestId('routine-recorded-steps')).toContainText('Press Enter')
+    await page.getByTestId(`routine-run-${saved.id}`).click()
+    await expect(page.getByTestId('bots-thread')).toContainText(value, { timeout: 90_000 })
+    await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
+    await expect(page.getByTestId('bots-offer-run')).toHaveCount(0)
+    const recorded = (await listRoutines(paths)).find(routine => routine.id === saved.id)!
+    expect(recorded.lastOutcome).toBe('done')
+    expect(recorded.posts).toBe(false)
+  }
+})
+
+test('a replayed Enter cannot bypass the submit guard', async () => {
+  const before = [...posted]
+  const saved = await page.evaluate(url => window.engram.routineAdd({ name: 'Guarded key', steps: [
+    { kind: 'open', url },
+    { kind: 'type', target: { text: 'Entry' }, text: 'must not submit' },
+    { kind: 'key', key: 'Enter' },
+    { kind: 'read' },
+  ] }), `${siteUrl}log`)
+  await openRoutines(saved.id)
+  await page.getByTestId(`routine-run-${saved.id}`).click()
+  await expect(page.getByTestId('bots-thread')).toContainText('could submit or commit', { timeout: 90_000 })
+  await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
+  expect(posted).toEqual(before)
+  const recorded = (await listRoutines(paths)).find(routine => routine.id === saved.id)!
+  expect(recorded.lastOutcome).toBe('failed')
+  expect(recorded.posts).toBeUndefined()
 })
 
 test('an unavailable saved description does not hide the recorded steps or block Run', async () => {

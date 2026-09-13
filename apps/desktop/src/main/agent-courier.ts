@@ -127,7 +127,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressKey(page, key))
+      return withinBudget(pressKey(page, key, signal))
     },
     async reveal(word, signal) {
       await aside(signal)

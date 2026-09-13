@@ -15,7 +15,12 @@ export type RoutineStep =
   // A blank's default is what was typed when the job was shown: replayed
   // as it was unless the ask says otherwise.
   | { kind: 'type'; target: RoutineTarget; text: string; example?: string }
+  // The driver rechecks the focused control before replaying a key.
+  | { kind: 'key'; key: string }
   | { kind: 'read' }
+
+// Navigation keys only; Enter still requires the driver's live safety check.
+export const ROUTINE_KEYS = ['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'] as const
 
 export interface Routine {
   id: string
@@ -25,6 +30,9 @@ export interface Routine {
   lastRunAt?: string
   lastOutcome?: 'done' | 'failed' | 'aborted'
   lastSuccessAt?: string
+  // True after an approved submit succeeds; false after a non-posting run.
+  // Missing means an older record whose posting history is unknown.
+  posts?: boolean
   // Written immediately BEFORE a step that can post something, cleared only
   // when the run finishes cleanly. Finding one on disk means a submit may
   // already have gone through - the person decides, not the code.
@@ -50,6 +58,7 @@ export interface RoutineDriver {
   open(url: string, signal?: AbortSignal): Promise<RoutineStepResult>
   click(target: RoutineTarget, signal?: AbortSignal): Promise<RoutineStepResult>
   type(target: RoutineTarget, text: string, signal?: AbortSignal): Promise<RoutineStepResult>
+  key(key: string, signal?: AbortSignal): Promise<RoutineStepResult>
   read(signal?: AbortSignal): Promise<RoutineReading & { wall?: 'login' | 'captcha' }>
   // The address the driver is on right now, when it can say. What an
   // approval is remembered against.
@@ -127,6 +136,8 @@ export function validateRoutineSteps(steps: RoutineStep[]): string | null {
         return 'too many or too long selectors on one step'
       if (step.kind === 'type' && (typeof step.text !== 'string' || step.text.length > TYPE_TEXT_CAP))
         return 'typed text is capped at 500 characters'
+    } else if (step.kind === 'key') {
+      if (!(ROUTINE_KEYS as readonly string[]).includes(step.key)) return `"${String(step.key).slice(0, 40)}" is not a key a routine may press`
     } else if (step.kind !== 'read') {
       return 'unknown step kind'
     }
@@ -154,6 +165,8 @@ export function normalizeStep(step: RoutineStep): RoutineStep {
       return { kind: 'click', target: normalizeTarget(step.target) }
     case 'type':
       return { kind: 'type', target: normalizeTarget(step.target), text: step.text, ...(step.example ? { example: step.example } : {}) }
+    case 'key':
+      return { kind: 'key', key: step.key }
     case 'read':
       return { kind: 'read' }
   }
@@ -177,12 +190,13 @@ function sameLocalDay(iso: string | undefined, now: Date): boolean {
 
 export function routineBlock(routine: Routine, now: Date = new Date()): RoutineBlock | null {
   if (routine.pendingWrite) return 'unfinished-write'
-  if (routineWrites(routine) && sameLocalDay(routine.lastSuccessAt, now)) return 'already-ran-today'
+  if ((routine.posts ?? routineWrites(routine)) && sameLocalDay(routine.lastSuccessAt, now)) return 'already-ran-today'
   return null
 }
 
 // Once something has been typed, every later click could be the one that
-// submits - mark them all rather than guess which.
+// submits - mark them all rather than guess which. Key steps cannot submit:
+// the browser driver refuses keys on committing controls at replay time.
 export function writeStepIndexes(steps: RoutineStep[]): Set<number> {
   const marked = new Set<number>()
   let typed = false
@@ -248,6 +262,8 @@ export function routineStepLabel(step: RoutineStep): string {
       return step.target.text ? `Click "${step.target.text}"` : 'Click an element'
     case 'type':
       return step.target.text ? `Type into "${step.target.text}"` : 'Type into a field'
+    case 'key':
+      return `Press ${step.key}`
     case 'read':
       return 'Read the page'
   }

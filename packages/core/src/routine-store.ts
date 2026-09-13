@@ -33,6 +33,7 @@ function toRoutine(note: Note): Routine | null {
     ...(meta.lastRunAt ? { lastRunAt: meta.lastRunAt } : {}),
     ...(meta.lastOutcome ? { lastOutcome: meta.lastOutcome } : {}),
     ...(meta.lastSuccessAt ? { lastSuccessAt: meta.lastSuccessAt } : {}),
+    ...(meta.posts !== undefined ? { posts: meta.posts } : {}),
     ...(meta.pendingWrite ? { pendingWrite: meta.pendingWrite } : {}),
   }
 }
@@ -58,6 +59,7 @@ function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, ru
       ...(run?.lastRunAt ? { lastRunAt: run.lastRunAt } : {}),
       ...(run?.lastOutcome ? { lastOutcome: run.lastOutcome } : {}),
       ...(run?.lastSuccessAt ? { lastSuccessAt: run.lastSuccessAt } : {}),
+      ...(run?.posts !== undefined ? { posts: run.posts } : {}),
       ...(run?.pendingWrite ? { pendingWrite: run.pendingWrite } : {}),
     },
   })
@@ -155,13 +157,16 @@ export async function markRoutineRun(
   id: string,
   outcome: 'done' | 'failed' | 'aborted',
   now: Date = new Date(),
+  posted = false,
 ): Promise<void> {
   await patchRun(paths, id, (meta) => {
     meta.lastRunAt = now.toISOString()
     meta.lastOutcome = outcome
+    if (posted) meta.posts = true
     // A clean finish is what clears the in-flight submit marker. A failure or
     // an abort deliberately leaves it standing: that is the whole signal.
     if (outcome === 'done') {
+      meta.posts ??= false
       meta.lastSuccessAt = meta.lastRunAt
       delete meta.pendingWrite
     }

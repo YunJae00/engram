@@ -24,7 +24,7 @@ function inspectControl(node: Element): PressTarget & { field: boolean; secret: 
   const el = node.closest('a,button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"],[contenteditable="true"]') ?? node
   const tag = el.tagName.toLowerCase()
   const type = (el.getAttribute('type') ?? '').toLowerCase()
-  const form = el.closest('form')
+  const form = (el as HTMLInputElement | HTMLButtonElement).form ?? el.closest('form')
   const submits = (tag === 'button' && form !== null && type !== 'button' && type !== 'reset') || (tag === 'input' && (type === 'submit' || type === 'image'))
   const words = [(el as HTMLElement).innerText ?? el.textContent ?? '', el.getAttribute('aria-label') ?? '', el.getAttribute('value') ?? '', el.getAttribute('title') ?? '']
     .join(' ')
@@ -405,24 +405,43 @@ export async function hoverOn(page: Page, target: string, signal?: AbortSignal):
 }
 
 // A key to the page: Escape for a dialog, arrows in a picker, Tab along.
-// Enter is refused where what has the focus would post a form.
-export async function pressKey(page: Page, key: string): Promise<PageMove> {
+// Activation keys inspect the current control, including framed/shadow content.
+export async function pressKey(page: Page, key: string, signal?: AbortSignal): Promise<PageMove> {
+  if (signal?.aborted) throw new Error('canceled')
   if (!KEYS.has(key)) return { ok: false, error: `"${key}" is not a key that can be pressed here; one of ${[...KEYS].join(', ')}` }
-  if (key === 'Enter') {
-    const posts = await page
-      .evaluate(() => {
-        const form = document.activeElement?.closest('form')
-        return form !== null && form !== undefined && (form.getAttribute('method') ?? 'get').toLowerCase() === 'post'
-      })
-      .catch(() => false)
-    if (posts) return { ok: false, refused: 'Enter here would post the form' }
-  }
   try {
     const before = await signature(page)
-    await page.keyboard.press(key)
+    if (key === 'Enter' || key === 'Space') {
+      let frame = page.mainFrame()
+      for (;;) {
+        const active = await frame.evaluateHandle(() => {
+          let node = document.activeElement
+          while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement
+          return node
+        })
+        try {
+          const hand = active.asElement()
+          if (!hand) return { ok: false, error: 'The focused control could not be inspected' }
+          const child = await hand.contentFrame()
+          if (child) { frame = child; continue }
+          const control = await hand.evaluate(inspectControl)
+          if (control.secret || control.posts || (!control.field && pressCommits(control)))
+            return { ok: false, refused: `${key} here could submit or commit something` }
+          if (signal?.aborted) throw new Error('canceled')
+          await hand.press(key, { timeout: FIND_TIMEOUT_MS })
+          break
+        } finally {
+          await active.dispose()
+        }
+      }
+    } else {
+      if (signal?.aborted) throw new Error('canceled')
+      await page.keyboard.press(key)
+    }
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before }
   } catch (err) {
+    if (signal?.aborted) throw new Error('canceled')
     return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
   }
 }

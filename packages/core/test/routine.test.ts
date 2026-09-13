@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { listCards } from '../src/cards.js'
-import { readNote } from '../src/notes.js'
+import { readNote, writeNote } from '../src/notes.js'
 import {
   addRoutine,
   listRoutines,
@@ -11,6 +11,7 @@ import {
   fillSlots,
   routineSlots,
   routineStepLabel,
+  routineBlock,
   runRoutine,
   validateRoutineSteps,
   type RoutineDriver,
@@ -27,6 +28,9 @@ const TYPE: RoutineStep = { kind: 'type', target: { text: 'Entry' }, text: 'ship
 // grant it. The gate itself is tested in its own block below.
 const APPROVE = async (): Promise<'approve'> => 'approve'
 const CLICK: RoutineStep = { kind: 'click', target: { text: 'Submit' } }
+const KEY: RoutineStep = { kind: 'key', key: 'Enter' }
+// The fake driver accepts this search; browser guards are exercised in e2e.
+const SEARCH: RoutineStep = { kind: 'type', target: { text: 'From' }, text: 'Seoul' }
 
 // A scripted driver: each call shifts the next canned answer and records what
 // the engine asked of it — the replay's whole contract in one fake.
@@ -51,6 +55,10 @@ function fakeDriver(script: {
     },
     async type(target: RoutineTarget, text: string) {
       calls.push(`type ${target.text ?? '?'} ${text}`)
+      return { ok: true }
+    },
+    async key(key: string) {
+      calls.push(`key ${key}`)
       return { ok: true }
     },
     async read() {
@@ -114,6 +122,12 @@ describe('validateRoutineSteps', () => {
     ]
     expect(validateRoutineSteps(steps)).toBeNull()
   })
+
+  it('allows navigation keys but rejects shortcuts and unknown keys', () => {
+    expect(validateRoutineSteps([OPEN, KEY, READ])).toBeNull()
+    for (const key of ['Control+Enter', 'F5', '', 'Delete'])
+      expect(validateRoutineSteps([OPEN, { kind: 'key', key }])).toContain('not a key')
+  })
 })
 
 describe('routineStepLabel', () => {
@@ -122,6 +136,7 @@ describe('routineStepLabel', () => {
     expect(routineStepLabel({ kind: 'click', target: { text: 'Submit' } })).toBe('Click "Submit"')
     expect(routineStepLabel({ kind: 'type', target: { text: 'Title' }, text: 'x' })).toBe('Type into "Title"')
     expect(routineStepLabel(READ)).toBe('Read the page')
+    expect(routineStepLabel(KEY)).toBe('Press Enter')
   })
 })
 
@@ -556,5 +571,66 @@ describe('slots — the blanks a procedure fills fresh', () => {
       { label: 'Title', text: 'Weekly report 34' },
       { label: 'Body', text: 'shipped the replayer' },
     ])
+  })
+})
+
+describe('informational routine replay', () => {
+  const NINE = (): Date => new Date('2026-08-20T09:00:00')
+
+  it('types, submits with Enter, reads — and is neither submit-gated nor same-day blocked', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-search'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Seat check', steps: [OPEN, SEARCH, KEY, READ] })
+    const driver = fakeDriver({ read: [{ url: 'https://rail.example/r', title: 'Results', text: '3 seats left' }] })
+    // No onSubmit handler at all: a real submit would stop here. A search must
+    // not — it runs to the end and reads.
+    const first = await runRoutine(paths, driver, routine, { now: NINE })
+    expect(first.ok).toBe(true)
+    expect(driver.calls).toEqual(['open https://example.com/notices', 'type From Seoul', 'key Enter', 'read'])
+
+    // Same day, again: a read-only search never posted, so it is not blocked.
+    const saved = (await listRoutines(paths))[0]!
+    expect(saved.posts).toBe(false)
+    const again = await runRoutine(paths, fakeDriver({ read: [{ url: 'https://rail.example/r', title: 'Results', text: '1 seat left' }] }), saved, { now: NINE })
+    expect(again.blocked).toBeUndefined()
+    expect(again.ok).toBe(true)
+  })
+
+  it('a routine that actually posts is marked a poster and asks before repeating', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-poster'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Post log', steps: [OPEN, TYPE, CLICK] })
+    // The submit is approved, so it genuinely posts.
+    expect((await runRoutine(paths, fakeDriver({}), routine, { now: NINE, onSubmit: APPROVE })).ok).toBe(true)
+    const saved = (await listRoutines(paths))[0]!
+    expect(saved.posts).toBe(true)
+    expect((await runRoutine(paths, fakeDriver({}), saved, { now: NINE, onSubmit: APPROVE })).blocked).toBe('already-ran-today')
+  })
+
+  it('typing without a posting submit does not mark the routine a poster', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-nopost'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Filtered check', steps: [OPEN, SEARCH, KEY, READ] })
+    await runRoutine(paths, fakeDriver({}), routine, { now: NINE })
+    expect((await listRoutines(paths))[0]!.posts).toBe(false)
+  })
+
+  it('preserves the rerun guard for older records without posting history', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-legacy-post'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Saved log', steps: [OPEN, TYPE, CLICK] })
+    const note = await readNote(paths, routine.id)
+    note.front.routine!.lastSuccessAt = NINE().toISOString()
+    await writeNote(paths, note)
+    const saved = (await listRoutines(paths))[0]!
+    expect(saved.posts).toBeUndefined()
+    expect(routineBlock(saved, NINE())).toBe('already-ran-today')
+    expect(routineBlock({ ...saved, posts: false }, NINE())).toBeNull()
+  })
+
+  it('approval followed by a failed submit preserves uncertainty, not posting success', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-submit-failure'), { git: false })
+    const routine = await addRoutine(paths, { name: 'Failed log', steps: [OPEN, TYPE, CLICK] })
+    const result = await runRoutine(paths, fakeDriver({ click: [{ ok: false, error: 'button unavailable' }] }), routine, { onSubmit: APPROVE })
+    expect(result.ok).toBe(false)
+    const saved = (await listRoutines(paths))[0]!
+    expect(saved.posts).toBeUndefined()
+    expect(saved.pendingWrite).toBeDefined()
   })
 })

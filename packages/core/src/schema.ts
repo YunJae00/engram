@@ -57,6 +57,8 @@ export const frontmatterSchema = z.object({
       lastRunAt: isoDateTime.optional(),
       lastOutcome: z.enum(['done', 'failed', 'aborted']).optional(),
       lastSuccessAt: isoDateTime.optional(),
+      // Missing preserves conservative handling of older posting history.
+      posts: z.boolean().optional(),
       pendingWrite: z
         .object({ at: isoDateTime, step: z.number().int().nonnegative(), label: z.string() })
         .optional(),
