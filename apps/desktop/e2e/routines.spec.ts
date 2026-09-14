@@ -406,6 +406,7 @@ test('a routine finds delayed controls inside frames and shadow roots and has an
 })
 
 test('keeping a task saves its source in Routines, survives reload and runs only in a fresh chat', async () => {
+  await expect(page.getByTestId('bots-new')).toBeEnabled()
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1200, 900))
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Weekly source review' }))
   await appendBotTurn(paths, bot.id, { role: 'user', text: `Read all notes at ${siteUrl}notices`, at: new Date().toISOString() })
