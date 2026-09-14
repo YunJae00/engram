@@ -9,6 +9,7 @@ import { addRoutine, appendBotTurn, callMemoryTool, cometTools, createBot, listR
 import { agentCourier } from './agent-courier.js'
 import { resetLane } from './agent-browser.js'
 import { officeAgentTools } from './office-agent.js'
+import { clearApplicationWork } from './application-work.js'
 import { cometFileTools } from './file-work.js'
 import { loadSettings } from './settings.js'
 import { broadcast } from './engine-health.js'
@@ -98,7 +99,7 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
     socket.on('error', () => socket.destroy())
     socket.on('close', () => {
       running?.abort(); sockets.delete(socket)
-      if (lanes.get(lane) === socket) { lanes.delete(lane); void resetLane(lane).catch(() => {}) }
+      if (lanes.get(lane) === socket) { lanes.delete(lane); clearApplicationWork(lane); void resetLane(lane).catch(() => {}) }
     })
     const handle = async (message: Record<string, unknown>) => {
       const id = typeof message.id === 'string' ? message.id : ''
@@ -157,6 +158,7 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
         let image: { data: string; mimeType: string } | undefined
         if (name === FINISH.name) {
           if (typeof input.summary !== 'string' || !input.summary.trim() || input.summary.length > 8000) throw new Error('Provide a concise summary and any unverified parts.')
+          clearApplicationWork(lane)
           const fault = officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
           checkedSummary = fault ? '' : input.summary
           text = `${fault ? `Not verified as complete. ${fault}` : 'Automated document checks found no outstanding fault. Task and visual correctness remain the caller’s responsibility.'}\n\n${input.summary}`

@@ -9,11 +9,12 @@ import { build } from 'esbuild'
 import { initVault, loadBots } from 'core'
 import type { VaultContext } from '../src/main/vault.js'
 
-const fake = vi.hoisted(() => ({ data: '', approve: vi.fn(), settings: { computerUse: false } }))
+const fake = vi.hoisted(() => ({ data: '', approve: vi.fn(), clearWork: vi.fn(), settings: { computerUse: false } }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.data }, dialog: { showMessageBox: fake.approve } }))
 vi.mock('../src/main/agent-courier.js', () => ({ agentCourier: () => ({}) }))
 vi.mock('../src/main/agent-browser.js', () => ({ resetLane: async () => {} }))
 vi.mock('../src/main/office-agent.js', () => ({ officeAgentTools: () => [] }))
+vi.mock('../src/main/application-work.js', () => ({ clearApplicationWork: fake.clearWork }))
 vi.mock('../src/main/file-work.js', () => ({ cometFileTools: () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => fake.settings }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => {} }))
@@ -69,6 +70,7 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   await vi.waitFor(() => expect(signal?.aborted).toBe(true))
   await vi.waitFor(() => expect(externalStatus().active).toBe(false))
   expect(externalOwns(`bot-${bot.id}`)).toBe(false)
+  expect(fake.clearWork).toHaveBeenCalledWith(`bot-${bot.id}`)
   const audit = await readFile(join(fake.data, 'external', 'audit.jsonl'), 'utf8')
   expect(audit).toContain('engram_capture')
   expect(audit).not.toContain('Test decision')
@@ -114,6 +116,7 @@ it('runs the shipped stdio entry through the authenticated app bridge without an
     await request('tools/call', { name: 'engram_finish', arguments: { summary: 'The fixture decision was stored.' } })
     const bot = (await loadBots(paths))[0]!
     expect(externalOwns(`bot-${bot.id}`)).toBe(false)
+    expect(fake.clearWork).toHaveBeenCalledWith(`bot-${bot.id}`)
     expect((await request('tools/call', { name: 'engram_begin', arguments: { goal: 'A second task in the same client' } })).result?.content?.[0]?.text).toContain('approved')
     expect(await loadBots(paths)).toHaveLength(2)
     const exited = once(child, 'exit')
