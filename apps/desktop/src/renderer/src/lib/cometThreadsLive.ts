@@ -14,11 +14,13 @@ export function selectComet(id: string | null): void {
   else localStorage.removeItem(SELECTED_KEY)
 }
 
-const reloadFromDisk = (id: string) =>
-  api
+const reloadFromDisk = (id: string) => {
+  const seenBefore = cometThreads.thread(id).doneSeen
+  return api
     .botTranscript(id)
-    .then((turns) => cometThreads.load(id, turns))
+    .then((turns) => cometThreads.load(id, turns, seenBefore))
     .catch(() => undefined)
+}
 
 // Disk first, then whatever main is still producing for this comet: a
 // renderer that reloaded mid-answer would otherwise never see it land. The
@@ -28,7 +30,7 @@ const reloadFromDisk = (id: string) =>
 export async function loadCometThread(id: string): Promise<void> {
   const seenBefore = cometThreads.thread(id).doneSeen
   const turns = await api.botTranscript(id)
-  cometThreads.load(id, turns)
+  cometThreads.load(id, turns, seenBefore)
   const active = await api.chatActive().catch(() => [] as string[])
   if (active.includes(cometChannel(id)) && cometThreads.thread(id).doneSeen === seenBefore) cometThreads.adopt(id)
 }

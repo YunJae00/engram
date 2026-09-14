@@ -287,7 +287,12 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
         const point = await destination.evaluate((node, after) => { const rect = node.getBoundingClientRect(); return { clientX: rect.left + Math.min(40, rect.width / 2), clientY: rect.top + (after ? rect.height - 3 : 3) } }, after)
         await destination.dispatchEvent('dragenter', { dataTransfer, ...point })
         expect(await destination.evaluate((node, init) => { const event = new DragEvent('dragover', { ...init, bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented }, { dataTransfer, ...point })).toBe(true)
-        await expect.poll(() => destination.evaluate(node => !!node.closest('.sidebar-drop-target'))).toBe(true)
+        if (await destination.evaluate(node => node.classList.contains('sidebar-folder-head'))) {
+          await expect.poll(() => destination.evaluate(node => !!node.closest('.sidebar-drop-target'))).toBe(true)
+        } else {
+          await expect(collection.locator('.sidebar-item[data-insert]')).toHaveCount(1)
+          await expect.poll(() => destination.evaluate(node => node.closest('.sidebar-item')?.getAttribute('data-shift'))).toBe(after ? 'up' : 'down')
+        }
         await destination.dispatchEvent('drop', { dataTransfer, ...point })
       } finally {
         await source.dispatchEvent('dragend', { dataTransfer })
@@ -295,6 +300,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
       }
       await expect(collection).not.toHaveClass(/dragging/)
       await expect(collection.locator('.sidebar-drop-target')).toHaveCount(0)
+      await expect(collection.locator('.sidebar-item[data-insert]')).toHaveCount(0)
     }
     for (const id of ids) {
       await drag(id, box.locator('.sidebar-folder-head'))

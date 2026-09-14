@@ -37,9 +37,7 @@ export interface CometThread {
   // When the pending answer began, so a clock can survive the view
   // unmounting; null while nothing is pending.
   startedAt: number | null
-  // Completions that landed while nobody here was waiting. A seat adopted
-  // for an answer that has meanwhile finished would never be released, so an
-  // adopt compares this before and after its reads.
+  // Settled turns invalidate older disk reads and pending seat adoption.
   doneSeen: number
 }
 
@@ -115,7 +113,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: false, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: null, messages, ...extra })
+    patch(id, { busy: false, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: null, messages, doneSeen: thread(id).doneSeen + 1, ...extra })
   const fail = (id: string, text: string) =>
     settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }])
 
@@ -141,8 +139,9 @@ export function createCometThreads(initialSelected: string | null = null) {
     fresh(id: string): void {
       patch(id, { ...EMPTY, loaded: true })
     },
-    load(id: string, turns: ChatTurnDto[]): void {
+    load(id: string, turns: ChatTurnDto[], seenDone?: number): void {
       const current = thread(id)
+      if (seenDone !== undefined && seenDone !== current.doneSeen) return
       const tail = current.busy ? pendingTail(current.messages) : []
       const last = turns.at(-1)
       const previous = turns.at(-2)

@@ -5,6 +5,16 @@ const BOT = 'bot-abc-1'
 const channel = cometChannel(BOT)
 
 describe('cometThreads', () => {
+  it('does not replace a completed reply with an older transcript read', () => {
+    const store = createCometThreads(BOT)
+    store.fresh(BOT)
+    store.begin(BOT, 'Run the saved task')
+    const before = store.thread(BOT).doneSeen
+    store.handleEvent({ type: 'chat:done', channel, text: 'Connect an AI in Settings' })
+    store.load(BOT, [], before)
+    expect(store.thread(BOT).messages.at(-1)?.text).toBe('Connect an AI in Settings')
+    expect(store.thread(BOT).doneSeen).toBeGreaterThan(before)
+  })
   it('maps a channel back to its comet', () => {
     expect(cometOfChannel(channel)).toBe(BOT)
     expect(cometOfChannel('panel')).toBeNull()
