@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { runComet, runToolSession } from '../src/agent-session.js'
+import { correctableFault, runComet, runToolSession } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
@@ -342,4 +342,58 @@ it('applies arithmetic verification to the real tool-session path and accepts co
     const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'excel_read', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'B', sheet: 'S', range: 'A1:A3', rows: [[10], [20], [++calls > 1 ? 30 : 99]], formulas: [[10], [20], ['=SUM(A1:A2)']] }) }] }, 'Verify the total')
     expect(!!result.incomplete).toBe(!corrected)
   }
+})
+
+describe('bounded verification correction', () => {
+  const formulas = [[10, 20, '=SUM(A1:B1)'], [20, 30, '=SUM(A2:B2)'], ['=SUM(A1:A2)', '=SUM(B1:B2)', '=SUM(C1:C2)']]
+  const rowsFor = (last: number): (number | string)[][] => [[10, 20, 30], [20, 30, 50], [30, 50, last]]
+
+  it('gives a verification fault one pass to fix itself, then reports the corrected result', async () => {
+    let pass = 0
+    const prompts: string[] = []
+    const engine = sessionBrain(async (job) => {
+      pass += 1
+      prompts.push(job.prompt)
+      await job.tools.find((tool) => tool.name === 'excel_read')!.run({})
+      return { answer: pass === 1 ? 'Built the sheet' : 'Corrected the total' }
+    })
+    // The read-back totals are wrong on the first pass (C3=999) and right on the
+    // second (C3=80), so the fault is real, then fixed.
+    const excelRead = {
+      name: 'excel_read', description: 'read', argsSchema: {},
+      run: async () => JSON.stringify({ workbook: 'B.xlsx', sheet: 'S', range: 'A1:C3', rows: rowsFor(pass === 1 ? 999 : 80), formulas }),
+    }
+    const result = await runComet({ engine, workdir: WORKDIR, tools: [excelRead] }, 'build the sheet', { guided: false })
+    expect(pass).toBe(2)                                          // exactly one self-correction pass
+    expect(prompts[0]).not.toContain('does not add up')
+    expect(prompts[1]).toContain('does not add up')               // the fault handed back to fix
+    expect(prompts[1]).toContain('Historical checkpoint')          // carried as a resume checkpoint
+    expect(result.incomplete).toBeUndefined()                     // corrected → verified
+    expect(result.answer).toContain('Corrected the total')
+  })
+
+  it('does not retry a clean turn, a question, or a spent budget', async () => {
+    expect(correctableFault({ answer: 'x', steps: [], fellBack: false })).toBeUndefined()
+    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, asked: true, incomplete: 'does not add up' })).toBeUndefined()
+    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, stopped: 'calls', incomplete: 'does not add up' })).toBeUndefined()
+    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, incomplete: 'The session ended before all requested tool results were verified.' })).toBeUndefined()
+    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, incomplete: 'A read-back SUM result does not add up: C3' })).toBeUndefined()
+  })
+
+  it('reports the fault honestly when a second pass still cannot fix it', async () => {
+    let pass = 0
+    const engine = sessionBrain(async (job) => {
+      pass += 1
+      await job.tools.find((tool) => tool.name === 'excel_read')!.run({})
+      return { answer: 'still wrong' }
+    })
+    const excelRead = {
+      name: 'excel_read', description: 'read', argsSchema: {},
+      run: async () => JSON.stringify({ workbook: 'B.xlsx', sheet: 'S', range: 'A1:C3', rows: rowsFor(999), formulas }),
+    }
+    const result = await runComet({ engine, workdir: WORKDIR, tools: [excelRead] }, 'build the sheet', { guided: false })
+    expect(pass).toBe(2)                          // tried once, no more
+    expect(result.incomplete).toContain('does not add up')
+    expect(result.answer).toContain('Not verified as complete')
+  })
 })

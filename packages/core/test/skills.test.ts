@@ -11,7 +11,9 @@ import {
   passesPrivacyLint,
   readSkillFile,
   readSkillsLedger,
+  markSkillUsed,
   parseSkillDraft,
+  rankSkillCards,
   renderSkillMd,
   skillCandidates,
   skillContentHash,
@@ -296,4 +298,33 @@ it('serializes concurrent installations and enforces the shared automatic-skill 
   expect(results.filter(result => result.reason === 'limit')).toHaveLength(4)
   expect(Object.keys(await readSkillsLedger(paths))).toHaveLength(8)
   expect(await listSkills(paths)).toHaveLength(8)
+})
+
+describe('successful-turn skill ranking', () => {
+  const draft = { title: '체크리스트', description: 'When porting sample modules', body: '## Steps\n' + 'x'.repeat(120) }
+
+  it('ranks proven skills first, ties keep their order', () => {
+    const cards = [{ name: 'engram-a', description: 'a' }, { name: 'engram-b', description: 'b' }, { name: 'engram-c', description: 'c' }]
+    const ledger = {
+      a: { folder: 'a', hash: 'h', distilledAt: NOW.toISOString() },
+      b: { folder: 'b', hash: 'h', distilledAt: NOW.toISOString(), used: 3 },
+      c: { folder: 'c', hash: 'h', distilledAt: NOW.toISOString(), used: 1 },
+    }
+    expect(rankSkillCards(cards, ledger).map((card) => card.name)).toEqual(['engram-b', 'engram-c', 'engram-a'])
+    // No usage anywhere → the original order is preserved.
+    expect(rankSkillCards(cards, {}).map((card) => card.name)).toEqual(['engram-a', 'engram-b', 'engram-c'])
+  })
+
+  it('bumps a known skill on use and ignores an unknown name', async () => {
+    const [candidate] = skillCandidates(procedureNotes('sample', 3), {})
+    await installSkill(paths, candidate!, draft, NOW)
+    await markSkillUsed(paths, 'engram-sample', NOW)
+    await markSkillUsed(paths, 'engram-sample', NOW)
+    const ledger = await readSkillsLedger(paths)
+    expect(ledger['sample']?.used).toBe(2)
+    expect(ledger['sample']?.lastUsedAt).toBe(NOW.toISOString())
+    // An unknown skill is never invented as a ledger row.
+    await markSkillUsed(paths, 'engram-nope', NOW)
+    expect((await readSkillsLedger(paths))['nope']).toBeUndefined()
+  })
 })

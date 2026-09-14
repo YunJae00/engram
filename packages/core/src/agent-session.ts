@@ -10,6 +10,7 @@ import { taskPlan } from './agent-plan.js'
 import { workCapabilities, WORK_METHOD_RULE } from './work-capabilities.js'
 import { DOCUMENT_CHECK_RULE, officeWriteUnverified } from './office-verification.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
+import { resumeCheckpoint } from './agent-resume.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
 // the whole turn in one session: every step then costs one exchange instead
@@ -74,7 +75,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const steps: AgentLoopStep[] = []
   const plan = taskPlan(steps)
   const tools = [...deps.tools, ...(workflow ? [plan.tool, workCapabilities(deps.tools)] : [])]
-  const allowance = () => Math.min(120, SESSION_MAX_CALLS + plan.completed() * 20)
+  const allowance = () => Math.min(options.maxCalls ?? 120, 120, SESSION_MAX_CALLS + plan.completed() * 20)
   const started = Date.now()
   const lifetime = new AbortController()
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
@@ -99,7 +100,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const budget = allowance()
       // A final observation can use the phase allowance; let its checkpoint
       // earn the next bounded phase, but never exceed the total call ceiling.
-      const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === steps.length && steps.length === budget && budget < 120
+      const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === steps.length && steps.length === budget && budget < Math.min(options.maxCalls ?? 120, 120)
         && Object.keys(args).length === 2 && typeof args['finding'] === 'string' && args['evidenceStep'] === steps.length
       if ((startedCalls >= budget && !checkpoint) || Date.now() - started >= SESSION_TURN_MS) {
         exhausted = true
@@ -193,7 +194,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     tools: sessionCalls,
-    maxCalls: workflow ? 120 : SESSION_MAX_CALLS,
+    maxCalls: Math.min(options.maxCalls ?? 120, workflow ? 120 : SESSION_MAX_CALLS),
     ...(options.onToken ? { onToken: options.onToken } : {}),
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
@@ -212,8 +213,57 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   return { answer: withoutSecrets(outputLinks(steps, answer), task), steps, fellBack: false, ...(stopped ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
 }
 
-// One door for a comet's turn: the session where the brain offers one, the
-// step loop everywhere else.
-export function runComet(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
-  return deps.engine.runTools && options.guided === false ? runToolSession(deps, task, options) : runAgentLoop(deps, task, options)
+// Only document evidence gaps are repairable here, never control/approval failures.
+export function correctableFault(result: AgentLoopResult): string | undefined {
+  if (result.asked || result.stopped || result.pending || result.fellBack || !result.incomplete) return
+  if (result.steps.some(step => {
+    if (step.observation.startsWith('that did not work:')) return true
+    try { return !!JSON.parse(step.observation)?.error } catch { return false }
+  })) return
+  const fault = officeWriteUnverified(result.steps) ?? officeArithmeticFault(result.steps)
+  return fault === result.incomplete ? fault : undefined
+}
+
+// Preserve evidence across one bounded correction; a new session is not a clean bill of health.
+export async function runComet(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
+  const started = Date.now()
+  const session = !!deps.engine.runTools && options.guided === false
+  const budget = options.maxCalls ?? (session ? SESSION_MAX_CALLS : options.guided === false ? 12 : 6)
+  let modelCalls = 0, correcting = false
+  if (!session) {
+    const source = deps.engine
+    const counted = Object.create(source) as typeof source
+    counted.run = async function* (job) {
+      if (correcting && modelCalls >= budget) throw new Error('The model-call limit was reached.')
+      modelCalls++
+      yield* source.run(job)
+    }
+    deps = { ...deps, engine: counted }
+  }
+  const dispatch = (opts: AgentLoopOptions): Promise<AgentLoopResult> =>
+    session ? runToolSession(deps, task, opts) : runAgentLoop(deps, task, opts)
+  const first = await dispatch(options)
+  const fault = correctableFault(first)
+  const calls = Math.min(12, budget - (session ? first.steps.length : modelCalls))
+  const remaining = SESSION_TURN_MS - (Date.now() - started)
+  if (!fault || options.signal?.aborted || calls < 1 || remaining < 1000 || /(?:do not|don't|no)\s+retr(?:y|ies)|stop.on.first.error|재시도.{0,12}(?:마|않)|첫 오류/i.test(task)) return first
+  options.onReset?.()
+  options.onStep?.('verification: Checking the unfinished result')
+  const deadline = AbortSignal.timeout(remaining)
+  correcting = true
+  try {
+    const corrected = await dispatch({ ...options, maxCalls: calls,
+      signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline,
+      resume: [options.resume, resumeCheckpoint(task, first), 'Recheck the affected targets and correct only unfinished work within the original request. Do not recreate outputs or repeat successful actions. If permission or user input is needed, ask and stop.'].filter(Boolean).join('\n\n'),
+    })
+    const steps = [...first.steps, ...corrected.steps]
+    const incomplete = corrected.incomplete ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
+    const answer = incomplete && !corrected.incomplete && !corrected.asked
+      ? `Not verified as complete.\n\n${incomplete}\n\nUnverified response:\n${corrected.answer}` : corrected.answer
+    return { ...corrected, steps, answer: withoutSecrets(outputLinks(steps, answer), task), ...(incomplete ? { incomplete } : {}) }
+  } catch (error) {
+    options.signal?.throwIfAborted()
+    const detail = error instanceof Error ? error.message : String(error)
+    return { ...first, answer: withoutSecrets(`${first.answer}\n\nVerification correction stopped: ${detail}`, task) }
+  }
 }

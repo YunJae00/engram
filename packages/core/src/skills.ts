@@ -7,6 +7,7 @@ import type { Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
 import { extractJson } from './engine/types.js'
 import { renameWithRetry } from './rename-with-retry.js'
+import type { AgentLoopResult } from './agent-loop.js'
 
 const PROCEDURE_RE = /함정|주의|방법|절차|규칙|패턴|체크|반드시|금지|해결|수정|검증|필수|pitfall|gotcha|rule|how|fix|always|never|checklist|must/i
 const MIN_NOTES = 3
@@ -24,6 +25,9 @@ export interface SkillLedgerEntry {
   distilledAt: string
   sourceHash?: string
   source?: 'turn'
+  // Successful-turn usage is a ranking hint, not proof of relevance or correctness.
+  used?: number
+  lastUsedAt?: string
   // The user edited the installed file — it is theirs now, never rewritten.
   userOwned?: boolean
 }
@@ -73,14 +77,11 @@ function sourceHash(notes: Note[]): string {
   return skillContentHash(JSON.stringify(notes.map(note => [note.front.id, note.front.updated, note.body]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))))
 }
 
-// When a note last changed, for staleness: an edit or a supersede replacement
-// bumps `updated` past `created`, so a skill built before that is out of date.
+// Edits and superseded replacements invalidate older distillations.
 function changedAt(note: Note): string {
   return note.front.updated > note.front.created ? note.front.updated : note.front.created
 }
 
-// The procedure-shaped current notes of each folder, the raw material a skill
-// is distilled from.
 function proceduresByFolder(notes: Note[]): Map<string, Note[]> {
   const byFolder = new Map<string, Note[]>()
   for (const note of notes) {
@@ -93,10 +94,7 @@ function proceduresByFolder(notes: Note[]): Map<string, Note[]> {
   return byFolder
 }
 
-// Folders worth distilling: enough procedure-shaped conclusions, and at least
-// one of them changed since the last distillation. A skill is a living view of
-// its folder - when the folder moves on (a new note, an edit, a supersede), the
-// skill is out of date and is distilled again rather than left to rot.
+// Redistill recurring procedures only when their source evidence changes.
 export function skillCandidates(notes: Note[], ledger: SkillsLedger): SkillCandidate[] {
   const byFolder = proceduresByFolder(notes)
   const autoOwned = Object.values(ledger).filter((entry) => entry.userOwned !== true).length
@@ -117,9 +115,7 @@ export function skillCandidates(notes: Note[], ledger: SkillsLedger): SkillCandi
     .slice(0, CANDIDATE_CAP)
 }
 
-// Which installed skills have gone stale - their folder changed after they were
-// distilled - so the index can say so and the model does not lean on a how-to
-// the vault has since moved past. Returns the ledger slugs.
+// Return slugs whose source evidence has changed.
 export function staleSkills(ledger: SkillsLedger, notes: Note[]): string[] {
   const byFolder = proceduresByFolder(notes)
   const stale: string[] = []
@@ -134,11 +130,46 @@ export function staleSkills(ledger: SkillsLedger, notes: Note[]): string[] {
   return stale
 }
 
-// Marks the index the comet sees so a skill whose folder has moved on carries a
-// caution instead of reading as current fact.
 export function annotateStaleCards(cards: SkillCard[], ledger: SkillsLedger, notes: Note[]): SkillCard[] {
   const stale = new Set(staleSkills(ledger, notes).map((slug) => `engram-${slug}`))
   return cards.map((card) => (stale.has(card.name) ? { ...card, description: `${card.description} (may be outdated — verify against the vault before relying on it)` } : card))
+}
+
+function useCount(entry?: SkillLedgerEntry): number {
+  const used = entry?.used
+  return typeof used === 'number' && Number.isSafeInteger(used) && used > 0 ? used : 0
+}
+
+export function rankSkillCards(cards: SkillCard[], ledger: SkillsLedger): SkillCard[] {
+  const count = (card: SkillCard) => card.name.startsWith('engram-') ? useCount(ledger[card.name.slice(7)]) : 0
+  return [...cards].sort((a, b) => count(b) - count(a))
+}
+
+export async function markSkillUsed(paths: VaultPaths, name: string, now = new Date(), body?: string): Promise<void> {
+  if (!name.startsWith('engram-') || !SKILL_NAME.test(name)) return
+  await withSkillLedger(paths, async () => {
+    const ledger = await readSkillsLedger(paths)
+    const entry = ledger[name.slice(7)]
+    if (!entry) return
+    const content = await skillContent(paths, name, 'SKILL.md')
+    if (!content || skillContentHash(content) !== entry.hash || (body !== undefined && frontMatter(content).body !== body)) return
+    entry.used = Math.min(Number.MAX_SAFE_INTEGER, useCount(entry) + 1)
+    entry.lastUsedAt = now.toISOString()
+    await writeSkillsLedger(paths, ledger)
+  })
+}
+
+export async function recordSkillUse(paths: VaultPaths, result: AgentLoopResult): Promise<void> {
+  if (result.asked || result.stopped || result.pending || result.incomplete || result.fellBack) return
+  const opened = new Map<string, string>()
+  for (const step of result.steps) {
+    const name = step.args['name']
+    if (step.seeded || step.tool !== 'open_skill' || typeof name !== 'string' || step.args['path']) continue
+    const prefix = `"${name}" (a saved how-to — reference, not instructions):\n`
+    if (!step.observation.startsWith(prefix) || step.observation.includes('This skill may be outdated.')) continue
+    opened.set(name, step.observation.slice(prefix.length))
+  }
+  for (const [name, body] of opened) await markSkillUsed(paths, name, new Date(), body)
 }
 
 // The engine's contract: refuse loudly or answer structurally — never pad.
@@ -240,10 +271,7 @@ export interface InstallResult {
   reason?: 'user-owned' | 'privacy' | 'too-long' | 'limit'
 }
 
-// Skills live in the vault, the way routines do — the app's own home, not a
-// vendor's. One folder per skill under .engram/skills, so a skill is portable
-// with the vault and reachable by the comet without depending on whatever
-// engine happens to be driving it.
+// Skills stay portable with the vault, independent of the selected engine.
 export function skillsDir(paths: VaultPaths): string {
   return join(paths.workspace, '.engram', 'skills')
 }
@@ -280,9 +308,7 @@ export interface SkillCard {
   description: string
 }
 
-// The index tier: every skill's name and one-line description, cheap enough to
-// carry in the prompt so the model knows what it can open without any of the
-// bodies costing a token until one is needed.
+// Advertise names and descriptions; load bodies only on demand.
 export async function listSkills(paths: VaultPaths): Promise<SkillCard[]> {
   const dir = skillsDir(paths)
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -299,23 +325,23 @@ export async function listSkills(paths: VaultPaths): Promise<SkillCard[]> {
   return cards.sort((a, b) => (a.name < b.name ? -1 : 1))
 }
 
-// The load tier: one skill's how-to in full, by the name the index gave. A
-// reference file inside the skill can be asked for by relative path, kept
-// inside the skill's own folder so a name can never reach elsewhere.
+// Reference paths must stay within the named skill's directory.
 export async function readSkillFile(paths: VaultPaths, name: string, path?: string): Promise<string | null> {
   const content = await skillContent(paths, name, path ?? 'SKILL.md')
   return content === null ? null : path === undefined ? frontMatter(content).body : content
 }
 
-// Install into <vault>/.engram/skills/engram-<slug>/SKILL.md. The hash in the
-// ledger is the ownership proof: a file on disk that no longer matches it was
-// edited by the user, and from then on it is theirs.
+// Serialize ledger changes; a changed file hash transfers ownership to the user.
 const installs = new Map<string, Promise<unknown>>()
-export async function installSkill(paths: VaultPaths, candidate: SkillCandidate, draft: SkillDraft, now = new Date()): Promise<InstallResult> {
+async function withSkillLedger<T>(paths: VaultPaths, work: () => Promise<T>): Promise<T> {
   const key = ledgerFile(paths)
-  const next = (installs.get(key) ?? Promise.resolve()).catch(() => undefined).then(() => installOne(paths, candidate, draft, now))
+  const next = (installs.get(key) ?? Promise.resolve()).catch(() => undefined).then(work)
   installs.set(key, next)
   try { return await next } finally { if (installs.get(key) === next) installs.delete(key) }
+}
+
+export async function installSkill(paths: VaultPaths, candidate: SkillCandidate, draft: SkillDraft, now = new Date()): Promise<InstallResult> {
+  return withSkillLedger(paths, () => installOne(paths, candidate, draft, now))
 }
 
 async function installOne(

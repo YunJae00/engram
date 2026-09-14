@@ -77,6 +77,8 @@ import {
   listRoutines,
   listSkills,
   annotateStaleCards,
+  rankSkillCards,
+  recordSkillUse,
   readSkillsLedger,
   installSkill,
   turnSkillPrompt,
@@ -2203,6 +2205,7 @@ export function registerIpc(ctx: VaultContext): void {
         assertDesktopChatEngine(channel, engine)
         const resume = resumeState.get(bot.id)
         resumeState.delete(bot.id)
+        const skillLedger = await readSkillsLedger(paths)
         const result = await runComet(
           {
             engine,
@@ -2288,7 +2291,7 @@ export function registerIpc(ctx: VaultContext): void {
           {
             signal,
             // Index only; bodies and current staleness are checked on open_skill.
-            skills: annotateStaleCards(await listSkills(paths), await readSkillsLedger(paths), ctx.store.getAll()),
+            skills: rankSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
             persona: bot.purpose
@@ -2358,6 +2361,7 @@ export function registerIpc(ctx: VaultContext): void {
         // nothing. The note is the person's to approve, like any other.
         const HANDS = new Set(['press', 'type_text', 'choose', 'press_point', 'reveal'])
         const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete
+        await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
         if (savedRoutine?.task) {
           await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
           broadcast({ type: 'vault:changed' })
