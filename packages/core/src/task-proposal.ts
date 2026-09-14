@@ -29,6 +29,7 @@ export function proposalPrompt(exchange: { user: string; answer: string; steps: 
     'NAME: a short label, at most 5 words, naming the WORK - never the words they happened to type, never a date',
     'GOAL: the same job as one instruction you could be given again next month, specific enough to run without asking',
     'Preserve the requested output, scope, relative time period and verification requirements. State the actual working surface (browser or app) and navigation method. Do not invent missing dates or omit required detail. Starting URLs are saved separately by the host.',
+    'Do not add new investigations or output columns just because the answer happened to mention them. Do not change an event-date question into an application-date question. Rephrase wording only, never broaden the job.',
     'DOES: one sentence saying what pressing it would do',
     'Write all three in the language the person wrote in. If the job is not worth repeating - a one-off lookup, a question about this conversation - write only: NONE',
     '',

@@ -21,6 +21,8 @@ it('imports actual profile bookmarks without reading or changing sign-in files',
   await writeFile(file, tree([bookmark, bookmark]))
   await writeFile(join(fake.root, 'Default', 'Cookies'), 'unchanged')
   expect(await bookmarkSources()).toEqual([{ id: 'chrome:Default', name: 'Chrome · Default' }])
+  await writeFile(join(fake.root, 'Local State'), JSON.stringify({ profile: { info_cache: { Default: { name: 'Work' } } } }))
+  expect(await bookmarkSources()).toEqual([{ id: 'chrome:Default', name: 'Chrome · Work' }])
   expect(await importBookmarks('chrome:Default')).toEqual([{ title: '문서', url: 'https://example.com/docs', folder: 'Work' }])
   expect(await savedBookmarks()).toEqual([{ title: '문서', url: 'https://example.com/docs', folder: 'Work' }])
   await importBookmarks('chrome:Default')

@@ -176,6 +176,7 @@ import {
 import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { semanticQuery, semanticQueryIfLive } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
+import { externalOwns, stopExternalCalls, stopExternalLane } from './external-connection.js'
 import type { VaultContext } from './vault.js'
 
 // Every vault mutation goes through core — the renderer only sees DTOs.
@@ -669,6 +670,8 @@ const answering = new Set<string>()
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
 export function abortAllChat(channel?: string): void {
+  if (channel) stopExternalLane(channel)
+  else stopExternalCalls()
   if (channel) stopDesktopForLane(channel)
   else stopDesktopControl('All chat work was stopped.')
   for (const [lane, claim] of routineLanes) {
@@ -945,7 +948,7 @@ export function registerIpc(ctx: VaultContext): void {
     return value
   })
   const resumeState = new Map<string, string>()
-  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string }>()
+  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string; execution?: NonNullable<Routine['task']>['execution'] }>()
 
   // Only an explicitly kept, completed turn can supply reusable guidance.
   const SKILL_FROM_TURN_MIN = 3
@@ -1219,7 +1222,9 @@ export function registerIpc(ctx: VaultContext): void {
     if (!routineId) {
       const last = lastTurns.get(botId)
       const transcript = await readBotTranscript(paths, botId)
-      const task = routineTask(input.goal, last?.steps ?? [], transcript.map(turn => turn.text))
+      const original = last && (last.keepGoal === input.goal || last.message === input.goal) ? last.message : input.goal
+      const task = routineTask(original, last?.steps ?? [], transcript.map(turn => turn.text), transcript.filter(turn => turn.role === 'user').map(turn => turn.text))
+      if (last?.execution) task.execution = last.execution
       const routine = await addRoutine(paths, { name: input.name, steps: [], task })
       routineId = routine.id
     }
@@ -1443,6 +1448,10 @@ export function registerIpc(ctx: VaultContext): void {
       return startRoutineChat(paths, id, { force: force === true, ...(slots ? { slots } : {}) }, {
         begin: beginRoutine,
         recover: async (botId, message, context, routine) => {
+          if (routine?.task?.execution) {
+            const execution = routine.task.execution
+            await updateSettings(settings => ({ ...settings, aiSelections: { ...settings.aiSelections, [`bot-${botId}`]: execution } }))
+          }
           if (!await chatEngine(`bot-${botId}`, ctx.engines)) return false
           await sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context, routine)
           return true
@@ -1969,6 +1978,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => sendChat(request))
 
   async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine): Promise<void> {
+    if (externalOwns(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))) throw new Error('An external client is working in this conversation. Stop its session in Settings → External connections before sending here.')
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
     chatAborts.add(entry)
@@ -2023,7 +2033,7 @@ export function registerIpc(ctx: VaultContext): void {
             `You are "${bot.name}", one of the user's comets — small personal helpers inside their second brain. Your charter: ${bot.purpose} Stay within that charter; when a question falls outside it, say so briefly and answer anyway.`,
           ]
         : []),
-      "You are the librarian of this vault — you know this person's notes. Answer in the SAME LANGUAGE the user wrote in, whatever language the notes or these rules are in. Output only the answer, in markdown: no greetings, no narration, and never wrap the whole answer in a code fence.",
+      "You are the librarian of this vault — you know this person's notes. Answer in the SAME LANGUAGE the user wrote in, whatever language the notes or these rules are in. Talk naturally with the person: lead with the useful answer in short paragraphs, then use a short list only when it helps. Do not turn ordinary conversation into a report with stacked headings, dense bullets or repeated bold labels. Keep necessary detail when requested. Cite the few relevant supporting notes rather than attaching a citation to every phrase. Never wrap the whole answer in a code fence.",
       'Answer the question, do not list note titles. Say what the notes mean together — what was decided, what changed, what is still open — in two to six short sentences or bullets carrying real content (names, numbers, decisions).',
       'The VAULT MAP is the catalogue of every topic that exists; the retrieved notes are a keyhole into a few of them. Never say something is absent because it was not retrieved — say you did not pull it up. When the vault truly holds nothing on the topic, say so briefly and answer from your own knowledge.',
       'Cite a statement that came from a note inline as [note title](note://note-id), using the exact id from the context, at the end of the sentence it supports. Only notes you actually used. Never invent an id.',
@@ -2419,6 +2429,7 @@ export function registerIpc(ctx: VaultContext): void {
           message: request.message,
           steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
           keepGoal: undefined as string | undefined,
+          execution: aiSelection(settings, channel),
         }
         lastTurns.set(bot.id, completed)
         // The words they typed name this morning, not the work. Asked after

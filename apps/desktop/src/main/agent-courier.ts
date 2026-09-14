@@ -15,7 +15,8 @@ import { readWhenReady } from './page-ready.js'
 // A hand on a page answers within a budget, or answers that it did not: a
 // page that swallows a click must not swallow the turn with it.
 const HAND_BUDGET_MS = 45_000
-function withinBudget(work: Promise<PageMove>): Promise<PageMove> {
+function withinBudget(work: Promise<PageMove>, awaitCompletion = false): Promise<PageMove> {
+  if (awaitCompletion) return work
   return Promise.race([
     work,
     new Promise<PageMove>((resolve) =>
@@ -30,7 +31,7 @@ function withinBudget(work: Promise<PageMove>): Promise<PageMove> {
 // the other just replaced. Changes on one host take turns; the host is all
 // the rule knows.
 const hostTurns = new Map<string, Promise<unknown>>()
-async function inTurnOn(url: string, work: () => Promise<PageMove>): Promise<PageMove> {
+async function inTurnOn(url: string, work: () => Promise<PageMove>, signal?: AbortSignal): Promise<PageMove> {
   let host = ''
   try {
     host = new URL(url).host
@@ -38,7 +39,8 @@ async function inTurnOn(url: string, work: () => Promise<PageMove>): Promise<Pag
     return work()
   }
   const before = hostTurns.get(host) ?? Promise.resolve()
-  const mine = before.then(work, work)
+  const run = () => { signal?.throwIfAborted(); return work() }
+  const mine = before.then(run, run)
   hostTurns.set(host, mine.catch(() => undefined))
   return mine
 }
@@ -65,7 +67,7 @@ async function stepAside(lane: string, signal: AbortSignal | undefined, say?: (p
 }
 
 export function agentCourier(
-  deps: { askBeforePress?: Ask; lane?: string; onLook?: (url: string, covered: number) => void; onAside?: (phase: 'aside' | 'resume') => void } = {},
+  deps: { askBeforePress?: Ask; lane?: string; awaitCompletion?: boolean; onLook?: (url: string, covered: number) => void; onAside?: (phase: 'aside' | 'resume') => void } = {},
 ): WebCourier {
   const ask = deps.askBeforePress
   const lane = deps.lane ?? DEFAULT_LANE
@@ -97,49 +99,49 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, ask)))
+      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, ask), deps.awaitCompletion), signal)
     },
     async typeText(target, text, enter, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(typeText(page, target, text, enter, signal)))
+      return inTurnOn(page.url(), () => withinBudget(typeText(page, target, text, enter, signal), deps.awaitCompletion), signal)
     },
     async choose(target, option, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal)))
+      return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal), deps.awaitCompletion), signal)
     },
     async scroll(to, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(scrollPage(page, to, signal))
+      return withinBudget(scrollPage(page, to, signal), deps.awaitCompletion)
     },
     async hover(target, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(hoverOn(page, target, signal))
+      return withinBudget(hoverOn(page, target, signal), deps.awaitCompletion)
     },
     async pressKey(key, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressKey(page, key, signal))
+      return withinBudget(pressKey(page, key, signal), deps.awaitCompletion)
     },
     async reveal(word, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(revealText(page, word))
+      return withinBudget(revealText(page, word), deps.awaitCompletion)
     },
     async pressPoint(x, y, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask)))
+      return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask), deps.awaitCompletion), signal)
     },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)

@@ -18,6 +18,9 @@ export interface McpOptions {
   // a workspace switch in the app is picked up without reconnecting.
   vaultRoot?: string
   registryPath?: string
+  instructions?: string
+  tools?(): Promise<{ name: string; description: string; inputSchema: object }[]>
+  call?(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<{ content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean }>
 }
 
 interface RpcMessage {
@@ -30,7 +33,7 @@ interface RpcMessage {
 const SEARCH_CACHE_TTL_MS = 30_000
 const PROTOCOL_FALLBACK = '2024-11-05'
 
-const TOOLS = [
+export const MEMORY_MCP_TOOLS = [
   {
     name: 'engram_capture',
     description:
@@ -370,7 +373,7 @@ async function runBrief({ paths, workspace }: ResolvedVault): Promise<string> {
   return lines.join('\n')
 }
 
-async function callTool(opts: McpOptions, name: string, args: Record<string, unknown>): Promise<string> {
+export async function callMemoryTool(opts: McpOptions, name: string, args: Record<string, unknown>): Promise<string> {
   const vault = await resolveVault(opts)
   switch (name) {
     case 'engram_brief':
@@ -414,13 +417,21 @@ export function startMcpServer(
   output: NodeJS.WritableStream,
   opts: McpOptions = {},
 ): Promise<void> {
-  const send = (msg: Record<string, unknown>) => output.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n')
+  let closed = false
+  const send = (msg: Record<string, unknown>) => { if (!closed) output.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n') }
+  const pending = new Map<string | number, AbortController>()
 
   const handle = async (msg: RpcMessage): Promise<void> => {
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.method !== 'string') return
     const { id, method, params } = msg
     // Notifications (no id) never get a response.
+    if (method === 'notifications/cancelled') {
+      const requestId = params?.['requestId']
+      if (typeof requestId === 'string' || typeof requestId === 'number') pending.get(requestId)?.abort()
+      return
+    }
     if (method?.startsWith('notifications/')) return
-    if (id === undefined || id === null || !method) return
+    if (typeof id !== 'string' && typeof id !== 'number') return
     try {
       if (method === 'initialize') {
         const requested = typeof params?.['protocolVersion'] === 'string' ? (params['protocolVersion'] as string) : PROTOCOL_FALLBACK
@@ -432,27 +443,31 @@ export function startMcpServer(
             serverInfo: { name: 'engram', version: '0.1.0' },
             // Free steering for every client, not just the ones with a system
             // prompt we control: this rides the MCP handshake itself.
-            instructions:
+            instructions: opts.instructions ?? (
               "Engram is the user's second brain — their real decisions, projects and memories, kept locally. " +
               'BEFORE answering anything about their past work, decisions, or preferences, call engram_search or engram_context. ' +
               'Use engram_trace to walk relations from a hit (what replaced what, why things are linked). ' +
               'When a durable fact or decision emerges, offer to engram_capture it. ' +
-              'Search ranks memories from the current working folder first.',
+              'Search ranks memories from the current working folder first.'),
           },
         })
       } else if (method === 'ping') {
         send({ id, result: {} })
       } else if (method === 'tools/list') {
-        send({ id, result: { tools: TOOLS } })
+        send({ id, result: { tools: opts.tools ? await opts.tools() : MEMORY_MCP_TOOLS } })
       } else if (method === 'tools/call') {
         const name = String(params?.['name'] ?? '')
         const args = (params?.['arguments'] ?? {}) as Record<string, unknown>
+        if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tool arguments must be an object')
+        if (pending.has(id)) throw new Error('A request with this id is already running')
+        const controller = new AbortController()
+        pending.set(id, controller)
         try {
-          const text = await callTool(opts, name, args)
-          send({ id, result: { content: [{ type: 'text', text }] } })
+          const result = opts.call ? await opts.call(name, args, controller.signal) : { content: [{ type: 'text', text: await callMemoryTool(opts, name, args) }] }
+          if (!controller.signal.aborted) send({ id, result })
         } catch (err) {
           send({ id, result: { content: [{ type: 'text', text: `Engram error: ${String((err as Error).message ?? err)}` }], isError: true } })
-        }
+        } finally { pending.delete(id) }
       } else {
         send({ id, error: { code: -32601, message: `method not found: ${method}` } })
       }
@@ -472,6 +487,6 @@ export function startMcpServer(
         // Unparseable line — a request id is unknowable, so stay silent.
       }
     })
-    rl.on('close', () => resolvePromise())
+    rl.on('close', () => { closed = true; for (const controller of pending.values()) controller.abort(); resolvePromise() })
   })
 }

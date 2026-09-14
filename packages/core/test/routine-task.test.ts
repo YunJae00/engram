@@ -6,13 +6,29 @@ import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
 describe('saved task routines', () => {
+  it('retains verified execution settings and resolves temporary controls from preceding observations', async () => {
+    const task = routineTask('Check leave used this month', [
+      { tool: 'read_page', args: {}, observation: '#12 [button] View profile' },
+      { tool: 'press', args: { target: '#12' }, observation: 'pressed' },
+      { tool: 'press', args: { target: '#12' }, observation: 'pressed' },
+      { tool: 'task_plan', args: { phases: ['Check leave dates and cancellations'] }, observation: 'saved' },
+    ])
+    expect(task.method.join('\n')).toContain('View profile')
+    expect(task.checks).toEqual(['Check leave dates and cancellations'])
+    expect(task.method.join('\n')).not.toContain('#12')
+    task.execution = { engine: 'claude', model: 'opus', effort: 'medium' }
+    const paths = await initVault(await tmpVaultRoot('saved-execution-'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Monthly leave', steps: [], task })
+    expect((await listRoutines(paths))[0]?.task).toEqual(task)
+    expect(routineTaskPrompt(saved)).toContain('original')
+  })
   it('retains full addresses and a long method without replaying transient targets or typed secrets', async () => {
     const steps = Array.from({ length: 39 }, () => ({ tool: 'press', args: { target: '#18' }, observation: 'pressed' }))
     const task = routineTask('Collect every detail and verify the table', [
       { tool: 'open_page', args: { url: 'https://portal.example/reports?view=weekly' }, observation: 'opened' },
       ...steps,
       { tool: 'type_text', args: { target: 'Search', text: 'private text' }, observation: 'typed' },
-    ], ['Earlier request: https://portal.example/home', 'https://example.com/?access_token=secret', 'https://user:password@example.com'])
+    ], ['Earlier request: https://portal.example/home', 'https://example.com/?access_token=secret', 'https://user:password@example.com', 'https://sso.example/?SAMLRequest=secret'])
     expect(task.surface).toBe('web')
     expect(task.urls).toEqual(['https://portal.example/reports?view=weekly', 'https://portal.example/home'])
     expect(task.method).toHaveLength(41)
@@ -28,6 +44,7 @@ describe('saved task routines', () => {
   })
 
   it('keeps mixed work generic and rejects invalid saved addresses', async () => {
+    expect(routineTask('Read their remarks too', [], [], ['Find last week’s time entries', 'Read their remarks too']).context).toEqual(['Find last week’s time entries'])
     expect(routineTask('Use my password is abcDEF123', []).goal).not.toContain('abcDEF123')
     expect(routineTask('Prepare a file', [{ tool: 'excel_write', args: {}, observation: '{}' }], ['https://example.com']).surface).toBe('auto')
     const paths = await initVault(await tmpVaultRoot('saved-invalid-'), { git: false })

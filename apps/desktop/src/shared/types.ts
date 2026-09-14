@@ -188,7 +188,7 @@ export interface RoutineDto {
   id: string
   name: string
   steps: RoutineStepDto[]
-  task?: { goal: string; urls: string[]; method: string[]; surface: 'web' | 'auto' }
+  task?: { goal: string; urls: string[]; method: string[]; surface: 'web' | 'auto'; context?: string[]; checks?: string[]; execution?: { engine: 'claude' | 'codex'; model: string; effort?: AppSettingsDto['claudeEffort'] } }
   createdAt: string
   lastRunAt?: string
   lastOutcome?: 'done' | 'failed' | 'aborted'
@@ -736,6 +736,10 @@ export interface EngramApi extends DesktopApi {
   mcpInfo(): Promise<McpInfoDto>
   mcpConnectDesktop(): Promise<McpConnectResultDto>
   mcpConnectCode(): Promise<McpConnectResultDto>
+  mcpConnectCodex(): Promise<McpConnectResultDto>
+  mcpStatus(): Promise<{ enabled: boolean; active: boolean; connected: number }>
+  mcpEnable(enabled: boolean): Promise<{ enabled: boolean; active: boolean; connected: number }>
+  mcpStop(): Promise<void>
   semanticStatus(): Promise<SemanticStatusDto>
   diagnostics(): Promise<DiagnosticsDto>
   exportLogs(): Promise<string | null>

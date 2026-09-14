@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { answerHtml } from '../src/renderer/src/markdown.js'
+import { answerHtml, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
 describe('answerHtml', () => {
+  it('numbers unique memory references without changing ordinary links or code', () => {
+    const text = 'First [Decision](note://n-one), again [same](note://n-one). [Website](https://example.com).\n\n`[not a source](note://n-code)`'
+    const sources = memorySources(text)
+    expect(sources).toEqual([{ url: 'note://n-one', label: 'Decision' }])
+    const html = answerHtml(text, [], sources.map(source => source.url))
+    expect(html).toContain('aria-label="Memory source 1">1</a>')
+    expect(html).toContain('>Website</a>')
+    expect(html).toContain('<code>')
+  })
   it('removes only bare source links represented by a clickable source chip', () => {
     const urls = ['https://example.com/']
     expect(answerHtml('Done.\n\nhttps://example.com', urls)).not.toContain('<a')

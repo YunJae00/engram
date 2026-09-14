@@ -39,10 +39,13 @@ export function parseBookmarks(text: string): Bookmark[] {
 async function profiles() {
   const found: { id: string; name: string; file: string }[] = []
   for (const root of browserProfileRoots()) {
+    const state = await readLimited(join(root.userData, 'Local State')).then(text => record(record(JSON.parse(text)).profile).info_cache).catch(() => undefined)
     for (const dir of await readdir(root.userData, { withFileTypes: true }).catch(() => [])) {
       if (!dir.isDirectory() || !/^(Default|Profile \d+)$/.test(dir.name)) continue
       const file = join(root.userData, dir.name, 'Bookmarks')
-      if ((await stat(file).catch(() => null))?.isFile()) found.push({ id: `${root.id}:${dir.name}`, name: `${root.name} · ${dir.name}`, file })
+      const profileName = record(record(state)[dir.name]).name
+      const label = typeof profileName === 'string' && profileName.trim() ? profileName.slice(0, 100) : dir.name
+      if ((await stat(file).catch(() => null))?.isFile()) found.push({ id: `${root.id}:${dir.name}`, name: `${root.name} · ${label}`, file })
     }
   }
   return found

@@ -20,7 +20,7 @@ const LEAST = 2
 const LEAST_SETTLING = 8
 const STEP_MS = 32
 
-export const StreamingAnswer = memo(function StreamingAnswer({ text, done }: { text: string; done: boolean }) {
+export const StreamingAnswer = memo(function StreamingAnswer({ text, done, citations = false }: { text: string; done: boolean; citations?: boolean }) {
   // A message that has never been mid-answer in this view is history: it is
   // shown whole, with no pacing at all.
   const wrote = useRef(!done)
@@ -46,5 +46,5 @@ export const StreamingAnswer = memo(function StreamingAnswer({ text, done }: { t
     }, STEP_MS)
     return () => clearInterval(timer)
   }, [text, done])
-  return <Answer text={text.slice(0, shown)} />
+  return <Answer text={text.slice(0, shown)} citations={citations} streaming={!done || shown < text.length} />
 })

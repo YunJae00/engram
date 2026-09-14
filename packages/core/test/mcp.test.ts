@@ -60,6 +60,26 @@ beforeAll(async () => {
 })
 
 describe('engram mcp server', () => {
+  it('forwards cancellation to an external call and aborts pending calls on disconnect', async () => {
+    const incoming = new PassThrough(), outgoing = new PassThrough()
+    const seen: AbortSignal[] = []
+    const finished = startMcpServer(incoming, outgoing, {
+      tools: async () => [{ name: 'test', description: 'test', inputSchema: { type: 'object' } }],
+      call: async (_name, _args, signal) => {
+        seen.push(signal)
+        await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
+        return { content: [{ type: 'text', text: 'stopped' }] }
+      },
+    })
+    incoming.write(JSON.stringify({ id: 1, method: 'tools/call', params: { name: 'test', arguments: {} } }) + '\n')
+    expect(seen).toHaveLength(1)
+    incoming.write(JSON.stringify({ method: 'notifications/cancelled', params: { requestId: 1 } }) + '\n')
+    expect(seen[0]?.aborted).toBe(true)
+    incoming.write(JSON.stringify({ id: 2, method: 'tools/call', params: { name: 'test', arguments: {} } }) + '\n')
+    incoming.end()
+    await finished
+    expect(seen[1]?.aborted).toBe(true)
+  })
   it('handshakes: initialize echoes the protocol version, tools/list names the three tools', async () => {
     send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } })
     const init = (await waitFor(1))['result'] as Record<string, unknown>

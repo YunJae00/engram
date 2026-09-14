@@ -9,7 +9,8 @@ import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from './security.
 import { detectApiKeyEnv } from './installer.js'
 import { abortAllChat, broadcast, drainAbsorbQueue, registerEngineIpc, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
 import { fixMacPath } from './macos-path.js'
-import { autoConnectMcp, registerMcpIpc } from './mcp-connect.js'
+import { registerMcpIpc } from './mcp-connect.js'
+import { setExternalContext } from './external-connection.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
@@ -484,11 +485,6 @@ function registerBaseIpc(): void {
   // Semantic layer status — the handler exists app-wide; the engine itself
   // starts per vault in bootVault.
   registerSemanticIpc()
-  // Zero-click satellites: shortly after boot, self-connect/heal both Claudes
-  // so opening the app is the ONLY step the user ever performs.
-  setTimeout(() => {
-    void autoConnectMcp((targets) => broadcast({ type: 'mcp:autoconnected', targets }))
-  }, 5_000)
 
   ipcMain.handle('onboard:defaults', async () => ({
     defaultRoot: process.env['ENGRAM_ONBOARD_ROOT'] ?? join(app.getPath('home'), 'Engram'),
@@ -549,6 +545,7 @@ async function runImportTypeMigration(ctx: VaultContext): Promise<void> {
 
 async function bootVault(root: string): Promise<VaultContext> {
   const ctx = await openVaultContext(root)
+  setExternalContext(ctx)
   if (!booted) {
     booted = true
     registerIpc(ctx)

@@ -32,9 +32,22 @@ function unfence(text: string): string {
 
 // Mid-stream, a capture marker tail may arrive before main strips it from the
 // final text — never show the plumbing.
-export function answerHtml(text: string, sourceUrls: string[] = []): string {
+export function memorySources(text: string): { url: string; label: string }[] {
+  const sources = new Map<string, string>()
+  marked.walkTokens(marked.lexer(text), token => {
+    if (token.type === 'link' && /^note:\/\/[\w-]+$/.test(token.href) && !sources.has(token.href)) sources.set(token.href, token.text)
+  })
+  return [...sources].map(([url, label]) => ({ url, label }))
+}
+
+export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
   const visible = text.split('<engram:capture')[0] ?? ''
   const renderer = new marked.Renderer()
+  const link = renderer.link.bind(renderer)
+  renderer.link = token => {
+    const index = notes.indexOf(token.href)
+    return index >= 0 && /^note:\/\/[\w-]+$/.test(token.href) ? `<a class="answer-reference" href="${token.href}" aria-label="Memory source ${index + 1}">${index + 1}</a>` : link(token)
+  }
   const paragraph = renderer.paragraph.bind(renderer)
   renderer.paragraph = token => {
     const links = token.tokens.filter(item => item.type !== 'text' || item.raw.trim())

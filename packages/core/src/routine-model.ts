@@ -26,7 +26,7 @@ export interface Routine {
   id: string
   name: string
   steps: RoutineStep[]
-  task?: { goal: string; urls: string[]; method: string[]; surface: 'web' | 'auto' }
+  task?: { goal: string; urls: string[]; method: string[]; surface: 'web' | 'auto'; context?: string[]; checks?: string[]; execution?: { engine: 'claude' | 'codex'; model: string; effort?: import('./engine/types.js').ReasoningEffort } }
   createdAt: string
   lastRunAt?: string
   lastOutcome?: 'done' | 'failed' | 'aborted'

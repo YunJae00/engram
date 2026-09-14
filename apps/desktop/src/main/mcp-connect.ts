@@ -1,184 +1,99 @@
-import { exec } from 'node:child_process'
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, copyFile, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { promisify } from 'node:util'
+import { dirname, join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { app, ipcMain } from 'electron'
+import { claudeBinary, codexBinary, runText } from './engine-cloud.js'
+import { externalInfoPath, externalStatus, setExternalEnabled, stopExternalCalls } from './external-connection.js'
 import type { McpConnectResultDto, McpInfoDto } from '../shared/types.js'
 
-const execAsync = promisify(exec)
-
-// One-click MCP hookup: every Claude on this machine becomes a satellite of
-// the vault. The server is the bundled engram-mcp script run through OUR OWN
-// executable in Node mode (ELECTRON_RUN_AS_NODE) — no Node install needed on
-// the user's machine, and the client spawns it on demand, so the app itself
-// carries zero runtime cost and does not need to be running.
-
 function serverScriptPath(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'bin', 'mcp', 'engram-mcp.cjs')
-    : join(app.getAppPath(), 'bundle', 'mcp', 'engram-mcp.cjs')
+  return app.isPackaged ? join(process.resourcesPath, 'bin', 'mcp', 'engram-mcp.cjs') : join(app.getAppPath(), 'bundle', 'mcp', 'engram-mcp.cjs')
 }
-
-// The registry (vaults.json) is passed instead of a vault path so a workspace
-// switch in the app is picked up by satellites without reconfiguring.
-function serverSpec(): { command: string; args: string[]; env: Record<string, string> } {
-  return {
-    command: process.execPath,
-    args: [serverScriptPath(), '--registry', join(app.getPath('userData'), 'vaults.json')],
-    env: { ELECTRON_RUN_AS_NODE: '1' },
-  }
+function serverSpec() {
+  return { command: process.execPath, args: [serverScriptPath(), '--bridge', externalInfoPath()], env: { ELECTRON_RUN_AS_NODE: '1' } }
 }
-
 function desktopConfigPath(): string {
   if (process.platform === 'win32') return join(process.env['APPDATA'] ?? '', 'Claude', 'claude_desktop_config.json')
   if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
   return join(homedir(), '.config', 'Claude', 'claude_desktop_config.json')
 }
+const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+const owned = (value: unknown) => (JSON.stringify(value) ?? '').includes('engram-mcp.cjs')
 
-async function connectClaudeDesktop(): Promise<McpConnectResultDto> {
-  const configPath = desktopConfigPath()
-  const dir = join(configPath, '..')
-  try {
-    await access(dir)
-  } catch {
-    return { ok: false, code: 'not-installed' }
-  }
+async function connectDesktop(): Promise<McpConnectResultDto> {
+  const target = desktopConfigPath()
+  try { await access(dirname(target)) } catch { return { ok: false, code: 'not-installed' } }
   let config: Record<string, unknown> = {}
+  let existing = false
   try {
-    config = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
-  } catch {
-    /* missing or unparseable — start fresh (a broken file is replaced) */
-  }
-  const servers = (config['mcpServers'] ?? {}) as Record<string, unknown>
-  servers['engram'] = serverSpec()
-  config['mcpServers'] = servers
-  await mkdir(dir, { recursive: true })
-  await writeFile(configPath, JSON.stringify(config, null, 2))
+    const parsed: unknown = JSON.parse(await readFile(target, 'utf8'))
+    if (!record(parsed) || parsed.mcpServers !== undefined && !record(parsed.mcpServers)) throw new Error('Invalid client config. Fix it before connecting; it has not been changed.')
+    config = parsed; existing = true
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  const servers = (config.mcpServers ?? {}) as Record<string, unknown>
+  if (servers.engram && !owned(servers.engram)) throw new Error('Another server uses the name engram. Rename it in the client before connecting.')
+  const pending = `${target}.${randomUUID()}.tmp`
+  try {
+    if (existing) await copyFile(target, `${target}.${Date.now()}.bak`)
+    await writeFile(pending, JSON.stringify({ ...config, mcpServers: { ...servers, engram: serverSpec() } }, null, 2), { mode: 0o600 })
+    await rename(pending, target)
+  } finally { await rm(pending, { force: true }) }
   return { ok: true }
 }
 
-// `claude mcp add` fails on a duplicate name — treat that as "reconnect":
-// drop the stale entry (old paths from before a rename/move) and re-add.
-async function connectClaudeCode(): Promise<McpConnectResultDto> {
+async function connectCli(client: 'claude' | 'codex'): Promise<McpConnectResultDto> {
+  const binary = client === 'claude' ? claudeBinary() : codexBinary()
+  if (!binary) return { ok: false, code: 'no-cli' }
   const spec = serverSpec()
-  const addCmd = `claude mcp add engram --scope user -e ELECTRON_RUN_AS_NODE=1 -- "${spec.command}" "${spec.args[0]}" --registry "${spec.args[2]}"`
-  const run = async (cmd: string) => execAsync(cmd, { windowsHide: true, timeout: 20_000 })
-  try {
-    await run(addCmd)
-    return { ok: true }
-  } catch (err) {
-    const text = String((err as { stderr?: string; message?: string }).stderr ?? (err as Error).message ?? err)
-    if (/already exists/i.test(text)) {
-      try {
-        await run('claude mcp remove engram -s user')
-        await run(addCmd)
-        return { ok: true }
-      } catch (retryErr) {
-        return { ok: false, code: 'failed', detail: String((retryErr as Error).message ?? retryErr).slice(0, 300) }
-      }
+  const current = await runText(binary, ['mcp', 'get', 'engram', ...(client === 'codex' ? ['--json'] : [])], 15000)
+  let restore: { file: string; before: string; removed: string } | undefined
+  if (current.code === 0) {
+    if (!owned(current.out)) throw new Error('Another server uses the name engram. Its configuration was not changed.')
+    if (spec.args.every(arg => current.out.includes(arg) || current.out.includes(JSON.stringify(arg).slice(1, -1)))) return { ok: true }
+    const file = client === 'codex' ? join(process.env['CODEX_HOME'] ?? join(homedir(), '.codex'), 'config.toml') : join(homedir(), '.claude.json')
+    const before = await readFile(file, 'utf8')
+    if (client === 'claude') {
+      const config: unknown = JSON.parse(before)
+      if (process.env['CLAUDE_CONFIG_DIR'] || !record(config) || !record(config.mcpServers) || !owned(config.mcpServers.engram)) throw new Error('The existing connection uses a different configuration scope. Remove it in the client, then reconnect.')
     }
-    if (/not recognized|not found|ENOENT/i.test(text)) return { ok: false, code: 'no-cli' }
-    return { ok: false, code: 'failed', detail: text.slice(0, 300) }
+    await copyFile(file, `${file}.${randomUUID()}.bak`)
+    if (client === 'claude') {
+      const removed = await runText(binary, ['mcp', 'remove', 'engram', '-s', 'user'], 15000)
+      if (removed.code !== 0) throw new Error('Could not update the previous connection. Its configuration backup was kept.')
+      restore = { file, before, removed: await readFile(file, 'utf8') }
+    }
   }
+  const args = client === 'claude'
+    ? ['mcp', 'add', 'engram', '--scope', 'user', '-e', 'ELECTRON_RUN_AS_NODE=1', '--', spec.command, ...spec.args]
+    : ['mcp', 'add', 'engram', '--env', 'ELECTRON_RUN_AS_NODE=1', '--', spec.command, ...spec.args]
+  const added = await runText(binary, args, 20000)
+  if (added.code !== 0 && restore && await readFile(restore.file, 'utf8') === restore.removed) {
+    const pending = `${restore.file}.${randomUUID()}.tmp`
+    try { await writeFile(pending, restore.before, { mode: 0o600 }); await rename(pending, restore.file) }
+    finally { await rm(pending, { force: true }) }
+  }
+  return added.code === 0 ? { ok: true } : { ok: false, code: 'failed', detail: added.out.slice(-300) }
 }
 
-// The /engram slash command, shipped to ~/.claude/commands so every Claude
-// Code user gets the shorthand without any setup. Kept in sync on boot.
-const ENGRAM_COMMAND = `---
-description: Put something into your Engram second brain, or pull something out — /engram <instruction or content>
----
-The user's Engram second brain is connected via MCP tools: \`engram_capture\`, \`engram_search\`, \`engram_context\`, \`engram_brief\`, \`engram_alias\`.
-
-Request: $ARGUMENTS
-
-Decide the intent and act — do not ask which one they meant. Always answer in the language the user wrote in.
-
-**Brief** — the request is about the brain itself rather than a topic (a briefing, "what happened today", status, a summary):
-Call \`engram_brief\` and relay it conversationally (workspace, waiting captures, the librarian's briefing).
-
-**Alias** — the request says two or more names mean the same thing ("X and Y are the same", "we call it Y for short"):
-Call \`engram_alias\` with the equivalent names. Confirm in one short line. From then on search bridges those names automatically.
-
-**Save (the default)** — the request asks to remember/store/file something, refers to earlier content ("this", "what we just decided"), or is itself raw content to keep:
-1. Pull the relevant substance from the conversation above (decisions, facts, requests, outcomes — not chit-chat).
-2. Write it as ONE self-contained note **in the language the user is writing in**: first line \`# title\`, then a body that still makes sense later without this conversation (what was decided or learned, why, key numbers, names and dates). Preserve emphasis the user voiced ("never", "must", "do not forget") and conditional reminders ("next time I do X, …") verbatim — the librarian turns those into salience and future-trigger metadata.
-3. Call \`engram_capture\` with it. If there are clearly separate topics, capture each as its own note.
-4. Confirm in one short line what was saved. The librarian files it later — never mention inbox mechanics.
-
-**Find** — the request asks about past knowledge ("what was …", "look up", "search"):
-1. Call \`engram_search\` with focused terms. When the first search misses, try the same idea in another language — vaults are often mixed, and the user's taught aliases are applied automatically.
-2. If the user needs substance rather than titles, follow with \`engram_context\` and answer from it, citing note titles.
-
-If the search truly finds nothing, say so plainly and suggest one alternative query — do not fabricate memories.
-`
-
-async function installSlashCommand(): Promise<void> {
-  const target = join(homedir(), '.claude', 'commands', 'engram.md')
-  const current = await readFile(target, 'utf8').catch(() => null)
-  if (current === ENGRAM_COMMAND) return
-  await mkdir(join(homedir(), '.claude', 'commands'), { recursive: true })
-  await writeFile(target, ENGRAM_COMMAND)
-}
-
-export async function autoConnectMcp(notify: (targets: string[]) => void): Promise<void> {
-  if (!app.isPackaged) return
-  const updated: string[] = []
-  // Claude Desktop: merge only when the entry is missing or stale.
+async function connect(client: 'desktop' | 'claude' | 'codex'): Promise<McpConnectResultDto> {
   try {
-    const configPath = desktopConfigPath()
-    await access(join(configPath, '..')) // Claude Desktop installed?
-    let config: Record<string, unknown> = {}
-    try {
-      config = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
-    } catch {
-      /* missing/unreadable — start fresh */
-    }
-    const servers = (config['mcpServers'] ?? {}) as Record<string, unknown>
-    const desired = serverSpec()
-    if (JSON.stringify(servers['engram']) !== JSON.stringify(desired)) {
-      servers['engram'] = desired
-      config['mcpServers'] = servers
-      await writeFile(configPath, JSON.stringify(config, null, 2))
-      updated.push('Claude Desktop')
-    }
-  } catch {
-    /* not installed — nothing to connect */
-  }
-  // Claude Code: re-register when missing or pointing at old paths.
-  try {
-    const spec = serverSpec()
-    const current = await execAsync('claude mcp get engram', { windowsHide: true, timeout: 15_000 })
-      .then((r) => r.stdout)
-      .catch((err) => String((err as { stdout?: string }).stdout ?? ''))
-    if (!(current.includes(spec.command) && current.includes(spec.args[0]!))) {
-      const result = await connectClaudeCode()
-      if (result.ok) updated.push('Claude Code')
-    }
-  } catch {
-    /* no claude CLI — nothing to connect */
-  }
-  // Ship/refresh the /engram shorthand for Claude Code (silent; harmless if
-  // Claude Code is absent — the file just waits for it).
-  await installSlashCommand().catch(() => {})
-  if (updated.length > 0) notify(updated)
+    await access(serverScriptPath())
+    if (!externalStatus().enabled) throw new Error('Enable external connections first.')
+    return client === 'desktop' ? await connectDesktop() : await connectCli(client)
+  } catch (error) { return { ok: false, code: 'failed', detail: String((error as Error).message ?? error).slice(0, 300) } }
 }
 
 export function registerMcpIpc(): void {
-  ipcMain.handle('mcp:info', async (): Promise<McpInfoDto> => {
-    const spec = serverSpec()
-    let scriptExists = true
-    try {
-      await access(serverScriptPath())
-    } catch {
-      scriptExists = false
-    }
-    return {
-      configJson: JSON.stringify({ mcpServers: { engram: spec } }, null, 2),
-      desktopConfigPath: desktopConfigPath(),
-      scriptExists,
-    }
-  })
-  ipcMain.handle('mcp:connectDesktop', () => connectClaudeDesktop())
-  ipcMain.handle('mcp:connectCode', () => connectClaudeCode())
+  ipcMain.handle('mcp:info', async (): Promise<McpInfoDto> => ({
+    configJson: JSON.stringify({ mcpServers: { engram: serverSpec() } }, null, 2),
+    desktopConfigPath: desktopConfigPath(), scriptExists: await access(serverScriptPath()).then(() => true, () => false),
+  }))
+  ipcMain.handle('mcp:connectDesktop', () => connect('desktop'))
+  ipcMain.handle('mcp:connectCode', () => connect('claude'))
+  ipcMain.handle('mcp:connectCodex', () => connect('codex'))
+  ipcMain.handle('mcp:status', () => externalStatus())
+  ipcMain.handle('mcp:enable', (_event, value: unknown) => { if (typeof value !== 'boolean') throw new Error('Invalid connection setting'); return setExternalEnabled(value) })
+  ipcMain.handle('mcp:stop', () => stopExternalCalls())
+  app.once('before-quit', () => { void setExternalEnabled(false) })
 }

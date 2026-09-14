@@ -195,8 +195,8 @@ if (whisperUrl) {
 
 // ── engram MCP server ────────────────────────────────────────────
 // Single-file CJS bundle of core's MCP server, shipped under resources/bin
-// and run through the app's own executable in Node mode — the user machine
-// needs no Node install and the app process is never involved.
+// and run through the app's own executable in Node mode. Bridge connections
+// execute through the running app; legacy memory-only configurations stay standalone.
 {
   const { build } = await import('esbuild')
   await build({

@@ -8,6 +8,33 @@
 .conversation-thread { overflow-anchor: none; scroll-behavior: auto; }
 .conversation-dock { background: var(--panel-bg); }
 .cosmos-chat-write.conversation-dock { flex: none; }
+.cosmos-chat .cosmos-chat-thread { padding: 22px 24px 28px; gap: 24px; }
+.cosmos-chat .cosmos-chat-head { padding: 14px 18px; border-bottom: 1px solid var(--border-soft); }
+.cosmos-chat-heading { flex: 1; display: grid; gap: 3px; }
+.cosmos-chat-heading small { font-size: var(--fs-small); color: var(--fg-faint); }
+.cosmos-chat .cosmos-chat-write { margin: 8px 16px 16px; }
+.cosmos-chat .bubble-msg.assistant { padding: 0; background: transparent; color: var(--fg); }
+.cosmos-chat .bubble-msg.user { max-width: 85%; padding: 11px 15px; border-radius: 18px; }
+.cosmos-chat-hint > svg { margin: 0 auto 14px; color: var(--fg-dim); }
+.cosmos-chat-hint h2 { font-size: 22px; font-weight: 550; color: var(--fg-strong); margin: 0 0 10px; }
+.cosmos-chat-hint p { margin: 0; }
+.cosmos-chat .bubble-msg-body a.answer-reference { display: inline; vertical-align: super; border: 0; border-radius: 3px; padding: 0 3px; margin: 0 1px; font-size: 10px; font-weight: 600; color: var(--fg-dim); background: var(--hover-bg); }
+.answer-memory-sources { margin-top: 16px; color: var(--fg-dim); font-size: var(--fs-small); }
+.answer-memory-sources summary { cursor: pointer; padding: 6px 0; }
+.answer-memory-sources ol { margin: 6px 0; padding-left: 22px; }
+.answer-memory-sources li { padding: 4px 0; }
+.answer-memory-sources a { color: inherit; text-decoration: none; }
+.answer-memory-sources a:hover { text-decoration: underline; }
+.delete-conversation-dialog.bookmark-import-dialog { width: min(480px, calc(100vw - 40px)); }
+.bookmark-import-dialog .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.external-connections > h2 { margin: 0 0 12px; font-size: 20px; }
+.external-connections > p { line-height: 1.65; }
+.external-client-list { margin: 20px 0; border-top: 1px solid var(--border-soft); }
+.bookmark-import-dialog h2 { margin: 0 0 8px; font-size: 20px; }
+.bookmark-import-dialog p { color: var(--fg-dim); line-height: 1.6; margin: 0 0 24px; }
+.bookmark-import-dialog label { font-size: var(--fs-small); }
+.bookmark-profile { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 8px 0 28px; }
+.bookmark-profile select { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--fg); padding: 6px; }
 .web-pane-empty {
   flex: 1; min-width: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px;

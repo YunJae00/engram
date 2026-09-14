@@ -1,9 +1,10 @@
-import { Settings, Brain, Monitor, Database, Info, CircleHelp } from 'lucide-react'
+import { Settings, Brain, Monitor, Database, Info, CircleHelp, Plug } from 'lucide-react'
 
 const SECTIONS = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'ai', label: 'AI connection', icon: Brain },
   { id: 'computer', label: 'Computer use', icon: Monitor },
+  { id: 'connections', label: 'External connections', icon: Plug },
   { id: 'memory', label: 'Memory & data', icon: Database },
   { id: 'about', label: 'About', icon: Info },
   { id: 'help', label: 'Help', icon: CircleHelp },

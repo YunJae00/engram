@@ -11,6 +11,7 @@ import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
+import { ExternalConnections } from '../components/ExternalConnections.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 
 // Only local settings gate the sheet. Network and runtime probes fill their
@@ -27,7 +28,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
   const [sessionWatch, setSessionWatch] = useState<boolean | null>(null)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
-  const [mcpStatus, setMcpStatus] = useState<string | null>(null)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
@@ -69,44 +69,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     const timer = setInterval(() => void api.updateState().then(setUpdate).catch(() => {}), 2000)
     return () => clearInterval(timer)
   }, [update?.state])
-
-  // One action for both clients, reporting per-client in place (no toast — the
-  // sheet stays open). A client that is not installed is not a failure worth
-  // shouting about: it just does not appear in the connected list.
-  const reconnectMcp = async () => {
-    setMcpStatus(t('settings.mcpWorking'))
-    let desktop, code
-    try {
-      ;[desktop, code] = await Promise.all([api.mcpConnectDesktop(), api.mcpConnectCode()])
-    } catch (err) {
-      setMcpStatus(t('settings.mcpFailedList', { names: String((err as Error).message ?? err).slice(0, 120) }))
-      return
-    }
-    const ok: string[] = []
-    const failed: string[] = []
-    for (const [name, result] of [
-      [t('settings.mcpDesktop'), desktop],
-      [t('settings.mcpCode'), code],
-    ] as const) {
-      if (result.ok) ok.push(name)
-      else if (result.code !== 'not-installed' && result.code !== 'no-cli') {
-        failed.push(result.detail ? `${name} (${result.detail})` : name)
-      }
-    }
-    if (failed.length > 0) setMcpStatus(t('settings.mcpFailedList', { names: failed.join(', ') }))
-    else if (ok.length > 0) setMcpStatus(t('settings.mcpConnected', { names: ok.join(', ') }))
-    else setMcpStatus(t('settings.mcpNoClients'))
-  }
-
-  const copyMcpConfig = async () => {
-    try {
-      const info = await api.mcpInfo()
-      await api.copyText(info.configJson)
-      setMcpStatus(t('settings.mcpCopied'))
-    } catch (err) {
-      setMcpStatus(t('settings.mcpCopyFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
-    }
-  }
 
   // Semantic layer status refreshes while the sheet is open — model
   // download/indexing progress is worth watching live.
@@ -207,23 +169,11 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <h2>AI connection</h2>
         {section === 'ai' && <EngineSettings />}
         </section>
+        <section className="settings-panel" hidden={section !== 'connections'} aria-label="External connections">{section === 'connections' && <ExternalConnections />}</section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         <details className="settings-more" data-testid="settings-more">
           <summary>{t('settings.more')}</summary>
           <div className="settings-group-head">{t('settings.groupConnections')}</div>
-          <div className="setting-row column">
-            <span>{t('settings.mcpTitle')}</span>
-            <div className="setting-hint">{t('settings.mcpHint')}</div>
-            <div className="mcp-actions">
-              <button className="secondary" data-testid="mcp-reconnect" onClick={() => void reconnectMcp()}>
-                {t('settings.mcpReconnect')}
-              </button>
-              <button className="link-button" onClick={() => void copyMcpConfig()}>
-                {t('settings.mcpCopy')}
-              </button>
-            </div>
-            {mcpStatus && <div className="setting-hint" data-testid="mcp-status">{mcpStatus}</div>}
-          </div>
           <div className="setting-row column">
             <span>{t('settings.watchTitle')}</span>
             <div className="setting-hint">{t('settings.watchHint')}</div>

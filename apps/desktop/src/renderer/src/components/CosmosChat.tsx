@@ -1,4 +1,4 @@
-import { Orbit, PanelRightClose } from 'lucide-react'
+import { Orbit, PanelRightClose, Plus } from 'lucide-react'
 import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -35,6 +35,7 @@ export const CosmosChat = memo(function CosmosChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState('')
   const busyRef = useRef(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const [closing, setClosing] = useState(false)
@@ -105,8 +106,14 @@ export const CosmosChat = memo(function CosmosChat() {
     const unsubscribe = api.onEvent((event) => {
       if (!busyRef.current) return
       if (event.type === 'chat:token' && event.channel === CHANNEL) {
+        if (event.reset) {
+          clearTokenFrame()
+          setMessages(prev => prev.map(message => message.streaming ? { ...message, text: '' } : message))
+        }
         tokenBuffer.current += event.text
         if (!tokenFrame.current) tokenFrame.current = requestAnimationFrame(flushTokens)
+      } else if (event.type === 'comet:step' && event.channel === CHANNEL) {
+        setStatus(event.line)
       } else if (event.type === 'chat:done' && event.channel === CHANNEL) {
         clearTokenFrame()
         busyRef.current = false
@@ -142,6 +149,7 @@ export const CosmosChat = memo(function CosmosChat() {
     setText('')
     busyRef.current = true
     setBusy(true)
+    setStatus('Reading your memory')
     const history = messages.filter((m) => !m.streaming && !m.error)
     setMessages((prev) => [...prev, { role: 'user', text: message }, { role: 'assistant', text: '', streaming: true }])
     try {
@@ -157,6 +165,8 @@ export const CosmosChat = memo(function CosmosChat() {
   }
 
   const stop = async () => {
+    flushTokens()
+    clearTokenFrame()
     busyRef.current = false
     await api.chatAbort(CHANNEL).catch(() => undefined)
     setBusy(false)
@@ -187,26 +197,28 @@ export const CosmosChat = memo(function CosmosChat() {
   return (
     <aside className={`cosmos-chat${closing ? ' closing' : ''}`} data-testid="cosmos-chat">
       <div className="cosmos-chat-head">
-        <span className="cosmos-chat-name" title={t('cosmos.chatTitle')}>{t('cosmos.chatName')}</span>
+        <div className="cosmos-chat-heading"><span className="cosmos-chat-name" title={t('cosmos.chatTitle')}>{t('cosmos.chatName')}</span><small role="status">{busy ? 'Replying…' : 'Your memory, in conversation'}</small></div>
+        <button className="rail-toggle" aria-label="New memory conversation" title="New conversation" disabled={busy} onClick={() => { setMessages([]); setText(''); boxRef.current?.focus() }}><Plus size={16} aria-hidden /></button>
         <button
           className="rail-toggle"
           data-testid="cosmos-chat-collapse"
           title={t('cosmos.chatCollapse')}
+          aria-label={t('cosmos.chatCollapse')}
           onClick={closeChat}
         >
           <PanelRightClose size={15} strokeWidth={1.8} aria-hidden />
         </button>
       </div>
-      <div className="cosmos-chat-thread conversation-thread" ref={listRef}>
-        {messages.length === 0 && <div className="cosmos-chat-hint">{t('cosmos.chatHint')}</div>}
+      <div className="cosmos-chat-thread conversation-thread" ref={listRef} role="log" aria-label="Memory conversation" aria-live="polite" aria-relevant="additions" aria-busy={busy}>
+        {messages.length === 0 && <div className="cosmos-chat-hint"><Orbit size={28} strokeWidth={1.4} aria-hidden /><h2>Pick up a thought.</h2><p>Ask about your work, connect ideas, or tell me something to remember.</p></div>}
         {messages.map((m, i) => {
           const failed = m.error || (m.role === 'assistant' && isProviderError(m.text))
           return <div key={i} className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
             {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
               m.streaming && !m.text ? (
-                <Thinking label={t('bubble.thinking')} />
+                <Thinking label={status || t('bubble.thinking')} />
               ) : (
-                <StreamingAnswer text={m.text} done={!m.streaming} />
+                <StreamingAnswer text={m.text} done={!m.streaming} citations />
               )
             ) : (
               m.text
@@ -219,7 +231,7 @@ export const CosmosChat = memo(function CosmosChat() {
           ref={boxRef}
           testId="cosmos-chat-input"
           maxLength={4000}
-          placeholder={t('cosmos.chatPlaceholder')}
+          placeholder="Ask about your work…"
           value={text}
           busy={busy}
           onChange={setText}

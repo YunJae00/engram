@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCourier } from '../src/main/agent-courier.js'
-import { handOn } from '../src/main/page-actions.js'
+import { handOn, pressPoint } from '../src/main/page-actions.js'
 
 const browser = vi.hoisted(() => ({
   ensureAgentPage: vi.fn(),
@@ -39,6 +39,27 @@ function fixture() {
 }
 
 describe('courier legacy action lanes', () => {
+  it('keeps an external hand pending until its receipt and never dispatches a canceled queued click', async () => {
+    vi.useFakeTimers()
+    try {
+      browser.ensureAgentPage.mockResolvedValue({ url: () => 'https://external-fixture.test' })
+      let finish!: (value: { ok: boolean }) => void
+      vi.mocked(pressPoint).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+      const courier = agentCourier({ lane: 'external', awaitCompletion: true })
+      const first = courier.pressPoint!(0.2, 0.3)
+      await vi.advanceTimersByTimeAsync(1)
+      const controller = new AbortController()
+      const second = courier.pressPoint!(0.4, 0.5, controller.signal)
+      const rejected = expect(second).rejects.toThrow()
+      await vi.advanceTimersByTimeAsync(46000)
+      expect(pressPoint).toHaveBeenCalledTimes(1)
+      controller.abort()
+      finish({ ok: true })
+      expect(await first).toEqual({ ok: true })
+      await rejected
+      expect(pressPoint).toHaveBeenCalledTimes(1)
+    } finally { vi.useRealTimers() }
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     browser.readAgentPage.mockResolvedValue({ wall: undefined })
