@@ -8,14 +8,16 @@ export function DeleteConversationDialog({ name, count, kind, onClose, onDelete 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [closing, setClosing] = useState(false)
+  const close = useRef(onClose)
+  useLayoutEffect(() => { close.current = onClose }, [onClose])
   const noun = kind === 'chat' ? 'conversation' : 'routine'
   const items = `${count} ${noun}${count === 1 ? '' : 's'}`
   useLayoutEffect(() => { dialog.current?.showModal() }, [])
   useEffect(() => {
     if (!closing) return
-    const timer = setTimeout(onClose, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160)
+    const timer = setTimeout(() => close.current(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160)
     return () => clearTimeout(timer)
-  }, [closing, onClose])
+  }, [closing])
   const remove = async (contents: boolean) => {
     if (busy || closing) return
     setBusy(true)

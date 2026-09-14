@@ -78,7 +78,15 @@ test('folder deletion offers cancellation and includes conversations hidden by s
   expect(await dialog.locator('button').evaluateAll(buttons => new Set(buttons.map(button => Math.round(button.getBoundingClientRect().height))).size)).toBe(1)
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
   await capture('delete-folder-confirmation.png')
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  const refresh = await app.evaluate(({ BrowserWindow }) => Number(setInterval(() => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) }, 30)))
+  try {
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toHaveCount(0, { timeout: 2000 })
+  } finally {
+    await app.evaluate((_electron, timer) => clearInterval(timer), refresh)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+  }
   expect(await page.evaluate(async ids => (await window.engram.botsList()).filter(bot => ids.includes(bot.id)).length, ids)).toBe(2)
   await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
   await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
