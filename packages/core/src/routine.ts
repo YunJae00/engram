@@ -90,7 +90,7 @@ export async function runRoutine(
   const finish = async (result: RoutineRunResult): Promise<RoutineRunResult> => {
     const outcome = result.ok ? 'done' : result.error === 'canceled' ? 'aborted' : 'failed'
     await markRoutineRun(paths, routine.id, outcome, now(), posted).catch(() => undefined)
-    return result
+    return options.signal?.aborted ? { ok: false, readings, error: 'canceled' } : result
   }
   if (invalid) return finish({ ok: false, readings, error: invalid })
   // Refused before anything moves, and without stamping the journal: a run

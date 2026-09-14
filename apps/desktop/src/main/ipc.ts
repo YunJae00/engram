@@ -1441,12 +1441,9 @@ export function registerIpc(ctx: VaultContext): void {
     async (_e, id: string, force?: boolean, slots?: Record<string, string>): Promise<RoutineRunReply> => {
       return startRoutineChat(paths, id, { force: force === true, ...(slots ? { slots } : {}) }, {
         begin: beginRoutine,
-        recover: async (botId, message, context) => {
-          const settings = await loadSettings()
-          if (!ctx.engines.some(engine => engine.id === settings.defaultEngine)) return false
-          await sendChat({ engineId: settings.defaultEngine, botId, channel: `bot-${botId}`, message, history: [] }, context)
-          return true
-        },
+        recover: (botId, message, context) => ctx.engines.length
+          ? sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context).then(() => true)
+          : Promise.resolve(false),
         broadcast,
         active: (channel, running) => { if (running) answering.add(channel); else answering.delete(channel) },
         claim: () => {

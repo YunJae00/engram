@@ -90,6 +90,16 @@ describe('routine CRUD', () => {
     const result = await runRoutine(paths, fakeDriver({}), saved, { signal: controller.signal })
     expect(result.error).toBe('canceled')
     expect(result.resumeFrom).toBeUndefined()
+    const finishing = new AbortController()
+    let clockReads = 0
+    const driver = fakeDriver({})
+    driver.click = async () => ({ ok: false, recoverable: true, error: 'missing target' })
+    const interrupted = await runRoutine(paths, driver, saved, { signal: finishing.signal, now: () => {
+      if (++clockReads === 2) finishing.abort()
+      return new Date()
+    } })
+    expect(interrupted.error).toBe('canceled')
+    expect(interrupted.resumeFrom).toBeUndefined()
   })
   it('adds, lists and removes a routine, persisted across loads', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-crud'), { git: false })
