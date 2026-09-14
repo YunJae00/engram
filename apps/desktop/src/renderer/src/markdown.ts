@@ -32,9 +32,18 @@ function unfence(text: string): string {
 
 // Mid-stream, a capture marker tail may arrive before main strips it from the
 // final text — never show the plumbing.
-export function answerHtml(text: string): string {
+export function answerHtml(text: string, sourceUrls: string[] = []): string {
   const visible = text.split('<engram:capture')[0] ?? ''
   const renderer = new marked.Renderer()
+  const paragraph = renderer.paragraph.bind(renderer)
+  renderer.paragraph = token => {
+    const links = token.tokens.filter(item => item.type !== 'text' || item.raw.trim())
+    const redundant = links.length > 0 && links.every(item => {
+      if (item.type !== 'link' || item.text !== item.href) return false
+      try { return sourceUrls.includes(new URL(item.href).href) } catch { return false }
+    })
+    return redundant ? '' : paragraph(token)
+  }
   const code = renderer.code.bind(renderer)
   renderer.code = (token) => `<div class="answer-code"><div class="answer-code-head"><span>Code</span><button type="button" data-copy-code="true">Copy code</button></div>${code(token)}</div>`
   return marked.parse(dedent(unfence(visible)) || '…', { async: false, renderer }) as string

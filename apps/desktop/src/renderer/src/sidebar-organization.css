@@ -47,8 +47,11 @@
 .sidebar-search input { width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; outline: none; box-shadow: none; color: var(--fg); font-size: var(--fs-small); }
 .sidebar-search:focus-within { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 .sidebar-search button { display: grid; place-items: center; flex: none; padding: 3px; color: var(--fg-faint); }
-.sidebar-conversations .bots-row { height: 64px; padding: 8px 4px 8px 12px; gap: 10px; }
-.sidebar-conversations .bots-row ~ .sidebar-row-actions { display: grid; grid-template-rows: 28px 16px; align-content: center; align-self: stretch; }
+.sidebar-conversations .bots-row { height: 64px; padding: 8px 12px; gap: 10px; }
+.sidebar-conversations .bots-row ~ .sidebar-row-actions { position: absolute; right: 8px; top: 5px; margin: 0; display: grid; grid-template-rows: 28px 16px; }
+.sidebar-conversations .sidebar-item:has(.bots-row):is(:hover, :focus-within) time { opacity: 0; }
+.sidebar-conversations .sidebar-item:has(.sidebar-more[aria-expanded='true']) time { opacity: 0; }
+.sidebar-conversations .sidebar-item[data-pinned='true'] .sidebar-conversation-preview { padding-right: 24px; }
 .sidebar-conversations .sidebar-item-main > .sidebar-conversation-content { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
 .sidebar-conversation-avatar { position: relative; flex: none; display: inline-flex; }
 .sidebar-conversation-avatar > .comet-activity-icon { position: absolute; right: -3px; bottom: -3px; margin: 0; border: 2px solid var(--rail-bg); border-radius: 50%; background: var(--rail-bg); box-sizing: content-box; }

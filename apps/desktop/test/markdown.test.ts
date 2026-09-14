@@ -4,6 +4,16 @@ import { answerHtml } from '../src/renderer/src/markdown.js'
 // What the local model actually emits, and what the user must end up seeing.
 
 describe('answerHtml', () => {
+  it('removes only bare source links represented by a clickable source chip', () => {
+    const urls = ['https://example.com/']
+    expect(answerHtml('Done.\n\nhttps://example.com', urls)).not.toContain('<a')
+    expect(answerHtml('[https://example.com](https://example.com)', urls)).not.toContain('<a')
+    expect(answerHtml('[Read the details](https://example.com)', urls)).toContain('<a')
+    expect(answerHtml('Source: https://example.com', urls)).toContain('Source:')
+    expect(answerHtml('https://example.com/another', urls)).toContain('<a')
+    expect(answerHtml('```\nhttps://example.com\n```', urls)).toContain('https://example.com')
+    expect(answerHtml('https://example.com')).toContain('<a')
+  })
   it('unwraps an answer the model fenced as ```markdown', () => {
     const html = answerHtml('```markdown\n* first point\n* second point\n```')
     expect(html).toContain('<li>')

@@ -115,7 +115,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, recordedSteps, type TurnStep } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -1208,29 +1208,25 @@ export function registerIpc(ctx: VaultContext): void {
   // A routine kept or removed shows up wherever routines are listed - the
   // rail as much as the comet's own row - so both say so.
   ipcMain.handle('bots:taskAdd', async (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) => {
-    // Keeping a job that was just done on the web also writes down HOW it
-    // was done: the successful path of that turn, as a procedure the next
-    // run replays instead of working the job out again. The wandering -
-    // dead ends, retries, looks - is not recorded.
+    if (!(await loadBots(paths)).some(bot => bot.id === botId)) throw new Error('That conversation no longer exists.')
     let routineId = input.routineId
     if (!routineId) {
       const last = lastTurns.get(botId)
-      const path = last ? recordedSteps(last.steps) : []
-      if (path.length > 0) {
-        const routine = await addRoutine(paths, { name: input.name, steps: path }).catch(() => null)
-        if (routine) {
-          routineId = routine.id
-          flog('comet', `recorded ${path.length} steps as "${input.name}"`)
-        }
-      }
+      const transcript = await readBotTranscript(paths, botId)
+      const task = routineTask(input.goal, last?.steps ?? [], transcript.map(turn => turn.text))
+      const routine = await addRoutine(paths, { name: input.name, steps: [], task })
+      routineId = routine.id
     }
-    const task = await addBotTask(paths, botId, { ...input, ...(routineId ? { routineId } : {}) })
-    // Beside the exact-replay routine, learn the general how-to from the same
+    const task = input.schedule
+      ? await addBotTask(paths, botId, { ...input, routineId })
+      : { id: routineId, name: input.name, goal: input.goal, routineId }
+    // Beside the saved routine, learn the general how-to from the same
     // kept turn — in the background, so keeping stays instant.
     const kept = lastTurns.get(botId)
     lastTurns.delete(botId)
     if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, kept.message, kept.steps, kept.engine).catch(() => undefined)
     broadcast({ type: 'bots:changed' })
+    broadcast({ type: 'vault:changed' })
     return task
   })
   ipcMain.handle('bots:standingDecline', (_e, botId: string, goal: string) => declineStanding(paths, botId, askKey(goal)))
@@ -1268,9 +1264,8 @@ export function registerIpc(ctx: VaultContext): void {
     errandWallWaiter?.(verdict === 'resolved' ? 'resolved' : 'skip')
   })
 
-  // Routines: saved browser sequences replayed verbatim. No model runs, so
-  // the memory gate is only the browser's own slice — a routine still works
-  // on a machine too tight for any inference.
+  // Recorded-step replay only needs browser memory; saved tasks use the
+  // connected comet and its existing resource checks instead.
   const ROUTINE_MIN_FREE = 4e9
 
   const approvals = approvalsStore(app.getPath('userData'))
@@ -1441,8 +1436,8 @@ export function registerIpc(ctx: VaultContext): void {
     async (_e, id: string, force?: boolean, slots?: Record<string, string>): Promise<RoutineRunReply> => {
       return startRoutineChat(paths, id, { force: force === true, ...(slots ? { slots } : {}) }, {
         begin: beginRoutine,
-        recover: (botId, message, context) => ctx.engines.length
-          ? sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context).then(() => true)
+        recover: (botId, message, context, routine) => ctx.engines.length
+          ? sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context, routine).then(() => true)
           : Promise.resolve(false),
         broadcast,
         active: (channel, running) => { if (running) answering.add(channel); else answering.delete(channel) },
@@ -1468,6 +1463,11 @@ export function registerIpc(ctx: VaultContext): void {
   const PROPOSAL_TIMEOUT_MS = 45_000
 
   async function runProcedureForComet(id: string, slots: Record<string, string>, again: boolean, lane: string): Promise<string> {
+    const instruction = (await listRoutines(paths)).find(routine => routine.id === id)
+    if (instruction?.task) {
+      const blocked = again ? null : routineBlock(instruction)
+      return blocked ? 'Check the previous run and ask the person before running this task again.' : routineTaskPrompt(instruction)
+    }
     const started = await beginRoutine(id, { slots, force: again, lane })
     if (started.blocked === 'already-ran-today')
       return 'that procedure already ran today and it posts to a page — ask the person whether to run it again; once they say yes, call run_procedure once more with "again": true'
@@ -1962,20 +1962,26 @@ export function registerIpc(ctx: VaultContext): void {
 
   ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => sendChat(request))
 
-  async function sendChat(request: ChatRequestDto, recovery?: string): Promise<void> {
+  async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine): Promise<void> {
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
     chatAborts.add(entry)
     answering.add(entry.channel)
     try {
-      return await handleChatSend(request, controller.signal, recovery)
+      if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
+      return await handleChatSend(request, controller.signal, recovery, savedRoutine)
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
+      if (savedRoutine?.task) {
+        if (controller.signal.aborted) await markRoutineRun(paths, savedRoutine.id, 'aborted').catch(error => flog('routine', error))
+        broadcast({ type: 'vault:changed' })
+      }
     }
   }
 
-  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string): Promise<void> {
+  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine): Promise<void> {
+    const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
@@ -2192,7 +2198,7 @@ export function registerIpc(ctx: VaultContext): void {
         open.on && open.url && open.url !== 'about:blank'
           ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
           : ''
-      const onScreen = [engine.desktopToolIsolation === true && settings.computerUse !== false ? [officeContext(), desktopContext()].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
+      const onScreen = [!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [officeContext(), desktopContext()].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
       try {
         assertDesktopChatEngine(channel, engine)
         const resume = resumeState.get(bot.id)
@@ -2276,7 +2282,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...attachments.tools, ...(!guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            }), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2352,6 +2358,10 @@ export function registerIpc(ctx: VaultContext): void {
         // nothing. The note is the person's to approve, like any other.
         const HANDS = new Set(['press', 'type_text', 'choose', 'press_point', 'reveal'])
         const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete
+        if (savedRoutine?.task) {
+          await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
+          broadcast({ type: 'vault:changed' })
+        }
         // Keep only the latest unfinished checkpoint within this vault session.
         const checkpoint = resumeCheckpoint(request.message, result)
         if (checkpoint) resumeState.set(bot.id, checkpoint)
@@ -2411,6 +2421,7 @@ export function registerIpc(ctx: VaultContext): void {
             ? await collectResult(engine, {
                 prompt: proposalPrompt({
                   user: request.message,
+                  history: request.history,
                   answer: result.answer,
                   steps: result.steps
                     .filter((step) => !step.seeded)

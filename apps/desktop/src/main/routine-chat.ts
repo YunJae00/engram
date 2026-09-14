@@ -1,4 +1,4 @@
-import { appendBotTurn, createBot, fillSlots, listRoutines, type Routine, type RoutineBlock, type RoutineRunResult, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, fillSlots, listRoutines, routineBlock, routineTaskPrompt, type Routine, type RoutineBlock, type RoutineRunResult, type VaultPaths } from 'core'
 import type { EngramEvent } from '../shared/types.js'
 
 export type RoutineRunReply = { ok: boolean; error?: string; blocked?: RoutineBlock; botId?: string }
@@ -34,7 +34,7 @@ export function startRoutineChat(
     broadcast(event: EngramEvent): void
     active(channel: string, running: boolean): void
     claim(): (() => void) | null
-    recover?(botId: string, message: string, context: string): Promise<boolean>
+    recover?(botId: string, message: string, context: string, routine?: Routine): Promise<boolean>
   },
 ): Promise<RoutineRunReply> {
   const key = paths.cache
@@ -49,7 +49,7 @@ export function startRoutineChat(
     if (!saved) return { ok: false, error: 'That routine no longer exists.' }
     const bot = await createBot(paths, { name: saved.name })
     const channel = `bot-${bot.id}`
-    const message = `Run ${saved.name}.`
+    const message = saved.task?.goal ?? `Run ${saved.name}.`
     await appendBotTurn(paths, bot.id, { role: 'user', text: message, at: new Date().toISOString() })
     deps.active(channel, true)
     deps.broadcast({ type: 'bots:changed' })
@@ -64,6 +64,19 @@ export function startRoutineChat(
       deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
     }
     try {
+      if (saved.task) {
+        const blocked = options.force ? null : routineBlock(saved)
+        if (blocked) {
+          await finish(blocked === 'unfinished-write' ? 'Check the previous submission on the website before running this task again.' : 'This task already ran today and may post to a website. Confirm before running it again.', { kind: 'run', routineId: id, name: saved.name, force: true })
+          clear()
+          return { ok: false, blocked, botId: bot.id }
+        }
+        const work = deps.recover?.(bot.id, message, routineTaskPrompt(saved), saved) ?? Promise.resolve(false)
+        void work.then(async started => {
+          if (!started) await finish('Connect an AI in Settings to run this saved task.')
+        }).catch(fail).finally(() => { deps.active(channel, false); clear() })
+        return { ok: true, botId: bot.id }
+      }
       const { done, ...reply } = await deps.begin(id, { ...options, lane: channel, manual: true })
       if (done) {
         void done.then(async (result) => {

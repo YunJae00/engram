@@ -83,7 +83,7 @@ export async function runRoutine(
   options: RoutineRunOptions = {},
 ): Promise<RoutineRunResult> {
   const now = options.now ?? (() => new Date())
-  const invalid = validateRoutineSteps(routine.steps)
+  const invalid = routine.task ? 'This task needs a connected comet, not recorded-step replay.' : validateRoutineSteps(routine.steps)
   const readings: RoutineReading[] = []
   // Approval alone is not evidence that the submit succeeded.
   let posted = false

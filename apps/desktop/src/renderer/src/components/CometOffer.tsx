@@ -13,9 +13,19 @@ type Keep = Extract<Offer, { kind: 'keep' }>
 // the comet's own writing, not the words the person happened to type, and it
 // is theirs to change before anything is kept - so the row of buttons that
 // builds up over months reads as work rather than as old messages.
-function KeepOffer({ offer, onKeep, onNo }: { offer: Keep; onKeep(name: string, goal: string): void; onNo(): void }) {
+function KeepOffer({ offer, onKeep, onNo }: { offer: Keep; onKeep(name: string, goal: string): void | Promise<void>; onNo(): void }) {
   const [name, setName] = useState(offer.name)
+  const [goal, setGoal] = useState(offer.goal)
   const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const save = async () => {
+    if (saving) return
+    setSaving(true); setError('')
+    try { await onKeep((name || offer.name).trim(), goal.trim()) }
+    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
+    finally { setSaving(false) }
+  }
   return (
     <div className="comet-keep" data-testid="bots-offer-keep-card">
       <p className="comet-keep-say">{t('bots.keepAsk')}</p>
@@ -43,15 +53,17 @@ function KeepOffer({ offer, onKeep, onNo }: { offer: Keep; onKeep(name: string, 
           </button>
         )}
         <span className="comet-keep-does">{offer.does}</span>
+        <details className="comet-keep-instructions"><summary>Instructions</summary><textarea aria-label="Routine instructions" value={goal} maxLength={4000} onChange={event => setGoal(event.target.value)} /><small>Starting pages and the previous method are saved with this task.</small></details>
       </div>
       <div className="comet-keep-acts">
-        <button className="primary bots-offer-run" data-testid="bots-offer-keep" onClick={() => onKeep((name || offer.name).trim(), offer.goal)}>
+        <button className="primary bots-offer-run" data-testid="bots-offer-keep" disabled={saving || !goal.trim()} onClick={() => void save()}>
           <Check size={11} strokeWidth={2.5} aria-hidden /> {t('bots.keepYes')}
         </button>
-        <button className="secondary" data-testid="bots-offer-keep-no" onClick={onNo}>
+        <button className="secondary" data-testid="bots-offer-keep-no" disabled={saving} onClick={onNo}>
           <X size={11} strokeWidth={2.5} aria-hidden /> {t('bots.keepNo')}
         </button>
       </div>
+      {error && <p role="alert">Could not save this routine: {error}</p>}
     </div>
   )
 }
@@ -69,7 +81,7 @@ export function CometOffer({
   onDismiss,
 }: {
   offer: Exclude<Offer, { kind: 'asked' }>
-  onKeep(name: string, goal: string): void
+  onKeep(name: string, goal: string): void | Promise<void>
   onRun(offer: Run): void
   onStand(offer: Standing): void
   onDecline(offer: Standing): void

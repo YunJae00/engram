@@ -160,7 +160,7 @@ test('sidebar fits light, dark and narrow layouts with captured examples', async
   await page.setViewportSize({ width: 1280, height: 840 })
 })
 
-test('conversation menus stay beside dates and pin without losing folders', async () => {
+test('conversation menus replace dates on interaction and pin without losing folders', async () => {
   await showSidebar()
   await expect(page.getByTestId('sidebar-chats-toggle')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-routine-collection')).toHaveCount(0)
@@ -173,9 +173,12 @@ test('conversation menus stay beside dates and pin without losing folders', asyn
   const menu = page.locator('.sidebar-organize-menu')
   await expect(menu.getByRole('button')).toHaveCount(3)
   for (const label of ['Rename', 'Pin', 'Delete']) await expect(menu.getByRole('button', { name: label, exact: true }).locator('svg')).toBeVisible()
-  const dateBox = await row.locator('time').boundingBox()
   const optionsBox = await options.boundingBox()
-  expect(optionsBox!.x).toBeGreaterThanOrEqual(dateBox!.x + dateBox!.width)
+  const rowBox = await row.boundingBox()
+  await expect(row.locator('time')).toHaveCSS('opacity', '0')
+  expect(optionsBox!.x + optionsBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width)
+  const preview = await row.locator('.sidebar-conversation-preview').boundingBox()
+  expect(rowBox!.x + rowBox!.width - preview!.x - preview!.width).toBeLessThan(16)
   await menu.getByRole('button', { name: 'Pin', exact: true }).click()
   await expect(page.getByTestId('sidebar-chats').locator('.bots-row').first()).toHaveAttribute('data-testid', `bot-${id}`)
   await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()

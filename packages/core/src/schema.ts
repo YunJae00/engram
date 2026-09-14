@@ -53,7 +53,13 @@ export const frontmatterSchema = z.object({
   // load time — the schema only guarantees a faithful round-trip.
   routine: z
     .object({
-      steps: z.array(z.unknown()),
+        steps: z.array(z.unknown()),
+        task: z.object({
+          goal: z.string().trim().min(1).max(4000),
+          urls: z.array(z.string().url().max(2048).refine(value => { const url = new URL(value); return /^https?:$/.test(url.protocol) && !url.username && !url.password })).max(12),
+          method: z.array(z.string().max(500)).max(80),
+          surface: z.enum(['web', 'auto']),
+        }).optional(),
       lastRunAt: isoDateTime.optional(),
       lastOutcome: z.enum(['done', 'failed', 'aborted']).optional(),
       lastSuccessAt: isoDateTime.optional(),

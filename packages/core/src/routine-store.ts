@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { loadNotes, readNote, writeNote } from './notes.js'
 import { frontmatterSchema, noteTitle, type Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
+import { loadBots, readBotTranscript } from './bots.js'
+import { routineTask } from './routine-task.js'
 import {
   ROUTINE_NAME_CAP,
   normalizeStep,
@@ -29,6 +31,7 @@ function toRoutine(note: Note): Routine | null {
     id: note.front.id,
     name: noteTitle(note).slice(0, ROUTINE_NAME_CAP),
     steps: meta.steps as RoutineStep[],
+    ...(meta.task ? { task: meta.task } : {}),
     createdAt: note.front.created,
     ...(meta.lastRunAt ? { lastRunAt: meta.lastRunAt } : {}),
     ...(meta.lastOutcome ? { lastOutcome: meta.lastOutcome } : {}),
@@ -38,12 +41,13 @@ function toRoutine(note: Note): Routine | null {
   }
 }
 
-function routineBody(name: string, steps: RoutineStep[]): string {
+function routineBody(name: string, steps: RoutineStep[], task?: Routine['task']): string {
+  if (task) return `# ${name}\n\n${task.goal}\n`
   const listed = steps.map((step, i) => `${i + 1}. ${routineStepLabel(step)}`).join('\n')
   return `# ${name}\n\nA saved procedure — the app replays these steps exactly; edit the steps in the frontmatter above.\n\n${listed}\n`
 }
 
-function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, run?: Routine): Note {
+function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, run?: Routine, task?: Routine['task']): Note {
   // Evergreen and off the timeline: a procedure does not go stale by itself
   // and is not an event. parse() fills the remaining defaults.
   const front = frontmatterSchema.parse({
@@ -56,6 +60,7 @@ function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, ru
     updated: now.toISOString(),
     routine: {
       steps,
+      ...(task ? { task } : {}),
       ...(run?.lastRunAt ? { lastRunAt: run.lastRunAt } : {}),
       ...(run?.lastOutcome ? { lastOutcome: run.lastOutcome } : {}),
       ...(run?.lastSuccessAt ? { lastSuccessAt: run.lastSuccessAt } : {}),
@@ -63,7 +68,7 @@ function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, ru
       ...(run?.pendingWrite ? { pendingWrite: run.pendingWrite } : {}),
     },
   })
-  return { front, body: routineBody(name, steps) }
+  return { front, body: routineBody(name, steps, task) }
 }
 
 // The old cache file becomes notes on first contact, then steps aside under
@@ -90,9 +95,33 @@ async function migrateLegacy(paths: VaultPaths, now: Date): Promise<void> {
   await rename(legacyPath, join(paths.cache, MIGRATED_FILE)).catch(() => undefined)
 }
 
-export async function listRoutines(paths: VaultPaths, now: Date = new Date()): Promise<Routine[]> {
+const listings = new Map<string, Promise<Routine[]>>()
+
+export function listRoutines(paths: VaultPaths, now: Date = new Date()): Promise<Routine[]> {
+  const pending = listings.get(paths.cache)
+  if (pending) return pending
+  const work = readRoutines(paths, now).finally(() => { if (listings.get(paths.cache) === work) listings.delete(paths.cache) })
+  listings.set(paths.cache, work)
+  return work
+}
+
+async function readRoutines(paths: VaultPaths, now: Date): Promise<Routine[]> {
   await migrateLegacy(paths, now)
   const notes = await loadNotes(paths)
+  const existing = new Set(notes.map(note => note.front.id))
+  for (const bot of await loadBots(paths)) {
+    const tasks = (Array.isArray(bot.tasks) ? bot.tasks : []).filter(task => typeof task?.id === 'string' && /^[\w-]+$/.test(task.id) && /^[\w-]+$/.test(bot.id) && typeof task.name === 'string' && typeof task.goal === 'string' && task.goal.trim() && !task.routineId && !existing.has(`rt-task-${bot.id}-${task.id}`))
+    if (!tasks.length) continue
+    const context = (await readBotTranscript(paths, bot.id)).map(turn => turn.text)
+    for (const task of tasks) {
+      const id = `rt-task-${bot.id}-${task.id}`
+      // A stable id makes migration repeatable; archived tasks stay archived.
+      const created = new Date(bot.createdAt)
+      const note = buildNote(id, task.name, [], Number.isFinite(created.getTime()) ? created : now, undefined, routineTask(task.goal, [], context))
+      await writeNote(paths, note)
+      notes.push(note)
+    }
+  }
   return notes
     .map(toRoutine)
     .filter((r): r is Routine => r !== null)
@@ -101,17 +130,18 @@ export async function listRoutines(paths: VaultPaths, now: Date = new Date()): P
 
 export async function addRoutine(
   paths: VaultPaths,
-  input: { name: string; steps: RoutineStep[] },
+  input: { name: string; steps: RoutineStep[]; task?: Routine['task'] },
   now: Date = new Date(),
 ): Promise<Routine> {
   const name = input.name.trim().slice(0, ROUTINE_NAME_CAP)
   if (!name) throw new Error('a routine needs a name')
-  const invalid = validateRoutineSteps(input.steps)
+  const invalid = input.task && input.steps.length === 0 ? null : validateRoutineSteps(input.steps)
   if (invalid) throw new Error(invalid)
   const id = `rt-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`
   const steps = input.steps.map(normalizeStep)
-  const note = buildNote(id, name, steps, now)
+  const note = buildNote(id, name, steps, now, undefined, input.task)
   await writeNote(paths, note)
+  listings.delete(paths.cache)
   return toRoutine(note)!
 }
 
@@ -121,9 +151,10 @@ export async function renameRoutine(paths: VaultPaths, id: string, nextName: str
   const note = await readNote(paths, id)
   const routine = toRoutine(note)
   if (!routine) throw new Error('no such routine')
-  note.body = routineBody(name, routine.steps)
+  note.body = routineBody(name, routine.steps, routine.task)
   note.front.updated = now.toISOString()
   await writeNote(paths, note)
+  listings.delete(paths.cache)
 }
 
 // Archive, not delete: the note keeps its history and leaves the list.
@@ -133,6 +164,7 @@ export async function removeRoutine(paths: VaultPaths, id: string, now: Date = n
     note.front.status = 'archived'
     note.front.updated = now.toISOString()
     await writeNote(paths, note)
+    listings.delete(paths.cache)
   } catch {
     /* already gone */
   }
@@ -150,6 +182,7 @@ async function patchRun(paths: VaultPaths, id: string, patch: (meta: NonNullable
   // Deliberately does NOT touch `updated`: a run is not an edit, and stamping
   // it would drag the note through the librarian's delta on every replay.
   await writeNote(paths, note)
+  listings.delete(paths.cache)
 }
 
 export async function markRoutineRun(

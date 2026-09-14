@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { addRoutine, initVault, listCards, listRoutines, type VaultPaths } from 'core'
+import { addRoutine, appendBotTurn, initVault, listCards, listRoutines, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -403,6 +403,44 @@ test('a routine finds delayed controls inside frames and shadow roots and has an
   await page.getByTestId(`routine-run-${saved.id}`).click()
   await expect(page.getByTestId('bots-thread')).toContainText('Holiday notice: the office closes early on Friday.', { timeout: 90_000 })
   expect((await listRoutines(paths)).find(routine => routine.id === saved.id)?.lastOutcome).toBe('done')
+})
+
+test('keeping a task saves its source in Routines, survives reload and runs only in a fresh chat', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1200, 900))
+  const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Weekly source review' }))
+  await appendBotTurn(paths, bot.id, { role: 'user', text: `Read all notes at ${siteUrl}notices`, at: new Date().toISOString() })
+  await openActivity(page, 'bots')
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  await expect(page.getByTestId('bots-thread')).toContainText('Read all notes')
+  await app.evaluate(({ BrowserWindow }, botId) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
+    type: 'chat:offer', channel: `bot-${botId}`, offer: { kind: 'keep', name: 'Collect entry notes', goal: 'Read every entry and verify the summary', does: 'Collect and check every note' },
+  }), bot.id)
+  await page.getByTestId('bots-offer-keep-card').locator('summary').click()
+  await page.getByRole('textbox', { name: 'Routine instructions' }).fill('Read every entry, collect its notes and verify the final table')
+  await page.getByTestId('bots-offer-keep').click()
+  await expect(page.getByTestId('bots-offer-keep-card')).toHaveCount(0)
+  await expect(page.locator('.bots-tasks')).toHaveCount(0)
+  const saved = (await page.evaluate(() => window.engram.routinesList())).find(one => one.name === 'Collect entry notes')!
+  expect(saved.task?.urls).toContain(`${siteUrl}notices`)
+  expect(saved.task?.surface).toBe('web')
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await openRoutines(saved.id)
+  await expect(page.getByTestId(`routine-detail-${saved.id}`)).toContainText('verify the final table')
+  await expect(page.locator('.routine-starting-pages a')).toHaveAttribute('href', `${siteUrl}notices`)
+  await capture('saved-browser-task.png')
+  await page.getByTestId(`routine-run-${saved.id}`).click()
+  await expect(page.getByTestId('bots-thread')).toContainText('Connect an AI in Settings')
+  await expect(page.getByTestId('routine-live')).toHaveCount(0)
+  await expect(page.locator('.bots-tasks')).toHaveCount(0)
+  const chats = await page.evaluate(() => window.engram.botsList())
+  const fresh = chats.find(one => one.name === saved.name)!
+  expect(fresh.id).not.toBe(bot.id)
+  const old = await page.evaluate(id => window.engram.botTranscript(id), bot.id)
+  expect(old).toHaveLength(1)
+  await openRoutines(saved.id)
+  await expect(page.getByTestId(`routine-run-${saved.id}`)).toBeEnabled()
 })
 
 test('an unavailable saved description does not hide the recorded steps or block Run', async () => {

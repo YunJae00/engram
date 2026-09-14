@@ -311,11 +311,13 @@ test('conversation keeps narration between compact activity groups and shows vis
   await expect(work.locator('.work-group').first().locator('ol > li')).toHaveCount(2)
   await work.locator('.work-group summary').first().click()
   await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
-    type: 'chat:done', channel: `bot-${id}`, text: '## The review is ready\n\nThe options are compared and the source is available for your review.\n\n- Check the assumptions before choosing.\n- Keep the original document unchanged.\n\nSource: https://example.com/research\n\nBackup: `검토_결과.pptx.e1b9abd7fa904dd291589bfd2e0d7de6.bak`',
+    type: 'chat:done', channel: `bot-${id}`, text: '## The review is ready\n\nThe options are compared and the source is available for your review.\n\n- Check the assumptions before choosing.\n- Keep the original document unchanged.\n\nhttps://example.com/research\n\nBackup: `검토_결과.pptx.e1b9abd7fa904dd291589bfd2e0d7de6.bak`',
   }), bot.id)
   await expect(page.getByTestId('comet-work-done')).toContainText('Activity · 3 actions')
   await expect(page.locator('.answer-sites .answer-site')).toHaveText('example.com')
   await expect(page.locator('.answer-sites img.site-icon')).toBeVisible()
+  await expect(page.locator('.bubble-msg.assistant').last().locator('.bubble-msg-body a')).toHaveCount(0)
+  await expect(page.locator('.bubble-msg.assistant').last().locator('.answer-sites a')).toHaveAttribute('href', 'https://example.com/research')
   expect(await page.locator('.bubble-msg-body h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize) / parseFloat(getComputedStyle(node.parentElement!).fontSize))).toBeCloseTo(1.12)
   await page.getByRole('button', { name: 'Hide the page panel', exact: true }).click()
   await expect(page.locator('.web-pane')).toBeHidden()

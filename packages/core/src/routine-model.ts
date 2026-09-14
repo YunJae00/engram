@@ -26,6 +26,7 @@ export interface Routine {
   id: string
   name: string
   steps: RoutineStep[]
+  task?: { goal: string; urls: string[]; method: string[]; surface: 'web' | 'auto' }
   createdAt: string
   lastRunAt?: string
   lastOutcome?: 'done' | 'failed' | 'aborted'
@@ -178,7 +179,7 @@ export function normalizeStep(step: RoutineStep): RoutineStep {
 // not always something a person can undo. Those ask before a same-day rerun;
 // a read-only routine is harmless to repeat and never asks.
 export function routineWrites(routine: Routine): boolean {
-  return routine.steps.some((step) => step.kind === 'type')
+  return !!routine.task || routine.steps.some((step) => step.kind === 'type')
 }
 
 function sameLocalDay(iso: string | undefined, now: Date): boolean {

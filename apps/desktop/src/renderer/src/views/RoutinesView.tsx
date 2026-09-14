@@ -8,6 +8,7 @@ import { RoutineProgress } from '../components/RoutineProgress.js'
 import { SubmitGate } from '../components/SubmitGate.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 import { useApp } from '../state.js'
+import { stepLabel } from '../lib/pendingStatus.js'
 
 function RecordedStep({ step }: { step: RoutineStepDto }) {
   if (step.kind === 'open') return <><h3>Open page</h3><p>{step.url}</p></>
@@ -78,7 +79,7 @@ export function RoutinesView({ selectedId }: { selectedId: string | null }) {
       {!selectedId ? <div className="routine-overview" data-testid="routines-overview">
         <Repeat size={32} strokeWidth={1.4} aria-hidden />
         <h1>Saved routines</h1>
-        <p>Keep the browser steps that worked, then reuse them when the same job comes up.</p>
+        <p>Keep a useful task with its instructions and starting pages, ready for next time.</p>
         <p>{data?.routines.length ? 'Choose a routine in the sidebar to see its description and recorded steps.' : data ? t('routines.empty') : 'Loading saved routines…'}</p>
         <p className="routine-run-hint">Run opens a new chat. Progress, approvals and results stay with that conversation.</p>
       </div> : selected ? <article className="routine-detail" data-testid={`routine-detail-${selected.id}`}>
@@ -86,11 +87,12 @@ export function RoutinesView({ selectedId }: { selectedId: string | null }) {
           <div><span className="routine-eyebrow">Saved routine</span><h1>{selected.name}</h1></div>
           <button className="primary" data-testid={`routine-run-${selected.id}`} disabled={starting || routine.running} onClick={() => void run()}><Play size={14} aria-hidden />Run in new chat</button>
         </header>
-        <div className="routine-detail-meta"><span>{t('routines.steps', { n: selected.steps.length })}</span>{selected.lastRunAt && <span>Last run <time dateTime={selected.lastRunAt}>{new Date(selected.lastRunAt).toLocaleString()}</time>{selected.lastOutcome && ` · ${selected.lastOutcome}`}</span>}</div>
+        <div className="routine-detail-meta"><span>{selected.task ? selected.task.surface === 'web' ? 'Browser task' : 'Comet task' : t('routines.steps', { n: selected.steps.length })}</span>{selected.lastRunAt && <span>Last run <time dateTime={selected.lastRunAt}>{new Date(selected.lastRunAt).toLocaleString()}</time>{selected.lastOutcome && ` · ${selected.lastOutcome}`}</span>}</div>
         {selected.pendingWrite && <p className="routine-pending-warning" role="status"><AlertTriangle size={15} aria-hidden />{t('routines.unfinishedHint')}</p>}
-        <section className="routine-description" aria-label="Routine description"><h2>How it runs</h2><p>Start in a new chat. Saved steps run first; if a control has moved, your connected comet checks the page and continues unfinished work when safe. Login, approval and Stop stay in your hands.</p>{data?.body && <details className="routine-saved-description"><summary>Saved description</summary><p data-testid="routine-description">{data.body.replace(/^# [^\n]+\n*/, '').trim()}</p></details>}{data?.bodyError && <div className="routine-workspace-error" data-testid="routine-description-error" role="status"><p>The saved description is unavailable. You can still review and run the recorded steps.</p><button className="secondary" onClick={() => setRevision(value => value + 1)}>Reload description</button></div>}</section>
+        <section className="routine-description" aria-label="Routine description"><h2>{selected.task ? 'What it does' : 'How it runs'}</h2><p>{selected.task?.goal ?? 'Start in a new chat. Saved steps run first; if a control has moved, your connected comet checks the page and continues unfinished work when safe. Login, approval and Stop stay in your hands.'}</p>{selected.task && <p>Your comet checks the current state, adapts the saved method and verifies the result. Login and approval still need you.</p>}{!selected.task && data?.body && <details className="routine-saved-description"><summary>Saved description</summary><p data-testid="routine-description">{data.body.replace(/^# [^\n]+\n*/, '').trim()}</p></details>}{data?.bodyError && <div className="routine-workspace-error" data-testid="routine-description-error" role="status"><p>The saved description is unavailable. You can still review and run the recorded steps.</p><button className="secondary" onClick={() => setRevision(value => value + 1)}>Reload description</button></div>}</section>
+        {!!selected.task?.urls.length && <section><h2>Starting pages</h2><div className="routine-starting-pages">{selected.task.urls.map(url => <a key={url} href={url}>{url}</a>)}</div></section>}
         {rules.length > 0 && <section aria-label="Standing approvals"><h2>Standing approvals</h2><ApprovalChips rules={rules} onForget={forget} /></section>}
-        <section aria-label="Recorded steps"><h2>Recorded steps</h2><ol className="routine-recorded-steps" data-testid="routine-recorded-steps">{selected.steps.map((step, index) => <li key={index} data-kind={step.kind}><RecordedStep step={step} /></li>)}</ol></section>
+        {selected.task ? !!selected.task.method.length && <section aria-label="Saved method"><h2>Saved method</h2><ol className="routine-recorded-steps">{selected.task.method.map((line, index) => <li key={index}>{stepLabel(t, line.includes(': ') ? line : `${line}: `)}</li>)}</ol></section> : <section aria-label="Recorded steps"><h2>Recorded steps</h2><ol className="routine-recorded-steps" data-testid="routine-recorded-steps">{selected.steps.map((step, index) => <li key={index} data-kind={step.kind}><RecordedStep step={step} /></li>)}</ol></section>}
       </article> : !error ? <p className="routine-workspace-empty" role="status">{data?.selectedId === selectedId ? 'This routine is no longer available. Choose another one in the sidebar.' : 'Loading routine…'}</p> : null}
     </div>
   </section>

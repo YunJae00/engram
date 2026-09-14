@@ -188,6 +188,7 @@ export interface RoutineDto {
   id: string
   name: string
   steps: RoutineStepDto[]
+  task?: { goal: string; urls: string[]; method: string[]; surface: 'web' | 'auto' }
   createdAt: string
   lastRunAt?: string
   lastOutcome?: 'done' | 'failed' | 'aborted'

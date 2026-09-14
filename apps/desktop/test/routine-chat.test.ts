@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { addRoutine, appendBotTurn, createBot, initVault, loadBots, readBotTranscript, type RoutineRunResult } from 'core'
+import { addRoutine, appendBotTurn, createBot, initVault, loadBots, markRoutineRun, readBotTranscript, type RoutineRunResult } from 'core'
 import { describe, expect, it } from 'vitest'
 import type { EngramEvent } from '../src/shared/types.js'
 import { routineRecovery, startRoutineChat } from '../src/main/routine-chat.js'
@@ -13,6 +13,51 @@ async function vault() {
 }
 
 describe('manual routine chats', () => {
+  it('starts a saved task in a fresh chat with its browser context instead of partial replay', async () => {
+    const paths = await vault()
+    const saved = await addRoutine(paths, { name: 'Read details', steps: [], task: { goal: 'Read every detail and verify the table', urls: ['https://portal.example/reports'], method: ['press: Details', 'read_open_page'], surface: 'web' } })
+    const events: EngramEvent[] = []
+    let released = false
+    let replayed = false
+    let active = false
+    let complete!: (ok: boolean) => void
+    const done = new Promise<boolean>(resolve => { complete = resolve })
+    const result = await startRoutineChat(paths, saved.id, {}, {
+      claim: () => () => { released = true },
+      broadcast: event => { events.push(event) },
+      active: (_channel, running) => { active = running },
+      begin: async () => { replayed = true; return { ok: false } },
+      recover: (botId, message, context, routine) => {
+        expect(botId).toBe(events.find(event => event.type === 'routine:chat')?.botId)
+        expect(message).toBe(saved.task!.goal)
+        expect(context).toContain('https://portal.example/reports')
+        expect(context).toContain('not desktop mouse/keyboard')
+        expect(routine?.task?.surface).toBe('web')
+        return done
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(replayed).toBe(false)
+    expect(released).toBe(false)
+    expect(active).toBe(true)
+    expect(await readBotTranscript(paths, result.botId!)).toHaveLength(1)
+    complete(true)
+    await expect.poll(() => released).toBe(true)
+    expect(active).toBe(false)
+    expect(events.filter(event => event.type === 'chat:done')).toHaveLength(0)
+    await markRoutineRun(paths, saved.id, 'done', new Date(), true)
+    let invoked = false
+    const blocked = await startRoutineChat(paths, saved.id, {}, {
+      claim: () => () => { released = true },
+      broadcast: event => { events.push(event) },
+      active: (_channel, running) => { active = running },
+      begin: async () => { invoked = true; return { ok: false } },
+      recover: async () => { invoked = true; return true },
+    })
+    expect(blocked.blocked).toBe('already-ran-today')
+    expect(invoked).toBe(false)
+    expect(active).toBe(false)
+  })
   it('hands an untouched missing target to the same chat once, without duplicating its user message', async () => {
     const paths = await vault()
     const routine = await addRoutine(paths, { name: 'Read notices', steps: [{ kind: 'open', url: 'https://example.com' }, { kind: 'click', target: { text: 'Notices' } }, { kind: 'read' }] })

@@ -455,7 +455,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
   .spin, .absorb-ring, .chat-warming-dot { animation: none; }
   .cosmos-chat, .cosmos-chat.closing, .app-sidebar, .sidebar-nav-row, .sidebar-item { transition: none; animation: none; }
   .bots-chat, .canvas-slot, .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
-  .bots-memory, .comet-keep, .routine-submit, .bots-tasks, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
+  .bots-memory, .comet-keep, .routine-submit, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
   .web-pane, .web-pane.closing, .bots-working, .comet-work-toggle, .settings-loaded, .topbar-status.live { animation: none; }
   .toast, .vault-opening { animation: none; }
   .composer-web.working .composer-web-dot { animation: none; opacity: 1; }
@@ -474,7 +474,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .bots-chat { animation: view-in 180ms ease-out; }
 .canvas-slot:not([hidden]) { animation: view-in 180ms ease-out; }
 /* Surfaces that used to appear between two frames now arrive. */
-.bots-memory, .comet-keep, .routine-submit, .bots-tasks, .bots-offer { animation: view-in 160ms ease-out; }
+.bots-memory, .comet-keep, .routine-submit, .bots-offer { animation: view-in 160ms ease-out; }
 .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: view-in 200ms ease-out; }
 .comet-work-line { animation: fade-in 180ms ease; }
 .model-picker-menu { animation: menu-in 120ms ease-out; transform-origin: bottom left; }
@@ -1700,29 +1700,6 @@ body.bubble-host { background: transparent; }
 .mirror-screen canvas:not([data-painted]) { visibility: hidden; }
 .mirror-waiting { position: absolute; inset: auto; }
 .bots-head-name { font-size: var(--fs-body); font-weight: 550; line-height: 1.4; color: var(--fg-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bots-tasks {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 6px 20px 4px;
-}
-.bots-task, .bots-task-add {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 10px; border-radius: 999px; font-size: var(--fs-small);
-  border: 1px solid var(--border); color: var(--fg-dim); background: transparent;
-}
-.bots-task:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
-.bots-task:disabled { opacity: 0.5; }
-.bots-task-add { border-style: dashed; }
-.bots-task-add:hover { background: var(--hover-bg); color: var(--fg); }
-/* A 10px glyph with a 24px finger-sized hit box around it. */
-.bots-task-x { display: inline-flex; align-items: center; justify-content: center; padding: 7px; margin: -7px -6px -7px -5px; border-radius: 999px; opacity: 0.5; }
-.bots-task-x:hover { opacity: 1; color: var(--clay); }
-.bots-task-new { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.bots-task-new input {
-  box-sizing: border-box; padding: 5px 9px; border-radius: var(--radius-m); font-size: var(--fs-small); font-family: inherit;
-  border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
-}
-.bots-task-new input:first-of-type { width: 140px; }
-.bots-task-new input:last-of-type { width: 260px; }
 /* Under the last answer: the web, and keeping the ask. Offered after the
    answer rather than beside the composer — a second send button was the thing
    nobody could tell apart from the first. */
@@ -1766,7 +1743,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 0; }
 .bots-choices .bots-offer-text { flex: 0 0 100%; min-width: 0; }
 .bots-choice { max-width: 100%; white-space: normal; text-align: left; }
-.bots-task-when { font-size: var(--fs-micro); color: var(--fg-faint); margin-left: 2px; }
 /* One pick among three, as a segmented control: the chosen one is lifted
    onto the page's white, the others rest on the strip. */
 /* A short free-form value beside a fact key (a model id). */
@@ -2011,8 +1987,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 @media (max-width: 700px) {
   :root { --page-gutter: var(--space-3); --panel-gutter: var(--space-2); --dialog-gutter: var(--space-4); }
   .bots-chat { min-width: 0; }
-  .bots-tasks { padding: 6px 14px 3px; overflow-x: auto; flex-wrap: nowrap; }
-  .bots-task { flex: none; }
   .bots-memory { bottom: calc(100% + 8px); padding: 12px 13px; border-radius: 15px; }
   .cosmos-chat { width: auto; left: var(--panel-gutter); }
   .web-pane { width: calc(100% - 16px); border-left: 0; box-shadow: none; }

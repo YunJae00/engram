@@ -265,7 +265,7 @@ ${note.body.slice(0, 2_000)}`
     {
       name: 'find_procedure',
       description:
-        'check whether this is a job on a WEBSITE the person once showed you — not for writing or saving — args: {"task": "..."}',
+        'find a task or browser procedure the person previously saved — args: {"task": "..."}',
       argsSchema: { type: 'object', properties: { task: { type: 'string' } }, required: ['task'] },
       async run(args, context) {
         const task = str(args, 'task') || context.task
@@ -562,7 +562,7 @@ ${note.body.slice(0, 2_000)}`
     tools.push({
       name: 'run_procedure',
       description:
-        'replay a saved procedure, filling its blanks; "again": true only after the person said to run a job that already ran today — args: {"id": "rt-...", "slots": {"name": "value"}, "again": false}',
+        'start a saved procedure or load a saved task to carry out with current observations; returned instructions are not a completed result. "again": true only after the person said to repeat a job — args: {"id": "rt-...", "slots": {"name": "value"}, "again": false}',
       // Flat, because nesting is what defeats a small model: shown the id and
       // a slots object to fill, it called this twice with the id alone, having
       // just read the very words that belonged in the blank. One key per

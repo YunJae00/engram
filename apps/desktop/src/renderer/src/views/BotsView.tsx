@@ -1,4 +1,3 @@
-import { Clock, Play, X } from 'lucide-react'
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
 import { sendCometMessage } from '../lib/attachments.js'
@@ -11,7 +10,6 @@ import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { Fragment } from 'react'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
-import { scheduleLabel } from '../lib/schedule.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
@@ -109,32 +107,12 @@ export const BotsView = memo(function BotsView() {
     await api.chatAbort(cometChannel(selected.id)).catch(() => undefined)
   }
 
-  const taskPending = useRef(false)
-  const runTask = async (task: { id: string; name: string; goal: string; routineId?: string }) => {
-    if (!selected || taskPending.current) return
-    taskPending.current = true
-    try {
-      if (task.routineId) {
-        await startRoutine(task.routineId, task.name)
-        return
-      }
-      const bot = await api.botCreate({ name: task.name, purpose: '' })
-      await api.botTaskRan(selected.id, task.id).catch(() => undefined)
-      const history = cometThreads.begin(bot.id, task.goal)
-      selectComet(bot.id)
-      try { await api.chatSend({ engineId: '', message: task.goal, history, channel: cometChannel(bot.id), botId: bot.id }) }
-      catch (error) { if (cometThreads.thread(bot.id).busy) cometThreads.fail(bot.id, String(error)) }
-    } finally { taskPending.current = false }
-  }
-
-  // What a chat answer leaves you wanting: the web, when the vault did not
-  // have it, and a way to keep the ask if it is one you will make again. Both
-  // are one press, and both are the person's call — the model never decides to
-  // go browsing on its own.
-  // Keeping a job is the loop's suggestion and one click - never a form.
+  // Dismiss the offer only after the library confirms the save.
   const keep = async (name: string, goal: string) => {
     if (!selected) return
-    await api.botTaskAdd(selected.id, { name, goal }).catch(() => undefined)
+    await api.botTaskAdd(selected.id, { name, goal })
+    cometThreads.clearOffer(selected.id)
+    showToast('Saved to Routines')
     await reload()
   }
 
@@ -152,34 +130,6 @@ export const BotsView = memo(function BotsView() {
           {/* Keyed by the comet: looking at another one brings its thread
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
-            {(selected.tasks ?? []).length > 0 && (
-            <div className="bots-tasks">
-              {(selected.tasks ?? []).map((task) => (
-                <button
-                  key={task.id}
-                  className="bots-task"
-                  data-testid={`bot-task-${task.id}`}
-                  title={task.goal}
-                  onClick={() => void runTask(task).catch(error => showToast(String(error)))}
-                >
-                  {task.schedule ? <Clock size={11} strokeWidth={2.2} aria-hidden /> : <Play size={11} strokeWidth={2.2} aria-hidden />}
-                  {task.name}
-                  {task.schedule && <span className="bots-task-when">{t('bots.taskStanding', { when: scheduleLabel(task.schedule) })}</span>}
-                  <span
-                    className="bots-task-x"
-                    role="button"
-                    aria-label={t('bots.taskRemove')}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void api.botTaskRemove(selected.id, task.id).then(() => reload())
-                    }}
-                  >
-                    <X size={10} strokeWidth={2.4} aria-hidden />
-                  </span>
-                </button>
-              ))}
-            </div>
-            )}
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
@@ -217,10 +167,7 @@ export const BotsView = memo(function BotsView() {
               {offer && offer.kind !== 'asked' && !routine.running && (
                 <CometOffer
                   offer={offer}
-                  onKeep={(name, goal) => {
-                    cometThreads.clearOffer(selected.id)
-                    void keep(name, goal)
-                  }}
+                  onKeep={keep}
                   onRun={(wanted) => {
                     cometThreads.clearOffer(selected.id)
                     void startRoutine(wanted.routineId, wanted.name, wanted.force === true, wanted.slots)

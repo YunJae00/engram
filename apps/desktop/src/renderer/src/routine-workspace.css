@@ -17,12 +17,13 @@
 .routine-saved-description { font-size: var(--fs-small); }
 .routine-saved-description summary, .routine-step-selectors summary { cursor: pointer; color: var(--fg-dim); }
 .routine-saved-description p { white-space: pre-wrap; overflow-wrap: anywhere; }
-.routine-recorded-steps { display: flex; flex-direction: column; gap: 12px; padding-left: 28px; margin: 0; }
-.routine-recorded-steps > li { padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: var(--radius-card); min-width: 0; overflow-wrap: anywhere; }
+.routine-recorded-steps { padding-left: 28px; margin: 0; }
+.routine-recorded-steps > li { padding: 14px 0 14px 8px; min-width: 0; overflow-wrap: anywhere; border-bottom: 1px solid var(--border-soft); }
+.routine-recorded-steps > li:last-child { border-bottom: 0; }
 .routine-recorded-steps > li::marker { color: var(--fg-faint); font-size: var(--fs-small); }
 .routine-recorded-steps h3 { font-size: var(--fs-body); font-weight: 550; color: var(--fg); margin: 0; }
 .routine-recorded-steps p { color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.6; margin: 6px 0 0; }
-.routine-step-value { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-small); line-height: 1.6; padding: 10px; margin: 10px 0 0; background: var(--hover-bg); border-radius: var(--radius-s); }
+.routine-step-value { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-small); line-height: 1.6; margin: 6px 0 0; color: var(--fg-dim); }
 .routine-step-selectors { font-size: var(--fs-small); margin-top: 8px; }
 .routine-step-selectors code { display: block; margin-top: 6px; white-space: pre-wrap; }
 .routine-pending-warning { display: flex; align-items: flex-start; gap: 8px; color: var(--clay); font-size: var(--fs-small); line-height: 1.6; }
@@ -33,4 +34,9 @@
 .routine-scheduled .dialog-actions button { white-space: normal; }
 .routine-workspace-error { margin-bottom: 24px; color: var(--clay); overflow-wrap: anywhere; }
 .routine-workspace-empty { color: var(--fg-dim); }
-@media (max-width: 700px) { .routine-workspace-content { padding-top: 20px; } .routine-overview { margin-top: 7vh; } .routine-recorded-steps > li { padding: 12px; } }
+.routine-starting-pages { display: flex; flex-direction: column; gap: 8px; font-size: var(--fs-small); overflow-wrap: anywhere; }
+.routine-starting-pages a { color: var(--fg-dim); text-underline-offset: 3px; }
+.comet-keep-instructions { width: 100%; margin-top: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
+.comet-keep-instructions summary { cursor: pointer; }
+.comet-keep-instructions textarea { width: 100%; min-height: 100px; margin: 10px 0 6px; padding: 10px; resize: vertical; box-sizing: border-box; font: inherit; line-height: 1.6; }
+@media (max-width: 700px) { .routine-workspace-content { padding-top: 20px; } .routine-overview { margin-top: 7vh; } }

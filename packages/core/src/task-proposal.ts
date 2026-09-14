@@ -16,21 +16,23 @@ export interface TaskProposal {
   does: string
 }
 
-export const PROPOSAL_TOKENS = 220
+export const PROPOSAL_TOKENS = 450
 export const NAME_CHARS = 32
-export const GOAL_CHARS = 240
+export const GOAL_CHARS = 1500
 export const DOES_CHARS = 160
 
-export function proposalPrompt(exchange: { user: string; answer: string; steps: readonly string[] }): string {
+export function proposalPrompt(exchange: { user: string; answer: string; steps: readonly string[]; history?: readonly { role: string; text: string }[] }): string {
   return [
     'JOB: COMET-KEEP',
     'A job was just done for the person. They may want it as a button they can press again. Write the button.',
     'Answer as three lines and nothing else:',
     'NAME: a short label, at most 5 words, naming the WORK - never the words they happened to type, never a date',
     'GOAL: the same job as one instruction you could be given again next month, specific enough to run without asking',
+    'Preserve the requested output, scope, relative time period and verification requirements. State the actual working surface (browser or app) and navigation method. Do not invent missing dates or omit required detail. Starting URLs are saved separately by the host.',
     'DOES: one sentence saying what pressing it would do',
     'Write all three in the language the person wrote in. If the job is not worth repeating - a one-off lookup, a question about this conversation - write only: NONE',
     '',
+    ...(exchange.history?.filter(turn => turn.role === 'user').slice(-6).map(turn => `Earlier request (context only): ${turn.text.slice(0, 600)}`) ?? []),
     `They asked: ${exchange.user.slice(0, 600)}`,
     ...(exchange.steps.length ? ['Steps taken:', ...exchange.steps.slice(0, 12).map((step) => `- ${step.slice(0, 120)}`)] : []),
     `You answered: ${exchange.answer.slice(0, 400)}`,
