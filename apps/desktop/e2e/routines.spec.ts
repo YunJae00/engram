@@ -138,7 +138,7 @@ async function expectRoutineControlReachable(testId: string): Promise<void> {
       reachable: node.contains(hit),
       insideDock: box.left >= dock.left && box.right <= dock.right,
       insideViewport: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
-      clearOfWebPane: innerWidth > 1180 || !pane || pane.bottom <= dock.top + 1,
+      clearOfWebPane: !pane || pane.bottom <= dock.top + 1 || pane.top >= dock.bottom - 1 || pane.left >= dock.right - 1 || pane.right <= dock.left + 1,
     }
   })).toEqual({ reachable: true, insideDock: true, insideViewport: true, clearOfWebPane: true })
   await control.click({ trial: true })

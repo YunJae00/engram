@@ -1,5 +1,6 @@
 import { app } from 'electron'
-import { readFile, writeFile, rename } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { renameWithRetry } from 'core'
 import { join } from 'node:path'
 
 interface AppSettings {
@@ -64,7 +65,7 @@ export async function loadSettings(): Promise<AppSettings> {
 async function saveSettings(settings: AppSettings): Promise<void> {
   const target = settingsPath()
   await writeFile(`${target}.tmp`, JSON.stringify(settings, null, 2))
-  await rename(`${target}.tmp`, target)
+  await renameWithRetry(`${target}.tmp`, target)
 }
 
 let changes = Promise.resolve()
