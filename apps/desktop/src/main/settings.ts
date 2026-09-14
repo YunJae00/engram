@@ -1,10 +1,12 @@
 import { app } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
-import { renameWithRetry } from 'core'
+import { renameWithRetry, REASONING_EFFORTS } from 'core'
 import { join } from 'node:path'
 
 interface AppSettings {
-  aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string }>
+  aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }>
+  claudeEffort?: import('core').ReasoningEffort
+  codexEffort?: import('core').ReasoningEffort
   theme: 'system' | 'light' | 'dark'
   // Which brain answers: the one on this disk, or one of the two the person
   // signed in to. Chosen once, never switched behind their back.
@@ -56,6 +58,8 @@ export async function loadSettings(): Promise<AppSettings> {
     merged.aiSelections = Object.fromEntries(Object.entries(merged.aiSelections ?? {}).filter(([scope, value]) =>
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
+    for (const selection of Object.values(merged.aiSelections)) if (selection.effort && !REASONING_EFFORTS.includes(selection.effort)) delete selection.effort
+    for (const key of ['claudeEffort', 'codexEffort'] as const) if (merged[key] && !REASONING_EFFORTS.includes(merged[key])) delete merged[key]
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }

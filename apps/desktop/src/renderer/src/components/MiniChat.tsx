@@ -13,6 +13,7 @@ import { PressGate } from './PressGate.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
 import { Globe } from 'lucide-react'
+import { Thinking } from './Thinking.js'
 
 // A conversation small enough to sit inside a parallel tile: the
 // thread, what the comet is doing right now, and a composer - the same
@@ -44,10 +45,10 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
         {thread.messages.map((m, i) => (
           <div key={i} className={`mini-msg ${m.role}`}>
-            {m.role === 'assistant' ? <StreamingAnswer text={m.text} done={!m.streaming} /> : m.text}
+            {m.role === 'assistant' ? (m.text.trim() && <StreamingAnswer text={m.text} done={!m.streaming} />) : m.text}
           </div>
         ))}
-        {thread.busy && <p className="mini-chat-status">{status}</p>}
+        {thread.busy && <Thinking label={status} since={thread.startedAt ?? undefined} />}
       </div>
       <div className="mini-chat-gates"><RoutineProgress channel={cometChannel(botId)} /><SubmitGate channel={cometChannel(botId)} /><PressGate channel={cometChannel(botId)} /></div>
       <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} tools={<><button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /></button><ModelPicker scope={cometChannel(botId)} /></>} /></div>

@@ -3,6 +3,8 @@ import { classifyEngineError, type EngineErrorKind } from './classify.js'
 export { classifyEngineError, type EngineErrorKind } from './classify.js'
 
 export type EngineId = 'claude' | 'codex' | 'mock'
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
 export const DESKTOP_TOOL_ISOLATION_MESSAGE = 'This connection cannot safely run selected-app tools yet. Use a connection with an isolated tool session, or turn off Computer access for this chat.'
 
 export interface EngineDetection {
@@ -52,6 +54,7 @@ export const ENGINE_BUDGETS = {
 
 export interface EngineJobInput {
   model?: string
+  effort?: ReasoningEffort
   prompt: string
   imagePaths?: string[]
   workdir: EngineCwd
@@ -132,6 +135,7 @@ export interface ToolSessionCall {
 
 export interface ToolSessionJob {
   model?: string
+  effort?: ReasoningEffort
   workdir: EngineCwd
   // Standing instructions, the same for every turn of a session.
   system: string

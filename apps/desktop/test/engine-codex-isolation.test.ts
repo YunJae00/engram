@@ -40,6 +40,12 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('forwards explicit effort to both runtimes instead of the fast hint', async () => {
+    await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', modelHint: 'fast', effort: 'high' }))
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ modelReasoningEffort: 'high' }))
+    await collect(new ClaudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', effort: 'medium' }))
+    expect(fixture.query).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ effort: 'medium' }) }))
+  })
   it('uses explicit per-job models, including Auto, instead of the global model', async () => {
     await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'conversation-model' }))
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'conversation-model' }))

@@ -1,4 +1,4 @@
-import { createEngine, ENGINE_ORDER } from 'core'
+import { createEngine, ENGINE_ORDER, REASONING_EFFORTS, type ReasoningEffort } from 'core'
 import { app, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { cp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -26,9 +26,10 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
   ipcMain.handle('ai:selection', async (_event, scope: unknown, selection: unknown) => {
     if (typeof scope !== 'string' || !/^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope)) throw new Error('Invalid AI scope')
-    const value = selection as { engine?: unknown; model?: unknown } | null
+    const value = selection as { engine?: unknown; model?: unknown; effort?: unknown } | null
     if (!value || !['claude', 'codex'].includes(String(value.engine)) || typeof value.model !== 'string' || value.model.length > 200) throw new Error('Invalid AI selection')
-    const chosen = { engine: value.engine as 'claude' | 'codex', model: value.model.trim() }
+    if (value.effort !== undefined && !REASONING_EFFORTS.includes(value.effort as ReasoningEffort)) throw new Error('Invalid reasoning effort')
+    const chosen = { engine: value.engine as 'claude' | 'codex', model: value.model.trim(), ...(value.effort ? { effort: value.effort as ReasoningEffort } : {}) }
     const settings = await updateSettings(held => ({ ...held, aiSelections: { ...held.aiSelections, filing: aiSelection(held, 'filing'), [scope]: chosen } }))
     broadcast({ type: 'settings:changed', settings })
     if (scope === 'filing') await onBrainChoice?.()
@@ -37,6 +38,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
     if (!settings || !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
+    for (const effort of [settings.claudeEffort, settings.codexEffort]) if (effort !== undefined && !REASONING_EFFORTS.includes(effort)) throw new Error('Invalid reasoning effort')
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()

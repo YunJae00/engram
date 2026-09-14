@@ -1,4 +1,4 @@
-import { createEngine, type Engine } from 'core'
+import { createEngine, type Engine, type ReasoningEffort } from 'core'
 import { loadSettings, updateSettings } from './settings.js'
 import type { AppSettingsDto } from '../shared/types.js'
 
@@ -6,14 +6,15 @@ export function aiSelection(settings: AppSettingsDto, scope: string) {
   return settings.aiSelections?.[scope] ?? {
     engine: settings.defaultEngine,
     model: (settings.defaultEngine === 'claude' ? settings.claudeModel : settings.codexModel) ?? '',
+    effort: settings.defaultEngine === 'claude' ? settings.claudeEffort : settings.codexEffort,
   }
 }
 
-export function withModel(engine: Engine, model: string): Engine {
+export function withModel(engine: Engine, model: string, effort?: ReasoningEffort): Engine {
   const selected: Engine = Object.create(engine) as Engine
   selected.detect = () => engine.detect()
-  selected.run = job => engine.run({ ...job, model })
-  if (engine.runTools) selected.runTools = job => engine.runTools!({ ...job, model })
+  selected.run = job => engine.run({ ...job, model, effort })
+  if (engine.runTools) selected.runTools = job => engine.runTools!({ ...job, model, effort })
   return selected
 }
 
@@ -34,5 +35,5 @@ export async function chatEngine(scope: string, engines: Engine[], explicit?: st
   if (id !== 'claude' && id !== 'codex') throw new Error('Invalid AI provider')
   const engine = createEngine(id)
   if (!(await engine.detect()).loggedIn) return undefined
-  return withModel(engine, selection.model)
+  return withModel(engine, selection.model, selection.effort)
 }

@@ -165,7 +165,7 @@ export class StatusCache {
   private generation = 0
 
   async read(probe: () => Promise<EngineDetection>, now = Date.now()): Promise<EngineDetection> {
-    if (this.known?.detection.loggedIn && now - this.known.at < STATUS_TTL_MS) return this.known.detection
+    if (this.known && this.known.detection.conclusive !== false && now - this.known.at < STATUS_TTL_MS) return this.known.detection
     if (this.probing) return this.probing
     const generation = this.generation
     const pending = probe().finally(() => {

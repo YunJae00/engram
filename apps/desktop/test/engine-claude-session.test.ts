@@ -53,6 +53,19 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
+  it('recycles only the conversation whose reasoning effort changed', async () => {
+    const { sdk, processes, optionsSeen } = fakeSdk([])
+    const pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    try {
+      await pool.run(job('First', { sessionKey: 'a', effort: 'low' }), spec)
+      await pool.run(job('Second', { sessionKey: 'b', effort: 'high' }), spec)
+      await pool.run(job('Change', { sessionKey: 'a', effort: 'medium' }), spec)
+      await pool.run(job('Keep', { sessionKey: 'b', effort: 'high' }), spec)
+      expect(processes()).toBe(3)
+      expect(optionsSeen.map(options => options['effort'])).toEqual(['low', 'high', 'medium'])
+    } finally { pool.closeAll() }
+  })
   it('records tool duration and between-tool wait without task content', async () => {
     timingLog.mockClear()
     const { sdk } = fakeSdk([])

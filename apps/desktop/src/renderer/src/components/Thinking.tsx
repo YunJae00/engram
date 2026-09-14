@@ -34,14 +34,14 @@ export function Thinking({
   }, [since])
   const text = typeof label === 'function' ? label(seconds) : label
   return (
-    <span className="bubble-thinking" data-testid={testId}>
+    <span className="bubble-thinking" data-testid={testId} role="status" aria-label={text}>
       <ThinkingDots />
       {/* Keyed on the words alone: a new sentence breathes in, a count ticking
           up inside the same sentence does not restart the motion. */}
       <span className="bubble-thinking-label" key={text.replace(/\d+/g, '')}>
         {text}
       </span>
-      {' '}· {seconds}s
+      <span className="thinking-elapsed" aria-hidden>{seconds}s</span>
     </span>
   )
 }

@@ -26,12 +26,12 @@ it('discovers paginated visible models after the handshake without opening any w
   const { child, requests } = runtime((method, params, reply) => {
     expect(method).toBe('model/list')
     reply(params['cursor'] ? { data: [{ model: 'beta', displayName: 'Beta' }], nextCursor: null } : {
-      data: [{ model: 'alpha', displayName: 'Alpha', description: 'Fast' }, { model: 'hidden', hidden: true }, null], nextCursor: 'more',
+      data: [{ model: 'alpha', displayName: 'Alpha', description: 'Fast', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }, { reasoningEffort: 'invalid' }] }, { model: 'hidden', hidden: true }, null], nextCursor: 'more',
     })
   })
   const account = new CodexAccount(new AbortController().signal)
   try {
-    expect(await account.models()).toEqual([{ value: 'alpha', label: 'Alpha', detail: 'Fast' }, { value: 'beta', label: 'Beta', detail: '' }])
+    expect(await account.models()).toEqual([{ value: 'alpha', label: 'Alpha', detail: 'Fast', efforts: ['low', 'high'] }, { value: 'beta', label: 'Beta', detail: '', efforts: [] }])
     expect(requests).toEqual(['initialize', 'initialized', 'model/list', 'model/list'])
   } finally { account.close() }
   expect(child.kill).toHaveBeenCalledOnce()

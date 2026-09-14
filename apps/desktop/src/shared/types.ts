@@ -732,7 +732,7 @@ export interface EngramApi extends DesktopApi {
   browserChoose(path: string): Promise<void>
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: AppSettingsDto): Promise<void>
-  aiSelectionSet(scope: string, selection: { engine: 'claude' | 'codex'; model: string }): Promise<void>
+  aiSelectionSet(scope: string, selection: { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }): Promise<void>
   mcpInfo(): Promise<McpInfoDto>
   mcpConnectDesktop(): Promise<McpConnectResultDto>
   mcpConnectCode(): Promise<McpConnectResultDto>
@@ -751,7 +751,9 @@ export interface OnboardPayload {
 }
 
 export interface AppSettingsDto {
-  aiSelections?: Record<string, { engine: 'claude' | 'codex'; model: string }>
+  aiSelections?: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }>
+  claudeEffort?: import('core').ReasoningEffort
+  codexEffort?: import('core').ReasoningEffort
   theme?: 'system' | 'light' | 'dark'
   // Which brain answers: this disk, or one of the two the person signed in to.
   defaultEngine: 'claude' | 'codex'
@@ -779,6 +781,7 @@ export interface ModelChoiceDto {
   value: string
   label: string
   detail: string
+  efforts?: import('core').ReasoningEffort[]
 }
 
 export interface EngineLoginDto {

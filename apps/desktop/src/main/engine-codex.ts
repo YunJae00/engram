@@ -124,7 +124,7 @@ export class CodexEngine implements CloudEngine {
         approvalPolicy: 'never',
         webSearchMode: 'disabled',
         networkAccessEnabled: false,
-        ...(job.modelHint === 'fast' ? { modelReasoningEffort: 'low' } : {}),
+        ...(job.effort ? { modelReasoningEffort: job.effort } : job.modelHint === 'fast' ? { modelReasoningEffort: 'low' } : {}),
         // The person's chosen model, if they named one; the runtime's own
         // default - their plan's - otherwise.
         ...(codexModel ? { model: codexModel } : {}),

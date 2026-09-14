@@ -23,11 +23,11 @@ it('passes each model to text and tool sessions without mutating the shared engi
   const engine: Engine = {
     id: 'claude', desktopToolIsolation: true,
     detect: async () => ({ installed: true, loggedIn: true }),
-    async *run(job) { expect(this).toBe(engine); calls.push(job.model!); yield { type: 'result', text: 'ok' } },
-    async runTools(job) { expect(this).toBe(engine); calls.push(job.model!); return { answer: 'ok' } },
+    async *run(job) { expect(this).toBe(engine); expect(job.effort).toBe('high'); calls.push(job.model!); yield { type: 'result', text: 'ok' } },
+    async runTools(job) { expect(this).toBe(engine); expect(job.effort).toBe('low'); calls.push(job.model!); return { answer: 'ok' } },
   }
   const original = engine.run
-  const first = withModel(engine, 'large'), second = withModel(engine, '')
+  const first = withModel(engine, 'large', 'high'), second = withModel(engine, '', 'low')
   await Promise.all([
     (async () => { for await (const result of first.run({} as EngineJobInput)) expect(result.type).toBe('result') })(),
     second.runTools!({} as ToolSessionJob),

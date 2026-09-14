@@ -74,7 +74,8 @@ test('folder deletion offers cancellation and includes conversations hidden by s
   await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Delete folder?', exact: true })
   await expect(dialog).toContainText('2 conversations')
-  expect(await dialog.evaluate(node => { const rect = node.getBoundingClientRect(); return Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2 && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 2 })).toBe(true)
+  await expect.poll(() => dialog.evaluate(node => { const rect = node.getBoundingClientRect(); return Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2 && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 2 })).toBe(true)
+  expect(await dialog.locator('button').evaluateAll(buttons => new Set(buttons.map(button => Math.round(button.getBoundingClientRect().height))).size)).toBe(1)
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
   await capture('delete-folder-confirmation.png')
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -85,6 +86,26 @@ test('folder deletion offers cancellation and includes conversations hidden by s
   await expect(dialog).toHaveCount(0)
   expect(await page.evaluate(async ids => (await window.engram.botsList()).some(bot => ids.includes(bot.id)), ids)).toBe(false)
   await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+})
+
+test('dragging previews an insertion gap and saves the displayed order', async () => {
+  const source = page.getByTestId(`bot-${bots[2]!.id}`).locator('..')
+  const target = page.getByTestId(`bot-${bots[0]!.id}`).locator('..')
+  await target.scrollIntoViewIfNeeded()
+  const transfer = await page.evaluateHandle(() => new DataTransfer())
+  await source.dispatchEvent('dragstart', { dataTransfer: transfer })
+  const box = (await target.boundingBox())!
+  await target.dispatchEvent('dragover', { dataTransfer: transfer, clientY: box.y + 4 })
+  await expect(target).toHaveAttribute('data-insert', 'before')
+  await expect(target).toHaveAttribute('data-shift', 'down')
+  await expect(source).toHaveAttribute('data-drag-source', 'true')
+  expect(await target.locator('.sidebar-item-main').evaluate(node => getComputedStyle(node).translate)).toBe('0px 12px')
+  await capture('sidebar-insertion.png')
+  await target.dispatchEvent('drop', { dataTransfer: transfer, clientY: box.y + 4 })
+  await source.dispatchEvent('dragend', { dataTransfer: transfer })
+  await expect(page.locator('.sidebar-item[data-insert]')).toHaveCount(0)
+  await expect.poll(() => page.getByTestId('sidebar-chats').locator('.sidebar-item-main').evaluateAll(nodes => nodes.slice(0, 2).map(node => node.getAttribute('data-testid')))).toEqual([`bot-${bots[2]!.id}`, `bot-${bots[0]!.id}`])
+  await transfer.dispose()
 })
 
 test('conversation rows show persisted previews, timestamps and avatars after reload', async () => {

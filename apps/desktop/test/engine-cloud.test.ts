@@ -56,8 +56,7 @@ describe('bundled runtimes', () => {
   }, 35000)
 })
 
-// Detection is asked constantly; a sign-in seen a minute ago is not asked
-// again, a probe in flight is shared, and a "not signed in" is re-asked.
+// Conclusive account probes are shared until expiry or sign-in invalidation.
 describe('StatusCache', () => {
   it('does not reuse or cache an old account probe after sign-in changes', async () => {
     const cache = new StatusCache()
@@ -69,7 +68,7 @@ describe('StatusCache', () => {
     finish({ installed: true, loggedIn: true, conclusive: true })
     await old
     expect((await cache.read(fresh)).loggedIn).toBe(false)
-    expect(fresh).toHaveBeenCalledTimes(2)
+    expect(fresh).toHaveBeenCalledTimes(1)
   })
   it('keeps a positive answer for a while and shares an in-flight probe', async () => {
     const cache = new StatusCache()
@@ -83,18 +82,18 @@ describe('StatusCache', () => {
     await cache.read(probe, 1000 + STATUS_TTL_MS + 1)
     expect(probes).toBe(2)
   })
-  it('asks again after a negative answer, and after forget', async () => {
+  it('shares conclusive signed-out probes until expiry or sign-in invalidation', async () => {
     const cache = new StatusCache()
     let probes = 0
     const probe = async () => (probes++, { installed: true, loggedIn: false, conclusive: true })
     await cache.read(probe, 1000)
     await cache.read(probe, 1001)
-    expect(probes).toBe(2)
+    expect(probes).toBe(1)
     const yes = async () => (probes++, { installed: true, loggedIn: true, conclusive: true })
     await cache.read(yes, 2000)
     cache.forget()
     await cache.read(yes, 2001)
-    expect(probes).toBe(4)
+    expect(probes).toBe(2)
   })
 })
 

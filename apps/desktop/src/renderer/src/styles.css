@@ -559,7 +559,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
   animation: fade-in 140ms ease-out;
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-.bubble-thinking-label { animation: fade-in 0.35s ease; }
+.bubble-thinking-label { color: var(--fg-dim); }
 .note-sheet, .review-sheet {
   width: min(1060px, calc(100vw - 64px)); height: min(720px, calc(100vh - 72px));
   background: var(--editor-bg); border: 1px solid var(--border-soft);
@@ -692,6 +692,9 @@ body.bubble-host { background: transparent; }
   display: inline-flex; align-items: center; gap: 7px;
   font-size: var(--fs-small); color: var(--fg-faint); font-variant-numeric: tabular-nums;
 }
+.bubble-thinking-label { background: linear-gradient(100deg, var(--fg-dim) 30%, var(--fg-strong) 48%, var(--fg-dim) 65%); background-size: 220% 100%; background-clip: text; color: transparent; animation: thinking-shimmer 2.4s linear infinite; }
+.thinking-elapsed { color: var(--fg-faint); font-size: var(--fs-micro); }
+@keyframes thinking-shimmer { to { background-position: -220% 0; } }
 .bubble-dots { display: inline-flex; gap: 3px; }
 .bubble-dots i {
   width: 5px; height: 5px; border-radius: 50%; background: currentColor;
@@ -705,7 +708,7 @@ body.bubble-host { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bubble-dots i { animation: none; opacity: 0.6; }
-  .bubble-thinking-label { animation: none; }
+  .bubble-thinking-label { animation: none; background: none; color: var(--fg-dim); }
 }
 
 .bubble-stop { background: var(--clay); }

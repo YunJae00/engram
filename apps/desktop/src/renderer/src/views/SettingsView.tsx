@@ -50,7 +50,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
-      if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, computerUse: event.settings.computerUse } : event.settings)
+      if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, computerUse: event.settings.computerUse, defaultEngine: event.settings.defaultEngine, claudeModel: event.settings.claudeModel, codexModel: event.settings.codexModel, claudeEffort: event.settings.claudeEffort, codexEffort: event.settings.codexEffort, aiSelections: event.settings.aiSelections } : event.settings)
       if (event.type === 'update:ready') {
         setUpdate({ state: 'ready', version: event.version, selfInstalls: event.selfInstalls })
       }
@@ -205,7 +205,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </section>
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
         <h2>AI connection</h2>
-        {section === 'ai' && <EngineSettings settings={settings} onChange={patch} />}
+        {section === 'ai' && <EngineSettings />}
         </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         <details className="settings-more" data-testid="settings-more">

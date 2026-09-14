@@ -124,12 +124,32 @@ test('two conversations stack in narrow panes and keep their web toggle in the c
   }
 })
 
+test('split conversations show animated pending status and elapsed time without an empty answer', async () => {
+  await page.setViewportSize({ width: 1600, height: 920 })
+  await navigate('mission')
+  await page.getByTestId('mission-layout-2').click()
+  await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('chat:send'); ipcMain.handle('chat:send', () => undefined) })
+  const tile = page.getByTestId('mission-tile-0')
+  await tile.locator('textarea').fill('Review the project')
+  await tile.locator('textarea').press('Enter')
+  const status = tile.getByTestId('bubble-thinking')
+  await expect(status).toBeVisible()
+  await expect(status.locator('.thinking-elapsed')).not.toHaveText('0s')
+  await expect(status.locator('.bubble-thinking-label')).toHaveCSS('animation-name', 'thinking-shimmer')
+  await expect(tile.locator('.answer-actions')).toHaveCount(0)
+  await screenshot('split-thinking.png')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(status.locator('.bubble-thinking-label')).toHaveCSS('animation-name', 'none')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await tile.locator('.bubble-stop').click()
+})
+
 test('settings header, rows and footer share an inset without nested modal padding', async () => {
   for (const width of [1280, 620]) {
     await page.setViewportSize({ width, height: 720 })
     await navigate('settings')
     await page.getByTestId('settings-nav-ai').click()
-    await expect(page.getByTestId('model-claude')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toBeVisible()
     const box = page.locator('.brief-box.settings-box')
     await expect(box).toHaveCSS('padding', '0px')
     await expect(box).toHaveCSS('gap', '0px')
@@ -138,8 +158,8 @@ test('settings header, rows and footer share an inset without nested modal paddi
       const scroll = node.querySelector('.settings-scroll')!
       const foot = node.querySelector('.dialog-actions')!
       const inset = (element: Element) => element.getBoundingClientRect().left + parseFloat(getComputedStyle(element).paddingLeft)
-      const model = node.querySelector('[data-testid="model-codex"]')!.getBoundingClientRect()
-      const select = node.querySelector('[data-testid="model-claude"]')!.getBoundingClientRect()
+      const model = node.querySelector('[aria-label="New conversation model"]')!.getBoundingClientRect()
+      const select = node.querySelector('[aria-label="Filing model"]')!.getBoundingClientRect()
       const valueColumns = [...node.querySelectorAll('.settings-panel:not([hidden]) .settings-fact-value')].map((value) => value.getBoundingClientRect().left)
       return {
         contentAligned: Math.abs(inset(scroll) - node.querySelector('.settings-panel:not([hidden]) h2')!.getBoundingClientRect().left) <= 1,

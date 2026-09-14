@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
 import type { ModelChoiceDto } from '../shared/types.js'
+import { REASONING_EFFORTS, type ReasoningEffort } from 'core'
 
 // Account and catalog requests only. No threads, turns, tools or credentials
 // are exposed to the renderer; the bundled runtime owns authentication.
@@ -70,7 +71,8 @@ export class CodexAccount {
         if (!item || typeof item !== 'object') continue
         const row = item as Record<string, unknown>
         if (row['hidden'] === true || typeof row['model'] !== 'string' || !row['model'].trim()) continue
-        rows.set(row['model'], { value: row['model'], label: typeof row['displayName'] === 'string' ? row['displayName'] : row['model'], detail: typeof row['description'] === 'string' ? row['description'] : '' })
+        const efforts = Array.isArray(row['supportedReasoningEfforts']) ? row['supportedReasoningEfforts'].map(item => item && typeof item === 'object' ? item.reasoningEffort : null).filter((effort): effort is ReasoningEffort => effort !== 'none' && REASONING_EFFORTS.includes(effort)) : []
+        rows.set(row['model'], { value: row['model'], label: typeof row['displayName'] === 'string' ? row['displayName'] : row['model'], detail: typeof row['description'] === 'string' ? row['description'] : '', efforts })
       }
       cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : undefined
       if (cursor && (seen.has(cursor) || seen.size >= 20)) throw new Error('The ChatGPT model list did not finish.')

@@ -25,7 +25,7 @@ type SdkMessage =
 export interface SessionSdk {
   query(params: { prompt: AsyncIterable<SdkUserMessage>; options?: Record<string, unknown> }): AsyncIterable<SdkMessage> & {
     interrupt(): Promise<unknown>
-    supportedModels(): Promise<{ value: string; displayName: string; description: string; resolvedModel?: string }[]>
+    supportedModels(): Promise<{ value: string; displayName: string; description: string; resolvedModel?: string; supportsEffort?: boolean; supportedEffortLevels?: import('core').ReasoningEffort[] }[]>
   }
   createSdkMcpServer(options: { name: string; tools: unknown[] }): unknown
   tool(
@@ -56,7 +56,7 @@ function textOf(content: unknown): string {
 }
 
 export function signatureOf(job: ToolSessionJob): string {
-  return `${job.system}\n${job.tools.map((tool) => tool.name).join(',')}`
+  return `${job.system}\n${job.tools.map((tool) => tool.name).join(',')}\n${job.effort ?? ''}`
 }
 
 interface Turn {
@@ -150,6 +150,7 @@ export class WarmSession {
         persistSession: false,
         settingSources: [],
         model: spec.model,
+        ...(job.effort ? { effort: job.effort } : {}),
       },
     })
     this.query = stream

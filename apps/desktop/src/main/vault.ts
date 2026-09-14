@@ -68,7 +68,7 @@ async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> 
   if (engineFlag === 'none') return []
   const selection = aiSelection(await loadSettings(), 'filing')
   const chosen = selection.engine
-  const engine = withModel(createEngine(chosen), selection.model)
+  const engine = withModel(createEngine(chosen), selection.model, selection.effort)
   const known = keepSet(keep).has(chosen)
   try {
     return keepsEngine(await engine.detect(), known) ? [engine] : []

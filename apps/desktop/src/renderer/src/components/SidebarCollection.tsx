@@ -20,6 +20,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
   const [menu, setMenu] = useState<Entry | null>(null)
   const [deleting, setDeleting] = useState<{ entry: Entry; name: string; ids: string[] } | null>(null)
   const [over, setOver] = useState<string | null>(null)
+  const [insertion, setInsertion] = useState<{ folder: string | null; before?: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const drag = useRef<Entry | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -76,10 +77,10 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
   }
   const accept = (event: DragEvent, key: string) => {
     if (!drag.current || !event.dataTransfer.types.includes(MIME)) return
-    event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(key)
+    event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(key); setInsertion(null)
   }
   const drop = (event: DragEvent, destination: string | null, before?: string, folderTarget?: string) => {
-    event.preventDefault(); event.stopPropagation(); setOver(null); setDragging(false)
+    event.preventDefault(); event.stopPropagation(); setOver(null); setInsertion(null); setDragging(false)
     let source: Entry & { kind: SidebarKind }
     try { source = JSON.parse(event.dataTransfer.getData(MIME)) } catch { return }
     drag.current = null
@@ -112,17 +113,29 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
       }}><Trash2 size={13} aria-hidden />Delete</button>
     </div>, document.body)}
   </>
-  const rows = (folder: string | null) => <ul className="sidebar-list" data-testid={folder === null ? `sidebar-${kind === 'chat' ? 'chats' : 'routines'}` : undefined}>{itemRows(folder).map((item, index, siblings) => <li key={item.id} className={`sidebar-item${item.active ? ' active' : ''}${over === item.id ? ' sidebar-drop-target' : ''}`} data-pinned={item.pinned || undefined} draggable={!editing && !saving}
-    onDragStart={event => start(event, { type: 'item', id: item.id })} onDragEnd={() => { drag.current = null; setOver(null) }} onDragOver={event => accept(event, item.id)}
+  const rows = (folder: string | null) => {
+    const siblings = itemRows(folder)
+    const pinned = kind === 'chat' && !!layout.items.find(one => one.id === drag.current?.id)?.pinned
+    const slot = insertion?.folder === folder ? insertion.before ? siblings.findIndex(item => item.id === insertion.before) : pinned ? siblings.filter(item => item.pinned).length : siblings.length : -1
+    const beforeAt = (event: DragEvent, index: number) => {
+      const after = event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.clientHeight / 2
+      return siblings.slice(index + Number(after)).find(one => one.id !== drag.current?.id && one.pinned === pinned)?.id
+    }
+    return <ul className="sidebar-list" data-testid={folder === null ? `sidebar-${kind === 'chat' ? 'chats' : 'routines'}` : undefined}>{siblings.map((item, index) => <li key={item.id} className={`sidebar-item${item.active ? ' active' : ''}`} data-pinned={item.pinned || undefined} data-drag-source={dragging && drag.current?.id === item.id || undefined} data-insert={slot === index ? 'before' : slot === siblings.length && index === siblings.length - 1 ? 'after' : undefined} data-shift={slot < 0 ? undefined : index < slot ? 'up' : 'down'} draggable={!editing && !saving}
+    onDragStart={event => start(event, { type: 'item', id: item.id })} onDragEnd={() => { drag.current = null; setOver(null); setInsertion(null) }} onDragOver={event => {
+      if (drag.current?.type !== 'item' || !event.dataTransfer.types.includes(MIME)) return
+      if (drag.current.id === item.id) { setInsertion(null); return }
+      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(null)
+      setInsertion({ folder, before: beforeAt(event, index) })
+    }}
     onDrop={event => {
-      const after = event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2
-      const pinned = kind === 'chat' && !!layout.items.find(one => one.id === drag.current?.id)?.pinned
-      drop(event, folder, siblings.slice(index + Number(after)).find(one => one.pinned === pinned)?.id)
+      drop(event, folder, beforeAt(event, index))
     }}>
     {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ' sidebar-routine-row'}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} onClick={() => onOpen(item.id)}>{item.content ?? <>{item.leading}<span>{item.name}</span></>}</button>}
     {controls({ type: 'item', id: item.id }, item.name, item.pinned)}
   </li>)}</ul>
-  return <div className={`sidebar-collection${dragging ? ' dragging' : ''}`} data-testid={`sidebar-${kind}-collection`} aria-busy={saving} onDragEnd={() => setDragging(false)} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(null) }}>
+  }
+  return <div className={`sidebar-collection${dragging ? ' dragging' : ''}`} data-testid={`sidebar-${kind}-collection`} aria-busy={saving} onDragEnd={() => { setDragging(false); setInsertion(null) }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { setOver(null); setInsertion(null) } }}>
     {deleting && <DeleteConversationDialog kind={kind} name={deleting.name} count={deleting.entry.type === 'folder' ? deleting.ids.length : undefined} onClose={() => { setDeleting(null); menuAnchor.current?.focus() }} onDelete={async contents => {
       if (deleting.entry.type === 'item') await onRemove(deleting.entry.id)
       else {

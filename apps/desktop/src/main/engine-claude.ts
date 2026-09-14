@@ -56,6 +56,7 @@ export interface ClaudeModelChoice {
   value: string
   label: string
   detail: string
+  efforts?: import('core').ReasoningEffort[]
 }
 let knownModels: ClaudeModelChoice[] = []
 let fetchingModels: Promise<ClaudeModelChoice[]> | null = null
@@ -88,7 +89,7 @@ export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
         new Promise<never>((_, reject) => abort.signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true })),
       ])
       if (generation !== modelsGeneration) return []
-      knownModels = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description }))
+      knownModels = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description, efforts: row.supportsEffort === false ? [] : row.supportedEffortLevels ?? [] }))
       flog('engine-claude', `the plan offers ${knownModels.length} models: ${knownModels.map((m) => m.value).join(', ')}`)
       return knownModels
     } catch (err) {
@@ -177,6 +178,7 @@ export class ClaudeEngine implements CloudEngine {
           // makes each one in seconds where the largest takes a minute -
           // unless the person picked a model, and then their pick answers.
           model: await chosenModel(job.modelHint, job.model),
+          ...(job.effort ? { effort: job.effort } : {}),
         },
       })
       for await (const message of stream) {

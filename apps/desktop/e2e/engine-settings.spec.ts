@@ -29,7 +29,7 @@ test.beforeAll(async () => {
     const handle = (name: string, fn: (...args: unknown[]) => unknown) => { ipcMain.removeHandler(name); ipcMain.handle(name, (_event, ...args) => fn(...args)) }
     handle('engines:states', () => state.delayed ? new Promise(() => undefined) : ['claude', 'codex'].map((id) => ({ id, installed: true, loggedIn: state.signed[id] })))
     handle('engines:logins', () => state.login)
-    handle('models:list', (id) => [{ value: `${id}-fast`, label: state.longModelLabel ?? 'Quick', detail: 'For everyday work' }, { value: `${id}-deep`, label: 'Thorough', detail: 'For harder tasks' }])
+    handle('models:list', (id) => [{ value: `${id}-fast`, label: state.longModelLabel ?? 'Quick', detail: 'For everyday work', efforts: ['low', 'medium', 'high'] }, { value: `${id}-deep`, label: 'Thorough', detail: 'For harder tasks', efforts: ['low', 'medium', 'high', 'xhigh'] }])
     handle('engines:connect', (value) => {
       const id = value as 'claude' | 'codex'
       tell({ id, phase: 'browser', canOpen: true })
@@ -69,8 +69,12 @@ test('both sign-in cards survive reopening settings and offer cancel and browser
     await page.getByTestId(`brain-${id}-connect`).click()
     await app.evaluate(() => (globalThis as Global).engineFixture.finish?.())
     await expect(page.getByTestId(`brain-${id}-status`)).toContainText('Connected')
-    await page.getByTestId(`model-${id}`).selectOption(`${id}-deep`)
-    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.getByRole('region', { name: 'New conversation model', exact: true }).getByTestId('model-picker').click()
+    await page.getByTestId(`provider-pick-${id}`).click()
+    await page.getByTestId(`model-pick-${id}-deep`).click()
+    await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('settings-view')).toHaveCount(0)
     await expect.poll(() => page.evaluate(async (engine) => { const settings = await window.engram.settingsGet(); return engine === 'claude' ? settings.claudeModel : settings.codexModel }, id)).toBe(`${id}-deep`)
   }
   expect(await app.evaluate(() => (globalThis as Global).engineFixture.opened)).toBe(2)
@@ -248,7 +252,7 @@ test('conversation and filing selections persist without changing each other', a
     await Promise.all([
       window.engram.aiSelectionSet('bot-' + a.id, { engine: 'claude', model: 'claude-fast' }),
       window.engram.aiSelectionSet('bot-' + b.id, { engine: 'codex', model: 'codex-deep' }),
-      window.engram.aiSelectionSet('filing', { engine: 'codex', model: 'codex-fast' }),
+      window.engram.aiSelectionSet('filing', { engine: 'codex', model: 'codex-fast', effort: 'low' }),
     ])
     return [a.id, b.id]
   })
@@ -257,14 +261,36 @@ test('conversation and filing selections persist without changing each other', a
   const picker = page.locator('.bots-write').getByTestId('model-picker')
   await picker.click()
   await page.getByTestId('model-pick-claude-deep').click()
+  await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
+  await picker.click()
+  await page.getByTestId('effort-pick-high').click()
+  await expect(page.getByTestId('effort-pick-high')).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('Escape')
   await page.reload()
   const choices = await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))
-  expect(choices?.['bot-' + ids[0]]).toEqual({ engine: 'claude', model: 'claude-deep' })
+  expect(choices?.['bot-' + ids[0]]).toEqual({ engine: 'claude', model: 'claude-deep', effort: 'high' })
   expect(choices?.['bot-' + ids[1]]).toEqual({ engine: 'codex', model: 'codex-deep' })
-  expect(choices?.filing).toEqual({ engine: 'codex', model: 'codex-fast' })
+  expect(choices?.filing).toEqual({ engine: 'codex', model: 'codex-fast', effort: 'low' })
   await page.evaluate(async () => {
     const settings = await window.engram.settingsGet()
     await window.engram.settingsSet({ ...settings, defaultEngine: 'claude', claudeModel: 'claude-fast' })
   })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))).toEqual(choices)
+})
+
+test('a cached model menu remains usable after reload while the catalog request is stalled', async () => {
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('models:list')
+    ipcMain.handle('models:list', () => new Promise(() => undefined))
+  })
+  await page.reload()
+  await page.getByTestId('bots-new').click()
+  const picker = page.getByTestId('model-picker')
+  await picker.click()
+  await expect(page.getByTestId('model-pick-claude-deep')).toBeVisible({ timeout: 1000 })
+  await page.getByTestId('model-pick-claude-deep').click()
+  await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
+  await picker.click()
+  await expect(page.getByTestId('effort-pick-high')).toBeEnabled({ timeout: 1000 })
+  await page.keyboard.press('Escape')
 })

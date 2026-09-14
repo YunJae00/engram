@@ -2534,7 +2534,11 @@ export function registerEngineIpc(): void {
     return id
   }
   ipcMain.handle('engines:states', () => engineStates())
-  ipcMain.handle('models:list', (_e, id: unknown = 'claude') => cloudId(id) === 'claude' ? fetchClaudeModels() : fetchCodexModels())
+  ipcMain.handle('models:list', async (_e, id: unknown = 'claude') => {
+    const provider = cloudId(id)
+    if (!(await engineStates()).some(state => state.id === provider && state.loggedIn)) return []
+    return provider === 'claude' ? fetchClaudeModels() : fetchCodexModels()
+  })
   ipcMain.handle('engines:logins', () => engineLogins())
   ipcMain.handle('engines:cancelLogin', (_e, id: unknown) => cancelEngineLogin(cloudId(id)))
   ipcMain.handle('engines:openLogin', (_e, id: unknown) => reopenEngineLogin(cloudId(id)))

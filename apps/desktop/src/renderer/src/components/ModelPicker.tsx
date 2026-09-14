@@ -9,23 +9,47 @@ import { ProviderIcon } from './ProviderIcon.js'
 
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
+const catalogs = new Map<Provider, { rows: ModelChoiceDto[]; checked: number; pending?: Promise<ModelChoiceDto[]> }>()
+function cachedModels(engine: Provider): ModelChoiceDto[] {
+  if (!catalogs.has(engine)) {
+    let rows: ModelChoiceDto[] = []
+    try {
+      const saved = JSON.parse(localStorage.getItem(`engram.models.${engine}`) ?? 'null')
+      if (saved && Date.now() - saved.at < 86_400_000 && Array.isArray(saved.rows)) rows = saved.rows.filter((row: ModelChoiceDto) => row && typeof row.value === 'string' && typeof row.label === 'string' && typeof row.detail === 'string' && (!row.efforts || Array.isArray(row.efforts) && row.efforts.every(level => typeof level === 'string'))).slice(0, 200)
+    } catch { /* A missing catalog is loaded from the runtime. */ }
+    catalogs.set(engine, { rows, checked: 0 })
+  }
+  return catalogs.get(engine)!.rows
+}
+function readModels(engine: Provider, force = false): Promise<ModelChoiceDto[]> {
+  cachedModels(engine)
+  const catalog = catalogs.get(engine)!
+  if (catalog.pending) return catalog.pending
+  if (!force && catalog.rows.length && Date.now() - catalog.checked < 60_000) return Promise.resolve(catalog.rows)
+  catalog.pending = api.modelsList(engine).then(rows => {
+    catalog.rows = rows; catalog.checked = Date.now()
+    try { localStorage.setItem(`engram.models.${engine}`, JSON.stringify({ rows, at: catalog.checked })) } catch { /* Memory caching still works without storage. */ }
+    return rows
+  }).finally(() => { catalog.pending = undefined })
+  return catalog.pending
+}
 
 export function useModelChoices(engine: Provider | null) {
-  const [result, setResult] = useState<{ engine: typeof engine; rows: ModelChoiceDto[]; loading: boolean; error: boolean }>({ engine, rows: [], loading: true, error: false })
+  const [result, setResult] = useState<{ engine: typeof engine; rows: ModelChoiceDto[]; loading: boolean; error: boolean }>({ engine, rows: engine ? cachedModels(engine) : [], loading: true, error: false })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let alive = true
     let serial = 0
     if (!engine) return
-    const read = () => {
+    const read = (force = false) => {
       const at = ++serial
-      setResult((prior) => ({ engine, rows: prior.engine === engine ? prior.rows : [], loading: true, error: false }))
-      void api.modelsList(engine).then((rows) => {
+      setResult({ engine, rows: cachedModels(engine), loading: true, error: false })
+      void readModels(engine, force || attempt > 0).then((rows) => {
         if (alive && at === serial) setResult({ engine, rows, loading: false, error: rows.length === 0 })
-      }).catch(() => { if (alive && at === serial) setResult({ engine, rows: [], loading: false, error: true }) })
+      }).catch(() => { if (alive && at === serial) setResult({ engine, rows: cachedModels(engine), loading: false, error: true }) })
     }
     read()
-    const off = api.onEvent((event) => { if (event.type === 'models:changed') read() })
+    const off = api.onEvent((event) => { if (event.type === 'models:changed') read(true) })
     return () => { alive = false; off() }
   }, [engine, attempt])
   return { ...(result.engine === engine ? result : { rows: [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
@@ -46,6 +70,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
   const selection = scope ? settings?.aiSelections?.[scope] : undefined
   const engine = selection?.engine ?? settings?.defaultEngine ?? null
   const model = selection?.model ?? (engine === 'codex' ? settings?.codexModel : settings?.claudeModel) ?? ''
+  const effort = selection ? selection.effort : engine === 'codex' ? settings?.codexEffort : settings?.claudeEffort
   const { rows, loading, error, refresh } = useModelChoices(engine)
   const sidebar = variant === 'sidebar'
 
@@ -69,7 +94,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
         if (alive && at === serial) setSaveError('Could not check connections. Open AI settings to retry.')
       })
     }
-    read()
+    if (open || !states) read()
     const off = api.onEvent((event) => {
       if (event.type === 'engines:detected' || event.type === 'engines:changed' || event.type === 'engines:login') read()
     })
@@ -139,12 +164,15 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
     setSaving(true)
     setSaveError('')
     try {
-      const current = await api.settingsGet()
+      const current = settings ?? await api.settingsGet()
       const next = { ...current, ...change }
+      if ('claudeModel' in change) next.claudeEffort = undefined
+      if ('codexModel' in change) next.codexEffort = undefined
       if (scope) {
         const provider = change.defaultEngine ?? engine ?? current.defaultEngine
-        await api.aiSelectionSet(scope, { engine: provider, model: change.defaultEngine ? '' : (change.codexModel ?? change.claudeModel ?? model) })
-        setSettings(await api.settingsGet())
+        const chosen = { engine: provider, model: change.defaultEngine ? '' : (change.codexModel ?? change.claudeModel ?? model), effort: change.defaultEngine || 'codexModel' in change || 'claudeModel' in change ? undefined : 'codexEffort' in change ? change.codexEffort : 'claudeEffort' in change ? change.claudeEffort : effort }
+        await api.aiSelectionSet(scope, chosen)
+        setSettings(value => value ? { ...value, aiSelections: { ...value.aiSelections, [scope]: chosen } } : value)
       } else { await api.settingsSet(next); setSettings(next) }
       if (close) { setOpen(false); trigger.current?.focus() }
     } catch { setSaveError('Could not save your selection. Try again.') }
@@ -155,8 +183,9 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
   const selectedHealth = engines.find((one) => one.id === engine)
   const providerName = PROVIDERS.find((one) => one.id === engine)?.name ?? 'AI'
   const status = selectedHealth?.healthy === false ? 'Needs attention' : selectedState?.loggedIn ? 'Connected' : !states && !enginesDetected ? 'Checking connection…' : 'Connect'
-  const label = rows.find((row) => row.value === model)?.label ?? (model || t('settings.modelAuto'))
-  const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows]
+  const modelLabel = rows.find((row) => row.value === model)?.label ?? (model || t('settings.modelAuto'))
+  const label = effort ? `${modelLabel} · ${effort === 'xhigh' ? 'Extra high' : effort.charAt(0).toUpperCase() + effort.slice(1)}` : modelLabel
+  const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: 'Saved selection' }] : [])]
 
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
     <button type="button" ref={trigger} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
@@ -188,7 +217,12 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
         <span className="model-picker-tick">{model === row.value && <Check size={12} strokeWidth={2.4} aria-hidden />}</span>
         <span className="model-picker-name">{row.label}{row.detail && <span className="model-picker-detail">{row.detail}</span>}</span>
       </button>)}
-      {loading && <div className="model-picker-note" role="status">Loading models…</div>}
+      {loading && rows.length === 0 && <div className="model-picker-note" role="status">Loading models…</div>}
+      {!!rows.find(row => row.value === model)?.efforts?.length && <>
+        <div className="provider-picker-divider" role="separator" />
+        <div className="provider-picker-heading">Reasoning effort</div>
+        <div className="model-efforts">{[undefined, ...rows.find(row => row.value === model)!.efforts!].map(level => <button key={level ?? 'auto'} type="button" role="menuitemradio" aria-checked={effort === level} disabled={saving} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, false) }}>{level ? level === 'xhigh' ? 'Extra high' : level.charAt(0).toUpperCase() + level.slice(1) : 'Auto'}</button>)}</div>
+      </>}
       {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>Models unavailable · Retry</button>}
       {saveError && <div className="model-picker-note" role="alert">{saveError}</div>}
       <div className="provider-picker-divider" role="separator" />

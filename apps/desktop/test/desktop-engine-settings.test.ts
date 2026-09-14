@@ -5,7 +5,7 @@ const fake = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, settings: AppSettingsDto) => Promise<void>>(),
   load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), nativeTheme: { themeSource: 'system' },
 }))
-vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [] }))
+vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [], REASONING_EFFORTS: ['low', 'medium', 'high'] }))
 vi.mock('electron', () => ({ app: { isPackaged: false }, nativeTheme: fake.nativeTheme, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: AppSettingsDto) => Promise<void>) => fake.handlers.set(name, handler) } }))
 vi.mock('../src/main/ipc.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/installer.js', () => ({ detectApiKeyEnv: vi.fn() }))
@@ -26,6 +26,12 @@ beforeEach(() => {
 })
 
 describe('desktop grant lifetime when choosing an AI connection', () => {
+  it('rejects invalid reasoning effort before saving any settings', async () => {
+    await expect(fake.handlers.get('settings:set')!(null, { ...settings, claudeEffort: 'invalid' } as unknown as AppSettingsDto)).rejects.toThrow('Invalid reasoning effort')
+    expect(fake.save).not.toHaveBeenCalled()
+    await fake.handlers.get('settings:set')!(null, { ...settings, claudeEffort: 'high', codexEffort: 'low' })
+    expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ claudeEffort: 'high', codexEffort: 'low' }))
+  })
   it('saves appearance before applying it and rejects invalid themes', async () => {
     await fake.handlers.get('settings:set')!(null, { ...settings, theme: 'dark' })
     expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'dark' }))
