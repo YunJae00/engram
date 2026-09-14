@@ -12,6 +12,7 @@ import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
+import { ErrorAnswer, isProviderError } from '../components/ErrorAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { PressGate } from '../components/PressGate.js'
@@ -133,7 +134,9 @@ export const BotsView = memo(function BotsView() {
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
-              {messages.map((m, i) => (
+              {messages.map((m, i) => {
+                const failed = m.error || (m.role === 'assistant' && isProviderError(m.text))
+                return (
                 <Fragment key={i}>
                   {/* The work sits above the words it leads to: every step
                       and every aside in order, then the answer under them.
@@ -142,8 +145,8 @@ export const BotsView = memo(function BotsView() {
                       below, and the foot of the thread - where the eye
                       rests - is where it speaks. */}
                   {i === lastAssistant && <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />}
-                  <div className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
-                    {m.role === 'assistant' ? (
+                  <div className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
+                    {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
                       m.streaming && !m.text ? (
                         <span className="bots-pending" data-testid="bots-pending" />
                       ) : (
@@ -154,7 +157,8 @@ export const BotsView = memo(function BotsView() {
                     )}
                   </div>
                 </Fragment>
-              ))}
+                )
+              })}
               {offer && offer.kind === 'asked' && !routine.running && (
                 <Choices
                   options={offer.options}

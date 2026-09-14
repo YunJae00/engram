@@ -39,3 +39,11 @@
 .bots-run-status .dialog-actions button { white-space: normal; }
 .bots-run-status .routine-submit-label { min-width: 0; flex: 0 0 30%; }
 .bots-run-status .routine-submit-value { min-width: 0; }
+.answer-error { display: flex; flex-direction: column; gap: 10px; min-width: 0; line-height: 1.6; }
+.answer-error-heading { display: flex; align-items: flex-start; gap: 10px; color: var(--fg-strong); }
+.answer-error-heading svg { flex: none; margin-top: 3px; color: var(--clay); }
+.answer-error p { margin: 0; }
+.answer-error details { min-width: 0; color: var(--fg-dim); font-size: var(--fs-small); }
+.answer-error summary { cursor: pointer; padding: 4px 0; }
+.answer-error pre { margin: 8px 0 0; padding: 12px; border-radius: 8px; background: var(--panel-bg); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.answer-error-copy { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; font-size: var(--fs-small); }

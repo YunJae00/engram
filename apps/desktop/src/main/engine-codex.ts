@@ -16,13 +16,8 @@ interface CodexSdk {
   }
 }
 
-// This runtime reads schemas strictly: every object must close itself with
-// additionalProperties: false, and a schema-valued additionalProperties (a
-// map of free keys) is refused outright. The schemas are authored once for
-// every brain, so the strictness is applied here, where the requirement
-// lives - each object is closed, and a map collapses to a closed object the
-// model simply will not fill. Losing a free-key argument beats losing the
-// whole call to a 400.
+// Strict output requires every property; nullable fields represent omissions.
+// Free-key maps remain closed because this output format cannot accept them.
 export function strictSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(strictSchema)
   if (schema === null || typeof schema !== 'object') return schema
@@ -31,8 +26,37 @@ export function strictSchema(schema: unknown): unknown {
     if (key === 'additionalProperties') continue
     out[key] = strictSchema(value)
   }
-  if ((out['type'] === 'object' || 'properties' in out) && !('additionalProperties' in out)) out['additionalProperties'] = false
+  if (out['type'] === 'object' || 'properties' in out) {
+    const properties = (out['properties'] ?? {}) as Record<string, unknown>
+    const required = new Set(Array.isArray(out['required']) ? out['required'] : [])
+    out['properties'] = Object.fromEntries(Object.entries(properties).map(([key, value]) => [key,
+      required.has(key) || allowsNull(value) ? value : { anyOf: [value, { type: 'null' }] },
+    ]))
+    out['required'] = Object.keys(properties)
+    out['additionalProperties'] = false
+  }
   return out
+}
+
+function allowsNull(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object') return schema === true
+  const node = schema as Record<string, unknown>
+  return node['type'] === 'null' || (Array.isArray(node['type']) && node['type'].includes('null')) ||
+    (Array.isArray(node['enum']) && node['enum'].includes(null)) || node['const'] === null ||
+    (Array.isArray(node['anyOf']) && node['anyOf'].some(allowsNull))
+}
+
+// Undo only nulls introduced for optional properties, never explicit null data.
+export function restoreOptionalFields(value: unknown, schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object' || value === null) return value
+  const node = schema as Record<string, unknown>
+  if (Array.isArray(value)) return value.map(item => restoreOptionalFields(item, node['items']))
+  if (typeof value !== 'object') return value
+  const properties = (node['properties'] ?? {}) as Record<string, unknown>
+  const required = new Set(Array.isArray(node['required']) ? node['required'] : [])
+  return Object.fromEntries(Object.entries(value).filter(([key, item]) =>
+    item !== null || !(key in properties) || required.has(key) || allowsNull(properties[key]),
+  ).map(([key, item]) => [key, restoreOptionalFields(item, properties[key])]))
 }
 
 // "Not logged in" is the runtime's own wording; a status it printed anything
@@ -110,7 +134,11 @@ export class CodexEngine implements CloudEngine {
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
         signal: abort.signal,
       })
-      yield { type: 'result', text: turn.finalResponse }
+      let text = turn.finalResponse
+      if (job.jsonSchema) {
+        try { text = JSON.stringify(restoreOptionalFields(JSON.parse(text), job.jsonSchema)) } catch { /* Keep malformed output for the existing parser to diagnose. */ }
+      }
+      yield { type: 'result', text }
     } catch (err) {
       if (job.signal?.aborted) return
       if (abort.signal.aborted) {

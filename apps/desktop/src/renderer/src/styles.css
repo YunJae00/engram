@@ -717,7 +717,7 @@ body.bubble-host { background: transparent; }
 }
 .bubble-msg.user { align-self: flex-end; max-width: 78%; background: var(--selected-soft); color: var(--fg-strong); }
 .bubble-msg.assistant { align-self: flex-start; max-width: 100%; padding: 4px 2px; background: transparent; color: var(--fg); }
-.bubble-msg.error { background: var(--clay-soft); color: var(--clay); }
+.bubble-msg.assistant.error { padding: 16px 18px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--hover-bg); color: var(--fg); }
 .bubble-msg-body :is(p, ul, ol) { margin: 0 0 14px; }
 .bubble-msg-body :is(h1, h2, h3, h4) { font-size: 1.12em; line-height: 1.5; letter-spacing: -0.02em; font-weight: 650; margin: 22px 0 10px; color: var(--fg-strong); }
 .bubble-msg-body :is(h1, h2, h3, h4):first-child { margin-top: 0; }

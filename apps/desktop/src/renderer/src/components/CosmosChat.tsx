@@ -5,6 +5,7 @@ import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
+import { ErrorAnswer, isProviderError } from './ErrorAnswer.js'
 import { Thinking } from './Thinking.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
@@ -198,9 +199,10 @@ export const CosmosChat = memo(function CosmosChat() {
       </div>
       <div className="cosmos-chat-thread conversation-thread" ref={listRef}>
         {messages.length === 0 && <div className="cosmos-chat-hint">{t('cosmos.chatHint')}</div>}
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble-msg ${m.role}${m.error ? ' error' : ''}`}>
-            {m.role === 'assistant' ? (
+        {messages.map((m, i) => {
+          const failed = m.error || (m.role === 'assistant' && isProviderError(m.text))
+          return <div key={i} className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
+            {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
               m.streaming && !m.text ? (
                 <Thinking label={t('bubble.thinking')} />
               ) : (
@@ -210,7 +212,7 @@ export const CosmosChat = memo(function CosmosChat() {
               m.text
             )}
           </div>
-        ))}
+        })}
       </div>
       <div className="cosmos-chat-write conversation-dock">
         <ChatComposer

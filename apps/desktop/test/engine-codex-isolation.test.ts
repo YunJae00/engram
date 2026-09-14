@@ -69,6 +69,14 @@ describe('text runtime desktop isolation boundary', () => {
     expect(new CodexEngine().desktopToolIsolation).toBe(false)
     expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' } })
     expect(fixture.threadOptions).toHaveBeenCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', webSearchMode: 'disabled', networkAccessEnabled: false, model: 'chosen-model' }))
-    expect(fixture.run).toHaveBeenCalledWith('Read the provided text', expect.objectContaining({ outputSchema: { type: 'object', properties: { answer: { type: 'string' } }, additionalProperties: false }, signal: expect.any(AbortSignal) }))
+    expect(fixture.run).toHaveBeenCalledWith('Read the provided text', expect.objectContaining({ outputSchema: { type: 'object', properties: { answer: { anyOf: [{ type: 'string' }, { type: 'null' }] } }, required: ['answer'], additionalProperties: false }, signal: expect.any(AbortSignal) }))
+  })
+
+  it('restores optional fields before returning structured output to the tool loop', async () => {
+    fixture.run.mockResolvedValue({ finalResponse: '{"answer":"verified","limit":null,"explicit":null}' })
+    const events = await collect(new CodexEngine().run({ prompt: 'Read the provided text', workdir: WORKDIR, jsonSchema: {
+      type: 'object', properties: { answer: { type: 'string' }, limit: { type: 'integer' }, explicit: { type: ['string', 'null'] } }, required: ['answer'],
+    } }))
+    expect(events).toEqual([{ type: 'result', text: '{"answer":"verified","explicit":null}' }])
   })
 })
