@@ -1,5 +1,5 @@
 import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } from 'core'
-import { pressKey } from './page-actions.js'
+import { handOn, pressKey } from './page-actions.js'
 import { agentAbortable, agentPage, readAgentPage, DEFAULT_LANE, lanePage } from './agent-browser.js'
 
 // The routine's hands: the same agent Chrome the errand courier drives, so a
@@ -16,44 +16,8 @@ const NAV_TIMEOUT_MS = 25_000
 const FIND_TIMEOUT_MS = 3_000
 const SETTLE_MS = 800
 
-export type TargetProbe =
-  | { via: 'css'; css: string }
-  | { via: 'role-button' | 'role-link' | 'label' | 'placeholder' | 'role-textbox' | 'text'; text: string }
-
-// Ordered fallbacks for one target, saved selectors first: CSS is precise
-// until a redesign, the visible words usually survive one. Pure for its test.
-export function targetPlan(target: RoutineTarget, purpose: 'click' | 'type'): TargetProbe[] {
-  const probes: TargetProbe[] = []
-  for (const css of target.css ?? []) if (css.trim()) probes.push({ via: 'css', css: css.trim() })
-  const text = target.text?.trim()
-  if (text) {
-    if (purpose === 'click') probes.push({ via: 'role-button', text }, { via: 'role-link', text }, { via: 'text', text })
-    else probes.push({ via: 'label', text }, { via: 'placeholder', text }, { via: 'role-textbox', text })
-  }
-  return probes
-}
-
 export function describeTarget(target: RoutineTarget): string {
   return target.text?.trim() || target.css?.[0] || 'the element'
-}
-
-function toLocator(page: Page, probe: TargetProbe): Locator {
-  switch (probe.via) {
-    case 'css':
-      return page.locator(probe.css).first()
-    case 'role-button':
-      return page.getByRole('button', { name: probe.text }).first()
-    case 'role-link':
-      return page.getByRole('link', { name: probe.text }).first()
-    case 'text':
-      return page.getByText(probe.text, { exact: false }).first()
-    case 'label':
-      return page.getByLabel(probe.text).first()
-    case 'placeholder':
-      return page.getByPlaceholder(probe.text).first()
-    case 'role-textbox':
-      return page.getByRole('textbox', { name: probe.text }).first()
-  }
 }
 
 async function settle(page: Page): Promise<void> {
@@ -72,23 +36,31 @@ async function act(
   run: (locator: Locator) => Promise<void>,
   signal?: AbortSignal,
 ): Promise<RoutineStepResult> {
-  for (const probe of targetPlan(target, purpose)) {
+  const deadline = Date.now() + FIND_TIMEOUT_MS
+  do {
     if (signal?.aborted) throw new Error('canceled')
+    const aim = await handOn(page, target.text?.trim() ?? '', signal, target.css)
+    if ('many' in aim) return { ok: false, recoverable: true, error: `more than one visible control matches "${describeTarget(target)}"` }
+    if ('none' in aim) {
+      await page.waitForTimeout(150)
+      continue
+    }
     try {
-      await agentAbortable(run(toLocator(page, probe)), signal)
+      if (signal?.aborted) throw new Error('canceled')
+      await agentAbortable(run(aim.hand), signal)
       await settle(page)
       const wall = await wallOf(page, signal)
       return wall ? { ok: true, wall } : { ok: true }
     } catch (err) {
       if (err instanceof Error && err.message === 'canceled') throw err
-      // try the next fallback
+      return { ok: false, error: `could not ${purpose} "${describeTarget(target)}": ${err instanceof Error ? err.message : String(err)}` }
     }
-  }
+  } while (Date.now() < deadline)
   // The step failed, but WHY matters to the person: a login page swallowing
   // the whole portal is the usual reason a saved button is suddenly gone.
   const wall = await wallOf(page, signal)
   if (wall) return { ok: false, wall }
-  return { ok: false, error: `could not find "${describeTarget(target)}" on the page` }
+  return { ok: false, recoverable: true, error: `could not find "${describeTarget(target)}" on the page` }
 }
 
 // One driver per lane: a replay run for a comet drives that comet's own

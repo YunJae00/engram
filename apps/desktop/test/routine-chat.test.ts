@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { addRoutine, appendBotTurn, createBot, initVault, loadBots, readBotTranscript, type RoutineRunResult } from 'core'
 import { describe, expect, it } from 'vitest'
 import type { EngramEvent } from '../src/shared/types.js'
-import { startRoutineChat } from '../src/main/routine-chat.js'
+import { routineRecovery, startRoutineChat } from '../src/main/routine-chat.js'
 
 async function vault() {
   const dir = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -13,6 +13,33 @@ async function vault() {
 }
 
 describe('manual routine chats', () => {
+  it('hands an untouched missing target to the same chat once, without duplicating its user message', async () => {
+    const paths = await vault()
+    const routine = await addRoutine(paths, { name: 'Read notices', steps: [{ kind: 'open', url: 'https://example.com' }, { kind: 'click', target: { text: 'Notices' } }, { kind: 'read' }] })
+    const events: EngramEvent[] = []
+    let recoveries = 0
+    const reply = await startRoutineChat(paths, routine.id, {}, {
+      claim: () => () => undefined,
+      active: () => undefined,
+      broadcast: event => { events.push(event) },
+      begin: async () => ({ ok: true, done: Promise.resolve({ ok: false, readings: [], error: 'missing target', resumeFrom: 1 }) }),
+      recover: async (botId, message, context) => {
+        recoveries++
+        expect((await readBotTranscript(paths, botId)).map(turn => turn.text)).toEqual([message])
+        expect(context).toContain('"completedSteps":1')
+        expect(context).not.toContain('"kind":"open"')
+        expect(context).toContain('Read or look first')
+        await appendBotTurn(paths, botId, { role: 'assistant', text: 'Verified notices.', at: new Date().toISOString() })
+        return true
+      },
+    })
+    await expect.poll(async () => (await readBotTranscript(paths, reply.botId!)).length).toBe(2)
+    expect(recoveries).toBe(1)
+    expect(events.filter(event => event.type === 'chat:done')).toHaveLength(0)
+    for (const result of [{ ok: false, error: 'canceled', readings: [] }, { ok: false, blocked: 'unfinished-write' as const, readings: [], resumeFrom: 1 }, { ok: false, readings: [], resumeFrom: 99 }]) {
+      expect(routineRecovery(routine, result)).toBeNull()
+    }
+  })
   it('creates one fresh chat before work, preserves the old chat, and persists actual readings', async () => {
     const paths = await vault()
     const owner = await createBot(paths, { name: 'Existing chat' })

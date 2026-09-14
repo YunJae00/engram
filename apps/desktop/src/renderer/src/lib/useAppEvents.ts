@@ -243,7 +243,7 @@ export function useAppEvents(options: AppEventsOptions): void {
               name: event.name,
             }),
           )
-        } else if (event.outcome === 'failed') {
+        } else if (event.outcome === 'failed' && !event.channel) {
           latest.current.showToast(latest.current.t('toast.routineFailed', { reason: event.error ?? '' }))
         }
       }

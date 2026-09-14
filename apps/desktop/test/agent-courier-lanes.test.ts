@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCourier } from '../src/main/agent-courier.js'
+import { handOn } from '../src/main/page-actions.js'
 
 const browser = vi.hoisted(() => ({
   ensureAgentPage: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('../src/main/agent-browser.js', () => ({
 }))
 vi.mock('../src/main/agent-view.js', () => ({ touchedAt: () => 0 }))
 vi.mock('../src/main/page-actions.js', () => ({
+  handOn: vi.fn(async (page: { hand: unknown }) => ({ hand: page.hand })),
   chooseOption: vi.fn(), hoverOn: vi.fn(), pressKey: vi.fn(), pressOn: vi.fn(),
   pressPoint: vi.fn(), scrollPage: vi.fn(), typeText: vi.fn(),
 }))
@@ -26,13 +28,11 @@ vi.mock('../src/main/page-ready.js', () => ({ readWhenReady: vi.fn() }))
 function fixture() {
   const click = vi.fn().mockResolvedValue(undefined)
   const fill = vi.fn().mockResolvedValue(undefined)
-  const match = { first: () => ({ click, fill }) }
   return {
     click,
     fill,
     page: {
-      getByRole: vi.fn(() => match),
-      getByLabel: vi.fn(() => match),
+      hand: { click, fill },
       waitForTimeout: vi.fn().mockResolvedValue(undefined),
     },
   }
@@ -65,13 +65,13 @@ describe('courier legacy action lanes', () => {
       secondCourier.clickOn!('Second button', secondSignal),
     ])).toEqual([{ ok: true }, { ok: true }, { ok: true }, { ok: true }])
 
-    expect(first.page.getByLabel).toHaveBeenCalledWith('First field')
+    expect(handOn).toHaveBeenCalledWith(first.page, 'First field', firstSignal, undefined)
     expect(first.fill).toHaveBeenCalledExactlyOnceWith('First value', { timeout: 3000 })
-    expect(first.page.getByRole).toHaveBeenCalledWith('button', { name: 'First button' })
+    expect(handOn).toHaveBeenCalledWith(first.page, 'First button', firstSignal, undefined)
     expect(first.click).toHaveBeenCalledTimes(1)
-    expect(second.page.getByLabel).toHaveBeenCalledWith('Second field')
+    expect(handOn).toHaveBeenCalledWith(second.page, 'Second field', secondSignal, undefined)
     expect(second.fill).toHaveBeenCalledExactlyOnceWith('Second value', { timeout: 3000 })
-    expect(second.page.getByRole).toHaveBeenCalledWith('button', { name: 'Second button' })
+    expect(handOn).toHaveBeenCalledWith(second.page, 'Second button', secondSignal, undefined)
     expect(second.click).toHaveBeenCalledTimes(1)
     expect(fallback.fill).not.toHaveBeenCalled()
     expect(fallback.click).not.toHaveBeenCalled()

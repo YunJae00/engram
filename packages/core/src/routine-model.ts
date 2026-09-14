@@ -47,6 +47,7 @@ export interface RoutineReading {
 
 export interface RoutineStepResult {
   ok: boolean
+  recoverable?: boolean
   wall?: 'login' | 'captcha'
   error?: string
 }
@@ -95,6 +96,7 @@ export type RoutineBlock = 'already-ran-today' | 'unfinished-write'
 
 export interface RoutineRunResult {
   ok: boolean
+  resumeFrom?: number
   blocked?: RoutineBlock
   readings: RoutineReading[]
   cardId?: string

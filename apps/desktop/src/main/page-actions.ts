@@ -95,7 +95,20 @@ function locators(root: Page | Frame, text: string): Locator[] {
 // that name, or several things of it.
 type Aim = { hand: Locator } | { none: true } | { many: true }
 
-async function handOn(page: Page, target: string, signal?: AbortSignal): Promise<Aim> {
+export async function handOn(page: Page, target: string, signal?: AbortSignal, selectors: string[] = []): Promise<Aim> {
+  for (const selector of selectors.map(value => value.trim()).filter(Boolean)) {
+    const matches = []
+    for (const frame of page.frames()) {
+      if (signal?.aborted) throw new Error('canceled')
+      const hand = frame.locator(selector).filter({ visible: true })
+      const count = await hand.count().catch(() => 0)
+      if (count > 1) return { many: true }
+      if (count === 1) matches.push(hand)
+    }
+    if (matches.length > 1) return { many: true }
+    if (matches.length === 1) return { hand: matches[0]! }
+  }
+  if (!target.trim()) return { none: true }
   const numbered = /^#(\d+)/.exec(target.trim())
   if (numbered) {
     const place = placeOf(page, Number(numbered[1]))

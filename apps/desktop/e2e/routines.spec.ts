@@ -36,7 +36,11 @@ test.beforeAll(async () => {
   // A local portal stand-in: home → Notices, plus a gated page for the wall.
   server = createServer((req, res) => {
     res.setHeader('content-type', 'text/html')
-    if (req.url === '/notices')
+    if (req.url === '/frames')
+      res.end('<html><head><title>Embedded portal</title></head><body><iframe src="/frame-content" title="Portal tools"></iframe></body></html>')
+    else if (req.url === '/frame-content')
+      res.end('<html><body><div id="tools"></div><script>setTimeout(() => { document.getElementById("tools").attachShadow({mode:"open"}).innerHTML = \'<a href="/notices" title="Staff notices">Open notices</a>\' }, 1200)</script></body></html>')
+    else if (req.url === '/notices')
       res.end('<html><head><title>Notices</title></head><body><main><h1>Notices</h1><p>Holiday notice: the office closes early on Friday.</p></main></body></html>')
     else if (req.url === '/gate')
       res.end(
@@ -380,6 +384,25 @@ test('a replayed Enter cannot bypass the submit guard', async () => {
   const recorded = (await listRoutines(paths)).find(routine => routine.id === saved.id)!
   expect(recorded.lastOutcome).toBe('failed')
   expect(recorded.posts).toBeUndefined()
+})
+
+test('a routine finds delayed controls inside frames and shadow roots and has an aligned library row', async () => {
+  const saved = await page.evaluate(url => window.engram.routineAdd({ name: 'Portal notices in an embedded workspace', steps: [
+    { kind: 'open', url },
+    { kind: 'click', target: { css: ['#old-selector'], text: 'Staff notices' } },
+    { kind: 'read' },
+  ] }), `${siteUrl}frames`)
+  await openRoutines(saved.id)
+  const row = page.getByTestId(`sidebar-routine-run-${saved.id}`)
+  expect(await row.evaluate(node => {
+    const icon = node.querySelector('.sidebar-routine-icon')!.getBoundingClientRect()
+    const copy = node.querySelector('.sidebar-routine-copy')!.getBoundingClientRect()
+    return node.getBoundingClientRect().height >= 60 && icon.right < copy.left && Math.abs((icon.top + icon.bottom - copy.top - copy.bottom) / 2) < 3
+  })).toBe(true)
+  await capture('routine-library.png')
+  await page.getByTestId(`routine-run-${saved.id}`).click()
+  await expect(page.getByTestId('bots-thread')).toContainText('Holiday notice: the office closes early on Friday.', { timeout: 90_000 })
+  expect((await listRoutines(paths)).find(routine => routine.id === saved.id)?.lastOutcome).toBe('done')
 })
 
 test('an unavailable saved description does not hide the recorded steps or block Run', async () => {

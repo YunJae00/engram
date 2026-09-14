@@ -146,7 +146,7 @@ import { titleFor } from './comet-title.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
-import { startRoutineChat, type RoutineRunReply, type RoutineStartOptions } from './routine-chat.js'
+import { routineRecovery, startRoutineChat, type RoutineRunReply, type RoutineStartOptions } from './routine-chat.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
 import { app, ipcMain, shell } from 'electron'
 import { open, readdir, readFile, mkdir } from 'node:fs/promises'
@@ -1441,6 +1441,12 @@ export function registerIpc(ctx: VaultContext): void {
     async (_e, id: string, force?: boolean, slots?: Record<string, string>): Promise<RoutineRunReply> => {
       return startRoutineChat(paths, id, { force: force === true, ...(slots ? { slots } : {}) }, {
         begin: beginRoutine,
+        recover: async (botId, message, context) => {
+          const settings = await loadSettings()
+          if (!ctx.engines.some(engine => engine.id === settings.defaultEngine)) return false
+          await sendChat({ engineId: settings.defaultEngine, botId, channel: `bot-${botId}`, message, history: [] }, context)
+          return true
+        },
         broadcast,
         active: (channel, running) => { if (running) answering.add(channel); else answering.delete(channel) },
         claim: () => {
@@ -1483,7 +1489,9 @@ export function registerIpc(ctx: VaultContext): void {
         `the procedure "${id}" finished${result.cardId ? ' — what it read is waiting in review' : ''}`,
         ...(read ? ['', read] : []),
       ].join('\n')
-    return [`the procedure stopped: ${result.error ?? 'unknown reason'}`, ...(read ? ['', read] : [])].join('\n')
+    const saved = (await listRoutines(paths)).find(routine => routine.id === id)
+    const recovery = saved ? routineRecovery(saved, result, slots) : null
+    return recovery ?? [`the procedure stopped: ${result.error ?? 'unknown reason'}`, ...(read ? ['', read] : [])].join('\n')
   }
 
   ipcMain.handle('routines:abort', () => {
@@ -1955,20 +1963,22 @@ export function registerIpc(ctx: VaultContext): void {
   // Chat panel: streams engine tokens to the renderer. The
   // prompt carries only current-note context — never superseded text.
 
-  ipcMain.handle('chat:send', async (_e, request: ChatRequestDto) => {
+  ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => sendChat(request))
+
+  async function sendChat(request: ChatRequestDto, recovery?: string): Promise<void> {
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
     chatAborts.add(entry)
     answering.add(entry.channel)
     try {
-      return await handleChatSend(request, controller.signal)
+      return await handleChatSend(request, controller.signal, recovery)
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
     }
-  })
+  }
 
-  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal): Promise<void> {
+  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string): Promise<void> {
     const channel = request.channel ?? 'panel'
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
@@ -1995,6 +2005,7 @@ export function registerIpc(ctx: VaultContext): void {
     const attachmentIds = chatAttachmentIds(request.attachments, bot ? await readBotTranscript(paths, bot.id) : request.history)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     const rules: string[] = [
+      ...(recovery ? [recovery] : []),
       // A bot is the librarian wearing a charter: same grounding, same
       // honesty rules, narrowed to one concern the user named.
       ...(bot
@@ -2119,7 +2130,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
+        if (!recovery) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
@@ -2231,7 +2242,9 @@ export function registerIpc(ctx: VaultContext): void {
                 }, WALL_HOLD_MS).unref()
               },
               searchTemplate: async () => (await loadSettings()).searchTemplate || null,
-              runProcedure: (id, slots, _signal, again) => runProcedureForComet(id, slots, again === true, channel),
+              runProcedure: (id, slots, _signal, again) => recovery
+                ? Promise.resolve('The saved replay already ran. Inspect the current page and continue only unfinished work; do not replay it again.')
+                : runProcedureForComet(id, slots, again === true, channel),
               remembered: () => remembered,
               guided,
               learnSearch: async (template) => {
@@ -2279,7 +2292,7 @@ export function registerIpc(ctx: VaultContext): void {
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
             guided,
-            ...(attachments.context ? { attachmentContext: attachments.context } : {}),
+            ...((attachments.context || recovery) ? { attachmentContext: [attachments.context, recovery].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes

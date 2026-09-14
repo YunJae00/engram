@@ -27,6 +27,11 @@
 .sidebar-collection .sidebar-item-main > .sidebar-routine-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .sidebar-routine-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); font-weight: 550; }
 .sidebar-routine-copy small { color: var(--fg-faint); font-size: var(--fs-micro); }
+.sidebar-collection .sidebar-routine-row { min-height: 64px; height: auto; padding: 10px 4px 10px 12px; gap: 10px; }
+.sidebar-routine-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; background: var(--hover-bg); color: var(--fg-dim); }
+.sidebar-collection .sidebar-routine-row > .sidebar-routine-copy { flex: 1; gap: 5px; text-align: left; line-height: 1.4; }
+.sidebar-routine-row .sidebar-routine-copy strong { color: var(--fg); font-size: var(--fs-body); }
+.sidebar-routine-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-help h3 { margin: 24px 0 10px; color: var(--fg-strong); font-size: var(--fs-body); font-weight: 600; }
 .settings-help p { max-width: 58ch; color: var(--fg-dim); line-height: 1.65; }
 .help-places { margin: 24px 0; display: grid; gap: 18px; }

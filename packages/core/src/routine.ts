@@ -16,11 +16,8 @@ import {
   type RoutineStepResult,
 } from './routine-model.js'
 
-// A routine is repetition with the thinking already done: the exact pages,
-// clicks and readings a person walks every day, saved once and replayed
-// verbatim. No model is involved — the replay is deterministic code — which
-// is what makes it dependable on a machine too tight for inference, and what
-// keeps a 99-in-100 success rate reachable at all.
+// Deterministic replay stops at the first failed step. The host may hand
+// untouched target failures to a comet; uncertain writes never qualify.
 
 export * from './routine-model.js'
 export { addRoutine, clearRoutinePendingWrite, listRoutines, markRoutineRun, removeRoutine, renameRoutine } from './routine-store.js'
@@ -156,7 +153,9 @@ export async function runRoutine(
         if (result.wall)
           return finish({ ok: false, readings, error: 'the page still wants a login — the routine stopped there' })
       }
-      if (!result.ok) return finish({ ok: false, readings, error: result.error ?? 'a step failed' })
+      if (!result.ok) return finish({ ok: false, readings, error: result.error ?? 'a step failed',
+        ...(result.recoverable && !posted && ![...writeSteps].some(index => index <= i) && !options.signal?.aborted ? { resumeFrom: i } : {}),
+      })
       if (writeSteps.has(i) && step.kind === 'click') posted = true
     }
     if (readings.length === 0) return finish({ ok: true, readings })

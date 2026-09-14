@@ -69,6 +69,28 @@ function fakeDriver(script: {
 }
 
 describe('routine CRUD', () => {
+  it('only hands off target failures before writes, never uncertain actions or cancellation', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-recovery'), { git: false })
+    for (const [steps, recoverable, expected] of [
+      [[OPEN, CLICK, READ], true, 1],
+      [[OPEN, TYPE, CLICK, READ], true, undefined],
+      [[OPEN, CLICK, READ], false, undefined],
+    ] as const) {
+      const saved = await addRoutine(paths, { name: 'Recovery check', steps: [...steps] })
+      const driver = fakeDriver({})
+      driver.click = async () => ({ ok: false, recoverable, error: 'missing target' })
+      const result = await runRoutine(paths, driver, saved, { onSubmit: APPROVE })
+      expect(result.resumeFrom).toBe(expected)
+      expect(result.ok).toBe(false)
+      expect(driver.calls).not.toContain('read')
+    }
+    const saved = await addRoutine(paths, { name: 'Canceled', steps: [OPEN, CLICK] })
+    const controller = new AbortController()
+    controller.abort()
+    const result = await runRoutine(paths, fakeDriver({}), saved, { signal: controller.signal })
+    expect(result.error).toBe('canceled')
+    expect(result.resumeFrom).toBeUndefined()
+  })
   it('adds, lists and removes a routine, persisted across loads', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-crud'), { git: false })
     const saved = await addRoutine(paths, { name: 'Portal notices', steps: [OPEN, READ] })

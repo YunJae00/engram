@@ -1,6 +1,6 @@
 import { expect, test, chromium, type Browser, type Page } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
-import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText } from '../src/main/page-actions.js'
+import { chooseOption, handOn, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText } from '../src/main/page-actions.js'
 import { revealText } from '../src/main/page-reveal.js'
 import { readFrames } from '../src/main/page-reader.js'
 
@@ -74,6 +74,19 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
   await page.goto(siteUrl, { waitUntil: 'domcontentloaded' })
+})
+
+test('saved selectors search frames, ignore hidden copies, and refuse ambiguous visible matches', async () => {
+  await page.setContent('<button class="saved" hidden>Old</button><iframe srcdoc="<button class=\'saved\'>Current</button>"></iframe>')
+  await expect(page.frameLocator('iframe').locator('.saved')).toBeVisible()
+  const target = await handOn(page, 'Old label', undefined, [' ', '.saved'])
+  expect('hand' in target).toBe(true)
+  if ('hand' in target) expect(await target.hand.innerText()).toBe('Current')
+  await page.evaluate(() => { const button = document.createElement('button'); button.className = 'saved'; button.textContent = 'Another'; document.body.append(button) })
+  expect(await handOn(page, 'Old label', undefined, ['.saved'])).toEqual({ many: true })
+  const controller = new AbortController()
+  controller.abort()
+  await expect(handOn(page, 'Old label', controller.signal, ['.saved'])).rejects.toThrow('canceled')
 })
 
 test.afterEach(async () => {
