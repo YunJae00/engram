@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronDown, Globe, PanelRight, Plus } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, PanelRight, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -39,6 +39,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
   const [foldedChats, setFoldedChats] = useState(readFoldedChats)
   const [pages, setPages] = useState<Set<string>>(() => new Set())
   const [openedPages, setOpenedPages] = useState<Set<string>>(() => new Set())
+  const [hiddenPages, setHiddenPages] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
       <div className={`mission-grid mission-grid-${layout}`}>
         {seats.slice(0, layout).map((id, index) => {
           const bot = bots.find((item) => item.id === id)
-          const webOpen = Boolean(id && (pages.has(id) || openedPages.has(id)))
+          const webOpen = Boolean(id && !hiddenPages.has(id) && (pages.has(id) || openedPages.has(id)))
           const chatFolded = Boolean(id && webOpen && foldedChats.has(id))
           if (!bot) return (
             <article className="mission-tile mission-open-seat" key={index} data-testid={`mission-tile-${index}`}>
@@ -137,7 +138,6 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
               <header className="mission-tile-head">
                 <button className="mission-name mission-change" title={t('mission.change')} aria-label={t('mission.choose', { count: index + 1 })} aria-expanded={adding === index} onClick={() => setAdding(adding === index ? null : index)}><span>{bot.name}</span><ChevronDown size={13} /></button>
                 <span className="mission-status" role="status"><CometActivityIndicator state={statusOf(bot)} />{cometActivityLabel(statusOf(bot))}</span>
-                {!pages.has(bot.id) && <button className="mission-web-toggle" aria-label={webOpen ? 'Hide website' : 'Show website'} title={webOpen ? 'Hide website' : 'Show website'} aria-expanded={webOpen} onClick={() => setOpenedPages(previous => { const next = new Set(previous); if (next.has(bot.id)) next.delete(bot.id); else next.add(bot.id); return next })}><Globe size={15} aria-hidden /></button>}
                 <button className="mission-chat-toggle" data-testid={`mission-chat-toggle-${index}`} disabled={!webOpen} title={chatFolded ? 'Show conversation' : 'Hide conversation'} aria-label={chatFolded ? 'Show conversation' : 'Hide conversation'} aria-expanded={!chatFolded} aria-controls={`mission-chat-${index}`} onClick={() => setFoldedChats((previous) => {
                   const next = new Set(previous)
                   if (next.has(bot.id)) next.delete(bot.id)
@@ -149,7 +149,10 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
               {chooser(index)}
               <div className="mission-tile-body" key={bot.id} data-chat-open={!chatFolded} data-web-open={webOpen}>
                 <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} open={() => open(bot.id)} onLiveChange={live => setPages(previous => { if (previous.has(bot.id) === live) return previous; const next = new Set(previous); if (live) next.add(bot.id); else next.delete(bot.id); return next })} />
-                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} /></div>
+                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} webOpen={webOpen} onToggleWeb={() => {
+                  setHiddenPages(previous => { const next = new Set(previous); if (webOpen) next.add(bot.id); else next.delete(bot.id); return next })
+                  if (!webOpen) setOpenedPages(previous => new Set(previous).add(bot.id))
+                }} /></div>
               </div>
             </article>
           )

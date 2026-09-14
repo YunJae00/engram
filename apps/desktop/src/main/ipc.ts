@@ -137,6 +137,7 @@ import { officeAgentTools, officeContext } from './office-agent.js'
 import { cometFileTools, registerArtifactIpc } from './file-work.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
+import { aiSelection, chatEngine, rememberSelections } from './ai-selection.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -145,7 +146,7 @@ import { bookmarkSources, importBookmarks, savedBookmarks } from './browser-book
 import { clearApplicationWork } from './application-work.js'
 import { missionFrames, watchMission } from './mission-control.js'
 import { titleFor } from './comet-title.js'
-import { loadSettings, saveSettings } from './settings.js'
+import { loadSettings, updateSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
 import { routineRecovery, startRoutineChat, type RoutineRunReply, type RoutineStartOptions } from './routine-chat.js'
@@ -923,11 +924,10 @@ function buildVaultMap(store: VaultContext['store']): string | null {
 let onEnginesChanged: (() => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
-  setDesktopEngineResolver(async () => {
+  setDesktopEngineResolver(async (lane) => {
     const current = await loadSettings()
     if (current.computerUse !== true) throw new Error('Enable computer use in Settings before using an app.')
-    const wanted = current.defaultEngine
-    return ctx.engines.find((engine) => engine.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
+    return chatEngine(lane, ctx.engines)
   })
   onEnginesChanged = async () => {
     await revalidateEngines(ctx)
@@ -945,13 +945,14 @@ export function registerIpc(ctx: VaultContext): void {
     return value
   })
   const resumeState = new Map<string, string>()
-  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; engine: Engine; keepGoal?: string }>()
+  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string }>()
 
   // Only an explicitly kept, completed turn can supply reusable guidance.
   const SKILL_FROM_TURN_MIN = 3
-  const distillTurnSkill = async (name: string, goal: string, steps: TurnStep[], engine: Engine): Promise<void> => {
+  const distillTurnSkill = async (name: string, goal: string, steps: TurnStep[]): Promise<void> => {
+    const engine = ctx.engines[0]
     const done = successfulTurnSteps(steps)
-    if (engineBackoff.blockedMs() > 0 || done.length < SKILL_FROM_TURN_MIN) return
+    if (!engine || engineBackoff.blockedMs() > 0 || done.length < SKILL_FROM_TURN_MIN) return
     const lines = done.map((step) => {
       const arg = String(Object.values(step.args).find((value) => typeof value === 'string') ?? '').slice(0, 80)
       return `- ${step.tool}${arg ? `: ${arg}` : ''} -> ${step.observation.slice(0, 100).replace(/\s+/g, ' ')}`
@@ -1178,6 +1179,7 @@ export function registerIpc(ctx: VaultContext): void {
   const visitedOrigins = new Set<string>()
   ipcMain.handle('bots:list', async () => {
     const bots = await loadBots(paths)
+    await rememberSelections(['filing', 'cosmos', ...bots.map(bot => `bot-${bot.id}`)])
     visitedOrigins.clear()
     for (const bot of bots) for (const site of bot.webSites ?? []) visitedOrigins.add(site.origin)
     return botPreviews(paths, bots)
@@ -1191,6 +1193,7 @@ export function registerIpc(ctx: VaultContext): void {
   // mounted across tabs now, so nothing re-reads the list by remounting.
   ipcMain.handle('bots:create', async (_e, input: { name: string; purpose?: string }) => {
     const bot = await createBot(paths, input)
+    await rememberSelections([`bot-${bot.id}`])
     broadcast({ type: 'bots:changed' })
     return bot
   })
@@ -1202,6 +1205,7 @@ export function registerIpc(ctx: VaultContext): void {
     abortAllChat(`bot-${id}`)
     releaseDesktop(`bot-${id}`)
     await deleteBot(paths, id)
+    await updateSettings(settings => { delete settings.aiSelections[`bot-${id}`]; return settings })
     resumeState.delete(id)
     lastTurns.delete(id)
     broadcast({ type: 'bots:changed' })
@@ -1226,7 +1230,7 @@ export function registerIpc(ctx: VaultContext): void {
     // kept turn — in the background, so keeping stays instant.
     const kept = lastTurns.get(botId)
     lastTurns.delete(botId)
-    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, kept.message, kept.steps, kept.engine).catch(() => undefined)
+    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, kept.message, kept.steps).catch(() => undefined)
     broadcast({ type: 'bots:changed' })
     broadcast({ type: 'vault:changed' })
     return task
@@ -1438,9 +1442,11 @@ export function registerIpc(ctx: VaultContext): void {
     async (_e, id: string, force?: boolean, slots?: Record<string, string>): Promise<RoutineRunReply> => {
       return startRoutineChat(paths, id, { force: force === true, ...(slots ? { slots } : {}) }, {
         begin: beginRoutine,
-        recover: (botId, message, context, routine) => ctx.engines.length
-          ? sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context, routine).then(() => true)
-          : Promise.resolve(false),
+        recover: async (botId, message, context, routine) => {
+          if (!await chatEngine(`bot-${botId}`, ctx.engines)) return false
+          await sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context, routine)
+          return true
+        },
         broadcast,
         active: (channel, running) => { if (running) answering.add(channel); else answering.delete(channel) },
         claim: () => {
@@ -1572,8 +1578,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('search:learn', async (_e, pasted: string) => {
     const template = deriveSearchTemplate(String(pasted ?? ''))
     if (!template) return { ok: false }
-    const settings = await loadSettings()
-    await saveSettings({ ...settings, searchTemplate: template })
+    await updateSettings(settings => ({ ...settings, searchTemplate: template }))
     return { ok: true, template }
   })
 
@@ -1586,8 +1591,7 @@ export function registerIpc(ctx: VaultContext): void {
   })
 
   ipcMain.handle('browsers:choose', async (_e, path: string) => {
-    const settings = await loadSettings()
-    await saveSettings({ ...settings, agentBrowser: String(path ?? '') })
+    await updateSettings(settings => ({ ...settings, agentBrowser: String(path ?? '') }))
     setAgentBrowser(String(path ?? '') || null)
   })
 
@@ -1985,11 +1989,12 @@ export function registerIpc(ctx: VaultContext): void {
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine): Promise<void> {
     const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
+    await rememberSelections([channel])
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
     const settings = await loadSettings()
-    const wanted = request.engineId || settings.defaultEngine
-    const engine = ctx.engines.find((e2) => e2.id === wanted) ?? (ctx.engines.length === 1 && ctx.engines[0]?.id === 'mock' ? ctx.engines[0] : undefined)
+    const wanted = request.engineId || aiSelection(settings, channel).engine
+    const engine = await chatEngine(channel, ctx.engines, request.engineId)
     try { assertDesktopChatEngine(channel, engine) }
     catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
     if (!engine) {
@@ -2176,7 +2181,7 @@ export function registerIpc(ctx: VaultContext): void {
       if (pastedSearch) {
         const held = await loadSettings()
         if (!held.searchTemplate) {
-          await saveSettings({ ...held, searchTemplate: pastedSearch })
+          await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || pastedSearch }))
           await deliverAnswer('Got it — from now on I search the way you do.')
           return
         }
@@ -2254,8 +2259,7 @@ export function registerIpc(ctx: VaultContext): void {
               remembered: () => remembered,
               guided,
               learnSearch: async (template) => {
-                const held = await loadSettings()
-                if (!held.searchTemplate) await saveSettings({ ...held, searchTemplate: template })
+                await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || template }))
               },
               retrieve: async (query, limit) => {
                 // The embedder is what tells one subject from another when the
@@ -2413,16 +2417,16 @@ export function registerIpc(ctx: VaultContext): void {
         // offer-writing below.
         const completed = {
           message: request.message,
-          engine,
           steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
           keepGoal: undefined as string | undefined,
         }
         lastTurns.set(bot.id, completed)
         // The words they typed name this morning, not the work. Asked after
         // the answer is out, it writes the offer, which follows on its own.
+        const filingEngine = ctx.engines[0]
         const proposal =
-          keepable || handled
-            ? await collectResult(engine, {
+          filingEngine && (keepable || handled)
+            ? await collectResult(filingEngine, {
                 prompt: proposalPrompt({
                   user: request.message,
                   history: request.history,
@@ -2449,9 +2453,9 @@ export function registerIpc(ctx: VaultContext): void {
         }
         // After the answer is out, while the model is still held: what of
         // this turn is worth keeping about the person.
-        if (!result.asked)
+        if (!result.asked && filingEngine)
           await rememberTurn({
-            engine,
+            engine: filingEngine,
             workdir: engineCwd(paths),
             paths,
             botId: bot.id,

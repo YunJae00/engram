@@ -88,6 +88,7 @@ test('ChatGPT models can be selected in the composer without changing the Claude
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!
     await window.webContents.capturePage()
+    await new Promise(resolve => setTimeout(resolve, 400))
     return (await window.webContents.capturePage()).toPNG().toString('base64')
   })
   await writeFile(join(TMP, 'engine-settings-light.png'), Buffer.from(png, 'base64'))
@@ -237,4 +238,33 @@ test('welcome and conversation footer controls align and keep long model names i
   }
   await page.setViewportSize({ width: 1280, height: 880 })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
+})
+
+test('conversation and filing selections persist without changing each other', async () => {
+  await app.evaluate(() => { (globalThis as Global).engineFixture.signed = { claude: true, codex: true } })
+  const ids = await page.evaluate(async () => {
+    const a = await window.engram.botCreate({ name: 'Independent A' })
+    const b = await window.engram.botCreate({ name: 'Independent B' })
+    await Promise.all([
+      window.engram.aiSelectionSet('bot-' + a.id, { engine: 'claude', model: 'claude-fast' }),
+      window.engram.aiSelectionSet('bot-' + b.id, { engine: 'codex', model: 'codex-deep' }),
+      window.engram.aiSelectionSet('filing', { engine: 'codex', model: 'codex-fast' }),
+    ])
+    return [a.id, b.id]
+  })
+  await openActivity(page, 'bots')
+  await page.getByTestId('bot-' + ids[0]).click()
+  const picker = page.locator('.bots-write').getByTestId('model-picker')
+  await picker.click()
+  await page.getByTestId('model-pick-claude-deep').click()
+  await page.reload()
+  const choices = await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))
+  expect(choices?.['bot-' + ids[0]]).toEqual({ engine: 'claude', model: 'claude-deep' })
+  expect(choices?.['bot-' + ids[1]]).toEqual({ engine: 'codex', model: 'codex-deep' })
+  expect(choices?.filing).toEqual({ engine: 'codex', model: 'codex-fast' })
+  await page.evaluate(async () => {
+    const settings = await window.engram.settingsGet()
+    await window.engram.settingsSet({ ...settings, defaultEngine: 'claude', claudeModel: 'claude-fast' })
+  })
+  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))).toEqual(choices)
 })

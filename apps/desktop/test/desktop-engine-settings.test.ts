@@ -9,7 +9,7 @@ vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [] }))
 vi.mock('electron', () => ({ app: { isPackaged: false }, nativeTheme: fake.nativeTheme, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: AppSettingsDto) => Promise<void>) => fake.handlers.set(name, handler) } }))
 vi.mock('../src/main/ipc.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/installer.js', () => ({ detectApiKeyEnv: vi.fn() }))
-vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, saveSettings: fake.save }))
+vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, updateSettings: async (change: (settings: AppSettingsDto) => AppSettingsDto) => { const next = change(await fake.load()); await fake.save(next); return next } }))
 vi.mock('../src/main/team.js', () => ({ getSyncStatus: vi.fn() }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: vi.fn() }))
 vi.mock('../src/main/desktop-control.js', () => ({ stopDesktopControl: fake.stop }))
@@ -41,11 +41,11 @@ describe('desktop grant lifetime when choosing an AI connection', () => {
     expect(fake.stop).toHaveBeenCalledExactlyOnceWith('Computer use was turned off in Settings.')
     expect(fake.stop.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
   })
-  it('stops desktop control before refreshing the newly chosen connection', async () => {
+  it('changing the default for new chats does not interrupt another conversation', async () => {
     await fake.handlers.get('settings:set')!(null, { ...settings, defaultEngine: 'codex' })
-    expect(fake.stop).toHaveBeenCalledExactlyOnceWith('The AI connection changed. Allow computer control again for the selected connection.')
-    expect(fake.changed).toHaveBeenCalledOnce()
-    expect(fake.stop.mock.invocationCallOrder[0]!).toBeLessThan(fake.changed.mock.invocationCallOrder[0]!)
+    expect(fake.stop).not.toHaveBeenCalled()
+    expect(fake.changed).not.toHaveBeenCalled()
+    expect(fake.save).toHaveBeenCalledWith(expect.objectContaining({ aiSelections: { filing: { engine: 'claude', model: '' } } }))
   })
 
   it('does not interrupt a grant for an unrelated settings save', async () => {

@@ -6,48 +6,56 @@ import os from 'node:os'
 import type { AppSettingsDto, DiagnosticsDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
 import { detectApiKeyEnv } from './installer.js'
-import { loadSettings, saveSettings } from './settings.js'
+import { loadSettings, updateSettings } from './settings.js'
 import { getSyncStatus } from './team.js'
 import { binaryProvider, type VaultContext } from './vault.js'
 import { stopDesktopControl } from './desktop-control.js'
+import { aiSelection } from './ai-selection.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
 // handlers must exist from registerBaseIpc, not from bootVault.
 // Choosing another brain must reach the engine list at once, not at the
 // next scheduled detection; the vault owner installs this when it is up.
-let onBrainChoice: (() => void) | null = null
-export function setBrainChoiceHook(hook: () => void): void {
+let onBrainChoice: (() => void | Promise<void>) | null = null
+export function setBrainChoiceHook(hook: () => void | Promise<void>): void {
   onBrainChoice = hook
 }
 
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
+  ipcMain.handle('ai:selection', async (_event, scope: unknown, selection: unknown) => {
+    if (typeof scope !== 'string' || !/^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope)) throw new Error('Invalid AI scope')
+    const value = selection as { engine?: unknown; model?: unknown } | null
+    if (!value || !['claude', 'codex'].includes(String(value.engine)) || typeof value.model !== 'string' || value.model.length > 200) throw new Error('Invalid AI selection')
+    const chosen = { engine: value.engine as 'claude' | 'codex', model: value.model.trim() }
+    const settings = await updateSettings(held => ({ ...held, aiSelections: { ...held.aiSelections, filing: aiSelection(held, 'filing'), [scope]: chosen } }))
+    broadcast({ type: 'settings:changed', settings })
+    if (scope === 'filing') await onBrainChoice?.()
+  })
 
   ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
+    if (!settings || !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()
     if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
-    await saveSettings({
-      ...held,
+    const saved = await updateSettings(latest => ({
+      ...latest,
       ...settings,
+      aiSelections: { ...latest.aiSelections, filing: aiSelection(latest, 'filing') },
       theme: settings.theme ?? held.theme,
       searchTemplate: settings.searchTemplate ?? held.searchTemplate,
       agentBrowser: settings.agentBrowser ?? held.agentBrowser,
       claudeModel: settings.claudeModel ?? held.claudeModel,
       codexModel: settings.codexModel ?? held.codexModel,
-    })
+    }))
     nativeTheme.themeSource = settings.theme ?? held.theme ?? 'system'
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
-    if (settings.defaultEngine !== held.defaultEngine) {
-      stopDesktopControl('The AI connection changed. Allow computer control again for the selected connection.')
-      onBrainChoice?.()
-    }
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
     // Live surfaces (the agent terminal's colours) restyle immediately.
-    broadcast({ type: 'settings:changed', settings })
+    broadcast({ type: 'settings:changed', settings: saved })
   })
 
 }

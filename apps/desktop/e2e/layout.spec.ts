@@ -103,6 +103,27 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
   }
 })
 
+test('two conversations stack in narrow panes and keep their web toggle in the composer', async () => {
+  for (const width of [1600, 620]) {
+    await page.setViewportSize({ width, height: 920 })
+    await navigate('mission')
+    await page.getByTestId('mission-layout-2').click()
+    await expect.poll(() => page.locator('.mission-tile').evaluateAll(tiles => {
+      const first = tiles[0]!.getBoundingClientRect(), second = tiles[1]!.getBoundingClientRect()
+      return Math.abs(first.top - second.top) < 2 ? 'horizontal' : 'vertical'
+    })).toBe(width > 1000 ? 'horizontal' : 'vertical')
+    const tile = page.getByTestId('mission-tile-0')
+    await expect(tile.locator('.mission-tile-head .mission-web-toggle')).toHaveCount(0)
+    const button = tile.locator('.mini-chat-write .composer-web')
+    await expect(button).toBeVisible()
+    if (await button.getAttribute('aria-pressed') !== 'true') await button.click()
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
+    await screenshot(`split-two-${width}.png`)
+    await button.click()
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+  }
+})
+
 test('settings header, rows and footer share an inset without nested modal padding', async () => {
   for (const width of [1280, 620]) {
     await page.setViewportSize({ width, height: 720 })

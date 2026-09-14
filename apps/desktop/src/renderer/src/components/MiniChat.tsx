@@ -12,12 +12,13 @@ import { SubmitGate } from './SubmitGate.js'
 import { PressGate } from './PressGate.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
+import { Globe } from 'lucide-react'
 
 // A conversation small enough to sit inside a parallel tile: the
 // thread, what the comet is doing right now, and a composer - the same
 // seat as the full view, so words typed here land in the same transcript
 // and the same turn machinery. Opening the full view is the tile's job.
-export function MiniChat({ botId }: { botId: string }) {
+export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOpen: boolean; onToggleWeb(): void }) {
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId))
   const [draft, setDraft] = useState(thread.draft)
   useEffect(() => setDraft(thread.draft), [thread.draft, thread.busy])
@@ -49,7 +50,7 @@ export function MiniChat({ botId }: { botId: string }) {
         {thread.busy && <p className="mini-chat-status">{status}</p>}
       </div>
       <div className="mini-chat-gates"><RoutineProgress channel={cometChannel(botId)} /><SubmitGate channel={cometChannel(botId)} /><PressGate channel={cometChannel(botId)} /></div>
-      <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} tools={<ModelPicker />} /></div>
+      <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} tools={<><button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /></button><ModelPicker scope={cometChannel(botId)} /></>} /></div>
     </div>
   )
 }

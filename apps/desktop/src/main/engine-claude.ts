@@ -7,8 +7,8 @@ import { loadSettings } from './settings.js'
 // The person's chosen model, read per call so a change in Settings or from
 // the composer takes hold on the very next turn. Empty means the app's own
 // spread: the mid-size model for the work, the small one for chores.
-async function chosenModel(hint?: string): Promise<string> {
-  const picked = (await loadSettings()).claudeModel.trim()
+async function chosenModel(hint?: string, override?: string): Promise<string> {
+  const picked = (override ?? (await loadSettings()).claudeModel).trim()
   if (picked) return picked
   return hint === 'fast' ? 'haiku' : 'sonnet'
 }
@@ -176,7 +176,7 @@ export class ClaudeEngine implements CloudEngine {
           // A chore is a few small decisions in a row; the mid-size model
           // makes each one in seconds where the largest takes a minute -
           // unless the person picked a model, and then their pick answers.
-          model: await chosenModel(job.modelHint),
+          model: await chosenModel(job.modelHint, job.model),
         },
       })
       for await (const message of stream) {
@@ -215,7 +215,7 @@ export class ClaudeEngine implements CloudEngine {
   runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'the Claude runtime is not part of this build' })
-    return Promise.all([sdkModule(), chosenModel()]).then(([sdk, model]) => sessions.run(job, { sdk, binary, workdir: job.workdir, model }))
+    return Promise.all([sdkModule(), chosenModel(undefined, job.model)]).then(([sdk, model]) => sessions.run(job, { sdk, binary, workdir: job.workdir, model }))
   }
 }
 

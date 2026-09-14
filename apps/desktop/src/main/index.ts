@@ -567,7 +567,7 @@ async function bootVault(root: string): Promise<VaultContext> {
     })
     // A brain switched in Settings becomes usable the moment it is chosen —
     // not at the next refocus or the 30-minute watch tick.
-    setBrainChoiceHook(() => void revalidateEngines(ctx))
+    setBrainChoiceHook(() => revalidateEngines(ctx))
     startEngineWatch(ctx)
     // Write the session block once at boot, so a Claude session started before
     // the first tidy still gets today's picture rather than yesterday's.

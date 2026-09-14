@@ -109,7 +109,7 @@ export class CodexEngine implements CloudEngine {
       return
     }
     const sdk = (await import('@openai/codex-sdk')) as unknown as CodexSdk
-    const codexModel = (await loadSettings()).codexModel.trim()
+    const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
     const timer = setTimeout(() => abort.abort(), budget)

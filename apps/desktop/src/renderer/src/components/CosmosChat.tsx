@@ -225,7 +225,7 @@ export const CosmosChat = memo(function CosmosChat() {
           onChange={setText}
           onSend={() => void send()}
           onStop={() => void stop()}
-          tools={<ModelPicker />}
+          tools={<ModelPicker scope={CHANNEL} />}
         />
       </div>
     </aside>

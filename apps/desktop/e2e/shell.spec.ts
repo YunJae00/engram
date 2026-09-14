@@ -321,7 +321,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
     const menu = page.getByRole('dialog', { name: `Options for ${kind} Work`, exact: true })
     await menu.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(box).toBeVisible()
-    await menu.getByRole('button', { name: 'Delete folder · keep items?', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Delete folder?', exact: true }).getByRole('button', { name: 'Delete folder only', exact: true }).click()
     await expect(box).toHaveCount(0)
     for (const id of ids) await expect(item(id)).toBeVisible()
   }

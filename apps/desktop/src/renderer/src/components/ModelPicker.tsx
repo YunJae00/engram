@@ -31,7 +31,7 @@ export function useModelChoices(engine: Provider | null) {
   return { ...(result.engine === engine ? result : { rows: [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
 }
 
-export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | 'sidebar' }) {
+export function ModelPicker({ variant = 'composer', scope }: { variant?: 'composer' | 'sidebar'; scope?: string }) {
   const { engines, enginesDetected } = useShellState()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -43,8 +43,9 @@ export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | '
   const menu = useRef<HTMLDivElement>(null)
   const focusLast = useRef(false)
   const menuId = useId()
-  const engine = settings?.defaultEngine ?? null
-  const model = (engine === 'codex' ? settings?.codexModel : settings?.claudeModel) ?? ''
+  const selection = scope ? settings?.aiSelections?.[scope] : undefined
+  const engine = selection?.engine ?? settings?.defaultEngine ?? null
+  const model = selection?.model ?? (engine === 'codex' ? settings?.codexModel : settings?.claudeModel) ?? ''
   const { rows, loading, error, refresh } = useModelChoices(engine)
   const sidebar = variant === 'sidebar'
 
@@ -60,7 +61,6 @@ export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | '
   }, [])
 
   useEffect(() => {
-    if (!open) return
     let alive = true
     let serial = 0
     const read = () => {
@@ -82,7 +82,7 @@ export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | '
       if (!box.current || !menu.current) return
       const anchor = box.current.getBoundingClientRect()
       if (!anchor.width) { setOpen(false); return }
-      const host = box.current.closest('.bots-chat, .cosmos-chat, .bots-main')?.getBoundingClientRect()
+      const host = box.current.closest('.mini-chat, .bots-chat, .cosmos-chat, .bots-main')?.getBoundingClientRect()
       const left = Math.max(0, host?.left ?? 0) + 8
       const right = Math.min(innerWidth, host?.right ?? innerWidth) - 8
       const width = Math.max(0, Math.min(300, right - left))
@@ -141,8 +141,11 @@ export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | '
     try {
       const current = await api.settingsGet()
       const next = { ...current, ...change }
-      await api.settingsSet(next)
-      setSettings(next)
+      if (scope) {
+        const provider = change.defaultEngine ?? engine ?? current.defaultEngine
+        await api.aiSelectionSet(scope, { engine: provider, model: change.defaultEngine ? '' : (change.codexModel ?? change.claudeModel ?? model) })
+        setSettings(await api.settingsGet())
+      } else { await api.settingsSet(next); setSettings(next) }
       if (close) { setOpen(false); trigger.current?.focus() }
     } catch { setSaveError('Could not save your selection. Try again.') }
     finally { setSaving(false) }
@@ -166,7 +169,7 @@ export function ModelPicker({ variant = 'composer' }: { variant?: 'composer' | '
       <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
     </button>
     {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label="Provider and model" data-testid={sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
-      <div className="provider-picker-heading">Provider</div>
+      <div className="provider-picker-heading">{scope === 'filing' ? 'Filing provider' : scope ? 'This conversation' : 'New conversations'}</div>
       {PROVIDERS.map(({ id, name }) => {
         const state = stateFor(id)
         const connected = state?.loggedIn === true

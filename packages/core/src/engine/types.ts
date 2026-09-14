@@ -51,6 +51,7 @@ export const ENGINE_BUDGETS = {
 } as const
 
 export interface EngineJobInput {
+  model?: string
   prompt: string
   imagePaths?: string[]
   workdir: EngineCwd
@@ -130,6 +131,7 @@ export interface ToolSessionCall {
 }
 
 export interface ToolSessionJob {
+  model?: string
   workdir: EngineCwd
   // Standing instructions, the same for every turn of a session.
   system: string

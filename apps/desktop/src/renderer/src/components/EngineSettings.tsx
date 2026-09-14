@@ -2,7 +2,7 @@ import { Check, ExternalLink, LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AppSettingsDto, EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
-import { useModelChoices } from './ModelPicker.js'
+import { ModelPicker, useModelChoices } from './ModelPicker.js'
 
 export function EngineSettings({ settings, onChange }: { settings: AppSettingsDto; onChange(change: Partial<AppSettingsDto>): void }) {
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -32,7 +32,8 @@ export function EngineSettings({ settings, onChange }: { settings: AppSettingsDt
   const run = (operation: Promise<unknown>) => { setError(''); void operation.catch(() => setError('That did not finish. Please try again.')) }
   return (
     <div className="engine-settings">
-      <p className="setting-note">Connect your account, then choose who answers. Your plan’s limits and billing apply.</p>
+      <p className="setting-note">Choose the default for new conversations below. Each conversation has its own model picker.</p>
+      <section className="engine-card" aria-label="Filing model"><strong>Filing & memory</strong><p className="setting-note">Organize notes and maintain memory independently of your conversations.</p><ModelPicker scope="filing" /></section>
       {(['claude', 'codex'] as const).map((id) => {
         const state = states?.find((one) => one.id === id)
         const login = logins.find((one) => one.id === id)

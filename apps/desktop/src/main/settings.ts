@@ -1,8 +1,9 @@
 import { app } from 'electron'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 
 interface AppSettings {
+  aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string }>
   theme: 'system' | 'light' | 'dark'
   // Which brain answers: the one on this disk, or one of the two the person
   // signed in to. Chosen once, never switched behind their back.
@@ -27,6 +28,7 @@ interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
+  aiSelections: {},
   theme: 'system',
   defaultEngine: 'claude',
   autoStart: false,
@@ -50,6 +52,8 @@ export async function loadSettings(): Promise<AppSettings> {
     // this disk is the safe reading.
     if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
     merged.computerUse = merged.computerUse === true
+    merged.aiSelections = Object.fromEntries(Object.entries(merged.aiSelections ?? {}).filter(([scope, value]) =>
+      /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
     return merged
   } catch {
@@ -57,6 +61,19 @@ export async function loadSettings(): Promise<AppSettings> {
   }
 }
 
-export async function saveSettings(settings: AppSettings): Promise<void> {
-  await writeFile(settingsPath(), JSON.stringify(settings, null, 2))
+async function saveSettings(settings: AppSettings): Promise<void> {
+  const target = settingsPath()
+  await writeFile(`${target}.tmp`, JSON.stringify(settings, null, 2))
+  await rename(`${target}.tmp`, target)
+}
+
+let changes = Promise.resolve()
+export function updateSettings(change: (settings: AppSettings) => AppSettings): Promise<AppSettings> {
+  const next = changes.then(async () => {
+    const settings = change(await loadSettings())
+    await saveSettings(settings)
+    return settings
+  })
+  changes = next.then(() => undefined, () => undefined)
+  return next
 }

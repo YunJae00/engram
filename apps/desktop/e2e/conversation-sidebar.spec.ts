@@ -59,6 +59,34 @@ async function capture(name: string): Promise<void> {
   await writeFile(join(screenshots, name), Buffer.from(png, 'base64'))
 }
 
+test('folder deletion offers cancellation and includes conversations hidden by search', async () => {
+  await openActivity(page, 'bots')
+  const ids = await page.evaluate(async () => {
+    const first = await window.engram.botCreate({ name: 'Visible deletion fixture' })
+    const second = await window.engram.botCreate({ name: 'Hidden deletion fixture' })
+    const layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Deletion fixture' } })
+    const folder = layout.chat.folders.find(item => item.name === 'Deletion fixture')!
+    for (const id of [first.id, second.id]) await window.engram.sidebarChange({ kind: 'chat', change: { action: 'move-item', id, folder: folder.id } })
+    return [first.id, second.id]
+  })
+  await page.getByRole('textbox', { name: 'Search conversations', exact: true }).fill('Visible deletion')
+  await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete folder?', exact: true })
+  await expect(dialog).toContainText('2 conversations')
+  expect(await dialog.evaluate(node => { const rect = node.getBoundingClientRect(); return Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2 && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 2 })).toBe(true)
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+  await capture('delete-folder-confirmation.png')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(await page.evaluate(async ids => (await window.engram.botsList()).filter(bot => ids.includes(bot.id)).length, ids)).toBe(2)
+  await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Delete folder and 2 conversations', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(await page.evaluate(async ids => (await window.engram.botsList()).some(bot => ids.includes(bot.id)), ids)).toBe(false)
+  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+})
+
 test('conversation rows show persisted previews, timestamps and avatars after reload', async () => {
   const first = page.getByTestId(`bot-${bots[0]!.id}`)
   await expect(first.locator('.sidebar-conversation-name')).toHaveText(bots[0]!.name)

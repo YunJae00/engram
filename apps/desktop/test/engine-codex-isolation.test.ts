@@ -40,6 +40,15 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('uses explicit per-job models, including Auto, instead of the global model', async () => {
+    await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'conversation-model' }))
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'conversation-model' }))
+    await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: '' }))
+    expect(fixture.threadOptions.mock.lastCall?.[0]).not.toHaveProperty('model')
+    await collect(new ClaudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'filing-model' }))
+    expect(fixture.query).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ model: 'filing-model' }) }))
+    expect(fixture.settings).not.toHaveBeenCalled()
+  })
   it('passes attached images using the native local_image SDK input', async () => {
     const image = 'C:/fixture/workspace/.engram/chat-attachments/chart.png'
     await collect(new CodexEngine().run({ prompt: 'Read this chart', workdir: WORKDIR, imagePaths: [image], disallowTools: true }))

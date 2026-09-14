@@ -71,6 +71,7 @@ const api: EngramApi = {
   searchTemplateLearn: (pasted: string) => ipcRenderer.invoke('search:learn', pasted),
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings: AppSettingsDto) => ipcRenderer.invoke('settings:set', settings),
+  aiSelectionSet: (scope, selection) => ipcRenderer.invoke('ai:selection', scope, selection),
   mcpInfo: () => ipcRenderer.invoke('mcp:info'),
   mcpConnectDesktop: () => ipcRenderer.invoke('mcp:connectDesktop'),
   mcpConnectCode: () => ipcRenderer.invoke('mcp:connectCode'),

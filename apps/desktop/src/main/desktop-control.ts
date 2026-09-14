@@ -18,7 +18,7 @@ const REBIND_TRIES = 3
 const LABEL: Record<DesktopEngineId, string> = { claude: 'Claude', codex: 'ChatGPT' }
 const lease = new DesktopControlLease({ onChange: desktopChanged, ttlMs: LEASE_TTL_MS })
 type DesktopEngine = Pick<Engine, 'id' | 'desktopToolIsolation'>
-let engineForControl: () => Promise<DesktopEngine | undefined> = async () => undefined
+let engineForControl: (lane: string) => Promise<DesktopEngine | undefined> = async () => undefined
 let active: { binding: DesktopBinding; token: string; engine: DesktopEngineId; nativeGrant: string; native?: string; bindingNative?: boolean; working?: boolean } | undefined
 let paused: { lane: string; engine: DesktopEngineId; resumable: boolean; release?: () => void } | undefined
 let starting: Promise<DesktopBinding> | undefined
@@ -111,7 +111,7 @@ export function stopDesktopForLane(lane: string, reason = 'This chat stopped.', 
 export async function openDesktopApp(lane: string, app: string, signal?: AbortSignal): Promise<string> {
   const epoch = cancellation
   signal?.throwIfAborted()
-  const engine = await engineForControl()
+  const engine = await engineForControl(lane)
   signal?.throwIfAborted()
   if (stoppedTurns.has(lane) || epoch !== cancellation) throw stoppedError(lane)
   if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
@@ -254,7 +254,7 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
   options.signal?.throwIfAborted()
   while (starting) { await starting.catch(() => undefined); check() }
   const run = (async () => {
-    const engine = await engineForControl()
+    const engine = await engineForControl(lane)
     check()
     if (stoppedTurns.has(lane)) throw stoppedError(lane)
     if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)

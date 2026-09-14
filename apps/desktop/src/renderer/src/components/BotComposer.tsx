@@ -112,7 +112,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
               <Orbit size={16} strokeWidth={1.8} aria-hidden />
             </button>
             <WebPaneButton busy={busy} lane={cometChannel(botId)} />
-            <ModelPicker />
+            <ModelPicker scope={cometChannel(botId)} />
           </>
         }
       />
