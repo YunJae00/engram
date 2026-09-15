@@ -124,6 +124,7 @@ internal static class Program
                 foreach (var pair in Views) if (!shown.Contains(pair.Key)) pair.Value.Place(0, 0, 0, 0, false);
                 Send(new { id = serial });
             }
+            else if (method == "focus-owner") { NativeInput.FocusOwner(); Send(new { id = serial }); }
             else if (method == "close") { Remove((string)message["target"]); Send(new { id = serial }); }
             else if (method == "stop") { Send(new { id = serial }); await Stop(); }
             else throw new InvalidOperationException("Unknown browser command");

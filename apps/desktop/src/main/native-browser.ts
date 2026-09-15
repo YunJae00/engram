@@ -58,6 +58,10 @@ export async function placeNativePages(views: NativeBounds[]): Promise<void> {
   if (running) await running.request('layout', { views })
 }
 
+export async function focusNativeOwner(): Promise<void> {
+  if (running) await running.request('focus-owner')
+}
+
 export async function closeNativeBrowser(): Promise<void> {
   const held = running
   if (!held) return

@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import type { NativeSurfaceDto } from '../shared/types.js'
 import { lanePage } from './agent-browser.js'
-import { isNativePage, nativeBrowserEnabled, nativeTarget, placeNativePages, setNativeBrowserOwner } from './native-browser.js'
+import { focusNativeOwner, isNativePage, nativeBrowserEnabled, nativeTarget, placeNativePages, setNativeBrowserOwner } from './native-browser.js'
 
 let window: BrowserWindow | null = null
 let revision = 0
@@ -79,6 +79,8 @@ export function registerNativeLayout(): void {
     // A child WebView belongs to another process; DOM focus alone cannot
     // transfer its native keyboard focus back to the conversation renderer.
     window.webContents.focus()
+    const win = window
+    void focusNativeOwner().then(() => { if (!win.isDestroyed() && win.isFocused()) win.webContents.focus() }).catch(() => undefined)
   })
   ipcMain.handle('native:layout', async (event, surfaces: unknown) => {
     if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return

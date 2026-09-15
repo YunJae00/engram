@@ -15,6 +15,13 @@ internal sealed class NativeInput : IDisposable
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LastInput info);
     [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiInfo info);
     [DllImport("user32.dll")] private static extern bool IsChild(IntPtr parent, IntPtr child);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr window);
+
+    internal static void FocusOwner()
+    {
+        if (GetForegroundWindow() == NativeView.Owner) SetFocus(NativeView.Owner);
+    }
     private readonly Timer timer = new Timer { Interval = 200 };
     private uint tick;
 
