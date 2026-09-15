@@ -22,10 +22,11 @@ let enabled = false
 let busy = false
 let switching: Promise<unknown> = Promise.resolve()
 const sockets = new Set<Socket>()
+const authenticatedSockets = new Set<Socket>()
 const lanes = new Map<string, Socket>()
 const controllers = new Set<AbortController>()
 export const externalInfoPath = () => join(app.getPath('userData'), 'external-connection.json')
-export const externalStatus = () => ({ enabled, active: controllers.size > 0, connected: sockets.size })
+export const externalStatus = () => ({ enabled, active: controllers.size > 0, connected: authenticatedSockets.size })
 export const externalOwns = (lane: string) => lanes.has(lane)
 export function stopExternalLane(lane: string): void { lanes.get(lane)?.destroy() }
 export function setExternalContext(next: VaultContext): void {
@@ -98,7 +99,7 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
     socket.setTimeout(15 * 60_000, () => socket.destroy())
     socket.on('error', () => socket.destroy())
     socket.on('close', () => {
-      running?.abort(); sockets.delete(socket)
+      running?.abort(); sockets.delete(socket); authenticatedSockets.delete(socket)
       if (lanes.get(lane) === socket) { lanes.delete(lane); clearApplicationWork(lane); void resetLane(lane).catch(() => {}) }
     })
     const handle = async (message: Record<string, unknown>) => {
@@ -107,6 +108,7 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
       const received = typeof message.token === 'string' ? Buffer.from(message.token) : Buffer.alloc(0)
       if (received.length !== token.length || !timingSafeEqual(received, Buffer.from(token))) { socket.destroy(); return }
       authenticated = true
+      authenticatedSockets.add(socket)
       if (message.method === 'cancel') { if (id === currentId) running?.abort(); return }
       if (!enabled || !bound || bound !== context) { send(id, undefined, 'Open a workspace in Engram and reconnect.'); return }
       if (running || busy) { send(id, undefined, 'Another external operation is running. Wait for its result.'); return }

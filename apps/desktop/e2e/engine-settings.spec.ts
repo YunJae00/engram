@@ -288,6 +288,8 @@ test('a cached model menu remains usable after reload while the catalog request 
   const picker = page.getByTestId('model-picker')
   await picker.click()
   await expect(page.getByTestId('model-pick-claude-deep')).toBeVisible({ timeout: 1000 })
+  await expect(page.getByTestId('model-picker-menu').getByRole('status')).toHaveText('Updating models…')
+  await expect(page.getByTestId('model-picker-menu').locator('.computer-spinner')).toBeVisible()
   await page.getByTestId('model-pick-claude-deep').click()
   await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
   await page.getByTestId('effort-picker').click()

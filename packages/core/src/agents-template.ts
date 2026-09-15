@@ -171,8 +171,7 @@ markdown under \`_views/cards/\`.
 Write the way a person takes notes for themselves: terse, concrete, no filler,
 no preamble, no "here is a summary of". State the thing.
 
-When writing Korean, end clauses in the terse nominal style (-함/-음/-됨/-임)
-rather than conversational endings.
+Preserve the language of the source and use concise, natural phrasing.
 
 ## 6. Prohibitions
 

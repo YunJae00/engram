@@ -9,6 +9,8 @@
 .model-picker-menu.provider-picker-menu { position: fixed; z-index: 180; box-sizing: border-box; overscroll-behavior: contain; border: 1px solid var(--border); }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .model-picker > .model-picker-btn { min-width: 0; }
+.model-loading-skeleton { display: grid; gap: 14px; padding: 12px; min-height: 100px; }
+.model-loading-skeleton .skeleton-line { width: 75%; }
 .effort-picker-btn { flex: none; gap: 5px; color: var(--fg-dim); font-size: var(--fs-small); }
 .provider-picker-menu .model-picker-item { min-height: 36px; align-items: center; gap: 9px; padding: 8px 10px; }
 .engine-card-heading strong { display: flex; align-items: center; gap: 8px; }

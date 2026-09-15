@@ -46,7 +46,7 @@ export function EngineSettings() {
         return (
           <section key={id} className="engine-card" aria-label={`${name} connection`}>
             <div className="engine-card-heading"><strong><ProviderIcon provider={id} size={16} /> {name}</strong></div>
-            <div className="engine-status" data-testid={`brain-${id}-status`} role="status">{pending && <LoaderCircle size={14} className="computer-spinner" />}{status}</div>
+            <div className="engine-status" data-testid={`brain-${id}-status`} role="status">{(pending || !states) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</div>
             <div className="engine-actions">
               {pending ? <>
                 {login.canOpen && <button className="secondary" onClick={() => run(api.engineOpenLogin(id))}><ExternalLink size={13} /> Open browser</button>}

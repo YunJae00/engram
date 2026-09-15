@@ -612,10 +612,10 @@ ${note.body.slice(0, 2_000)}`
         // where words come from. A value nothing read can account for is sent
         // back rather than typed.
         // Titles and ids are labels the loop printed, not what a note says. Left
-        // in, "오늘 한 일" - the name of the note - counted as something read and
+        // in, "Today's work" - the name of the note - counted as something read and
         // went up on the website in place of the day it named.
         // A note's title in the blank is a pointer to its contents, not the
-        // contents: "오늘 한 일" typed into the work log is the model saying
+        // contents: "Today's work" typed into the work log is the model saying
         // "what that note says" - and then looking the note up again, three
         // times running (measured). What a person would do is put the note's
         // words there, so that is done here, from what was already read.

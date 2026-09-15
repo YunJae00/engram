@@ -1055,7 +1055,7 @@ export function registerIpc(ctx: VaultContext): void {
         // the room: it shares the machine with the language model and a
         // Chrome, and waking 800MB more on a tight day is how paging starts.
         // On a machine with room it is worth waking, because it is the only
-        // thing here that can tell "집안일" and "집에서 할 일" are one subject -
+        // thing here that can tell "housework" and "things to do at home" are one subject -
         // asleep, the search falls back to counting words and goes to the web
         // for a note it was already holding.
         retrieve: async (query, limit) => {
@@ -2273,7 +2273,7 @@ export function registerIpc(ctx: VaultContext): void {
               },
               retrieve: async (query, limit) => {
                 // The embedder is what tells one subject from another when the
-                // words differ - "집안일" against "집에서 할 일" - so it is woken
+                // words differ - "housework" against "things to do at home" - so it is woken
                 // where there is room for it, and only skipped on a tight
                 // machine. Which notes it recognised travels with them: the
                 // comet has to tell "the notebook has nothing on this" from

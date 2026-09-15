@@ -7,8 +7,8 @@ import { CometAvatar } from './CometAvatar.js'
 import { CometActivityIndicator } from './CometActivityIndicator.js'
 import { SiteIcon } from './SiteIcon.js'
 
-const clock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
-const calendar = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
+const calendar = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
 const plain = (text: string) => text.replace(/!?\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[`#*_>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 160)
 
 export const SidebarConversation = memo(function SidebarConversation({ bot, state }: { bot: BotDto; state: CometActivity }) {
@@ -29,7 +29,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
   return <>
     <span className="sidebar-conversation-avatar"><CometAvatar id={bot.id} /><CometActivityIndicator state={state} /></span>
     <span className="sidebar-conversation-content">
-      <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span>{time && <time dateTime={date.toISOString()} title={date.toLocaleString()}>{time}</time>}</span>
+      <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span>{time && <time dateTime={date.toISOString()} title={date.toLocaleString('en-US')}>{time}</time>}</span>
       <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>
     </span>
   </>

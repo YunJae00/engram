@@ -31,6 +31,8 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   await setExternalEnabled(true)
   const address = JSON.parse(await readFile(externalInfoPath(), 'utf8')) as { pipe: string; token: string }
   const unauthorized = connect(address.pipe); clients.push(unauthorized)
+  await once(unauthorized, 'connect')
+  expect(externalStatus().connected).toBe(0)
   const rejected = once(unauthorized, 'close')
   unauthorized.write(JSON.stringify({ token: 'invalid', id: 'bad', method: 'tools' }) + '\n')
   await rejected
@@ -50,6 +52,7 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   expect(await readdir(paths.inbox)).toHaveLength(0)
   fake.approve.mockResolvedValue({ response: 1 })
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toBeUndefined()
+  expect(externalStatus().connected).toBe(1)
   const bot = (await loadBots(paths))[0]!
   expect(externalOwns(`bot-${bot.id}`)).toBe(true)
   expect((await request('engram_capture', { text: { nested: true } })).error).toContain('Invalid tool arguments')

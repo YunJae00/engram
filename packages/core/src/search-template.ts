@@ -127,7 +127,7 @@ function isLatin(word: string): boolean {
 const STEM_MIN = 4
 
 // Where the endings are glued on, the word the person typed and the word on
-// the page differ only at the tail: "공지에서" against "공지사항" share a subject and
+// the page differ only at the tail: inflected forms can share a subject and
 // not a single token. Dropping a syllable or two off the end is enough to see
 // it, and short words are left alone so the match stays a match.
 function gluedWord(word: string, hay: string): boolean {

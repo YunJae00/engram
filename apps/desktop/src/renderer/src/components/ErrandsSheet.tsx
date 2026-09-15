@@ -69,7 +69,7 @@ export function ErrandsSheet({ onClose }: { onClose(): void }) {
   }
 
   const when = (iso: string): string =>
-    new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   return (
     <div className="brief-overlay" onClick={onClose}>

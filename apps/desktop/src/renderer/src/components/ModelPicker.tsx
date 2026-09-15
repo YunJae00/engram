@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Settings } from 'lucide-react'
+import { Check, ChevronDown, LoaderCircle, Settings } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppSettingsDto, EngineStatusDto, ModelChoiceDto } from '../../../shared/types.js'
@@ -52,7 +52,7 @@ export function useModelChoices(engine: Provider | null) {
     const off = api.onEvent((event) => { if (event.type === 'models:changed') read(true) })
     return () => { alive = false; off() }
   }, [engine, attempt])
-  return { ...(result.engine === engine ? result : { rows: [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
+  return { ...(result.engine === engine ? result : { rows: engine ? cachedModels(engine) : [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
 }
 
 export function ModelPicker({ variant = 'composer', scope }: { variant?: 'composer' | 'sidebar'; scope?: string }) {
@@ -82,7 +82,6 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
     void api.settingsGet().then((value) => { if (alive && revision === 0) setSettings(value) }).catch(() => { if (alive) setSaveError('Could not load settings. Open AI settings to retry.') })
     const off = api.onEvent((event) => {
       if (event.type === 'settings:changed') { revision++; setSettings(event.settings) }
-      if (event.type === 'engines:changed' || event.type === 'engines:login') setStates(null)
     })
     return () => { alive = false; off() }
   }, [])
@@ -191,13 +190,15 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
   const effortLabel = (level?: string) => level ? level === 'xhigh' ? 'Extra high' : level.charAt(0).toUpperCase() + level.slice(1) : 'Auto'
   const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: 'Saved selection' }] : [])]
 
+  if (!settings) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
+
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
     <button type="button" ref={trigger} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
       data-testid={sidebar ? 'engine-status' : 'model-picker'} title={`${providerName} · ${sidebar ? status : label} · Choose provider and model`}
       aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open && mode === 'model'} aria-haspopup="menu" aria-controls={open && mode === 'model' ? menuId : undefined}
       onClick={() => { focusLast.current = false; setMode('model'); setOpen(!open || mode !== 'model') }}
       onKeyDown={(event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setMode('model'); setOpen(true) } }}>
-      <ProviderIcon provider={engine ?? 'claude'} size={16} />
+      {saving ? <LoaderCircle size={16} className="computer-spinner" aria-hidden /> : <ProviderIcon provider={engine ?? 'claude'} size={16} />}
       {sidebar ? <span className="provider-picker-status"><span>{providerName}</span><small>{status}</small></span> : <span className="provider-picker-label">{label}</span>}
       <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
     </button>
@@ -223,7 +224,8 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
         <span className="model-picker-tick">{model === row.value && <Check size={12} strokeWidth={2.4} aria-hidden />}</span>
         <span className="model-picker-name">{row.label}</span>
       </button>)}
-      {loading && rows.length === 0 && <div className="model-picker-note" role="status">Loading models…</div>}
+      {loading && <div className="model-picker-note inline-loading" role="status"><LoaderCircle size={14} className="computer-spinner" aria-hidden />{rows.length ? 'Updating models…' : 'Loading models…'}</div>}
+      {loading && !rows.length && <div className="model-loading-skeleton" aria-hidden>{[0, 1, 2].map(index => <span key={index} className="skeleton-line" />)}</div>}
       {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>Models unavailable · Retry</button>}
       <div className="provider-picker-divider" role="separator" />
       <button type="button" className="model-picker-item provider-picker-settings" role="menuitem" tabIndex={-1} onClick={setup}><Settings size={14} aria-hidden />AI settings</button>

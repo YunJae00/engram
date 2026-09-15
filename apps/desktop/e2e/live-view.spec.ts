@@ -108,7 +108,7 @@ test('browser controls navigate history, reload the website and open imported bo
   await expect(pane.getByTestId('live-reset')).toHaveCount(0)
   await app.evaluate(({ ipcMain }, url) => {
     let imported = false
-    const items = [{ title: 'Fixture bookmark', url, folder: 'Work' }]
+    const items = [{ title: 'Fixture bookmark', url, folder: 'Work', folderPath: ['Work'], sourceId: 'fixture', sourceName: 'Chrome · Test profile' }]
     ipcMain.removeHandler('bookmarks:sources'); ipcMain.removeHandler('bookmarks:list'); ipcMain.removeHandler('bookmarks:import')
     ipcMain.handle('bookmarks:sources', () => [{ id: 'fixture', name: 'Chrome · Test profile' }])
     ipcMain.handle('bookmarks:list', () => imported ? items : [])
@@ -121,7 +121,8 @@ test('browser controls navigate history, reload the website and open imported bo
   await expect(importer.getByLabel('Browser profile')).toHaveValue('fixture')
   await importer.getByRole('button', { name: 'Import', exact: true }).click()
   await expect(importer).toHaveCount(0)
-  await pane.getByRole('button', { name: 'Bookmarks', exact: true }).click()
+  await expect(bookmarks).toBeVisible()
+  await bookmarks.locator('summary').filter({ hasText: 'Work' }).click()
   await bookmarks.getByRole('button', { name: /Fixture bookmark/ }).click()
   await expect(bookmarks).toHaveCount(0)
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)

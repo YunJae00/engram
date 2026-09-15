@@ -61,7 +61,7 @@ export function parseAsk(observation: string): Ask | null {
 }
 
 // A prose answer that is really a question with two to four alternatives in
-// it: "the staging one or the production one?" / "A, B, or C?" / "A 아니면 B?".
+// it: "the staging one or the production one?" or "A, B, or C?".
 // Only the last sentence counts, only when every alternative is short, and
 // anything that does not fit that shape exactly stays prose - a wrong chip
 // is worse than no chip.

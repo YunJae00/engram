@@ -333,7 +333,7 @@ const MENU_CAP = 5
 
 // Five tools chosen for THIS step, from the work so far rather than from the
 // words used. A keyword list decides for the model — in whichever languages
-// somebody remembered — and it was why "리서치 부탁해" could not reach the web.
+// somebody remembered — and can keep equivalent requests from reaching the web.
 // The shape here is a working order instead: look in the notebook, go to a
 // page, act on the page you opened, and put the result somewhere.
 export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[], conversed = false): AgentTool[] {

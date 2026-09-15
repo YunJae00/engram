@@ -82,7 +82,13 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     })).toBeGreaterThanOrEqual(30)
     await page.getByTestId('composer-web').click()
     await expect(page.getByTestId('web-pane')).toBeVisible()
+    await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')
+    await expect(page.locator('.web-pane-inner')).toHaveCSS('border-top-width', '0px')
+    await expect(page.locator('.web-pane-inner')).toHaveCSS('box-shadow', 'none')
+    await expect(page.getByTestId('web-pane')).toHaveCSS('margin', '0px')
+    await expect(page.getByTestId('web-pane')).toHaveCSS('box-shadow', 'none')
     await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')
+    await screenshot(`release-112-web-flat-${width}.png`)
     if (width <= 1180) {
       await expect.poll(() => page.getByTestId('web-pane').evaluate((node) => {
         const pane = node.getBoundingClientRect()

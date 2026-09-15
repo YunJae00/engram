@@ -1,4 +1,4 @@
-import { Orbit, PanelRightClose, Plus } from 'lucide-react'
+import { Orbit, PanelRightClose, RotateCcw } from 'lucide-react'
 import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -198,7 +198,7 @@ export const CosmosChat = memo(function CosmosChat() {
     <aside className={`cosmos-chat${closing ? ' closing' : ''}`} data-testid="cosmos-chat">
       <div className="cosmos-chat-head">
         <div className="cosmos-chat-heading"><span className="cosmos-chat-name" title={t('cosmos.chatTitle')}>{t('cosmos.chatName')}</span><small role="status">{busy ? 'Replying…' : 'Your memory, in conversation'}</small></div>
-        <button className="rail-toggle" aria-label="New memory conversation" title="New conversation" disabled={busy} onClick={() => { setMessages([]); setText(''); boxRef.current?.focus() }}><Plus size={16} aria-hidden /></button>
+        <button className="rail-toggle" aria-label="Reset memory conversation" title="Reset conversation · Saved memories are kept" disabled={busy} onClick={() => { setMessages([]); setText(''); boxRef.current?.focus() }}><RotateCcw size={16} aria-hidden /></button>
         <button
           className="rail-toggle"
           data-testid="cosmos-chat-collapse"

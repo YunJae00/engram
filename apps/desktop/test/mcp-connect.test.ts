@@ -38,6 +38,10 @@ it('preserves broken or unrelated client configuration and backs up an owned ent
   expect(saved.preference).toBe(1)
   expect(saved.mcpServers.unrelated).toEqual({ command: 'keep' })
   expect(saved.mcpServers.engram.args).toContain('--bridge')
+  fake.run.mockResolvedValue({ code: 1, out: 'not found' })
+  expect(await fake.handlers.get('mcp:clients')!()).toContainEqual({ id: 'desktop', state: 'configured' })
+  await writeFile(target, foreign)
+  expect(await fake.handlers.get('mcp:clients')!()).toContainEqual({ id: 'desktop', state: 'not-configured' })
   expect((await readdir(join(target, '..'))).some(name => name.endsWith('.bak'))).toBe(true)
 })
 

@@ -3,8 +3,8 @@ import { guessSchedule, type Schedule } from './schedule.js'
 
 // The same ask coming back on another day is the strongest sign a task
 // should stand on its own. Matched by the words that carry the ask, with the
-// asking itself ("좀", "해줘", "please") taken off, so "포털 공지 확인해줘!"
-// and "포털 공지 좀 확인해 줘" are one ask.
+// asking itself (such as "please") taken off, so differently phrased requests
+// to check the same portal notice are one ask.
 
 export interface PastAsk {
   text: string

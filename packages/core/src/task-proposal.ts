@@ -1,5 +1,5 @@
 // Turning a job that was just done into a button worth pressing again. The
-// ask itself is the wrong label for it: "여기 들어가서 확인만 해줘봐" names this
+// ask itself is the wrong label for it: "go here and check it" names this
 // morning, not the work, and a row of buttons carrying whole sentences is
 // unreadable within a week. So the work is restated - a short name, the job
 // written as an instruction that will still make sense next month, and one

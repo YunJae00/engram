@@ -28,7 +28,7 @@ export interface ErrandRetrievedNote {
   // How close the embedder put this note to the question, 0 when it said
   // nothing about it. Presence alone means nothing - the embedder returns its
   // top few for any question at all - so it is the height that decides whether
-  // "집안일" and "집에서 할 일" are one subject or two.
+  // "housework" and "things to do at home" are one subject or two.
   meaning?: number
 }
 

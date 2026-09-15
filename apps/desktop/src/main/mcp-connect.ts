@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { app, ipcMain } from 'electron'
 import { claudeBinary, codexBinary, runText } from './engine-cloud.js'
 import { externalInfoPath, externalStatus, setExternalEnabled, stopExternalCalls } from './external-connection.js'
-import type { McpConnectResultDto, McpInfoDto } from '../shared/types.js'
+import type { McpClientDto, McpConnectResultDto, McpInfoDto } from '../shared/types.js'
 
 function serverScriptPath(): string {
   return app.isPackaged ? join(process.resourcesPath, 'bin', 'mcp', 'engram-mcp.cjs') : join(app.getAppPath(), 'bundle', 'mcp', 'engram-mcp.cjs')
@@ -20,6 +20,25 @@ function desktopConfigPath(): string {
 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const owned = (value: unknown) => (JSON.stringify(value) ?? '').includes('engram-mcp.cjs')
+const currentSpec = (text: string) => [serverSpec().command, ...serverSpec().args, 'ELECTRON_RUN_AS_NODE'].every(arg => text.includes(arg) || text.includes(JSON.stringify(arg).slice(1, -1)))
+
+async function clientState(id: McpClientDto['id']): Promise<McpClientDto> {
+  try {
+    let text: string
+    if (id === 'desktop') {
+      const config: unknown = JSON.parse(await readFile(desktopConfigPath(), 'utf8'))
+      if (!record(config) || config.mcpServers !== undefined && !record(config.mcpServers)) throw new Error('Invalid config')
+      text = JSON.stringify(record(config.mcpServers) ? config.mcpServers.engram ?? {} : {})
+    } else {
+      const binary = id === 'claude' ? claudeBinary() : codexBinary()
+      if (!binary) return { id, state: 'unavailable' }
+      const result = await runText(binary, ['mcp', 'get', 'engram', ...(id === 'codex' ? ['--json'] : [])], 10000)
+      if (result.code !== 0) return { id, state: /not found|no .*server|does not exist|not exist/i.test(result.out) ? 'not-configured' : 'error' }
+      text = result.out
+    }
+    return { id, state: currentSpec(text) ? 'configured' : 'not-configured' }
+  } catch (error) { return { id, state: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'not-configured' : 'error' } }
+}
 
 async function connectDesktop(): Promise<McpConnectResultDto> {
   const target = desktopConfigPath()
@@ -50,7 +69,7 @@ async function connectCli(client: 'claude' | 'codex'): Promise<McpConnectResultD
   let restore: { file: string; before: string; removed: string } | undefined
   if (current.code === 0) {
     if (!owned(current.out)) throw new Error('Another server uses the name engram. Its configuration was not changed.')
-    if (spec.args.every(arg => current.out.includes(arg) || current.out.includes(JSON.stringify(arg).slice(1, -1)))) return { ok: true }
+    if (currentSpec(current.out)) return { ok: true }
     const file = client === 'codex' ? join(process.env['CODEX_HOME'] ?? join(homedir(), '.codex'), 'config.toml') : join(homedir(), '.claude.json')
     const before = await readFile(file, 'utf8')
     if (client === 'claude') {
@@ -85,6 +104,7 @@ async function connect(client: 'desktop' | 'claude' | 'codex'): Promise<McpConne
 }
 
 export function registerMcpIpc(): void {
+  ipcMain.handle('mcp:clients', () => Promise.all((['claude', 'codex', 'desktop'] as const).map(clientState)))
   ipcMain.handle('mcp:info', async (): Promise<McpInfoDto> => ({
     configJson: JSON.stringify({ mcpServers: { engram: serverSpec() } }, null, 2),
     desktopConfigPath: desktopConfigPath(), scriptExists: await access(serverScriptPath()).then(() => true, () => false),

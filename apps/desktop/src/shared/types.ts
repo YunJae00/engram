@@ -16,6 +16,11 @@ export interface McpConnectResultDto {
   code?: 'not-installed' | 'no-cli' | 'failed'
   detail?: string
 }
+export interface McpClientDto {
+  id: 'claude' | 'codex' | 'desktop'
+  state: 'configured' | 'not-configured' | 'unavailable' | 'error'
+}
+export interface BookmarkDto { title: string; url: string; folder: string; folderPath?: string[]; sourceId?: string; sourceName?: string }
 
 export interface NoteDto {
   id: string
@@ -538,8 +543,8 @@ export interface EngramApi extends DesktopApi {
   agentNavigate(lane: string, direction: 'back' | 'forward' | 'reload'): Promise<void>
   agentResize(lane: string, width: number, height: number): Promise<void>
   bookmarksSources(): Promise<{ id: string; name: string }[]>
-  bookmarksList(): Promise<{ title: string; url: string; folder: string }[]>
-  bookmarksImport(id: string): Promise<{ title: string; url: string; folder: string }[]>
+  bookmarksList(): Promise<BookmarkDto[]>
+  bookmarksImport(id: string): Promise<BookmarkDto[]>
   // How tall the pages should lay themselves out, from the pane showing them.
   agentHeight(height: number, lane?: string): Promise<void>
   missionFrames(lanes: string[]): Promise<MissionFrameDto[]>
@@ -734,6 +739,7 @@ export interface EngramApi extends DesktopApi {
   settingsSet(settings: AppSettingsDto): Promise<void>
   aiSelectionSet(scope: string, selection: { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }): Promise<void>
   mcpInfo(): Promise<McpInfoDto>
+  mcpClients(): Promise<McpClientDto[]>
   mcpConnectDesktop(): Promise<McpConnectResultDto>
   mcpConnectCode(): Promise<McpConnectResultDto>
   mcpConnectCodex(): Promise<McpConnectResultDto>
