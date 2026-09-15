@@ -3,7 +3,7 @@ export function browserAddress(input: string): string {
   if (!value) throw new Error('Enter a website or search term.')
   const scheme = /^[a-z][a-z\d+.-]*:/i.test(value) && !/^[^/:?#\s]+:\d+(?:[/?#]|$)/.test(value)
   const address = scheme || /^(localhost(?::\d+)?|[^\s/]+\.[^\s/]+)(?:[/:?#]|$)/i.test(value)
-  if (!address || /\s/.test(value)) return `https://www.google.com/search?q=${encodeURIComponent(value)}`
+  if (!address || !scheme && /\s/.test(value)) return `https://www.google.com/search?q=${encodeURIComponent(value)}`
   const url = new URL(scheme ? value : `${/^localhost[:/]/i.test(value) ? 'http' : 'https'}://${value}`)
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Use an http or https address without sign-in credentials.')
   return url.href

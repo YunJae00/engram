@@ -9,6 +9,8 @@ it('opens addresses directly and encodes search terms', () => {
   expect(browserAddress('안녕')).toBe('https://www.google.com/search?q=%EC%95%88%EB%85%95')
   expect(() => browserAddress('file:///secret')).toThrow('http')
   expect(() => browserAddress('https://user:pass@example.com')).toThrow('credentials')
+  expect(() => browserAddress('https://user:pass@example.com/a path')).toThrow('credentials')
+  expect(browserAddress('https://example.com/a path')).toBe('https://example.com/a%20path')
 })
 it('stores only safe origins, not authentication codes or private paths', () => {
   expect(recentSite('https://example.com/private?code=secret#token')).toBe('https://example.com')

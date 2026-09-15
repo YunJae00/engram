@@ -150,6 +150,10 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await page.getByTestId('provider-pick-codex').click()
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'codex', chat: 'claude' })
   await page.getByTestId('model-pick-auto').click()
+  await app.evaluate(({ BrowserWindow }) => {
+    const engines = ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true, healthy: true }))
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })
+  })
   await page.getByTestId('filing-retry').click()
   await expect(page.getByTestId('sweep-status')).toContainText('Filing done')
   const retryBox = await page.getByTestId('filing-retry').boundingBox()
