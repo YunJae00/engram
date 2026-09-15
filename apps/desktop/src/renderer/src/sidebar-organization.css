@@ -78,7 +78,42 @@
 .sidebar-conversation-preview > .site-icon { width: 12px; height: 12px; }
 .sidebar-conversation-preview[data-active='true'] { color: var(--fg-dim); }
 .conversation-title { display: flex; align-items: center; gap: 9px; min-width: 0; overflow: hidden; }
-.sidebar-footer > .sidebar-status-block { margin: 0; padding: 0; border: 0; min-width: 0; }
+.sidebar-footer > .sidebar-status-block { margin: 0; padding: 0; border: 0; min-width: 0; grid-column: 1 / -1; grid-row: 1 / 3; }
+.sidebar-filing-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; }
+.sidebar-filing-retry { justify-content: center; padding: 8px !important; }
+.app-sidebar-head { order: -1; }
+.recent-web { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 4px 16px 8px; }
+.recent-web > button { min-width: 0; height: 54px; padding: 7px 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; background: var(--hover-bg); border-radius: 10px; color: var(--fg-dim); }
+.recent-web > button:hover:not(:disabled) { background: var(--selected-soft); color: var(--fg); }
+.recent-web > button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.recent-web > .recent-web-new { background: transparent; border: 1px dashed var(--border-soft); }
+.recent-web > button > .recent-web-mark { font-size: 17px; font-weight: 600; line-height: 18px; color: var(--fg); }
+.web-pane.expanded { flex: 1 !important; width: 100% !important; max-width: none !important; height: 100% !important; }
+.web-pane.expanded > .web-pane-grip { display: none; }
+.bots-main:has(> .web-pane.expanded) > .bots-chat { display: none; }
+.browser-start { gap: 16px; padding: 32px !important; }
+.browser-start > h2 { font-size: 20px; font-weight: 500; margin: 0; color: var(--fg-dim); }
+.browser-start > .browser-address-field { flex: none; width: min(640px, 100%); min-height: 52px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--panel-bg); padding: 0 16px; }
+.browser-start .live-address { background: transparent; min-width: 0; width: 100%; border: 0; box-shadow: none; outline: none; }
+.browser-start > .browser-address-field:focus-within { border-color: var(--fg-faint); }
+.browser-start-go { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--fg); color: var(--panel-bg); }
+.browser-start-go:disabled { opacity: 0.35; }
+.browser-start > span { max-width: 360px; text-align: center; line-height: 1.6; }
+.onboard-progress { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; color: var(--fg-dim); font-size: 13px; }
+.onboard-progress > strong { color: var(--fg); font-size: 16px; }
+.onboard-folder-label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.onboard-choose-folder { align-self: flex-start; color: var(--fg-dim); font-size: 12px; padding: 4px 0; }
+.onboard-providers { display: grid; gap: 12px; }
+.onboard-provider { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 18px; border: 1px solid var(--border-soft); border-radius: 14px; }
+.onboard-provider > div:not(.onboard-login-actions) { display: grid; gap: 5px; }
+.onboard-provider span { color: var(--fg-dim); font-size: 12px; line-height: 1.5; }
+.onboard-login-actions { grid-column: 2 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.onboard-login-actions > button, .onboard-actions > button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; }
+.onboard-fail { display: grid; gap: 10px; margin-top: 18px; }
+.onboard-fail > button { justify-self: start; }
+.onboard-card { max-height: calc(100dvh - 72px); overflow-y: auto; }
+.sidebar-status-block > .provider-picker-sidebar { width: calc(100% - 36px); margin-right: 36px; }
+.sidebar-footer > button[data-testid='activity-settings'] { grid-column: 2; grid-row: 2; z-index: 1; }
 .sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: end; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }

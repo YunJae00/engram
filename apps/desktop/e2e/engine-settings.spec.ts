@@ -99,7 +99,7 @@ test('ChatGPT models can be selected in the composer without changing the Claude
   await page.keyboard.press('Escape')
 })
 
-test('composer and sidebar switch providers with icons and retain each model', async () => {
+test('composer and filing sidebar select providers independently', async () => {
   const picker = page.getByTestId('model-picker')
   await picker.click()
   await expect(page.getByTestId('provider-pick-claude').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
@@ -111,11 +111,11 @@ test('composer and sidebar switch providers with icons and retain each model', a
   await page.getByTestId('engine-status').click()
   await expect(page.getByTestId('provider-pick-codex').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
   await page.getByTestId('provider-pick-codex').click()
-  await expect(page.getByTestId('model-pick-codex-fast')).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByTestId('model-pick-auto')).toHaveAttribute('aria-checked', 'true')
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('engine-status')).toBeFocused()
-  await expect(picker.locator('[data-provider="codex"]')).toHaveCount(1)
-  expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.defaultEngine, settings.claudeModel, settings.codexModel] })).toEqual(['codex', 'claude-fast', 'codex-fast'])
+  await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
+  expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.defaultEngine, settings.claudeModel, settings.codexModel, settings.aiSelections?.filing?.engine] })).toEqual(['claude', 'claude-fast', 'codex-fast', 'codex'])
 })
 
 test('provider menu supports keyboard selection and stays within compact windows', async () => {
@@ -151,13 +151,14 @@ test('provider menu supports keyboard selection and stays within compact windows
 })
 
 test('a disconnected provider opens AI settings without changing accounts or provider', async () => {
+  const before = await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)
   await app.evaluate(() => { (globalThis as Global).engineFixture.signed.claude = false })
   await page.getByTestId('model-picker').click()
   await expect(page.getByTestId('provider-pick-claude').locator('.model-picker-name')).toHaveAttribute('title', 'Connect in settings')
   await page.getByTestId('provider-pick-claude').click()
   await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('brain-claude-connect')).toBeEnabled()
-  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('codex')
+  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe(before)
   expect(await app.evaluate(() => { const state = (globalThis as Global).engineFixture; return { signed: state.signed, login: state.login } })).toEqual({ signed: { claude: false, codex: true }, login: [{ id: 'codex', phase: 'connected', canOpen: false }] })
   await page.keyboard.press('Escape')
 })

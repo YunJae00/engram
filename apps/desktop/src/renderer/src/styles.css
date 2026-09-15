@@ -1390,10 +1390,6 @@ body.bubble-host { background: transparent; }
 .onboard-card input, .onboard-card textarea { width: 100%; font-size: var(--fs-body); padding: 7px 11px; }
 .onboard-card textarea { resize: none; }
 .onboard-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-.onboard-steps { display: flex; gap: 6px; margin-bottom: 8px; }
-.step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
-.step-dot.active { background: var(--accent); }
-.step-dot.done { background: var(--fg-faint); }
 .engine-lights { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .engine-lights li { display: flex; align-items: center; gap: 8px; }
 .engine-name { color: var(--fg); }

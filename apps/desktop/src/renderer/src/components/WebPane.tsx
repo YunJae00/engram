@@ -1,4 +1,4 @@
-import { ChevronsRight, Globe, LoaderCircle, Square } from 'lucide-react'
+import { ArrowRight, ChevronsRight, Globe, LoaderCircle, Maximize2, PanelLeft, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -12,6 +12,7 @@ import { useShellState } from '../state-slices.js'
 import { useApp } from '../state.js'
 import { BrowserActions } from './BrowserActions.js'
 import { useBrowserViewport } from '../lib/useBrowserViewport.js'
+import { browserAddress } from '../lib/browser-start.js'
 
 // The page the comet works on, standing beside the conversation as its own
 // half of the screen. Trust comes from being able to SEE the work and stop
@@ -28,7 +29,7 @@ const FOLD_MS = 220
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
-function Address({ url, channel }: { url?: string; channel: string }) {
+function Address({ url, channel, start = false }: { url?: string; channel: string; start?: boolean }) {
   const { showToast } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -38,13 +39,23 @@ function Address({ url, channel }: { url?: string; channel: string }) {
   useEffect(() => {
     if (document.activeElement !== field.current && field.current) field.current.scrollLeft = 0
   }, [url])
+  const go = () => {
+    if (navigating.current || !shown.trim()) return
+    let address: string
+    try { address = browserAddress(shown) }
+    catch (error) { showToast(error instanceof Error ? error.message : String(error)); return }
+    setDraft(address)
+    navigating.current = true; setPending(true)
+    void api.agentGo(address, channel).then(() => setDraft(value => value === address ? null : value)).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website')).finally(() => { navigating.current = false; setPending(false) })
+  }
   return (
     <div className="browser-address-field" aria-busy={pending}><input
       ref={field}
       className="live-address"
-      data-testid="live-address"
-      aria-label="Website address"
-      placeholder={t('live.address')}
+      data-testid={start ? 'browser-start-input' : 'live-address'}
+      aria-label={start ? 'Search or type a URL' : 'Website address'}
+      placeholder="Search or type a URL"
+      autoFocus={start}
       value={shown}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
@@ -59,15 +70,9 @@ function Address({ url, channel }: { url?: string; channel: string }) {
         if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
         e.preventDefault()
         e.stopPropagation()
-        if (navigating.current) return
-        const typed = shown.trim()
-        if (!typed) return
-        const address = /^[a-z]+:/i.test(typed) ? typed : `https://${typed}`
-        setDraft(address)
-        navigating.current = true; setPending(true)
-        void api.agentGo(address, channel).then(() => setDraft(value => value === address ? null : value)).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website')).finally(() => { navigating.current = false; setPending(false) })
+        go()
       }}
-    />{pending && <LoaderCircle size={14} className="computer-spinner" aria-label="Opening website" />}</div>
+    />{start ? <button className="browser-start-go" aria-label="Search or open website" disabled={pending || !shown.trim()} onClick={go}>{pending ? <LoaderCircle size={16} className="computer-spinner" aria-label="Opening website" /> : <ArrowRight size={18} aria-hidden />}</button> : pending && <LoaderCircle size={14} className="computer-spinner" aria-label="Opening website" />}</div>
   )
 }
 
@@ -82,7 +87,10 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   }, [])
   // Folding plays the pane out to the right edge before the tab takes its
   // place, so the fold reads as the pane leaving, not vanishing.
-  const { folded, wanted, phase } = useWebPane(channel)
+  const { folded, wanted, phase, expanded } = useWebPane(channel)
+  useEffect(() => {
+    if (busy && expanded) webPane.expand(channel, false)
+  }, [busy, expanded, channel])
   const [present, setPresent] = useState(!folded)
   const closing = folded && present
   const fold = () => webPane.fold(channel)
@@ -155,7 +163,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   if (folded && !present) return null
   return (
     <aside
-      className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}`}
+      className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}${expanded ? ' expanded' : ''}`}
       data-testid="web-pane"
       data-work={busy ? phase : 'idle'}
       ref={(element) => { if (element) element.inert = closing }}
@@ -176,6 +184,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           </button>
           <Address key={channel} channel={channel} url={mine ? url : ''} />
           <BrowserActions key={channel} lane={channel} url={mine ? url : undefined} live={liveHere} />
+          <button className="live-dock-act" data-testid="web-pane-expand" disabled={busy} aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={busy ? 'Chat stays visible while the AI is working' : expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>
               <Square size={10} strokeWidth={2.5} aria-hidden /> {t('bubble.stop')}
@@ -192,7 +201,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           className="web-pane-stage"
           ref={stage}
         >
-          {!liveHere && !frameHere ? <div className="web-pane-empty"><Globe size={24} strokeWidth={1.4} aria-hidden /><p>Where would you like to go?</p><span>Enter a website above to get started.</span></div> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing} hasFrame={frameHere} />}
+          {!liveHere && !frameHere ? <div className="web-pane-empty browser-start"><Globe size={42} strokeWidth={1.2} aria-hidden /><h2>Where would you like to go?</h2><Address channel={channel} start /><span>Search the web or enter a website. No AI connection needed.</span></div> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing} hasFrame={frameHere} />}
         </div>
         {frozen && <div className="web-pane-note">{t('live.closed')}</div>}
         {children}

@@ -11,6 +11,7 @@ import { SidebarStatus } from './SidebarStatus.js'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
 import { SidebarCollection } from './SidebarCollection.js'
 import { SidebarConversation } from './SidebarConversation.js'
+import { RecentWeb } from './RecentWeb.js'
 
 interface Props {
   open: boolean; onToggle(): void; onOpenPalette(): void; onOpenSettings(): void; onOpenRoutines(): void
@@ -82,6 +83,7 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     onChange={changeValue => change(kind, changeValue)} onRename={(id, name) => rename(kind, id, name)} onRemove={id => remove(kind, id)} onError={showToast}
     onOpen={id => { if (kind === 'chat') { selectComet(id); navigate('bots') } else { onSelectRoutine(id); if (window.innerWidth <= 900) onToggle() } }} />
   return <aside className={`app-sidebar${open ? ' open' : ''}`} data-testid="app-sidebar" aria-hidden={!open}>
+    {!library && <RecentWeb bots={bots} onOpen={() => { if (window.innerWidth <= 900) onToggle() }} />}
     <div className="app-sidebar-head"><WorkspaceSwitcher activity={activity} onNavigate={navigate} onOpenRoutines={onOpenRoutines} onOpenPalette={onOpenPalette} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
     {library ? <button className="sidebar-new" onClick={() => navigate('bots')}><ArrowLeft size={17} aria-hidden /><span>Conversations</span></button> : <button className="sidebar-new" data-testid="bots-new" disabled={!vaultReady} onClick={() => { setActivity('bots'); selectComet(null); setQuery(''); if (window.innerWidth <= 900) onToggle() }}><Plus size={17} strokeWidth={1.9} aria-hidden /><span>{t('bots.new')}</span></button>}
     <div className="sidebar-library-tools"><div className="sidebar-search"><Search size={14} aria-hidden /><input aria-label={library ? 'Search routines' : 'Search conversations'} placeholder={library ? 'Search routines' : 'Search conversations'} value={query} onChange={event => setQuery(event.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={13} aria-hidden /></button>}</div><button className="sidebar-icon-button" aria-label={library ? 'New routine folder' : 'New chat folder'} title="New folder" onClick={() => newFolder(library ? 'routine' : 'chat')}><FolderPlus size={16} aria-hidden /></button></div>

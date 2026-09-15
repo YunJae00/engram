@@ -720,7 +720,7 @@ export interface EngramApi extends DesktopApi {
   // Ask the running librarian sweep to stop after its current step; the
   // remaining absorb backlog is preserved for a later Resume.
   absorbStop(): Promise<void>
-  onboardDefaults(): Promise<{ defaultRoot: string; engines: EngineStatusDto[] }>
+  onboardDefaults(): Promise<{ defaultRoot: string }>
   onboardComplete(payload: OnboardPayload): Promise<void>
   // current state of the zero-touch claude auto-install
   // false while the first engine detection is still running

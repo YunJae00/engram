@@ -1844,6 +1844,7 @@ export function registerIpc(ctx: VaultContext): void {
   })
 
   ipcMain.handle('sweep:run', async () => {
+    if (pipelineRunning || draining || manualSweepInFlight) throw new Error('Filing is already running. Please wait for the current pass to finish.')
     broadcast({ type: 'sweep:start' })
     manualSweepInFlight = true
     // A fresh manual sweep clears any earlier stop; the Resume button reaches

@@ -100,14 +100,14 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
       }
     }).toEqual({ settingsAligned: true, workAbove: true })
   }
-  await expect(work).toHaveCount(0)
-  await expectFooterAlignment(false)
+  await expect(work).toHaveText('Filing ready')
+  await expectFooterAlignment(true)
   await emit({ type: 'filing:start' })
   await expect(work).toHaveText('Filing your capture…')
   await expectFooterAlignment(true)
   await emit({ type: 'filing:done' })
-  await expect(work).toHaveCount(0)
-  await expectFooterAlignment(false)
+  await expect(work).toHaveText('Filing ready')
+  await expectFooterAlignment(true)
   await emit({ type: 'sweep:start' })
   await expect(work).toHaveText('Filing your notes…')
   await expectFooterAlignment(true)

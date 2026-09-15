@@ -33,7 +33,7 @@ import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
 import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
-import { configuredVaultRoot, engineStates, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
+import { configuredVaultRoot, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
 import { registerWorkspaceIpc } from './workspaces.js'
 import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
@@ -490,9 +490,7 @@ function registerBaseIpc(): void {
 
   ipcMain.handle('onboard:defaults', async () => ({
     defaultRoot: process.env['ENGRAM_ONBOARD_ROOT'] ?? join(app.getPath('home'), 'Engram'),
-    // The real per-engine state, so step 2 can say "installed — just log in"
-    // instead of showing an engine that simply is not there.
-    engines: await engineStates(),
+    // Connection detection runs independently; folder setup must not wait for it.
   }))
 
   ipcMain.handle('import:pick', async () => {

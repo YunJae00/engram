@@ -4,16 +4,17 @@ import type { EngramEvent } from '../../../shared/types.js'
 interface WebPaneState {
   folded: boolean
   wanted: boolean
+  expanded: boolean
   phase: 'idle' | 'working' | 'aside'
 }
-const EMPTY: WebPaneState = { folded: false, wanted: false, phase: 'idle' }
+const EMPTY: WebPaneState = { folded: false, wanted: false, expanded: false, phase: 'idle' }
 const lanes = new Map<string, WebPaneState>()
 const listeners = new Set<() => void>()
 function state(lane: string): WebPaneState { return lanes.get(lane) ?? EMPTY }
 function set(lane: string, change: Partial<WebPaneState>): void {
   const before = state(lane)
   const next = { ...before, ...change }
-  if (next.folded === before.folded && next.wanted === before.wanted && next.phase === before.phase) return
+  if (next.folded === before.folded && next.wanted === before.wanted && next.phase === before.phase && next.expanded === before.expanded) return
   lanes.set(lane, next)
   for (const listener of listeners) listener()
 }
@@ -27,7 +28,8 @@ export const webPane = {
   },
   getSnapshot: state,
   open(lane: string): void { set(lane, { folded: false, wanted: true }) },
-  fold(lane: string): void { set(lane, { folded: true }) },
+  fold(lane: string): void { set(lane, { folded: true, expanded: false }) },
+  expand(lane: string, expanded: boolean): void { set(lane, { expanded }) },
   // Tool names are the protocol, not the human-readable step summary.
   handleEvent(event: EngramEvent): boolean {
     if (!('channel' in event) || !event.channel) return false
