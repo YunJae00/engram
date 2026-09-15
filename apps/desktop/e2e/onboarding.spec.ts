@@ -19,6 +19,8 @@ async function screenshot(name: string) {
     const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!
     await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
     await new Promise(resolve => setTimeout(resolve, 400))
+    await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
+    await new Promise(resolve => setTimeout(resolve, 450))
     return (await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })).toPNG().toString('base64')
   })
   await writeFile(join(PREVIEW, name), Buffer.from(data, 'base64'))
@@ -57,6 +59,7 @@ test.afterEach(async () => {
 
 test('a fresh workspace can skip AI and browse immediately', async () => {
   await expect(page.getByTestId('onboarding')).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
   await page.getByTestId('onboard-next').click()
   await expect(page.getByTestId('onboard-skip-ai')).toBeEnabled()

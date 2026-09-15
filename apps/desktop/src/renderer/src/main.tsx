@@ -37,6 +37,7 @@ requestAnimationFrame(() =>
   requestAnimationFrame(() => {
     const boot = document.getElementById('boot')
     if (!boot) return
+    boot.style.animation = 'none'
     boot.style.opacity = '0'
     setTimeout(() => boot.remove(), 400)
   }),
