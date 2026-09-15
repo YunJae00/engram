@@ -130,15 +130,23 @@ test('long pasted text becomes a readable attachment without filling the compose
   const clip = await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 100
     const context = canvas.getContext('2d')!; context.fillStyle = '#4578ab'; context.fillRect(0, 0, 100, 100)
-    const stream = canvas.captureStream(10)
+    const track = new (window as unknown as { MediaStreamTrackGenerator: new (options: { kind: 'video' }) => MediaStreamTrack & { writable: WritableStream<VideoFrame> } }).MediaStreamTrackGenerator({ kind: 'video' })
+    const writer = track.writable.getWriter()
+    const stream = new MediaStream([track])
     const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' })
     const parts: Blob[] = []
     recorder.ondataavailable = event => parts.push(event.data)
     const stopped = new Promise<void>(resolve => { recorder.onstop = () => resolve() })
-    recorder.start(); await new Promise(resolve => setTimeout(resolve, 500)); recorder.stop(); await stopped
+    recorder.start()
+    for (const timestamp of [0, 100000]) {
+      const frame = new VideoFrame(canvas, { timestamp })
+      try { await writer.write(frame) } finally { frame.close() }
+    }
+    await new Promise(resolve => setTimeout(resolve, 100)); recorder.stop(); await stopped
     stream.getTracks().forEach(track => track.stop())
     return Array.from(new Uint8Array(await new Blob(parts).arrayBuffer()))
   })
+  expect(clip.length).toBeGreaterThan(0)
   await page.getByTestId('bots-input-files').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: Buffer.from(clip) })
   const video = files.locator('video')
   await expect(video).toBeVisible()
