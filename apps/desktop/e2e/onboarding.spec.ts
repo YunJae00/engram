@@ -163,8 +163,16 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect(page.getByTestId('browser-start-input')).toBeFocused()
   await expect(page.locator('.bots-chat')).toBeHidden()
   await screenshot('06-browser-start.png')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const name of ['notes', 'calendar', 'docs', 'mail', 'projects', 'tasks', 'files']) {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'agent:live', on: true, lane: `fixture-${name}`, url: `https://${name}.test/private?token=not-stored` })
+    }
+  })
+  await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByRole('button')).toHaveCount(8)
+  await screenshot('08-recent-sites.png')
   await page.getByTestId('web-pane-expand').click()
   await expect(page.locator('.bots-chat')).toBeVisible()
+  await screenshot('07-browser-and-chat.png')
   await page.getByTestId('web-pane-expand').click()
   const server = createServer((_req, res) => { res.setHeader('content-type', 'text/html'); res.end('<h1>Browser ready</h1>') })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -176,15 +184,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await expect.poll(() => page.evaluate(() => window.engram.agentState().then(state => state.url)), { timeout: 60000 }).toBe(url)
     await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByTitle(`http://127.0.0.1:${address.port}`, { exact: true })).toBeVisible()
     expect(await page.evaluate(() => localStorage.getItem('engram.recentWeb'))).not.toContain('not-stored')
-    await page.getByTestId('web-pane-expand').click()
-    await screenshot('07-browser-and-chat.png')
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const name of ['notes', 'calendar', 'docs', 'mail', 'projects', 'tasks', 'files']) {
-        for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'agent:live', on: true, lane: `fixture-${name}`, url: `https://${name}.test/private?token=not-stored` })
-      }
-    })
     await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByRole('button')).toHaveCount(8)
-    await screenshot('08-recent-sites.png')
     await page.reload()
     await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByRole('button')).toHaveCount(8)
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
