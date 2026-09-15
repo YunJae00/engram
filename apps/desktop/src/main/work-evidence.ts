@@ -96,7 +96,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
           try {
             await pending
             const data = await encoder.finish()
-            const result = { recording: reason ? 'interrupted' : 'saved', reason, frames: state.frames, durationMs: Date.now() - state.started, ...await save(`${source.name}.webm`, data, { ...args, lane, url: source.url, reason, frames: state.frames }) }
+            const result = { recording: reason ? 'interrupted' : 'saved', name: source.name, url: source.url, reason, frames: state.frames, durationMs: Date.now() - state.started, ...await save(`${source.name}.webm`, data, { ...args, lane, url: source.url, reason, frames: state.frames }) }
             completed.set(lane, result)
             if (completed.size > 50) completed.delete(completed.keys().next().value!)
             return result

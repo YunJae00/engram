@@ -21,16 +21,25 @@ export function checkPage(page: WebPage, check: PageCheck) {
 
 export function evidenceFault(steps: AgentLoopStep[]): string | undefined {
   const checks = new Map<string, boolean>()
-  let recording = false
+  const recordings = new Set<string>()
+  const recordingKey = (name: unknown, url: unknown) => {
+    try { return JSON.stringify([name, new URL(String(url)).href]) }
+    catch { return JSON.stringify([name, url]) }
+  }
   for (const step of steps) {
-    if (!step.seeded && step.tool === 'record_start') { try { const receipt = JSON.parse(step.observation); recording = receipt.recording === 'started' || Boolean(receipt.error) || recording } catch { recording = true } }
-    if (!step.seeded && step.tool === 'record_stop') { try { if (JSON.parse(step.observation).recording === 'saved') recording = false } catch { /* Unconfirmed recording remains outstanding. */ } }
+    if (!step.seeded && step.tool === 'record_start') recordings.add(recordingKey(step.args.name, step.args.url))
+    if (!step.seeded && step.tool === 'record_stop') {
+      try {
+        const receipt = JSON.parse(step.observation)
+        if (receipt.recording === 'saved' && typeof receipt.name === 'string' && typeof receipt.url === 'string' && typeof receipt.artifact === 'string' && receipt.frames > 0) recordings.delete(recordingKey(receipt.name, receipt.url))
+      } catch { /* Unconfirmed recording remains outstanding. */ }
+    }
     if (!['verify', 'wait_for', 'upload_file'].includes(step.tool) || step.seeded) continue
     const key = JSON.stringify(step.tool === 'upload_file' ? ['upload', step.args.artifact, step.args.url, step.args.target, step.args.confirmation] : ['check', step.args.id, step.args.url, step.args.ready, step.args.present, step.args.absent])
     try { const receipt = JSON.parse(step.observation); checks.set(key, step.tool === 'upload_file' ? receipt.upload?.status === 'confirmed' : receipt.verification?.status === 'passed') }
     catch { checks.set(key, false) }
   }
-  return recording ? 'The recording has not been saved successfully. Stop it and report any interruption before claiming completion.' : [...checks.values()].some(passed => !passed) ? 'A requested page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.' : undefined
+  return recordings.size ? 'A requested recording has not been saved successfully. Stop it and report any interruption before claiming completion.' : [...checks.values()].some(passed => !passed) ? 'A requested page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.' : undefined
 }
 
 export interface EvidenceHost {

@@ -44,10 +44,21 @@ it('keeps failed checks, interrupted recordings and uncertain uploads unverified
   expect(evidenceFault([failed, { ...passed, args: { ...check, ready: 'Other' } }])).toBeDefined()
   expect(evidenceFault([failed, { ...passed, seeded: true }])).toBeDefined()
   expect(evidenceFault([failed, passed])).toBeUndefined()
-  const started = step('record_start', { recording: 'started' })
+  const started = step('record_start', { recording: 'started' }, { name: 'before', url: page.url })
   expect(evidenceFault([started, step('record_stop', { recording: 'interrupted' })])).toBeDefined()
-  expect(evidenceFault([started, step('record_stop', { recording: 'saved' })])).toBeUndefined()
+  const saved = { recording: 'saved', name: 'before', url: page.url, artifact: 'before.webm', frames: 1 }
+  expect(evidenceFault([started, step('record_stop', saved)])).toBeUndefined()
+  expect(evidenceFault([started, step('record_stop', { ...saved, frames: 0 })])).toBeDefined()
   expect(evidenceFault([step('upload_file', { upload: { status: 'unconfirmed' } })])).toBeDefined()
+})
+
+it('keeps before and after recordings independent and accepts only matching fresh completion receipts', () => {
+  const start = (name: string, url = page.url) => step('record_start', { recording: 'started' }, { name, url })
+  const stop = (name: string) => step('record_stop', { recording: 'saved', name, url: page.url, artifact: `${name}.webm`, frames: 2 })
+  const steps = [start('before'), step('record_stop', { recording: 'interrupted' }), start('after'), stop('after')]
+  expect(evidenceFault(steps)).toBeDefined()
+  expect(evidenceFault([...steps, start('before'), stop('before')])).toBeUndefined()
+  expect(evidenceFault([start('before', 'https://example.test:443/app'), stop('before')])).toBeUndefined()
 })
 
 it('saves media with content identity and rejects changed evidence and invalid media', async () => {
