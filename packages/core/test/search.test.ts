@@ -36,6 +36,11 @@ describe('fulltext index (minisearch)', () => {
   })
 
   describe('strict search (capture echo)', () => {
+    it('matches uppercase issue identifiers using the same normalization as the index', async () => {
+      const issue = await createNote(paths, { body: '# 2026-09-15 SATURN-1180\n\nUpload integrity fix.' })
+      const index = buildIndex([issue])
+      expect(searchIndexStrict(index, 'SATURN-1180').map(hit => hit.id)).toEqual([issue.front.id])
+    })
     it('drops a one-common-word match that recall search surfaces', async () => {
       const retention = await createNote(paths, {
         body: '# 다음 분기 목표: 리텐션 중심\n\n팀장이 다음 분기 목표를 신규 가입에서 리텐션 중심으로 전환함.',

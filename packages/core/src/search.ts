@@ -75,7 +75,7 @@ export function searchIndex(index: MiniSearch<IndexedDoc>, query: string): Searc
 
 export function searchIndexStrict(index: MiniSearch<IndexedDoc>, query: string): SearchHit[] {
   const minTerms = query.trim().length < 12 ? 2 : 3
-  const queryTokens = [...new Set(cjkTokenize(query).filter((token) => token.length >= 2))]
+  const queryTokens = [...new Set(cjkTokenize(query.toLowerCase()).filter((token) => token.length >= 2))]
   return index
     .search(query, { prefix: true })
     .filter((r) => {
