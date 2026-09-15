@@ -1526,7 +1526,15 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
   ipcMain.handle('agent:input', (_e, input: AgentInputDto, lane: string) => agentViewInput(input, lane))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))
-  ipcMain.handle('agent:go', (_e, url: string, lane?: string) => agentViewGo(String(url ?? '').trim().slice(0, 2048), lane))
+  ipcMain.handle('agent:go', async (_e, url: string, lane?: string) => {
+    await agentViewGo(String(url ?? '').trim().slice(0, 2048), lane)
+    const opened = lane ? laneState(lane).url : agentViewState().url
+    if (opened && lane?.startsWith('bot-')) {
+      await recordBotSites(paths, lane.slice(4), [opened]).catch(error => flog('site-history', error))
+      try { visitedOrigins.add(new URL(opened).origin) } catch { /* Invalid addresses have no icon. */ }
+      broadcast({ type: 'bots:changed' })
+    }
+  })
   ipcMain.handle('agent:refresh', () => refreshAgentView())
   ipcMain.handle('agent:history', (_e, lane: string) => browserHistory(String(lane)))
   ipcMain.handle('agent:navigate', (_e, lane: string, direction: string) => browserNavigate(String(lane), String(direction)))

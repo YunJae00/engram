@@ -82,12 +82,9 @@
 .sidebar-filing-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; }
 .sidebar-filing-retry { justify-content: center; padding: 8px !important; }
 .app-sidebar-head { order: -1; }
-.recent-web { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 4px 16px 8px; }
-.recent-web > button { min-width: 0; height: 54px; padding: 7px 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; background: var(--hover-bg); border-radius: 10px; color: var(--fg-dim); }
+.recent-web { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; padding: 4px 16px 6px; }
+.recent-web > button { min-width: 0; height: 32px; padding: 0; display: grid; place-items: center; background: transparent; border-radius: 6px; color: var(--fg-dim); }
 .recent-web > button:hover:not(:disabled) { background: var(--selected-soft); color: var(--fg); }
-.recent-web > button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
-.recent-web > .recent-web-new { background: transparent; border: 1px dashed var(--border-soft); }
-.recent-web > button > .recent-web-mark { font-size: 17px; font-weight: 600; line-height: 18px; color: var(--fg); }
 .web-pane.expanded { flex: 1 !important; width: 100% !important; max-width: none !important; height: 100% !important; }
 .web-pane.expanded > .web-pane-grip { display: none; }
 .bots-main:has(> .web-pane.expanded) > .bots-chat { display: none; }

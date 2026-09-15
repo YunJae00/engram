@@ -11,7 +11,7 @@ The test creates isolated workspaces under `tmp/` and leaves these screenshots i
 5. `05-first-screen.png` — first conversation screen.
 6. `06-browser-start.png` — direct browser entry.
 7. `07-browser-and-chat.png` — browser alongside the conversation.
-8. `08-recent-sites.png` — seven site shortcuts plus New, using fixture site names.
+8. `08-recent-sites.png` — five compact site icons plus New, using fixture names and icons.
 
 Authentication states are simulated at the IPC boundary. No real credentials are used and no provider subscription quota is consumed. The browser navigation uses a local test server. This verifies the interface and persistence, not live provider authorization; final sign-in still requires the account owner in the provider's browser flow.
 

@@ -8,12 +8,13 @@ import { recentSite } from '../lib/browser-start.js'
 import { webPane } from '../lib/webPane.js'
 import { useShellState } from '../state-slices.js'
 import type { BotDto } from '../../../shared/types.js'
+import { SiteIcon } from './SiteIcon.js'
 
 const KEY = 'engram.recentWeb'
 function readSites(): string[] {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]')
-    return Array.isArray(saved) ? [...new Set(saved.map(recentSite).filter((site): site is string => !!site))].slice(0, 7) : []
+    return Array.isArray(saved) ? [...new Set(saved.map(recentSite).filter((site): site is string => !!site))].slice(0, 5) : []
   } catch { return [] }
 }
 
@@ -27,7 +28,7 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
     setSites(held => {
       if (held.length) return held
       const origins = [...bots].sort((a, b) => (b.lastMessage?.at ?? b.createdAt).localeCompare(a.lastMessage?.at ?? a.createdAt)).flatMap(bot => bot.webSites?.map(site => recentSite(site.origin)) ?? []).filter((site): site is string => !!site)
-      const next = [...new Set(origins)].slice(0, 7)
+      const next = [...new Set(origins)].slice(0, 5)
       if (!next.length) return held
       try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* Session shortcuts remain available. */ }
       return next
@@ -44,7 +45,7 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
       if (last.size > 8) last.delete(last.keys().next().value!)
       setSites(held => {
         if (held[0] === site) return held
-        const next = [site, ...held.filter(item => item !== site)].slice(0, 7)
+        const next = [site, ...held.filter(item => item !== site)].slice(0, 5)
         try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* Shortcuts still work for this session. */ }
         return next
       })
@@ -63,7 +64,7 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
     finally { pending.current = false; setOpening(null) }
   }
   return <nav className="recent-web" aria-label="Recent websites">
-    {sites.map(site => <button key={site} disabled={!vaultReady || opening !== null} title={site} onClick={() => void open(site)}>{opening === site ? <LoaderCircle className="computer-spinner" size={18} aria-hidden /> : <span className="recent-web-mark" aria-hidden>{new URL(site).hostname.replace(/^www\./, '').slice(0, 1).toUpperCase()}</span>}<span>{new URL(site).hostname.replace(/^www\./, '')}</span></button>)}
-    <button className="recent-web-new" data-testid="web-new" disabled={!vaultReady || opening !== null} title="New browser tab" onClick={() => void open()}>{opening === 'new' ? <LoaderCircle className="computer-spinner" size={18} aria-hidden /> : <Plus size={18} aria-hidden />}<span>New</span></button>
+    {sites.map(site => <button key={site} disabled={!vaultReady || opening !== null} title={site} aria-label={`Open ${new URL(site).hostname}`} onClick={() => void open(site)}>{opening === site ? <LoaderCircle className="computer-spinner" size={16} aria-hidden /> : <SiteIcon origin={site} />}</button>)}
+    <button data-testid="web-new" disabled={!vaultReady || opening !== null} title="New browser tab" aria-label="New browser tab" onClick={() => void open()}>{opening === 'new' ? <LoaderCircle className="computer-spinner" size={16} aria-hidden /> : <Plus size={16} aria-hidden />}</button>
   </nav>
 }

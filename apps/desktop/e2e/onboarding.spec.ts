@@ -166,12 +166,30 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect(page.getByTestId('browser-start-input')).toBeFocused()
   await expect(page.locator('.bots-chat')).toBeHidden()
   await screenshot('06-browser-start.png')
-  await app.evaluate(({ BrowserWindow }) => {
+  await app.evaluate(({ BrowserWindow, ipcMain, nativeImage }) => {
+    ipcMain.removeHandler('site:icon')
+    ipcMain.handle('site:icon', (_event, origin: string) => {
+      if (origin === 'https://docs.test') return null
+      const colors = [0x4385d4, 0x34a078, 0xc55e78, 0x9070c5, 0xca9038]
+      const color = colors[origin.length % colors.length]!
+      const pixels = Buffer.alloc(16 * 16 * 4)
+      for (let i = 0; i < 256; i++) {
+        const white = i % 16 >= 5 && i % 16 <= 10 && Math.floor(i / 16) >= 4 && Math.floor(i / 16) <= 11
+        pixels.writeUInt32LE(white ? 0xffffffff : (0xff000000 | color) >>> 0, i * 4)
+      }
+      return nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }).toDataURL()
+    })
     for (const name of ['notes', 'calendar', 'docs', 'mail', 'projects', 'tasks', 'files']) {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'agent:live', on: true, lane: `fixture-${name}`, url: `https://${name}.test/private?token=not-stored` })
     }
   })
-  await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByRole('button')).toHaveCount(8)
+  const shortcuts = page.getByRole('navigation', { name: 'Recent websites' })
+  await expect(shortcuts.getByRole('button')).toHaveCount(6)
+  await expect(shortcuts.locator('img.site-icon')).toHaveCount(4)
+  await expect(shortcuts.getByRole('button', { name: 'Open docs.test', exact: true }).locator('svg.site-icon')).toBeVisible()
+  const boxes = await shortcuts.getByRole('button').evaluateAll(nodes => nodes.map(node => { const rect = node.getBoundingClientRect(); return { y: rect.y, height: rect.height } }))
+  expect(new Set(boxes.map(box => box.y)).size).toBe(1)
+  expect(boxes.every(box => box.height <= 32)).toBe(true)
   await screenshot('08-recent-sites.png')
   await page.getByTestId('web-pane-expand').click()
   await expect(page.locator('.bots-chat')).toBeVisible()
@@ -185,10 +203,11 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await page.getByTestId('browser-start-input').fill(url)
     await page.getByTestId('browser-start-input').press('Enter')
     await expect.poll(() => page.evaluate(() => window.engram.agentState().then(state => state.url)), { timeout: 60000 }).toBe(url)
+    await expect.poll(() => page.evaluate(() => window.engram.botsList().then(bots => bots.flatMap(bot => bot.webSites ?? []).map(site => site.origin)))).toContain(`http://127.0.0.1:${address.port}`)
     await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByTitle(`http://127.0.0.1:${address.port}`, { exact: true })).toBeVisible()
     expect(await page.evaluate(() => localStorage.getItem('engram.recentWeb'))).not.toContain('not-stored')
-    await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByRole('button')).toHaveCount(8)
+    await expect(shortcuts.getByRole('button')).toHaveCount(6)
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Recent websites' }).getByRole('button')).toHaveCount(8)
+    await expect(shortcuts.getByRole('button')).toHaveCount(6)
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
