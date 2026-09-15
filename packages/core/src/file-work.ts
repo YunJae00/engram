@@ -31,17 +31,18 @@ export interface FileWorkOptions {
   findFiles?(query: string, signal?: AbortSignal): Promise<FileSearchResult>
 }
 
-function nameOf(value: unknown, document = false): string {
+function nameOf(value: unknown, document = false, media = false): string {
   if (typeof value !== 'string' || !/^[\p{L}\p{N}_][\p{L}\p{N}_. -]{0,119}$/u.test(value)
-    || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value) || !(TEXT.has(extname(value).toLowerCase()) || document && DOCUMENT_EXTENSIONS.includes(extname(value).toLowerCase()))) {
+    || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value) || !(TEXT.has(extname(value).toLowerCase()) || document && DOCUMENT_EXTENSIONS.includes(extname(value).toLowerCase()) || media && ['.png', '.webm'].includes(extname(value).toLowerCase()))) {
     throw new Error('Use a plain filename ending in .txt, .md, .json, .csv or .tsv, without directories.')
   }
   return value
 }
 
-export async function saveArtifact(directory: string, name: string, data: Buffer, signal?: AbortSignal) {
-  nameOf(name, true)
-  if (data.length > 8_000_000) throw new Error('Generated output exceeds 8 MB.')
+export async function saveArtifact(directory: string, name: string, data: Buffer, signal?: AbortSignal, media = false) {
+  nameOf(name, true, media)
+  if (data.length > (media ? 32_000_000 : 8_000_000)) throw new Error('Generated output exceeds its size limit.')
+  if (media && (name.endsWith('.png') ? data.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a' : name.endsWith('.webm') ? data.subarray(0, 4).toString('hex') !== '1a45dfa3' : true)) throw new Error('Invalid evidence media.')
   signal?.throwIfAborted()
   await mkdir(directory, { recursive: true })
   const root = await realpath(directory)
@@ -59,6 +60,14 @@ export async function saveArtifact(directory: string, name: string, data: Buffer
   if (!actual.equals(data)) throw new Error('Output readback did not match. Do not retry the write; inspect the output first.')
   signal?.throwIfAborted()
   return { artifact: basename(path), path, link: `engram-artifact:${basename(path)}`, markdownLink: `[${name}](engram-artifact:${encodeURIComponent(basename(path))})`, sha256: digest(actual), bytes: actual.length, originalUnchanged: true, completeReadback: true }
+}
+
+export async function readArtifact(directory: string, id: string, signal?: AbortSignal): Promise<Buffer> {
+  const path = await resolveArtifact(directory, id)
+  const data = await boundedRead(path, signal, 32_000_000)
+  const hash = createHash('sha256').update(id.slice(37)).update(data).digest('hex')
+  if (id.slice(0, 36).replaceAll('-', '') !== hash.slice(0, 32)) throw new Error('Artifact content changed. Recreate and review it before sharing.')
+  return data
 }
 
 async function boundedRead(path: string, signal?: AbortSignal, limit = MAX_BYTES): Promise<Buffer> {
@@ -203,7 +212,7 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
 
 export async function resolveArtifact(directory: string, id: unknown): Promise<string> {
   if (typeof id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i.test(id)) throw new Error('Invalid artifact.')
-  nameOf(id.slice(37), true)
+  nameOf(id.slice(37), true, true)
   const root = await realpath(directory)
   const path = await realpath(join(root, id))
   if (relative(root, path) !== id || !(await stat(path)).isFile()) throw new Error('Artifact is outside this chat.')

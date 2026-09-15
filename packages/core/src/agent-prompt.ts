@@ -427,5 +427,12 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
     if (picked.length === MENU_CAP) break
   }
   const skill = by('open_skill')
-  return skill && !picked.includes(skill) ? [...picked, skill] : picked
+  if (skill && !picked.includes(skill)) picked.push(skill)
+  // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
+  const evidence = /record|reproduc|evidence|upload|attach|verify|녹화|재현|증거|첨부|업로드|검증/i.test(task)
+  for (const name of [...(evidence ? ['record_start', 'capture_evidence', 'verify', 'wait_for', 'upload_file'] : []), ...(used('record_start') ? ['record_stop'] : [])]) {
+    const tool = by(name)
+    if (tool && !picked.includes(tool)) picked.push(tool)
+  }
+  return picked
 }

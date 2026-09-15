@@ -359,6 +359,7 @@ export interface PendingWorkDto {
 }
 
 export type EngramEvent =
+  | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null }
   | { type: 'desktop:changed' }
   | { type: 'desktop:visibility'; visible: boolean }
   // The computer changed hands: the on-screen overlay and the in-app banner
@@ -528,6 +529,8 @@ export interface NativeSurfaceDto { lane: string; x: number; y: number; width: n
 
 export interface EngramApi extends DesktopApi {
   artifactReveal(id: string): Promise<void>
+  evidenceStatus(): Promise<{ lane: string; started: number; frames: number }[]>
+  evidenceStop(lane: string): Promise<unknown>
   nativeEnabled(): Promise<boolean>
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
   // The agent browser's mirror: watch (frames flow while at least one view

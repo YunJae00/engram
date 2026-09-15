@@ -7,6 +7,8 @@ import { app, dialog } from 'electron'
 import { fromJSONSchema } from 'zod'
 import { addRoutine, appendBotTurn, callMemoryTool, cometTools, createBot, listRoutines, MEMORY_MCP_TOOLS, officeArithmeticFault, officeWriteUnverified, routineTask, routineTaskPrompt, type AgentLoopStep, type AgentTool } from 'core'
 import { agentCourier } from './agent-courier.js'
+import { workEvidenceTools, stopEvidenceRecording } from './work-evidence.js'
+import { evidenceFault } from 'core'
 import { resetLane } from './agent-browser.js'
 import { officeAgentTools } from './office-agent.js'
 import { clearApplicationWork } from './application-work.js'
@@ -40,14 +42,14 @@ export function stopExternalCalls(): void {
 
 const objectSchema = (properties: Record<string, object>, required: string[] = []) => ({ type: 'object', properties, required, additionalProperties: false })
 const BEGIN = { name: 'engram_begin', description: 'Start an Engram task. The person approves the exact goal before any data or controls are available. A visible conversation records the session.', inputSchema: objectSchema({ goal: { type: 'string', maxLength: 4000 } }, ['goal']) }
-const FINISH = { name: 'engram_finish', description: 'Check document readback and supported arithmetic, then record a result. This does not prove task or visual correctness; state unverified parts explicitly.', inputSchema: objectSchema({ summary: { type: 'string', maxLength: 8000 } }, ['summary']) }
+const FINISH = { name: 'engram_finish', description: 'Check requested page checks, evidence receipts, document readback and supported arithmetic, then record a result. This does not prove task or visual correctness; state unverified parts explicitly.', inputSchema: objectSchema({ summary: { type: 'string', maxLength: 8000 } }, ['summary']) }
 const ROUTINE = { name: 'engram_routine', description: 'Read a saved routine and its starting URLs, method and checks. Returns instructions, not an executed result. Perform the steps with Engram tools.', inputSchema: objectSchema({ id: { type: 'string', maxLength: 200 } }, ['id']) }
 const KEEP = { name: 'engram_keep', description: 'After engram_finish, ask the person to confirm the result was successful and save its goal, starting URLs and method as a routine. Never save incomplete work as a success.', inputSchema: objectSchema({ name: { type: 'string', minLength: 1, maxLength: 100 } }, ['name']) }
 
 function availableTools(ctx: VaultContext, lane: string, office: boolean): AgentTool[] {
   return [
     ...cometTools({ paths: ctx.paths, skillNotes: () => ctx.store.getAll(), retrieve: async () => [], courier: agentCourier({ lane, awaitCompletion: true }) }).filter(tool => !['search_memory', 'run_procedure', 'ask_person'].includes(tool.name)),
-    ...cometFileTools(ctx.paths, lane), ...(office ? officeAgentTools(lane) : []),
+    ...workEvidenceTools(ctx.paths, lane), ...cometFileTools(ctx.paths, lane), ...(office ? officeAgentTools(lane) : []),
   ]
 }
 
@@ -99,6 +101,7 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
     socket.setTimeout(15 * 60_000, () => socket.destroy())
     socket.on('error', () => socket.destroy())
     socket.on('close', () => {
+      void stopEvidenceRecording(lane, 'External client disconnected').catch(() => {})
       running?.abort(); sockets.delete(socket); authenticatedSockets.delete(socket)
       if (lanes.get(lane) === socket) { lanes.delete(lane); clearApplicationWork(lane); void resetLane(lane).catch(() => {}) }
     })
@@ -161,9 +164,10 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
         if (name === FINISH.name) {
           if (typeof input.summary !== 'string' || !input.summary.trim() || input.summary.length > 8000) throw new Error('Provide a concise summary and any unverified parts.')
           clearApplicationWork(lane)
-          const fault = officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
+          const fault = evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
+          await stopEvidenceRecording(lane, 'Task finished without an explicit recording stop')
           checkedSummary = fault ? '' : input.summary
-          text = `${fault ? `Not verified as complete. ${fault}` : 'Automated document checks found no outstanding fault. Task and visual correctness remain the caller’s responsibility.'}\n\n${input.summary}`
+          text = `${fault ? `Not verified as complete. ${fault}` : 'Automated checks found no outstanding fault. Task and visual correctness remain the caller’s responsibility.'}\n\n${input.summary}`
           await appendBotTurn(bound.paths, botId, { role: 'assistant', text, at: new Date().toISOString() })
           if (!fault) { finished = true; lanes.delete(lane) }
           broadcast({ type: 'bots:changed' })

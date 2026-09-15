@@ -16,6 +16,7 @@ vi.mock('../src/main/agent-browser.js', () => ({ resetLane: async () => {} }))
 vi.mock('../src/main/office-agent.js', () => ({ officeAgentTools: () => [] }))
 vi.mock('../src/main/application-work.js', () => ({ clearApplicationWork: fake.clearWork }))
 vi.mock('../src/main/file-work.js', () => ({ cometFileTools: () => [] }))
+vi.mock('../src/main/work-evidence.js', () => ({ workEvidenceTools: () => [], stopEvidenceRecording: async () => {} }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => fake.settings }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => {} }))
 import { externalInfoPath, externalOwns, externalStatus, setExternalContext, setExternalEnabled } from '../src/main/external-connection.js'

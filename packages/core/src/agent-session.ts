@@ -10,6 +10,7 @@ import { taskPlan } from './agent-plan.js'
 import { workCapabilities, WORK_METHOD_RULE } from './work-capabilities.js'
 import { DOCUMENT_CHECK_RULE, officeWriteUnverified } from './office-verification.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
+import { evidenceFault } from './work-evidence.js'
 import { resumeCheckpoint } from './agent-resume.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
@@ -205,7 +206,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (session.error) throw new Error(session.error)
-  const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || steps.length >= allowance()
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
@@ -257,7 +258,7 @@ export async function runComet(deps: AgentLoopDeps, task: string, options: Agent
       resume: [options.resume, resumeCheckpoint(task, first), 'Recheck the affected targets and correct only unfinished work within the original request. Do not recreate outputs or repeat successful actions. If permission or user input is needed, ask and stop.'].filter(Boolean).join('\n\n'),
     })
     const steps = [...first.steps, ...corrected.steps]
-    const incomplete = corrected.incomplete ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
+    const incomplete = corrected.incomplete ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
     const answer = incomplete && !corrected.incomplete && !corrected.asked
       ? `Not verified as complete.\n\n${incomplete}\n\nUnverified response:\n${corrected.answer}` : corrected.answer
     return { ...corrected, steps, answer: withoutSecrets(outputLinks(steps, answer), task), ...(incomplete ? { incomplete } : {}) }

@@ -10,6 +10,7 @@ import { detectApiKeyEnv } from './installer.js'
 import { abortAllChat, broadcast, drainAbsorbQueue, registerEngineIpc, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
 import { fixMacPath } from './macos-path.js'
 import { registerMcpIpc } from './mcp-connect.js'
+import { registerEvidenceIpc } from './work-evidence.js'
 import { setExternalContext } from './external-connection.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
@@ -482,6 +483,7 @@ function registerBaseIpc(): void {
   registerSettingsIpc()
   // MCP hookup is app-level too (paths only — no vault access at register time).
   registerMcpIpc()
+  registerEvidenceIpc()
   // Semantic layer status — the handler exists app-wide; the engine itself
   // starts per vault in bootVault.
   registerSemanticIpc()

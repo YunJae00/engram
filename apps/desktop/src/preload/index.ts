@@ -13,6 +13,8 @@ import type {
 
 const api: EngramApi = {
   artifactReveal: (id) => ipcRenderer.invoke('artifact:reveal', id),
+  evidenceStatus: () => ipcRenderer.invoke('evidence:status'),
+  evidenceStop: (lane) => ipcRenderer.invoke('evidence:stop', lane),
   desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
   desktopVisible: () => ipcRenderer.invoke('desktop:visible'),
   desktopWindows: () => ipcRenderer.invoke('desktop:windows'),

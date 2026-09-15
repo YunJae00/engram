@@ -1,6 +1,7 @@
 import { win32 } from 'node:path'
 import type { AgentLoopResult, AgentLoopStep } from './agent-loop.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
+import { evidenceFault } from './work-evidence.js'
 
 const WRITES = new Set(['excel_write', 'ppt_build', 'ppt_edit', 'word_write', 'word_edit'])
 const READS = new Set(['excel_read', 'ppt_read', 'word_read'])
@@ -82,6 +83,6 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
 export function checkOfficeResult(result: AgentLoopResult): AgentLoopResult {
   if (result.asked || result.incomplete) return result
   // Coverage and supported arithmetic checks are separate from task and layout verification.
-  const incomplete = officeWriteUnverified(result.steps) ?? officeArithmeticFault(result.steps)
+  const incomplete = evidenceFault(result.steps) ?? officeWriteUnverified(result.steps) ?? officeArithmeticFault(result.steps)
   return incomplete ? { ...result, incomplete, answer: `Not verified as complete.\n\n${incomplete}\n\nUnverified response:\n${result.answer}` } : result
 }
