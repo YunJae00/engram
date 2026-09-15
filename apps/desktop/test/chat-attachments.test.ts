@@ -15,7 +15,7 @@ vi.mock('electron', () => ({
   ipcMain: { removeHandler: vi.fn(), handle: (name: string, handler: (...args: unknown[]) => unknown) => state.handlers.set(name, handler) },
 }))
 vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => state.owner }))
-import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc, saveChatAttachment } from '../src/main/chat-attachments.js'
+import { chatAttachmentIds, previewChatAttachment, readChatAttachments, registerChatAttachmentIpc, saveChatAttachment } from '../src/main/chat-attachments.js'
 
 let root: string
 beforeEach(async () => {
@@ -43,6 +43,19 @@ it('keeps attached bytes in chat cache, includes their content in context, and l
   expect(await readdir(paths.notes)).toEqual([])
   expect(await readdir(paths.sources)).toEqual([])
   expect(read.imagePaths).toEqual([])
+})
+
+it('previews only bounded saved attachments and does not invent video analysis', async () => {
+  const paths = vaultPaths(root)
+  const text = await saveChatAttachment(paths, 'Pasted text.txt', Buffer.from('long reference\n'.repeat(5000)))
+  const preview = await previewChatAttachment(paths, text.id)
+  expect(preview.text).toHaveLength(60_000)
+  expect(preview.truncated).toBe(true)
+  expect(await readFile(join(paths.cache, 'chat-attachments', text.id), 'utf8')).toHaveLength(75_000)
+  const video = await saveChatAttachment(paths, 'clip.webm', Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
+  expect(await previewChatAttachment(paths, video.id)).toMatchObject({ name: 'clip.webm', mime: 'video/webm', size: 4 })
+  expect((await readChatAttachments(paths, [video.id])).context).toContain('no video frames or audio were provided')
+  await expect(previewChatAttachment(paths, '../outside.png')).rejects.toThrow('Invalid')
 })
 
 it('extracts Office documents through the existing parser and reports unreadable inputs honestly', async () => {

@@ -87,10 +87,5 @@
 .workspace-management > summary:hover { background: var(--hover-bg); }
 .workspace-management[open] > summary > svg { transform: rotate(180deg); }
 .workspace-management .workspace-row { padding-left: 10px; }
-.chat-attachments { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-.chat-attachment { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: min(100%, 260px); padding: 6px 8px; border: 1px solid var(--border-soft); border-radius: 9px; background: var(--hover-bg); color: var(--fg); font-size: var(--fs-small); }
-.chat-attachment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-attachment > svg, .chat-attachment > button { flex: none; }
-.chat-attachment > button { display: grid; place-items: center; padding: 2px; color: var(--fg-faint); }
 .chat-attachment-error { margin: 6px 0; color: var(--danger); font-size: var(--fs-small); }
 .chat-attachment-status { margin: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }

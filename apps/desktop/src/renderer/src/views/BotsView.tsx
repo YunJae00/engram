@@ -20,6 +20,7 @@ import { BotComposer } from '../components/BotComposer.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
+import { UserMessage } from '../components/ChatAttachment.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -153,7 +154,7 @@ export const BotsView = memo(function BotsView() {
                         <StreamingAnswer text={m.text} done={!m.streaming} />
                       )
                     ) : (
-                      m.text
+                      <UserMessage text={m.text} attachments={m.attachments} />
                     )}
                   </div>
                 </Fragment>

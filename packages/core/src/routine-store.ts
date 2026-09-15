@@ -150,7 +150,8 @@ export async function updateRoutineGoal(paths: VaultPaths, id: string, goal: str
   const note = await readNote(paths, id)
   const routine = toRoutine(note)
   if (!routine?.task || !note.front.routine?.task) throw new Error('This routine has no editable task instructions.')
-  note.front.routine.task = { ...routine.task, goal: goal.trim(), context: undefined }
+  note.front.routine.task = { ...routine.task, goal: goal.trim() }
+  delete note.front.routine.task.context
   note.body = routineBody(routine.name, routine.steps, note.front.routine.task)
   note.front.updated = now.toISOString()
   await writeNote(paths, note)

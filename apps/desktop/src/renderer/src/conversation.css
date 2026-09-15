@@ -1,4 +1,18 @@
 /* Scroll padding leaves the final line above the fade and the composer. */
+.chat-file-list { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; padding: 4px 0; }
+.chat-file-card { position: relative; width: 240px; max-width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--panel-bg); color: var(--fg); text-align: left; white-space: normal; }
+.chat-file-card.media { width: 280px; }
+.chat-file-card img, .chat-file-card video { display: block; width: 100%; max-height: 240px; object-fit: contain; border-radius: 7px; background: var(--bg); }
+.chat-file-card summary, .chat-file-label { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chat-file-card summary { cursor: pointer; }
+.chat-file-card summary > svg, .chat-file-label > svg { flex: none; }
+.chat-file-card summary > span, .chat-file-label > span { min-width: 0; padding-right: 14px; }
+.chat-file-card strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); font-weight: 550; }
+.chat-file-card small { display: block; color: var(--fg-dim); font-size: 11px; margin-top: 4px; }
+.chat-file-card.media .chat-file-label { margin-top: 8px; }
+.chat-file-card pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-small); margin: 12px 0 0; }
+.chat-file-card .chat-file-remove { position: absolute; right: 4px; top: 4px; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--panel-bg); }
+.chat-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .bots-thread.conversation-thread, .cosmos-chat-thread.conversation-thread, .mini-chat-thread.conversation-thread {
   padding-bottom: 24px;
   scroll-padding-bottom: 24px;

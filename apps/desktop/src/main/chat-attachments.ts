@@ -4,11 +4,48 @@ import { mkdir, open, realpath } from 'node:fs/promises'
 import { extname, join, relative } from 'node:path'
 import { extractDocumentText, type AgentTool, type VaultPaths } from 'core'
 import { attachmentError, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT } from '../shared/attachments.js'
-import type { ChatAttachmentDto, ChatTurnDto } from '../shared/types.js'
+import type { ChatAttachmentDto, ChatAttachmentPreviewDto, ChatTurnDto } from '../shared/types.js'
 import { desktopOwner } from './desktop-access.js'
 
 const directory = (paths: VaultPaths) => join(paths.cache, 'chat-attachments')
 const images: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' }
+const videos: Record<string, string> = { '.mp4': 'video/mp4', '.webm': 'video/webm' }
+const textExtensions = ['.txt', '.md', '.csv', '.tsv', '.json', '.log']
+
+async function readAttachment(paths: VaultPaths, id: unknown, signal?: AbortSignal) {
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i.test(id) || attachmentError(id.slice(37), 1)) throw new Error('Invalid chat attachment.')
+  const root = await realpath(directory(paths))
+  const path = await realpath(join(root, id))
+  if (relative(root, path) !== id) throw new Error('Attachment is outside this chat cache.')
+  const handle = await open(path, 'r')
+  try {
+    const info = await handle.stat()
+    if (!info.isFile() || info.size > ATTACHMENT_MAX_BYTES) throw new Error('Attachment is too large or unavailable.')
+    const buffer = Buffer.alloc(info.size + 1)
+    let length = 0
+    while (length < buffer.length) {
+      signal?.throwIfAborted()
+      const next = await handle.read(buffer, length, buffer.length - length, length)
+      if (!next.bytesRead) break
+      length += next.bytesRead
+    }
+    if (length !== info.size) throw new Error('Attachment changed while being read.')
+    return { path, bytes: buffer.subarray(0, length), name: id.slice(37), id }
+  } finally { await handle.close() }
+}
+
+export async function previewChatAttachment(paths: VaultPaths, id: unknown): Promise<ChatAttachmentPreviewDto> {
+  const file = await readAttachment(paths, id)
+  const ext = extname(file.name).toLowerCase()
+  const mime = images[ext] ?? videos[ext]
+  const meta = { id: file.id, name: file.name, size: file.bytes.length }
+  if (mime) return { ...meta, mime, data: file.bytes }
+  if (textExtensions.includes(ext)) {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(file.bytes).replace(/\0/g, '')
+    return { ...meta, text: text.slice(0, 60_000), truncated: text.length > 60_000 }
+  }
+  return meta
+}
 
 export function chatAttachmentIds(current: unknown, history: ChatTurnDto[]): string[] {
   if (current !== undefined && (!Array.isArray(current) || current.length > ATTACHMENT_MAX_COUNT || current.some(id => typeof id !== 'string') || new Set(current).size !== current.length)) throw new Error(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`)
@@ -41,7 +78,6 @@ export async function saveChatAttachment(paths: VaultPaths, name: string, data: 
 export async function readChatAttachments(paths: VaultPaths, ids: unknown, signal?: AbortSignal) {
   if (ids === undefined || Array.isArray(ids) && ids.length === 0) return { context: '', paths: [] as string[], imagePaths: [] as string[], tools: [] as AgentTool[] }
   if (!Array.isArray(ids) || ids.length > ATTACHMENT_MAX_COUNT || new Set(ids).size !== ids.length) throw new Error(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`)
-  const root = await realpath(directory(paths))
   const parts: string[] = []
   const files: string[] = []
   const imagePaths: string[] = []
@@ -49,25 +85,7 @@ export async function readChatAttachments(paths: VaultPaths, ids: unknown, signa
   let remaining = 120_000
   for (const id of ids) {
     signal?.throwIfAborted()
-    if (typeof id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i.test(id) || attachmentError(id.slice(37), 1)) throw new Error('Invalid chat attachment.')
-    const path = await realpath(join(root, id))
-    if (relative(root, path) !== id) throw new Error('Attachment is outside this chat cache.')
-    const handle = await open(path, 'r')
-    let bytes: Buffer
-    try {
-      const info = await handle.stat()
-      if (!info.isFile() || info.size > ATTACHMENT_MAX_BYTES) throw new Error('Attachment is too large or unavailable.')
-      const buffer = Buffer.alloc(info.size + 1)
-      let length = 0
-      while (length < buffer.length) {
-        signal?.throwIfAborted()
-        const next = await handle.read(buffer, length, buffer.length - length, length)
-        if (!next.bytesRead) break
-        length += next.bytesRead
-      }
-      if (length !== info.size) throw new Error('Attachment changed while being read.')
-      bytes = buffer.subarray(0, length)
-    } finally { await handle.close() }
+    const { path, bytes } = await readAttachment(paths, id, signal)
     files.push(path)
     const name = id.slice(37)
     const ext = extname(name).toLowerCase()
@@ -78,8 +96,12 @@ export async function readChatAttachments(paths: VaultPaths, ids: unknown, signa
       parts.push(`Image ${JSON.stringify(name)}: call read_attachment with id ${JSON.stringify(id)} to see it.`)
       continue
     }
+    if (videos[ext]) {
+      parts.push(`Video ${JSON.stringify(name)} (saved copy: ${JSON.stringify(path)}). The chat can play this file, but no video frames or audio were provided to you. Do not claim to have watched it. Ask for relevant still frames or a transcript if no suitable video tool is available.`)
+      continue
+    }
     const limits: string[] = []
-    const text = ['.txt', '.md', '.csv', '.tsv', '.json', '.log'].includes(ext)
+    const text = textExtensions.includes(ext)
       ? new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/\0/g, '')
       : await extractDocumentText(path, { minLength: 1, onLimit: message => limits.push(message) })
     const cap = Math.min(remaining, 60_000)
@@ -110,6 +132,7 @@ export function registerChatAttachmentIpc(paths: VaultPaths): void {
     if (typeof name !== 'string' || !(data instanceof Uint8Array)) throw new Error('Attachment bytes are invalid.')
     return saveChatAttachment(paths, name, data)
   })
+  handle('chat:attachmentPreview', id => previewChatAttachment(paths, id))
   handle('clipboard:writeText', (text) => {
     if (typeof text !== 'string' || text.length > 2_000_000) throw new Error('Text is too large to copy.')
     clipboard.writeText(text)

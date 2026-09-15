@@ -14,6 +14,7 @@ import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
 import { Globe } from 'lucide-react'
 import { Thinking } from './Thinking.js'
+import { UserMessage } from './ChatAttachment.js'
 
 // A conversation small enough to sit inside a parallel tile: the
 // thread, what the comet is doing right now, and a composer - the same
@@ -45,7 +46,7 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
         {thread.messages.map((m, i) => (
           <div key={i} className={`mini-msg ${m.role}`}>
-            {m.role === 'assistant' ? (m.text.trim() && <StreamingAnswer text={m.text} done={!m.streaming} />) : m.text}
+            {m.role === 'assistant' ? (m.text.trim() && <StreamingAnswer text={m.text} done={!m.streaming} />) : <UserMessage text={m.text} attachments={m.attachments} />}
           </div>
         ))}
         {thread.busy && <Thinking label={status} since={thread.startedAt ?? undefined} />}

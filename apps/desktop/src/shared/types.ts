@@ -266,6 +266,13 @@ export interface ChatAttachmentDto {
   size: number
 }
 
+export interface ChatAttachmentPreviewDto extends ChatAttachmentDto {
+  mime?: string
+  data?: Uint8Array
+  text?: string
+  truncated?: boolean
+}
+
 export interface SweepReportDto {
   executed: number
   skipped: number
@@ -684,6 +691,7 @@ export interface EngramApi extends DesktopApi {
   // chat panel & context packs
   chatSend(request: ChatRequestDto): Promise<void>
   chatAttach(name: string, data: Uint8Array): Promise<ChatAttachmentDto>
+  chatAttachmentPreview(id: string): Promise<ChatAttachmentPreviewDto>
   copyText(text: string): Promise<void>
   activityToday(): Promise<{ totalMs: number; apps: { app: string; ms: number; topTitles: string[] }[] }>
   // Desk journal switch (settings ⑨ + tray share the same state).

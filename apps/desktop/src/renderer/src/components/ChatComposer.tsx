@@ -1,4 +1,5 @@
-import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Paperclip, Square } from 'lucide-react'
+import { ChatAttachment } from './ChatAttachment.js'
 import { forwardRef, memo, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { attachmentError, ATTACHMENT_ACCEPT, ATTACHMENT_MAX_COUNT } from '../../../shared/attachments.js'
@@ -75,9 +76,7 @@ export const ChatComposer = memo(
         event.stopPropagation()
         void attach(Array.from(event.dataTransfer.files))
       }}>
-        {attachments.length > 0 && <div className="chat-attachments" aria-label="Attached files">{attachments.map(one => <span className="chat-attachment" key={one.id} title={one.name}>
-          <Paperclip size={12} aria-hidden /><span>{one.name}</span><button type="button" aria-label={`Remove ${one.name}`} disabled={attaching || busy || disabled} onClick={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))}><X size={12} aria-hidden /></button>
-        </span>)}</div>}
+        {attachments.length > 0 && <div className="chat-file-list" aria-label="Attached files">{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || busy || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
         <textarea
           ref={inputRef}
           data-testid={testId}
@@ -90,10 +89,11 @@ export const ChatComposer = memo(
           onKeyDown={onKeyDown}
           onPaste={event => {
             const files = Array.from(event.clipboardData.files)
-            if (!onAttachmentsChange || !files.length) return
+            const text = event.clipboardData.getData('text/plain')
+            if (!onAttachmentsChange || (!files.length && text.length < 2000 && text.split('\n').length < 20)) return
             event.preventDefault()
             event.stopPropagation()
-            void attach(files)
+            void attach(files.length ? files : [new File([text], 'Pasted text.txt', { type: 'text/plain' })])
           }}
         />
         {error && <p className="chat-attachment-error" role="alert">{error}</p>}

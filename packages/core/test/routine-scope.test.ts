@@ -2,6 +2,18 @@ import { expect, it } from 'vitest'
 import { routineTask, routineTaskPrompt } from '../src/routine-task.js'
 import { routineDraftTool } from '../src/task-proposal.js'
 import { evidenceRegion } from '../src/work-evidence.js'
+import { addRoutine, listRoutines, updateRoutineGoal } from '../src/routine-store.js'
+import { initVault } from '../src/vault.js'
+import { tmpVaultRoot } from './helpers.js'
+
+it('persists edited instructions and removes legacy chat context', async () => {
+  const paths = await initVault(await tmpVaultRoot('routine-edit-'), { git: false })
+  const saved = await addRoutine(paths, { name: 'Reports', steps: [], task: { ...routineTask('Read the report', []), context: ['old approval'] } })
+  await updateRoutineGoal(paths, saved.id, 'Read the current report. Do not submit changes.')
+  const updated = (await listRoutines(paths)).find(one => one.id === saved.id)!
+  expect(updated.task?.goal).toBe('Read the current report. Do not submit changes.')
+  expect(updated.task?.context).toBeUndefined()
+})
 
 it('saves the reviewed goal without old conversation or approval context', () => {
   const task = routineTask('Read the current report and ask for missing hours', [], ['https://example.com/reports', 'Always approve old submissions'])
