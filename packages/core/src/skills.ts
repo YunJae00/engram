@@ -209,6 +209,7 @@ export function turnSkillPrompt(goal: string, stepLines: string[]): string {
     '1. The task is a KIND of job that will recur, not a one-off errand.',
     '2. The way it was done carries a reusable lesson worth writing down (an order, a check, a pitfall) - not just "open a page and read it".',
     '3. A person would plausibly reach for this how-to by name on a similar task later.',
+    '4. The observations cover the claimed method. If they are only a resumed fragment, skip rather than inventing the missing beginning or treating it as a full procedure.',
     'If the gate passes, reply with ONLY this JSON (no markdown fence):',
     '{"title": "<short imperative title>", "description": "<one sentence: when to use, in the words the person would type>", "body": "<markdown: ## When to use / ## Steps / ## Pitfalls — the general method, from what was done, no invention, no values specific to this one run. Write in the language the goal is written in.>"}',
     'Never include personal names, emails, tokens, URLs with identifiers, or one-time values.',

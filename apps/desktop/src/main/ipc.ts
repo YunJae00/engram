@@ -1237,7 +1237,7 @@ export function registerIpc(ctx: VaultContext): void {
     // kept turn — in the background, so keeping stays instant.
     const kept = lastTurns.get(botId)
     lastTurns.delete(botId)
-    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, kept.message, kept.steps).catch(() => undefined)
+    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, input.goal, kept.steps).catch(() => undefined)
     broadcast({ type: 'bots:changed' })
     broadcast({ type: 'vault:changed' })
     return task
