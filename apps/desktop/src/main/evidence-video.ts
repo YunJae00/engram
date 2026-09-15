@@ -14,8 +14,8 @@ export async function videoEncoder(size = { width: 1280, height: 720 }) {
       const ctx = canvas.getContext('2d');
       const track = new MediaStreamTrackGenerator({ kind: 'video' }); const writer = track.writable.getWriter();
       const stream = new MediaStream([track]); const started = performance.now();
-      const mimeType = 'video/webm;codecs=vp8';
-      if (!MediaRecorder.isTypeSupported(mimeType)) throw new Error('WebM recording is not supported');
+      const mimeType = 'video/mp4;codecs=avc1.42001f';
+      if (!MediaRecorder.isTypeSupported(mimeType)) throw new Error('MP4/H.264 recording is unavailable on this system. No recording was started.');
       const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1200000 });
       const chunks = []; let bytes = 0; let failure = '';
       recorder.ondataavailable = event => { bytes += event.data.size; if (bytes > 30000000) { failure = 'Recording exceeded 30 MB'; if (recorder.state !== 'inactive') recorder.stop(); } else chunks.push(event.data); };

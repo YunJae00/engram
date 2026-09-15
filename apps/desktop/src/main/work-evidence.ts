@@ -101,7 +101,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
           try {
             await pending
             const data = await encoder.finish()
-            const result = { recording: reason ? 'interrupted' : 'saved', name: source.name, url: source.url, reason, frames: state.frames, durationMs: Date.now() - state.started, ...await save(`${source.name}.webm`, data, { ...args, lane, url: source.url, reason, frames: state.frames }) }
+            const result = { recording: reason ? 'interrupted' : 'saved', name: source.name, url: source.url, reason, frames: state.frames, durationMs: Date.now() - state.started, ...await save(`${source.name}.mp4`, data, { ...args, lane, url: source.url, reason, frames: state.frames }) }
             completed.set(lane, result)
             if (completed.size > 50) completed.delete(completed.keys().next().value!)
             return result
@@ -137,7 +137,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       const url = expected(page, args.url)
       const path = await resolveArtifact(directory, args.artifact)
       const extension = extname(path).toLowerCase()
-      if (!['.png', '.webm', '.pdf', '.txt', '.csv', '.xlsx', '.docx', '.pptx'].includes(extension)) throw new Error('This artifact type cannot be uploaded.')
+      if (!['.png', '.mp4', '.webm', '.pdf', '.txt', '.csv', '.xlsx', '.docx', '.pptx'].includes(extension)) throw new Error('This artifact type cannot be uploaded.')
       const data = await readArtifact(directory, String(args.artifact), signal)
       const target = String(args.target ?? '')
       const confirmation = String(args.confirmation ?? '')
@@ -152,7 +152,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       if (await resolveArtifact(directory, args.artifact) !== path) throw new Error('The artifact changed.')
       if (!(await readArtifact(directory, String(args.artifact), signal)).equals(data)) throw new Error('The approved artifact changed.')
       signal?.throwIfAborted(); expected(page, url)
-      await aim.hand.setInputFiles({ name: basename(path).slice(37), mimeType: extension === '.webm' ? 'video/webm' : extension === '.png' ? 'image/png' : 'application/octet-stream', buffer: data }, { timeout: 10000 })
+      await aim.hand.setInputFiles({ name: basename(path).slice(37), mimeType: extension === '.mp4' ? 'video/mp4' : extension === '.webm' ? 'video/webm' : extension === '.png' ? 'image/png' : 'application/octet-stream', buffer: data }, { timeout: 10000 })
       let confirmed = false
       try { await page.getByText(confirmation, { exact: true }).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 15000 }); confirmed = page.url() === url && !signal?.aborted } catch { /* Selection may already have sent the file; never retry automatically. */ }
       return { upload: { status: confirmed ? 'confirmed' : 'unconfirmed', artifact: args.artifact, url, confirmation, bytes: data.length }, message: confirmed ? 'The specified confirmation appeared. Verify that it identifies the saved attachment, not a pending preview.' : 'File selection was dispatched, but completion is unconfirmed. Inspect before any retry.' }

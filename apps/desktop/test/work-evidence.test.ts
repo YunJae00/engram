@@ -8,7 +8,7 @@ vi.mock('electron', () => ({ app: {}, dialog: { showMessageBox: state.approve },
 vi.mock('../src/main/agent-browser.js', () => ({ agentPage: async () => state.page, readAgentPage: vi.fn() }))
 vi.mock('../src/main/file-work.js', () => ({ artifactDirectory: () => state.root }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
-vi.mock('../src/main/evidence-video.js', () => ({ videoEncoder: async () => ({ frame: async () => {}, finish: async () => Buffer.from('1a45dfa300000000', 'hex'), close: state.close }) }))
+vi.mock('../src/main/evidence-video.js', () => ({ videoEncoder: async () => ({ frame: async () => {}, finish: async () => Buffer.from('000000186674797069736f6d', 'hex'), close: state.close }) }))
 import { workEvidenceTools, evidenceStatus, stopEvidenceRecording } from '../src/main/work-evidence.js'
 
 beforeEach(async () => {

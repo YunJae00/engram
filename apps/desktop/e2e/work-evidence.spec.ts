@@ -82,10 +82,11 @@ test('external browser tools record masked playable evidence and upload only app
     expect(video.recording).toBe('saved'); expect(video.frames).toBeGreaterThan(1)
     await expect(shell.getByRole('button', { name: 'Stop recording' })).toHaveCount(0)
     const bytes = await readFile(video.path)
-    expect(bytes.subarray(0, 4).toString('hex')).toBe('1a45dfa3')
+    expect(video.path).toMatch(/\.mp4$/)
+    expect(bytes.subarray(4, 8).toString('ascii')).toBe('ftyp')
     const playback = await shell.evaluate(async base64 => {
       const video = document.createElement('video'); video.muted = true
-      video.src = URL.createObjectURL(new Blob([Uint8Array.from(atob(base64), char => char.charCodeAt(0))], { type: 'video/webm' }))
+      video.src = URL.createObjectURL(new Blob([Uint8Array.from(atob(base64), char => char.charCodeAt(0))], { type: 'video/mp4' }))
       try {
         await video.play()
         await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(new Error('No decoded video frame')), 10000); video.requestVideoFrameCallback(() => { clearTimeout(timer); resolve() }) })

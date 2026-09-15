@@ -74,6 +74,10 @@ it('saves media with content identity and rejects changed evidence and invalid m
     await writeFile(await resolveArtifact(root, artifact.artifact), Buffer.from('changed'))
     await expect(readArtifact(root, artifact.artifact)).rejects.toThrow()
     await expect(saveArtifact(root, 'invalid.webm', png, undefined, true)).rejects.toThrow()
+    await expect(saveArtifact(root, 'invalid.mp4', png, undefined, true)).rejects.toThrow()
+    const mp4 = Buffer.from('000000186674797069736f6d', 'hex')
+    const video = await saveArtifact(root, 'clip.mp4', mp4, undefined, true)
+    expect(await readArtifact(root, video.artifact)).toEqual(mp4)
     await expect(saveArtifact(root, '../outside.png', png, undefined, true)).rejects.toThrow()
   } finally { await rm(root, { recursive: true, force: true }) }
 })
