@@ -68,7 +68,11 @@ test('external browser tools record masked playable evidence and upload only app
       return [...bitmap.subarray(offset, offset + 3)]
     }, png.toString('base64'))
     expect(pixel).toEqual([32, 32, 32])
-    expect(JSON.parse(await call('record_start', { ...capture, maxSeconds: 30 })).recording).toBe('started')
+    const region = { x: 0, y: 0, width: 100, height: 100 }
+    const cropped = JSON.parse(await call('capture_evidence', { ...capture, name: 'region', region }))
+    const cropSize = await app.evaluate(({ nativeImage }, base64) => nativeImage.createFromBuffer(Buffer.from(base64, 'base64')).getSize(), (await readFile(cropped.path)).toString('base64'))
+    expect(cropSize).toEqual({ width: 100, height: 100 })
+    expect(JSON.parse(await call('record_start', { ...capture, region, maxSeconds: 30 })).recording).toBe('started')
     await expect(shell.getByRole('button', { name: 'Stop recording' })).toBeVisible()
     await shell.screenshot({ path: join(data, 'recording-ui.png') })
     await call('press', { target: 'Reproduce' })
@@ -90,7 +94,7 @@ test('external browser tools record masked playable evidence and upload only app
         return { width: video.videoWidth, height: video.videoHeight, pixel: [...context.getImageData(10, 10, 1, 1).data].slice(0, 3) }
       } finally { video.pause(); URL.revokeObjectURL(video.src) }
     }, bytes.toString('base64'))
-    expect(playback).toMatchObject({ width: 1280, height: 720 })
+    expect(playback).toMatchObject({ width: 100, height: 100 })
     expect(playback.pixel.every(value => Math.abs(value - 32) < 4)).toBe(true)
     const upload = { artifact: video.link, url, target: 'Attach evidence', confirmation: 'Attachment saved' }
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async () => ({ response: 0, checkboxChecked: false })) as typeof dialog.showMessageBox })

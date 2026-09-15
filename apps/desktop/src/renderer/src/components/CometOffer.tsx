@@ -53,7 +53,7 @@ function KeepOffer({ offer, onKeep, onNo }: { offer: Keep; onKeep(name: string, 
           </button>
         )}
         <span className="comet-keep-does">{offer.does}</span>
-        <details className="comet-keep-instructions"><summary>Instructions</summary><textarea aria-label="Routine instructions" value={goal} maxLength={4000} onChange={event => setGoal(event.target.value)} /><small>Starting pages and the previous method are saved with this task.</small></details>
+        <div className="comet-keep-instructions"><label>Instructions for each new run<textarea aria-label="Routine instructions" value={goal} maxLength={4000} onChange={event => setGoal(event.target.value)} /></label><small>Review the start, inputs, finish and result checks. Only these instructions, starting pages and navigation hints are saved—not this chat or its approvals.</small></div>
       </div>
       <div className="comet-keep-acts">
         <button className="primary bots-offer-run" data-testid="bots-offer-keep" disabled={saving || !goal.trim()} onClick={() => void save()}>

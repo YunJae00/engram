@@ -295,13 +295,15 @@ export async function agentViewInput(input: AgentInputDto, lane: string): Promis
 // An address typed on the mirror: the page goes there as if it had been
 // typed in the window's own bar, so a lesson can begin from a blank tab.
 export async function agentViewGo(url: string, lane = activeLaneName()): Promise<void> {
-  if (!/^https?:\/\//i.test(url)) return
+  if (!/^https?:\/\//i.test(url)) throw new Error('Enter an http or https website address.')
+  const address = new URL(url)
+  if (address.username || address.password) throw new Error('Do not include credentials in a website address.')
   // An address typed with no window behind it - the card frozen on the last
   // thing a closed browser showed - opens one and goes there.
   // A page opened for this has its mirror attached a moment after it
   // exists; going somewhere before that would go nowhere at all.
   const page = await ensureAgentPage(lane)
-  await page.goto(url, { waitUntil: 'commit' }).catch((err: unknown) => {
+  await page.goto(address.href, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch((err: unknown) => {
     flog('agent-view', `go failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
     throw err
   })

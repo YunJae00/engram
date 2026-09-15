@@ -1,10 +1,29 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { correctableFault, runComet, runToolSession } from '../src/agent-session.js'
+import { correctableFault, runComet, runToolSession, SESSION_TURN_MS } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
+
+it('gives browser work 80 calls and extends it through fresh phase evidence', async () => {
+  const engine = sessionBrain(async job => {
+    expect(job.maxCalls).toBe(120)
+    const plan = job.tools.find(tool => tool.name === 'task_plan')!
+    const read = job.tools.find(tool => tool.name === 'read_open_page')!
+    await plan.run({ phases: ['Collect entries', 'Verify totals'] })
+    for (let i = 0; i < 79; i++) await read.run({})
+    expect(await plan.run({ evidenceStep: 80, finding: 'All entries read' })).toContain('"completed":1')
+    await read.run({})
+    await plan.run({ evidenceStep: 82, finding: 'Total verified' })
+    return { answer: 'Verified' }
+  })
+  const available = ['open_page', 'read_open_page'].map(name => ({ name, description: name, argsSchema: {}, run: async () => 'Fresh report observation' }))
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: available }, 'Read all entries and verify the total')
+  expect(result.steps).toHaveLength(83)
+  expect(result.stopped).toBeUndefined()
+  expect(result.incomplete).toBeUndefined()
+})
 
 // A brain that holds its own loop: it calls the tools it is handed in the
 // order a script says, then answers.
@@ -209,7 +228,7 @@ it.each(['failed-observation', 'reused-evidence', 'expired'] as const)('does not
     const read = job.tools.find((tool) => tool.name === 'read_desktop')!
     await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
     for (let index = 0; index < 39; index++) await read.run({})
-    if (cause === 'expired') clock.mockReturnValue(Date.now() + 600001)
+    if (cause === 'expired') clock.mockReturnValue(Date.now() + SESSION_TURN_MS + 1)
     const checkpoint = { evidenceStep: cause === 'reused-evidence' ? 2 : 40, finding: 'Ready' }
     expect(await plan.run(checkpoint)).not.toContain('"completed":1')
     expect(await plan.run(checkpoint)).toContain('No more calls')

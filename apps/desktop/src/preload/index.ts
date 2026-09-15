@@ -133,6 +133,7 @@ const api: EngramApi = {
   botMemoryForget: (botId: string, factId: string) => ipcRenderer.invoke('bots:memoryForget', botId, factId),
   errandWallDone: (verdict: 'resolved' | 'skip') => ipcRenderer.invoke('errand:wallDone', verdict),
   routinesList: () => ipcRenderer.invoke('routines:list'),
+  routineUpdateGoal: (id: string, goal: string) => ipcRenderer.invoke('routines:updateGoal', id, goal),
   routineAdd: (input: { name: string; steps: RoutineStepDto[] }) => ipcRenderer.invoke('routines:add', input),
   routineRename: (id: string, name: string) => ipcRenderer.invoke('routines:rename', id, name),
   routineRemove: (id: string) => ipcRenderer.invoke('routines:remove', id),

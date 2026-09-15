@@ -634,6 +634,7 @@ export interface EngramApi extends DesktopApi {
   routinesList(): Promise<RoutineDto[]>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
+  routineUpdateGoal(id: string, goal: string): Promise<void>
   routineRemove(id: string): Promise<void>
   // Opens a fresh chat before replay; routine:chat identifies it immediately.
   // Progress and the persisted result arrive on that chat's channel.

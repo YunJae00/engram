@@ -1,13 +1,16 @@
 import { BrowserWindow } from 'electron'
 
 // Encode only host-supplied masked frames. The encoder has no page, microphone or desktop access.
-export async function videoEncoder() {
+export async function videoEncoder(size = { width: 1280, height: 720 }) {
+  const scale = Math.min(1, 1280 / size.width, 720 / size.height)
+  const width = Math.max(2, Math.floor(size.width * scale / 2) * 2)
+  const height = Math.max(2, Math.floor(size.height * scale / 2) * 2)
   const window = new BrowserWindow({ show: false, width: 1280, height: 720, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   try {
     await window.loadURL('data:text/html,<meta http-equiv="Content-Security-Policy" content="default-src %27none%27; img-src data: blob:; media-src blob:"><canvas></canvas>')
     await window.webContents.executeJavaScript(`(() => {
-      const canvas = document.querySelector('canvas'); canvas.width = 1280; canvas.height = 720;
+      const canvas = document.querySelector('canvas'); canvas.width = ${width}; canvas.height = ${height};
       const ctx = canvas.getContext('2d');
       const track = new MediaStreamTrackGenerator({ kind: 'video' }); const writer = track.writable.getWriter();
       const stream = new MediaStream([track]); const started = performance.now();

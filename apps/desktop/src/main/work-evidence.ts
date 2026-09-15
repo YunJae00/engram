@@ -1,6 +1,6 @@
-import { app, dialog, ipcMain, shell } from 'electron'
+import { app, dialog, ipcMain, nativeImage, shell } from 'electron'
 import { basename, extname } from 'node:path'
-import { evidenceTools, readArtifact, resolveArtifact, saveArtifact, type VaultPaths } from 'core'
+import { evidenceRegion, evidenceTools, readArtifact, resolveArtifact, saveArtifact, type VaultPaths } from 'core'
 import type { Page } from 'playwright-core'
 import { agentPage, readAgentPage } from './agent-browser.js'
 import { artifactDirectory } from './file-work.js'
@@ -36,7 +36,7 @@ function expected(page: Page, url: unknown): string {
   return parsed.href
 }
 
-async function maskedFrame(page: Page, origin: string, masks: string[], signal?: AbortSignal): Promise<Buffer> {
+async function maskedFrame(page: Page, origin: string, masks: string[], signal?: AbortSignal, region?: unknown): Promise<Buffer> {
   signal?.throwIfAborted()
   if (page.isClosed() || new URL(page.url()).origin !== origin) throw new Error('The recorded tab closed or left the approved site.')
   const frames = page.frames()
@@ -50,7 +50,10 @@ async function maskedFrame(page: Page, origin: string, masks: string[], signal?:
   const data = await page.screenshot({ type: 'png', fullPage: false, scale: 'css', timeout: 8000, mask: frames.flatMap(frame => [frame.locator(SECRET), ...masks.map(selector => frame.locator(selector))]), maskColor: '#202020' })
   signal?.throwIfAborted()
   if (new URL(page.url()).origin !== origin || frames.length !== page.frames().length || frames.some((frame, i) => frame.isDetached() || frame.url() !== addresses[i])) throw new Error('The page changed while capturing evidence.')
-  return data
+  if (!region) return data
+  const image = nativeImage.createFromBuffer(data)
+  const size = image.getSize()
+  return image.crop(evidenceRegion(region, size.width, size.height)!).toPNG()
 }
 
 export function workEvidenceTools(paths: VaultPaths, lane: string) {
@@ -65,8 +68,10 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
     const url = expected(page, args.url)
     if (typeof args.name !== 'string' || !/^[\p{L}\p{N}_][\p{L}\p{N}_. -]{0,79}$/u.test(args.name)) throw new Error('Use a short plain evidence name without directories.')
     const masks = args.masks ?? []
+    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    const region = evidenceRegion(args.region, viewport.width, viewport.height)
     if (!Array.isArray(masks) || masks.length > 12 || masks.some(value => typeof value !== 'string' || value.length > 300)) throw new Error('Provide up to 12 CSS redaction selectors.')
-    return { page, url, origin: new URL(url).origin, masks: masks as string[], name: args.name }
+    return { page, url, origin: new URL(url).origin, masks: masks as string[], name: args.name, region }
   }
   const save = async (name: string, data: Buffer, metadata: object, signal?: AbortSignal) => {
     const artifact = await saveArtifact(directory, name, data, signal, true)
@@ -77,17 +82,17 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
     read: async signal => readAgentPage(await agentPage(signal, lane), signal),
     async capture(args, signal) {
       const source = await prepare(args, signal)
-      await consent('Save a screenshot of this browser tab?', `${source.url}\n\nOnly this tab is captured. Review for sensitive content before sharing.`, signal)
+      await consent('Save a screenshot of this browser tab?', `${source.url}\n\n${source.region ? `Region: ${JSON.stringify(source.region)} (viewport pixels).` : 'Whole visible tab.'} Review for sensitive content before sharing.`, signal)
       expected(source.page, source.url)
-      return save(`${source.name}.png`, await maskedFrame(source.page, source.origin, source.masks, signal), { ...args, lane, url: source.url }, signal)
+      return save(`${source.name}.png`, await maskedFrame(source.page, source.origin, source.masks, signal, source.region), { ...args, lane, url: source.url }, signal)
     },
     async start(args, signal) {
       if (recordings.has(lane)) throw new Error('A recording is already active in this chat. Stop it first.')
       completed.delete(lane)
       const source = await prepare(args, signal)
-      await consent('Record this browser tab?', `${source.url}\n\nSilent recording, up to 120 seconds. Only this tab; other windows and new tabs are excluded. Declared secret fields are masked, but other sensitive content requires review.`, signal)
+      await consent('Record this browser tab?', `${source.url}\n\n${source.region ? `Fixed region: ${JSON.stringify(source.region)} (viewport pixels). It does not follow elements when scrolling.` : 'Whole visible tab.'}\nSilent recording, up to 120 seconds. Only this tab; other windows and new tabs are excluded. Declared secret fields are masked, but other sensitive content requires review.`, signal)
       expected(source.page, source.url)
-      const encoder = await videoEncoder()
+      const encoder = await videoEncoder(source.region)
       let active = true, stopping: Promise<unknown> | undefined, pending = Promise.resolve()
       const state: Recording = { lane, started: Date.now(), frames: 0, stop: reason => {
         if (stopping) return stopping
@@ -105,7 +110,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
         })()
         return stopping
       } }
-      const capture = async () => { const data = await maskedFrame(source.page, source.origin, source.masks, signal); if (active) { await encoder.frame(data); state.frames++ } }
+      const capture = async () => { const data = await maskedFrame(source.page, source.origin, source.masks, signal, source.region); if (active) { await encoder.frame(data); state.frames++ } }
       const tick = () => {
         if (!active || capturing) return
         capturing = true

@@ -1,4 +1,4 @@
-import { ChevronsRight, Globe, Square } from 'lucide-react'
+import { ChevronsRight, Globe, LoaderCircle, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -31,36 +31,43 @@ const DEFAULT_SHARE = 0.52
 function Address({ url, channel }: { url?: string; channel: string }) {
   const { showToast } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+  const navigating = useRef(false)
   const field = useRef<HTMLInputElement>(null)
   const shown = draft ?? (url === 'about:blank' ? '' : (url ?? ''))
   useEffect(() => {
     if (document.activeElement !== field.current && field.current) field.current.scrollLeft = 0
   }, [url])
   return (
-    <input
+    <div className="browser-address-field" aria-busy={pending}><input
       ref={field}
       className="live-address"
       data-testid="live-address"
+      aria-label="Website address"
       placeholder={t('live.address')}
       value={shown}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
       onBlur={(event) => {
         const input = event.currentTarget
-        setDraft(null)
         requestAnimationFrame(() => {
           input.scrollLeft = 0
         })
       }}
       onKeyDown={(e) => {
-        if (e.key !== 'Enter') return
+        if (e.key === 'Escape') { setDraft(null); return }
+        if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+        e.preventDefault()
+        e.stopPropagation()
+        if (navigating.current) return
         const typed = shown.trim()
         if (!typed) return
-        void api.agentGo(/^[a-z]+:/i.test(typed) ? typed : `https://${typed}`, channel).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website'))
-        setDraft(null)
-        e.currentTarget.blur()
+        const address = /^[a-z]+:/i.test(typed) ? typed : `https://${typed}`
+        setDraft(address)
+        navigating.current = true; setPending(true)
+        void api.agentGo(address, channel).then(() => setDraft(value => value === address ? null : value)).catch((error: unknown) => showToast(error instanceof Error ? error.message : 'Could not open the website')).finally(() => { navigating.current = false; setPending(false) })
       }}
-    />
+    />{pending && <LoaderCircle size={14} className="computer-spinner" aria-label="Opening website" />}</div>
   )
 }
 

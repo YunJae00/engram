@@ -147,6 +147,7 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   // from the pane itself, which is what a person would do.
   await page.getByTestId('live-address').fill(siteUrl)
   await page.getByTestId('live-address').press('Enter')
+  await expect(page.getByTestId('live-address')).not.toHaveValue('')
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 20_000 })
   const stage = page.getByTestId('web-pane').locator('.mirror-surface')
   // A person clicks what they can see: a canvas nothing has landed on yet

@@ -145,6 +145,18 @@ export async function addRoutine(
   return toRoutine(note)!
 }
 
+export async function updateRoutineGoal(paths: VaultPaths, id: string, goal: string, now: Date = new Date()): Promise<void> {
+  if (typeof goal !== 'string' || !goal.trim() || goal.length > 4000) throw new Error('Provide routine instructions of 1–4000 characters.')
+  const note = await readNote(paths, id)
+  const routine = toRoutine(note)
+  if (!routine?.task || !note.front.routine?.task) throw new Error('This routine has no editable task instructions.')
+  note.front.routine.task = { ...routine.task, goal: goal.trim(), context: undefined }
+  note.body = routineBody(routine.name, routine.steps, note.front.routine.task)
+  note.front.updated = now.toISOString()
+  await writeNote(paths, note)
+  listings.delete(paths.cache)
+}
+
 export async function renameRoutine(paths: VaultPaths, id: string, nextName: string, now: Date = new Date()): Promise<void> {
   const name = nextName.trim().slice(0, ROUTINE_NAME_CAP)
   if (!name) throw new Error('a routine needs a name')

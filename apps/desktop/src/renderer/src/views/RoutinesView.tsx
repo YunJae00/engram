@@ -27,6 +27,9 @@ export function RoutinesView({ selectedId }: { selectedId: string | null }) {
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const [starting, setStarting] = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => setEditing(null), [selectedId])
   const scheduled = routine.running && !routine.channel
   useEffect(() => {
     if (!scheduled) return
@@ -91,6 +94,13 @@ export function RoutinesView({ selectedId }: { selectedId: string | null }) {
         {selected.pendingWrite && <p className="routine-pending-warning" role="status"><AlertTriangle size={15} aria-hidden />{t('routines.unfinishedHint')}</p>}
         <section className="routine-description" aria-label="Routine description"><h2>{selected.task ? 'What it does' : 'How it runs'}</h2><p>{selected.task?.goal ?? 'Start in a new chat. Saved steps run first; if a control has moved, your connected comet checks the page and continues unfinished work when safe. Login, approval and Stop stay in your hands.'}</p>{selected.task && <p>Your comet checks the current state, adapts the saved method and verifies the result. Login and approval still need you.</p>}{!selected.task && data?.body && <details className="routine-saved-description"><summary>Saved description</summary><p data-testid="routine-description">{data.body.replace(/^# [^\n]+\n*/, '').trim()}</p></details>}{data?.bodyError && <div className="routine-workspace-error" data-testid="routine-description-error" role="status"><p>The saved description is unavailable. You can still review and run the recorded steps.</p><button className="secondary" onClick={() => setRevision(value => value + 1)}>Reload description</button></div>}</section>
         {!!selected.task?.urls.length && <section><h2>Starting pages</h2><div className="routine-starting-pages">{selected.task.urls.map(url => <a key={url} href={url}>{url}</a>)}</div></section>}
+        {selected.task && <section className="comet-keep-instructions" aria-label="Edit routine instructions">
+          {editing === null ? <button className="secondary" onClick={() => setEditing(selected.task!.goal)}>Edit instructions</button> : <>
+            <label>Standalone instructions<textarea aria-label="Routine instructions" value={editing} maxLength={4000} onChange={event => setEditing(event.target.value)} /></label>
+            <p>Include where to start, required inputs, where to stop and result checks. Old chat messages and approvals are not carried into a new run.</p>
+            <div className="dialog-actions"><button className="secondary" disabled={saving} onClick={() => setEditing(null)}>Cancel</button><button className="primary" disabled={saving || !editing.trim()} onClick={async () => { setSaving(true); try { await api.routineUpdateGoal(selected.id, editing); setEditing(null); setRevision(value => value + 1) } catch (failure) { showToast(String(failure)) } finally { setSaving(false) } }}>Save instructions</button></div>
+          </>}
+        </section>}
         {selected.task?.execution && <section aria-label="Saved execution settings"><h2>Run settings</h2><p>{selected.task.execution.engine === 'claude' ? 'Claude' : 'ChatGPT'} · {selected.task.execution.model || 'Default model'} · {selected.task.execution.effort || 'Auto'} effort</p><p>The new conversation starts with these settings. You can change them there.</p></section>}
         {!!selected.task?.checks?.length && <section><h2>Result checks</h2><ul>{selected.task.checks.map(check => <li key={check}>{check}</li>)}</ul></section>}
         {rules.length > 0 && <section aria-label="Standing approvals"><h2>Standing approvals</h2><ApprovalChips rules={rules} onForget={forget} /></section>}

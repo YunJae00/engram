@@ -8,6 +8,15 @@ export interface PageCheck {
 const text = { type: 'string', minLength: 1, maxLength: 2000 }
 const pageUrl = { ...text, description: 'Exact URL from the latest browser observation, including redirects and path.' }
 const words = { type: 'array', items: text, maxItems: 12 }
+export function evidenceRegion(value: unknown, width: number, height: number): { x: number; y: number; width: number; height: number } | undefined {
+  if (value === undefined || value === null) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Provide a rectangular viewport region.')
+  const region = value as Record<string, unknown>
+  if (Object.keys(region).length !== 4 || !['x', 'y', 'width', 'height'].every(key => Number.isSafeInteger(region[key]))) throw new Error('Region needs integer x, y, width and height in viewport CSS pixels.')
+  const { x, y, width: w, height: h } = region as Record<string, number>
+  if (x! < 0 || y! < 0 || w! < 1 || h! < 1 || x! + w! > width || y! + h! > height) throw new Error('The region is outside the current viewport. Inspect the page and select it again.')
+  return { x: x!, y: y!, width: w!, height: h! }
+}
 const schema = (properties: object, required: string[]) => ({ type: 'object', additionalProperties: false, properties, required })
 const checkSchema = schema({ id: { ...text, description: 'A short stable name for this check.' }, url: pageUrl, ready: { ...text, description: 'Literal visible page text establishing readiness, e.g. Example Domain. NOT a CSS selector, JavaScript, or a loading-state name.' }, present: words, absent: words, timeoutMs: { type: 'integer', minimum: 0, maximum: 30000 } }, ['id', 'url', 'ready'])
 
@@ -77,7 +86,9 @@ export function evidenceTools(host: EvidenceHost): AgentTool[] {
       })
     }
   }
-  const captureSchema = schema({ name: { ...text, maxLength: 80, description: 'Plain output name without a directory or extension, e.g. before-fix.' }, url: pageUrl, masks: { type: 'array', items: { ...text, maxLength: 300 }, maxItems: 12 }, issue: text, build: text, role: text, testData: text, maxSeconds: { type: 'integer', minimum: 1, maximum: 120, description: 'Maximum recording lifetime, including time spent thinking between tools. Default 120 seconds.' } }, ['name', 'url'])
+  const coordinate = { type: 'integer', minimum: 0, maximum: 16384 }
+  const region = { ...schema({ x: coordinate, y: coordinate, width: { ...coordinate, minimum: 1 }, height: { ...coordinate, minimum: 1 } }, ['x', 'y', 'width', 'height']), description: 'Optional fixed rectangle in visible viewport CSS pixels, from a fresh look. Capture only this area; it does not follow an element when scrolling. Omit for the whole tab viewport.' }
+  const captureSchema = schema({ name: { ...text, maxLength: 80, description: 'Plain output name without a directory or extension, e.g. before-fix.' }, url: pageUrl, region, masks: { type: 'array', items: { ...text, maxLength: 300 }, maxItems: 12 }, issue: text, build: text, role: text, testData: text, maxSeconds: { type: 'integer', minimum: 1, maximum: 120, description: 'Maximum recording lifetime, including time spent thinking between tools. Default 120 seconds.' } }, ['name', 'url'])
   return [
     { name: 'wait_for', description: 'Wait up to 30 seconds for an exact page URL, positive ready text and optional present/absent text. Returns passed, failed or inconclusive. Loading, login and truncated extracts are not proof of absence.', argsSchema: checkSchema, run: (args, context) => inspect({ ...args, timeoutMs: args.timeoutMs ?? 15000 }, context.signal) },
     { name: 'verify', description: 'Check a fresh page against an explicit ready state and expected present/absent text. Use stable check ids; repeat failed checks after correction. Record build, account role and test data with evidence. Absence alone never proves a fix.', argsSchema: checkSchema, run: (args, context) => inspect(args, context.signal) },

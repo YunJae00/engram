@@ -44,7 +44,7 @@ describe('saved task routines', () => {
   })
 
   it('keeps mixed work generic and rejects invalid saved addresses', async () => {
-    expect(routineTask('Read their remarks too', [], [], ['Find last week’s time entries', 'Read their remarks too']).context).toEqual(['Find last week’s time entries'])
+    expect(routineTask('Read their remarks too', [], [], ['Find last week’s time entries', 'Read their remarks too']).context).toBeUndefined()
     expect(routineTask('Use my password is abcDEF123', []).goal).not.toContain('abcDEF123')
     expect(routineTask('Prepare a file', [{ tool: 'excel_write', args: {}, observation: '{}' }], ['https://example.com']).surface).toBe('auto')
     const paths = await initVault(await tmpVaultRoot('saved-invalid-'), { git: false })

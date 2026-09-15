@@ -1,4 +1,6 @@
 import {
+  routineDraftTool,
+  updateRoutineGoal,
   activationRerank,
   fadingMemories,
   noteActivation,
@@ -1223,8 +1225,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (!routineId) {
       const last = lastTurns.get(botId)
       const transcript = await readBotTranscript(paths, botId)
-      const original = last && (last.keepGoal === input.goal || last.message === input.goal) ? last.message : input.goal
-      const task = routineTask(original, last?.steps ?? [], transcript.map(turn => turn.text), transcript.filter(turn => turn.role === 'user').map(turn => turn.text))
+      const task = routineTask(input.goal, last?.steps ?? [], transcript.filter(turn => turn.role === 'user' && /https?:\/\//.test(turn.text)).slice(-1).map(turn => turn.text))
       if (last?.execution) task.execution = last.execution
       const routine = await addRoutine(paths, { name: input.name, steps: [], task })
       routineId = routine.id
@@ -1284,6 +1285,10 @@ export function registerIpc(ctx: VaultContext): void {
   registerArtifactIpc(ctx.paths)
   registerChatAttachmentIpc(ctx.paths)
   ipcMain.handle('routines:list', () => listRoutines(paths))
+  ipcMain.handle('routines:updateGoal', async (_e, id: string, goal: string) => {
+    await updateRoutineGoal(paths, id, goal)
+    broadcast({ type: 'vault:changed' })
+  })
   ipcMain.handle('routines:add', async (_e, input: { name: string; steps: RoutineStep[] }) => {
     const routine = await addRoutine(paths, input)
     broadcast({ type: 'vault:changed' })
@@ -2222,6 +2227,7 @@ export function registerIpc(ctx: VaultContext): void {
         const resume = resumeState.get(bot.id)
         resumeState.delete(bot.id)
         const skillLedger = await readSkillsLedger(paths)
+        const routineDraft = { current: null as import('core').TaskProposal | null }
         const result = await runComet(
           {
             engine,
@@ -2300,7 +2306,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            }), routineDraftTool(draft => { routineDraft.current = draft }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2436,7 +2442,7 @@ export function registerIpc(ctx: VaultContext): void {
         // The words they typed name this morning, not the work. Asked after
         // the answer is out, it writes the offer, which follows on its own.
         const filingEngine = ctx.engines[0]
-        const proposal =
+        const proposal = routineDraft.current ?? (
           filingEngine && (keepable || handled)
             ? await collectResult(filingEngine, {
                 prompt: proposalPrompt({
@@ -2456,7 +2462,7 @@ export function registerIpc(ctx: VaultContext): void {
               })
                 .then((raw: string) => parseProposal(raw))
                 .catch(() => null)
-            : null
+            : null)
         if (keepable || handled) flog('comet', `a button for this turn: ${proposal ? proposal.name : 'not worth one'}`)
         if (lastTurns.get(bot.id) === completed && !signal.aborted && proposal) {
           completed.keepGoal = proposal.goal

@@ -1895,6 +1895,14 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   border: 1px solid var(--clay); border-radius: var(--radius-card); padding: 10px 12px;
 }
 .routine-submit-head { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
+.chat-approval { flex: none; margin: 8px var(--panel-gutter); padding: 14px 16px; background: var(--bg); max-height: 35vh; overflow: auto; }
+.chat-approval > strong { font-size: var(--fs-small); color: var(--clay); }
+.chat-approval .dialog-actions { flex-wrap: wrap; align-items: center; gap: 8px; }
+.chat-approval details { margin-right: auto; font-size: var(--fs-small); }
+.chat-approval summary { cursor: pointer; padding: 8px 0; }
+.browser-address-field { flex: 1; min-width: 0; display: flex; align-items: center; position: relative; }
+.browser-address-field .live-address { width: 100%; padding-right: 30px; }
+.browser-address-field > svg { position: absolute; right: 9px; pointer-events: none; }
 .routine-submit-fields { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .routine-submit-fields li { display: flex; gap: 8px; font-size: var(--fs-small); }
 .routine-submit-label { flex: none; min-width: 90px; color: var(--fg-faint); }

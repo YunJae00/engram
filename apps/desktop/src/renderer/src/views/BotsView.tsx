@@ -208,6 +208,7 @@ export const BotsView = memo(function BotsView() {
                 </div>
               )}
             </div>
+            <PressGate channel={cometChannel(selected.id)} />
             <BotComposer
               key={selected.id}
               botId={selected.id}
@@ -223,9 +224,7 @@ export const BotsView = memo(function BotsView() {
           </div>
           {/* The page the comet works on, beside the conversation: watched,
               acted in, and stoppable right where the work is. */}
-          <CometSurface channel={cometChannel(selected.id)} name={selected.name} busy={busy} onStop={() => void stop()}>
-            <PressGate channel={cometChannel(selected.id)} />
-          </CometSurface>
+          <CometSurface channel={cometChannel(selected.id)} name={selected.name} busy={busy} onStop={() => void stop()} />
           </>
         ) : loaded ? (
           <CometWelcome />

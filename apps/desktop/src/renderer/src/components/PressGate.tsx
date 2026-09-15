@@ -12,7 +12,8 @@ export function PressGate({ channel }: { channel: string }) {
   const pressAsk = pressAsks.find((ask) => ask.channel === channel)
   if (!pressAsk) return null
   return (
-    <div className="routine-submit" data-testid="press-ask">
+    <section className="routine-submit chat-approval" data-testid="press-ask" role="region" aria-label="Approval required">
+      <strong role="status">Approval required · Waiting for you</strong>
       <div className="routine-submit-head">
         <AlertTriangle size={14} aria-hidden /> {t('press.ask', { words: pressAsk.words })}
       </div>
@@ -21,15 +22,15 @@ export function PressGate({ channel }: { channel: string }) {
         <button className="secondary" data-testid="press-ask-mine" onClick={() => answerPressAsk(channel, 'cancel')}>
           {t('press.mine')}
         </button>
-        {pressAsk.host && (
+        {pressAsk.host && (<details><summary>Site permissions</summary>
           <button className="secondary" data-testid="press-ask-always" onClick={() => answerPressAsk(channel, 'always')}>
             {t('press.always', { host: pressAsk.host })}
           </button>
-        )}
+        </details>)}
         <button className="primary" data-testid="press-ask-go" onClick={() => answerPressAsk(channel, 'approve')}>
           {t('press.go')}
         </button>
       </div>
-    </div>
+    </section>
   )
 }

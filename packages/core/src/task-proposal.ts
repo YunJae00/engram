@@ -6,6 +6,23 @@
 // line saying what pressing it would do - and the person is shown all three
 // before anything is kept.
 
+import type { AgentTool } from './agent-loop.js'
+
+export function routineDraftTool(offer: (draft: TaskProposal) => void): AgentTool {
+  const text = (maxLength: number) => ({ type: 'string', minLength: 1, maxLength })
+  return {
+    name: 'draft_routine',
+    description: 'When the person asks to create or save a routine, prepare an editable preview for their confirmation. Do not execute the task. Supply a standalone goal with stable starting URLs, inputs to resolve each run, start/end boundaries and result checks. Never preserve chat history, old approvals, guessed hours or past results as new inputs. The person must review and click Save; this tool does not save or schedule anything.',
+    argsSchema: { type: 'object', additionalProperties: false, properties: { name: text(60), goal: text(4000), does: text(160) }, required: ['name', 'goal', 'does'] },
+    async run(args) {
+      for (const [key, cap] of [['name', 60], ['goal', 4000], ['does', 160]] as const) {
+        if (typeof args[key] !== 'string' || !args[key].trim() || args[key].length > cap) throw new Error(`Provide ${key} as nonempty text of at most ${cap} characters.`)
+      }
+      offer({ name: String(args.name).trim(), goal: String(args.goal).trim(), does: String(args.does).trim() })
+      return 'Routine preview prepared. Tell the person to review its instructions and click Save. It is not saved, scheduled or executed yet.'
+    },
+  }
+}
 export interface TaskProposal {
   // What the button says. Short enough to read in a row of them.
   name: string
@@ -27,7 +44,8 @@ export function proposalPrompt(exchange: { user: string; answer: string; steps: 
     'A job was just done for the person. They may want it as a button they can press again. Write the button.',
     'Answer as three lines and nothing else:',
     'NAME: a short label, at most 5 words, naming the WORK - never the words they happened to type, never a date',
-    'GOAL: the same job as one instruction you could be given again next month, specific enough to run without asking',
+    'GOAL: a standalone reusable instruction stating where to start, which work to do, where to stop and how to verify. Resolve short replies such as yes from context; never save the short reply itself.',
+    'Keep changing dates, records and hours as inputs to resolve on each run. Never hardcode guessed hours or invented work. Ask for missing inputs; previous consent is not future consent. Do not carry chat history or past results into the saved instruction. Include stable starting URLs, not session-specific popup URLs.',
     'Preserve the requested output, scope, relative time period and verification requirements. State the actual working surface (browser or app) and navigation method. Do not invent missing dates or omit required detail. Starting URLs are saved separately by the host.',
     'Do not add new investigations or output columns just because the answer happened to mention them. Do not change an event-date question into an application-date question. Rephrase wording only, never broaden the job.',
     'DOES: one sentence saying what pressing it would do',

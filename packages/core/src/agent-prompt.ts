@@ -423,6 +423,8 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
     if (picked.length === MENU_CAP) break
   }
   const skill = by('open_skill')
+  const draft = by('draft_routine')
+  if (draft && /routine|루틴/i.test(task) && !picked.includes(draft)) picked.push(draft)
   if (skill && !picked.includes(skill)) picked.push(skill)
   // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
   const evidence = /record|reproduc|evidence|upload|attach|verify|녹화|재현|증거|첨부|업로드|검증/i.test(task)
