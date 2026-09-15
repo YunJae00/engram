@@ -97,7 +97,6 @@ function Stage({ frame, size, live, lane }: { frame: boolean; size: { width: num
         ref={keys}
         className="live-keys"
         aria-label={t('live.hint')}
-        autoFocus
         onKeyDown={(e) => key(e, 'down')}
         onKeyUp={(e) => key(e, 'up')}
         onCompositionEnd={(e) => {

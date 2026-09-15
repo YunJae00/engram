@@ -27,26 +27,21 @@ const HISTORY_CHARS = 220
 // — grammatically valid, useless in practice, and measured: the first live
 // run picked the right tool and called it with nothing in it. Branching makes
 // the empty call impossible at decoding time rather than merely discouraged.
-// The same choice as a shape a hosted runtime accepts for structured output:
-// one object, a closed set of tool names, and the arguments left to the tool
-// descriptions the model has already read.
-// Some runtimes enforce a strict reading of the schema: every object must
-// say it takes nothing beyond its properties. So `args` cannot be an open
-// object - it lists the union of every tool's own arguments instead, each
-// optional, which admits every legal call and nothing else.
+// Keep the union inside a root object for strict structured-output runtimes.
+// Each tool retains its required arguments; unrelated fields never collide
+// or force a large response filled with nulls for every other tool.
 export function openStepSchema(tools: AgentTool[]): object {
-  const args: Record<string, unknown> = { text: { type: 'string' } }
-  for (const tool of tools) {
-    const props = (tool.argsSchema as { properties?: Record<string, unknown> }).properties ?? {}
-    for (const [key, value] of Object.entries(props)) if (!(key in args)) args[key] = value
-  }
+  const choices = [...tools.map(tool => ({ name: tool.name, args: tool.argsSchema })),
+    { name: 'answer', args: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }]
   return {
     type: 'object',
     properties: {
-      tool: { type: 'string', enum: [...tools.map((t) => t.name), 'answer'] },
-      args: { type: 'object', properties: args, additionalProperties: false },
+      step: { anyOf: choices.map(choice => ({ type: 'object',
+        properties: { tool: { type: 'string', enum: [choice.name] }, args: { ...choice.args, additionalProperties: false } },
+        required: ['tool', 'args'], additionalProperties: false,
+      })) },
     },
-    required: ['tool', 'args'],
+    required: ['step'],
     additionalProperties: false,
   }
 }
@@ -81,7 +76,7 @@ function opening(steps: AgentLoopStep[]): boolean {
 
 function menuLines(tools: AgentTool[], answerFirst = false): string {
   const answer = '- answer: you have what you need — args: {"text": "<the final answer>"}'
-  const rows = tools.map((t) => `- ${t.name}: ${t.description}`)
+  const rows = tools.map((t) => `- ${t.name}: ${t.description}\n  Arguments JSON schema: ${JSON.stringify(t.argsSchema)}`)
   return (answerFirst ? [answer, ...rows] : [...rows, answer]).join('\n')
 }
 
@@ -173,6 +168,7 @@ export function skillIndexLines(skills?: { name: string; description: string }[]
 // The standing rules, the same for every turn.
 export function openRuleLines(): string[] {
   return [
+    'For browser evidence: open the requested URL itself. Use wait_for for requested waits and verify for requested checks, with ready set to literal visible text (not selectors or JavaScript). Start recording before the actions to capture, allow up to 120 seconds unless a shorter limit was requested, and call record_stop promptly after the relevant checks, before screenshots or uploads when possible. Use returned artifact ids or links, never reconstruct a filename. Report each failed or inconclusive check honestly; viewing the page is not a replacement for a failed verify.',
     // The order of resort, said first and plainly. Without it the web tools -
     // which take most of the room below - read as the whole job, and a
     // question about the person's own work goes to a search engine.
@@ -279,7 +275,7 @@ export function stepPrompt(
     'Pick exactly ONE tool for the next move. Keep going until the task is actually done: when a result tells you the next move, make it. Use answer only when the work is finished, or when only the person can supply what is missing.',
     'Tools:',
     menuLines(tools, opening(steps) && (history?.length ?? 0) > 0),
-    'Output only JSON: {"tool": "...", "args": {...}}',
+    guided ? 'Output only JSON: {"tool": "...", "args": {...}}' : 'Output only JSON: {"step": {"tool": "...", "args": {...}}}. Use the argument schema of the selected tool.',
     ...(!guided
       ? []
       : opening(steps) && desktopRead

@@ -105,6 +105,26 @@ test('resize and chat handoffs retain the live pages and scroll', async () => {
   await expect.poll(() => first.evaluate(() => innerWidth)).toBeLessThan(600)
 })
 
+test('typing and editing a conversation after using the web does not reach the web page', async () => {
+  const first = browser.contexts()[0]!.pages().find(page => page.url() === `${url}/?pane=0`)!
+  const input = first.getByRole('textbox', { name: 'Entry' })
+  await input.click()
+  await input.fill('Browser keeps this')
+  await first.evaluate(() => { (window as unknown as { keysSeen: string[] }).keysSeen = []; document.addEventListener('keydown', event => { (window as unknown as { keysSeen: string[] }).keysSeen.push(event.key) }) })
+  const draft = shell.getByTestId('mission-tile-0').locator('.mini-chat-write textarea')
+  await draft.click()
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.isFocused())).toBe(true)
+  await shell.keyboard.type('chat draft')
+  await shell.keyboard.press('ControlOrMeta+a')
+  await shell.keyboard.type('replacement')
+  await shell.keyboard.insertText(' 한글')
+  await expect(draft).toHaveValue('replacement 한글')
+  expect(await first.evaluate(() => (window as unknown as { keysSeen: string[] }).keysSeen)).toEqual([])
+  await expect(input).toHaveValue('Browser keeps this')
+  await input.fill('Pane 0 한글')
+  await draft.fill('')
+})
+
 test('popup closure restores the original page', async () => {
   const context = browser.contexts()[0]!
   const first = context.pages().find((page) => page.url() === `${url}/?pane=0`)!
@@ -151,6 +171,33 @@ test('script popups retain their opener and can close themselves', async () => {
   await expect.poll(() => popup.isClosed()).toBe(true)
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Callback received')
   await expect.poll(async () => (await shell.evaluate((id) => window.engram.missionFrames([`bot-${id}`]), ids[0]!))[0]?.url).toBe(`${url}/?pane=0`)
+})
+
+test('occlusion keeps native layout while a dialog hides it immediately and restores the same page', async () => {
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => unknown> })._invokeHandlers
+    const original = handlers.get('native:layout')!
+    const state = globalThis as unknown as { fixtureLayouts: unknown[][]; fixtureRestore: () => void }
+    state.fixtureLayouts = []
+    ipcMain.removeHandler('native:layout')
+    ipcMain.handle('native:layout', (event, surfaces) => { state.fixtureLayouts.push(surfaces); return original(event, surfaces) })
+    state.fixtureRestore = () => { ipcMain.removeHandler('native:layout'); ipcMain.handle('native:layout', original) }
+  })
+  const lastCount = () => app.evaluate(() => (globalThis as unknown as { fixtureLayouts: unknown[][] }).fixtureLayouts.at(-1)?.length ?? -1)
+  const first = browser.contexts()[0]!.pages().find(page => page.url() === `${url}/?pane=0`)!
+  await first.getByRole('textbox', { name: 'Entry' }).fill('Survives occlusion')
+  try {
+    await shell.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange')) })
+    await expect.poll(lastCount).toBeGreaterThan(0)
+    await shell.evaluate(() => { const modal = document.createElement('div'); modal.id = 'fixture-modal'; modal.role = 'dialog'; modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white'; document.body.append(modal) })
+    await expect.poll(lastCount, { intervals: [10], timeout: 1000 }).toBe(0)
+    await shell.evaluate(() => document.querySelector('#fixture-modal')?.remove())
+    await expect.poll(lastCount, { intervals: [10], timeout: 1000 }).toBeGreaterThan(0)
+    await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Survives occlusion')
+  } finally {
+    await shell.evaluate(() => { Reflect.deleteProperty(document, 'visibilityState'); document.querySelector('#fixture-modal')?.remove() })
+    await app.evaluate(() => (globalThis as unknown as { fixtureRestore: () => void }).fixtureRestore())
+  }
 })
 
 test('folding a tile conversation and dismissing its picker keep the native page interactive', async () => {

@@ -17,7 +17,7 @@ export const SiteIcon = memo(function SiteIcon({ origin }: { origin: string }) {
 export function answerSites(text: string): { origin: string; url: string; label: string }[] {
   const seen = new Set<string>()
   const sites: { origin: string; url: string; label: string }[] = []
-  for (const match of text.matchAll(/https?:\/\/[^\s<>"\])]+/g)) {
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"`\])]+/g)) {
     try {
       const url = new URL(match[0].replace(/[.,;:!?]+$/, ''))
       if (url.username || url.password || seen.has(url.origin)) continue

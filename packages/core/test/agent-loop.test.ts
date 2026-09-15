@@ -392,7 +392,8 @@ describe('a hung call', () => {
     })
     const { deps: d } = await deps('loop-hung', [search], engine)
     const result = await runAgentLoop(d, 'what did we decide')
-    expect(result.answer).toBe('here is what I found before it stalled')
+    expect(result.answer).toContain('here is what I found before it stalled')
+    expect(result.incomplete).toContain('timed out after 180000ms')
     expect(result.steps).toHaveLength(1)
   })
 

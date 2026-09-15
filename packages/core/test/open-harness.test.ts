@@ -31,21 +31,21 @@ describe('a search shape is learned only from a search the comet ran for its tas
 })
 
 describe('the step shapes suit a hosted structured-output runtime', () => {
-  it('is one closed object over the tool names, args the union of every tool argument', () => {
+  it('keeps each tool argument schema in its own closed branch below one root object', () => {
     const schema = openStepSchema(tools) as {
-      properties: { tool: { enum: string[] }; args: { properties: Record<string, unknown>; additionalProperties: boolean } }
+      properties: { step: { anyOf: { properties: { tool: { enum: string[] }; args: { properties: Record<string, unknown>; additionalProperties: boolean } } }[] } }
       required: string[]
       additionalProperties: boolean
       oneOf?: unknown
     }
-    expect(schema.properties.tool.enum).toEqual(['search_web', 'open_page', 'answer'])
-    expect(schema.required).toEqual(['tool', 'args'])
+    const branches = schema.properties.step.anyOf
+    expect(branches.map(branch => branch.properties.tool.enum[0])).toEqual(['search_web', 'open_page', 'answer'])
+    expect(schema.required).toEqual(['step'])
     expect(schema.additionalProperties).toBe(false)
     expect(schema.oneOf).toBeUndefined()
-    // The strict runtimes refuse an object that does not close itself, so
-    // args lists every tool's arguments and closes.
-    expect(schema.properties.args.additionalProperties).toBe(false)
-    expect(Object.keys(schema.properties.args.properties)).toEqual(expect.arrayContaining(['text', 'query', 'url']))
+    for (const branch of branches) expect(branch.properties.args.additionalProperties).toBe(false)
+    expect(Object.keys(branches[0]!.properties.args.properties)).toEqual(['query'])
+    expect(Object.keys(branches[1]!.properties.args.properties)).toEqual(['url'])
   })
 
   it('every object in every branch of the guided shape closes itself too', () => {

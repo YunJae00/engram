@@ -18,11 +18,19 @@ const surfaces = new Map<HTMLElement, string>()
 let timer: ReturnType<typeof setInterval> | undefined
 let last = ''
 let sent = 0
+let changes: MutationObserver | undefined
+
+function focusShell(event: Event): void {
+  if (!(event.target instanceof Element) || event.target.closest('[data-testid="native-browser-surface"]')) return
+  api.nativeFocusShell()
+}
 
 function measure(): void {
   const result: NativeSurfaceDto[] = []
   const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay, .computer-status')]
-  if (document.visibilityState === 'visible') for (const [element, lane] of surfaces) {
+  // Occlusion by another app is not a layout change. Native child windows
+  // already follow their owner; unmounting them here flashes on task switching.
+  for (const [element, lane] of surfaces) {
     const full = element.getBoundingClientRect()
     let left = Math.max(0, full.left), top = Math.max(0, full.top)
     let right = Math.min(innerWidth, full.right), bottom = Math.min(innerHeight, full.bottom)
@@ -57,11 +65,26 @@ function measure(): void {
 
 export function mountNativeSurface(element: HTMLElement, lane: string): () => void {
   surfaces.set(element, lane)
-  if (!timer) timer = setInterval(measure, 33)
+  if (!timer) {
+    timer = setInterval(measure, 33)
+    document.addEventListener('pointerdown', focusShell, true)
+    document.addEventListener('focusin', focusShell, true)
+    changes = new MutationObserver(measure)
+    changes.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'inert', 'role', 'open'] })
+    window.addEventListener('focus', measure)
+    window.addEventListener('resize', measure)
+  }
   measure()
   return () => {
     surfaces.delete(element)
     measure()
-    if (!surfaces.size) { clearInterval(timer); timer = undefined }
+    if (!surfaces.size) {
+      clearInterval(timer); timer = undefined
+      document.removeEventListener('pointerdown', focusShell, true)
+      document.removeEventListener('focusin', focusShell, true)
+      changes?.disconnect(); changes = undefined
+      window.removeEventListener('focus', measure)
+      window.removeEventListener('resize', measure)
+    }
   }
 }

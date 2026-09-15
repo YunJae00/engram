@@ -63,6 +63,7 @@ export async function saveArtifact(directory: string, name: string, data: Buffer
 }
 
 export async function readArtifact(directory: string, id: string, signal?: AbortSignal): Promise<Buffer> {
+  id = artifactId(id)
   const path = await resolveArtifact(directory, id)
   const data = await boundedRead(path, signal, 32_000_000)
   const hash = createHash('sha256').update(id.slice(37)).update(data).digest('hex')
@@ -210,9 +211,15 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
   ]
 }
 
-export async function resolveArtifact(directory: string, id: unknown): Promise<string> {
-  if (typeof id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i.test(id)) throw new Error('Invalid artifact.')
+export function artifactId(value: unknown): string {
+  const id = typeof value === 'string' && value.startsWith('engram-artifact:') ? decodeURIComponent(value.slice('engram-artifact:'.length)) : value
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i.test(id)) throw new Error('Invalid artifact. Use the returned artifact id or engram-artifact link, not a filesystem path.')
   nameOf(id.slice(37), true, true)
+  return id
+}
+
+export async function resolveArtifact(directory: string, value: unknown): Promise<string> {
+  const id = artifactId(value)
   const root = await realpath(directory)
   const path = await realpath(join(root, id))
   if (relative(root, path) !== id || !(await stat(path)).isFile()) throw new Error('Artifact is outside this chat.')

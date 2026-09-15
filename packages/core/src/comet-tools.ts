@@ -410,21 +410,6 @@ ${note.body.slice(0, 2_000)}`
         async run(args, context) {
           const url = str(args, 'url')
           if (!/^https?:\/\//i.test(url)) return 'open_page needs a full web address, starting with https://'
-          // A front page is a lobby: it has a search box and no answer. Rather
-          // than let the comet read a homepage and conclude from the menu, it
-          // is sent to search — with the person's own search, not ours.
-          const bare = (() => {
-            try {
-              const parsed = new URL(url)
-              return parsed.pathname.replace(/\/+$/, '') === '' && parsed.search === ''
-            } catch {
-              return false
-            }
-          })()
-          if (bare && !insisted.has(url) && deps.searchTemplate && (await deps.searchTemplate())) {
-            insisted.add(url)
-            return `${url} is a front page — it will not hold the answer. Search instead: call search_web with {"query": "${context.task.slice(0, 60)}"}; if that front page itself is what was asked for, call open_page again with the same address`
-          }
           // The person's own results page is what search_web reads; opened
           // by hand it is a list of links that leads back to itself.
           const shape = deps.searchTemplate ? await deps.searchTemplate() : null
@@ -460,7 +445,7 @@ ${note.body.slice(0, 2_000)}`
           // is also every video, ticket and tracking link on the web.
           if (deps.learnSearch && deps.searchTemplate && !(await deps.searchTemplate()) && looksLikeSearchFor(url, context.task ?? '', page))
             await deps.learnSearch(deriveSearchTemplate(url)!).catch(() => undefined)
-          if (isFurniture(page)) {
+          if (deps.guided !== false && isFurniture(page)) {
             if (insisted.has(url)) return linkReport(page)
             insisted.add(url)
             return `${url} is mostly links rather than an answer — open one of them, or search instead; if the list itself is wanted, call open_page again with the same address`

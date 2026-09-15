@@ -113,7 +113,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       }
       let capturing = false
       const timer = setInterval(tick, 250)
-      const limit = setTimeout(() => { void state.stop('Recording time limit reached').catch(() => {}) }, Math.min(120, Math.max(1, Number(args.maxSeconds) || 60)) * 1000)
+      const limit = setTimeout(() => { void state.stop('Recording time limit reached').catch(() => {}) }, Math.min(120, Math.max(1, Number(args.maxSeconds) || 120)) * 1000)
       const abort = () => { void state.stop('Task stopped').catch(() => {}) }
       const closed = () => { void state.stop('Recorded tab closed').catch(() => {}) }
       recordings.set(lane, state); changed(lane)
@@ -124,7 +124,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       if (!active) throw new Error('Recording stopped before it was ready.')
       if (signal?.aborted) abort()
       signal?.throwIfAborted()
-      return { recording: 'started', url: source.url, maxSeconds: Math.min(120, Math.max(1, Number(args.maxSeconds) || 60)), message: 'Recording this tab only. Call record_stop before finishing; inspect the saved video before uploading.' }
+      return { recording: 'started', url: source.url, maxSeconds: Math.min(120, Math.max(1, Number(args.maxSeconds) || 120)), message: 'Recording this tab only. Call record_stop before finishing; inspect the saved video before uploading.' }
     },
     stop: signal => { signal?.throwIfAborted(); return stopEvidenceRecording(lane) },
     async upload(args, signal) {

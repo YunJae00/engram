@@ -7,6 +7,7 @@ import type { ToolSessionCall } from 'core'
 // the few shapes the tools actually use are translated here.
 
 interface JsonSchema {
+  description?: string
   type?: string
   properties?: Record<string, JsonSchema>
   required?: string[]
@@ -62,7 +63,8 @@ export function shapeOf(schema: object): Record<string, ZodTypeAny> {
   const shape: Record<string, ZodTypeAny> = {}
   for (const [name, field] of Object.entries(properties)) {
     const type = fieldOf(field)
-    shape[name] = required.includes(name) ? type : type.optional()
+    const described = field.description ? type.describe(field.description) : type
+    shape[name] = required.includes(name) ? described : described.optional()
   }
   return shape
 }

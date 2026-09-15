@@ -5,11 +5,10 @@ import { isNativePage, nativeBrowserEnabled, nativeTarget, placeNativePages, set
 
 let window: BrowserWindow | null = null
 let revision = 0
-let expires = 0
 let visible = false
 let registered = false
 
-export function nativePagesVisible(): boolean { return visible && Date.now() < expires }
+export function nativePagesVisible(): boolean { return visible }
 
 export function normalizeNativeSurfaces(value: unknown, width: number, height: number): NativeSurfaceDto[] {
   if (!Array.isArray(value)) return []
@@ -63,22 +62,26 @@ export function attachNativeLayout(win: BrowserWindow): void {
   registerNativeLayout()
   window = win
   setNativeBrowserOwner(win)
-  const hide = () => { visible = false; expires = 0; ++revision; void placeNativePages([]).catch(() => undefined) }
+  const hide = () => { visible = false; ++revision; void placeNativePages([]).catch(() => undefined) }
   win.on('hide', hide)
   win.on('minimize', hide)
   win.webContents.on('did-start-loading', hide)
   win.webContents.on('render-process-gone', hide)
-  const timer = setInterval(() => { if (visible && Date.now() > expires) hide() }, 1000).unref()
-  win.once('closed', () => { clearInterval(timer); hide(); if (window === win) window = null })
+  win.once('closed', () => { hide(); if (window === win) window = null })
 }
 
 export function registerNativeLayout(): void {
   if (registered) return
   registered = true
   ipcMain.handle('native:enabled', () => nativeBrowserEnabled())
+  ipcMain.on('native:focus-shell', event => {
+    if (!window || window.isDestroyed() || !window.isVisible() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
+    // A child WebView belongs to another process; DOM focus alone cannot
+    // transfer its native keyboard focus back to the conversation renderer.
+    window.webContents.focus()
+  })
   ipcMain.handle('native:layout', async (event, surfaces: unknown) => {
     if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
-    expires = Date.now() + 3500
     await layout(surfaces)
   })
 }

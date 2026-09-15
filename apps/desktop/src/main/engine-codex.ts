@@ -9,11 +9,25 @@ import { loadSettings } from './settings.js'
 // tool session: inherited runtime tools are a separate boundary.
 
 interface CodexSdk {
-  Codex: new (options: { codexPathOverride?: string; env?: Record<string, string> }) => {
+  Codex: new (options: { codexPathOverride?: string; env?: Record<string, string>; configOverrides?: string[] }) => {
     startThread(options: Record<string, unknown>): {
       run(input: string | ({ type: 'text'; text: string } | { type: 'local_image'; path: string })[], options: { outputSchema?: unknown; signal?: AbortSignal }): Promise<{ finalResponse: string }>
     }
   }
+}
+
+export function disableMcpOverrides(catalog: string): string[] {
+  const servers: unknown = JSON.parse(catalog)
+  if (!Array.isArray(servers)) throw new Error('Could not read the ChatGPT tool configuration.')
+  const disabled = servers.map(server => {
+    const key = typeof server?.transport?.url === 'string' ? 'url' : 'command'
+    const transport = server?.transport?.[key]
+    if (typeof server?.name !== 'string' || typeof transport !== 'string') throw new Error('Could not read the ChatGPT tool configuration.')
+    // Built-in servers may not exist in the user config; preserve their
+    // transport so the override remains valid, without starting it.
+    return `${JSON.stringify(server.name)}={${key}=${JSON.stringify(transport)},enabled=false}`
+  })
+  return [`mcp_servers={${disabled.join(',')}}`]
 }
 
 // Strict output requires every property; nullable fields represent omissions.
@@ -52,6 +66,11 @@ export function restoreOptionalFields(value: unknown, schema: unknown): unknown 
   const node = schema as Record<string, unknown>
   if (Array.isArray(value)) return value.map(item => restoreOptionalFields(item, node['items']))
   if (typeof value !== 'object') return value
+  if (Array.isArray(node['anyOf'])) {
+    const tool = (value as Record<string, unknown>)['tool']
+    const branch = node['anyOf'].find(candidate => candidate?.properties?.tool?.enum?.includes(tool))
+    if (branch) return restoreOptionalFields(value, branch)
+  }
   const properties = (node['properties'] ?? {}) as Record<string, unknown>
   const required = new Set(Array.isArray(node['required']) ? node['required'] : [])
   return Object.fromEntries(Object.entries(value).filter(([key, item]) =>
@@ -116,7 +135,16 @@ export class CodexEngine implements CloudEngine {
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const codex = new sdk.Codex({ codexPathOverride: binary, env: withHelpersOnPath(binary) })
+      const env = withHelpersOnPath(binary)
+      let configOverrides: string[] = []
+      if (job.disallowTools) {
+        // Engram executes the returned action. Starting unrelated MCP servers
+        // for each JSON decision adds their connection time to every step.
+        const catalog = await runText(binary, ['mcp', 'list', '--json'], Math.min(budget, 60_000), env, { signal: abort.signal })
+        if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+        configOverrides = disableMcpOverrides(catalog.out)
+      }
+      const codex = new sdk.Codex({ codexPathOverride: binary, env, configOverrides })
       const thread = codex.startThread({
         workingDirectory: job.workdir,
         sandboxMode: 'read-only',

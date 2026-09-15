@@ -57,6 +57,7 @@ test('external browser tools record masked playable evidence and upload only app
     await call('open_page', { url })
     const check = { id: 'fixed', url, ready: 'Ready', present: ['Fixed'] }
     expect(JSON.parse(await call('verify', check)).verification.status).toBe('failed')
+    expect(JSON.parse(await call('wait_for', { ...check, ready: 'Missing heading', timeoutMs: 50 })).verification.status).toBe('inconclusive')
     const capture = { name: 'before', url, masks: ['#private'], build: 'fixture-before', role: 'test', testData: 'owned fixture' }
     const screenshot = JSON.parse(await call('capture_evidence', capture))
     const png = await readFile(screenshot.path)
@@ -72,6 +73,7 @@ test('external browser tools record masked playable evidence and upload only app
     await shell.screenshot({ path: join(data, 'recording-ui.png') })
     await call('press', { target: 'Reproduce' })
     expect(JSON.parse(await call('wait_for', { ...check, timeoutMs: 2000 })).verification.status).toBe('passed')
+    expect(JSON.parse(await call('verify', check)).verification.status).toBe('passed')
     const video = JSON.parse(await call('record_stop', {}))
     expect(video.recording).toBe('saved'); expect(video.frames).toBeGreaterThan(1)
     await expect(shell.getByRole('button', { name: 'Stop recording' })).toHaveCount(0)
@@ -90,7 +92,7 @@ test('external browser tools record masked playable evidence and upload only app
     }, bytes.toString('base64'))
     expect(playback).toMatchObject({ width: 1280, height: 720 })
     expect(playback.pixel.every(value => Math.abs(value - 32) < 4)).toBe(true)
-    const upload = { artifact: video.artifact, url, target: 'Attach evidence', confirmation: 'Attachment saved' }
+    const upload = { artifact: video.link, url, target: 'Attach evidence', confirmation: 'Attachment saved' }
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async () => ({ response: 0, checkboxChecked: false })) as typeof dialog.showMessageBox })
     await expect(call('upload_file', upload)).rejects.toThrow('declined')
     expect(uploaded.length).toBe(0)

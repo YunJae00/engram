@@ -181,7 +181,8 @@ function parseStep(text: string, tools: AgentTool[]): ParsedStep | null {
     return null
   }
   if (typeof value !== 'object' || value === null) return null
-  const record = value as Record<string, unknown>
+  const root = value as Record<string, unknown>
+  const record = root['step'] && typeof root['step'] === 'object' ? root['step'] as Record<string, unknown> : root
   const tool = record['tool']
   const args = record['args']
   if (typeof tool !== 'string') return null
@@ -379,7 +380,9 @@ async function agentLoop(
       // timed a whole turn out after real work had been done. With nothing
       // gathered the caller hears the real error, as it should.
       if (options.signal?.aborted || steps.length === 0) throw err
-      return wrapUp('calls')
+      const reason = withoutSecrets(err instanceof Error ? err.message : String(err), task).slice(0, 1200)
+      const result = await wrapUp('calls').catch(() => ({ answer: 'The task did not finish.', steps, fellBack: false, stopped: 'calls' as const }))
+      return { ...result, incomplete: `The model could not continue: ${reason}`, answer: `${result.answer}\n\nStopped: ${reason}` }
     }
     const parsed = parseStep(raw, tools)
     if (!parsed) {

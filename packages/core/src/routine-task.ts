@@ -8,7 +8,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
   const source = [goal, ...context].join('\n')
   const urls = new Set<string>()
   const texts = [...successful.filter(step => ['open_page', 'record_start', 'capture_evidence', 'verify', 'wait_for', 'upload_file'].includes(step.tool)).map(step => String(step.args['url'] ?? '')), ...context, goal]
-  for (const text of texts) for (const match of text.matchAll(/https?:\/\/[^\s<>"\])]+/g)) {
+  for (const text of texts) for (const match of text.matchAll(/https?:\/\/[^\s<>"`\])]+/g)) {
     try {
       const url = new URL(match[0].replace(/[.,;:!?]+$/, ''))
       const credential = [...url.searchParams.keys()].some(key => /^(access_token|refresh_token|id_token|token|jwt|code|session|sessionid|password|secret|signature|sig|samlrequest|samlresponse|relaystate|ticket|nonce|state)$/i.test(key))

@@ -145,6 +145,7 @@ const api: EngramApi = {
   approvalsList: () => ipcRenderer.invoke('approvals:list'),
   approvalForget: (fingerprint: string) => ipcRenderer.invoke('approvals:forget', fingerprint),
   nativeEnabled: () => ipcRenderer.invoke('native:enabled'),
+  nativeFocusShell: () => ipcRenderer.send('native:focus-shell'),
   nativeLayout: (surfaces) => ipcRenderer.invoke('native:layout', surfaces),
   agentWatch: (on: boolean) => ipcRenderer.invoke('agent:watch', on),
   agentInput: (input: AgentInputDto, lane: string) => ipcRenderer.invoke('agent:input', input, lane),

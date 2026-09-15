@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readAuthStatus, textOf } from '../src/main/engine-claude.js'
 import { claudeBinary, cloudErrorKind, codexBinary, StatusCache, STATUS_TTL_MS, unpackedPath, withHelpersOnPath } from '../src/main/engine-cloud.js'
-import { readLoginStatus, restoreOptionalFields, strictSchema } from '../src/main/engine-codex.js'
+import { disableMcpOverrides, readLoginStatus, restoreOptionalFields, strictSchema } from '../src/main/engine-codex.js'
 import { openStepSchema } from '../../../packages/core/src/agent-prompt.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 import { cometTools } from '../../../packages/core/src/comet-tools.js'
@@ -11,6 +11,12 @@ import type { WebCourier } from '../../../packages/core/src/errand.js'
 import { CodexAccount } from '../src/main/codex-account.js'
 
 // The runtimes speak for themselves; these pin down how their words are read.
+it('disables inherited MCP connections only through safely quoted invocation overrides', () => {
+  expect(disableMcpOverrides(JSON.stringify([{ name: 'a.b', transport: { url: 'https://example.com' } }, { name: 'quoted"name', transport: { command: 'node' } }]))).toEqual(['mcp_servers={"a.b"={url="https://example.com",enabled=false},"quoted\\"name"={command="node",enabled=false}}'])
+  expect(() => disableMcpOverrides('{}')).toThrow()
+  expect(() => disableMcpOverrides('[{}]')).toThrow()
+})
+
 describe('readAuthStatus', () => {
   it('reads the runtime JSON, and treats anything else as not knowing', () => {
     expect(readAuthStatus('{"loggedIn":true,"email":"a@b.c"}')).toEqual({ installed: true, loggedIn: true, conclusive: true })
@@ -138,7 +144,7 @@ describe('the schema handed to the strict runtime', () => {
     })
     const result = await thread.run('Return tool answer with args.text equal to schema check passed. Set unused arguments to null. Do not use tools or read any files.', { outputSchema: strictSchema(schema), signal: AbortSignal.timeout(60_000) })
     expect(result.items.every(item => item.type === 'agent_message' || item.type === 'reasoning')).toBe(true)
-    expect(restoreOptionalFields(JSON.parse(result.finalResponse), schema)).toEqual({ tool: 'answer', args: { text: 'schema check passed' } })
+    expect(restoreOptionalFields(JSON.parse(result.finalResponse), schema)).toEqual({ step: { tool: 'answer', args: { text: 'schema check passed' } } })
   }, 75_000)
 
   it('closes every object and drops a map-valued additionalProperties', () => {
@@ -174,9 +180,10 @@ describe('the schema handed to the strict runtime', () => {
       rows: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, selected: { type: 'boolean' } }, required: ['label'] } },
     }, required: ['target'] }
     const schema = openStepSchema([{ name: 'read_page', description: 'Read a page', argsSchema, run: async () => 'read' }])
-    const strict = strictSchema(schema) as { properties: { args: { required: string[]; properties: Record<string, { anyOf: unknown[] }> } } }
-    expect(strict.properties.args.required).toEqual(['text', 'target', 'count', 'mode', 'explicit', 'rows'])
-    expect(strict.properties.args.properties.mode?.anyOf).toEqual([{ type: 'string', enum: ['quick', 'full'] }, { type: 'null' }])
+    const strict = strictSchema(schema) as { properties: { step: { anyOf: { properties: { args: { required: string[]; properties: Record<string, { anyOf: unknown[] }> } } }[] } } }
+    const args = strict.properties.step.anyOf[0]!.properties.args
+    expect(args.required).toEqual(['target', 'count', 'mode', 'explicit', 'rows'])
+    expect(args.properties.mode?.anyOf).toEqual([{ type: 'string', enum: ['quick', 'full'] }, { type: 'null' }])
     const inspect = (node: unknown): void => {
       if (!node || typeof node !== 'object') return
       const value = node as Record<string, unknown>
@@ -187,8 +194,8 @@ describe('the schema handed to the strict runtime', () => {
       Object.values(value).forEach(inspect)
     }
     inspect(strict)
-    expect(restoreOptionalFields({ tool: 'read_page', args: { text: null, target: 'Notes', count: null, mode: null, explicit: null, rows: [{ label: 'A', selected: null }, { label: 'B', selected: false }] } }, schema))
-      .toEqual({ tool: 'read_page', args: { target: 'Notes', explicit: null, rows: [{ label: 'A' }, { label: 'B', selected: false }] } })
+    expect(restoreOptionalFields({ step: { tool: 'read_page', args: { target: 'Notes', count: null, mode: null, explicit: null, rows: [{ label: 'A', selected: null }, { label: 'B', selected: false }] } } }, schema))
+      .toEqual({ step: { tool: 'read_page', args: { target: 'Notes', explicit: null, rows: [{ label: 'A' }, { label: 'B', selected: false }] } } })
     expect(restoreOptionalFields({ target: null, count: 0, explicit: null }, argsSchema)).toEqual({ target: null, count: 0, explicit: null })
     expect((argsSchema.properties.count as { type: string }).type).toBe('integer')
     expect(cloudErrorKind('invalid_json_schema: Missing text, status 400')).not.toBe('quota')

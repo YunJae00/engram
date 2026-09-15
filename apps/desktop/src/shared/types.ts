@@ -532,6 +532,7 @@ export interface EngramApi extends DesktopApi {
   evidenceStatus(): Promise<{ lane: string; started: number; frames: number }[]>
   evidenceStop(lane: string): Promise<unknown>
   nativeEnabled(): Promise<boolean>
+  nativeFocusShell(): void
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
   // The agent browser's mirror: watch (frames flow while at least one view
   // is open), act on it, and call the real window onto the desk or away.
