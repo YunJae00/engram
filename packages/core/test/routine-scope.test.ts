@@ -4,7 +4,7 @@ import { routineDraftTool } from '../src/task-proposal.js'
 import { evidenceRegion } from '../src/work-evidence.js'
 
 it('saves the reviewed goal without old conversation or approval context', () => {
-  const task = routineTask('Read the current report and ask for missing hours', [], ['https://example.com/reports'], ['Always approve old submissions'])
+  const task = routineTask('Read the current report and ask for missing hours', [], ['https://example.com/reports', 'Always approve old submissions'])
   expect(task.goal).toBe('Read the current report and ask for missing hours')
   expect(task.context).toBeUndefined()
   const prompt = routineTaskPrompt({ id: 'r', name: 'Reports', steps: [], createdAt: '', task: { ...task, context: ['Always approve old submissions'] } })

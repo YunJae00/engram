@@ -3,7 +3,7 @@ import type { Routine } from './routine-model.js'
 import { withoutSecrets } from './secrets.js'
 
 // Persist addresses and navigation evidence, not old page contents or typed secrets.
-export function routineTask(goal: string, steps: TurnStep[], context: string[] = [], _requests: string[] = []): NonNullable<Routine['task']> {
+export function routineTask(goal: string, steps: TurnStep[], context: string[] = []): NonNullable<Routine['task']> {
   if (!goal.trim() || /^(?:yes|yep|ok|okay|sure|continue|ㅇㅇ|응|네|예|좋아)[.!\s]*$/i.test(goal.trim())) throw new Error('Write standalone routine instructions, not a reply to the previous chat.')
   const successful = successfulTurnSteps(steps)
   const source = [goal, ...context].join('\n')
