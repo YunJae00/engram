@@ -359,7 +359,7 @@ export interface PendingWorkDto {
 }
 
 export type EngramEvent =
-  | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null }
+  | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null; reason?: string }
   | { type: 'desktop:changed' }
   | { type: 'desktop:visibility'; visible: boolean }
   // The computer changed hands: the on-screen overlay and the in-app banner

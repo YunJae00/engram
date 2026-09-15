@@ -9,7 +9,12 @@ export function EvidenceRecording() {
   useEffect(() => {
     let disposed = false
     const refresh = () => void api.evidenceStatus().then(value => { if (!disposed) setRecordings(value) }).catch(() => {})
-    const off = api.onEvent(event => { if (event.type === 'evidence:recording') refresh() })
+    const off = api.onEvent(event => {
+      if (event.type !== 'evidence:recording') return
+      if (event.reason) setError(`Recording interrupted: ${event.reason}`)
+      else if (event.recording) setError('')
+      refresh()
+    })
     refresh()
     return () => { disposed = true; off() }
   }, [])

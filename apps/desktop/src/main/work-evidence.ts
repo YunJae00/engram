@@ -13,7 +13,7 @@ type Recording = { lane: string; started: number; frames: number; stop(reason?: 
 const recordings = new Map<string, Recording>()
 const completed = new Map<string, unknown>()
 export const evidenceStatus = (lane: string) => { const value = recordings.get(lane); return value ? { lane, started: value.started, frames: value.frames } : null }
-const changed = (lane: string) => broadcast({ type: 'evidence:recording', lane, recording: evidenceStatus(lane) })
+const changed = (lane: string, reason?: string) => broadcast({ type: 'evidence:recording', lane, recording: evidenceStatus(lane), ...(reason ? { reason: reason.slice(0, 300) } : {}) })
 export async function stopEvidenceRecording(lane: string, reason?: string): Promise<unknown> {
   return recordings.get(lane)?.stop(reason) ?? completed.get(lane) ?? { recording: 'not-started' }
 }
@@ -99,7 +99,8 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
             completed.set(lane, result)
             if (completed.size > 50) completed.delete(completed.keys().next().value!)
             return result
-          } finally { encoder.close(); recordings.delete(lane); changed(lane) }
+          } catch (error) { reason ??= 'The recording could not be saved.'; throw error }
+          finally { encoder.close(); recordings.delete(lane); changed(lane, reason) }
         })()
         return stopping
       } }
