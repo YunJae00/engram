@@ -15,11 +15,12 @@ export const J11_INSTRUCTION = [
   "KEEP:",
   "- **decisions and their reasons** — what was chosen, what was rejected, why.",
   "- **findings** — causes, constraints, how someone else’s system actually behaves.",
+  "- **completed work outcomes** — a concrete fix, delivered change or verified result useful in a daily work report. Preserve the activity date from the transcript timestamps. Distinguish observed results from the assistant's unverified claims.",
   "- **traps that will recur** — the \"check this first next time\" earned the hard way.",
   "- **anything the user explicitly asked to remember.**",
   "",
   "DO NOT KEEP:",
-  "- **progress** — \"X done\", \"Y in progress\", \"Z is next\". Dead within days.",
+  "- **transient progress** — repeated status updates, unfinished attempts and plans without a concrete outcome. Never turn a plan or a failed test into completed work.",
   "- **things still being tried** — no conclusion yet. It keeps when it concludes.",
   "- **tool traces** — which files were read, which commands were run.",
   "- **the code itself** — code lives in the repository. What keeps is the judgement about it.",
@@ -83,7 +84,10 @@ export function buildJ11(
     }),
     async apply(result) {
       const parsed = extractJson(result) as { notes?: HarvestedNote[] }
-      const notes = Array.isArray(parsed?.notes) ? parsed.notes : []
+      if (!Array.isArray(parsed?.notes) || parsed.notes.some(note =>
+        !note || typeof note.title !== 'string' || !note.title.trim() || typeof note.body !== 'string' || !note.body.trim()))
+        throw new Error('Invalid session harvest response: expected a notes array with non-empty titles and bodies')
+      const notes = parsed.notes
       if (notes.length === 0) return ['nothing worth keeping']
       const effects: string[] = []
       for (const note of notes) {

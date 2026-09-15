@@ -1,10 +1,11 @@
-import { buildJ11, JobRunner, MIN_TURNS_TO_CONSIDER, parseCodexSpan, parseSessionSpan, projectOfTranscript, readAgentsMd, type SessionTurn } from 'core'
+import { buildJ11, JobRunner, parseCodexSpan, parseSessionSpan, projectOfTranscript, readAgentsMd, type SessionTurn } from 'core'
 import { app, ipcMain } from 'electron'
 import { open, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { LIBRARIAN_RUN_OPTS, noteRunOutcome, runPipelineAsync } from './ipc.js'
 import type { VaultContext } from './vault.js'
+import { readSessionCursors, writeSessionCursors, type SessionCursor as Cursor } from './session-cursor.js'
 
 // Consent switch — the README privacy table promises AI CLI session harvest
 // is off by default. Absent state file = OFF; the Settings toggle writes it.
@@ -27,7 +28,7 @@ export function isSessionWatchEnabled(): boolean {
 export async function setSessionWatchEnabled(enabled: boolean): Promise<void> {
   sessionEnabled = enabled
   await writeFile(SESSION_STATE_FILE(), JSON.stringify({ enabled })).catch(() => undefined)
-  if (enabled && watchCtx) startTimer(watchCtx)
+  if (enabled && watchCtx) void startTimer(watchCtx)
   if (!enabled) stopSessionWatch()
 }
 
@@ -93,7 +94,7 @@ const SOURCES: HarvestSource[] = [
   {
     id: 'codex',
     parse: parseCodexSpan,
-    async list() {
+    async list(ctx) {
       // year/month/day — three bounded levels, newest days only would need
       // stat sorting; the cursor map already makes re-listing cheap.
       const out: { file: string; project: string }[] = []
@@ -109,6 +110,7 @@ const SOURCES: HarvestSource[] = [
               if (!name.endsWith('.jsonl')) continue
               const file = join(day, name)
               const cwd = await headCwd(file)
+              if (cwd && isOffLimits(cwd, ctx)) continue
               const project = cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? 'codex') : 'codex'
               out.push({ file, project })
             }
@@ -153,11 +155,9 @@ const SCAN_MS = 60_000
 // A span is only offered to the engine once it has stopped growing for this
 // long — mid-thought is exactly when a conclusion has not been reached yet.
 const SETTLE_MS = 3 * 60_000
-// Do not ask about a trickle. Below this the span is kept and grows further.
-const MIN_TURNS = MIN_TURNS_TO_CONSIDER
 // …and do not let one ask swallow an afternoon: past this, harvest what is
 // held and start a fresh span.
-const MAX_TURNS_HELD = 60
+const MAX_TURNS_HELD = 40
 // Cap on bytes read per file per pass. Measured: a 3MB span filters down to
 // ~5.5KB of conversation, so a few MB is routine for one agent run — but a
 // transcript can also grow by tens of MB between scans, and this buffer is
@@ -169,20 +169,6 @@ const MAX_SPAN_BYTES = 8 * 1024 * 1024
 // ones a new span is likely to restate.
 const MAX_KEPT_TITLES = 40
 
-interface Cursor {
-  // bytes already parsed out of this file
-  offset: number
-  // turns read but not yet worth asking about
-  held: SessionTurn[]
-  // when the file last grew, so "settled" is measurable
-  lastGrewAt: number
-  // what J11 already kept from THIS conversation, so the next harvest of it
-  // does not write the same conclusion in different words. Durable with the
-  // offset: a restart that forgot these would re-duplicate everything the
-  // session has already yielded, which is the failure this exists to stop.
-  kept: string[]
-}
-
 // Offsets survive restarts: without that, reopening Engram would re-read every
 // transcript from zero and re-harvest a month of work.
 function statePath(ctx: VaultContext): string {
@@ -192,6 +178,7 @@ function statePath(ctx: VaultContext): string {
 let cursors = new Map<string, Cursor>()
 let timer: NodeJS.Timeout | null = null
 let scanning = false
+let starting = false
 let sawPriorRun = false
 
 // A first-sight transcript is backfilled from byte zero only when it is
@@ -208,33 +195,13 @@ export function firstSightOffset(priorRun: boolean, mtimeMs: number, size: numbe
 }
 
 async function loadCursors(ctx: VaultContext): Promise<void> {
-  try {
-    const raw = JSON.parse(await readFile(statePath(ctx), 'utf8')) as Record<
-      string,
-      { offset: number; kept?: string[] }
-    >
-    cursors = new Map(
-      Object.entries(raw).map(([k, v]) => [
-        k,
-        { offset: v.offset, held: [], lastGrewAt: 0, kept: Array.isArray(v.kept) ? v.kept : [] },
-      ]),
-    )
-    // The file parsing at all is the evidence — even an empty map means a
-    // prior run scanned and saved. (A corrupt file reads as no prior run,
-    // which fails toward adopt-the-end: never toward slurping history.)
-    sawPriorRun = true
-  } catch {
-    cursors = new Map()
-    sawPriorRun = false
-  }
+  const saved = await readSessionCursors(statePath(ctx))
+  cursors = saved ?? new Map()
+  sawPriorRun = saved !== null
 }
 
 async function saveCursors(ctx: VaultContext): Promise<void> {
-  // Offset and kept titles are durable; held turns are in-flight work, and
-  // losing those on a restart costs one span, never a duplicate. The titles
-  // are the opposite — forgetting them IS how duplicates happen.
-  const plain = Object.fromEntries([...cursors].map(([k, v]) => [k, { offset: v.offset, kept: v.kept }]))
-  await writeFile(statePath(ctx), JSON.stringify(plain)).catch(() => undefined)
+  await writeSessionCursors(statePath(ctx), cursors)
 }
 
 // Measured on a real machine: 143 project folders, 2,235 transcripts, 267MB of
@@ -244,7 +211,7 @@ async function saveCursors(ctx: VaultContext): Promise<void> {
 function pruneCursors(seen: Set<string>): boolean {
   let changed = false
   for (const key of [...cursors.keys()]) {
-    if (seen.has(key)) continue
+    if (seen.has(key) || cursors.get(key)?.held.length) continue
     cursors.delete(key)
     changed = true
   }
@@ -284,7 +251,7 @@ async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Prom
   if (ctx.engines.length === 0) return false
   const runner = new JobRunner(ctx.paths, ctx.engines, LIBRARIAN_RUN_OPTS)
   const report = await runner.runAll([
-    buildJ11(ctx.paths, await readAgentsMd(ctx.paths), project, cursor.held, cursor.kept, (title) => {
+    buildJ11(ctx.paths, await readAgentsMd(ctx.paths), project, cursor.held.slice(0, MAX_TURNS_HELD), cursor.kept, (title) => {
       cursor.kept.push(title)
       if (cursor.kept.length > MAX_KEPT_TITLES) cursor.kept = cursor.kept.slice(-MAX_KEPT_TITLES)
     }),
@@ -292,7 +259,7 @@ async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Prom
   // Feed the shared health verdict, so a quota or auth halt raises the same
   // banner the rest of the librarian does instead of failing invisibly here.
   noteRunOutcome(ctx, report)
-  if (report.haltReason || report.failed.length > 0) return false
+  if (report.haltReason || report.failed.length > 0 || report.deferred > 0) return false
   // Anything harvested landed in the inbox; from here it is an ordinary
   // capture and the existing pipeline absorbs, links and files it.
   if (report.executed > 0) runPipelineAsync(ctx, 'librarian: session harvest')
@@ -301,7 +268,7 @@ async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Prom
 
 const MAX_HARVESTS_PER_SCAN = 2
 
-async function scan(ctx: VaultContext): Promise<void> {
+export async function scanSessions(ctx: VaultContext): Promise<void> {
   if (scanning || ctx.engines.length === 0) return
   scanning = true
   try {
@@ -340,7 +307,8 @@ async function scan(ctx: VaultContext): Promise<void> {
           cursor.offset = firstSightOffset(sawPriorRun, info.mtimeMs, info.size, now)
           if (cursor.offset >= info.size) continue
         }
-        if (info.size > cursor.offset) {
+        // Backpressure leaves unread bytes in the source instead of dropping old pending turns.
+        if (info.size > cursor.offset && cursor.held.length < MAX_TURNS_HELD) {
           const { turns, next } = await readNewSpan(file, cursor.offset, source.parse)
           cursor.offset = next
           dirtyState = true
@@ -353,21 +321,17 @@ async function scan(ctx: VaultContext): Promise<void> {
 
         const settled = now - cursor.lastGrewAt >= SETTLE_MS
         const overflowing = cursor.held.length >= MAX_TURNS_HELD
-        if (harvested < MAX_HARVESTS_PER_SCAN && cursor.held.length >= MIN_TURNS && (settled || overflowing)) {
+        if (harvested < MAX_HARVESTS_PER_SCAN && cursor.held.length > 0 && (settled || overflowing)) {
+          await saveCursors(ctx)
+          harvested += 1
           const ok = await harvest(ctx, entry.project, cursor).catch((err) => {
             console.error('session harvest failed (non-fatal):', err)
             return false
           })
           if (ok) {
-            cursor.held = []
-            harvested += 1
-          } else if (cursor.held.length > MAX_TURNS_HELD * 2) {
-            // Kept across failures so a quota window does not erase the day —
-            // but not without limit, or an engine that never returns would grow
-            // this buffer until the process died. Past twice the ask size the
-            // oldest turns go; the newest are the ones with the conclusions.
-            cursor.held = cursor.held.slice(-MAX_TURNS_HELD)
+            cursor.held.splice(0, MAX_TURNS_HELD)
           }
+          await saveCursors(ctx)
         }
       }
     }
@@ -389,16 +353,23 @@ export async function startSessionWatch(ctx: VaultContext): Promise<void> {
   watchCtx = ctx
   sessionEnabled = process.env['ENGRAM_SESSION_WATCH'] === '1' || (await readSessionState())
   if (!sessionEnabled) return // consent first — the Settings toggle starts us
-  startTimer(ctx)
+  await startTimer(ctx)
 }
 
-function startTimer(ctx: VaultContext): void {
-  void loadCursors(ctx).then(() => {
+async function startTimer(ctx: VaultContext): Promise<void> {
+  if (timer || starting) return
+  starting = true
+  try {
+    await loadCursors(ctx)
     if (!sessionEnabled) return
-    if (timer) clearInterval(timer)
-    timer = setInterval(() => void scan(ctx), SCAN_MS)
-    void scan(ctx)
-  })
+    const run = () => void scanSessions(ctx).catch(error => console.error('session watch failed:', error))
+    timer = setInterval(run, SCAN_MS)
+    await scanSessions(ctx)
+  } catch (error) {
+    console.error('session watch could not restore pending work:', error)
+  } finally {
+    starting = false
+  }
 }
 
 export function stopSessionWatch(): void {

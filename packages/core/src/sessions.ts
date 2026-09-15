@@ -121,7 +121,7 @@ export function renderSpan(turns: SessionTurn[]): string {
     .slice(-MAX_TURNS_PER_ASK)
     .map((turn) => {
       const body = turn.text.length > MAX_CHARS_PER_TURN ? `${turn.text.slice(0, MAX_CHARS_PER_TURN)}…` : turn.text
-      return `[${turn.role}] ${body}`
+      return `[${turn.role}]${turn.at ? ` (${turn.at})` : ''} ${body}`
     })
     .join('\n\n')
 }

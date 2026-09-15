@@ -21,6 +21,14 @@ const TURNS: SessionTurn[] = [
 ]
 
 describe('J11 does not re-harvest what it already kept', () => {
+  it('rejects malformed output instead of acknowledging and losing the pending span', async () => {
+    const paths = await initVault(await tmpVaultRoot('harvest-invalid'), { git: false })
+    const job = buildJ11(paths, '', 'work', TURNS)
+    for (const output of ['{}', '{"notes":null}', '{"notes":[{"title":"Missing body"}]}'])
+      await expect(job.apply(output)).rejects.toThrow('Invalid session harvest response')
+    await expect(job.apply('{"notes":[]}')).resolves.toEqual(['nothing worth keeping'])
+    expect(job.prompt).toContain(TURNS[0]!.at)
+  })
   it('carries the previous titles into the prompt, verbatim', async () => {
     const paths = await initVault(await tmpVaultRoot('harvest-dedupe'), { git: false })
     const kept = ['넛지 카드는 포커스를 뺏지 않는다', '리뷰 큐 질문은 conflict만 즉시 묻는다']

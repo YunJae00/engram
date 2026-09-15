@@ -257,6 +257,8 @@ export function cometTools(deps: CometToolDeps): AgentTool[] {
           if (note.front.type === 'routine')
             return `"${noteTitle(note)}" is a saved procedure, not a note that holds an answer — run it: call run_procedure with {"id": "${note.front.id}", "slots": {}}`
           return `# ${noteTitle(note)}
+Note created: ${note.front.created}; updated: ${note.front.updated}. These are note dates, not necessarily the activity date.
+Activity date: ${note.front.happened_at ?? 'not recorded'}.
 ${note.body.slice(0, 2_000)}`
         }
         return `no note with id "${id.slice(0, 40)}"`
