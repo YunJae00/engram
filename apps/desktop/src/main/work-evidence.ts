@@ -68,8 +68,8 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
     const url = expected(page, args.url)
     if (typeof args.name !== 'string' || !/^[\p{L}\p{N}_][\p{L}\p{N}_. -]{0,79}$/u.test(args.name)) throw new Error('Use a short plain evidence name without directories.')
     const masks = args.masks ?? []
-    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
-    const region = evidenceRegion(args.region, viewport.width, viewport.height)
+    const viewport = args.region ? await page.evaluate(() => ({ width: innerWidth, height: innerHeight })) : undefined
+    const region = evidenceRegion(args.region, viewport?.width ?? 0, viewport?.height ?? 0)
     if (!Array.isArray(masks) || masks.length > 12 || masks.some(value => typeof value !== 'string' || value.length > 300)) throw new Error('Provide up to 12 CSS redaction selectors.')
     return { page, url, origin: new URL(url).origin, masks: masks as string[], name: args.name, region }
   }

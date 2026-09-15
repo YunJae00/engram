@@ -49,19 +49,19 @@ describe('browser view handoffs', () => {
 
     await expect(view.agentViewGo('http://127.0.0.1:1/', 'bot-one')).rejects.toBe(failure)
 
-    expect(first.page.goto).toHaveBeenCalledExactlyOnceWith('http://127.0.0.1:1/', { waitUntil: 'commit' })
+    expect(first.page.goto).toHaveBeenCalledExactlyOnceWith('http://127.0.0.1:1/', { waitUntil: 'domcontentloaded', timeout: 30000 })
     expect(second.page.goto).not.toHaveBeenCalled()
     expect(deps.pages.get('bot-one')).toBe(first.page)
     expect(view.agentViewState()).toEqual(before)
     expect(first.cdp.detach).not.toHaveBeenCalled()
   })
 
-  it('returns normally after the requested lane commits a navigation', async () => {
+  it('returns after the requested lane loads its document', async () => {
     const first = fixture('bot-one'), second = fixture('bot-two')
     const view = await import('../src/main/agent-view.js')
     await expect(view.agentViewGo('https://example.com/', 'bot-two')).resolves.toBeUndefined()
     expect(first.page.goto).not.toHaveBeenCalled()
-    expect(second.page.goto).toHaveBeenCalledExactlyOnceWith('https://example.com/', { waitUntil: 'commit' })
+    expect(second.page.goto).toHaveBeenCalledExactlyOnceWith('https://example.com/', { waitUntil: 'domcontentloaded', timeout: 30000 })
   })
 
   it('drops keyboard and wheel input from a chat that is no longer selected', async () => {
