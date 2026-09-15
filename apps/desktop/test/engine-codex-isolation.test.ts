@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, EngineEvent } from 'core'
 
 const fixture = vi.hoisted(() => ({
-  options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(),
+  options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
 }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: fixture.query }))
 vi.mock('@openai/codex-sdk', () => ({
@@ -18,6 +18,7 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
   ...await original<typeof import('../src/main/engine-cloud.js')>(),
   codexBinary: fixture.binary,
   claudeBinary: fixture.binary,
+  runText: fixture.catalog,
   withHelpersOnPath: () => ({ PATH: 'fixture-runtime-path' }),
 }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
@@ -34,6 +35,7 @@ async function collect(events: AsyncIterable<EngineEvent>): Promise<EngineEvent[
 beforeEach(() => {
   vi.clearAllMocks()
   fixture.binary.mockReturnValue('fixture-codex')
+  fixture.catalog.mockResolvedValue({ code: 0, out: '[{"name":"fixture","transport":{"command":"node"}}]' })
   fixture.settings.mockResolvedValue({ codexModel: 'chosen-model', claudeModel: 'chosen-model' })
   fixture.run.mockResolvedValue({ finalResponse: 'fixture answer' })
   fixture.query.mockImplementation(async function* () { yield { type: 'result', subtype: 'success', result: 'fixture answer' } })
@@ -82,9 +84,16 @@ describe('text runtime desktop isolation boundary', () => {
     const events = await collect(new CodexEngine().run({ prompt: 'Read the provided text', workdir: WORKDIR, disallowTools: true, jsonSchema: { type: 'object', properties: { answer: { type: 'string' } } } }))
     expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])
     expect(new CodexEngine().desktopToolIsolation).toBe(false)
-    expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' } })
+    expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' }, configOverrides: ['mcp_servers={"fixture"={command="node",enabled=false}}'] })
     expect(fixture.threadOptions).toHaveBeenCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', webSearchMode: 'disabled', networkAccessEnabled: false, model: 'chosen-model' }))
     expect(fixture.run).toHaveBeenCalledWith('Read the provided text', expect.objectContaining({ outputSchema: { type: 'object', properties: { answer: { anyOf: [{ type: 'string' }, { type: 'null' }] } }, required: ['answer'], additionalProperties: false }, signal: expect.any(AbortSignal) }))
+  })
+
+  it('does not start the SDK when inherited connection discovery fails', async () => {
+    fixture.catalog.mockResolvedValue({ code: null, out: '' })
+    const events = await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, disallowTools: true }))
+    expect(events).toEqual([{ type: 'error', kind: 'unknown', message: expect.stringContaining('Could not read the ChatGPT tool configuration') }])
+    expect(fixture.run).not.toHaveBeenCalled()
   })
 
   it('restores optional fields before returning structured output to the tool loop', async () => {

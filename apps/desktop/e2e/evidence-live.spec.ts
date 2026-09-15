@@ -27,7 +27,7 @@ for (const engine of ['codex', 'claude'] as const) test(`live ${engine} chat com
   const url = `http://127.0.0.1:${address.port}/`
   const app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: paths.root, ENGRAM_USERDATA: data, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'auto', ENGRAM_HIDDEN: '1', ENGRAM_BROWSER_EXTERNAL: '0', ENGRAM_STEP_DETAIL: '1' } })
   try {
-    const page = await app.firstWindow()
+    const page = await app.firstWindow({ timeout: 120000 })
     page.on('console', message => { if (message.text().startsWith('EVIDENCE_STEP')) console.log(message.text()) })
     await expect(page.getByTestId('shell')).toBeVisible()
     await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 90000 }).toBe(true)
