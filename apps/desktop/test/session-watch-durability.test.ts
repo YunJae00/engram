@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, writeFile, readFile, appendFile, rm } from 'node:fs/pro
 import { resolve, join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { VaultContext } from '../src/main/vault.js'
+import { parseCodexSpan } from 'core'
 
 const state = vi.hoisted(() => ({ root: '', fail: true, prompts: [] as string[] }))
 vi.mock('node:os', () => ({ homedir: () => state.root }))
@@ -31,11 +32,13 @@ it('keeps a failed backlog through restart, applies backpressure, then drains ol
   await writeFile(file, rows)
   await writeFile(checkpoint, JSON.stringify({ [file]: { offset: 0, kept: [] } }))
   await writeFile(join(state.root, 'session-watch.json'), '{"enabled":true}')
-  const ctx = { paths: { cache, workspace: join(state.root, 'vault'), privateDir: join(state.root, 'private') }, engines: [{}] } as VaultContext
+  const ctx = { paths: { cache, workspace: join(state.root, 'vault'), privateDir: join(state.root, 'private') }, engines: [] } as unknown as VaultContext
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   let watcher = await import('../src/main/session-watch.js')
   await watcher.startSessionWatch(ctx)
   await vi.waitFor(async () => expect(JSON.parse(await readFile(checkpoint, 'utf8'))[file].held).toHaveLength(125))
+  expect(state.prompts).toHaveLength(0)
+  ctx.engines = [{}] as VaultContext['engines']
   watcher.stopSessionWatch()
   await appendFile(file, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: 'Later finding.' } }) + '\n')
   await watcher.scanSessions(ctx)
@@ -52,4 +55,16 @@ it('keeps a failed backlog through restart, applies backpressure, then drains ol
   expect(remaining.map((turn: { text: string }) => turn.text)).toEqual(Array.from({ length: 5 }, (_, i) => `Finding ${120 + i}.`))
   expect(state.prompts.at(-1)).toContain('Finding 80.')
   expect(state.prompts.at(-1)).not.toContain('Finding 120.')
+})
+
+it('advances past a complete tool-output row larger than the normal read window without losing the next message', async () => {
+  state.root = await mkdtemp(resolve('tmp/session-large-row-'))
+  const file = join(state.root, 'session.jsonl')
+  const tool = JSON.stringify({ type: 'response_item', payload: { type: 'function_call_output', output: 'x'.repeat(9 * 1024 * 1024) } }) + '\n'
+  const message = JSON.stringify({ type: 'response_item', payload: { role: 'assistant', content: [{ type: 'output_text', text: 'The fix is verified.' }] }, timestamp: '2026-09-15T00:00:00Z' }) + '\n'
+  await writeFile(file, tool + message)
+  const { readNewSpan } = await import('../src/main/session-watch.js')
+  const span = await readNewSpan(file, 0, parseCodexSpan)
+  expect(span.next).toBe(Buffer.byteLength(tool + message))
+  expect(span.turns.map(turn => turn.text)).toEqual(['The fix is verified.'])
 })

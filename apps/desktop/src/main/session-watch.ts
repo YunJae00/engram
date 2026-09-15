@@ -220,7 +220,7 @@ function pruneCursors(seen: Set<string>): boolean {
 
 // Read the bytes appended since last time. Returns the turns and how far we
 // actually got — a half-written final line is left for the next pass.
-async function readNewSpan(
+export async function readNewSpan(
   file: string,
   from: number,
   parse: (span: string) => { turns: SessionTurn[]; consumed: number },
@@ -232,11 +232,19 @@ async function readNewSpan(
     // Bounded: a transcript can grow by any amount between two scans (a long
     // agent run appends megabytes), and this allocation happens on the main
     // process. Whatever is left over is read on the next pass.
-    const length = Math.min(size - from, MAX_SPAN_BYTES)
-    const buffer = Buffer.alloc(length)
-    await handle.read(buffer, 0, length, from)
-    const { turns, consumed } = parse(buffer.toString('utf8'))
-    return { turns, next: from + consumed }
+    let length = Math.min(size - from, MAX_SPAN_BYTES)
+    for (;;) {
+      const buffer = Buffer.alloc(length)
+      const { bytesRead } = await handle.read(buffer, 0, length, from)
+      const bytes = buffer.subarray(0, bytesRead)
+      if (bytes.includes(10) || bytesRead < length || length === size - from) {
+        const { turns, consumed } = parse(bytes.toString('utf8'))
+        return { turns, next: from + consumed }
+      }
+      // ponytail: one JSONL row is buffered, capped at 64 MB; use a streaming JSON parser if larger rows become normal.
+      if (length >= 64 * 1024 * 1024) throw new Error('Session row exceeds 64 MB; source retained without advancing its checkpoint')
+      length = Math.min(size - from, length * 2)
+    }
   } finally {
     await handle.close()
   }
@@ -269,7 +277,7 @@ async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Prom
 const MAX_HARVESTS_PER_SCAN = 2
 
 export async function scanSessions(ctx: VaultContext): Promise<void> {
-  if (scanning || ctx.engines.length === 0) return
+  if (scanning) return
   scanning = true
   try {
     const now = Date.now()
@@ -321,7 +329,7 @@ export async function scanSessions(ctx: VaultContext): Promise<void> {
 
         const settled = now - cursor.lastGrewAt >= SETTLE_MS
         const overflowing = cursor.held.length >= MAX_TURNS_HELD
-        if (harvested < MAX_HARVESTS_PER_SCAN && cursor.held.length > 0 && (settled || overflowing)) {
+        if (ctx.engines.length > 0 && harvested < MAX_HARVESTS_PER_SCAN && cursor.held.length > 0 && (settled || overflowing)) {
           await saveCursors(ctx)
           harvested += 1
           const ok = await harvest(ctx, entry.project, cursor).catch((err) => {
