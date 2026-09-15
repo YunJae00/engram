@@ -23,8 +23,8 @@ beforeEach(async () => {
 afterEach(async () => { await rm(state.root, { recursive: true, force: true }) })
 const tool = (name: string) => workEvidenceTools(vaultPaths(state.root), 'test').find(tool => tool.name === name)!
 const context = { task: 'Attach reviewed evidence' }
-async function upload() {
-  const artifact = await saveArtifact(state.root, 'evidence.txt', Buffer.from('Owned evidence'))
+async function upload(name = 'evidence.txt') {
+  const artifact = await saveArtifact(state.root, name, Buffer.from('Owned evidence'))
   return { artifact, args: { artifact: artifact.artifact, url: state.url, target: 'Attachment', confirmation: 'Saved attachment' } }
 }
 
@@ -48,8 +48,8 @@ it.each(['navigation', 'tampering', 'cancellation'])('rechecks %s after the appr
   expect(state.input).not.toHaveBeenCalled()
 })
 
-it('uploads the approved immutable bytes to a labeled input and rejects an existing confirmation', async () => {
-  const { args } = await upload()
+it.each(['evidence.txt', 'EVIDENCE.TXT'])('uploads approved immutable bytes from %s and rejects an existing confirmation', async name => {
+  const { args } = await upload(name)
   expect(JSON.parse(await tool('upload_file').run(args, context)).upload.status).toBe('confirmed')
   expect(state.input.mock.calls[0]![0].buffer.toString()).toBe('Owned evidence')
   state.existing = true
@@ -63,16 +63,18 @@ it('fails closed when a requested redaction target disappears', async () => {
   expect(state.screenshot).not.toHaveBeenCalled()
 })
 
-it('saves an interrupted recording on cancellation, clears its status and stops taking frames', async () => {
+it.each([false, true])('stops frames, clears status and cannot reuse a previous recording after a failed start (aborted: %s)', async aborted => {
   state.approve.mockResolvedValue({ response: 1 })
   state.screenshot.mockResolvedValue(Buffer.from('89504e470d0a1a0a', 'hex'))
   const controller = new AbortController()
   expect(JSON.parse(await tool('record_start').run({ name: 'before', url: state.url, masks: [] }, { ...context, signal: controller.signal })).recording).toBe('started')
   expect(evidenceStatus('test')).not.toBeNull()
-  controller.abort()
-  expect(await stopEvidenceRecording('test')).toMatchObject({ recording: 'interrupted', frames: 1 })
+  if (aborted) controller.abort()
+  expect(await stopEvidenceRecording('test')).toMatchObject({ recording: aborted ? 'interrupted' : 'saved', frames: 1 })
   expect(evidenceStatus('test')).toBeNull(); expect(state.close).toHaveBeenCalledOnce()
   const frames = state.screenshot.mock.calls.length
   await new Promise(resolve => setTimeout(resolve, 300))
   expect(state.screenshot).toHaveBeenCalledTimes(frames)
+  await expect(tool('record_start').run({ name: '../invalid', url: state.url }, context)).rejects.toThrow('plain evidence name')
+  expect(await stopEvidenceRecording('test')).toEqual({ recording: 'not-started' })
 })

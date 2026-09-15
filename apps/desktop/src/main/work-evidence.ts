@@ -83,6 +83,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
     },
     async start(args, signal) {
       if (recordings.has(lane)) throw new Error('A recording is already active in this chat. Stop it first.')
+      completed.delete(lane)
       const source = await prepare(args, signal)
       await consent('Record this browser tab?', `${source.url}\n\nSilent recording, up to 120 seconds. Only this tab; other windows and new tabs are excluded. Declared secret fields are masked, but other sensitive content requires review.`, signal)
       expected(source.page, source.url)
@@ -115,7 +116,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       const limit = setTimeout(() => { void state.stop('Recording time limit reached').catch(() => {}) }, Math.min(120, Math.max(1, Number(args.maxSeconds) || 60)) * 1000)
       const abort = () => { void state.stop('Task stopped').catch(() => {}) }
       const closed = () => { void state.stop('Recorded tab closed').catch(() => {}) }
-      completed.delete(lane); recordings.set(lane, state); changed(lane)
+      recordings.set(lane, state); changed(lane)
       signal?.addEventListener('abort', abort, { once: true }); source.page.once('close', closed)
       capturing = true
       pending = capture().finally(() => { capturing = false })
@@ -130,7 +131,8 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       const page = await agentPage(signal, lane)
       const url = expected(page, args.url)
       const path = await resolveArtifact(directory, args.artifact)
-      if (!['.png', '.webm', '.pdf', '.txt', '.csv', '.xlsx', '.docx', '.pptx'].includes(extname(path))) throw new Error('This artifact type cannot be uploaded.')
+      const extension = extname(path).toLowerCase()
+      if (!['.png', '.webm', '.pdf', '.txt', '.csv', '.xlsx', '.docx', '.pptx'].includes(extension)) throw new Error('This artifact type cannot be uploaded.')
       const data = await readArtifact(directory, String(args.artifact), signal)
       const target = String(args.target ?? '')
       const confirmation = String(args.confirmation ?? '')
@@ -145,7 +147,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       if (await resolveArtifact(directory, args.artifact) !== path) throw new Error('The artifact changed.')
       if (!(await readArtifact(directory, String(args.artifact), signal)).equals(data)) throw new Error('The approved artifact changed.')
       signal?.throwIfAborted(); expected(page, url)
-      await aim.hand.setInputFiles({ name: basename(path).slice(37), mimeType: extname(path) === '.webm' ? 'video/webm' : extname(path) === '.png' ? 'image/png' : 'application/octet-stream', buffer: data }, { timeout: 10000 })
+      await aim.hand.setInputFiles({ name: basename(path).slice(37), mimeType: extension === '.webm' ? 'video/webm' : extension === '.png' ? 'image/png' : 'application/octet-stream', buffer: data }, { timeout: 10000 })
       let confirmed = false
       try { await page.getByText(confirmation, { exact: true }).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 15000 }); confirmed = page.url() === url && !signal?.aborted } catch { /* Selection may already have sent the file; never retry automatically. */ }
       return { upload: { status: confirmed ? 'confirmed' : 'unconfirmed', artifact: args.artifact, url, confirmation, bytes: data.length }, message: confirmed ? 'The specified confirmation appeared. Verify that it identifies the saved attachment, not a pending preview.' : 'File selection was dispatched, but completion is unconfirmed. Inspect before any retry.' }
