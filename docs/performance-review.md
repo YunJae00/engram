@@ -36,6 +36,8 @@ not remove those capabilities or imply the same reduction in installer size.
 - Browser discovery and stale-process cleanup no longer execute blocking child
   commands on the main thread. Cleanup retains failed entries and existing PID
   identity guards. The synchronous quit-time cleanup is deliberately retained.
+- Browser host shutdown does not wait for a stalled automation disconnect before
+  sending EOF; its existing process-exit timeout remains in effect.
 - Motion previews have bounded resolution and delivery rate; a lossless still
   restores text detail. Video frames travel as JPEG; still-image evidence stays PNG.
 - Page actions do not wait for unrelated background network traffic; content

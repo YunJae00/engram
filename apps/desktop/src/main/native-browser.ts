@@ -144,7 +144,7 @@ export async function openNativeBrowser(): Promise<BrowserContext> {
   }
 }
 
-class NativeBrowser {
+export class NativeBrowser {
   readonly pages = new Map<string, Page>()
   readonly parents = new Map<string, string | null>()
   browser?: Browser
@@ -205,7 +205,8 @@ class NativeBrowser {
   close(): Promise<void> {
     if (this.ending) return this.ending
     this.ending = (async () => {
-      await this.browser?.close().catch(() => undefined)
+      // A stalled CDP disconnect must not prevent the host from receiving EOF.
+      void this.browser?.close().catch(() => undefined)
       this.child.stdin.end()
       let timer: ReturnType<typeof setTimeout> | undefined
       await Promise.race([this.exited, new Promise<void>((resolve) => { timer = setTimeout(resolve, 18000) })])
