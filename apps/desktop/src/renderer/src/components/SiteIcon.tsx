@@ -6,10 +6,18 @@ export const SiteIcon = memo(function SiteIcon({ origin, shortcut = false }: { o
   const [image, setImage] = useState<{ origin: string; url: string } | null>(null)
   useEffect(() => {
     let alive = true
-    const read = () => { void api.siteIcon(origin, shortcut).then(value => { if (alive) setImage(value ? { origin, url: value } : null) }).catch(() => undefined) }
+    let retry: ReturnType<typeof setTimeout> | undefined
+    const read = (retryOnce = true) => {
+      clearTimeout(retry)
+      void api.siteIcon(origin, shortcut).catch(() => null).then(value => {
+        if (!alive) return
+        setImage(value ? { origin, url: value } : null)
+        if (!value && retryOnce) retry = setTimeout(() => read(false), 2000)
+      })
+    }
     read()
     const off = api.onEvent(event => { if (event.type === 'bots:changed') read() })
-    return () => { alive = false; off() }
+    return () => { alive = false; clearTimeout(retry); off() }
   }, [origin, shortcut])
   return image?.origin === origin ? <img className="site-icon" src={image.url} width={16} height={16} alt="" onError={() => setImage(null)} /> : <Globe className="site-icon" size={16} aria-hidden />
 })

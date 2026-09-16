@@ -2,6 +2,15 @@ import { afterEach, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ net: { fetch: (...args: Parameters<typeof fetch>) => fetch(...args) } }))
 import { siteIcon } from '../src/main/site-icons.js'
 afterEach(() => vi.unstubAllGlobals())
+it('retries a transient failure instead of caching a missing icon for the session', async () => {
+  const request = vi.fn()
+    .mockRejectedValueOnce(new Error('network timeout'))
+    .mockResolvedValue(new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/png' } }))
+  vi.stubGlobal('fetch', request)
+  expect(await siteIcon('https://retry.example')).toBeNull()
+  expect(await siteIcon('https://retry.example')).toBe('data:image/png;base64,AQI=')
+  expect(request).toHaveBeenCalledTimes(2)
+})
 it('bounds icon downloads, omits credentials and preserves browser-supported bitmap formats', async () => {
   const request = vi.fn(async () => new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/png' } }))
   vi.stubGlobal('fetch', request)

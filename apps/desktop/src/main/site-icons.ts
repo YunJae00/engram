@@ -32,5 +32,6 @@ export function siteIcon(origin: string): Promise<string | null> {
   })()
   if (icons.size >= 128) icons.delete(icons.keys().next().value!)
   icons.set(origin, pending)
+  void pending.then(value => { if (!value && icons.get(origin) === pending) icons.delete(origin) })
   return pending
 }
