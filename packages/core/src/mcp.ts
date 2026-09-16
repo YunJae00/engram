@@ -1,8 +1,8 @@
-import { mkdir, readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { activationRerank, spreadActivation, triggeredNotes } from './activation.js'
-import { addAliasGroup, expandQueryWithAliases, loadAliasGroups } from './aliases.js'
+import { addAliasGroup, aliasesPath, expandQueryWithAliases, loadAliasGroups } from './aliases.js'
 import { recordRecallMiss, repeatedRecallMisses } from './misses.js'
 import { loadNotes, recordRecall } from './notes.js'
 import { countRecallReceipts, recordRecallReceipt } from './receipts.js'
@@ -116,7 +116,9 @@ export const MEMORY_MCP_TOOLS = [
 
 interface SearchCache {
   root: string
-  builtAt: number
+  // When the notes folder was last fingerprinted, and what it looked like.
+  checkedAt: number
+  fingerprint: string
   notes: Note[]
   index: ReturnType<typeof buildIndex>
   aliases: string[][]
@@ -153,13 +155,31 @@ async function resolveVault(opts: McpOptions): Promise<ResolvedVault> {
   throw new Error('no vault configured (pass --vault or --registry)')
 }
 
+// The notes folder as a cheap fingerprint - names and mtimes, stat only, no
+// reads or parsing - so the index is rebuilt when a note actually changed
+// rather than every 30 seconds whether one did or not.
+async function notesFingerprint(paths: VaultPaths): Promise<string> {
+  const names = await readdir(paths.notes).catch(() => [] as string[])
+  const files = [...names.filter(name => name.endsWith('.md')).map(name => join(paths.notes, name)), aliasesPath(paths)]
+  const stamps: string[] = []
+  for (let offset = 0; offset < files.length; offset += 32) {
+    stamps.push(...await Promise.all(files.slice(offset, offset + 32).map(file => stat(file).then(s => `${file}:${s.mtimeMs}:${s.ctimeMs}:${s.size}`, () => file))))
+  }
+  return stamps.sort().join('\n')
+}
+
 async function indexFor(paths: VaultPaths): Promise<SearchCache> {
   const now = Date.now()
-  if (cache && cache.root === paths.root && now - cache.builtAt < SEARCH_CACHE_TTL_MS) return cache
-  const notes = (await loadNotes(paths)).filter(
-    (n) => n.front.status === 'current' || n.front.status === 'disputed',
-  )
-  cache = { root: paths.root, builtAt: now, notes, index: buildIndex(notes), aliases: await loadAliasGroups(paths) }
+  const held = cache?.root === paths.root ? cache : null
+  if (held && now - held.checkedAt < SEARCH_CACHE_TTL_MS) return held
+  const fingerprint = await notesFingerprint(paths)
+  if (held && fingerprint === held.fingerprint) {
+    held.checkedAt = now
+    return held
+  }
+  const notes = await loadNotes(paths)
+  const current = notes.filter((n) => n.front.status === 'current' || n.front.status === 'disputed')
+  cache = { root: paths.root, checkedAt: now, fingerprint, notes: current, index: buildIndex(current), aliases: await loadAliasGroups(paths) }
   return cache
 }
 

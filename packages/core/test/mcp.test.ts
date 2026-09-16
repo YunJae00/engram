@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { safeInboxName, startMcpServer } from '../src/mcp.js'
 import { createNote } from '../src/notes.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
@@ -60,6 +60,20 @@ beforeAll(async () => {
 })
 
 describe('engram mcp server', () => {
+  it('refreshes aliases changed on disk after the search cache check interval', async () => {
+    send({ id: 901, method: 'tools/call', params: { name: 'engram_search', arguments: { query: 'commissionprobe' } } })
+    await waitFor(901)
+    const aliasFile = join(paths.workspace, 'aliases.md')
+    const original = await readFile(aliasFile, 'utf8').catch(() => '')
+    await writeFile(aliasFile, '# Aliases\n\n- commissionprobe = 수수료\n')
+    const realNow = Date.now.bind(Date)
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60000)
+    try {
+      send({ id: 902, method: 'tools/call', params: { name: 'engram_search', arguments: { query: 'commissionprobe' } } })
+      const result = (await waitFor(902))['result'] as { content: { text: string }[] }
+      expect(result.content[0]!.text).toContain('PG사 결정')
+    } finally { clock.mockRestore(); await writeFile(aliasFile, original) }
+  })
   it('forwards cancellation to an external call and aborts pending calls on disconnect', async () => {
     const incoming = new PassThrough(), outgoing = new PassThrough()
     const seen: AbortSignal[] = []

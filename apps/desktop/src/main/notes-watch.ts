@@ -32,14 +32,16 @@ async function snapshot(dir: string): Promise<Map<string, Stamp>> {
   } catch {
     return out // folder not created yet — treat as empty
   }
-  for (const name of names) {
-    if (extname(name).toLowerCase() !== '.md') continue
-    try {
-      const s = await stat(join(dir, name))
-      if (s.isFile()) out.set(name, { mtimeMs: s.mtimeMs, size: s.size })
-    } catch {
-      /* vanished between readdir and stat — next tick reconciles */
-    }
+  const files = names.filter(name => extname(name).toLowerCase() === '.md')
+  for (let offset = 0; offset < files.length; offset += 32) {
+    await Promise.all(files.slice(offset, offset + 32).map(async name => {
+      try {
+        const s = await stat(join(dir, name))
+        if (s.isFile()) out.set(name, { mtimeMs: s.mtimeMs, size: s.size })
+      } catch {
+        /* vanished between readdir and stat — next tick reconciles */
+      }
+    }))
   }
   return out
 }

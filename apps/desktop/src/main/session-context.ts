@@ -44,10 +44,12 @@ async function writeSessionContext(ctx: VaultContext): Promise<void> {
 // ever written when the path actually differs — so a moved or reinstalled vault
 // self-heals and an unchanged one is left alone.
 async function linkSessionContext(ctx: VaultContext): Promise<boolean> {
-  // PACKAGED ONLY. This is the one file here that belongs to the user rather
-  // than to Engram, and it is global to every Claude session on the machine —
-  // a dev run or an e2e worker must never edit the developer's real config.
-  if (!app.isPackaged) return false
+  // PACKAGED ONLY, and only for the registered workspace. This is the one file
+  // here that belongs to the user rather than to Engram, and it is global to
+  // every Claude session on the machine — a dev run, an e2e worker, or a
+  // packaged build pointed at a throwaway vault through ENGRAM_VAULT must
+  // never edit the developer's real config.
+  if (!app.isPackaged || process.env['ENGRAM_VAULT']) return false
   const target = join(homedir(), '.claude', 'CLAUDE.md')
   const line = `@${contextPath(ctx).replace(/\\/g, '/')}`
   const block = [

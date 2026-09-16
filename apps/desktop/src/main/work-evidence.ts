@@ -36,7 +36,10 @@ function expected(page: Page, url: unknown): string {
   return parsed.href
 }
 
-async function maskedFrame(page: Page, origin: string, masks: string[], signal?: AbortSignal, region?: unknown): Promise<Buffer> {
+// A still is kept lossless; a video frame is re-encoded by the recorder
+// anyway, so it travels as JPEG - a fraction of the bytes crossing into the
+// encoder window per frame.
+async function maskedFrame(page: Page, origin: string, masks: string[], signal?: AbortSignal, region?: unknown, format: 'png' | 'jpeg' = 'png'): Promise<Buffer> {
   signal?.throwIfAborted()
   if (page.isClosed() || new URL(page.url()).origin !== origin) throw new Error('The recorded tab closed or left the approved site.')
   const frames = page.frames()
@@ -47,13 +50,14 @@ async function maskedFrame(page: Page, origin: string, masks: string[], signal?:
     const counts = await Promise.all(frames.map(frame => frame.locator(selector).count()))
     if (!counts.some(Boolean)) throw new Error('A requested redaction target is missing. Recording stopped before capturing it.')
   }
-  const data = await page.screenshot({ type: 'png', fullPage: false, scale: 'css', timeout: 8000, mask: frames.flatMap(frame => [frame.locator(SECRET), ...masks.map(selector => frame.locator(selector))]), maskColor: '#202020' })
+  const data = await page.screenshot({ type: format, ...(format === 'jpeg' ? { quality: 80 } : {}), fullPage: false, scale: 'css', timeout: 8000, mask: frames.flatMap(frame => [frame.locator(SECRET), ...masks.map(selector => frame.locator(selector))]), maskColor: '#202020' })
   signal?.throwIfAborted()
   if (new URL(page.url()).origin !== origin || frames.length !== page.frames().length || frames.some((frame, i) => frame.isDetached() || frame.url() !== addresses[i])) throw new Error('The page changed while capturing evidence.')
   if (!region) return data
   const image = nativeImage.createFromBuffer(data)
   const size = image.getSize()
-  return image.crop(evidenceRegion(region, size.width, size.height)!).toPNG()
+  const cropped = image.crop(evidenceRegion(region, size.width, size.height)!)
+  return format === 'jpeg' ? cropped.toJPEG(80) : cropped.toPNG()
 }
 
 export function workEvidenceTools(paths: VaultPaths, lane: string) {
@@ -110,7 +114,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
         })()
         return stopping
       } }
-      const capture = async () => { const data = await maskedFrame(source.page, source.origin, source.masks, signal, source.region); if (active) { await encoder.frame(data); state.frames++ } }
+      const capture = async () => { const data = await maskedFrame(source.page, source.origin, source.masks, signal, source.region, 'jpeg'); if (active) { await encoder.frame(data, 'image/jpeg'); state.frames++ } }
       const tick = () => {
         if (!active || capturing) return
         capturing = true

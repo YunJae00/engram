@@ -14,7 +14,7 @@ const NAV_TIMEOUT_MS = 25_000
 // Per candidate selector: long enough for a slow render, short enough that a
 // step with several fallbacks still fails inside a person's patience.
 const FIND_TIMEOUT_MS = 3_000
-const SETTLE_MS = 800
+const SETTLE_MS = 300
 
 export function describeTarget(target: RoutineTarget): string {
   return target.text?.trim() || target.css?.[0] || 'the element'

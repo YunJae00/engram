@@ -56,6 +56,23 @@ function probeOf(
 }
 
 describe('sweepStaleEnginePids', () => {
+  it('awaits asynchronous termination and retains failures for a later sweep', async () => {
+    await ledger({ pid: 100, startedAt: T, cmd: 'claude' })
+    const probe = probeOf({ 100: { createdAt: T, commandLine: 'claude' } })
+    let finish: (() => void) | undefined
+    probe.kill = () => new Promise<void>(resolve => { finish = resolve })
+    let done = false
+    const pending = sweepStaleEnginePids(file, probe).then(result => { done = true; return result })
+    await until(async () => !!finish)
+    expect(done).toBe(false)
+    finish!()
+    expect((await pending).killed).toEqual([100])
+    await until(async () => (await ledgerPids()).length === 0)
+    await ledger({ pid: 100, startedAt: T, cmd: 'claude' })
+    probe.kill = async () => { throw new Error('unavailable') }
+    expect((await sweepStaleEnginePids(file, probe)).killed).toEqual([])
+    expect(await ledgerPids()).toEqual([100])
+  })
   it('kills only on full agreement: alive + same birth + engine-looking', async () => {
     await ledger({ pid: 100, startedAt: T, cmd: 'claude --output-format stream-json' })
     const probe = probeOf({ 100: { createdAt: T + 3_000, commandLine: 'claude --output-format stream-json' } })

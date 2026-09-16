@@ -1,6 +1,7 @@
 import type { WebPage } from 'core'
 import { app } from 'electron'
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
@@ -137,17 +138,13 @@ export function setAgentBrowser(path: string | null): void {
 // The browser the system opens links with, by the name Windows records for
 // it. Elsewhere, and where the record cannot be read, the first one found.
 // Read once: it is a process, and availability is asked on every focus.
-let usualBrowser: string | null | undefined
-function defaultBrowserName(): string | null {
-  if (usualBrowser !== undefined) return usualBrowser
-  usualBrowser = readDefaultBrowserName()
-  return usualBrowser
-}
+let usualBrowser: Promise<string | null> | undefined
+const execFileAsync = promisify(execFile)
 
-function readDefaultBrowserName(): string | null {
+async function readDefaultBrowserName(): Promise<string | null> {
   if (process.platform !== 'win32') return null
   try {
-    const out = execFileSync(
+    const { stdout: out } = await execFileAsync(
       'reg',
       ['query', 'HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice', '/v', 'ProgId'],
       { encoding: 'utf8', windowsHide: true, timeout: 3_000 },
@@ -164,10 +161,10 @@ function readDefaultBrowserName(): string | null {
 
 // The browser the comet works in: the one the person picked, else the one
 // their system opens links with, else the first installed. Nobody is asked.
-export function findChrome(): string | null {
+export async function findChrome(): Promise<string | null> {
   if (chosenPath && existsSync(chosenPath)) return chosenPath
   const installed = installedBrowsers()
-  const usual = defaultBrowserName()
+  const usual = await (usualBrowser ??= readDefaultBrowserName())
   return installed.find((one) => one.name === usual)?.path ?? installed[0]?.path ?? null
 }
 
@@ -289,7 +286,7 @@ function armPressureWatch(): void {
       flog('agent-browser', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — closing`)
       void closeAgentBrowser({ force: true })
     }
-  }, 15_000)
+  }, 15_000).unref()
 }
 
 // While something owns the window outright — a teach recording, where the
@@ -356,7 +353,7 @@ async function ensureContext(): Promise<Ctx> {
       armPressureWatch()
       return ctx
     }
-    const executablePath = findChrome()
+    const executablePath = await findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
     const { chromium } = await import('playwright-core')
     // One more chance for the person's sign-ins to follow them in, right

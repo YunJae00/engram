@@ -124,6 +124,8 @@ describe('compositor previews', () => {
     expect(receive).toHaveBeenCalledWith({ data: 'first', width: 1280, height: 860 })
     await vi.advanceTimersByTimeAsync(40)
     frame('third')
+    expect(receive).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(26)
     expect(receive).toHaveBeenCalledTimes(3)
     expect(receive.mock.calls[1]?.[0].data).toBe('second')
     await vi.advanceTimersByTimeAsync(500)

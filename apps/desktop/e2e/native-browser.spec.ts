@@ -79,6 +79,15 @@ test('four native pages share the agent connection and keep independent input', 
   }
   const frames = await shell.evaluate((ids) => window.engram.missionFrames(ids.map((id) => `bot-${id}`)), ids)
   expect(frames.every((frame) => frame.on && !frame.data)).toBe(true)
+  const idleReads = await shell.evaluate(async () => {
+    let reads = 0
+    const surfaces = [...document.querySelectorAll<HTMLElement>('[data-testid="native-browser-surface"]')]
+    const originals = surfaces.map(element => element.getBoundingClientRect)
+    surfaces.forEach((element, i) => { element.getBoundingClientRect = () => { reads++; return originals[i]!.call(element) } })
+    try { await new Promise(resolve => setTimeout(resolve, 5000)); return reads }
+    finally { surfaces.forEach((element, i) => { element.getBoundingClientRect = originals[i]! }) }
+  })
+  console.log(`Native layout: ${idleReads} surface measurements in 5 seconds across four idle panes`)
 })
 
 test('resize and chat handoffs retain the live pages and scroll', async () => {

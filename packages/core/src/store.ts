@@ -28,6 +28,10 @@ export class NoteStore {
   // key as the add/change that parsed the note's frontmatter.
   private readonly notes: Map<string, Note>
   private readonly index: NoteIndex
+  // getAll() is asked for several times per chat turn; sorting every call was
+  // O(N log N) each. Kept until the next file delta, which is the only thing
+  // that can change it.
+  private sorted: Note[] | null = null
 
   // Alias groups (workspace/aliases.md) loaded at open(); a group taught
   // mid-session reaches this store on the next open (workspace switch/boot).
@@ -59,7 +63,7 @@ export class NoteStore {
   }
 
   getAll(): Note[] {
-    return [...this.notes.values()].sort(byId)
+    return (this.sorted ??= [...this.notes.values()].sort(byId)).slice()
   }
 
   get(id: string): Note | null {
@@ -88,6 +92,7 @@ export class NoteStore {
     if (event === 'unlink') {
       if (!this.notes.has(stem)) return { upserts: [], removed: [] }
       this.notes.delete(stem)
+      this.sorted = null
       if (this.index.has(stem)) this.index.discard(stem)
       return { upserts: [], removed: [stem] }
     }
@@ -101,6 +106,7 @@ export class NoteStore {
     }
     const id = note.front.id
     this.notes.set(id, note)
+    this.sorted = null
     if (this.index.has(id)) this.index.discard(id)
     this.index.add({
       id,

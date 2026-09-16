@@ -128,7 +128,8 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
       recover()
     }
   }
-  const CAST = { format: 'jpeg', quality: 94, maxWidth: 2560, maxHeight: 4400, everyNthFrame: 1 } as const
+  // Bound motion bandwidth; the settled frame retains lossless text detail.
+  const CAST = { format: 'jpeg', quality: 80, maxWidth: 1920, maxHeight: 2400, everyNthFrame: 1 } as const
   // A screencast survives the page being laid out to a new shape but goes on
   // delivering surfaces of the OLD shape (measured, whether the layout came
   // before or after the cast began), so the cast is begun again whenever a
@@ -162,7 +163,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     // numbers, so every frame reports the page's CSS size regardless of how
     // many device pixels the bitmap itself carries.
     motionFrame = { data: frame.data, ...(size ?? { width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight }) }
-    const delay = 16 - (changed - sent)
+    const delay = 33 - (changed - sent)
     if (delay > 0) {
       if (!motionTimer) motionTimer = setTimeout(sendMotion, delay).unref()
     } else {

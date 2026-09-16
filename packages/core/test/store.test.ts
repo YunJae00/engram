@@ -22,6 +22,8 @@ describe('NoteStore.open', () => {
     expect(store.getAll().map((n) => n.front.id)).toEqual(['a-note', 'b-note', 'c-note'])
     expect(store.get('b-note')?.body).toContain('Beta')
     expect(store.get('missing')).toBeNull()
+    store.getAll().splice(0)
+    expect(store.getAll().map(n => n.front.id)).toEqual(['a-note', 'b-note', 'c-note'])
   })
 })
 

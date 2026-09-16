@@ -13,9 +13,10 @@ function clockPage() {
 it('waits for delayed content rather than returning a blank page', async () => {
   const page = clockPage()
   let reads = 0
-  const result = await readWhenReady(page, async () => ({ url: 'https://example.com', title: 'App', text: ++reads < 12 ? '' : 'Report ready' }))
+  const result = await readWhenReady(page, async () => { reads++; return { url: 'https://example.com', title: 'App', text: Date.now() < 4400 ? '' : 'Report ready' } })
   expect(result.text).toBe('Report ready')
-  expect(reads).toBe(12)
+  expect(reads).toBeLessThan(8)
+  expect(Date.now()).toBeGreaterThanOrEqual(4400)
 })
 
 it('bounds empty page recovery and never declares missing content as a fact', async () => {

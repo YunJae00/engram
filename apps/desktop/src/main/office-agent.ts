@@ -1,7 +1,5 @@
 import { officeTools, type AgentTool, type OfficeOp } from 'core'
 import { screen } from 'electron'
-import { renderDeck } from './deck-render.js'
-import { renderDoc } from './doc-render.js'
 import { officeApps, officeRequest, officeSupported } from './office-host.js'
 import { assertDesktopTurnNotStopped, endDesktopTurn } from './desktop-control.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
@@ -16,12 +14,14 @@ async function officeRun(op: OfficeOp, args: Record<string, unknown>, signal?: A
   const compact = { x: (work.x + (work.width - width) / 2) * 0.75, y: (work.y + (work.height - height) / 2) * 0.75, width: width * 0.75, height: height * 0.75 }
   if (op === 'ppt.build') {
     signal?.throwIfAborted()
+    const { renderDeck } = await import('./deck-render.js')
     const result = await renderDeck(args as unknown as Parameters<typeof renderDeck>[0], false, signal, assertActive)
     await officeRequest('ppt.read', { file: result.path, compact }, signal, assertActive, activity)
     return { presentation: result.path, slides: result.slides, saved: result.path, verification: 'File generated; visual rendering is not verified. Inspect every slide before claiming completion.' }
   }
   if (op === 'word.write') {
     signal?.throwIfAborted()
+    const { renderDoc } = await import('./doc-render.js')
     const result = await renderDoc(args as unknown as Parameters<typeof renderDoc>[0], false, signal, assertActive)
     await officeRequest('word.read', { file: result.path, compact }, signal, assertActive, activity)
     return { document: result.path, blocks: result.blocks, saved: result.path, verification: 'File generated; application rendering is not verified.' }

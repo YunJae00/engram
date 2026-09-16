@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import type { SpawnObserver, SpawnedEngineProcess } from './spawn.js'
 
@@ -13,6 +14,7 @@ export interface LedgerEntry {
 // tolerance).
 const CREATED_AT_TOLERANCE_MS = 10_000
 const PROBE_TIMEOUT_MS = 5_000
+const execFileAsync = promisify(execFile)
 
 async function readLedger(file: string): Promise<LedgerEntry[]> {
   try {
@@ -74,7 +76,7 @@ export function createPidLedger(file: string): SpawnObserver {
 export interface ProcessProbe {
   // null = no process with that PID (already dead)
   inspect(pid: number): Promise<{ createdAt: number; commandLine: string | null } | null>
-  kill(pid: number): void
+  kill(pid: number): void | Promise<void>
 }
 
 // An engine invocation, recognizably: the program or our fixed flags. The
@@ -92,7 +94,7 @@ function defaultProbe(): ProcessProbe {
           `Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" | ` +
           `ForEach-Object { "$($_.ProcessId)\`t$([DateTimeOffset]::new($_.CreationDate.ToUniversalTime(),[TimeSpan]::Zero).ToUnixTimeMilliseconds())\`t$($_.CommandLine)" }`
         const out = await new Promise<string | null>((resolve) => {
-          const child = spawn('powershell', ['-NoProfile', '-Command', script], { stdio: ['ignore', 'pipe', 'ignore'] })
+          const child = spawn('powershell', ['-NoProfile', '-Command', script], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
           let text = ''
           const timer = setTimeout(() => {
             child.kill()
@@ -122,21 +124,16 @@ function defaultProbe(): ProcessProbe {
         return null
       }
       // POSIX: creation time via ps; a parse failure throws (= leave alone).
-      const out = spawnSync('ps', ['-o', 'lstart=,command=', '-p', String(pid)], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS })
-      if (out.status !== 0) return null
+      const out = await execFileAsync('ps', ['-o', 'lstart=,command=', '-p', String(pid)], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS })
       const text = out.stdout.trim()
       if (!text) return null
       const createdAt = Date.parse(text.slice(0, 24))
       if (!Number.isFinite(createdAt)) throw new Error('unparseable lstart')
       return { createdAt, commandLine: text.slice(24).trim() || null }
     },
-    kill(pid) {
+    async kill(pid) {
       if (process.platform === 'win32') {
-        try {
-          spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', timeout: 2_000 })
-        } catch {
-          /* fall through */
-        }
+        await execFileAsync('taskkill', ['/pid', String(pid), '/T', '/F'], { timeout: 2_000, windowsHide: true })
         return
       }
       try {
@@ -175,8 +172,8 @@ export async function sweepStaleEnginePids(
     const sameBirth = Math.abs(alive.createdAt - entry.startedAt) <= CREATED_AT_TOLERANCE_MS
     const engineish = alive.commandLine === null || looksLikeEngine(alive.commandLine)
     if (sameBirth && engineish) {
-      probe.kill(entry.pid)
-      killed.push(entry.pid)
+      try { await probe.kill(entry.pid); killed.push(entry.pid) }
+      catch { keep.push(entry) }
     } else {
       // PID reused by someone else's process — release, NEVER kill.
       released.push(entry.pid)

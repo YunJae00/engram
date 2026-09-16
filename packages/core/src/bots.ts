@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 import { forgetBotMemory } from './bot-memory.js'
@@ -105,10 +105,11 @@ async function writeBotsFile(paths: VaultPaths, file: BotsFile): Promise<void> {
 // interleaved lose one side. One chain per file keeps them in order.
 const queues = new Map<string, Promise<unknown>>()
 
-function serialized<T>(paths: VaultPaths, work: () => Promise<T>): Promise<T> {
-  const key = botsPath(paths)
+function serialized<T>(paths: VaultPaths, work: () => Promise<T>, key = botsPath(paths)): Promise<T> {
   const next = (queues.get(key) ?? Promise.resolve()).then(work, work)
-  queues.set(key, next.catch(() => undefined))
+  const settled = next.then(() => undefined, () => undefined)
+  queues.set(key, settled)
+  void settled.then(() => { if (queues.get(key) === settled) queues.delete(key) })
   return next
 }
 
@@ -269,30 +270,54 @@ export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: s
   })
 }
 
-export async function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): Promise<void> {
-  await mkdir(join(paths.cache, CHAT_DIR), { recursive: true })
-  const rows = await readBotTranscript(paths, botId, TRANSCRIPT_CAP - 1)
-  const next = [...rows, turn].slice(-TRANSCRIPT_CAP)
-  await writeFile(chatPath(paths, botId), `${next.map((row) => JSON.stringify(row)).join('\n')}\n`)
+// A turn is one appended line, not a re-parse and rewrite of the whole
+// transcript (that ran twice per chat turn). Reads already take the tail, so
+// the file is only compacted to the cap once it has grown well past it.
+const TRANSCRIPT_COMPACT_BYTES = 2_000_000
+const compactAt = new Map<string, number>()
+
+export function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): Promise<void> {
+  const file = chatPath(paths, botId)
+  return serialized(paths, async () => {
+    await mkdir(join(paths.cache, CHAT_DIR), { recursive: true })
+    await appendFile(file, `${JSON.stringify(turn)}\n`)
+    const size = await stat(file).then(s => s.size, () => 0)
+    if (size < (compactAt.get(file) ?? TRANSCRIPT_COMPACT_BYTES)) return
+    const rows = await readBotTranscript(paths, botId, TRANSCRIPT_CAP)
+    const data = `${rows.map(row => JSON.stringify(row)).join('\n')}\n`
+    const scratch = `${file}.${process.pid}.tmp`
+    await writeFile(scratch, data)
+    await renameWithRetry(scratch, file)
+    if (compactAt.size >= 256) compactAt.delete(compactAt.keys().next().value!)
+    compactAt.set(file, Buffer.byteLength(data) + TRANSCRIPT_COMPACT_BYTES)
+  }, file)
 }
 
 // A fresh start: the transcript so far is put away beside the live file
 // (nothing a person said is deleted), and the conversation begins empty.
-export async function archiveBotTranscript(paths: VaultPaths, botId: string, now: Date = new Date()): Promise<void> {
+export function archiveBotTranscript(paths: VaultPaths, botId: string, now: Date = new Date()): Promise<void> {
   const live = chatPath(paths, botId)
-  try {
-    const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    await rename(live, join(paths.cache, CHAT_DIR, `${botId}.${stamp}.jsonl`))
-  } catch {
-    // Nothing said yet: nothing to put away.
-  }
+  return serialized(paths, async () => {
+    try {
+      const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      await rename(live, join(paths.cache, CHAT_DIR, `${botId}.${stamp}.jsonl`))
+      compactAt.delete(live)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }, live)
 }
 
 export async function readBotTranscript(paths: VaultPaths, botId: string, limit = TRANSCRIPT_CAP): Promise<BotTurn[]> {
   try {
     const raw = await readFile(chatPath(paths, botId), 'utf8')
     const rows: BotTurn[] = []
-    for (const line of raw.split('\n')) {
+    let end = raw.length
+    const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : TRANSCRIPT_CAP
+    while (end > 0 && rows.length < count) {
+      const start = raw.lastIndexOf('\n', end - 1)
+      const line = raw.slice(start + 1, end)
+      end = start
       if (!line.trim()) continue
       try {
         const parsed = JSON.parse(line) as BotTurn
@@ -302,7 +327,7 @@ export async function readBotTranscript(paths: VaultPaths, botId: string, limit 
         // one corrupt line must not cost the conversation
       }
     }
-    return rows.slice(-limit)
+    return rows.reverse()
   } catch {
     return []
   }

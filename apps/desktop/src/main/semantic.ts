@@ -243,12 +243,13 @@ const ASSOCIATE_FLOOR = 0.66
 
 async function autoAssociate(ctx: VaultContext, index: VectorIndex, freshIds: string[]): Promise<void> {
   const byId = new Map(ctx.store.getAll().map((n) => [n.front.id, n]))
+  const rowOf = new Map(index.ids.map((one, row) => [one, row]))
   for (const id of freshIds.slice(0, 200)) {
     try {
       const note = byId.get(id)
       if (!note || note.front.derived_from.length > 0) continue
       if (note.front.type === 'hub') continue
-      const row = index.ids.indexOf(id)
+      const row = rowOf.get(id) ?? -1
       if (row < 0) continue
       const vec = index.vectors.subarray(row * index.dim, (row + 1) * index.dim)
       const hits = cosineTopK(index, vec, 3).filter((h) => h.id !== id && (h.score ?? 0) >= ASSOCIATE_FLOOR)

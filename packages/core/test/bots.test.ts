@@ -3,6 +3,30 @@ import { addBotTask, appendBotTurn, createBot, deleteBot, dismissBotSuggestion, 
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 import { recordBotSites } from '../src/bots.js'
+import { archiveBotTranscript } from '../src/bots.js'
+import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+it('keeps concurrent appends intact through compaction and serializes archiving', async () => {
+  const paths = await initVault(await tmpVaultRoot('chat-compaction'), { git: false })
+  const dir = join(paths.cache, 'bot-chats')
+  await mkdir(dir, { recursive: true })
+  const file = join(dir, 'fixture.jsonl')
+  await writeFile(file, Array.from({ length: 401 }, (_, i) => JSON.stringify({ role: 'user', text: `${i}:${'x'.repeat(6000)}`, at: '2026-01-01' })).join('\n') + '\n')
+  await Promise.all(Array.from({ length: 16 }, (_, i) => appendBotTurn(paths, 'fixture', { role: 'assistant', text: `new-${i}`, at: '2026-01-02' })))
+  expect((await readBotTranscript(paths, 'fixture')).slice(-16).map(turn => turn.text)).toEqual(Array.from({ length: 16 }, (_, i) => `new-${i}`))
+  await appendFile(file, '\nbroken json\n')
+  expect((await readBotTranscript(paths, 'fixture', 1))[0]?.text).toBe('new-15')
+  expect(await readBotTranscript(paths, 'fixture', 0)).toEqual([])
+  await Promise.all([
+    appendBotTurn(paths, 'fixture', { role: 'user', text: 'before archive', at: '2026-01-03' }),
+    archiveBotTranscript(paths, 'fixture'),
+    appendBotTurn(paths, 'fixture', { role: 'user', text: 'after archive', at: '2026-01-03' }),
+  ])
+  expect((await readBotTranscript(paths, 'fixture')).map(turn => turn.text)).toEqual(['after archive'])
+  const archive = (await readdir(dir)).find(name => name.startsWith('fixture.') && name !== 'fixture.jsonl')!
+  expect(await readFile(join(dir, archive), 'utf8')).toContain('before archive')
+})
 
 it('keeps a bounded origin-only website history per comet without overwriting concurrent renames', async () => {
   const paths = await initVault(await tmpVaultRoot('bot-sites'), { git: false })

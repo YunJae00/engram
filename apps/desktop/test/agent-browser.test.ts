@@ -55,14 +55,14 @@ describe('the browser is chosen, not assumed', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  it('never waits on a choice while any browser is installed', () => {
+  it('never waits on a choice while any browser is installed', async () => {
     setAgentBrowser(null)
     expect(browserChoicePending()).toBe(installedBrowsers().length === 0)
     const first = installedBrowsers()[0]
     if (!first) return
     setAgentBrowser(first.path)
     expect(browserChoicePending()).toBe(false)
-    expect(findChrome()).toBe(first.path)
+    expect(await findChrome()).toBe(first.path)
     setAgentBrowser(null)
   })
 })

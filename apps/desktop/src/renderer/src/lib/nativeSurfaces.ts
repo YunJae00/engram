@@ -19,6 +19,12 @@ let timer: ReturnType<typeof setInterval> | undefined
 let last = ''
 let sent = 0
 let changes: MutationObserver | undefined
+let sizes: ResizeObserver | undefined
+let frame: number | undefined
+
+function schedule(): void {
+  frame ??= requestAnimationFrame(() => { frame = undefined; measure() })
+}
 
 function focusShell(event: Event): void {
   if (!(event.target instanceof Element) || event.target.closest('[data-testid="native-browser-surface"]')) return
@@ -66,25 +72,36 @@ function measure(): void {
 export function mountNativeSurface(element: HTMLElement, lane: string): () => void {
   surfaces.set(element, lane)
   if (!timer) {
-    timer = setInterval(measure, 33)
+    // Keep the native host's lease alive without polling layout at frame rate.
+    timer = setInterval(measure, 1000)
     document.addEventListener('pointerdown', focusShell, true)
     document.addEventListener('focusin', focusShell, true)
-    changes = new MutationObserver(measure)
+    changes = new MutationObserver(schedule)
     changes.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'inert', 'role', 'open'] })
+    sizes = new ResizeObserver(schedule)
     window.addEventListener('focus', measure)
-    window.addEventListener('resize', measure)
+    window.addEventListener('resize', schedule)
+    document.addEventListener('scroll', schedule, true)
+    document.addEventListener('transitionend', schedule, true)
   }
+  sizes?.observe(element)
   measure()
   return () => {
     surfaces.delete(element)
+    sizes?.unobserve(element)
     measure()
     if (!surfaces.size) {
       clearInterval(timer); timer = undefined
       document.removeEventListener('pointerdown', focusShell, true)
       document.removeEventListener('focusin', focusShell, true)
       changes?.disconnect(); changes = undefined
+      sizes?.disconnect(); sizes = undefined
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      frame = undefined
       window.removeEventListener('focus', measure)
-      window.removeEventListener('resize', measure)
+      window.removeEventListener('resize', schedule)
+      document.removeEventListener('scroll', schedule, true)
+      document.removeEventListener('transitionend', schedule, true)
     }
   }
 }

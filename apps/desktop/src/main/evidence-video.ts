@@ -26,7 +26,7 @@ export async function videoEncoder(size = { width: 1280, height: 720 }) {
     })()`)
   } catch (error) { window.destroy(); throw error }
   return {
-    async frame(data: Buffer) { if (window.isDestroyed()) throw new Error('Recording window closed'); await window.webContents.executeJavaScript(`window.addFrame(${JSON.stringify(`data:image/png;base64,${data.toString('base64')}`)})`) },
+    async frame(data: Buffer, mime: 'image/png' | 'image/jpeg' = 'image/png') { if (window.isDestroyed()) throw new Error('Recording window closed'); await window.webContents.executeJavaScript(`window.addFrame(${JSON.stringify(`data:${mime};base64,${data.toString('base64')}`)})`) },
     async finish(): Promise<Buffer> {
       const timeout = setTimeout(() => { if (!window.isDestroyed()) window.destroy() }, 10000)
       try { return Buffer.from(await window.webContents.executeJavaScript('window.finish()') as string, 'base64') }

@@ -9,11 +9,8 @@ import { scrollDirection } from './page-scroll.js'
 // send or buy is looked at before it is touched, and refused.
 
 export const FIND_TIMEOUT_MS = 3_000
-// Short on purpose: a chatty page (analytics, polling) never goes network-
-// idle, so this cap is paid in full on every step of such a site. The
-// reader that follows sees the page as it is, and a read that landed a
-// beat early is simply read again.
-const SETTLE_NETWORK_MS = 900
+// Bound document readiness; content reads separately retry delayed results.
+const SETTLE_LOAD_MS = 900
 const SETTLE_MS = 300
 const KEYS = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Space'])
 
@@ -152,9 +149,10 @@ export async function unmark(page: Page): Promise<void> {
 
 // A page is given its moment after a move: the navigation it may have
 // started, the requests that fill in what was pressed for, and a breath.
+// No networkidle wait: a live site with analytics or a socket never goes idle,
+// so that wait ran to its full timeout on every action and bought nothing.
 export async function settle(page: Page): Promise<void> {
-  await page.waitForLoadState('domcontentloaded', { timeout: SETTLE_NETWORK_MS }).catch(() => undefined)
-  await page.waitForLoadState('networkidle', { timeout: SETTLE_NETWORK_MS }).catch(() => undefined)
+  await page.waitForLoadState('domcontentloaded', { timeout: SETTLE_LOAD_MS }).catch(() => undefined)
   await page.waitForTimeout(SETTLE_MS)
 }
 
