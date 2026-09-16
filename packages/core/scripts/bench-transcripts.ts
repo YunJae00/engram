@@ -19,7 +19,7 @@ async function oldRead(id: string, limit = 400) {
   const rows = []
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
-    try { const parsed = JSON.parse(line); if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string') rows.push(parsed) } catch {}
+    try { const parsed = JSON.parse(line); if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string') rows.push(parsed) } catch { /* Match the previous reader's corrupt-line handling. */ }
   }
   return rows.slice(-limit)
 }
@@ -47,4 +47,7 @@ for (let i = 0; i < 25; i++) {
   newBytes += Buffer.byteLength(JSON.stringify(turn) + '\n')
   await appendBotTurn(paths, 'after', turn)
 }
-console.log(JSON.stringify({ root, seedBytes: Buffer.byteLength(seed), previewMedianMs: { before: beforeRead, after: afterRead }, append25Ms: { before: Math.round(beforeAppend), after: Math.round(performance.now() - startNew) }, logicalAppendBytes: { before: oldBytes, after: newBytes }, lastTurnEqual: JSON.stringify((await oldRead('before', 1))[0]) === JSON.stringify((await readBotTranscript(paths, 'after', 1))[0]) }, null, 2))
+const afterAppend = performance.now() - startNew
+const lastTurnEqual = JSON.stringify((await oldRead('before', 1))[0]) === JSON.stringify((await readBotTranscript(paths, 'after', 1))[0])
+if (!lastTurnEqual) throw new Error('Transcript benchmark changed the final message')
+console.log(JSON.stringify({ root, seedBytes: Buffer.byteLength(seed), previewMedianMs: { before: beforeRead, after: afterRead }, append25Ms: { before: Math.round(beforeAppend), after: Math.round(afterAppend) }, logicalAppendBytes: { before: oldBytes, after: newBytes }, lastTurnEqual }, null, 2))
