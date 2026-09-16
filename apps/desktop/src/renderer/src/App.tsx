@@ -223,7 +223,7 @@ function Shell() {
           updateReady={updateReady}
           updateSelfInstalls={updateSelfInstalls}
           vaultReady={vaultReady}
-          onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
+          onOpenSettings={() => { setSettingsSection('ai'); setSettingsOpen(true) }}
         />
         <div className="canvas">
         {/* While a big vault is still being read the views would all claim

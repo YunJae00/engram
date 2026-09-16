@@ -43,7 +43,7 @@ export function EngineSettings() {
         const pending = login?.phase === 'opening' || login?.phase === 'browser'
         const connected = state?.loggedIn === true || login?.phase === 'connected'
         const name = id === 'claude' ? 'Claude' : 'ChatGPT'
-        const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : !states ? 'Checking connection…' : connected ? 'Connected' : state?.installed ? 'Not connected' : 'Runtime unavailable'
+        const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : !states ? 'Checking connection…' : connected ? 'Connected' : state?.installed ? 'Not connected' : id === 'claude' ? 'Not installed' : 'Runtime unavailable'
         return (
           <section key={id} className="engine-card" aria-label={`${name} connection`}>
             <div className="engine-card-heading"><strong><ProviderIcon provider={id} size={16} /> {name}</strong></div>
