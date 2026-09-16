@@ -96,10 +96,8 @@ async function migrateLegacy(paths: VaultPaths, now: Date): Promise<void> {
 }
 
 const listings = new Map<string, Promise<Routine[]>>()
-// A listing reads and parses every note in the vault. One comet turn asks for
-// it several times in a row (the procedure check, each find, the run, the
-// offer), so the answer is kept briefly; every write below drops it at once.
-const LISTING_TTL_MS = 2_000
+// Share concurrent scans, but never retain a completed result: another
+// process or a manual note edit can change the library between calls.
 
 export function listRoutines(paths: VaultPaths, now: Date = new Date()): Promise<Routine[]> {
   const pending = listings.get(paths.cache)
@@ -107,7 +105,7 @@ export function listRoutines(paths: VaultPaths, now: Date = new Date()): Promise
   const work = readRoutines(paths, now)
   listings.set(paths.cache, work)
   work.then(
-    () => setTimeout(() => { if (listings.get(paths.cache) === work) listings.delete(paths.cache) }, LISTING_TTL_MS).unref(),
+    () => { if (listings.get(paths.cache) === work) listings.delete(paths.cache) },
     () => { if (listings.get(paths.cache) === work) listings.delete(paths.cache) },
   )
   return work

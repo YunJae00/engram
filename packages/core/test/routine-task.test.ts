@@ -4,8 +4,22 @@ import { routineTask, routineTaskPrompt } from '../src/routine-task.js'
 import { addRoutine, listRoutines, removeRoutine, renameRoutine, routineWrites } from '../src/routine.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
+import { readNote, writeNote } from '../src/notes.js'
 
 describe('saved task routines', () => {
+  it('reads external note changes immediately after a completed listing', async () => {
+    const paths = await initVault(await tmpVaultRoot('routine-external-'), { git: false })
+    const saved = await addRoutine(paths, { name: 'Original', steps: [{ kind: 'read' }] })
+    expect(await listRoutines(paths)).toHaveLength(1)
+    const note = await readNote(paths, saved.id)
+    note.front.id = `${saved.id}-external`
+    note.body = '# External routine\n'
+    await writeNote(paths, note)
+    expect((await listRoutines(paths)).map(one => one.id)).toContain(note.front.id)
+    note.front.status = 'archived'
+    await writeNote(paths, note)
+    expect((await listRoutines(paths)).map(one => one.id)).not.toContain(note.front.id)
+  })
   it('retains verified execution settings and resolves temporary controls from preceding observations', async () => {
     const task = routineTask('Check leave used this month', [
       { tool: 'read_page', args: {}, observation: '#12 [button] View profile' },

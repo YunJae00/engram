@@ -30,8 +30,8 @@ not remove those capabilities or imply the same reduction in installer size.
   do not hide the previous valid message.
 - Sorted note results are cached until file changes, with a defensive array copy.
 - Note metadata scans run in bounded batches; MCP cache fingerprints include
-  aliases, timestamps and sizes. Routine listings reuse a short-lived result
-  and invalidate on routine writes.
+  aliases, timestamps and sizes. Routine listings share concurrent reads but
+  discard completed results so external writes appear on the next request.
 - Document generators load only for document/presentation creation.
 - Browser discovery and stale-process cleanup no longer execute blocking child
   commands on the main thread. Cleanup retains failed entries and existing PID
