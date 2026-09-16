@@ -52,8 +52,9 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
-  await browser?.close()
+  // The application owns these pages; stop it before detaching the test client.
   await app?.close()
+  await browser?.close()
   await new Promise<void>((resolve) => server?.close(() => resolve()))
   if (previousAttach === undefined) delete process.env['PW_CHROMIUM_ATTACH_TO_OTHER']
   else process.env['PW_CHROMIUM_ATTACH_TO_OTHER'] = previousAttach
