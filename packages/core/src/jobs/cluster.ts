@@ -16,15 +16,28 @@ const J7_QUERY_HEAD = 100
 // 40 sits in that gap — obvious dupes pair up, unrelated notes stay apart.
 const J7_EDGE_THRESHOLD = 40
 const J7_CLUSTER_CAP = 30
+// Yield to the event loop after this many seed searches so a bulk re-cluster
+// (a fresh import of thousands) never freezes the UI while it runs.
+const CLUSTER_YIELD_EVERY = 200
 
-export function findMergeClusters(current: Note[], aliasGroups: string[][] = []): Note[][] {
+// `seeds` are the notes whose neighbourhood is searched; every current note is
+// a searchable target. Passing only the notes changed since the last J7 makes
+// the scan incremental — a pair only forms when at least one side is new, and
+// an unchanged corpus re-clusters to the same result at a fraction of the cost.
+// Defaults to a full all-pairs scan.
+export async function findMergeClusters(
+  current: Note[],
+  aliasGroups: string[][] = [],
+  seeds: Note[] = current,
+): Promise<Note[][]> {
   if (current.length < 2) return []
   // Plain tokenizer: the threshold above was calibrated without CJK bigrams.
   const index = buildIndex(current, { cjkNgrams: false })
   const byId = new Map(current.map((n) => [n.front.id, n]))
   // Undirected edges keyed "a\tb" (a<b) → best score seen in either direction.
   const edges = new Map<string, number>()
-  for (const note of current) {
+  let scanned = 0
+  for (const note of seeds) {
     // Taught aliases join the query, so notes filed under the OTHER name of
     // the same thing can reach the pairing threshold despite disjoint text.
     const query = expandQueryWithAliases(`${noteTitle(note)} ${note.body.slice(0, J7_QUERY_HEAD)}`, aliasGroups)
@@ -35,6 +48,7 @@ export function findMergeClusters(current: Note[], aliasGroups: string[][] = [])
       const prev = edges.get(key)
       if (prev === undefined || hit.score > prev) edges.set(key, hit.score)
     }
+    if (++scanned % CLUSTER_YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve))
   }
   if (edges.size === 0) return []
   // Union-Find over edge endpoints → connected components.

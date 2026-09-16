@@ -92,14 +92,23 @@ describe('J7 deterministic pre-pairing', () => {
     makeNote('u-hiring', '# 채용 프로세스\n\n서류 검토, 코딩 인터뷰, 최종 면접 세 단계.'),
   ]
 
-  it('two near-dupes + unrelated notes → exactly one cluster', () => {
-    const clusters = findMergeClusters(notes)
+  it('two near-dupes + unrelated notes → exactly one cluster', async () => {
+    const clusters = await findMergeClusters(notes)
     expect(clusters).toHaveLength(1)
     expect(clusters[0]!.map((n) => n.front.id).sort()).toEqual(['dup-a', 'dup-b'])
   })
 
-  it('the J7 prompt carries only the clustered notes; unrelated ones are absent', () => {
-    const clusters = findMergeClusters(notes)
+  it('incremental seeds: a pair forms only when a changed note seeds it', async () => {
+    // Neither dupe changed → no seed reaches the pair, so nothing clusters.
+    expect(await findMergeClusters(notes, [], [])).toHaveLength(0)
+    // One side changed → seeding it still finds its old twin across the index.
+    const seeded = await findMergeClusters(notes, [], [notes.find((n) => n.front.id === 'dup-a')!])
+    expect(seeded).toHaveLength(1)
+    expect(seeded[0]!.map((n) => n.front.id).sort()).toEqual(['dup-a', 'dup-b'])
+  })
+
+  it('the J7 prompt carries only the clustered notes; unrelated ones are absent', async () => {
+    const clusters = await findMergeClusters(notes)
     const job = buildJ7({} as VaultPaths, '', clusters, NOW)
     const payloadClusters = payloadOf(job.prompt)['clusters'] as { id: string; excerpt: string }[][]
     expect(payloadClusters).toHaveLength(1)

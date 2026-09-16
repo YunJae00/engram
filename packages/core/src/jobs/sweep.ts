@@ -171,7 +171,17 @@ export async function sweep(paths: VaultPaths, engines: Engine[], options: Sweep
   // Taught aliases widen the pairing queries AND ride the J7 prompt, so the
   // engine can both find cross-name duplicates and skip known equivalences.
   const aliasGroups = j7Due ? await loadAliasGroups(paths) : []
-  const j7Clusters = j7Due && corpus.length > 1 ? findMergeClusters(corpus, aliasGroups) : []
+  // Incremental dedup: only notes touched since the last J7 can form a NEW
+  // near-duplicate pair — an unchanged corpus re-clusters to the same result,
+  // so an idle week never pays the whole-corpus scan. The first J7 (or a full
+  // sweep) still walks everything; a bulk change yields inside findMergeClusters
+  // so it can never freeze the UI.
+  const j7Seeds =
+    !state.last_j7 || options.full
+      ? corpus
+      : corpus.filter((n) => Date.parse(n.front.updated) > Date.parse(state.last_j7!))
+  const j7Clusters =
+    j7Due && corpus.length > 1 && j7Seeds.length > 0 ? await findMergeClusters(corpus, aliasGroups, j7Seeds) : []
   if (j7Clusters.length > 0) jobs.push(buildJ7(paths, agentsMd, j7Clusters, now, aliasGroups))
 
   // Card ids present before any job runs — the J8 brief lists only cards this
@@ -195,8 +205,9 @@ export async function sweep(paths: VaultPaths, engines: Engine[], options: Sweep
   // The post phase (inversion cards → J2 batch → J9 → J10) runs over ONE
   // re-read of the vault: J1/J6 above may have created or re-dated notes, so
   // the boot snapshot is stale — but each step re-reading the whole vault
-  // (as raiseInversionCards used to) made big vaults pay 3× per sweep.
-  let postNotes = await loadNotes(paths)
+  // (as raiseInversionCards used to) made big vaults pay 3× per sweep. When the
+  // first phase executed nothing, disk is unchanged and the re-parse is skipped.
+  let postNotes = report.executed > 0 ? await loadNotes(paths) : notes
 
   const chronologyCards = await raiseInversionCards(paths, now, postNotes)
   report.executed += chronologyCards
