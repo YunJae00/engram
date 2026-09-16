@@ -12,13 +12,14 @@ import {
   type SemanticHit,
   type VectorIndex,
 } from 'core'
-import { app, ipcMain, net, powerMonitor } from 'electron'
+import { app, ipcMain, powerMonitor } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SemanticStatusDto } from '../shared/types.js'
 import { broadcast, isLibrarianBusy } from './ipc.js'
 import { fabricAfterIndex } from './memory-fabric.js'
-import { loadSettings } from './settings.js'
+import { EmbeddingClient } from './embedding-client.js'
+import { embeddingAssets } from './embedding-assets.js'
 import { reserveRoom, ROOM_FOR_EMBEDDER, roomNow } from './memory-plan.js'
 import { serialWork } from './serial-work.js'
 import type { VaultContext } from './vault.js'
@@ -28,19 +29,11 @@ const EMBED_BATCH = 4
 const SAVE_EVERY = 512
 const REINDEX_DEBOUNCE_MS = 30_000
 
-type Extractor = (texts: string[], opts: { pooling: 'cls'; normalize: boolean }) => Promise<{
-  dims: number[]
-  data: Float32Array | number[]
-}>
-
 interface SemanticState {
   status: SemanticStatusDto['status']
   detail: string
   model: string
-  extractor: Extractor | null
-  // The underlying pipeline handle, kept so idle unload can dispose the
-  // native ONNX session (the ~800MB of the whole feature).
-  pipe: { dispose?: () => Promise<void> } | null
+  extractor: EmbeddingClient | null
   loading: Promise<void> | null
   lastUsed: number
   index: VectorIndex | null
@@ -54,7 +47,6 @@ const state: SemanticState = {
   detail: '',
   model: DEFAULT_MODEL,
   extractor: null,
-  pipe: null,
   loading: null,
   lastUsed: 0,
   index: null,
@@ -69,64 +61,55 @@ function semanticEnabled(): boolean {
   return app.isPackaged || process.env['ENGRAM_SEMANTIC'] === '1'
 }
 
-let fetchPatched = false
-function installProxyAwareFetch(): void {
-  if (fetchPatched) return
-  fetchPatched = true
-  const original = globalThis.fetch
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    try {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-      if (/^https?:/i.test(url)) return net.fetch(url, init)
-    } catch {
-      /* malformed input — let the original handle (and reject) it */
-    }
-    return original(input, init)
-  }) as typeof fetch
-}
-
-function bundledModelPath(model: string): string | null {
-  const candidates = [
+function modelRoots(): string[] {
+  return [
     join(process.resourcesPath ?? '', 'bin', 'model'),
     join(app.getAppPath(), 'bundle', 'model'),
     join(dirname(process.argv[1] ?? ''), '..', '..', 'bundle', 'model'),
   ]
-  for (const dir of candidates) {
+}
+
+function bundledModelPath(model: string): string | null {
+  for (const dir of modelRoots()) {
     if (existsSync(join(dir, ...model.split('/'), 'config.json'))) return dir
   }
   return null
 }
 
+let stopping: Promise<void> = Promise.resolve()
+let loadAbort: AbortController | null = null
+let closed = false
+
 async function loadExtractor(model: string): Promise<void> {
-  installProxyAwareFetch()
-  const tf = await import('@huggingface/transformers')
-  tf.env.cacheDir = join(app.getPath('userData'), 'models')
-  const bundled = bundledModelPath(model)
-  if (bundled) {
-    tf.env.localModelPath = bundled
-    tf.env.allowLocalModels = true
+  await stopping
+  if (closed) throw new Error('Semantic search is stopping')
+  const abort = new AbortController()
+  loadAbort = abort
+  const timer = setTimeout(() => abort.abort(), 10 * 60_000)
+  let client: EmbeddingClient | undefined
+  const cancel = () => { if (client) stopping = client.close() }
+  abort.signal.addEventListener('abort', cancel, { once: true })
+  try {
+    const root = await embeddingAssets(model, modelRoots(), join(app.getPath('userData'), 'models'), abort.signal, detail => { state.detail = detail })
+    abort.signal.throwIfAborted()
+    state.detail = 'loading model'
+    client = new EmbeddingClient(root, model)
+    await client.ready
+    abort.signal.throwIfAborted()
+    state.extractor = client
+    state.lastUsed = Date.now()
+  } catch (error) {
+    if (client) { stopping = client.close(); await stopping }
+    throw error
+  } finally {
+    clearTimeout(timer)
+    abort.signal.removeEventListener('abort', cancel)
+    if (loadAbort === abort) loadAbort = null
   }
-  let lastPct = -1
-  const pipe = await tf.pipeline('feature-extraction', model, {
-    dtype: 'q8',
-    session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 },
-    progress_callback: (p: { status?: string; progress?: number }) => {
-      if (p.status === 'progress' && typeof p.progress === 'number') {
-        const pct = Math.floor(p.progress)
-        if (pct !== lastPct) {
-          lastPct = pct
-          state.detail = `downloading model ${pct}%`
-        }
-      }
-    },
-  })
-  state.pipe = pipe as unknown as SemanticState['pipe']
-  state.extractor = ((texts, opts) => (pipe as unknown as Extractor)(texts, opts)) as Extractor
-  state.lastUsed = Date.now()
 }
 
-// Model available on demand: loads it if missing, joins an in-flight load.
 async function ensureExtractor(): Promise<boolean> {
+  if (closed) return false
   if (state.extractor) return true
   if (!state.loading) {
     if (roomNow() < ROOM_FOR_EMBEDDER) return false
@@ -141,11 +124,17 @@ async function ensureExtractor(): Promise<boolean> {
 }
 
 function unloadModel(): void {
-  const pipe = state.pipe
+  const client = state.extractor
   state.extractor = null
-  state.pipe = null
-  if (pipe?.dispose) void pipe.dispose().catch(() => {})
+  if (client) stopping = client.close()
   if (state.status === 'ready') state.detail = `${state.index?.ids.length ?? 0} memories embedded (model resting)`
+}
+
+export function stopSemantic(): void {
+  closed = true
+  if (state.timer) clearTimeout(state.timer)
+  loadAbort?.abort()
+  unloadModel()
 }
 
 function liveNotes(ctx: VaultContext): Note[] {
@@ -154,27 +143,27 @@ function liveNotes(ctx: VaultContext): Note[] {
 
 const embeddings = serialWork()
 function embedBatch(texts: string[]): Promise<Float32Array[]> {
+  if (embeddings.pending >= 8) return Promise.reject(new Error('Embedding queue is full'))
   return embeddings.run(async () => {
     if (!state.extractor || roomNow() < 2.5e9) throw new Error('Embedding paused to preserve memory for active work')
     state.lastUsed = Date.now()
-    const out = await state.extractor(texts, { pooling: 'cls', normalize: true })
-    const dim = out.dims[out.dims.length - 1]!
-    const data = out.data instanceof Float32Array ? out.data : Float32Array.from(out.data)
-    return texts.map((_, i) => data.subarray(i * dim, (i + 1) * dim))
+    const client = state.extractor
+    try { return await client.embed(texts) }
+    catch (error) { if (client.closed && state.extractor === client) unloadModel(); throw error }
   })
 }
 
 function deferForMemory(): void {
+  if (closed) return
   state.detail = 'Indexing paused until more memory is available'
   if (state.timer) clearTimeout(state.timer)
   state.timer = setTimeout(() => void bringUp(), 60_000).unref()
 }
 
-// Incremental (re)index: embed only notes whose content digest changed.
-// Serialized by `busy`; a change arriving mid-run just re-schedules.
+// Incrementally embed changed notes; `busy` serializes index passes.
 async function reindex(): Promise<void> {
   const ctx = state.ctx
-  if (!ctx || state.busy) return
+  if (closed || !ctx || state.busy) return
   if (roomNow() < ROOM_FOR_EMBEDDER) { deferForMemory(); return }
   state.busy = true
   try {
@@ -220,6 +209,7 @@ async function reindex(): Promise<void> {
     if (stale.length > 0) await autoAssociate(ctx, index, stale.map((n) => n.front.id))
     await fabricAfterIndex(index, stale.map((n) => n.front.id), liveIds)
   } catch (err) {
+    if (closed) return
     if (roomNow() < 3e9) {
       state.status = state.index ? 'ready' : 'loading'
       deferForMemory()
@@ -234,11 +224,7 @@ async function reindex(): Promise<void> {
   }
 }
 
-// The reflexive association: for each just-embedded note that has no links
-// yet, take its single nearest neighbour above a strict floor and record the
-// link with an honest reason. Strict on purpose — a wrong reflex-link teaches
-// the user to distrust every link, so below the floor we simply do nothing
-// and leave the judgment to the librarian.
+// Only associate a fresh note with its closest sufficiently similar neighbour.
 const ASSOCIATE_FLOOR = 0.66
 
 async function autoAssociate(ctx: VaultContext, index: VectorIndex, freshIds: string[]): Promise<void> {
@@ -264,7 +250,6 @@ async function autoAssociate(ctx: VaultContext, index: VectorIndex, freshIds: st
   }
 }
 
-// Idle watchdog: with no embed work for IDLE_UNLOAD_MS the model rests.
 let watchdogArmed = false
 function armIdleWatchdog(): void {
   if (watchdogArmed) return
@@ -276,19 +261,19 @@ function armIdleWatchdog(): void {
 }
 
 async function bringUp(): Promise<void> {
+  if (closed) return
   try {
     if (!await ensureExtractor()) { deferForMemory(); return }
     if (state.ctx) await reindex()
     else if (state.status === 'loading') state.detail = 'model ready'
   } catch (err) {
+    if (closed) return
     const wasError = state.status === 'error'
     state.status = 'error'
     state.detail = String((err as Error).message ?? err).slice(0, 160)
-    // Search degrading to lexical-only must not be fully silent — one toast
-    // per transition (not per retry), the details stay in Settings.
+    // Notify once per transition; retain details in Settings.
     if (!wasError) broadcast({ type: 'semantic:error', detail: state.detail })
-    // Boot raced a flaky network (laptop waking, VPN connecting) — the
-    // layer quietly tries again instead of staying dead until restart.
+    // Retry a transient startup failure without requiring an app restart.
     setTimeout(() => {
       if (state.status === 'error') {
         state.status = 'loading'
@@ -299,8 +284,6 @@ async function bringUp(): Promise<void> {
 }
 
 function configure(): boolean {
-  const settings = loadSettings()
-  state.model = (settings as { semanticModel?: string }).semanticModel || DEFAULT_MODEL
   if (!semanticEnabled()) {
     state.status = 'off'
     return false
@@ -323,9 +306,7 @@ const BOOT_IDLE_SECONDS = 60
 const BOOT_CEILING_MS = 30 * 60_000
 
 function scheduleBootIndex(): void {
-  // A probe runs against a vault that was made a second ago and has to search
-  // it by meaning the way a lived-in vault is searched. Waiting out the quiet
-  // moment would only be waiting.
+  // Isolated smoke tests explicitly bypass the idle delay.
   if (process.env['ENGRAM_INDEX_NOW'] === '1') {
     void bringUp()
     return
@@ -333,6 +314,7 @@ function scheduleBootIndex(): void {
   const bootAt = Date.now()
   state.detail = 'waiting for a quiet moment to index'
   const tick = (): void => {
+    if (closed) return
     if (state.extractor || state.busy) return // something else already brought it up
     const ceiling = (powerMonitor.isOnBatteryPower?.() ? 2 : 1) * BOOT_CEILING_MS
     let idleSeconds = Number.POSITIVE_INFINITY
@@ -350,10 +332,7 @@ function scheduleBootIndex(): void {
   setTimeout(tick, BOOT_DEFER_FIRST_MS)
 }
 
-// Vault boot: attach the vault and index it (joins the warm-up's in-flight
-// model load instead of starting a second one). With the model already on
-// disk the heavy part defers to idle; a missing model still downloads
-// immediately (that IS the onboarding UX).
+// Join any warm-up; defer bundled models to idle, download missing ones now.
 export function startSemantic(ctx: VaultContext): void {
   state.ctx = ctx
   if (!configure()) return
@@ -366,15 +345,13 @@ export function startSemantic(ctx: VaultContext): void {
   else void bringUp()
 }
 
-// The notes watcher calls this on every disk delta; the actual work is
-// debounced well past the librarian's own write bursts. reindex reloads a
-// resting model itself, so this stays armed while the model is unloaded.
+// Debounce disk changes past librarian write bursts, even with the model unloaded.
 export function semanticNotesChanged(): void {
-  if (state.status === 'off' || state.status === 'error') return
+  if (closed || state.status === 'off' || state.status === 'error') return
   if (state.timer) clearTimeout(state.timer)
   state.timer = setTimeout(function fire() {
-    // Mid-sweep the librarian is still writing the very notes we would
-    // embed — wait it out and try again, instead of racing it for cores.
+    if (closed) return
+    // Wait for librarian write bursts to finish.
     if (isLibrarianBusy() || roomNow() < ROOM_FOR_EMBEDDER) {
       state.timer = setTimeout(fire, 60_000)
       return
@@ -383,12 +360,7 @@ export function semanticNotesChanged(): void {
   }, REINDEX_DEBOUNCE_MS)
 }
 
-// Meaning-level hits for a query — [] whenever the layer is not ready, so
-// callers can always merge the result without caring about status. A resting
-// (idle-unloaded) model gets a bounded wait, not a skip: the first question
-// after a break is the most common question, and a warm-from-disk load is a
-// few seconds against an engine call that takes tens. Past the budget this
-// question falls back to lexical+association and the load keeps going.
+// Bound the wait for a resting model; lexical search remains the fallback.
 const RESTING_MODEL_WAIT_MS = 6_000
 
 export async function semanticQuery(query: string, k: number): Promise<SemanticHit[]> {
@@ -408,10 +380,7 @@ export async function semanticQuery(query: string, k: number): Promise<SemanticH
   }
 }
 
-// The errand lane: meaning-level hits only when the embedder is ALREADY
-// resident. A web errand shares 8GB with the language model and a Chrome —
-// waking the ~800MB embedder for it is how machines start paging, so this
-// never loads or waits, unlike semanticQuery above.
+// Web errands never load the model: preserve memory for active browser work.
 export async function semanticQueryIfLive(query: string, k: number): Promise<SemanticHit[]> {
   if (state.status !== 'ready' || !state.index || !state.extractor) return []
   try {

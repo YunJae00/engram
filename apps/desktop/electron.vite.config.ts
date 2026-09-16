@@ -1,8 +1,10 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { resolve } from 'node:path'
 
 export default defineConfig({
   main: {
+    build: { rollupOptions: { input: { index: resolve('src/main/index.ts'), 'embedding-worker': resolve('src/main/embedding-worker.ts') } } },
     // `core` is TypeScript source — bundle it into the main build instead of
     // requiring it at runtime. The document libraries are pure ESM whose own
     // imports (jszip) break when left external in the ESM main bundle, so

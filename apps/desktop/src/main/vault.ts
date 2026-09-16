@@ -84,11 +84,11 @@ function keepSet(keep: Iterable<EngineId>): Set<EngineId> {
 // The honest per-engine picture for setup UI: "installed but not logged in" is
 // a state the user can ACT on, and resolveEngines collapses it into absence.
 // Mock/none stay forced so e2e and --engine flags behave the same everywhere.
-export async function engineStates(): Promise<EngineStatusDto[]> {
+export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Promise<EngineStatusDto[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') return [{ id: 'mock', installed: true, loggedIn: true }]
   if (engineFlag === 'none') return [{ id: 'claude', installed: false, loggedIn: false }]
-  return Promise.all(ENGINE_ORDER.map(async (id) => {
+  return Promise.all(ids.map(async (id) => {
     const detection = await createEngine(id)
       .detect()
       .catch(() => ({ installed: false, loggedIn: false }))
@@ -100,7 +100,14 @@ export async function engineStates(): Promise<EngineStatusDto[]> {
 // the embedded terminal) — the shared ctx reference updates for every IPC
 // handler, so no restart is needed. Safe to call from anywhere at any rate:
 // concurrent probes collapse inside the adapter (ClaudeAdapter.detect).
-export async function refreshEngines(ctx: VaultContext): Promise<Engine[]> {
+export async function refreshEngines(ctx: VaultContext, selectionOnly = false): Promise<Engine[]> {
+  if (selectionOnly && (process.env['ENGRAM_ENGINE'] ?? 'auto') === 'auto') {
+    const selection = aiSelection(await loadSettings(), 'filing')
+    if (ctx.engines.some(engine => engine.id === selection.engine)) {
+      ctx.engines = [withModel(createEngine(selection.engine), selection.model, selection.effort)]
+      return ctx.engines
+    }
+  }
   ctx.engines = await resolveEngines(ctx.engines.map((e) => e.id))
   return ctx.engines
 }

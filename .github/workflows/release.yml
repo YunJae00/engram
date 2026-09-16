@@ -39,6 +39,8 @@ jobs:
             tail -n 40 build.log | sed 's/^/::error::/'
             exit 1
           }
+      - name: Verify packaged semantic worker
+        run: node apps/desktop/scripts/smoke-semantic.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.name }}

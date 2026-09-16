@@ -14,7 +14,7 @@ import { registerEvidenceIpc } from './work-evidence.js'
 import { setExternalContext } from './external-connection.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
-import { registerSemanticIpc, semanticNotesChanged, startSemantic, warmSemantic } from './semantic.js'
+import { registerSemanticIpc, semanticNotesChanged, startSemantic, stopSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { attachNativeLayout } from './native-layout.js'
@@ -564,7 +564,7 @@ async function bootVault(root: string): Promise<VaultContext> {
     })
     // A brain switched in Settings becomes usable the moment it is chosen —
     // not at the next refocus or the 30-minute watch tick.
-    setBrainChoiceHook(() => revalidateEngines(ctx))
+    setBrainChoiceHook(() => revalidateEngines(ctx, true))
     startEngineWatch(ctx)
     // Write the session block once at boot, so a Claude session started before
     // the first tidy still gets today's picture rather than yesterday's.
@@ -718,6 +718,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', (event) => {
+  stopSemantic()
   stopDesktopControl('Engram is closing.')
   closeDesktopAccess()
   quitting = true

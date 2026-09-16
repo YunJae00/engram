@@ -170,16 +170,16 @@ export function refreshHealthFromDetection(ctx: VaultContext): void {
   }
 }
 
-// Re-detect engines and tell every window. UNCONDITIONALLY: this used to
-// compare the engine-id SET before and after and stay silent when it matched —
-// which, with file-based detection, is every single expiry, i.e. the exact
-// failure the function was written to catch. The renderer's setEngines is
-// idempotent and the payload is three fields, so there is nothing to save.
-export async function revalidateEngines(ctx: VaultContext): Promise<void> {
+// Detection always notifies windows. A model-only save with unchanged connection
+// status already has a settings event; another event would re-probe every picker.
+export async function revalidateEngines(ctx: VaultContext, selectionOnly = false): Promise<void> {
   try {
+    const previous = selectionOnly ? JSON.stringify(ctx.engines.map(engineDto)) : null
     const { refreshEngines } = await import('./vault.js')
-    const engines = await refreshEngines(ctx)
-    broadcast({ type: 'engines:changed', engines: engines.map(engineDto) })
+    const engines = await refreshEngines(ctx, selectionOnly)
+    const next = engines.map(engineDto)
+    if (selectionOnly && previous === JSON.stringify(next)) return
+    broadcast({ type: 'engines:changed', engines: next })
   } catch {
     /* detection is best-effort — never let it throw into a caller's error path */
   }

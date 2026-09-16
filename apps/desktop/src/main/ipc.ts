@@ -1536,7 +1536,6 @@ export function registerIpc(ctx: VaultContext): void {
     if (opened && lane === 'browser') {
       try { browserOrigins.add(new URL(opened).origin) } catch { /* Invalid addresses have no icon. */ }
       if (browserOrigins.size > 100) browserOrigins.delete(browserOrigins.values().next().value!)
-      broadcast({ type: 'bots:changed' })
     }
     if (opened && lane?.startsWith('bot-')) {
       await recordBotSites(paths, lane.slice(4), [opened]).catch(error => flog('site-history', error))
@@ -2581,7 +2580,7 @@ export function registerEngineIpc(): void {
   ipcMain.handle('engines:claudeInstallHelp', () => shell.openExternal(CLAUDE_INSTALL_HELP))
   ipcMain.handle('models:list', async (_e, id: unknown = 'claude') => {
     const provider = cloudId(id)
-    if (!(await engineStates()).some(state => state.id === provider && state.loggedIn)) return []
+    if (!(await engineStates([provider])).some(state => state.id === provider && state.loggedIn)) return []
     return provider === 'claude' ? fetchClaudeModels() : fetchCodexModels()
   })
   ipcMain.handle('engines:logins', () => engineLogins())

@@ -147,7 +147,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     ipcMain.removeHandler('sweep:run')
     ipcMain.handle('sweep:run', async () => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'sweep:start' })
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await new Promise(resolve => setTimeout(resolve, 1500))
       const report = { executed: 1, skipped: 0, failed: 0, deferred: 0, briefWritten: false }
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'sweep:done', report })
       return report
@@ -165,6 +165,8 @@ test('first-run login states, filing retry and direct browser entry', async () =
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })
   })
   await page.getByTestId('filing-retry').click()
+  await expect(page.getByTestId('filing-retry')).toHaveCount(0)
+  await expect(page.locator('.sidebar-work-status.working .sidebar-status-icon svg')).toBeVisible()
   await expect(page.getByTestId('sweep-status')).toContainText('Filing done')
   const retryBox = await page.getByTestId('filing-retry').boundingBox()
   const settingsBox = await page.getByTestId('activity-settings').boundingBox()
