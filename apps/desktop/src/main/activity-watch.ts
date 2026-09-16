@@ -37,6 +37,8 @@ export function foldSample(
   now: number,
 ): { next: OpenSpan | null; closed: OpenSpan | null } {
   if (current && sample && current.app === sample.app && current.title === sample.title) {
+    if (now - current.lastSeenAt > SAMPLE_MS * 3) return { next: { ...sample, startedAt: now, lastSeenAt: now }, closed: current.lastSeenAt - current.startedAt >= MIN_SPAN_MS ? current : null }
+    if (now - current.startedAt >= 5 * 60_000) return { next: { ...sample, startedAt: now, lastSeenAt: now }, closed: { ...current, lastSeenAt: now } }
     return { next: { ...current, lastSeenAt: now }, closed: null }
   }
   const next = sample ? { ...sample, startedAt: now, lastSeenAt: now } : null
@@ -112,15 +114,16 @@ async function flush(span: OpenSpan): Promise<void> {
     start: new Date(span.startedAt).toISOString(),
     end: new Date(span.lastSeenAt).toISOString(),
   }
-  await mkdir(ledgerDir(ctx), { recursive: true }).catch(() => undefined)
-  await appendFile(dayFile(ctx, span.startedAt), `${JSON.stringify(record)}\n`).catch(() => undefined)
+  const vault = ctx
+  await mkdir(ledgerDir(vault), { recursive: true })
+  await appendFile(dayFile(vault, span.startedAt), `${JSON.stringify(record)}\n`)
 }
 
 function onSample(sample: Sample | null): void {
   const now = Date.now()
   const { next, closed } = foldSample(open, sample, now)
   open = next
-  if (closed) void flush(closed)
+  if (closed) void flush(closed).catch(error => flog('activity-write-failed', error))
 }
 
 export function isActivityWatchEnabled(): boolean {
@@ -187,13 +190,13 @@ function startSampler(): void {
       const appName = line.slice(0, at).trim()
       const title = line.slice(at + 1).trim()
       // Engram watching itself is noise, and an empty title is a desktop.
-      if (!appName || appName.toLowerCase() === 'engram') return
+      if (!appName || appName.toLowerCase() === 'engram') { onSample(null); return }
       onSample({ app: appName, title })
     })
   }
-  child.on('exit', () => {
-    child = null
-  })
+  const sampler = child
+  child.on('error', error => { flog('activity-watch-failed', error); if (child === sampler) { onSample(null); child = null } })
+  child.on('exit', () => { if (child === sampler) { onSample(null); child = null } })
   flog('activity-watch', 'sampler started')
 }
 
@@ -225,7 +228,8 @@ export function registerActivityIpc(): void {
   })
   ipcMain.handle('activity:today', async () => {
     if (!ctx) return { totalMs: 0, apps: [] }
-    const spans: ActivitySpan[] = await readDaySpans(ctx, Date.now()).catch(() => [])
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
+    const spans = await readActivityRange(ctx, midnight.getTime(), Date.now())
     if (open && Date.now() - open.startedAt >= MIN_SPAN_MS) {
       spans.push({
         app: open.app,
@@ -234,13 +238,13 @@ export function registerActivityIpc(): void {
         end: new Date().toISOString(),
       })
     }
-    const apps = aggregate(spans).slice(0, 6)
-    return { totalMs: apps.reduce((sum, a) => sum + a.ms, 0), apps }
+    const apps = aggregate(activityWindow(spans, midnight.getTime(), Date.now()))
+    return { totalMs: apps.reduce((sum, a) => sum + a.ms, 0), apps: apps.slice(0, 6) }
   })
 }
 
 export function stopActivityWatch(): void {
-  if (open && open.lastSeenAt - open.startedAt >= MIN_SPAN_MS) void flush(open)
+  if (open && open.lastSeenAt - open.startedAt >= MIN_SPAN_MS) void flush(open).catch(error => flog('activity-write-failed', error))
   open = null
   if (child) {
     child.kill('SIGKILL')
@@ -272,13 +276,17 @@ function aggregate(spans: ActivitySpan[]): { app: string; ms: number; topTitles:
 }
 
 export async function readDaySpans(vault: VaultContext, at: number): Promise<ActivitySpan[]> {
-  const raw = await readFile(dayFile(vault, at), 'utf8').catch(() => null)
+  const raw = await readFile(dayFile(vault, at), 'utf8').catch(error => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  })
   if (!raw) return []
   const spans: ActivitySpan[] = []
   for (const line of raw.split('\n')) {
     if (!line) continue
     try {
-      spans.push(JSON.parse(line) as ActivitySpan)
+      const span = JSON.parse(line) as ActivitySpan
+      if (typeof span.app === 'string' && typeof span.title === 'string' && Number.isFinite(Date.parse(span.start)) && Date.parse(span.end) > Date.parse(span.start)) spans.push({ ...span, title: sanitizeTitle(span.title) })
     } catch {
       continue
     }
@@ -286,10 +294,26 @@ export async function readDaySpans(vault: VaultContext, at: number): Promise<Act
   return spans
 }
 
-export function composeWorklog(day: string, spans: ActivitySpan[]): string | null {
+export function activityWindow(spans: ActivitySpan[], since: number, until: number): ActivitySpan[] {
+  return spans.flatMap(span => {
+    const start = Math.max(since, Date.parse(span.start))
+    const end = Math.min(until, Date.parse(span.end))
+    return end > start ? [{ ...span, start: new Date(start).toISOString(), end: new Date(end).toISOString() }] : []
+  })
+}
+
+export async function readActivityRange(vault: VaultContext, since: number, until: number): Promise<ActivitySpan[]> {
+  const dayMs = 86_400_000
+  const spans: ActivitySpan[] = []
+  // Include spans opened just before the window, including a UTC date boundary.
+  for (let day = Math.floor(since / dayMs) * dayMs - dayMs; day <= until; day += dayMs) spans.push(...await readDaySpans(vault, day))
+  return activityWindow(spans, since, until)
+}
+
+export function composeWorklog(day: string, spans: ActivitySpan[], minimumMs = 30 * 60_000): string | null {
   const apps = aggregate(spans)
   const totalMs = apps.reduce((sum, a) => sum + a.ms, 0)
-  if (totalMs < 30 * 60_000) return null
+  if (totalMs < minimumMs) return null
   const lines = apps.slice(0, 10).map((a) => {
     const hours = (a.ms / 3_600_000).toFixed(1)
     return `- ${a.app} ${hours}h${a.topTitles.length > 0 ? ` — ${a.topTitles.join(' · ')}` : ''}`
@@ -306,10 +330,8 @@ export function composeWorklog(day: string, spans: ActivitySpan[]): string | nul
 // What the chat reads when a temporal question lands: today's (and
 // yesterday's) spans, folded per app with the longest-held titles.
 export async function activitySummary(vault: VaultContext, days: number): Promise<string | null> {
-  const spans: ActivitySpan[] = []
-  for (let d = 0; d < Math.min(days, 7); d++) {
-    spans.push(...(await readDaySpans(vault, Date.now() - d * 86_400_000)))
-  }
+  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - Math.max(0, Math.min(days, 7) - 1))
+  const spans = await readActivityRange(vault, start.getTime(), Date.now())
   if (open && Date.now() - open.startedAt >= MIN_SPAN_MS) {
     spans.push({
       app: open.app,
@@ -326,7 +348,7 @@ export async function activitySummary(vault: VaultContext, days: number): Promis
   const timeline = spans
     .sort((a, b) => (a.start < b.start ? -1 : 1))
     .slice(-24)
-    .map((s) => `- ${s.start.slice(0, 10)} ${clock(s.start)}→${clock(s.end)} ${s.app}${s.title ? ` — ${s.title}` : ''}`)
+    .map((s) => `- ${new Date(s.start).toLocaleDateString('en-CA')} ${clock(s.start)}→${clock(s.end)} ${s.app}${s.title ? ` — ${s.title}` : ''}`)
   const totals = aggregate(spans)
     .slice(0, 8)
     .map((a) => `- ${a.app} ${(a.ms / 3_600_000).toFixed(1)}h${a.topTitles.length > 0 ? ` — ${a.topTitles.join(' · ')}` : ''}`)

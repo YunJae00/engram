@@ -678,6 +678,8 @@ export interface EngramApi extends DesktopApi {
   enginesRefresh(): Promise<EngineStatusDto[]>
   // Sign in to / out of a cloud brain through the vendor's own flow.
   engineConnect(id: 'claude' | 'codex'): Promise<{ ok: boolean; message?: string }>
+  installClaude(): Promise<void>
+  claudeInstallHelp(): Promise<void>
   engineLogins(): Promise<EngineLoginDto[]>
   engineCancelLogin(id: 'claude' | 'codex'): Promise<void>
   engineOpenLogin(id: 'claude' | 'codex'): Promise<void>

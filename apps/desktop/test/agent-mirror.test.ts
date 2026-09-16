@@ -4,6 +4,16 @@ import { createAgentMirror } from '../src/renderer/src/lib/agentMirror.js'
 const FRAME = { type: 'agent:frame' as const, data: 'aGk=', width: 1280, height: 800, url: 'https://x.example/one' }
 
 describe('the browser picture outlives the view that showed it', () => {
+  it('a new browser page forgets only its own retained picture', () => {
+    const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
+    mirror.handleEvent({ ...FRAME, lane: 'bot-one' })
+    mirror.select('browser')
+    mirror.handleEvent({ ...FRAME, lane: 'browser' })
+    mirror.clearLane('browser')
+    expect(mirror.getSnapshot()).toMatchObject({ lane: 'browser', on: false, frame: false })
+    expect(mirror.heldFor('browser')).toBeNull()
+    expect(mirror.heldFor('bot-one')).not.toBeNull()
+  })
   it('holds late frames without letting them replace the selected chat', () => {
     const mirror = createAgentMirror({ watch: () => {}, ask: async () => ({ on: false }) })
     mirror.handleEvent({ ...FRAME, lane: 'bot-one' })

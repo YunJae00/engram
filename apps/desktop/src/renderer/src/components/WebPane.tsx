@@ -29,7 +29,7 @@ const FOLD_MS = 220
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
-function Address({ url, channel, start = false }: { url?: string; channel: string; start?: boolean }) {
+export function BrowserAddress({ url, channel, start = false }: { url?: string; channel: string; start?: boolean }) {
   const { showToast } = useApp()
   const [draft, setDraft] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -76,9 +76,14 @@ function Address({ url, channel, start = false }: { url?: string; channel: strin
   )
 }
 
-export function WebPane({ channel, busy, onStop, children, toolbar }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode; toolbar?: ReactNode }) {
+export function BrowserStart({ channel }: { channel: string }) {
+  return <div className="web-pane-empty browser-start"><Globe size={42} strokeWidth={1.2} aria-hidden /><h2>Where would you like to go?</h2><BrowserAddress channel={channel} start /><span>Search the web or enter a website. No AI connection needed.</span></div>
+}
+
+export function WebPane({ channel, busy, onStop, children, toolbar, standalone = false }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode; toolbar?: ReactNode; standalone?: boolean }) {
   const native = useNativeBrowser()
   const { activity } = useShellState()
+  const active = activity === (standalone ? 'browser' : 'bots')
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
   useEffect(() => {
     const changed = () => setVisible(document.visibilityState === 'visible')
@@ -100,9 +105,11 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     return () => clearTimeout(timer)
   }, [folded, channel])
   useEffect(() => {
+    if (!active) return
     agentMirror.select(channel)
     void api.agentLane(channel).catch(() => {})
-  }, [channel])
+    void agentMirror.ask()
+  }, [channel, active])
   const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   // What the store holds is whoever was mirrored last; it belongs on this
   // pane only when it is this comet's own. Another comet's page must never
@@ -111,14 +118,9 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   const liveHere = on && mine
   const frameHere = frame && mine
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
-  // What is open, asked once when the pane first mounts: the last picture and
-  // address survive a walk to another tab and back.
-  useEffect(() => {
-    void agentMirror.ask()
-  }, [])
   // Visible pages remain responsive even after the assistant finishes.
   // The compositor only streams changes; hidden panes have no encoder.
-  const showing = liveHere && visible && activity === 'bots' && !folded
+  const showing = liveHere && visible && active && !folded
   useEffect(() => {
     if (!showing) return
     agentMirror.showPixels(true)
@@ -154,7 +156,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   const stage = useRef<HTMLDivElement>(null)
   const frozen = !on && frameHere
   const paneShown = (liveHere || frozen) && !folded
-  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && activity === 'bots')
+  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active)
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
@@ -173,7 +175,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
       <div className="web-pane-inner">
         {toolbar}
         <div className="web-pane-bar">
-          <button
+          {!standalone && <button
             className="live-dock-act"
             data-testid="web-pane-fold"
             aria-label={t('live.fold')}
@@ -181,10 +183,10 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
             onClick={fold}
           >
             <ChevronsRight size={13} aria-hidden />
-          </button>
-          <Address key={channel} channel={channel} url={mine ? url : ''} />
-          <BrowserActions key={channel} lane={channel} url={mine ? url : undefined} live={liveHere} />
-          <button className="live-dock-act" data-testid="web-pane-expand" disabled={busy} aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={busy ? 'Chat stays visible while the AI is working' : expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
+          </button>}
+          <BrowserAddress key={`address-${channel}`} channel={channel} url={mine ? url : ''} />
+          <BrowserActions key={`actions-${channel}`} lane={channel} url={mine ? url : undefined} live={liveHere} />
+          {!standalone && <button className="live-dock-act" data-testid="web-pane-expand" disabled={busy} aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={busy ? 'Chat stays visible while the AI is working' : expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>}
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>
               <Square size={10} strokeWidth={2.5} aria-hidden /> {t('bubble.stop')}
@@ -201,7 +203,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           className="web-pane-stage"
           ref={stage}
         >
-          {!liveHere && !frameHere ? <div className="web-pane-empty browser-start"><Globe size={42} strokeWidth={1.2} aria-hidden /><h2>Where would you like to go?</h2><Address channel={channel} start /><span>Search the web or enter a website. No AI connection needed.</span></div> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing} hasFrame={frameHere} />}
+          {!liveHere && !frameHere ? <BrowserStart channel={channel} /> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing && active} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing && active} hasFrame={frameHere} />}
         </div>
         {frozen && <div className="web-pane-note">{t('live.closed')}</div>}
         {children}

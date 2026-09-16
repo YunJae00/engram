@@ -5,6 +5,7 @@ import { t } from '../i18n.js'
 import type { AppState } from '../state.js'
 
 interface AppNoticesProps {
+  showAiNotices?: boolean
   engines: AppState['engines']
   enginesDetected: boolean
   pendingWork: AppState['pendingWork']
@@ -15,6 +16,7 @@ interface AppNoticesProps {
 }
 
 export const AppNotices = memo(function AppNotices({
+  showAiNotices = true,
   engines,
   enginesDetected,
   pendingWork,
@@ -38,7 +40,7 @@ export const AppNotices = memo(function AppNotices({
 
   return (
     <div className="notices">
-      {vaultReady && enginesDetected && engines.length === 0 && (
+      {showAiNotices && vaultReady && enginesDetected && engines.length === 0 && (
         <div className="connect-banner" data-testid="connect-banner">
           <PlugZap size={14} strokeWidth={1.8} aria-hidden />
           <span>
@@ -50,7 +52,7 @@ export const AppNotices = memo(function AppNotices({
           </button>
         </div>
       )}
-      {unhealthy.length > 0 && (
+      {showAiNotices && unhealthy.length > 0 && (
         <div className="connect-banner" data-testid="unhealthy-banner">
           <PlugZap size={14} strokeWidth={1.8} aria-hidden />
           <span>{unhealthyText}</span>

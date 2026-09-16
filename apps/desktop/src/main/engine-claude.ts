@@ -3,6 +3,7 @@ import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
+import { loadClaudeSdk } from './claude-runtime.js'
 
 // The person's chosen model, read per call so a change in Settings or from
 // the composer takes hold on the very next turn. Empty means the app's own
@@ -13,7 +14,7 @@ async function chosenModel(hint?: string, override?: string): Promise<string> {
   return hint === 'fast' ? 'haiku' : 'sonnet'
 }
 
-// Claude, through the vendor's agent runtime bundled with this app. The
+// Claude, through the vendor's separately installed agent runtime. The
 // runtime keeps the person's sign-in and does the billing; here every job is
 // one turn, no tools, none of the person's own runtime settings loaded, and
 // a schema when the caller needs the shape of the answer fixed.
@@ -129,8 +130,8 @@ export class ClaudeEngine implements CloudEngine {
 
   async login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }> {
     const binary = claudeBinary()
-    if (!binary) return { ok: false, message: 'the Claude runtime is not part of this build' }
-    const { code } = await runText(binary, ['auth', 'login', '--claudeai'], LOGIN_TIMEOUT_MS, undefined, options)
+    if (!binary) return { ok: false, message: 'Install the Claude runtime in Settings → AI before connecting.' }
+    const { code } = await runText(binary, ['auth', 'login'], LOGIN_TIMEOUT_MS, undefined, options)
     options?.signal?.throwIfAborted()
     this.status.forget()
     const status = await this.detect()
@@ -148,10 +149,10 @@ export class ClaudeEngine implements CloudEngine {
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
     const binary = claudeBinary()
     if (!binary) {
-      yield { type: 'error', message: 'the Claude runtime is not part of this build', kind: 'crash' }
+      yield { type: 'error', message: 'Install the Claude runtime in Settings → AI before connecting.', kind: 'crash' }
       return
     }
-    const sdk = (await import('@anthropic-ai/claude-agent-sdk')) as unknown as AgentSdk
+    const sdk = (await loadClaudeSdk()) as AgentSdk
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
     const timer = setTimeout(() => abort.abort(), budget)
@@ -216,7 +217,7 @@ export class ClaudeEngine implements CloudEngine {
   // the runtime is handed the comet's tools and loops over them itself.
   runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
-    if (!binary) return Promise.resolve({ answer: '', error: 'the Claude runtime is not part of this build' })
+    if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
     return Promise.all([sdkModule(), chosenModel(undefined, job.model)]).then(([sdk, model]) => sessions.run(job, { sdk, binary, workdir: job.workdir, model }))
   }
 }
@@ -233,5 +234,5 @@ export function closeClaudeSessions(): void {
 }
 
 async function sdkModule(): Promise<SessionSdk> {
-  return (await import('@anthropic-ai/claude-agent-sdk')) as unknown as SessionSdk
+  return (await loadClaudeSdk()) as SessionSdk
 }

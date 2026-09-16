@@ -4,6 +4,7 @@ import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { ModelPicker } from './ModelPicker.js'
 import { ProviderIcon } from './ProviderIcon.js'
+import { InstallClaude } from './InstallClaude.js'
 
 export function EngineSettings() {
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -53,7 +54,7 @@ export function EngineSettings() {
                 <button className="secondary" data-testid={`brain-${id}-cancel`} onClick={() => run(api.engineCancelLogin(id))}>Cancel</button>
               </> : connected ? <>
                 <button className="engine-disconnect" data-testid={`brain-${id}-disconnect`} onClick={() => run(api.engineDisconnect(id).then(() => { setLogins((prior) => prior.filter((one) => one.id !== id)); setAttempt((value) => value + 1) }))}>Disconnect</button>
-              </> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
+              </> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
             </div>
             {login?.message && <p className="engine-message" role="status">{login.message}</p>}
           </section>

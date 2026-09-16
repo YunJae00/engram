@@ -38,7 +38,7 @@ No Engram account. No Engram subscription.
 
 ## What it reads, and what never leaves
 
-Engram only sees what you let it see, and nothing is ever uploaded — there is no server to upload to.
+Engram has no hosted vault service. Local capture and indexing stay on your machine; the context needed for an AI request is sent to your selected provider. Browser actions access the websites you choose.
 
 | source | what is read | opt-in |
 |---|---|---|
@@ -55,9 +55,23 @@ Everything lands as markdown in a folder you choose. `private/` is never passed 
 
 Grab the installer from [Releases](../../releases). On first run you sign in to the brain you already pay for — Claude or ChatGPT — with your own account; the embedding model that connects your memories downloads once and runs on this machine.
 
-Windows is the tested platform. macOS builds are produced by CI and the code paths are in place, but they have had far less real use — bug reports welcome. Linux target configuration exists but CI does not publish Linux artifacts yet.
+Currently supported: **Windows**. macOS support is planned; its packaging code remains available but releases do not publish macOS installers. Linux artifacts are not published.
 
-Neither installer is signed by an identified developer, so both platforms stop the first launch. On Windows SmartScreen warns — **More info → Run anyway**; the Run anyway button does not exist until you click More info first. On macOS, open Engram once, let it be blocked, then go to **System Settings → Privacy & Security** and press **Open Anyway** next to the message about Engram. (Right-click → Open used to be the shortcut; recent macOS releases no longer accept it for un-notarized apps.)
+The Windows installer is not yet code signed. SmartScreen may warn — **More info → Run anyway**. On managed devices, follow your organization's software installation policy.
+
+### Claude installation
+
+Claude functionality uses the official Anthropic runtime, installed separately by the user; Anthropic's terms apply. The runtime and Agent SDK are **not bundled in Engram's installer**. ChatGPT's Codex runtime remains bundled under Apache-2.0; see [Third-party notices](THIRD_PARTY_NOTICES.md).
+
+1. Choose **Install Claude runtime** during onboarding or in **Settings → AI**.
+2. Engram downloads the pinned official packages from the npm registry using the system's Chromium networking stack, verifies package integrity, and installs them in its user-data directory. It does not run package installation scripts or install globally.
+3. Choose **Connect Claude** and finish Anthropic's official sign-in flow with your own account. Engram does not read, collect, or proxy your credentials.
+
+If downloading fails, retry or use the **Official installation guide** link for network and platform troubleshooting, then retry installation in Engram. API billing is not silently substituted for subscription access. You can also continue without Claude and connect later.
+
+### Capture timing
+
+Direct captures and supported file imports enter the filing queue immediately. With the desk journal enabled, foreground application names and window titles are saved in five-minute segments and checked for filing every five minutes, with a five-minute settling window. Startup catches up on up to seven days of existing journal records. These are activity clues, not screenshots or proof that work was completed. Filing needs an available, connected AI; quota pauses leave captures queued on disk.
 
 Some managed Windows machines are set to *block* rather than warn, and then there is no Run anyway button at all. Check with:
 

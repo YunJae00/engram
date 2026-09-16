@@ -1,26 +1,27 @@
-import { LoaderCircle, Plus } from 'lucide-react'
+import { LoaderCircle, Plus, Settings2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
-import { cometChannel } from '../lib/cometThreads.js'
-import { selectComet } from '../lib/cometThreadsLive.js'
-import { selectDesktopSurface } from '../lib/desktopSession.js'
 import { recentSite } from '../lib/browser-start.js'
 import { webPane } from '../lib/webPane.js'
 import { useShellState } from '../state-slices.js'
 import type { BotDto } from '../../../shared/types.js'
 import { SiteIcon } from './SiteIcon.js'
+import { WebShortcuts } from './WebShortcuts.js'
+import { agentMirror } from '../lib/agentMirrorLive.js'
 
 const KEY = 'engram.recentWeb'
-function readSites(): string[] {
+function readSites(key = KEY): string[] {
   try {
-    const saved: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]')
-    return Array.isArray(saved) ? [...new Set(saved.map(recentSite).filter((site): site is string => !!site))].slice(0, 5) : []
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '[]')
+    return Array.isArray(saved) ? [...new Set(saved.map(recentSite).filter((site): site is string => !!site))].slice(0, 6) : []
   } catch { return [] }
 }
 
 export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) {
   const { vaultReady, setActivity, showToast } = useShellState()
-  const [sites, setSites] = useState(readSites)
+  const [sites, setSites] = useState(() => readSites())
+  const [pins, setPins] = useState(() => readSites('engram.pinnedWeb'))
+  const [managing, setManaging] = useState(false)
   const [opening, setOpening] = useState<string | null>(null)
   const pending = useRef(false)
   useEffect(() => {
@@ -28,7 +29,7 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
     setSites(held => {
       if (held.length) return held
       const origins = [...bots].sort((a, b) => (b.lastMessage?.at ?? b.createdAt).localeCompare(a.lastMessage?.at ?? a.createdAt)).flatMap(bot => bot.webSites?.map(site => recentSite(site.origin)) ?? []).filter((site): site is string => !!site)
-      const next = [...new Set(origins)].slice(0, 5)
+      const next = [...new Set(origins)].slice(0, 6)
       if (!next.length) return held
       try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* Session shortcuts remain available. */ }
       return next
@@ -45,7 +46,7 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
       if (last.size > 8) last.delete(last.keys().next().value!)
       setSites(held => {
         if (held[0] === site) return held
-        const next = [site, ...held.filter(item => item !== site)].slice(0, 5)
+        const next = [site, ...held.filter(item => item !== site)].slice(0, 6)
         try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* Shortcuts still work for this session. */ }
         return next
       })
@@ -55,16 +56,17 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
     if (pending.current) return
     pending.current = true; setOpening(site ?? 'new')
     try {
-      const bot = await api.botCreate({ name: site ? new URL(site).hostname : 'New browser', purpose: '' })
-      const channel = cometChannel(bot.id)
-      selectDesktopSurface(channel, 'browser'); webPane.open(channel); webPane.expand(channel, true)
-      selectComet(bot.id); setActivity('bots'); onOpen()
+      const channel = 'browser'
+      webPane.open(channel); webPane.expand(channel, true)
+      setActivity('browser'); onOpen()
       if (site) await api.agentGo(site, channel)
+      else { await api.agentReset(channel); agentMirror.clearLane(channel) }
     } catch (error) { showToast(error instanceof Error ? error.message : String(error)) }
     finally { pending.current = false; setOpening(null) }
   }
-  return <nav className="recent-web" aria-label="Recent websites">
-    {sites.map(site => <button key={site} disabled={!vaultReady || opening !== null} title={site} aria-label={`Open ${new URL(site).hostname}`} onClick={() => void open(site)}>{opening === site ? <LoaderCircle className="computer-spinner" size={16} aria-hidden /> : <SiteIcon origin={site} />}</button>)}
+  return <><nav className="recent-web" aria-label="Website shortcuts">
+    {[...pins, ...sites.filter(site => !pins.includes(site))].slice(0, 6).map(site => <button key={site} data-pinned={pins.includes(site)} disabled={!vaultReady || opening !== null} title={`${new URL(site).hostname}${pins.includes(site) ? ' · Pinned' : ''}`} aria-label={`Open ${new URL(site).hostname}`} onClick={() => void open(site)}>{opening === site ? <LoaderCircle className="computer-spinner" size={16} aria-hidden /> : <SiteIcon origin={site} />}</button>)}
     <button data-testid="web-new" disabled={!vaultReady || opening !== null} title="New browser tab" aria-label="New browser tab" onClick={() => void open()}>{opening === 'new' ? <LoaderCircle className="computer-spinner" size={16} aria-hidden /> : <Plus size={16} aria-hidden />}</button>
-  </nav>
+    <button title="Customize website shortcuts" aria-label="Customize website shortcuts" onClick={() => setManaging(true)}><Settings2 size={15} aria-hidden /></button>
+  </nav>{managing && <WebShortcuts sites={sites} pins={pins} onSave={next => { setPins(next); try { localStorage.setItem('engram.pinnedWeb', JSON.stringify(next)) } catch { showToast('Could not save shortcuts. They will last for this session only.') } }} onClose={() => setManaging(false)} />}</>
 }

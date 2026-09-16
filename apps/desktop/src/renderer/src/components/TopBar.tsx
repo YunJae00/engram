@@ -87,7 +87,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit }: {
         </button>
       )}
       <span className="topbar-title">
-        {activity === 'bots' || activity === 'mission' ? <CometTitle ready={vaultReady} /> : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : t('activity.list')}
+        {activity === 'bots' || activity === 'mission' ? <CometTitle ready={vaultReady} /> : activity === 'browser' ? 'Browser' : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : t('activity.list')}
       </span>
 
       <div className="topbar-spacer" />

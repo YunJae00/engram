@@ -82,9 +82,21 @@
 .sidebar-filing-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; }
 .sidebar-filing-retry { justify-content: center; padding: 8px !important; }
 .app-sidebar-head { order: -1; }
-.recent-web { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; padding: 4px 16px 6px; }
+.recent-web { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px 4px; padding: 2px 16px 6px; }
 .recent-web > button { min-width: 0; height: 32px; padding: 0; display: grid; place-items: center; background: transparent; border-radius: 6px; color: var(--fg-dim); }
 .recent-web > button:hover:not(:disabled) { background: var(--selected-soft); color: var(--fg); }
+.recent-web > button[data-pinned='true'] { background: var(--selected-soft); }
+.web-shortcuts-dialog { width: min(460px, calc(100vw - 32px)); }
+.web-shortcut-add { display: flex; gap: 8px; margin: 16px 0; }
+.web-shortcut-add > input { flex: 1; min-width: 0; }
+.web-shortcut-list { display: grid; gap: 4px; max-height: 280px; overflow-y: auto; }
+.web-shortcut-row { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.web-shortcut-row > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-shortcut-row > button { display: grid; place-items: center; padding: 8px; }
+.onboard-provider > .claude-install { grid-column: 2 / -1; }
+.claude-install { display: grid; gap: 8px; }
+.native-mission-preview > .web-pane-bar { flex: none; width: 100%; }
+.native-mission-preview > .browser-start { flex: 1; min-height: 0; }
 .web-pane.expanded { flex: 1 !important; width: 100% !important; max-width: none !important; height: 100% !important; }
 .web-pane.expanded > .web-pane-grip { display: none; }
 .bots-main:has(> .web-pane.expanded) > .bots-chat { display: none; }

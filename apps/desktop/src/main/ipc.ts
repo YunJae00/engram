@@ -149,6 +149,7 @@ import { bookmarkSources, importBookmarks, savedBookmarks } from './browser-book
 import { clearApplicationWork } from './application-work.js'
 import { missionFrames, watchMission } from './mission-control.js'
 import { titleFor } from './comet-title.js'
+import { installClaudeRuntime, CLAUDE_INSTALL_HELP } from './claude-runtime.js'
 import { loadSettings, updateSettings } from './settings.js'
 import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSources } from './browser-import.js'
 import { routineDriver } from './routine-driver.js'
@@ -1183,6 +1184,7 @@ export function registerIpc(ctx: VaultContext): void {
   // answering borrows the same retrieval and engine every chat uses.
   registerCometMemoryIpc(paths)
   const visitedOrigins = new Set<string>()
+  const browserOrigins = new Set<string>()
   ipcMain.handle('bots:list', async () => {
     const bots = await loadBots(paths)
     await rememberSelections(['filing', 'cosmos', ...bots.map(bot => `bot-${bot.id}`)])
@@ -1192,7 +1194,7 @@ export function registerIpc(ctx: VaultContext): void {
   })
   ipcMain.handle('site:icon', async (_event, origin: unknown) => {
     if (typeof origin !== 'string' || origin.length > 2048) return null
-    if (!visitedOrigins.has(origin)) return null
+    if (!visitedOrigins.has(origin) && !browserOrigins.has(origin)) return null
     return siteIcon(origin)
   })
   // Creation and deletion say so, like every other change: the views stay
@@ -1529,6 +1531,11 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:go', async (_e, url: string, lane?: string) => {
     await agentViewGo(String(url ?? '').trim().slice(0, 2048), lane)
     const opened = lane ? laneState(lane).url : agentViewState().url
+    if (opened && lane === 'browser') {
+      try { browserOrigins.add(new URL(opened).origin) } catch { /* Invalid addresses have no icon. */ }
+      if (browserOrigins.size > 100) browserOrigins.delete(browserOrigins.values().next().value!)
+      broadcast({ type: 'bots:changed' })
+    }
     if (opened && lane?.startsWith('bot-')) {
       await recordBotSites(paths, lane.slice(4), [opened]).catch(error => flog('site-history', error))
       try { visitedOrigins.add(new URL(opened).origin) } catch { /* Invalid addresses have no icon. */ }
@@ -2014,6 +2021,12 @@ export function registerIpc(ctx: VaultContext): void {
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine): Promise<void> {
     const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
+    const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
+    const firstTitle = bot?.name === UNTITLED_BOT_NAME && secretsIn(request.message).length === 0 ? titleFromMessage(request.message) : null
+    if (bot && firstTitle) {
+      await renameBot(paths, bot.id, firstTitle)
+      broadcast({ type: 'bots:changed' })
+    }
     await rememberSelections([channel])
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
@@ -2036,7 +2049,6 @@ export function registerIpc(ctx: VaultContext): void {
     // Short on purpose. These ride on EVERY local turn (the warm-session lane
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
-    const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
     const attachmentIds = chatAttachmentIds(request.attachments, bot ? await readBotTranscript(paths, bot.id) : request.history)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     const rules: string[] = [
@@ -2169,17 +2181,14 @@ export function registerIpc(ctx: VaultContext): void {
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
-        if (bot.name === UNTITLED_BOT_NAME && secretsIn(request.message).length === 0) {
-          const first = titleFromMessage(request.message)
-          await renameBot(paths, bot.id, first).catch(() => undefined)
-          broadcast({ type: 'bots:changed' })
+        if (firstTitle) {
           // A short name about the subject follows once the brain has a
           // moment - unless the person renamed the comet themselves first.
           void titleFor(engine, engineCwd(paths), request.message, cleaned)
             .then(async (name) => {
-              if (!name || name === first) return
+              if (!name || name === firstTitle) return
               const now = (await loadBots(paths)).find((one) => one.id === bot.id)
-              if (!now || now.name !== first) return
+              if (!now || now.name !== firstTitle) return
               await renameBot(paths, bot.id, name)
               broadcast({ type: 'bots:changed' })
             })
@@ -2562,6 +2571,12 @@ export function registerEngineIpc(): void {
     return id
   }
   ipcMain.handle('engines:states', () => engineStates())
+  ipcMain.handle('engines:installClaude', async () => {
+    await installClaudeRuntime()
+    await onEnginesChanged?.()
+    broadcast({ type: 'engines:changed', engines: await engineStates() })
+  })
+  ipcMain.handle('engines:claudeInstallHelp', () => shell.openExternal(CLAUDE_INSTALL_HELP))
   ipcMain.handle('models:list', async (_e, id: unknown = 'claude') => {
     const provider = cloudId(id)
     if (!(await engineStates()).some(state => state.id === provider && state.loggedIn)) return []

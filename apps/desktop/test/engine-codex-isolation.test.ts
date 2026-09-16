@@ -4,7 +4,7 @@ import type { EngineCwd, EngineEvent } from 'core'
 const fixture = vi.hoisted(() => ({
   options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
 }))
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: fixture.query }))
+vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('@openai/codex-sdk', () => ({
   Codex: class {
     constructor(options: unknown) { fixture.options(options) }

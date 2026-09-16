@@ -9,6 +9,7 @@ import { taskPlan } from '../../../packages/core/src/agent-plan.js'
 import { initVault } from '../../../packages/core/src/vault.js'
 import type { WebCourier } from '../../../packages/core/src/errand.js'
 import { CodexAccount } from '../src/main/codex-account.js'
+vi.mock('electron', () => ({ app: { getPath: () => `${process.cwd()}/tmp/runtime-test-missing` }, net: {} }))
 
 // The runtimes speak for themselves; these pin down how their words are read.
 it('disables inherited MCP connections only through safely quoted invocation overrides', () => {
@@ -44,11 +45,10 @@ describe('cloudErrorKind', () => {
   })
 })
 
-// The runtimes ship with the app as dependencies; this build must be able to
-// find both for the platform it runs on, or the sign-in buttons are dead.
+// Only the bundled runtime is available before the user chooses installation.
 describe('bundled runtimes', () => {
-  it('finds both runtimes for this platform', () => {
-    expect(claudeBinary()).not.toBeNull()
+  it('finds Codex but does not silently fall back to a bundled Claude', () => {
+    expect(claudeBinary()).toBeNull()
     expect(codexBinary()).not.toBeNull()
   })
   it.skipIf(process.env['ENGRAM_CODEX_CATALOG_TEST'] !== '1')('reads the bundled runtime model catalog without creating a turn', async () => {

@@ -17,10 +17,12 @@ import {
 } from 'core'
 import { writeCapture } from 'core'
 import { app } from 'electron'
-import { composeWorklog, readDaySpans } from './activity-watch.js'
+import { isActivityWatchEnabled } from './activity-watch.js'
 import { flog } from './flog.js'
 import { foldWebTrail, readWebTrail, recentFileNames } from './web-trail.js'
 import type { VaultContext } from './vault.js'
+import { captureDeskActivity } from './activity-capture.js'
+import { runPipelineAsync } from './ipc.js'
 
 const WEEK_MS = 7 * 86_400_000
 const SETTLE_MS = 5 * 60_000
@@ -84,22 +86,20 @@ async function tick(ctx: VaultContext): Promise<void> {
   const now = Date.now()
   const state = await readState()
   const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10)
-  if (state.worklogDay !== yesterday) {
-    const spans = await readDaySpans(ctx, now - 86_400_000).catch(() => [])
-    let log = composeWorklog(yesterday, spans)
+  if (state.worklogDay !== yesterday && isActivityWatchEnabled()) {
+    let log = ''
     let logged = true
+    const dayStart = new Date(yesterday + 'T00:00:00Z').getTime()
+    const trail = foldWebTrail(await readWebTrail(dayStart, dayStart + 86_400_000).catch(() => []))
+    const files = await recentFileNames(dayStart, dayStart + 86_400_000).catch(() => [])
+    if (trail.length > 0) log += `\n\n## Web\n${trail.join('\n')}`
+    if (files.length > 0) log += `\n\n## Files touched\n${files.slice(0, 12).map((n) => `- ${n}`).join('\n')}`
     if (log) {
-      // Local page titles and recent filenames supplement foreground activity.
-      const dayStart = new Date(yesterday + 'T00:00:00').getTime()
-      const trail = foldWebTrail(await readWebTrail(dayStart).catch(() => []))
-      const files = await recentFileNames(dayStart).catch(() => [])
-      if (trail.length > 0) log += `\n\n## Web\n${trail.join('\n')}`
-      if (files.length > 0) log += `\n\n## Files touched\n${files.slice(0, 12).map((n) => `- ${n}`).join('\n')}`
       // The day stamp only advances when the write landed — advancing on a
       // failed write discards that day's worklog permanently, since no later
       // tick retries a stamped day.
-      logged = await writeCapture(ctx.paths.inbox, log).then(
-        () => true,
+      logged = await writeCapture(ctx.paths.inbox, `# Browser and file activity ${yesterday} (UTC)${log}`).then(
+        () => { runPipelineAsync(ctx, 'librarian: browser and file activity'); return true },
         (err) => {
           flog('worklog-write-failed', err)
           return false
@@ -124,19 +124,37 @@ async function tick(ctx: VaultContext): Promise<void> {
 }
 
 let timer: NodeJS.Timeout | null = null
+let activityTimer: NodeJS.Timeout | null = null
+let settling: NodeJS.Timeout | null = null
+let capturing = false
+
+async function fileActivity(ctx: VaultContext): Promise<void> {
+  if (capturing) return
+  capturing = true
+  try {
+    if (await captureDeskActivity(ctx)) runPipelineAsync(ctx, 'librarian: desk activity')
+  } catch (error) { flog('activity-capture-failed', error) }
+  finally { capturing = false }
+}
 
 export function startKeeper(ctx: VaultContext): void {
   if (process.env['ENGRAM_HIDDEN'] === '1') return
-  if (timer) clearInterval(timer)
+  stopKeeper()
   // Preserve legacy sources while importing this vault's recorded skills.
   void migrateSkillsHome(homedir(), ctx.paths)
     .then((moved) => { if (moved > 0) flog('skill-distill', `migrated ${moved} skill(s) into the vault`) })
     .catch(() => flog('skill-distill', 'Skill import failed; legacy files were preserved.'))
-  setTimeout(() => void tick(ctx), SETTLE_MS)
-  timer = setInterval(() => void tick(ctx), TICK_MS)
+  const maintain = () => { void tick(ctx).catch(error => flog('keeper-failed', error)) }
+  settling = setTimeout(() => { maintain(); void fileActivity(ctx) }, SETTLE_MS)
+  timer = setInterval(maintain, TICK_MS)
+  activityTimer = setInterval(() => void fileActivity(ctx), SETTLE_MS)
 }
 
 export function stopKeeper(): void {
   if (timer) clearInterval(timer)
+  if (activityTimer) clearInterval(activityTimer)
+  if (settling) clearTimeout(settling)
   timer = null
+  activityTimer = null
+  settling = null
 }

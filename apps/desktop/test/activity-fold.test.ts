@@ -14,6 +14,15 @@ const span = (over: Partial<OpenSpan> = {}): OpenSpan => ({
 })
 
 describe('foldSample', () => {
+  it('checkpoints a long-lived window without counting a sleeping computer', () => {
+    const current = span({ lastSeenAt: T + 285_000 })
+    const checkpoint = foldSample(current, current, T + 300_000)
+    expect(checkpoint.closed?.lastSeenAt).toBe(T + 300_000)
+    expect(checkpoint.next?.startedAt).toBe(T + 300_000)
+    const resumed = foldSample(current, current, T + 3_600_000)
+    expect(resumed.closed?.lastSeenAt).toBe(T + 285_000)
+    expect(resumed.next?.startedAt).toBe(T + 3_600_000)
+  })
   it('the same window extends the open span', () => {
     const { next, closed } = foldSample(span(), { app: 'OUTLOOK', title: 'RE: 고객 안내 — 메시지' }, T + 15_000)
     expect(closed).toBeNull()

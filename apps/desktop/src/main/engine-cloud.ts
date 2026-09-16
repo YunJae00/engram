@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { classifyEngineError, setCloudEngineFactory, type Engine, type EngineDetection, type EngineErrorKind } from 'core'
 import { ClaudeEngine } from './engine-claude.js'
 import { CodexEngine } from './engine-codex.js'
+import { installedClaudeBinary } from './claude-runtime.js'
 
 // The two cloud brains, each behind the vendor's own command-line runtime that
-// ships inside this app. The person signs in through the vendor's own flow
+// is either bundled or installed separately. The person uses the vendor's flow
 // and pays the vendor; this app never sees, stores or forwards a credential -
 // it only asks the runtime whether one exists and hands it the work.
 
@@ -55,11 +56,7 @@ function sibling(root: string, name: string): string | null {
 }
 
 export function claudeBinary(): string | null {
-  const sdk = sdkRoot('@anthropic-ai/claude-agent-sdk')
-  const dir = sdk && sibling(sdk, `claude-agent-sdk-${process.platform}-${process.arch}`)
-  if (!dir) return null
-  const path = unpackedPath(join(dir, process.platform === 'win32' ? 'claude.exe' : 'claude'))
-  return existsSync(path) ? path : null
+  return installedClaudeBinary()
 }
 
 const CODEX_TRIPLE: Record<string, string> = {
@@ -165,7 +162,7 @@ export class StatusCache {
   private generation = 0
 
   async read(probe: () => Promise<EngineDetection>, now = Date.now()): Promise<EngineDetection> {
-    if (this.known && this.known.detection.conclusive !== false && now - this.known.at < STATUS_TTL_MS) return this.known.detection
+    if (this.known && this.known.detection.installed && this.known.detection.conclusive !== false && now - this.known.at < STATUS_TTL_MS) return this.known.detection
     if (this.probing) return this.probing
     const generation = this.generation
     const pending = probe().finally(() => {

@@ -95,13 +95,14 @@ async function readOne(historyPath: string, sinceMs: number): Promise<WebVisit[]
 }
 
 // Visits since `sinceMs`, both browsers merged, deduped by title.
-export async function readWebTrail(sinceMs: number): Promise<WebVisit[]> {
+export async function readWebTrail(sinceMs: number, untilMs = Infinity): Promise<WebVisit[]> {
   const all: WebVisit[] = []
   for (const candidate of historyCandidates()) all.push(...(await readOne(candidate, sinceMs)))
   const seen = new Set<string>()
   return all
     .sort((a, b) => b.at - a.at)
     .filter((v) => {
+      if (v.at >= untilMs) return false
       const key = v.title.toLowerCase()
       if (seen.has(key)) return false
       seen.add(key)
@@ -126,7 +127,7 @@ export function foldWebTrail(visits: WebVisit[], max = 8): string[] {
 
 // Recent files (jump-list lite): the Recent folder's shortcut names carry the
 // document names without parsing a single .lnk byte.
-export async function recentFileNames(sinceMs: number): Promise<string[]> {
+export async function recentFileNames(sinceMs: number, untilMs = Infinity): Promise<string[]> {
   const dirs =
     process.platform === 'win32'
       ? [{ dir: join(process.env['APPDATA'] ?? '', 'Microsoft', 'Windows', 'Recent'), ext: '.lnk' }]
@@ -145,7 +146,7 @@ export async function recentFileNames(sinceMs: number): Promise<string[]> {
         if (entry.startsWith('.')) continue
         if (ext && !entry.toLowerCase().endsWith(ext)) continue
         const s = await stat(join(dir, entry)).catch(() => null)
-        if (!s || !s.isFile() || s.mtimeMs < sinceMs) continue
+        if (!s || !s.isFile() || s.mtimeMs < sinceMs || s.mtimeMs >= untilMs) continue
         out.push({ name: ext ? entry.slice(0, -ext.length) : entry, at: s.mtimeMs })
       }
     } catch {

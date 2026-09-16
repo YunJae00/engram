@@ -13,43 +13,7 @@
   cursor: auto;
   overflow: hidden;
   display: flex;
-  padding: 10px;
-  box-sizing: border-box;
-}
-.native-browser-empty {
-  display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3, 12px);
-  width: 100%;
-  height: 100%;
-  padding: var(--space-4, 16px);
+  padding: 0;
   box-sizing: border-box;
 }
-.native-browser-empty-title { margin: 0; color: var(--fg-faint); font-size: var(--fs-small); }
-.native-browser-address {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: min(100%, 320px);
-  padding: 4px 6px;
-  border-radius: 12px;
-  background: var(--hover-bg);
-  border: 1px solid transparent;
-}
-.native-browser-address:focus-within { border-color: var(--border); }
-.native-browser-address input {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  height: 30px;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  font-size: var(--fs-small);
-}
-.native-browser-address input:focus { box-shadow: none; outline: none; }
-.native-browser-address button { flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--fg-dim); border-radius: 8px; }
-.native-browser-address button:hover { background: var(--hover-bg); color: var(--fg); }

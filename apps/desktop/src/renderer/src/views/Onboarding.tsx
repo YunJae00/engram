@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
+import { InstallClaude } from '../components/InstallClaude.js'
 
 export function Onboarding() {
   const [step, setStep] = useState(1)
@@ -12,6 +13,7 @@ export function Onboarding() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
+  const [installing, setInstalling] = useState(false)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   const revision = useRef(0)
   const signing = useRef(false)
@@ -50,7 +52,7 @@ export function Onboarding() {
     finally { signing.current = false; setConnecting(null); await loadBrains() }
   }
   const finish = async () => {
-    if (completing.current || signing.current || !root.trim()) return
+    if (completing.current || signing.current || installing || !root.trim()) return
     completing.current = true; setFinishing(true); setError('')
     try {
       const settings = await api.settingsGet()
@@ -75,6 +77,7 @@ export function Onboarding() {
       <input id="onboard-root" data-testid="vault-root-input" value={root} placeholder="Choose a workspace folder" onChange={event => setRoot(event.target.value)} />
       <button className="onboard-choose-folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose a different folder…</button>
       <p className="onboard-note">The suggested location is ready to use. You can connect your AI next, or start browsing without one.</p>
+      <p className="onboard-note">The local activity journal records app names and window titles, not screen contents. You can turn it off in Settings.</p>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
     </section> : <section data-testid="onboard-step-2">
       <h1>Connect your AI.</h1>
@@ -87,14 +90,14 @@ export function Onboarding() {
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
-            <div><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong><span data-testid={`onboard-brain-${id}`}>{active ? login?.phase === 'browser' ? 'Finish signing in in your browser' : 'Opening sign-in…' : connected ? 'Connected' : loading ? 'Checking connection…' : state?.installed ? 'Use your existing account' : 'Runtime unavailable — reinstall Engram to repair'}</span></div>
-            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <Check size={18} aria-label="Connected" /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing} onClick={() => void connect(id)}>Connect</button>}
+            <div><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong><span data-testid={`onboard-brain-${id}`}>{active ? login?.phase === 'browser' ? 'Finish signing in in your browser' : 'Opening sign-in…' : connected ? 'Connected' : loading ? 'Checking connection…' : state?.installed ? 'Use your existing account' : id === 'claude' ? 'Install once, then connect your account' : 'Runtime unavailable — reinstall Engram to repair'}</span></div>
+            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <Check size={18} aria-label="Connected" /> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
             {active && <div className="onboard-login-actions">{login?.canOpen && <button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button>}<button className="secondary" onClick={() => loginAction(api.engineCancelLogin(id))}>Cancel sign-in</button></div>}
           </div>
         })}
       </div>
       <p className="onboard-note">Choose separate models for conversations and filing later. Only the context needed for an AI request is sent to its provider.</p>
-      <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>
+      <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting || installing} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
   </div></div>

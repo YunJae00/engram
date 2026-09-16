@@ -117,6 +117,13 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
     heldFor(lane: string): { data: string; width: number; height: number; url: string } | null {
       return held.get(lane) ?? null
     },
+    clearLane(lane: string): void {
+      held.delete(lane)
+      if (state.lane !== lane) return
+      ++revision
+      pixels = null
+      set({ ...EMPTY, lane })
+    },
     forget(): void {
       requestedLane = null
       ++revision
