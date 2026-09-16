@@ -2,15 +2,15 @@ import { Globe } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
 import { api } from '../api.js'
 
-export const SiteIcon = memo(function SiteIcon({ origin }: { origin: string }) {
+export const SiteIcon = memo(function SiteIcon({ origin, shortcut = false }: { origin: string; shortcut?: boolean }) {
   const [image, setImage] = useState<{ origin: string; url: string } | null>(null)
   useEffect(() => {
     let alive = true
-    const read = () => { void api.siteIcon(origin).then(value => { if (alive) setImage(value ? { origin, url: value } : null) }).catch(() => undefined) }
+    const read = () => { void api.siteIcon(origin, shortcut).then(value => { if (alive) setImage(value ? { origin, url: value } : null) }).catch(() => undefined) }
     read()
     const off = api.onEvent(event => { if (event.type === 'bots:changed') read() })
     return () => { alive = false; off() }
-  }, [origin])
+  }, [origin, shortcut])
   return image?.origin === origin ? <img className="site-icon" src={image.url} width={16} height={16} alt="" onError={() => setImage(null)} /> : <Globe className="site-icon" size={16} aria-hidden />
 })
 

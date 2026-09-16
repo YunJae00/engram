@@ -3,7 +3,7 @@ import { net } from 'electron'
 const icons = new Map<string, Promise<string | null>>()
 const LIMIT = 128 * 1024
 
-// Only visited origins reach here. No page path, cookies, redirects or third-party icon service.
+// Visited or user-selected shortcut origins only. No paths, cookies, redirects or third-party service.
 export function siteIcon(origin: string): Promise<string | null> {
   let url: URL
   try { url = new URL(origin) } catch { return Promise.resolve(null) }

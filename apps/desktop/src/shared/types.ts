@@ -616,7 +616,7 @@ export interface EngramApi extends DesktopApi {
   // engine); progress and the eventual outcome arrive as errand:phase events.
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
-  siteIcon(origin: string): Promise<string | null>
+  siteIcon(origin: string, shortcut?: boolean): Promise<string | null>
   sidebarLayout(): Promise<SidebarLayout>
   sidebarChange(request: SidebarChange): Promise<SidebarLayout>
   botCreate(input: { name: string; purpose?: string }): Promise<BotDto>

@@ -152,10 +152,11 @@ test('partially clipped native surfaces retain their full viewport and stay insi
   const surface = shell.locator('.mission-preview').getByTestId('native-browser-surface').first()
   const inset = await surface.evaluate((node) => {
     const box = node.getBoundingClientRect(), parent = node.parentElement!.getBoundingClientRect()
-    return { left: box.left - parent.left, bottom: parent.bottom - box.bottom }
+    return { left: box.left - parent.left, right: parent.right - box.right, bottom: parent.bottom - box.bottom }
   })
-  expect(inset.left).toBeGreaterThanOrEqual(9)
-  expect(inset.bottom).toBeGreaterThanOrEqual(9)
+  expect(inset.left).toBeCloseTo(0, 0)
+  expect(inset.right).toBeCloseTo(0, 0)
+  expect(inset.bottom).toBeCloseTo(0, 0)
   const first = browser.contexts()[0]!.pages().find((page) => page.url() === `${url}/?pane=0`)!
   const previous = await surface.getAttribute('style')
   try {

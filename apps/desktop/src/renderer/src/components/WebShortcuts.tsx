@@ -32,7 +32,7 @@ export function WebShortcuts({ sites, pins, onSave, onClose }: { sites: string[]
     }}><input aria-label="Website to pin" placeholder="example.com" value={address} onChange={event => setAddress(event.target.value)} /><button className="secondary" type="submit">Pin website</button></form>
     <div className="web-shortcut-list">{[...draft, ...sites.filter(site => !draft.includes(site))].map(site => {
       const index = draft.indexOf(site)
-      return <div className="web-shortcut-row" key={site}><SiteIcon origin={site} /><span title={site}>{new URL(site).hostname}</span>
+      return <div className="web-shortcut-row" key={site}><SiteIcon origin={site} shortcut /><span title={site}>{new URL(site).hostname}</span>
         {index >= 0 && <><button disabled={index === 0} aria-label={`Move ${site} up`} onClick={() => move(index, -1)}><ArrowUp size={14} /></button><button disabled={index === draft.length - 1} aria-label={`Move ${site} down`} onClick={() => move(index, 1)}><ArrowDown size={14} /></button></>}
         <button aria-label={`${index >= 0 ? 'Unpin' : 'Pin'} ${site}`} aria-pressed={index >= 0} onClick={() => { setError(''); toggle(site) }}>{index >= 0 ? <Trash2 size={14} /> : <Pin size={14} />}</button>
       </div>

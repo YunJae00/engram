@@ -1192,9 +1192,11 @@ export function registerIpc(ctx: VaultContext): void {
     for (const bot of bots) for (const site of bot.webSites ?? []) visitedOrigins.add(site.origin)
     return botPreviews(paths, bots)
   })
-  ipcMain.handle('site:icon', async (_event, origin: unknown) => {
+  ipcMain.handle('site:icon', async (_event, origin: unknown, shortcut: unknown) => {
     if (typeof origin !== 'string' || origin.length > 2048) return null
-    if (!visitedOrigins.has(origin) && !browserOrigins.has(origin)) return null
+    // Sidebar shortcuts are user-selected origins and survive a browser session.
+    // Answer links still require a visited origin before fetching an icon.
+    if (shortcut !== true && !visitedOrigins.has(origin) && !browserOrigins.has(origin)) return null
     return siteIcon(origin)
   })
   // Creation and deletion say so, like every other change: the views stay

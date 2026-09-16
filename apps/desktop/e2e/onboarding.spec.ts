@@ -176,7 +176,8 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await screenshot('06-browser-start.png')
   await app.evaluate(({ BrowserWindow, ipcMain, nativeImage }) => {
     ipcMain.removeHandler('site:icon')
-    ipcMain.handle('site:icon', (_event, origin: string) => {
+    ipcMain.handle('site:icon', (_event, origin: string, shortcut: boolean) => {
+      if (!shortcut) return null
       if (origin === 'https://docs.test') return null
       const colors = [0x4385d4, 0x34a078, 0xc55e78, 0x9070c5, 0xca9038]
       const color = colors[origin.length % colors.length]!
@@ -223,6 +224,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await expect(shortcuts.getByRole('button')).toHaveCount(8)
     await page.reload()
     await expect(shortcuts.getByRole('button')).toHaveCount(8)
+    await expect(shortcuts.getByRole('button', { name: 'Open pinned.example', exact: true }).locator('img.site-icon')).toBeVisible()
     await expect(shortcuts.getByRole('button').first()).toHaveAttribute('aria-label', 'Open pinned.example')
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
