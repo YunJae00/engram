@@ -69,7 +69,7 @@ async function headCwd(file: string): Promise<string | null> {
 
 interface HarvestSource {
   id: 'claude' | 'codex'
-  parse: (span: string) => { turns: SessionTurn[]; consumed: number }
+  parse: (span: string) => Promise<{ turns: SessionTurn[]; consumed: number }>
   list(ctx: VaultContext): Promise<{ file: string; project: string }[]>
 }
 
@@ -223,7 +223,7 @@ function pruneCursors(seen: Set<string>): boolean {
 export async function readNewSpan(
   file: string,
   from: number,
-  parse: (span: string) => { turns: SessionTurn[]; consumed: number },
+  parse: (span: string) => Promise<{ turns: SessionTurn[]; consumed: number }>,
 ): Promise<{ turns: SessionTurn[]; next: number }> {
   const handle = await open(file, 'r')
   try {
@@ -238,7 +238,7 @@ export async function readNewSpan(
       const { bytesRead } = await handle.read(buffer, 0, length, from)
       const bytes = buffer.subarray(0, bytesRead)
       if (bytes.includes(10) || bytesRead < length || length === size - from) {
-        const { turns, consumed } = parse(bytes.toString('utf8'))
+        const { turns, consumed } = await parse(bytes.toString('utf8'))
         return { turns, next: from + consumed }
       }
       // ponytail: one JSONL row is buffered, capped at 64 MB; use a streaming JSON parser if larger rows become normal.

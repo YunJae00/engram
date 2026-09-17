@@ -409,6 +409,9 @@ async function startResidency(ctx: VaultContext): Promise<void> {
 // IPC that must exist BEFORE a vault does (onboarding window).
 function registerBaseIpc(): void {
   ipcMain.on('quick:hide', () => quickWin?.hide())
+  // Renderer stalls never reach a profiler on a user's machine; the longest
+  // frame-blocking tasks land in the same log everything else does.
+  ipcMain.on('ui:longtask', (_e, ms: unknown) => { if (typeof ms === 'number' && ms >= 200) flog('renderer-longtask', `${Math.round(ms)}ms`) })
 
   // "Restart now" on the update banner. `quitting` must be set first: the main
   // window's close handler hides to the tray instead of quitting, which would

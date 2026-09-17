@@ -50,12 +50,22 @@ function historyCandidates(): string[] {
 const DENY_TITLE = /password|비밀번호|로그인|login|sign in|인증|otp|working\.\.\./i
 const DENY_HOST = /^login\.|^auth\.|accounts\.google|okta|onelogin|signin|microsoftonline/i
 
+// mtime of each History DB at its last successful read. Copying and parsing a
+// 30MB+ SQLite through sql.js (wasm, synchronous) is a ~1-2s main-thread stall;
+// an hour with no browsing leaves the file untouched, so an unchanged mtime
+// means no new visits and the whole load is skipped.
+// ponytail: the parse still blocks on an hour the file did grow; move it to a
+// worker_thread if that stall is ever felt.
+const lastReadMtime = new Map<string, number>()
+
 async function readOne(historyPath: string, sinceMs: number): Promise<WebVisit[]> {
+  let mtimeMs: number
   try {
-    await stat(historyPath)
+    mtimeMs = (await stat(historyPath)).mtimeMs
   } catch {
     return []
   }
+  if (mtimeMs <= (lastReadMtime.get(historyPath) ?? 0)) return []
   const tempDir = join(app.getPath('userData'), 'tmp')
   await mkdir(tempDir, { recursive: true }).catch(() => undefined)
   const temp = join(tempDir, `history-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
@@ -85,6 +95,9 @@ async function readOne(historyPath: string, sinceMs: number): Promise<WebVisit[]
       if (DENY_HOST.test(host)) continue
       visits.push({ title: title.slice(0, 120), host, at: WEBKIT_EPOCH_MS + lastVisit / 1_000 })
     }
+    // Only after a clean read: a failed parse must retry next hour, not be
+    // skipped as "already seen".
+    lastReadMtime.set(historyPath, mtimeMs)
     return visits
   } catch (err) {
     flog('web-trail-read-failed', err)

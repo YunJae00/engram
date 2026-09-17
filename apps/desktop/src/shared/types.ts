@@ -702,6 +702,7 @@ export interface EngramApi extends DesktopApi {
   sessionWatchGet(): Promise<boolean>
   sessionWatchSet(enabled: boolean): Promise<boolean>
   sendFeedback(): Promise<void>
+  reportLongTask(ms: number): void
   // promote a chat answer into an artifact note; returns the new note id
   buildPack(query?: string): Promise<{ file: string; content: string }>
   // team sync & bulk import

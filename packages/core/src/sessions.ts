@@ -42,14 +42,21 @@ function textOf(content: unknown): string {
 // Parse a SPAN of transcript — the bytes appended since we last looked. A
 // partial final line is normal (the file is being written as we read), so it is
 // dropped rather than throwing; the next read starts before it.
-export function parseSessionSpan(span: string): { turns: SessionTurn[]; consumed: number } {
+// Async so a multi-MB span (a busy transcript grows fast) yields to the event
+// loop every PARSE_YIELD_EVERY lines instead of blocking it for seconds — the
+// watcher already awaits this. Same turns, same consumed count.
+const PARSE_YIELD_EVERY = 1000
+
+export async function parseSessionSpan(span: string): Promise<{ turns: SessionTurn[]; consumed: number }> {
   const lines = span.split('\n')
   // The last element is either '' (span ended on a newline) or a half-written
   // line. Either way it is not ours yet.
   const complete = lines.slice(0, -1)
   const consumed = complete.reduce((sum, line) => sum + Buffer.byteLength(line, 'utf8') + 1, 0)
   const turns: SessionTurn[] = []
+  let seen = 0
   for (const line of complete) {
+    if (++seen % PARSE_YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve))
     if (!line.trim()) continue
     let row: { type?: string; message?: { role?: string; content?: unknown }; timestamp?: string }
     try {
@@ -79,12 +86,14 @@ function codexTextOf(content: unknown): string {
     .trim()
 }
 
-export function parseCodexSpan(span: string): { turns: SessionTurn[]; consumed: number } {
+export async function parseCodexSpan(span: string): Promise<{ turns: SessionTurn[]; consumed: number }> {
   const lines = span.split('\n')
   const complete = lines.slice(0, -1)
   const consumed = complete.reduce((sum, line) => sum + Buffer.byteLength(line, 'utf8') + 1, 0)
   const turns: SessionTurn[] = []
+  let seen = 0
   for (const line of complete) {
+    if (++seen % PARSE_YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve))
     if (!line.trim()) continue
     let row: Record<string, unknown>
     try {

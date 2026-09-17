@@ -45,6 +45,7 @@ const api: EngramApi = {
   sessionWatchGet: () => ipcRenderer.invoke('sessionwatch:get'),
   sessionWatchSet: (enabled: boolean) => ipcRenderer.invoke('sessionwatch:set', enabled),
   sendFeedback: () => ipcRenderer.invoke('feedback:open'),
+  reportLongTask: (ms: number) => ipcRenderer.send('ui:longtask', ms),
   buildPack: (query?: string) => ipcRenderer.invoke('pack:build', query),
   syncStatus: () => ipcRenderer.invoke('sync:status'),
   syncNow: () => ipcRenderer.invoke('sync:now'),

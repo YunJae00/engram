@@ -55,8 +55,13 @@ function measure(): void {
       const box = overlay.getBoundingClientRect()
       return box.width > 0 && box.height > 0 && box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top
     })) continue
-    // Native child windows cannot sit below an HTML menu or modal.
-    const clear = [0.02, 0.5, 0.98].every((fx) => [0.02, 0.5, 0.98].every((fy) => {
+    // Native child windows cannot sit below an HTML menu or modal. With no
+    // overlay open there is nothing that can occlude one, so the nine hit-tests
+    // (forced layout ×9 per surface, on every scroll frame) are pure cost.
+    // ponytail: a non-overlay element transiently over the surface (a tooltip)
+    // won't hide it while no menu is open; add a cheap single-point probe if
+    // that ever matters.
+    const clear = overlays.length === 0 || [0.02, 0.5, 0.98].every((fx) => [0.02, 0.5, 0.98].every((fy) => {
       const top = document.elementFromPoint(rect.x + rect.width * fx, rect.y + rect.height * fy)
       return top === element || (top !== null && element.contains(top))
     }))
