@@ -17,7 +17,7 @@ describe('J2 link enrichment stores per-link reasons', () => {
 
   it('writes derived_from + link_reasons from the {id,reason} shape', async () => {
     const { paths, target, corpus } = await fixture('j2-reasons')
-    const spec = buildJ2(paths, '', target, corpus, NOW)
+    const spec = await buildJ2(paths, '', target, corpus, NOW)
     const effects = await spec.apply(
       JSON.stringify({
         links: [
@@ -38,7 +38,7 @@ describe('J2 link enrichment stores per-link reasons', () => {
 
   it('still accepts the legacy bare-id array (no reasons written)', async () => {
     const { paths, target, corpus } = await fixture('j2-legacy')
-    const spec = buildJ2(paths, '', target, corpus, NOW)
+    const spec = await buildJ2(paths, '', target, corpus, NOW)
     await spec.apply(JSON.stringify({ links: ['n-rel-0001'] }))
     const note = await readNote(paths, 'n-target-0001')
     expect(note.front.derived_from).toEqual(['n-rel-0001'])
@@ -47,15 +47,15 @@ describe('J2 link enrichment stores per-link reasons', () => {
 
   it('link_reasons round-trips through note serialization', async () => {
     const { paths, target, corpus } = await fixture('j2-roundtrip')
-    const spec = buildJ2(paths, '', target, corpus, NOW)
+    const spec = await buildJ2(paths, '', target, corpus, NOW)
     await spec.apply(JSON.stringify({ links: [{ id: 'n-rel-0001', reason: '근거 노트' }] }))
     // A second read from disk goes through parseNote — the reason must survive.
     const reread = await readNote(paths, 'n-target-0001')
     expect(reread.front.link_reasons?.['n-rel-0001']).toBe('근거 노트')
   })
 
-  it('asks the engine for a reason per link and offers hub-free candidates', () => {
-    const { prompt } = buildJ2({} as never, '', makeTarget(), [makeTarget(), hubNote()], NOW)
+  it('asks the engine for a reason per link and offers hub-free candidates', async () => {
+    const { prompt } = await buildJ2({} as never, '', makeTarget(), [makeTarget(), hubNote()], NOW)
     expect(prompt).toContain('"reason"')
     expect(prompt).not.toContain('n-hub-0001')
   })

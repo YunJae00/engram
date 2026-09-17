@@ -57,6 +57,18 @@ export function buildIndex(notes: Note[], opts: { cjkNgrams?: boolean } = {}): M
   return index
 }
 
+// Identical index, inserted in yielding chunks so building over a large corpus
+// (a whole vault) hands control back to the event loop instead of blocking it
+// for hundreds of ms. Search results are the same as buildIndex.
+export async function buildIndexAsync(
+  notes: Note[],
+  opts: { cjkNgrams?: boolean } = {},
+): Promise<MiniSearch<IndexedDoc>> {
+  const index = new MiniSearch<IndexedDoc>(opts.cjkNgrams === false ? PLAIN_OPTIONS : OPTIONS)
+  await index.addAllAsync(notes.map(toDoc), { chunkSize: 250 })
+  return index
+}
+
 export interface SearchHit {
   id: string
   title: string

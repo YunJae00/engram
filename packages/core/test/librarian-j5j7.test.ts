@@ -152,14 +152,14 @@ describe('sweep skips J7 when there are no candidate clusters', () => {
 })
 
 describe('every librarian job runs tool-free', () => {
-  it('buildJ1..J8 set disallowTools:true', () => {
+  it('buildJ1..J8 set disallowTools:true', async () => {
     const p = {} as VaultPaths
     const note = makeNote('n-1', '# t\n\nbody')
     const corpus = [makeNote('n-2', '# other\n\nx')]
     const summary = { date: '2026-07-05', executed: 1 }
     const jobs = [
       buildJ1(p, '', 'f.md', 'content', NOW),
-      buildJ2(p, '', note, corpus, NOW),
+      await buildJ2(p, '', note, corpus, NOW),
       buildJ3(p, '', [note], corpus, NOW),
       buildJ4(p, '', [note], corpus, NOW),
       buildJ5(p, '', [note], NOW),

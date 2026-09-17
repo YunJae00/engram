@@ -19,7 +19,7 @@ import { daysUntilDue, groupOpenLoops } from '../loops.js'
 import { createNote, filterByStatus, disputeNotes, readNote, writeNote } from '../notes.js'
 import type { DecayLevel, Note } from '../schema.js'
 import { DECAY_LEVELS, noteTitle } from '../schema.js'
-import { buildIndex, searchIndex } from '../search.js'
+import { buildIndex, buildIndexAsync, searchIndex } from '../search.js'
 import type { VaultPaths } from '../vault.js'
 import { withPrompt, type JobKind } from './prompts.js'
 import type { JobSpec } from './runner.js'
@@ -63,6 +63,44 @@ function indexFor(corpus: Note[]): ReturnType<typeof buildIndex> {
   return index
 }
 
+// The async index build (buildIndexAsync) yields while it runs; cache the
+// promise so 20+ J2 targets over one pool share a single build in flight.
+const corpusIndexAsyncCache = new WeakMap<Note[], Promise<ReturnType<typeof buildIndex>>>()
+
+function indexForAsync(corpus: Note[]): Promise<ReturnType<typeof buildIndex>> {
+  let index = corpusIndexAsyncCache.get(corpus)
+  if (!index) {
+    index = buildIndexAsync(corpus)
+    corpusIndexAsyncCache.set(corpus, index)
+  }
+  return index
+}
+
+function rankCandidates(bestScore: Map<string, number>, pool: Note[], cap: number): Note[] {
+  const byId = new Map(pool.map((n) => [n.front.id, n]))
+  return [...bestScore.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, cap)
+    .map(([id]) => byId.get(id))
+    .filter((n): n is Note => n !== undefined)
+}
+
+function scoreTarget(
+  index: ReturnType<typeof buildIndex>,
+  target: Note,
+  targetIds: Set<string>,
+  bestScore: Map<string, number>,
+): void {
+  const query = `${noteTitle(target)} ${target.body.slice(0, 200)}`
+  let kept = 0
+  for (const hit of searchIndex(index, query)) {
+    if (targetIds.has(hit.id)) continue
+    const prev = bestScore.get(hit.id)
+    if (prev === undefined || hit.score > prev) bestScore.set(hit.id, hit.score)
+    if (++kept >= HITS_PER_TARGET) break
+  }
+}
+
 // Exported so sweep() can compute the (delta, corpus) retrieval once and share
 // it between J3 and J4 — both use the same inputs and the same cap, and the
 // index build + per-target search is the priciest CPU step of queueing a sweep.
@@ -75,22 +113,26 @@ export function boundedCandidates(targets: Note[], corpus: Note[], cap: number):
   if (pool.length <= cap) return pool
   const index = indexFor(corpus)
   const bestScore = new Map<string, number>()
+  for (const target of targets) scoreTarget(index, target, targetIds, bestScore)
+  return rankCandidates(bestScore, pool, cap)
+}
+
+// Same selection as boundedCandidates, but the index builds in yielding chunks
+// and each target search hands control back to the event loop — so a sweep over
+// a whole vault (an 865ms index build plus dozens of ~140ms CJK searches) never
+// freezes the UI. Used on the sweep's large corpora; the sync form stays for the
+// small-input job builders and tests.
+export async function boundedCandidatesAsync(targets: Note[], corpus: Note[], cap: number): Promise<Note[]> {
+  const targetIds = new Set(targets.map((n) => n.front.id))
+  const pool = corpus.filter((n) => !targetIds.has(n.front.id))
+  if (pool.length <= cap) return pool
+  const index = await indexForAsync(corpus)
+  const bestScore = new Map<string, number>()
   for (const target of targets) {
-    const query = `${noteTitle(target)} ${target.body.slice(0, 200)}`
-    let kept = 0
-    for (const hit of searchIndex(index, query)) {
-      if (targetIds.has(hit.id)) continue
-      const prev = bestScore.get(hit.id)
-      if (prev === undefined || hit.score > prev) bestScore.set(hit.id, hit.score)
-      if (++kept >= HITS_PER_TARGET) break
-    }
+    scoreTarget(index, target, targetIds, bestScore)
+    await new Promise((resolve) => setImmediate(resolve))
   }
-  const byId = new Map(pool.map((n) => [n.front.id, n]))
-  return [...bestScore.entries()]
-    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .slice(0, cap)
-    .map(([id]) => byId.get(id))
-    .filter((n): n is Note => n !== undefined)
+  return rankCandidates(bestScore, pool, cap)
 }
 
 interface CardJson {
@@ -310,7 +352,7 @@ export function buildJ1(
 // (which in turn lets boundedCandidates share one fulltext index).
 const j2PoolCache = new WeakMap<Note[], { pool: Note[]; byRecency: Note[] }>()
 
-function j2Candidates(target: Note, current: Note[]): Note[] {
+async function j2Candidates(target: Note, current: Note[]): Promise<Note[]> {
   let cached = j2PoolCache.get(current)
   if (!cached) {
     const pool = current.filter((n) => n.front.type !== 'hub')
@@ -323,7 +365,7 @@ function j2Candidates(target: Note, current: Note[]): Note[] {
   const self = target.front.id
   const picked = new Map<string, Note>()
   // boundedCandidates excludes the target structurally (targets param).
-  for (const n of boundedCandidates([target], cached.pool, 30)) picked.set(n.front.id, n)
+  for (const n of await boundedCandidatesAsync([target], cached.pool, 30)) picked.set(n.front.id, n)
   for (const n of cached.byRecency.filter((c) => c.front.id !== self).slice(0, 10)) picked.set(n.front.id, n)
   for (const n of cached.byRecency.filter((c) => c.front.id !== self && c.front.type === target.front.type).slice(0, 10)) {
     picked.set(n.front.id, n)
@@ -331,8 +373,8 @@ function j2Candidates(target: Note, current: Note[]): Note[] {
   return [...picked.values()].slice(0, 40)
 }
 
-export function buildJ2(paths: VaultPaths, agentsMd: string, target: Note, corpus: Note[], now: Date): JobSpec {
-  const candidates = j2Candidates(target, corpus).map(candidateSummary)
+export async function buildJ2(paths: VaultPaths, agentsMd: string, target: Note, corpus: Note[], now: Date): Promise<JobSpec> {
+  const candidates = (await j2Candidates(target, corpus)).map(candidateSummary)
   return {
     kind: 'J2',
     disallowTools: true,

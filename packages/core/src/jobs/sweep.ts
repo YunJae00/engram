@@ -13,7 +13,7 @@ import { filterByStatus, loadNotes, readNote } from '../notes.js'
 import type { Note } from '../schema.js'
 import type { VaultPaths } from '../vault.js'
 import {
-  boundedCandidates,
+  boundedCandidatesAsync,
   buildJ1,
   buildJ2,
   buildJ3,
@@ -135,7 +135,7 @@ export async function sweep(paths: VaultPaths, engines: Engine[], options: Sweep
   if (deltaJudged.length > 0) {
     // One retrieval pass (index + per-target search) serves both jobs — they
     // use identical inputs and the same cap.
-    const candidates = boundedCandidates(deltaJudged, corpus, 60)
+    const candidates = await boundedCandidatesAsync(deltaJudged, corpus, 60)
     jobs.push(buildJ3(paths, agentsMd, deltaJudged, corpus, now, candidates))
     if (deltaCurrent.length > 0) jobs.push(buildJ4(paths, agentsMd, deltaCurrent, corpus, now, candidates))
   }
@@ -145,7 +145,7 @@ export async function sweep(paths: VaultPaths, engines: Engine[], options: Sweep
     const slice = auditSlice(notes, new Set(delta.map((n) => n.front.id)), state.audit_cursor, AUDIT_CAP)
     if (slice.length > 0) {
       const pool = corpus.filter((n) => n.front.type !== 'hub')
-      const candidates = boundedCandidates(slice, pool, 60)
+      const candidates = await boundedCandidatesAsync(slice, pool, 60)
       jobs.push({ ...buildJ4(paths, agentsMd, slice, pool, now, candidates), inputKey: auditInputKey(slice, candidates) })
       // Advances even if the job later defers: a rotating scan loses nothing,
       // the slice simply comes round again.
@@ -218,7 +218,8 @@ export async function sweep(paths: VaultPaths, engines: Engine[], options: Sweep
     .slice(0, J2_CAP)
   if (unlinked.length > 0) {
     const postCorpus = filterByStatus(postNotes, 'current')
-    const linkReport = await runner.runAll(unlinked.map((note) => buildJ2(paths, agentsMd, note, postCorpus, now)))
+    const j2Jobs = await Promise.all(unlinked.map((note) => buildJ2(paths, agentsMd, note, postCorpus, now)))
+    const linkReport = await runner.runAll(j2Jobs)
     report.executed += linkReport.executed
     report.skipped += linkReport.skipped
     report.deferred += linkReport.deferred
@@ -429,8 +430,8 @@ export async function processCapture(
   if (fresh.length > 0) {
     const corpus = filterByStatus(after, 'current')
     const followUps: JobSpec[] = []
-    for (const note of fresh) followUps.push(buildJ2(paths, agentsMd, note, corpus, now))
-    const candidates = boundedCandidates(fresh, corpus, 60)
+    for (const note of fresh) followUps.push(await buildJ2(paths, agentsMd, note, corpus, now))
+    const candidates = await boundedCandidatesAsync(fresh, corpus, 60)
     followUps.push(buildJ3(paths, agentsMd, fresh, corpus, now, candidates))
     followUps.push(buildJ4(paths, agentsMd, fresh, corpus, now, candidates))
     const undated = fresh.filter((n) => !n.front.happened_at)

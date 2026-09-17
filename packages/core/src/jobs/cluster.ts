@@ -1,7 +1,7 @@
 import { expandQueryWithAliases } from '../aliases.js'
 import type { Note } from '../schema.js'
 import { noteTitle } from '../schema.js'
-import { buildIndex, searchIndex } from '../search.js'
+import { buildIndexAsync, searchIndex } from '../search.js'
 
 // J7 deterministic pre-pairing. The weekly merge scan used to embed the WHOLE
 // current corpus in the prompt (linear token growth). Instead we cluster
@@ -32,7 +32,7 @@ export async function findMergeClusters(
 ): Promise<Note[][]> {
   if (current.length < 2) return []
   // Plain tokenizer: the threshold above was calibrated without CJK bigrams.
-  const index = buildIndex(current, { cjkNgrams: false })
+  const index = await buildIndexAsync(current, { cjkNgrams: false })
   const byId = new Map(current.map((n) => [n.front.id, n]))
   // Undirected edges keyed "a\tb" (a<b) → best score seen in either direction.
   const edges = new Map<string, number>()
