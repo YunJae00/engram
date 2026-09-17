@@ -26,13 +26,15 @@ import { runPipelineAsync } from './ipc.js'
 
 const WEEK_MS = 7 * 86_400_000
 const SETTLE_MS = 5 * 60_000
+const HOUR_MS = 60 * 60_000
 const TICK_MS = 6 * 60 * 60_000
 
 interface KeeperState {
   gardenedAt?: number
   distilledAt?: number
-  // The last day whose desk work log was written (YYYY-MM-DD).
-  worklogDay?: string
+  // High-water mark (epoch ms) of the browser+file work journal: the next
+  // hourly pass logs only what happened after it.
+  worklogThrough?: number
 }
 
 function stateFile(): string {
@@ -82,32 +84,38 @@ async function distillOnce(ctx: VaultContext, candidate: SkillCandidate): Promis
   flog('skill-distill', `${candidate.slug}: ${result.installed ? 'installed' : (result.reason ?? 'skipped')}`)
 }
 
+// The browser + file half of the hourly work journal. Cursor-based (worklogThrough)
+// so each pass logs only the freshly elapsed window; the desk-app half is
+// captureDeskActivity. Returns whether anything was written.
+async function captureWebAndFiles(ctx: VaultContext, now = Date.now()): Promise<boolean> {
+  if (!isActivityWatchEnabled()) return false
+  const state = await readState()
+  const until = now - 5 * 60_000
+  // First run (or a long gap) backfills at most a day, never the whole history.
+  const since = Math.max(state.worklogThrough ?? 0, until - 86_400_000)
+  if (until <= since) return false
+  const trail = foldWebTrail(await readWebTrail(since, until).catch(() => []))
+  const files = await recentFileNames(since, until).catch(() => [])
+  let log = ''
+  if (trail.length > 0) log += `\n\n## Web\n${trail.join('\n')}`
+  if (files.length > 0) log += `\n\n## Files touched\n${files.slice(0, 12).map((n) => `- ${n}`).join('\n')}`
+  let wrote = false
+  if (log) {
+    const label = `${new Date(since).toLocaleString('en-GB')} – ${new Date(until).toLocaleString('en-GB')}`
+    wrote = await writeCapture(ctx.paths.inbox, `# Browser and file activity ${label}${log}`).then(
+      () => true,
+      (err) => { flog('worklog-write-failed', err); return false },
+    )
+  }
+  // Advance only when the write landed (or there was nothing to write); a failed
+  // write keeps the cursor so the window is retried next hour rather than lost.
+  if (wrote || !log) await writeState({ worklogThrough: until })
+  return wrote
+}
+
 async function tick(ctx: VaultContext): Promise<void> {
   const now = Date.now()
   const state = await readState()
-  const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10)
-  if (state.worklogDay !== yesterday && isActivityWatchEnabled()) {
-    let log = ''
-    let logged = true
-    const dayStart = new Date(yesterday + 'T00:00:00Z').getTime()
-    const trail = foldWebTrail(await readWebTrail(dayStart, dayStart + 86_400_000).catch(() => []))
-    const files = await recentFileNames(dayStart, dayStart + 86_400_000).catch(() => [])
-    if (trail.length > 0) log += `\n\n## Web\n${trail.join('\n')}`
-    if (files.length > 0) log += `\n\n## Files touched\n${files.slice(0, 12).map((n) => `- ${n}`).join('\n')}`
-    if (log) {
-      // The day stamp only advances when the write landed — advancing on a
-      // failed write discards that day's worklog permanently, since no later
-      // tick retries a stamped day.
-      logged = await writeCapture(ctx.paths.inbox, `# Browser and file activity ${yesterday} (UTC)${log}`).then(
-        () => { runPipelineAsync(ctx, 'librarian: browser and file activity'); return true },
-        (err) => {
-          flog('worklog-write-failed', err)
-          return false
-        },
-      )
-    }
-    if (logged) await writeState({ worklogDay: yesterday })
-  }
   if (now - (state.gardenedAt ?? 0) >= WEEK_MS) {
     const events = await sweepGarden(ctx.paths, ctx.store.getAll()).catch(() => [])
     if (events.length > 0) flog('gardener', `${events.length} note(s) shelved`)
@@ -132,7 +140,11 @@ async function fileActivity(ctx: VaultContext): Promise<void> {
   if (capturing) return
   capturing = true
   try {
-    if (await captureDeskActivity(ctx)) runPipelineAsync(ctx, 'librarian: desk activity')
+    // Both halves of the hourly work journal: desk-app spans and the browser +
+    // file trail. Either producing a capture wakes the librarian once.
+    const desk = await captureDeskActivity(ctx)
+    const web = await captureWebAndFiles(ctx)
+    if (desk || web) runPipelineAsync(ctx, 'librarian: work journal')
   } catch (error) { flog('activity-capture-failed', error) }
   finally { capturing = false }
 }
@@ -147,7 +159,7 @@ export function startKeeper(ctx: VaultContext): void {
   const maintain = () => { void tick(ctx).catch(error => flog('keeper-failed', error)) }
   settling = setTimeout(() => { maintain(); void fileActivity(ctx) }, SETTLE_MS)
   timer = setInterval(maintain, TICK_MS)
-  activityTimer = setInterval(() => void fileActivity(ctx), SETTLE_MS)
+  activityTimer = setInterval(() => void fileActivity(ctx), HOUR_MS)
 }
 
 export function stopKeeper(): void {
