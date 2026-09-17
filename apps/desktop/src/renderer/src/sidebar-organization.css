@@ -23,6 +23,11 @@
 .sidebar-folder-create { display: flex; align-items: center; gap: 6px; padding: 4px 10px; }
 .sidebar-folder-empty, .sidebar-unfile { padding: 8px 16px; font-size: var(--fs-micro); color: var(--fg-faint); border-radius: 8px; }
 .sidebar-item[draggable='true'] { cursor: grab; }
+/* Long conversation/routine lists: let the engine skip layout and paint for
+   rows scrolled out of view. contain-intrinsic-size (with `auto`) remembers
+   each row's real height, so the scrollbar stays honest and scrolling stops
+   re-laying-out the whole list every frame. */
+.sidebar-list > .sidebar-item { content-visibility: auto; contain-intrinsic-size: auto 64px; }
 .sidebar-drop-target { background: var(--hover-bg); outline: 1px dashed var(--fg-faint); outline-offset: -1px; }
 .sidebar-list > .sidebar-item > * { transition: translate 160ms ease, opacity 160ms ease; }
 .sidebar-list > .sidebar-item[data-shift='up'] > * { translate: 0 -12px; }

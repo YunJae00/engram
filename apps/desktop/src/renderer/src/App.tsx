@@ -12,7 +12,7 @@ import { AppProvider } from './state.js'
 import { useCometState, useShellState } from './state-slices.js'
 import { t } from './i18n.js'
 import { selectComet } from './lib/cometThreadsLive.js'
-import { WebPane } from './components/WebPane.js'
+import { BrowserView } from './components/BrowserView.js'
 import type { SettingsSection } from './components/SettingsNavigation.js'
 
 // Only what the first screen needs is in the first bundle. An editor, a sky
@@ -256,7 +256,7 @@ function Shell() {
             <div className="canvas-slot" hidden={activity !== 'bots'}>
               <BotsView />
             </div>
-            {activity === 'browser' && <WebPane channel="browser" standalone busy={false} onStop={() => void api.agentReset('browser')} />}
+            {activity === 'browser' && <BrowserView />}
             {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
             {activity === 'sky' && (
