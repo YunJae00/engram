@@ -46,6 +46,12 @@ function textOf(content: unknown): string {
 // loop every PARSE_YIELD_EVERY lines instead of blocking it for seconds — the
 // watcher already awaits this. Same turns, same consumed count.
 const PARSE_YIELD_EVERY = 1000
+// A single JSONL row this large is a tool-output dump, never conversation prose
+// worth harvesting — and JSON.parse on a multi-MB string blocks the main thread
+// for seconds all at once (yielding between lines cannot break up one line). So
+// oversized rows are skipped whole; their bytes still count as consumed, so the
+// cursor advances past them and they are never re-read.
+const MAX_ROW_CHARS = 512 * 1024
 
 export async function parseSessionSpan(span: string): Promise<{ turns: SessionTurn[]; consumed: number }> {
   const lines = span.split('\n')
@@ -57,7 +63,7 @@ export async function parseSessionSpan(span: string): Promise<{ turns: SessionTu
   let seen = 0
   for (const line of complete) {
     if (++seen % PARSE_YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve))
-    if (!line.trim()) continue
+    if (!line.trim() || line.length > MAX_ROW_CHARS) continue
     let row: { type?: string; message?: { role?: string; content?: unknown }; timestamp?: string }
     try {
       row = JSON.parse(line)
@@ -94,7 +100,7 @@ export async function parseCodexSpan(span: string): Promise<{ turns: SessionTurn
   let seen = 0
   for (const line of complete) {
     if (++seen % PARSE_YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve))
-    if (!line.trim()) continue
+    if (!line.trim() || line.length > MAX_ROW_CHARS) continue
     let row: Record<string, unknown>
     try {
       row = JSON.parse(line) as Record<string, unknown>

@@ -62,6 +62,14 @@ describe('reading a transcript span', () => {
     const { turns } = await parseSessionSpan('{not json\n' + user('살아남음'))
     expect(turns).toHaveLength(1)
   })
+
+  it('skips an oversized tool-dump row (a multi-MB JSON.parse would freeze the thread)', async () => {
+    const huge = user('x'.repeat(600 * 1024)) // one > 512KB row
+    const { turns, consumed } = await parseSessionSpan(huge + user('작다'))
+    expect(turns.map((t) => t.text)).toEqual(['작다'])
+    // Its bytes still count, so the cursor moves past it and it is not re-read.
+    expect(consumed).toBe(Buffer.byteLength(huge + user('작다'), 'utf8'))
+  })
 })
 
 describe('what travels to the engine', () => {
