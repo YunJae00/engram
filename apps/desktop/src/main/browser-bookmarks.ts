@@ -96,7 +96,7 @@ async function mergeBookmarks(id: string): Promise<Bookmark[]> {
   const source = (await profiles()).find((row) => row.id === id)
   if (!source) throw new Error('Choose an available browser profile')
   const imported = parseBookmarks(source.text ?? await readLimited(source.file!)).map(row => ({ ...row, sourceId: source.id, sourceName: source.name }))
-  if (!imported.length) throw new Error('This profile has no supported bookmarks. Choose another profile. Only http and https bookmarks are imported.')
+  if (!imported.length) throw new Error('No bookmarks here — this profile is empty. Try another profile or your organization’s managed bookmarks. Only http and https bookmarks are imported.')
   const key = (row: Bookmark) => JSON.stringify([row.sourceId ?? '', row.folderPath ?? [row.folder], row.url])
   const merged = new Map((await savedBookmarks()).map(row => [key(row), row]))
   for (const row of imported) merged.set(key(row), row)

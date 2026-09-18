@@ -62,6 +62,6 @@ it('rejects malformed or oversized trees and strips executable and credential-be
 
 it('reports an empty profile without claiming an import succeeded or replacing existing bookmarks', async () => {
   await writeFile(join(fake.root, 'Default', 'Bookmarks'), tree([]))
-  await expect(importBookmarks('chrome:Default')).rejects.toThrow('no supported bookmarks')
+  await expect(importBookmarks('chrome:Default')).rejects.toThrow('this profile is empty')
   expect(await savedBookmarks()).toEqual([])
 })

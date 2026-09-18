@@ -24,7 +24,13 @@ export function BookmarkImport({ sources, onImport, onClose }: {
     setBusy(true)
     setError('')
     try { await onImport(selected); imported.current = true; setClosing(true) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not import bookmarks.'); setBusy(false) }
+    catch (cause) {
+      // Strip Electron's "Error invoking remote method 'x': Error:" wrapper so
+      // the person sees the plain reason, not the IPC plumbing.
+      const raw = cause instanceof Error ? cause.message : 'Could not import bookmarks.'
+      setError(raw.replace(/^Error invoking remote method '[^']*':\s*(?:[A-Za-z]*Error:\s*)?/, ''))
+      setBusy(false)
+    }
   }
   return createPortal(<dialog ref={dialog} className="delete-conversation-dialog bookmark-import-dialog" data-closing={closing} aria-labelledby="bookmark-import-title" onCancel={event => { event.preventDefault(); if (!busy) setClosing(true) }}>
     <h2 id="bookmark-import-title">Import bookmarks</h2>
