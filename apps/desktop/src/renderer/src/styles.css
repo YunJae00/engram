@@ -1640,14 +1640,9 @@ body.bubble-host { background: transparent; }
 }
 .web-pane-bar { display: flex; align-items: center; gap: 6px; min-height: var(--toolbar-height); padding: 6px 10px; flex: none; }
 .web-pane-bar .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); height: 32px; padding: 0 10px; border-radius: var(--radius-s); border-color: transparent; background: var(--hover-bg); }
-/* Standalone browser: a Chrome-like tab strip over one full-width pane. The
-   side-pane width rules above are overridden so the page fills the area. */
-.browser-view { flex: 1; width: 100%; min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; }
-.browser-view > .web-pane { position: relative; inset: auto; width: 100%; min-width: 0; max-width: none; flex: 1; border-left: 0; box-shadow: none; }
-.browser-view > .web-pane > .web-pane-grip { display: none; }
 .browser-tabs { display: flex; align-items: flex-end; gap: 2px; flex: none; padding: 6px 8px 0; background: var(--canvas-bg); overflow-x: auto; scrollbar-width: none; }
 .browser-tabs::-webkit-scrollbar { display: none; }
-.browser-tab { display: flex; align-items: center; flex: 0 1 200px; min-width: 0; height: 34px; border-radius: 9px 9px 0 0; background: transparent; }
+.browser-tab { display: flex; align-items: center; flex: 0 1 200px; min-width: 110px; height: 34px; border-radius: 9px 9px 0 0; background: transparent; }
 .browser-tab[data-active='true'] { background: var(--panel-bg); }
 .browser-tab-face { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; padding: 0 6px 0 10px; height: 34px; background: none; border: 0; color: var(--fg-dim); cursor: pointer; }
 .browser-tab[data-active='true'] .browser-tab-face { color: var(--fg); }

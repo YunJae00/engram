@@ -7,6 +7,9 @@ let window: BrowserWindow | null = null
 let revision = 0
 let visible = false
 let registered = false
+let requestedLayout: unknown = []
+
+export async function refreshNativeLayout(): Promise<void> { await layout(requestedLayout).catch(() => undefined) }
 
 export function nativePagesVisible(): boolean { return visible }
 
@@ -84,6 +87,7 @@ export function registerNativeLayout(): void {
   })
   ipcMain.handle('native:layout', async (event, surfaces: unknown) => {
     if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
+    requestedLayout = surfaces
     await layout(surfaces)
   })
 }

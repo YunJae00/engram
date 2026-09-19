@@ -7,7 +7,10 @@ import { useShellState } from '../state-slices.js'
 import type { BotDto } from '../../../shared/types.js'
 import { SiteIcon } from './SiteIcon.js'
 import { WebShortcuts } from './WebShortcuts.js'
-import { agentMirror } from '../lib/agentMirrorLive.js'
+import { cometChannel } from '../lib/cometThreads.js'
+import { selectComet } from '../lib/cometThreadsLive.js'
+import { selectDesktopSurface } from '../lib/desktopSession.js'
+import { t } from '../i18n.js'
 
 const KEY = 'engram.recentWeb'
 function readSites(key = KEY): string[] {
@@ -56,11 +59,12 @@ export function RecentWeb({ bots, onOpen }: { bots: BotDto[]; onOpen(): void }) 
     if (pending.current) return
     pending.current = true; setOpening(site ?? 'new')
     try {
-      const channel = 'browser'
+      const bot = await api.botCreate({ name: t('bots.untitled'), purpose: '' })
+      const channel = cometChannel(bot.id)
+      selectDesktopSurface(channel, 'browser')
       webPane.open(channel); webPane.expand(channel, true)
-      setActivity('browser'); onOpen()
+      selectComet(bot.id); setActivity('bots'); onOpen()
       if (site) await api.agentGo(site, channel)
-      else { await api.agentReset(channel); agentMirror.clearLane(channel) }
     } catch (error) { showToast(error instanceof Error ? error.message : String(error)) }
     finally { pending.current = false; setOpening(null) }
   }

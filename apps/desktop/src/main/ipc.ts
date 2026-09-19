@@ -1,3 +1,4 @@
+import { registerBrowserTabs } from './browser-tabs.js'
 import {
   routineDraftTool,
   updateRoutineGoal,
@@ -1527,6 +1528,7 @@ export function registerIpc(ctx: VaultContext): void {
   // The agent browser mirrored into the app: frames while a view watches,
   // the moves a person makes on that view, and the real window on call.
   startAgentView()
+  registerBrowserTabs(lane => answering.has(lane) || routineLanes.has(lane))
   ipcMain.handle('agent:watch', (_e, on: boolean) => watchAgentView(on === true))
   ipcMain.handle('agent:input', (_e, input: AgentInputDto, lane: string) => agentViewInput(input, lane))
   ipcMain.handle('agent:window', (_e, show: boolean) => showAgentWindow(show === true))

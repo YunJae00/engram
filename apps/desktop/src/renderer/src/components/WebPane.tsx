@@ -9,7 +9,6 @@ import { NativeSurface } from './NativeSurface.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { t } from '../i18n.js'
 import { useShellState } from '../state-slices.js'
-import { useApp } from '../state.js'
 import { BrowserActions } from './BrowserActions.js'
 import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 import { browserAddress } from '../lib/browser-start.js'
@@ -30,7 +29,7 @@ const FOLD_MS = 220
 const DEFAULT_SHARE = 0.52
 
 export function BrowserAddress({ url, channel, start = false }: { url?: string; channel: string; start?: boolean }) {
-  const { showToast } = useApp()
+  const { showToast } = useShellState()
   const [draft, setDraft] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const navigating = useRef(false)
@@ -80,10 +79,10 @@ export function BrowserStart({ channel }: { channel: string }) {
   return <div className="web-pane-empty browser-start"><Globe size={42} strokeWidth={1.2} aria-hidden /><h2>Where would you like to go?</h2><BrowserAddress channel={channel} start /><span>Search the web or enter a website. No AI connection needed.</span></div>
 }
 
-export function WebPane({ channel, busy, onStop, children, toolbar, standalone = false }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode; toolbar?: ReactNode; standalone?: boolean }) {
+export function WebPane({ channel, busy, onStop, children, toolbar }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode; toolbar?: ReactNode }) {
   const native = useNativeBrowser()
   const { activity } = useShellState()
-  const active = activity === (standalone ? 'browser' : 'bots')
+  const active = activity === 'bots'
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
   useEffect(() => {
     const changed = () => setVisible(document.visibilityState === 'visible')
@@ -175,7 +174,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar, standalone =
       <div className="web-pane-inner">
         {toolbar}
         <div className="web-pane-bar">
-          {!standalone && <button
+          <button
             className="live-dock-act"
             data-testid="web-pane-fold"
             aria-label={t('live.fold')}
@@ -183,10 +182,10 @@ export function WebPane({ channel, busy, onStop, children, toolbar, standalone =
             onClick={fold}
           >
             <ChevronsRight size={13} aria-hidden />
-          </button>}
+          </button>
           <BrowserAddress key={`address-${channel}`} channel={channel} url={mine ? url : ''} />
           <BrowserActions key={`actions-${channel}`} lane={channel} url={mine ? url : undefined} live={liveHere} />
-          {!standalone && <button className="live-dock-act" data-testid="web-pane-expand" disabled={busy} aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={busy ? 'Chat stays visible while the AI is working' : expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>}
+          <button className="live-dock-act" data-testid="web-pane-expand" disabled={busy} aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={busy ? 'Chat stays visible while the AI is working' : expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>
               <Square size={10} strokeWidth={2.5} aria-hidden /> {t('bubble.stop')}
@@ -203,7 +202,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar, standalone =
           className="web-pane-stage"
           ref={stage}
         >
-          {!liveHere && !frameHere ? <BrowserStart channel={channel} /> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing && active} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing && active} hasFrame={frameHere} />}
+          {(!liveHere && !frameHere) || (mine && url === 'about:blank') ? <BrowserStart channel={channel} /> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing && active} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing && active} hasFrame={frameHere} />}
         </div>
         {frozen && <div className="web-pane-note">{t('live.closed')}</div>}
         {children}

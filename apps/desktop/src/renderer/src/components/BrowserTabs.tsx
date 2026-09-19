@@ -1,44 +1,55 @@
-import { Globe, Plus, X } from 'lucide-react'
-import { useEffect, useSyncExternalStore } from 'react'
+import { Globe, LoaderCircle, Plus, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import type { BrowserTabDto } from '../../../shared/types.js'
+import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
-import { browserTabs, useBrowserTabs } from '../lib/browserTabs.js'
+import { useShellState } from '../state-slices.js'
 import { SiteIcon } from './SiteIcon.js'
 
-function hostOf(url: string | undefined): string {
-  if (!url || url === 'about:blank') return ''
-  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
-}
-
-function originOf(url: string | undefined): string | null {
-  if (!url) return null
-  try { const u = new URL(url); return u.protocol === 'https:' ? u.origin : null } catch { return null }
-}
-
-export function BrowserTabs() {
-  const { tabs, activeId } = useBrowserTabs()
-  const mirror = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
-  const activeLane = browserTabs.activeLane()
-  // The mirror follows the active lane; keep that tab's label in step with it.
+export function BrowserTabs({ channel, busy }: { channel: string; busy: boolean }) {
+  const [tabs, setTabs] = useState<BrowserTabDto[]>([])
+  const [pending, setPending] = useState(false)
+  const changing = useRef(false)
+  const { showToast } = useShellState()
   useEffect(() => {
-    if (mirror.lane === activeLane) browserTabs.setTitle(activeLane, hostOf(mirror.url))
-  }, [mirror.lane, mirror.url, activeLane])
-  return (
-    <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
-      {tabs.map((tab) => {
-        const origin = tab.id === activeId ? originOf(mirror.lane === activeLane ? mirror.url : undefined) : null
-        return (
-          <div key={tab.id} className="browser-tab" role="tab" aria-selected={tab.id === activeId} data-active={tab.id === activeId}>
-            <button className="browser-tab-face" onClick={() => browserTabs.select(tab.id)} title={tab.title || 'New tab'}>
-              <span className="browser-tab-icon">{origin ? <SiteIcon origin={origin} /> : <Globe size={13} aria-hidden />}</span>
-              <span className="browser-tab-label">{tab.title || 'New tab'}</span>
-            </button>
-            {tabs.length > 1 && (
-              <button className="browser-tab-close" aria-label="Close tab" title="Close tab" onClick={() => browserTabs.close(tab.id)}><X size={12} aria-hidden /></button>
-            )}
-          </div>
-        )
-      })}
-      <button className="browser-tab-add" aria-label="New tab" title="New tab" disabled={tabs.length >= 8} onClick={() => browserTabs.add()}><Plus size={15} aria-hidden /></button>
-    </div>
-  )
+    let current = true
+    let received = false
+    const off = api.onEvent(event => {
+      if (event.type !== 'agent:tabs' || event.lane !== channel) return
+      received = true
+      setTabs(event.tabs)
+      if (!event.tabs.length) agentMirror.clearLane(channel)
+    })
+    void api.browserTabs(channel).then(value => { if (current && !received) setTabs(value) }).catch(() => {})
+    return () => { current = false; off() }
+  }, [channel])
+  const change = async (action: 'add' | 'select' | 'close', id?: string) => {
+    if (busy || changing.current) return
+    changing.current = true
+    setPending(true)
+    try { await api.browserTab(channel, action, id) }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Could not change tabs') }
+    finally { changing.current = false; setPending(false) }
+  }
+  const shown = tabs.length ? tabs : [{ id: '', url: 'about:blank', active: true }]
+  return <div className="browser-tabs" role="tablist" aria-label="Browser tabs" aria-busy={pending}>
+    {shown.map(tab => {
+      let origin: string | undefined
+      let title = 'New tab'
+      try {
+        const url = new URL(tab.url)
+        if (url.protocol === 'https:' || url.protocol === 'http:') { origin = url.origin; title = url.hostname }
+      } catch { /* Blank pages have no origin. */ }
+      return <div key={tab.id} className="browser-tab" data-active={tab.active}>
+        <button role="tab" aria-selected={tab.active} className="browser-tab-face" disabled={busy || pending || !tab.id} onClick={() => void change('select', tab.id)} title={tab.url}>
+          <span className="browser-tab-icon">{origin ? <SiteIcon origin={origin} /> : <Globe size={13} aria-hidden />}</span>
+          <span className="browser-tab-label">{title}</span>
+        </button>
+        {tab.id && <button className="browser-tab-close" aria-label={`Close ${title}`} disabled={busy || pending} onClick={() => void change('close', tab.id)}><X size={12} aria-hidden /></button>}
+      </div>
+    })}
+    <button className="browser-tab-add" aria-label="New tab" title={busy ? 'Stop the current task to change tabs' : 'New tab'} disabled={busy || pending || tabs.length >= 8} onClick={() => void change('add')}>
+      {pending ? <LoaderCircle size={15} className="computer-spinner" aria-hidden /> : <Plus size={15} aria-hidden />}
+    </button>
+  </div>
 }

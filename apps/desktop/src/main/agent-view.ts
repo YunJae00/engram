@@ -122,9 +122,10 @@ let following: Promise<void> = Promise.resolve()
 let followGeneration = 0
 
 function follow(page: Page): Promise<void> {
+  if (page !== lanePage(activeLaneName())) return Promise.resolve()
   const generation = ++followGeneration
   following = following.catch(() => undefined).then(async () => {
-    if (generation !== followGeneration || laneOf(page) !== activeLaneName() || page.isClosed()) return
+    if (generation !== followGeneration || page !== lanePage(activeLaneName()) || page.isClosed()) return
     await followNow(page, generation)
   })
   return following
@@ -138,7 +139,7 @@ async function followNow(page: Page, generation: number): Promise<void> {
   } catch {
     return
   }
-  if (generation !== followGeneration || laneOf(page) !== activeLaneName() || page.isClosed()) {
+  if (generation !== followGeneration || page !== lanePage(activeLaneName()) || page.isClosed()) {
     await cdp.detach().catch(() => undefined)
     return
   }

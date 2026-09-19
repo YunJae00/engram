@@ -365,7 +365,10 @@ export interface PendingWorkDto {
   filing: boolean
 }
 
+export interface BrowserTabDto { id: string; url: string; active: boolean }
+
 export type EngramEvent =
+  | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
   | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null; reason?: string }
   | { type: 'desktop:changed' }
   | { type: 'desktop:visibility'; visible: boolean }
@@ -563,6 +566,8 @@ export interface EngramApi extends DesktopApi {
   // Which comet's tab the pane shows; and a reset that closes that tab.
   agentLane(lane: string): Promise<{ on: boolean; url?: string }>
   agentReset(lane: string): Promise<void>
+  browserTabs(lane: string): Promise<BrowserTabDto[]>
+  browserTab(lane: string, action: 'add' | 'select' | 'close', id?: string): Promise<BrowserTabDto[]>
   // The folder of daily logs of what the comets did, opened for the person.
   auditOpen(): Promise<void>
   // Start a comet's conversation over: stop, put the transcript away, forget.

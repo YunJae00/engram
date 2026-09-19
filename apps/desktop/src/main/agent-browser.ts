@@ -246,6 +246,14 @@ export function lanePage(lane: string): Page | null {
   return page && !page.isClosed() ? page : null
 }
 
+export function lanePages(lane: string): Page[] { return lanes.pages(lane).filter(page => !page.isClosed()) }
+
+export function selectLanePage(lane: string, page: Page): void {
+  if (laneOf(page) !== lane || page.isClosed()) throw new Error('That tab is not in this conversation')
+  lanes.set(lane, page)
+  for (const watcher of pageWatchers) watcher(page, lane)
+}
+
 export function setActiveLane(lane: string): void {
   activeLane = lane
 }
@@ -464,10 +472,17 @@ export function ensureAgentPage(lane = DEFAULT_LANE): Promise<Page> {
   return next
 }
 
-async function assignAgentPage(lane: string): Promise<Page> {
+export function addAgentPage(lane: string): Promise<Page> {
+  const next = assigningPage.catch(() => undefined).then(() => assignAgentPage(lane, true))
+  assigningPage = next
+  return next
+}
+
+async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
+  if (fresh && lanePages(lane).length >= 8) throw new Error('Close a tab before opening another')
   const ctx = await ensureContext()
   const held = lanePage(lane)
-  if (held) return held
+  if (held && !fresh) return held
   // The tab the browser opened with belongs to whoever asks first; after
   // that every lane gets a tab of its own, if the machine has room for one.
   const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
