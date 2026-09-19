@@ -4,13 +4,15 @@ import { noteTitle, type Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
 import type { AgentTool } from './agent-loop.js'
 import { listRoutines, routineSlotExamples, routineSlots, routineStepLabel } from './routine.js'
-import { readSkillFile, readSkillsLedger, staleSkills } from './skills.js'
+import { annotateStaleCards, listSkills, relevantSkillCards, readSkillFile, readSkillsLedger, staleSkills } from './skills.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
 import { answersTheQuestion, contentWords, deriveSearchTemplate, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
 import { cleanOptions, formatAsk } from './ask.js'
 import { carriesSecret } from './secrets.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
+import { browserReadBatch } from './browser-read-batch.js'
+import { measuredCourier, type HarnessMetric } from './harness-metrics.js'
 
 // The body of the note whose title the model wrote, out of the notes the loop
 // has printed so far - "[title] (id: ...) body" - or null when the words are
@@ -52,6 +54,8 @@ const RESULTS_PROSE_CAP = 300
 // small model started filling in a stranger's form.
 
 export interface CometToolDeps {
+  onMetric?(metric: HarnessMetric): void
+  batchReads?: boolean
   paths: VaultPaths
   skillNotes?(): Note[]
   retrieve(query: string, limit: number): Promise<ErrandRetrievedNote[]>
@@ -398,8 +402,21 @@ ${note.body.slice(0, 2_000)}`
     },
   ]
 
+  tools.push({
+    name: 'find_skills',
+    description: 'Find up to five relevant saved how-tos by topic when the initial shortlist does not fit. Returns names and descriptions, not execution permissions. Open a result with open_skill.',
+    argsSchema: { type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 500 } }, required: ['query'], additionalProperties: false },
+    async run(args) {
+      const query = str(args, 'query')
+      if (!query || query.length > 500) throw new Error('Provide a short skill topic')
+      const ledger = await readSkillsLedger(deps.paths)
+      const cards = annotateStaleCards(await listSkills(deps.paths), ledger, deps.skillNotes?.() ?? [])
+      return JSON.stringify({ skills: relevantSkillCards(cards, ledger, query), referenceOnly: true })
+    },
+  })
   if (deps.courier) {
-    const courier = deps.courier
+    const courier = measuredCourier(deps.courier, deps.onMetric)
+    if (deps.batchReads !== false) tools.push(browserReadBatch(courier, deps.wallMet, deps.onMetric))
     tools.push(
       {
         // No engine, no site list: the model names the address. That is the

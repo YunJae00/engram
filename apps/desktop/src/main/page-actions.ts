@@ -112,7 +112,11 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
     if (!place) return { none: true }
     // The control is tagged in the page so a locator can hold it; the tag
     // comes off with the next reading, which re-numbers everything.
-    await place.frame.evaluate(readDocument, place.local).catch(() => undefined)
+    const fresh = await place.frame.evaluate(readDocument, place.local).catch(() => null)
+    if (!fresh || JSON.stringify(fresh.controls[place.local - 1]) !== place.control) {
+      await unmark(page)
+      return { none: true }
+    }
     const hand = place.frame.locator(`[${HAND_MARK}]`).first()
     return (await hand.count().catch(() => 0)) > 0 ? { hand } : { none: true }
   }

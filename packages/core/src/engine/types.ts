@@ -134,6 +134,7 @@ export interface ToolSessionCall {
 }
 
 export interface ToolSessionJob {
+  onContextReset?(): void
   model?: string
   effort?: ReasoningEffort
   workdir: EngineCwd

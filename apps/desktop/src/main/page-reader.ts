@@ -11,7 +11,7 @@ export interface FrameReading {
   hidden: string
   hasPasswordField: boolean
   links: { text: string; url: string }[]
-  controls: { kind: string; name: string; state: string }[]
+  controls: { kind: string; name: string; state: string; ref?: string }[]
   // What stands in front of the page right now: a dialog it has opened over
   // itself. Its own words, so it can be answered without hunting for them
   // among the page behind it.
@@ -28,7 +28,20 @@ export interface PageReading extends FrameReading {
 
 // Where each numbered control lives, so a press by number lands on the
 // element the reading meant: which frame, and which one there.
-const placed = new WeakMap<Page, Map<number, { frame: Frame; local: number }>>()
+type ControlPlace = { frame: Frame; local: number; control: string }
+const placed = new WeakMap<Page, Map<number, ControlPlace>>()
+const observations = new WeakMap<Page, { page: string; document: number; revision: number }>()
+let pageSerial = 0
+
+export function observationOf(page: Page): { page: string; document: number; revision: number } {
+  let value = observations.get(page)
+  if (!value) {
+    value = { page: `page-${++pageSerial}`, document: 0, revision: 0 }
+    observations.set(page, value)
+    page.on('framenavigated', () => { value!.document++; placed.delete(page) })
+  }
+  return value
+}
 
 export const HAND_MARK = 'data-engram-hand'
 const FRAME_READ_MS = 12_000
@@ -39,6 +52,8 @@ const FRAME_READ_MS = 12_000
 // order) is tagged so a locator can pick it up; the tag is taken off again
 // by the caller.
 export function readDocument(mark?: number): FrameReading {
+  const scope = globalThis as typeof globalThis & { __engramControlRefs?: { epoch: string; next: number; ids: WeakMap<Element, number> } }
+  const refs = scope.__engramControlRefs ??= { epoch: `${performance.timeOrigin}-${Math.random()}`, next: 0, ids: new WeakMap() }
   const INTERACTIVE =
     'button, input, select, textarea, a[href], summary, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="checkbox"], [role="radio"], [role="combobox"], [role="switch"], [role="treeitem"], [role="textbox"], [role="searchbox"], [onclick], [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'])
@@ -238,7 +253,7 @@ export function readDocument(mark?: number): FrameReading {
     faults.push(line)
   }
 
-  const controls: { kind: string; name: string; state: string }[] = []
+  const controls: FrameReading['controls'] = []
   const values: string[] = []
   let valueLength = 0
   let marked: Element | null = null
@@ -269,7 +284,8 @@ export function readDocument(mark?: number): FrameReading {
     ]
       .filter(Boolean)
       .join(', ')
-    const index = controls.length < CONTROLS_CAP ? controls.push({ kind, name: nameOf(el), state }) : null
+    if (!refs.ids.has(el)) refs.ids.set(el, ++refs.next)
+    const index = controls.length < CONTROLS_CAP ? controls.push({ kind, name: nameOf(el), state, ref: `${refs.epoch}:${refs.ids.get(el)}` }) : null
     if (tag === 'textarea' || tag === 'select' || (tag === 'input' && !/^(button|submit|reset|image|file|checkbox|radio)$/.test(type)) || el.getAttribute('contenteditable') === 'true') {
       const secret = type === 'password' || /(?:password|one-time-code|cc-)/i.test(el.getAttribute('autocomplete') ?? '')
         || /password|passwd|secret|token|api.?key|otp/i.test(`${el.id} ${el.getAttribute('name') ?? ''}`)
@@ -300,8 +316,10 @@ function frameName(frame: Frame): string {
 // The whole page: every frame read, the controls numbered straight through,
 // and where each number lives kept for the next press.
 export async function readFrames(page: Page): Promise<PageReading> {
+  const observation = observationOf(page)
+  const document = observation.document
   const frames = [page.mainFrame(), ...page.frames().filter((frame) => frame !== page.mainFrame())]
-  const map = new Map<number, { frame: Frame; local: number }>()
+  const map = new Map<number, ControlPlace>()
   const whole: PageReading = { text: '', hidden: '', hasPasswordField: false, links: [], controls: [], lines: [], dialog: '', faults: [] }
   for (const frame of frames) {
     let reading: FrameReading
@@ -327,17 +345,19 @@ export async function readFrames(page: Page): Promise<PageReading> {
     reading.controls.forEach((control, at) => {
       const index = whole.controls.length + 1
       whole.controls.push(control)
-      map.set(index, { frame, local: at + 1 })
+      map.set(index, { frame, local: at + 1, control: JSON.stringify(control) })
       whole.lines.push(`#${index} [${control.kind}] ${control.name || '(no words)'}${control.state ? ` (${control.state})` : ''}`)
     })
   }
   whole.links = whole.links.slice(0, 25)
   whole.faults = whole.faults.slice(0, 12)
-  placed.set(page, map)
+  observation.revision++
+  if (observation.document === document) placed.set(page, map)
+  else { placed.delete(page); whole.faults.push('The page navigated during this reading; read it again before acting.') }
   return whole
 }
 
 // The frame and local number behind a control number from the last reading.
-export function placeOf(page: Page, index: number): { frame: Frame; local: number } | null {
+export function placeOf(page: Page, index: number): ControlPlace | null {
   return placed.get(page)?.get(index) ?? null
 }

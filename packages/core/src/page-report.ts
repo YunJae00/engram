@@ -22,6 +22,7 @@ export function partsWith(text: string, term: string, parts: number): number[] {
 }
 
 export interface ReadablePage {
+  observation?: { page: string; document: number; revision: number }
   title: string
   text: string
   controls?: string[]
@@ -59,7 +60,8 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
   // What is in front of the person comes before the page behind it: a dialog
   // that is open, and whatever the page says is wrong with what was entered.
   // Both are the page's own words, so both are DATA like the rest.
-  const lines = [...frontOf(page), head, page.text.slice((at - 1) * PAGE_TEXT_CAP, at * PAGE_TEXT_CAP)]
+  const snapshot = page.observation
+  const lines = [...frontOf(page), ...(snapshot ? [`Observation ${snapshot.page}/${snapshot.document}/${snapshot.revision}; control numbers belong only to this reading.`] : []), head, page.text.slice((at - 1) * PAGE_TEXT_CAP, at * PAGE_TEXT_CAP)]
   if (page.controls?.length && at === 1) lines.push('Controls (press by number, e.g. {"target": "#12"}):', ...page.controls.slice(0, CONTROLS_SHOWN))
   return lines.join('\n')
 }

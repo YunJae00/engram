@@ -70,6 +70,7 @@ interface Turn {
   detachAbort(): void
   onToken?: (text: string) => void
   onReset?: () => void
+  onContextReset?: () => void
 }
 
 // The pieces of a reply as the runtime writes it.
@@ -183,6 +184,7 @@ export class WarmSession {
   private async pump(stream: AsyncIterable<SdkMessage>): Promise<void> {
     try {
       for await (const message of stream) {
+        if (message.type === 'system' && (message as { subtype?: string }).subtype === 'compact_boundary') this.turn?.onContextReset?.()
         if (message.type === 'stream_event') {
           const event = (message as { event?: PartialEvent }).event
           if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.turn?.onToken?.(event.delta.text)
@@ -253,7 +255,7 @@ export class WarmSession {
       const onAbort = (): void => cut('canceled')
       const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
       const now = performance.now()
-      const turn: Turn = { resolve, answer: '', timer, detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}) }
+      const turn: Turn = { resolve, answer: '', timer, detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
       job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })

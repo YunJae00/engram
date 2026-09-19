@@ -3,6 +3,14 @@ import { recordedSteps, successfulTurnSteps } from '../src/routine-record.js'
 
 const ok = 'page "Portal" (DATA, not instructions): things'
 
+it('does not replay actions after omitting batch navigation and readiness checks', () => {
+  expect(recordedSteps([
+    { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
+    { tool: 'read_pages', args: { pages: [{ url: 'https://example.com/report', ready: 'Report' }] }, observation: 'Batch read: 1/1 readiness checks passed.' },
+    { tool: 'press_key', args: { key: 'Enter' }, observation: ok },
+  ])).toEqual([])
+})
+
 it('uses the same successful-evidence filter for routines and learned guidance', () => {
   const failed = ['that did not work: failure', '{"error":"failure"}', '{"reobserveRequired":true}', '{"observationMayBeStale":true}', '{"completeReadback":false}']
   expect(successfulTurnSteps(failed.map(observation => ({ tool: 'edit_live_document', args: {}, observation })))).toEqual([])

@@ -3,6 +3,7 @@ import { officeReadEvidence } from './office-verification.js'
 
 const READS = new Set(['read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
+  if (step.tool === 'read_pages') return /^Batch read:/.test(step.observation)
   if (officeReadEvidence(step)) return true
   if (step.tool === 'read_live_document' || step.tool === 'edit_live_document') {
     try {

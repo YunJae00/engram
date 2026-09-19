@@ -7,6 +7,15 @@ import { tmpVaultRoot } from './helpers.js'
 import { readNote, writeNote } from '../src/notes.js'
 
 describe('saved task routines', () => {
+  it('keeps known batch addresses without learning response contents or old readiness values', () => {
+    const task = routineTask('Read the current reports', [{ tool: 'read_pages', args: { pages: [
+      { url: 'https://example.com/reports', ready: 'Old date and private value' },
+      { url: 'https://example.com/?token=secret', ready: 'Ready' },
+    ] }, observation: 'Batch read: 2/2 readiness checks passed. Old record contents.' }])
+    expect(task.urls).toEqual(['https://example.com/reports'])
+    expect(task.surface).toBe('web')
+    expect(JSON.stringify(task)).not.toMatch(/Old|private|secret/)
+  })
   it('reads external note changes immediately after a completed listing', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-external-'), { git: false })
     const saved = await addRoutine(paths, { name: 'Original', steps: [{ kind: 'read' }] })

@@ -7,7 +7,7 @@ import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/e
 // A stand-in runtime: one process per query, answering every user message
 // it is fed with a call to the first tool and then an answer that names
 // what the tool said. Counts how many processes were started.
-function fakeSdk(log: string[]) {
+function fakeSdk(log: string[], compact = false) {
   let processes = 0
   let interruptions = 0
   const optionsSeen: Record<string, unknown>[] = []
@@ -26,6 +26,7 @@ function fakeSdk(log: string[]) {
           const first = server.tools[0]!
           const said = await first.handler({ query: message.message.content })
           outcomes.push(said)
+          if (compact) yield { type: 'system', subtype: 'compact_boundary' }
           yield { type: 'assistant', message: { content: [{ type: 'text', text: `the tool said ${said.content[0]!.text}` }] } }
           yield { type: 'result', subtype: interrupted ? 'error_during_execution' : 'success', result: `the tool said ${said.content[0]!.text}` }
         }
@@ -53,6 +54,14 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
+  it('invalidates observation deltas when runtime context is compacted', async () => {
+    const { sdk } = fakeSdk([], true)
+    const pool = new SessionPool(), onContextReset = vi.fn()
+    try {
+      await pool.run(job('Read', { onContextReset }), { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+      expect(onContextReset).toHaveBeenCalledTimes(1)
+    } finally { pool.closeAll() }
+  })
   it('recycles only the conversation whose reasoning effort changed', async () => {
     const { sdk, processes, optionsSeen } = fakeSdk([])
     const pool = new SessionPool()

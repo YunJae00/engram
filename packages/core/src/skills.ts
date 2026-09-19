@@ -8,6 +8,7 @@ import type { VaultPaths } from './vault.js'
 import { extractJson } from './engine/types.js'
 import { renameWithRetry } from './rename-with-retry.js'
 import type { AgentLoopResult } from './agent-loop.js'
+import { contentWords } from './search-template.js'
 
 const PROCEDURE_RE = /함정|주의|방법|절차|규칙|패턴|체크|반드시|금지|해결|수정|검증|필수|pitfall|gotcha|rule|how|fix|always|never|checklist|must/i
 const MIN_NOTES = 3
@@ -28,6 +29,8 @@ export interface SkillLedgerEntry {
   // Successful-turn usage is a ranking hint, not proof of relevance or correctness.
   used?: number
   lastUsedAt?: string
+  verifiedChecks?: number
+  lastVerifiedAt?: string
   // The user edited the installed file — it is theirs now, never rewritten.
   userOwned?: boolean
 }
@@ -145,7 +148,19 @@ export function rankSkillCards(cards: SkillCard[], ledger: SkillsLedger): SkillC
   return [...cards].sort((a, b) => count(b) - count(a))
 }
 
-export async function markSkillUsed(paths: VaultPaths, name: string, now = new Date(), body?: string): Promise<void> {
+export function relevantSkillCards(cards: SkillCard[], ledger: SkillsLedger, task: string): SkillCard[] {
+  const words = [...new Set(contentWords(task).filter(word => word.length > 1))]
+  const scored = cards.map(card => {
+    const text = `${card.name} ${card.description}`.toLowerCase()
+    const relevance = words.filter(word => text.includes(word)).length
+    const entry = ledger[card.name.replace(/^engram-/, '')]
+    const verified = typeof entry?.verifiedChecks === 'number' && Number.isSafeInteger(entry.verifiedChecks) ? Math.max(0, entry.verifiedChecks) : 0
+    return { card, relevance, verified, used: useCount(entry), stale: card.description.includes('may be outdated') }
+  }).filter(one => one.relevance > 0)
+  return scored.sort((a, b) => Number(a.stale) - Number(b.stale) || b.relevance - a.relevance || b.verified - a.verified || b.used - a.used || a.card.name.localeCompare(b.card.name)).slice(0, 5).map(one => one.card)
+}
+
+export async function markSkillUsed(paths: VaultPaths, name: string, now = new Date(), body?: string, verified = false): Promise<void> {
   if (!name.startsWith('engram-') || !SKILL_NAME.test(name)) return
   await withSkillLedger(paths, async () => {
     const ledger = await readSkillsLedger(paths)
@@ -155,6 +170,10 @@ export async function markSkillUsed(paths: VaultPaths, name: string, now = new D
     if (!content || skillContentHash(content) !== entry.hash || (body !== undefined && frontMatter(content).body !== body)) return
     entry.used = Math.min(Number.MAX_SAFE_INTEGER, useCount(entry) + 1)
     entry.lastUsedAt = now.toISOString()
+    if (verified) {
+      entry.verifiedChecks = Math.min(Number.MAX_SAFE_INTEGER, (Number.isSafeInteger(entry.verifiedChecks) ? Math.max(0, entry.verifiedChecks!) : 0) + 1)
+      entry.lastVerifiedAt = now.toISOString()
+    }
     await writeSkillsLedger(paths, ledger)
   })
 }
@@ -169,7 +188,18 @@ export async function recordSkillUse(paths: VaultPaths, result: AgentLoopResult)
     if (!step.observation.startsWith(prefix) || step.observation.includes('This skill may be outdated.')) continue
     opened.set(name, step.observation.slice(prefix.length))
   }
-  for (const [name, body] of opened) await markSkillUsed(paths, name, new Date(), body)
+  for (const [name, body] of opened) {
+    const openedAt = result.steps.findIndex(step => step.tool === 'open_skill' && step.args['name'] === name)
+    // A fresh check is a ranking hint, not proof that a skill caused task success.
+    const checks = result.steps.slice(openedAt + 1).filter(step => step.tool === 'verify')
+    const verified = checks.length > 0 && checks.every(step => {
+      try {
+        const check = JSON.parse(step.observation).verification
+        return check?.status === 'passed' && check.id === step.args['id'] && check.url === step.args['url'] && Number.isFinite(Date.parse(check.at))
+      } catch { return false }
+    })
+    await markSkillUsed(paths, name, new Date(), body, verified)
+  }
 }
 
 // The engine's contract: refuse loudly or answer structurally — never pad.

@@ -1,4 +1,4 @@
-import type { AgentTool } from './agent-loop.js'
+import type { AgentTool, AgentToolContext, ToolOutcome } from './agent-loop.js'
 import type { PageMove, WebCourier } from './errand.js'
 import { findOf, pageReport, str } from './page-report.js'
 
@@ -16,7 +16,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
   const readOpen = courier.readOpen
   if (!readOpen) return []
   // What came of a move: the page as it now stands, or why it did not move.
-  const after = async (move: PageMove, what: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> => {
+  const after = async (move: PageMove, what: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string | ToolOutcome> => {
     if (move.theirs)
       return `the person read what "${move.refused || what}" would do and chose to do it themselves - the page is open in front of them; say what is left for them and wait for their word`
     if (move.refused !== undefined)
@@ -37,9 +37,9 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       move.changed === false && !answered
         ? `${what}: nothing on the page changed, so that was probably not the thing meant - press another of the controls below by its number, or look at the page and press the point\n`
         : ''
-    return still + pageReport(page, 1, findOf(args))
+    return { text: still + pageReport(page, 1, findOf(args)), ...(!still && !findOf(args) ? { page } : {}) }
   }
-  const tools: AgentTool[] = []
+  const tools: (Omit<AgentTool, 'run'> & { run(args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> })[] = []
   if (courier.press) {
     const press = courier.press
     tools.push({
@@ -169,5 +169,15 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       },
     })
   }
-  return tools
+  return tools.map(tool => ({
+    ...tool,
+    run: async (args, context) => {
+      const result = await tool.run(args, context)
+      return typeof result === 'string' ? result : result.text
+    },
+    runRich: tool.runRich ?? (async (args, context) => {
+      const result = await tool.run(args, context)
+      return typeof result === 'string' ? { text: result } : result
+    }),
+  }))
 }

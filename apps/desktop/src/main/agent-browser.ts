@@ -9,7 +9,7 @@ import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { markAgentProfile } from './agent-profile.js'
 import { reserveRoom } from './memory-plan.js'
-import { readFrames } from './page-reader.js'
+import { observationOf, readFrames } from './page-reader.js'
 import { createWindowPage } from './browser-window-page.js'
 import { BrowserLanes } from './browser-lanes.js'
 import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
@@ -509,6 +509,7 @@ export async function readPage(page: Page): Promise<WebPage> {
   return {
     url,
     title,
+    observation: { ...observationOf(page) },
     text: text.slice(0, PAGE_TEXT_CAP) + (text.length > PAGE_TEXT_CAP ? '\n[Page extract truncated; absence from this extract does not establish absence from the page.]' : ''),
     links: reading?.links ?? [],
     controls: reading?.lines ?? [],

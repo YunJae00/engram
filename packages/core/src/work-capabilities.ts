@@ -12,7 +12,7 @@ export function workCapabilities(tools: AgentTool[]): AgentTool {
       context.signal?.throwIfAborted()
       return JSON.stringify({
         savedFiles: tools.filter((tool) => tool.name.startsWith('file_') || tool.name === 'find_files').map((tool) => ({ name: tool.name, description: tool.description })),
-        web: tools.filter((tool) => ['open_page', 'read_open_page', 'press', 'type_text', 'look'].includes(tool.name)).map((tool) => tool.name),
+        web: tools.filter((tool) => ['open_page', 'read_open_page', 'read_pages', 'press', 'type_text', 'look'].includes(tool.name)).map((tool) => tool.name),
         evidence: tools.filter(tool => ['record_start', 'record_stop', 'capture_evidence', 'verify', 'wait_for', 'upload_file'].includes(tool.name)).map(tool => ({ name: tool.name, description: tool.description })),
         desktop: tools.filter((tool) => isDesktopTool(tool.name)).map((tool) => tool.name),
         liveDocumentApi: { available: tools.some(tool => tool.name === 'read_live_document'), tools: tools.filter(tool => ['read_live_document', 'edit_live_document', 'compose_live_document'].includes(tool.name)).map(tool => ({ name: tool.name, description: tool.description })), fallback: 'Use available desktop tools for unsupported applications and operations. Never edit the on-disk file to modify an open unsaved document.' },

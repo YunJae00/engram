@@ -80,7 +80,7 @@ import {
   listRoutines,
   listSkills,
   annotateStaleCards,
-  rankSkillCards,
+  relevantSkillCards,
   recordSkillUse,
   readSkillsLedger,
   installSkill,
@@ -2262,6 +2262,8 @@ export function registerIpc(ctx: VaultContext): void {
             workdir: engineCwd(paths),
             tools: [...cometTools({
               paths,
+              batchReads: process.env.ENGRAM_BATCH_READS !== '0',
+              onMetric: metric => flog('harness', JSON.stringify(metric)),
               skillNotes: () => ctx.store.getAll(),
               // The web is on the menu whenever a browser is installed. Whether
               // the machine can afford to open it is decided at the moment of
@@ -2339,7 +2341,9 @@ export function registerIpc(ctx: VaultContext): void {
           {
             signal,
             // Index only; bodies and current staleness are checked on open_skill.
-            skills: rankSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger),
+            skills: relevantSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
+            compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
+            onMetric: metric => flog('harness', JSON.stringify(metric)),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
             persona: bot.purpose

@@ -6,6 +6,8 @@ import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool }
 import { screenPrompt, textStepTools } from './agent-screen.js'
 import { collectResult, DESKTOP_TOOL_ISOLATION_MESSAGE, extractJson, type Engine, type EngineCwd } from './engine/types.js'
 import { checkOfficeResult } from './office-verification.js'
+import type { WebPage } from './errand.js'
+import type { HarnessMetric } from './harness-metrics.js'
 
 // The comet's working loop: think → pick ONE tool → run it → look at what
 // came back, a handful of times, then answer. Open-ended agent loops drift,
@@ -32,6 +34,7 @@ export interface AgentToolContext {
 export interface ToolOutcome {
   text: string
   image?: { data: string; mimeType: string }
+  page?: WebPage
 }
 
 export interface AgentTool {
@@ -54,6 +57,8 @@ export interface AgentLoopDeps {
 }
 
 export interface AgentLoopOptions {
+  compactObservations?: boolean
+  onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal
   attachmentContext?: string
   // One line of identity ("You are <name>... charter: ...") carried at the
@@ -154,7 +159,7 @@ function sameArgs(a: Record<string, unknown>, b: Record<string, unknown>): boole
 // typed into a website: told that the procedure is called "work log upload",
 // the model typed that name into the log as the day's work, and it passed a
 // check that counted the loop's own scaffolding as reading.
-const CONTENT_TOOLS = new Set(['search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web'])
+const CONTENT_TOOLS = new Set(['read_pages', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
@@ -361,6 +366,7 @@ async function agentLoop(
     if (options.signal?.aborted) throw new Error('canceled')
     tools = menu(steps)
     let raw: string
+    const modelStarted = performance.now()
     try {
       raw = await collectResult(deps.engine, {
         prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills, options.resume), options.onScreen, deps.tools, options.attachmentContext),
@@ -384,6 +390,7 @@ async function agentLoop(
       const result = await wrapUp('calls').catch(() => ({ answer: 'The task did not finish.', steps, fellBack: false, stopped: 'calls' as const }))
       return { ...result, incomplete: `The model could not continue: ${reason}`, answer: `${result.answer}\n\nStopped: ${reason}` }
     }
+    options.onMetric?.({ kind: 'model', operation: 'step', ms: Math.round(performance.now() - modelStarted) })
     const parsed = parseStep(raw, tools)
     if (!parsed) {
       // A broken shape gets one more try; two in a row means this model is
@@ -438,6 +445,7 @@ async function agentLoop(
     const tool = tools.find((t) => t.name === parsed.tool)!
     options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, parsed.args) ?? summarizeArgs(parsed.args)}`)
     let observation: string
+    const toolStarted = performance.now()
     try {
       observation = await tool.run(parsed.args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
       // A question to the person IS the answer: carrying on would mean
@@ -451,6 +459,7 @@ async function agentLoop(
       if (options.signal?.aborted) throw new Error('canceled')
       observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`.slice(0, OBSERVATION_CAP)
     }
+    options.onMetric?.({ kind: 'tool', operation: tool.name, ms: Math.round(performance.now() - toolStarted) })
     options.onObservation?.(parsed.tool, observation)
     steps.push({ tool: parsed.tool, args: desktopStepArgs(parsed.tool, parsed.args), observation })
     await followRead(deps, task, steps, options, followed)

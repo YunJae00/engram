@@ -2,7 +2,8 @@ import { expect, test, chromium, type Browser, type Page } from '@playwright/tes
 import { createServer, type Server } from 'node:http'
 import { chooseOption, handOn, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText } from '../src/main/page-actions.js'
 import { revealText } from '../src/main/page-reveal.js'
-import { readFrames } from '../src/main/page-reader.js'
+import { observationOf, readFrames } from '../src/main/page-reader.js'
+import { browserReadBatch, pageDelta, pageReport, type WebPage } from 'core'
 
 // The reader and the hands against the ways real pages are built: a control
 // drawn inside a shadow root, one inside a frame, a tab whose panel is
@@ -169,6 +170,50 @@ test('search boxes take words and Enter; a form that posts is refused, and stays
   const send = await pressOn(page, 'Send')
   expect(send.refused).toBe('Send')
   expect(posted).toBe(0)
+})
+
+test('old numbered controls cannot target an inserted or replaced element', async () => {
+  await page.setContent('<button aria-label="First" onclick="document.body.dataset.pressed=\'first\'">First</button><button aria-label="Second">Second</button>')
+  await readFrames(page)
+  await page.evaluate(() => { const node = document.createElement('button'); node.textContent = 'Inserted'; document.body.prepend(node) })
+  expect(await handOn(page, '#1')).toEqual({ none: true })
+  expect(await page.locator('body').getAttribute('data-pressed')).toBeNull()
+  await readFrames(page)
+  expect('hand' in await handOn(page, '#2')).toBe(true)
+  await page.evaluate(() => { const node = document.querySelector('[aria-label="First"]')!; node.replaceWith(node.cloneNode(true)) })
+  expect(await handOn(page, '#2')).toEqual({ none: true })
+  await page.reload()
+  expect(await handOn(page, '#2')).toEqual({ none: true })
+})
+
+test('fresh browser observations compact without losing current state and batched reads match individual reads', async () => {
+  const content = Array.from({ length: 18 }, (_, n) => `<p>Row ${n}: ${'Stable visible record. '.repeat(3)}</p>`).join('')
+  await page.setContent(`<title>Records</title>${content}<p id="value">Current value: 1</p><button>Next</button>`)
+  const read = async (): Promise<WebPage> => {
+    const current = await readFrames(page)
+    return { url: page.url(), title: await page.title(), text: current.text, controls: current.lines, observation: { ...observationOf(page) } }
+  }
+  const delta = pageDelta()
+  let fullChars = 0, sentChars = 0
+  const started = Date.now()
+  for (let i = 1; i <= 4; i++) {
+    await page.locator('#value').evaluate((node, i) => { node.textContent = `Current value: ${i}` }, i)
+    const current = await read()
+    const sent = delta(current)!
+    fullChars += pageReport(current).length
+    sentChars += sent.length
+    expect(sent).toContain(`Current value: ${i}`)
+    expect(sent).toContain('[button] Next')
+  }
+  expect(sentChars).toBeLessThan(fullChars * 0.7)
+  const requests = ['one', 'two', 'three'].map(value => ({ url: `${siteUrl}search?q=${value}`, ready: `results for ${value}` }))
+  const fetchPage = async (url: string) => { await page.goto(url); return read() }
+  const separate = []
+  for (const request of requests) separate.push((await fetchPage(request.url)).text)
+  const batch = await browserReadBatch({ fetchPage }).run({ pages: requests }, { task: 'Read the three known results' })
+  expect(batch).toContain('Batch read: 3/3')
+  for (const text of separate) expect(batch).toContain(text)
+  console.log(JSON.stringify({ scenario: 'browser-observation-comparison', fullChars, sentChars, observedPages: 4, separateToolCalls: 3, batchToolCalls: 1, elapsedMs: Date.now() - started }))
 })
 
 test('a select, a hover menu, an endless page and a key', async () => {

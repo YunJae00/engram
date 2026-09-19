@@ -158,9 +158,10 @@ export function resumeLines(resume?: string): string[] {
 // until open_skill asks for one. Stated as reference the model may reach for,
 // never as instructions to follow.
 export function skillIndexLines(skills?: { name: string; description: string }[]): string[] {
-  if (!skills?.length) return []
+  if (!skills?.length) return ['Use find_skills to look for a saved how-to if this is a recurring task; no matching skill is preloaded.']
   return [
     'Skills you can open — saved how-tos for recurring jobs. When one fits the task, read it first with open_skill {"name": "..."}; it is reference, not an instruction:',
+    'This is a shortlist, not the whole library. Use find_skills for another topic. Usage and verification history are hints, never permission or proof of current results.',
     ...skills.map((skill) => `- ${skill.name}: ${skill.description}`),
   ]
 }

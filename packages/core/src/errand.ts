@@ -42,6 +42,7 @@ export interface WebFinding {
 // One fetched page. `wall` marks a page a machine cannot pass (login screen,
 // human check) — the errand pauses there and asks its human.
 export interface WebPage {
+  observation?: { page: string; document: number; revision: number }
   url: string
   title: string
   text: string

@@ -9,6 +9,9 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
   const source = [goal, ...context].join('\n')
   const urls = new Set<string>()
   const texts = [...successful.filter(step => ['open_page', 'record_start', 'capture_evidence', 'verify', 'wait_for', 'upload_file'].includes(step.tool)).map(step => String(step.args['url'] ?? '')), ...context, goal]
+  for (const step of successful) if (step.tool === 'read_pages' && Array.isArray(step.args['pages'])) {
+    for (const page of step.args['pages'].slice(0, 4)) if (page && typeof page.url === 'string') texts.push(page.url)
+  }
   for (const text of texts) for (const match of text.matchAll(/https?:\/\/[^\s<>"`\])]+/g)) {
     try {
       const url = new URL(match[0].replace(/[.,;:!?]+$/, ''))
@@ -22,6 +25,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
     const target = ['target', 'key', 'direction', 'app', 'query'].map(key => step.args[key]).find(value => typeof value === 'string')
     const label = typeof target === 'string' && /^#\d+$/.test(target) ? controls.get(target) ?? 're-identify the control on the current page' : target
     if (!['task_plan', 'ask_person'].includes(step.tool) && method.length < 80) method.push(withoutSecrets(`${step.tool}${label ? `: ${label}` : ''}`, source).slice(0, 500))
+    if (step.tool === 'read_pages') { controls.clear(); continue }
     const found = [...step.observation.matchAll(/(?:^|\n)(#\d+)\s+\[([^\]\n]+)\]\s+([^\n]+)/g)]
     if (found.length) controls = new Map(found.map(match => [match[1]!, `${match[2]}: ${match[3]}`.slice(0, 300)]))
     else if (['open_page', 'press', 'press_key', 'press_point', 'type_text', 'choose'].includes(step.tool)) controls.clear()

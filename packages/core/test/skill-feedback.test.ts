@@ -1,10 +1,31 @@
 import { expect, it } from 'vitest'
-import { installSkill, markSkillUsed, rankSkillCards, readSkillsLedger, recordSkillUse, readSkillFile, turnSkillCandidate, writeSkillsLedger } from '../src/skills.js'
+import { installSkill, markSkillUsed, rankSkillCards, relevantSkillCards, readSkillsLedger, recordSkillUse, readSkillFile, turnSkillCandidate, writeSkillsLedger } from '../src/skills.js'
 import type { AgentLoopResult } from '../src/agent-loop.js'
 import type { VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
 const draft = { title: 'Check outputs', description: 'When validating outputs', body: '## Steps\n' + 'Read and verify the output. '.repeat(8) }
+
+it('shortlists related skills without letting popularity make an unrelated skill relevant', () => {
+  const cards = Array.from({ length: 8 }, (_, i) => ({ name: `engram-report-${i}`, description: 'Read report totals' }))
+  const ledger = { other: { folder: '', hash: '', distilledAt: '', used: 1000 }, 'report-7': { folder: '', hash: '', distilledAt: '', verifiedChecks: 2 } }
+  const selected = relevantSkillCards([...cards, { name: 'engram-other', description: 'Prepare presentations' }], ledger, 'report totals')
+  expect(selected).toHaveLength(5)
+  expect(selected[0]?.name).toBe('engram-report-7')
+  expect(selected.some(card => card.name === 'engram-other')).toBe(false)
+  expect(relevantSkillCards(cards, ledger, 'gardening')).toEqual([])
+})
+
+it('distinguishes a successful turn from a fresh verified checkpoint', async () => {
+  const { paths, candidate, result } = await fixture()
+  await recordSkillUse(paths, result)
+  expect((await readSkillsLedger(paths))[candidate.slug]?.verifiedChecks).toBeUndefined()
+  result.steps.push({ tool: 'verify', args: { id: 'total', url: 'https://example.com/' }, observation: JSON.stringify({ verification: { id: 'total', url: 'https://example.com/', at: new Date().toISOString(), status: 'passed' } }) })
+  await recordSkillUse(paths, result)
+  expect((await readSkillsLedger(paths))[candidate.slug]?.verifiedChecks).toBe(1)
+  await recordSkillUse(paths, { ...result, asked: true })
+  expect((await readSkillsLedger(paths))[candidate.slug]?.verifiedChecks).toBe(1)
+})
 async function fixture() {
   const paths = { workspace: await tmpVaultRoot('skill-feedback') } as VaultPaths
   const candidate = turnSkillCandidate('Check', 'Verify outputs')

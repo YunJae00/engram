@@ -51,6 +51,8 @@ export function recordedSteps(steps: TurnStep[]): RoutineStep[] {
   let keyContextRecorded = true
   const pushRead = (): void => { if (out.length === 0 || out[out.length - 1]!.kind !== 'read') out.push({ kind: 'read' }) }
   for (const step of successfulTurnSteps(steps)) {
+    // Batch checks cannot be represented by the legacy click-only replay format.
+    if (step.tool === 'read_pages') return []
     if (step.tool === 'open_page') {
       const url = words(step.args, 'url')
       if (/^https?:\/\//i.test(url)) {
