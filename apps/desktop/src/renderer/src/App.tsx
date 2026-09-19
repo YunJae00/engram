@@ -39,6 +39,7 @@ const QuickCapture = lazy(() => import('./views/QuickCapture.js').then((m) => ({
 const ReviewOverlay = lazy(() => import('./views/ReviewOverlay.js').then((m) => ({ default: m.ReviewOverlay })))
 const SettingsView = lazy(() => import('./views/SettingsView.js').then((m) => ({ default: m.SettingsView })))
 const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: m.SkyView })))
+const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) => ({ default: m.DevelopersView })))
 
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
@@ -50,6 +51,13 @@ function Shell() {
   const [action, setAction] = useState<PaletteAction | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general')
+  useEffect(() => {
+    const open = () => { setSettingsOpen(false); setActivity('developers') }
+    const settings = () => { setSettingsSection('developers'); setSettingsOpen(true) }
+    window.addEventListener('engram:open-developers', open)
+    window.addEventListener('engram:open-developer-settings', settings)
+    return () => { window.removeEventListener('engram:open-developers', open); window.removeEventListener('engram:open-developer-settings', settings) }
+  }, [setActivity])
   const [diagOpen, setDiagOpen] = useState(false)
   // "Back up to GitHub" — reachable from the workspace switcher, settings, and
   // the command palette; they all raise this one window intent.
@@ -196,13 +204,13 @@ function Shell() {
 
   return (
     <div
-      className={`shell sidebar-${sidebarOpen ? 'open' : 'closed'}`}
+      className={`shell sidebar-${sidebarOpen && activity !== 'developers' ? 'open' : 'closed'}`}
       data-testid="shell"
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }}
       onDrop={(event) => event.preventDefault()}
     >
       <AppSidebar
-        open={sidebarOpen}
+        open={sidebarOpen && activity !== 'developers'}
         onToggle={() => setSidebarOpen((value) => !value)}
         onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
         onOpenPalette={() => setPalette('search')}
@@ -210,7 +218,7 @@ function Shell() {
         selectedRoutineId={selectedRoutineId}
         onSelectRoutine={setSelectedRoutineId}
       />
-      {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && activity !== 'developers' && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
       <main className="app-main">
         <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} splitLayout={activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
         <EvidenceRecording />
@@ -256,6 +264,7 @@ function Shell() {
             </div>
             {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
+            {activity === 'developers' && <Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView onBack={() => setActivity('bots')} /></Suspense>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
                 <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />

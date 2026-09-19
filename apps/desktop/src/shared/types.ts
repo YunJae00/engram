@@ -2,6 +2,7 @@
 // the filesystem — only these.
 // MCP hookup (satellites): the generated client config + connect outcomes.
 import type { DesktopApi, DesktopControlStatusDto } from './desktop.js'
+import type { DevelopersApi, DevUpdate } from './developers.js'
 import type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
@@ -368,6 +369,7 @@ export interface PendingWorkDto {
 export interface BrowserTabDto { id: string; url: string; title?: string; active: boolean }
 
 export type EngramEvent =
+  | { type: 'dev:changed'; update: DevUpdate | null }
   | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
   | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null; reason?: string }
   | { type: 'desktop:changed' }
@@ -537,7 +539,7 @@ export type AgentInputDto =
 
 export interface NativeSurfaceDto { lane: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
-export interface EngramApi extends DesktopApi {
+export interface EngramApi extends DesktopApi, DevelopersApi {
   artifactReveal(id: string): Promise<void>
   evidenceStatus(): Promise<{ lane: string; started: number; frames: number }[]>
   evidenceStop(lane: string): Promise<unknown>

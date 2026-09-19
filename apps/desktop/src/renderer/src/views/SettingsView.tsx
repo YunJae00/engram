@@ -11,7 +11,7 @@ import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
-import { ExternalConnections } from '../components/ExternalConnections.js'
+import { DeveloperSettings } from '../components/DeveloperSettings.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 
 // Only local settings gate the sheet. Network and runtime probes fill their
@@ -26,7 +26,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0 }, [section])
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
-  const [sessionWatch, setSessionWatch] = useState<boolean | null>(null)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
@@ -41,7 +40,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
       api.settingsGet().then((value) => { if (alive) { setSettings(value); setReady(true) } }).catch(() => { if (alive) setReady(true) }),
       api.appVersion().then(setVersion),
       api.activityGet().then(setDeskJournal),
-      api.sessionWatchGet().then(setSessionWatch),
       // What the updater already knows, shown without a click — a downloaded
       // update used to hide behind Check now.
       api.updateState().then(setUpdate),
@@ -147,29 +145,14 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
               }
             />
           </label>
-          <label className="setting-row">
-            <span>{t('settings.sessionWatch')}</span>
-            <input
-              type="checkbox"
-              className="switch"
-              data-testid="setting-session-watch"
-              checked={sessionWatch ?? false}
-              onChange={(e) =>
-                void api
-                  .sessionWatchSet(e.target.checked)
-                  .then(setSessionWatch)
-                  .catch(() => void api.sessionWatchGet().then(setSessionWatch))
-              }
-            />
-          </label>
         </div>
-        <details className="setting-hint"><summary>What gets remembered</summary><p>App activity records foreground app and window titles. Coding sessions are collected from connected coding tools for your memory.</p></details>
+        <details className="setting-hint"><summary>What gets remembered</summary><p>App activity records foreground app and window titles. Coding-session collection is managed in Developers.</p></details>
         </section>
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
         <h2>AI connection</h2>
         {section === 'ai' && <EngineSettings />}
         </section>
-        <section className="settings-panel" hidden={section !== 'connections'} aria-label="External connections">{section === 'connections' && <ExternalConnections />}</section>
+        <section className="settings-panel" hidden={section !== 'developers'} aria-label="Developers">{section === 'developers' && <DeveloperSettings />}</section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         <details className="settings-more" data-testid="settings-more">
           <summary>{t('settings.more')}</summary>
@@ -230,12 +213,14 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </div>
 
         <div className="dialog-actions">
+          {section === 'developers' ? <><span className="setting-hint">Changes apply immediately.</span><button className="primary" onClick={onClose}>Done</button></> : <>
           <button className="secondary" onClick={onClose}>
             {t('settings.cancel')}
           </button>
           <button className="primary" onClick={() => void save()}>
             {t('settings.save')}
           </button>
+          </>}
         </div>
       </div>
       {showDiagnostics && <DiagnosticsView onClose={() => setShowDiagnostics(false)} />}

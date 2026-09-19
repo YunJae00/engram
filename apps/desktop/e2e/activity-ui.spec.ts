@@ -80,7 +80,8 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
       return { center: icon.left + icon.width / 2, label: row.lastElementChild!.getBoundingClientRect().left }
     })
   })
-  expect(positions).toHaveLength(5)
+  await expect(menu.getByTestId('activity-developers')).toBeVisible()
+  expect(positions).toHaveLength(6)
   expect(Math.max(...positions.map((p) => p.center)) - Math.min(...positions.map((p) => p.center))).toBeLessThanOrEqual(1)
   expect(Math.max(...positions.map((p) => p.label)) - Math.min(...positions.map((p) => p.label))).toBeLessThanOrEqual(1)
   await page.keyboard.press('Escape')

@@ -128,3 +128,5 @@ export { resolveTheme, THEME_NEEDED, type OfficeTheme, type ThemeInput } from '.
 export { renameWithRetry } from './rename-with-retry.js'
 export type { ReasoningEffort } from './engine/types.js'
 export { REASONING_EFFORTS } from './engine/types.js'
+export { gitEnv, bundledGitEnv } from './git.js'
+export { changeHunks, undoChangeHunk } from './change-review.js'

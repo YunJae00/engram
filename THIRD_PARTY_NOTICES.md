@@ -4,7 +4,7 @@ Engram is licensed under MIT. Third-party software retains its own licenses.
 
 ## OpenAI Codex
 
-This application includes the unmodified OpenAI Codex CLI, platform executable, and TypeScript SDK (0.150.1), licensed under the Apache License, Version 2.0.
+This application includes the unmodified OpenAI Codex CLI, platform executable, and TypeScript SDK (0.155.1), licensed under the Apache License, Version 2.0.
 
 Source: https://github.com/openai/codex
 
@@ -15,6 +15,8 @@ Copyright 2025 OpenAI. The complete license distributed with the SDK follows bel
 The Anthropic Claude runtime and Agent SDK are not included in this installer. Users install the official packages separately and authenticate through Anthropic's own flow. Anthropic's applicable terms govern their use: https://code.claude.com/docs/en/legal-and-compliance
 
 ## Apache License, Version 2.0
+
+The Apache license below applies to OpenAI Codex. Additional editor notices follow it.
 
 Apache License
                            Version 2.0, January 2004
@@ -217,3 +219,29 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+## Code highlighting
+
+`@codemirror/lang-javascript` (6.2.5): Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others.
+
+`@lezer/highlight` (1.2.3): Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others.
+
+Both packages are distributed under the following MIT License:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

@@ -5,7 +5,7 @@ import { createElement, type ReactNode } from 'react'
 // for note bodies the user authored, but the brief is model output, so it gets
 // a renderer that builds React elements (every string is auto-escaped) and
 // understands only a small, safe subset: ATX headings, unordered bullets, bold,
-// italic and inline code. Anything else renders as literal text.
+// italic, inline code and fenced code. Anything else renders as literal text.
 
 const HEADING = /^(#{1,6})\s+(.*)$/
 const BULLET = /^\s*[-*]\s+(.*)$/
@@ -40,12 +40,19 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 // Parse block structure (headings, bullet lists, paragraphs) into React nodes.
 // Consecutive bullet lines fold into one <ul>; consecutive plain lines into one
 // <p>; blank lines and headings flush whatever is buffered.
-export function renderMarkdown(src: string): ReactNode[] {
+export function renderMarkdown(src: string, codeBlock?: (text: string, language: string, key: string) => ReactNode): ReactNode[] {
   const lines = src.replace(/\r\n?/g, '\n').split('\n')
   const blocks: ReactNode[] = []
   let para: string[] = []
   let items: string[] = []
   let key = 0
+  let fence: { marker: string; language: string; lines: string[] } | undefined
+  const flushCode = () => {
+    if (!fence) return
+    const id = `code${key++}`, text = fence.lines.join('\n')
+    blocks.push(codeBlock ? codeBlock(text, fence.language, id) : <pre key={id}><code data-language={fence.language || undefined}>{text}</code></pre>)
+    fence = undefined
+  }
 
   const flushPara = () => {
     if (para.length === 0) return
@@ -67,6 +74,17 @@ export function renderMarkdown(src: string): ReactNode[] {
   }
 
   for (const raw of lines) {
+    if (fence) {
+      if (new RegExp(`^ {0,3}${fence.marker[0]}{${fence.marker.length},}\\s*$`).test(raw)) flushCode()
+      else fence.lines.push(raw)
+      continue
+    }
+    const opening = /^ {0,3}(`{3,}|~{3,})([^`]*)$/.exec(raw)
+    if (opening) {
+      flushPara(); flushList()
+      fence = { marker: opening[1]!, language: opening[2]!.trim().split(/\s/)[0] ?? '', lines: [] }
+      continue
+    }
     const line = raw.replace(/\s+$/, '')
     const heading = HEADING.exec(line)
     const bullet = BULLET.exec(line)
@@ -89,5 +107,6 @@ export function renderMarkdown(src: string): ReactNode[] {
   }
   flushPara()
   flushList()
+  flushCode()
   return blocks
 }

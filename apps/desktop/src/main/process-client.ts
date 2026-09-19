@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { Readable, Writable } from 'node:stream'
 import { Worker } from 'node:worker_threads'
 
-interface Options { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal }
+interface Options { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal; killTree?: boolean }
 
 // Process creation itself can block on Windows. Keep it off the UI's main thread.
 export class ProcessClient extends EventEmitter {
@@ -22,7 +22,7 @@ export class ProcessClient extends EventEmitter {
     super()
     options.signal?.throwIfAborted()
     this.worker = new Worker(new URL('./process-worker.js', import.meta.url), {
-      workerData: { command, args, cwd: options.cwd, env: options.env ?? { ...process.env } },
+      workerData: { command, args, cwd: options.cwd, env: options.env ?? { ...process.env }, killTree: options.killTree === true },
     })
     this.stdout = this.output('stdout')
     this.stderr = this.output('stderr')
@@ -89,6 +89,14 @@ export class ProcessClient extends EventEmitter {
     this.killed = true
     this.worker.postMessage({ type: 'kill', signal })
     return true
+  }
+  waitForClose(timeout = 20_000): Promise<void> {
+    if (this.closed) return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      const closed = () => { clearTimeout(timer); resolve() }
+      const timer = setTimeout(() => { this.off('close', closed); reject(new Error('The owned process did not stop in time.')) }, timeout)
+      this.once('close', closed)
+    })
   }
 }
 

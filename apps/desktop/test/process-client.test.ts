@@ -3,7 +3,7 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { once } from 'node:events'
 import { build } from 'esbuild'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 
 it('streams through a worker, preserves exit/errors, and cancels during startup', async () => {
   await mkdir(resolve('tmp'), { recursive: true })
@@ -45,4 +45,18 @@ it('streams through a worker, preserves exit/errors, and cancels during startup'
   blocked.stdin.end()
   blocked.kill()
   await drained
+
+  if (process.platform === 'win32') {
+    const tree = new ProcessClient(process.execPath, ['-e', "const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});process.stdout.write(String(child.pid)+'\\n');setInterval(()=>{},1000)"], { killTree: true })
+    tree.stderr.resume()
+    const closedTree = once(tree, 'close')
+    try {
+      const [data] = await once(tree.stdout, 'data')
+      const ownedPid = Number(String(data).trim())
+      expect(Number.isInteger(ownedPid) && ownedPid > 0).toBe(true)
+      tree.kill()
+      await closedTree
+      await vi.waitFor(() => expect(() => process.kill(ownedPid, 0)).toThrow(), { timeout: 5000 })
+    } finally { tree.kill() }
+  }
 }, 120000)

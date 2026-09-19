@@ -39,7 +39,7 @@ export function ExternalConnections() {
     try { await work() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Connection failed. Try again.') }
     finally { working.current = false; setBusy('') }
   }
-  return <div className="external-connections">
+  return <section className="external-connections" aria-label="External connections">
     <h2>External connections</h2>
     <p className="setting-hint">Use Engram’s tools from your preferred AI client. Keep Engram open while you work.</p>
     <div className="external-access"><div><strong>Allow local connections</strong><small>Off again when Engram restarts</small></div><input aria-label="Allow local connections for this app session" type="checkbox" role="switch" checked={status?.enabled ?? false} disabled={!!busy || !status} onChange={event => { const enabled = event.target.checked; setStatus(value => value ? { ...value, enabled } : value); void act('toggle', async () => { try { setStatus(await api.mcpEnable(enabled)) } catch (cause) { setStatus(await api.mcpStatus()); throw cause } }) }} /></div>
@@ -62,5 +62,5 @@ export function ExternalConnections() {
     <div className="external-actions"><button className="secondary" disabled={!!busy || checking} onClick={() => void act('refresh', refresh)}><RefreshCw size={14} className={checking ? 'computer-spinner' : ''} aria-hidden />Check status</button><button className="secondary" disabled={!!busy} onClick={() => void act('copy', async () => { await api.copyText((await api.mcpInfo()).configJson); setMessage('MCP configuration copied.') })}><Copy size={14} aria-hidden />Copy configuration</button>{!!status?.connected && <button className="secondary" disabled={!!busy} onClick={() => void act('stop', async () => { await api.mcpStop(); setStatus(await api.mcpStatus()); setMessage('Sessions stopped. Check any partial changes before retrying.') })}>Stop sessions</button>}</div>
     {message && <p className="external-feedback" role="status">{message}</p>}
     {error && <p className="external-feedback" role="alert">{error}</p>}
-  </div>
+  </section>
 }

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, List, Orbit, Repeat, Search, User, Users } from 'lucide-react'
+import { Check, ChevronDown, Code2, List, Orbit, Repeat, Search, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -147,6 +147,7 @@ export function WorkspaceSwitcher({ activity, onNavigate, onOpenRoutines, onOpen
             ] as const).map(([key, label, icon]) => <button key={key} className={`sidebar-nav-row${activity === key ? ' active' : ''}`} aria-current={activity === key ? 'page' : undefined} data-testid={`activity-${key}`} onClick={() => { setOpen(false); onNavigate(key) }}>{icon}<span>{label}</span></button>)}
             <button className={`sidebar-nav-row${activity === 'routines' ? ' active' : ''}`} aria-current={activity === 'routines' ? 'page' : undefined} data-testid="activity-routines" onClick={() => { setOpen(false); onOpenRoutines() }}><Repeat size={17} aria-hidden /><span>Routines</span></button>
             <button className="sidebar-nav-row" onClick={() => { setOpen(false); onOpenPalette() }}><Search size={17} aria-hidden /><span>{t('sidebar.search')}</span></button>
+            <button className="sidebar-nav-row" data-testid="activity-developers" onClick={() => { setOpen(false); window.dispatchEvent(new Event('engram:open-developers')) }}><Code2 size={17} aria-hidden /><span>Developers</span></button>
           </nav>
           <div className="workspace-divider" />
           <details className="workspace-management"><summary>Workspaces<ChevronDown size={13} aria-hidden /></summary>

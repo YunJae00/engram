@@ -40,6 +40,7 @@ import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
 import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
 import { closeOfficeHost, primeOffice } from './office-host.js'
 import { stopDesktopControl } from './desktop-control.js'
+import { developersRunning, registerDevIpc, stopDevelopers } from './dev-ipc.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -484,6 +485,7 @@ function registerBaseIpc(): void {
   // which used to log "No handler registered for 'settings:get'" on machines
   // with no vault configured yet.
   registerSettingsIpc()
+  registerDevIpc()
   // MCP hookup is app-level too (paths only — no vault access at register time).
   registerMcpIpc()
   registerEvidenceIpc()
@@ -725,10 +727,10 @@ app.on('before-quit', (event) => {
   stopDesktopControl('Engram is closing.')
   closeDesktopAccess()
   quitting = true
-  if (nativeBrowserRunning()) {
+  if (nativeBrowserRunning() || developersRunning()) {
     event.preventDefault()
     abortAllChat()
-    void closeAgentBrowser({ force: true }).finally(() => app.quit())
+    void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers()]).finally(() => app.quit())
   }
 })
 
