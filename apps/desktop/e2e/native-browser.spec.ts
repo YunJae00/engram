@@ -200,7 +200,7 @@ test('occlusion keeps native layout while a dialog hides it immediately and rest
   try {
     await shell.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange')) })
     await expect.poll(lastCount).toBeGreaterThan(0)
-    await shell.evaluate(() => { const modal = document.createElement('div'); modal.id = 'fixture-modal'; modal.role = 'dialog'; modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white'; document.body.append(modal) })
+    await shell.evaluate(() => { const modal = document.createElement('dialog'); modal.id = 'fixture-modal'; modal.textContent = 'Delete conversation?'; document.body.append(modal); modal.showModal() })
     await expect.poll(lastCount, { intervals: [10], timeout: 1000 }).toBe(0)
     await shell.evaluate(() => document.querySelector('#fixture-modal')?.remove())
     await expect.poll(lastCount, { intervals: [10], timeout: 1000 }).toBeGreaterThan(0)
@@ -234,10 +234,61 @@ test('folding a tile conversation and dismissing its picker keep the native page
     return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === node
   })).toBe(true)
   await first.goto('about:blank')
-  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
   await expect(tile.getByTestId('native-browser-surface')).toHaveCount(0)
   await expect(draft).toHaveValue('Keep the conversation draft')
   await first.goto(`${url}/?pane=0`)
   await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
   await expect(tile.getByTestId('native-browser-surface')).toBeVisible()
+})
+
+test('split panes expose independent selected tabs and retain a blank new tab', async () => {
+  const tile = shell.getByTestId('mission-tile-0')
+  const tabs = tile.getByRole('tablist', { name: 'Browser tabs' })
+  await expect(tabs.getByRole('tab')).toHaveCount(1)
+  await tabs.getByRole('button', { name: 'New tab', exact: true }).click()
+  await expect(tabs.getByRole('tab')).toHaveCount(2)
+  await expect(tabs.getByRole('tab').last()).toHaveAttribute('aria-selected', 'true')
+  await expect(tile.locator('.browser-start')).toBeVisible()
+  await tabs.getByRole('tab').first().click()
+  await expect(tabs.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true')
+  await expect(tile.getByTestId('live-address')).toHaveValue(`${url}/?pane=0`)
+  await expect(shell.getByTestId('mission-tile-1').getByRole('tab')).toHaveCount(1)
+  await tabs.getByRole('button', { name: 'Close New tab' }).click()
+  await expect(tabs.getByRole('tab')).toHaveCount(1)
+})
+
+test('a background shell focus request does not raise the application', async () => {
+  const coverId = await app.evaluate(({ BrowserWindow }) => {
+    const cover = new BrowserWindow({ width: 360, height: 240, show: true })
+    cover.focus()
+    return cover.id
+  })
+  try {
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.isFocused(), coverId)).toBe(true)
+    await shell.evaluate(async () => {
+      window.engram.nativeFocusShell()
+      ;(document.querySelector('textarea') as HTMLElement | null)?.focus()
+      await new Promise(resolve => setTimeout(resolve, 300))
+    })
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.isFocused(), coverId)).toBe(true)
+  } finally {
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.destroy(), coverId)
+  }
+})
+
+test('conversation deletion opens above the live browser without deleting on cancel', async () => {
+  await shell.getByTestId(`sidebar-chat-menu-${ids[0]}`).click()
+  await shell.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(shell.getByRole('dialog', { name: 'Delete conversation?' })).toBeVisible()
+  await shell.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(shell.getByRole('dialog', { name: 'Delete conversation?' })).toHaveCount(0)
+  await expect(shell.getByTestId(`bot-${ids[0]}`)).toBeVisible()
+  await shell.evaluate(() => window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Native fixture folder' } }))
+  await shell.getByRole('button', { name: 'Options for Native fixture folder', exact: true }).click()
+  await shell.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(shell.getByRole('dialog', { name: 'Delete folder?' })).toBeVisible()
+  await shell.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(shell.getByRole('dialog', { name: 'Delete folder?' })).toHaveCount(0)
+  await shell.screenshot({ path: join(tmp, 'release-0710-split.png') })
 })

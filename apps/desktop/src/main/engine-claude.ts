@@ -4,6 +4,7 @@ import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 import { loadClaudeSdk } from './claude-runtime.js'
+import { spawnRuntime } from './process-client.js'
 
 // The person's chosen model, read per call so a change in Settings or from
 // the composer takes hold on the very next turn. Empty means the app's own
@@ -83,7 +84,7 @@ export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
       })()
       const handle = sdk.query({
         prompt: silent,
-        options: { pathToClaudeCodeExecutable: binary, abortController: abort, tools: [], persistSession: false, settingSources: [], maxTurns: 1 },
+        options: { pathToClaudeCodeExecutable: binary, spawnClaudeCodeProcess: spawnRuntime, abortController: abort, tools: [], persistSession: false, settingSources: [], maxTurns: 1 },
       })
       const rows = await Promise.race([
         handle.supportedModels(),
@@ -164,6 +165,7 @@ export class ClaudeEngine implements CloudEngine {
         options: {
           cwd: job.workdir,
           pathToClaudeCodeExecutable: binary,
+          spawnClaudeCodeProcess: spawnRuntime,
           abortController: abort,
           // One answer, from the words alone: no files, no commands, and none
           // of the person's own runtime configuration riding along.

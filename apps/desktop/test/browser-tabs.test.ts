@@ -17,11 +17,14 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { registerBrowserTabs } from '../src/main/browser-tabs.js'
 
 test('tab selection stays within its conversation and cannot interrupt an active task', async () => {
-  const page = Object.assign(new EventEmitter(), { url: () => 'https://example.com', close: vi.fn() })
+  const page = Object.assign(new EventEmitter(), { url: () => 'https://example.com', title: async () => 'Fixture title', isClosed: () => false, close: vi.fn() })
   mocks.pages = [page]
   registerBrowserTabs(() => mocks.busy)
   const read = mocks.handlers.get('agent:tabs')
   const change = mocks.handlers.get('agent:tab')
+  ;(mocks.watch as (page: unknown, lane: string) => void)(page, 'one')
+  await new Promise(resolve => setImmediate(resolve))
+  expect(read(null, 'one')[0].title).toBe('Fixture title')
   const [tab] = read(null, 'one')
   await change(null, 'one', 'select', tab.id)
   expect(read(null, 'one')[0].active).toBe(true)

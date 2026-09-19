@@ -21,6 +21,7 @@ it('closes the host even when the browser disconnect never settles', async () =>
     const closing = helper.close()
     expect(helper.close()).toBe(closing)
     expect(child.stdin.writableEnded).toBe(true)
+    await expect(helper.request('layout', { views: [] })).rejects.toThrow('Embedded browser is closed')
     child.exitCode = 0
     child.emit('exit', 0)
     await closing

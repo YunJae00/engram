@@ -5,6 +5,17 @@ import { initVault } from '../src/vault.js'
 import { changeSidebarLayout, readSidebarLayout } from '../src/sidebar-layout.js'
 import { tmpVaultRoot } from './helpers.js'
 
+it('moves conversations without scanning or pruning the routine section', async () => {
+  const paths = await initVault(await tmpVaultRoot('sidebar-partial'), { git: false })
+  const initial = await changeSidebarLayout(paths, { kind: 'routine', change: { action: 'create-folder', name: 'Daily' } }, { chat: ['one', 'two'], routine: ['daily'] })
+  const folder = initial.routine.folders[0]!.id
+  const saved = await changeSidebarLayout(paths, { kind: 'routine', change: { action: 'move-item', id: 'daily', folder } }, { routine: ['daily'] })
+  const moved = await changeSidebarLayout(paths, { kind: 'chat', change: { action: 'move-item', id: 'two', folder: null, before: 'one' } }, { chat: ['one', 'two'] })
+  expect(moved.chat.items.map(item => item.id)).toEqual(['two', 'one'])
+  expect(moved.routine).toEqual(saved.routine)
+  expect((await readSidebarLayout(paths, { chat: ['one', 'two'] })).routine).toEqual(saved.routine)
+})
+
 it('organizes both sections, persists moves, keeps items when deleting folders, and rejects invalid destinations', async () => {
   const paths = await initVault(await tmpVaultRoot('sidebar'), { git: false })
   const ids = { chat: ['one', 'two', 'three'], routine: ['daily', 'weekly'] }

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { ProcessClient } from './process-client.js'
 import { createInterface } from 'node:readline'
 import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
 import type { ModelChoiceDto } from '../shared/types.js'
@@ -7,7 +7,7 @@ import { REASONING_EFFORTS, type ReasoningEffort } from 'core'
 // Account and catalog requests only. No threads, turns, tools or credentials
 // are exposed to the renderer; the bundled runtime owns authentication.
 export class CodexAccount {
-  private child: ChildProcessWithoutNullStreams
+  private child: ProcessClient
   private serial = 0
   private failure?: Error
   private pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>()
@@ -21,7 +21,7 @@ export class CodexAccount {
     signal.throwIfAborted()
     const binary = codexBinary()
     if (!binary) throw new Error('The ChatGPT runtime is not part of this build.')
-    this.child = spawn(binary, ['app-server'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: withHelpersOnPath(binary) })
+    this.child = new ProcessClient(binary, ['app-server'], { env: withHelpersOnPath(binary) })
     this.abort = () => this.close(new Error('Sign-in cancelled.'))
     this.timer = setTimeout(() => this.close(new Error('ChatGPT did not respond in time. Try again.')), timeout)
     signal.addEventListener('abort', this.abort, { once: true })

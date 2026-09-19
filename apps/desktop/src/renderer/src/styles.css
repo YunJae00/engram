@@ -1643,9 +1643,9 @@ body.bubble-host { background: transparent; }
 .browser-tabs { display: flex; align-items: flex-end; gap: 2px; flex: none; padding: 6px 8px 0; background: var(--canvas-bg); overflow-x: auto; scrollbar-width: none; }
 .browser-tabs::-webkit-scrollbar { display: none; }
 .browser-tab { display: flex; align-items: center; flex: 0 1 200px; min-width: 110px; height: 34px; border-radius: 9px 9px 0 0; background: transparent; }
-.browser-tab[data-active='true'] { background: var(--panel-bg); }
+.browser-tab[data-active='true'] { background: var(--hover-bg); box-shadow: inset 0 -2px var(--fg); }
 .browser-tab-face { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; padding: 0 6px 0 10px; height: 34px; background: none; border: 0; color: var(--fg-dim); cursor: pointer; }
-.browser-tab[data-active='true'] .browser-tab-face { color: var(--fg); }
+.browser-tab[data-active='true'] .browser-tab-face { color: var(--fg); font-weight: 600; }
 .browser-tab-icon { flex: none; display: inline-flex; align-items: center; width: 14px; height: 14px; }
 .browser-tab-icon img { width: 14px; height: 14px; border-radius: 3px; }
 .browser-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); }

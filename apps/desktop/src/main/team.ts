@@ -14,6 +14,7 @@ import type { GithubConnectResultDto, SyncStatusDto } from '../shared/types.js'
 import { broadcast, drainAbsorbQueue } from './ipc.js'
 import { isAllowedExternalUrl } from './security.js'
 import type { VaultContext } from './vault.js'
+import { vaultGit } from './vault-git.js'
 
 let teamSync: TeamSync | null = null
 
@@ -60,14 +61,7 @@ async function statusDto(ctx: VaultContext): Promise<SyncStatusDto> {
   if (!ctx.git) return { state: 'no-remote', ahead: 0, behind: 0 }
   if (statusCache && Date.now() - statusCache.at < STATUS_TTL_MS) return statusCache.value
   try {
-    const sync = syncOf(ctx)
-    // Local refs only. The badge poller (60s) outran this 45s cache by design,
-    // so every poll was a cache miss and every miss was a `git fetch`.
-    const [status, remote] = await Promise.all([sync.status({ fetch: false }), sync.remoteUrl()])
-    // The URL travels with the status so the backup dialog can show WHICH repo
-    // this vault is attached to. "Connected" without a name is a claim; with
-    // the repo spelled out it is something the user can verify.
-    statusCache = { value: { ...status, ...(remote ? { remote } : {}) }, at: Date.now() }
+    statusCache = { value: await vaultGit('status', ctx.paths.root), at: Date.now() }
     return statusCache.value
   } catch {
     return { state: 'error', ahead: 0, behind: 0 }

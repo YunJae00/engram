@@ -31,7 +31,7 @@ export function BrowserTabs({ channel, busy }: { channel: string; busy: boolean 
     catch (error) { showToast(error instanceof Error ? error.message : 'Could not change tabs') }
     finally { changing.current = false; setPending(false) }
   }
-  const shown = tabs.length ? tabs : [{ id: '', url: 'about:blank', active: true }]
+  const shown: BrowserTabDto[] = tabs.length ? tabs : [{ id: '', url: 'about:blank', active: true }]
   return <div className="browser-tabs" role="tablist" aria-label="Browser tabs" aria-busy={pending}>
     {shown.map(tab => {
       let origin: string | undefined
@@ -40,6 +40,7 @@ export function BrowserTabs({ channel, busy }: { channel: string; busy: boolean 
         const url = new URL(tab.url)
         if (url.protocol === 'https:' || url.protocol === 'http:') { origin = url.origin; title = url.hostname }
       } catch { /* Blank pages have no origin. */ }
+      title = tab.title || title
       return <div key={tab.id} className="browser-tab" data-active={tab.active}>
         <button role="tab" aria-selected={tab.active} className="browser-tab-face" disabled={busy || pending || !tab.id} onClick={() => void change('select', tab.id)} title={tab.url}>
           <span className="browser-tab-icon">{origin ? <SiteIcon origin={origin} /> : <Globe size={13} aria-hidden />}</span>

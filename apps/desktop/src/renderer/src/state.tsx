@@ -158,9 +158,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // background gets picked up the moment the user comes back, so the "AI
   // disconnected and I can't get it back" state self-heals without a restart.
   const lastEngineCheck = useRef(0)
+  const lastNoteCheck = useRef(0)
   useEffect(() => {
     const onFocus = () => {
-      void refreshNotes()
+      // Moving from a native page back to the composer also focuses the
+      // renderer. Notes already arrive as deltas; bound the recovery scan.
+      if (Date.now() - lastNoteCheck.current > 15_000) {
+        lastNoteCheck.current = Date.now()
+        void refreshNotes().catch(() => undefined)
+      }
       if (Date.now() - lastEngineCheck.current > 15_000) {
         lastEngineCheck.current = Date.now()
         void api.enginesRefresh().catch(() => undefined)

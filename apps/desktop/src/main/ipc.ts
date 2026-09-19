@@ -945,10 +945,16 @@ export function registerIpc(ctx: VaultContext): void {
   scheduleAutoTidy(ctx, 120_000)
 
   const { paths } = ctx
-  const sidebarIds = async () => ({ chat: (await loadBots(paths)).map(one => one.id), routine: (await listRoutines(paths)).map(one => one.id) })
-  ipcMain.handle('sidebar:layout', async () => readSidebarLayout(paths, await sidebarIds()))
+  const sidebarIds = async (kind?: unknown) => {
+    if (kind !== undefined && kind !== 'chat' && kind !== 'routine') throw new Error('Invalid sidebar section')
+    return {
+      ...(kind !== 'routine' ? { chat: (await loadBots(paths)).map(one => one.id) } : {}),
+      ...(kind !== 'chat' ? { routine: (await listRoutines(paths)).map(one => one.id) } : {}),
+    }
+  }
+  ipcMain.handle('sidebar:layout', async (_event, kind) => readSidebarLayout(paths, await sidebarIds(kind)))
   ipcMain.handle('sidebar:change', async (_event, request) => {
-    const value = await changeSidebarLayout(paths, request, await sidebarIds())
+    const value = await changeSidebarLayout(paths, request, await sidebarIds(request?.kind))
     broadcast({ type: 'bots:changed' })
     return value
   })

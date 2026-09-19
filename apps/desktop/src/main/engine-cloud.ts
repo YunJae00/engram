@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { ProcessClient } from './process-client.js'
 import { existsSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,9 +112,10 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
       login?.signal?.removeEventListener('abort', cancel)
       resolve({ code, out })
     }
-    let child: ReturnType<typeof spawn>
+    let child: ProcessClient
     try {
-      child = spawn(binary, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env } : {}) })
+      child = new ProcessClient(binary, args, { env })
+      child.stdin.end()
     } catch (err) {
       out = err instanceof Error ? err.message : String(err)
       resolve({ code: null, out })

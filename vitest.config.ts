@@ -10,14 +10,14 @@ const TIMING_SENSITIVE = [
 
 export default defineConfig({
   test: {
+    // Worker limits are root options, not per-project options.
+    maxWorkers: 2,
+    minWorkers: 1,
     projects: [
       {
         test: {
           name: 'unit',
           environment: 'node',
-          // Bound the resident workers while vault tests create files and processes.
-          maxWorkers: 2,
-          minWorkers: 1,
           // Vault-heavy tests hit real filesystem I/O (init, watch, git) —
           // generous timeouts keep them stable on slower/AV-scanned disks.
           testTimeout: 120_000,
@@ -38,10 +38,7 @@ export default defineConfig({
           testTimeout: 120_000,
           hookTimeout: 120_000,
           include: TIMING_SENSITIVE,
-          // One file at a time, one worker: these measure the clock.
-          fileParallelism: false,
-          maxWorkers: 1,
-          minWorkers: 1,
+          // The timing command disables file parallelism at the root.
           // …and even alone they can lose to a machine already at 100% (a
           // dev box running the app under test, an antivirus sweep). A retry
           // cannot hide a real defect — a broken watchdog fails all three —

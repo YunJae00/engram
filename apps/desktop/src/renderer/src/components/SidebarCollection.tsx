@@ -126,7 +126,8 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
       if (drag.current?.type !== 'item' || !event.dataTransfer.types.includes(MIME)) return
       if (drag.current.id === item.id) { setInsertion(null); return }
       event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(null)
-      setInsertion({ folder, before: beforeAt(event, index) })
+      const before = beforeAt(event, index)
+      setInsertion(current => current?.folder === folder && current.before === before ? current : { folder, before })
     }}
     onDrop={event => {
       drop(event, folder, beforeAt(event, index))

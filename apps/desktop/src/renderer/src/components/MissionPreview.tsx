@@ -15,15 +15,23 @@ export function MissionPreview({ lane, name, open, onLiveChange }: { lane: strin
   const [live, setLive] = useState(false)
   const [url, setUrl] = useState('')
   useEffect(() => {
-    if (!native) return
     let alive = true
-    const update = () => { void api.missionFrames([lane]).then(([frame]) => { if (alive) { setLive(Boolean(frame?.on && frame.url && frame.url !== 'about:blank')); setUrl(frame?.url ?? '') } }).catch(() => undefined) }
-    update()
-    const timer = setInterval(update, 1000)
-    return () => { alive = false; clearInterval(timer) }
-  }, [lane, native])
+    let received = false
+    const off = api.onEvent(event => {
+      if (event.type !== 'agent:tabs' || event.lane !== lane) return
+      received = true
+      const active = event.tabs.find(tab => tab.active)
+      setLive(Boolean(active)); setUrl(active?.url ?? '')
+    })
+    void api.browserTabs(lane).then(tabs => {
+      if (!alive || received) return
+      const active = tabs.find(tab => tab.active)
+      setLive(Boolean(active)); setUrl(active?.url ?? '')
+    }).catch(() => undefined)
+    return () => { alive = false; off() }
+  }, [lane])
   const [painted, setPainted] = useState(false)
-  useEffect(() => onLiveChange?.(native ? live : painted), [native, live, painted, onLiveChange])
+  useEffect(() => onLiveChange?.(live || (!native && painted)), [native, live, painted, onLiveChange])
   const viewport = useRef<HTMLButtonElement>(null)
   useBrowserViewport(viewport, lane, !native && painted)
   const source = useCallback((paint: (data: string) => void) => {
@@ -35,10 +43,10 @@ export function MissionPreview({ lane, name, open, onLiveChange }: { lane: strin
       if (!started) { started = true; setPainted(true) }
     })
   }, [lane])
-  if (native) return (
+  if (native || (live && url === 'about:blank')) return (
     <div className="mission-preview native-mission-preview">
-      <div className="web-pane-bar"><BrowserAddress key={`address-${lane}`} channel={lane} url={url} /><BrowserActions key={`actions-${lane}`} lane={lane} url={url} live={live} /></div>
-      {live ? <NativeSurface lane={lane} /> : <BrowserStart channel={lane} />}
+      <div className="web-pane-bar"><BrowserAddress key={`address-${lane}`} channel={lane} url={url} /><BrowserActions key={`actions-${lane}`} lane={lane} url={url} live={live && url !== 'about:blank'} /></div>
+      {live && url !== 'about:blank' ? <NativeSurface lane={lane} /> : <BrowserStart channel={lane} />}
     </div>
   )
   return (

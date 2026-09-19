@@ -20,6 +20,7 @@ interface Props {
 
 export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOpenRoutines, selectedRoutineId, onSelectRoutine }: Props) {
   const { activity, setActivity, vaultReady, showToast } = useShellState()
+  const library = activity === 'routines'
   const [bots, setBots] = useState<BotDto[]>([])
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [query, setQuery] = useState('')
@@ -34,11 +35,11 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     const generation = ++reloadGeneration.current
     const selectedBefore = cometThreads.getSnapshot().selectedId
     const [nextBots, nextRoutines, nextLayout] = await Promise.all([
-      api.botsList(), api.routinesList(),
-      api.sidebarLayout().catch(error => { setLayoutError(String(error.message ?? error)); return null }),
+      api.botsList(), library ? api.routinesList() : Promise.resolve(null),
+      api.sidebarLayout(library ? 'routine' : 'chat').catch(error => { setLayoutError(String(error.message ?? error)); return null }),
     ])
     if (generation !== reloadGeneration.current) return
-    setBots(nextBots); setRoutines(nextRoutines)
+    setBots(nextBots); if (nextRoutines) setRoutines(nextRoutines)
     if (nextLayout) { setLayout(nextLayout); setLayoutError('') }
     const current = cometThreads.getSnapshot().selectedId
     if (current && current === selectedBefore && !nextBots.some(bot => bot.id === current)) selectComet(null)
@@ -52,19 +53,17 @@ export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOp
     }))).catch(() => undefined)
     let debounce: number | undefined
     const off = api.onEvent(event => {
+      // Filing changes notes, not conversations. Routine files still use the
+      // vault event and are refreshed when their library is visible.
+      if (event.type === 'vault:changed' && !library) return
       if (!['bots:changed', 'vault:changed', 'routine:logged', 'chat:done', 'chat:error'].includes(event.type)) return
       reloadGeneration.current++
       window.clearTimeout(debounce)
       debounce = window.setTimeout(() => void reload().catch(error => showToast(String(error))), 100)
     })
     return () => { reloadGeneration.current++; window.clearTimeout(debounce); off() }
-  }, [vaultReady])
-  const library = activity === 'routines'
-  useEffect(() => {
-    setQuery('')
-    // Routine files can change while this persistent sidebar shows conversations.
-    if (library) void reload().catch(error => showToast(String(error)))
-  }, [library])
+  }, [vaultReady, library])
+  useEffect(() => { setQuery('') }, [library])
   const navigate = (next: 'bots' | 'sky' | 'list' | 'mission') => { setActivity(next); if (window.innerWidth <= 900) onToggle() }
   const change = async (kind: SidebarKind, change: SidebarChange['change']) => { setLayout(await api.sidebarChange({ kind, change })) }
   const rename = async (kind: SidebarKind, id: string, name: string) => { if (kind === 'chat') await api.botRename(id, name); else await api.routineRename(id, name); await reload() }

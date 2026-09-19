@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream'
 import { beforeEach, expect, it, vi } from 'vitest'
 
 const fake = vi.hoisted(() => ({ spawn: vi.fn() }))
-vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof import('node:child_process')>(), spawn: fake.spawn }))
+vi.mock('../src/main/process-client.js', () => ({ ProcessClient: class { constructor(...args: unknown[]) { return fake.spawn(...args) } } }))
 vi.mock('../src/main/engine-cloud.js', () => ({ codexBinary: () => 'codex', withHelpersOnPath: () => ({}) }))
 import { CodexAccount } from '../src/main/codex-account.js'
 

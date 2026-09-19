@@ -2,7 +2,7 @@
 // the filesystem — only these.
 // MCP hookup (satellites): the generated client config + connect outcomes.
 import type { DesktopApi, DesktopControlStatusDto } from './desktop.js'
-import type { SidebarLayout, SidebarChange } from 'core'
+import type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
 
@@ -365,7 +365,7 @@ export interface PendingWorkDto {
   filing: boolean
 }
 
-export interface BrowserTabDto { id: string; url: string; active: boolean }
+export interface BrowserTabDto { id: string; url: string; title?: string; active: boolean }
 
 export type EngramEvent =
   | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
@@ -622,7 +622,7 @@ export interface EngramApi extends DesktopApi {
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
   siteIcon(origin: string, shortcut?: boolean): Promise<string | null>
-  sidebarLayout(): Promise<SidebarLayout>
+  sidebarLayout(kind?: SidebarKind): Promise<SidebarLayout>
   sidebarChange(request: SidebarChange): Promise<SidebarLayout>
   botCreate(input: { name: string; purpose?: string }): Promise<BotDto>
   botRename(id: string, name: string): Promise<void>

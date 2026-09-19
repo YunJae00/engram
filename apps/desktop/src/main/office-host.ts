@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { ProcessClient } from './process-client.js'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -18,7 +18,7 @@ const LINE_CAP = 2_000_000
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; activity?: (window: string, name: string) => Promise<void> }
 type Probe = { excel: boolean; word: boolean; powerpoint: boolean; outlook: boolean }
 
-let child: ChildProcessWithoutNullStreams | undefined
+let child: ProcessClient | undefined
 let ready: Promise<void> | undefined
 let serial = 0
 let idle: ReturnType<typeof setTimeout> | undefined
@@ -79,7 +79,7 @@ async function start(): Promise<void> {
   if (ready) return ready
   if (!officeSupported()) throw new Error('Office automation is available on Windows.')
   const file = await scriptPath()
-  const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+  const proc = new ProcessClient('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file])
   child = proc
   proc.stderr.resume()
   ready = new Promise<void>((resolve, reject) => {

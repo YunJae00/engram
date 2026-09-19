@@ -31,9 +31,14 @@ function focusShell(event: Event): void {
   api.nativeFocusShell()
 }
 
+function scroll(event: Event): void {
+  // A sibling scroller cannot move a browser surface.
+  if (event.target === document || [...surfaces.keys()].some(element => event.target instanceof Element && event.target.contains(element))) schedule()
+}
+
 function measure(): void {
   const result: NativeSurfaceDto[] = []
-  const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay, .computer-status')]
+  const overlays = [...document.querySelectorAll<HTMLElement>('dialog[open], [role="alertdialog"], [aria-modal="true"], [role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay, .computer-status')]
   // Occlusion by another app is not a layout change. Native child windows
   // already follow their owner; unmounting them here flashes on task switching.
   for (const [element, lane] of surfaces) {
@@ -81,12 +86,16 @@ export function mountNativeSurface(element: HTMLElement, lane: string): () => vo
     timer = setInterval(measure, 1000)
     document.addEventListener('pointerdown', focusShell, true)
     document.addEventListener('focusin', focusShell, true)
-    changes = new MutationObserver(schedule)
+    changes = new MutationObserver(records => {
+      // Status text and list reordering cannot move the adjacent browser.
+      // Portalled menus and dialogs remain observed at the document level.
+      if (records.some(record => !(record.target instanceof Element) || !record.target.closest('.sidebar-scroll, .sidebar-footer'))) schedule()
+    })
     changes.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'inert', 'role', 'open'] })
     sizes = new ResizeObserver(schedule)
     window.addEventListener('focus', measure)
     window.addEventListener('resize', schedule)
-    document.addEventListener('scroll', schedule, true)
+    document.addEventListener('scroll', scroll, true)
     document.addEventListener('transitionend', schedule, true)
   }
   sizes?.observe(element)
@@ -105,7 +114,7 @@ export function mountNativeSurface(element: HTMLElement, lane: string): () => vo
       frame = undefined
       window.removeEventListener('focus', measure)
       window.removeEventListener('resize', schedule)
-      document.removeEventListener('scroll', schedule, true)
+      document.removeEventListener('scroll', scroll, true)
       document.removeEventListener('transitionend', schedule, true)
     }
   }

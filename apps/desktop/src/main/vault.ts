@@ -2,7 +2,6 @@ import type { EngineStatusDto } from '../shared/types.js'
 import {
   BundledBinaryProvider,
   createEngine,
-  GitLayer,
   initVault,
   MockEngine,
   NoteStore,
@@ -15,6 +14,7 @@ import { aiSelection, withModel } from './ai-selection.js'
 import { app } from 'electron'
 import { join } from 'node:path'
 import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
+import { vaultGit } from './vault-git.js'
 
 // Vault + engine context for the main process. Env knobs used by dev/e2e:
 //   ENGRAM_VAULT     vault root (skips onboarding)
@@ -24,7 +24,7 @@ import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
 //   ENGRAM_MOCK_DIR  canned responses for the mock engine
 export interface VaultContext {
   paths: VaultPaths
-  git: GitLayer | null
+  git: { autoCommit(message: string): Promise<string | null> } | null
   engines: Engine[]
   provider: BinaryProvider
   // In-memory, watcher-driven view over notes/. The markdown files remain the
@@ -116,8 +116,8 @@ export async function openVaultContext(root: string): Promise<VaultContext> {
   if (context) return context
   const provider = binaryProvider()
   const useGit = process.env['ENGRAM_NO_GIT'] !== '1'
-  const paths = await initVault(root, { git: useGit, provider })
-  const git = useGit ? new GitLayer(paths.workspace, provider) : null
+  const paths = useGit ? await vaultGit('init', root) : await initVault(root, { git: false, provider })
+  const git = useGit ? { autoCommit: (message: string) => vaultGit('commit', root, message) } : null
   const store = await NoteStore.open(paths)
   // Engines start EMPTY and are detected in the background (bootVault kicks it
   // off). Detection spawns `claude --version` and `claude auth status` — two

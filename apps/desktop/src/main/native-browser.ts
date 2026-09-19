@@ -1,5 +1,7 @@
 import { app, type BrowserWindow } from 'electron'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { EventEmitter } from 'node:events'
+import { ProcessClient } from './process-client.js'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
@@ -106,9 +108,7 @@ export async function openNativeBrowser(): Promise<BrowserContext> {
   const requestedPort = Number(process.env['ENGRAM_AGENT_CDP'])
   const port = Number.isInteger(requestedPort) && requestedPort >= 1024 && requestedPort <= 65535 ? requestedPort : await freePort()
   const handle = owner.getNativeWindowHandle().readBigUInt64LE().toString()
-  const helper = new NativeBrowser(spawn(executable, [handle, join(app.getPath('userData'), 'webview2-profile'), String(port)], {
-    windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
-  }))
+  const helper = new NativeBrowser(new ProcessClient(executable, [handle, join(app.getPath('userData'), 'webview2-profile'), String(port)]))
   running = helper
   try {
     await helper.ready
@@ -155,7 +155,7 @@ export class NativeBrowser {
   private pending = new Map<number, { resolve(value: Record<string, unknown>): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
   readonly ready: Promise<void>
 
-  constructor(private child: ChildProcessWithoutNullStreams) {
+  constructor(private child: Pick<ChildProcessWithoutNullStreams, 'stdin' | 'stdout' | 'stderr' | 'exitCode' | 'kill'> & EventEmitter) {
     this.exited = new Promise((resolve) => child.once('exit', () => resolve()))
     this.ready = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Embedded browser startup timed out')), 45000)
@@ -166,6 +166,7 @@ export class NativeBrowser {
         this.pending.clear()
       }
       child.once('error', fail)
+      child.stdin.on('error', fail)
       child.once('exit', () => fail(new Error('Embedded browser exited')))
       // Drain diagnostics without storing page addresses or profile contents.
       child.stderr.resume()
@@ -191,7 +192,7 @@ export class NativeBrowser {
   }
 
   request(method: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    if (this.child.exitCode !== null || this.child.stdin.destroyed) return Promise.reject(new Error('Embedded browser is closed'))
+    if (this.ending || this.child.exitCode !== null || this.child.stdin.destroyed || this.child.stdin.writableEnded) return Promise.reject(new Error('Embedded browser is closed'))
     const id = ++this.serial
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Embedded browser ${method} timed out`)) }, 15000)

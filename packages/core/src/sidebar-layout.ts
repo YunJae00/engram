@@ -12,7 +12,7 @@ const group = z.object({ folders: z.array(folder).max(100), items: z.array(z.obj
 const layout = z.object({ chat: group, routine: group })
 export type SidebarLayout = z.infer<typeof layout>
 export type SidebarKind = keyof SidebarLayout
-export type SidebarIds = Record<SidebarKind, string[]>
+export type SidebarIds = Partial<Record<SidebarKind, string[]>>
 const action = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create-folder'), name }).strict(),
   z.object({ action: z.literal('rename-folder'), id, name }).strict(),
@@ -27,13 +27,15 @@ export type SidebarChange = z.infer<typeof sidebarChange>
 
 function reconcile(value: SidebarLayout, ids: SidebarIds): SidebarLayout {
   for (const kind of ['chat', 'routine'] as const) {
+    const knownIds = ids[kind]
+    if (!knownIds) continue
     const current = value[kind]
     const folders = new Set(current.folders.map(one => one.id))
-    const valid = new Set(ids[kind]), seen = new Set<string>()
+    const valid = new Set(knownIds), seen = new Set<string>()
     current.folders = current.folders.filter((one, i, all) => all.findIndex(other => other.id === one.id) === i)
     current.items = current.items.filter(one => { if (!valid.has(one.id) || seen.has(one.id)) return false; seen.add(one.id); return true })
     for (const one of current.items) if (one.folder && !folders.has(one.folder)) one.folder = null
-    current.items.push(...ids[kind].filter(key => !seen.has(key)).map(key => ({ id: key, folder: null })))
+    current.items.push(...knownIds.filter(key => !seen.has(key)).map(key => ({ id: key, folder: null })))
   }
   return value
 }
@@ -48,6 +50,7 @@ export async function readSidebarLayout(paths: VaultPaths, ids: SidebarIds): Pro
 const writes = new Map<string, Promise<unknown>>()
 export async function changeSidebarLayout(paths: VaultPaths, input: SidebarChange, ids: SidebarIds): Promise<SidebarLayout> {
   const request = sidebarChange.parse(input)
+  if (!ids[request.kind]) throw new Error('The sidebar section has not been loaded')
   const file = join(paths.cache, 'sidebar-layout.json')
   const next = (writes.get(file) ?? Promise.resolve()).catch(() => undefined).then(async () => {
     const value = await readSidebarLayout(paths, ids)

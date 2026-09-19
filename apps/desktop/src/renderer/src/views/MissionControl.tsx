@@ -148,7 +148,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
               </header>
               {chooser(index)}
               <div className="mission-tile-body" key={bot.id} data-chat-open={!chatFolded} data-web-open={webOpen}>
-                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} open={() => open(bot.id)} onLiveChange={live => setPages(previous => { if (previous.has(bot.id) === live) return previous; const next = new Set(previous); if (live) next.add(bot.id); else next.delete(bot.id); return next })} />
+                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} busy={['running', 'waiting'].includes(statusOf(bot))} open={() => open(bot.id)} onLiveChange={live => setPages(previous => { if (previous.has(bot.id) === live) return previous; const next = new Set(previous); if (live) next.add(bot.id); else next.delete(bot.id); return next })} />
                 <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} webOpen={webOpen} onToggleWeb={() => {
                   setHiddenPages(previous => { const next = new Set(previous); if (webOpen) next.add(bot.id); else next.delete(bot.id); return next })
                   if (!webOpen) setOpenedPages(previous => new Set(previous).add(bot.id))

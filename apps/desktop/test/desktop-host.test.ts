@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const deps = vi.hoisted(() => ({ spawn: vi.fn(), execFile: vi.fn(), exists: vi.fn() }))
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 vi.mock('node:child_process', () => ({ spawn: deps.spawn, execFile: deps.execFile }))
+vi.mock('../src/main/process-client.js', () => ({ ProcessClient: class { constructor(...args: unknown[]) { return deps.spawn(...args) } } }))
 vi.mock('node:fs', () => ({ existsSync: deps.exists }))
 import { DesktopHost, type DesktopMethod } from '../src/main/desktop-host.js'
 
@@ -122,9 +123,9 @@ describe('desktop native readiness and request lifetime', () => {
     expect(messages().map((message) => message.method)).toEqual(['prepare', 'stop'])
   })
 
-  it('spawns hidden and owner-scoped, waiting for the supported control handshake before dispatch', async () => {
+  it('starts the owner-scoped worker, waiting for the supported control handshake before dispatch', async () => {
     const request = host.request('inspectWindow', target)
-    expect(deps.spawn).toHaveBeenCalledWith(expect.stringMatching(/native-bin[\\/]desktop[\\/]EngramDesktop\.exe$/), ['--owner-pid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    expect(deps.spawn).toHaveBeenCalledWith(expect.stringMatching(/native-bin[\\/]desktop[\\/]EngramDesktop\.exe$/), ['--owner-pid', String(process.pid)])
     expect(child.stdin.write).not.toHaveBeenCalled()
     await ready()
     expect(messages()).toEqual([{ id: 1, method: 'inspectWindow', ...target }])

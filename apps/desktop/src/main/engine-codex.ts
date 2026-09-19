@@ -2,19 +2,12 @@ import { DESKTOP_TOOL_ISOLATION_MESSAGE, ENGINE_BUDGETS, type EngineDetection, t
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
+import { runCodexTurn } from './codex-turn.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow; each job here is
 // one read-only turn with web search disabled. This is not an isolated
 // tool session: inherited runtime tools are a separate boundary.
-
-interface CodexSdk {
-  Codex: new (options: { codexPathOverride?: string; env?: Record<string, string>; configOverrides?: string[] }) => {
-    startThread(options: Record<string, unknown>): {
-      run(input: string | ({ type: 'text'; text: string } | { type: 'local_image'; path: string })[], options: { outputSchema?: unknown; signal?: AbortSignal }): Promise<{ finalResponse: string }>
-    }
-  }
-}
 
 export function disableMcpOverrides(catalog: string): string[] {
   const servers: unknown = JSON.parse(catalog)
@@ -127,7 +120,6 @@ export class CodexEngine implements CloudEngine {
       yield { type: 'error', message: 'the ChatGPT runtime is not part of this build', kind: 'crash' }
       return
     }
-    const sdk = (await import('@openai/codex-sdk')) as unknown as CodexSdk
     const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
@@ -144,8 +136,9 @@ export class CodexEngine implements CloudEngine {
         if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
         configOverrides = disableMcpOverrides(catalog.out)
       }
-      const codex = new sdk.Codex({ codexPathOverride: binary, env, configOverrides })
-      const thread = codex.startThread({
+      let text = await runCodexTurn({
+        options: { codexPathOverride: binary, env, configOverrides },
+        thread: {
         workingDirectory: job.workdir,
         sandboxMode: 'read-only',
         skipGitRepoCheck: true,
@@ -156,13 +149,10 @@ export class CodexEngine implements CloudEngine {
         // The person's chosen model, if they named one; the runtime's own
         // default - their plan's - otherwise.
         ...(codexModel ? { model: codexModel } : {}),
-      })
-      const input = job.imagePaths?.length ? [{ type: 'text' as const, text: job.prompt }, ...job.imagePaths.map(path => ({ type: 'local_image' as const, path }))] : job.prompt
-      const turn = await thread.run(input, {
+        },
+        input: job.imagePaths?.length ? [{ type: 'text' as const, text: job.prompt }, ...job.imagePaths.map(path => ({ type: 'local_image' as const, path }))] : job.prompt,
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
-        signal: abort.signal,
-      })
-      let text = turn.finalResponse
+      }, abort.signal)
       if (job.jsonSchema) {
         try { text = JSON.stringify(restoreOptionalFields(JSON.parse(text), job.jsonSchema)) } catch { /* Keep malformed output for the existing parser to diagnose. */ }
       }

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { ProcessClient } from './process-client.js'
 import os from 'node:os'
 import { appendFile, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
@@ -82,7 +82,7 @@ interface ActivityState {
   enabled?: boolean
 }
 
-let child: ChildProcess | null = null
+let child: ProcessClient | null = null
 let ctx: VaultContext | null = null
 let open: OpenSpan | null = null
 
@@ -153,29 +153,29 @@ let t = "";
 try { t = p.windows[0].title() } catch (e) {}
 p.name() + "|" + t' 2>/dev/null; sleep ${SAMPLE_MS / 1000}; done`
 
-function samplerSpawn(): ChildProcess {
+function samplerSpawn(): ProcessClient {
   if (process.platform === 'darwin') {
-    return spawn('/bin/sh', ['-c', MAC_SCRIPT], { stdio: ['ignore', 'pipe', 'ignore'] })
+    return new ProcessClient('/bin/sh', ['-c', MAC_SCRIPT])
   }
-  return spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', PS_SCRIPT], {
-    stdio: ['ignore', 'pipe', 'ignore'],
-    windowsHide: true,
-  })
+  return new ProcessClient('powershell', ['-NoProfile', '-NonInteractive', '-Command', PS_SCRIPT])
 }
 
 function startSampler(): void {
   if (child || !ctx) return
   try {
     child = samplerSpawn()
+    child.stdin.end()
+    child.stderr.resume()
     // The sampler yields like every other background child (same rule as
     // core/spawn.ts track): BELOW_NORMAL, best-effort.
-    if (child.pid !== undefined) {
+    const sampler = child
+    child.once('spawn', () => { if (sampler.pid !== undefined) {
       try {
-        os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
+        os.setPriority(sampler.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
       } catch {
         /* already gone */
       }
-    }
+    } })
   } catch (err) {
     flog('activity-watch-failed', err)
     child = null

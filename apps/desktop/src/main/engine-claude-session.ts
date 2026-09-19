@@ -1,6 +1,7 @@
 import { SESSION_TURN_MS, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
 import { flog } from './flog.js'
+import { spawnRuntime } from './process-client.js'
 
 // The runtime takes a long breath before its first word - measured at
 // fifteen to twenty seconds on a locked-down machine, most of it the
@@ -138,6 +139,7 @@ export class WarmSession {
       options: {
         cwd: spec.workdir,
         pathToClaudeCodeExecutable: spec.binary,
+        spawnClaudeCodeProcess: spawnRuntime,
         abortController: this.abort,
         systemPrompt: job.system,
         tools: [],

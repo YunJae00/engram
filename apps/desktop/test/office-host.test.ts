@@ -6,6 +6,7 @@ const fake = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock('electron', () => ({ app: { getPath: () => 'unused' } }))
 vi.mock('node:fs/promises', () => ({ mkdir: vi.fn(), writeFile: vi.fn() }))
 vi.mock('node:child_process', () => ({ spawn: fake.spawn }))
+vi.mock('../src/main/process-client.js', () => ({ ProcessClient: class { constructor(...args: unknown[]) { return fake.spawn(...args) } } }))
 
 function worker() {
   const proc = Object.assign(new EventEmitter(), {

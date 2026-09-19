@@ -1,5 +1,6 @@
 import { app } from 'electron'
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { ProcessClient } from './process-client.js'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -26,7 +27,7 @@ function nativeLease(value: unknown): value is string {
 
 export class DesktopHost {
   private ended = false
-  private child?: ChildProcessWithoutNullStreams
+  private child?: ProcessClient
   private ready?: Promise<void>
   private readyTimer?: ReturnType<typeof setTimeout>
   private rejectReady?: (error: Error) => void
@@ -48,7 +49,7 @@ export class DesktopHost {
     if (this.ended) throw new Error('Computer access ended. Reconnect the window to continue.')
     if (this.ready) return this.ready
     if (!DesktopHost.available()) throw new Error('Computer control is available on Windows in this build.')
-    const child = spawn(DesktopHost.path(), ['--owner-pid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = new ProcessClient(DesktopHost.path(), ['--owner-pid', String(process.pid)])
     this.child = child
     child.stderr.resume()
     this.ready = new Promise<void>((resolve, reject) => {

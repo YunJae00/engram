@@ -1,7 +1,7 @@
 {
   "name": "engram-monorepo",
   "private": true,
-  "version": "0.7.9",
+  "version": "0.7.10",
   "description": "A second brain that keeps your memories on your machine",
   "author": "YunJae Kwon",
   "license": "MIT",
@@ -36,7 +36,7 @@
     "test:e2e": "pnpm --filter desktop test:e2e",
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "eslint .",
-    "test": "vitest run --project unit && vitest run --project timing",
+    "test": "vitest run --project unit && vitest run --project timing --no-file-parallelism",
     "todo-scan": "node scripts/todo-scan.mjs",
     "css-scan": "node scripts/css-orphan-scan.mjs"
   },

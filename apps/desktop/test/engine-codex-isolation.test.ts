@@ -5,13 +5,11 @@ const fixture = vi.hoisted(() => ({
   options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
 }))
 vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
-vi.mock('@openai/codex-sdk', () => ({
-  Codex: class {
-    constructor(options: unknown) { fixture.options(options) }
-    startThread(options: unknown): { run: typeof fixture.run } {
-      fixture.threadOptions(options)
-      return { run: fixture.run }
-    }
+vi.mock('../src/main/codex-turn.js', () => ({
+  runCodexTurn: async (request: import('../src/main/codex-turn.js').CodexTurn, signal: AbortSignal) => {
+    fixture.options(request.options)
+    fixture.threadOptions(request.thread)
+    return (await fixture.run(request.input, { outputSchema: request.outputSchema, signal })).finalResponse
   },
 }))
 vi.mock('../src/main/engine-cloud.js', async (original) => ({

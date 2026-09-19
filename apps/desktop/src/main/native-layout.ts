@@ -78,7 +78,7 @@ export function registerNativeLayout(): void {
   registered = true
   ipcMain.handle('native:enabled', () => nativeBrowserEnabled())
   ipcMain.on('native:focus-shell', event => {
-    if (!window || window.isDestroyed() || !window.isVisible() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
+    if (!window || window.isDestroyed() || !window.isVisible() || !window.isFocused() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
     // A child WebView belongs to another process; DOM focus alone cannot
     // transfer its native keyboard focus back to the conversation renderer.
     window.webContents.focus()

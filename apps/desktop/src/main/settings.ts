@@ -47,7 +47,7 @@ function settingsPath(): string {
   return join(app.getPath('userData'), 'settings.json')
 }
 
-export async function loadSettings(): Promise<AppSettings> {
+async function readSettings(): Promise<AppSettings> {
   try {
     const raw = JSON.parse(await readFile(settingsPath(), 'utf8')) as Partial<AppSettings>
     const merged = { ...DEFAULT_SETTINGS, ...raw }
@@ -73,9 +73,14 @@ async function saveSettings(settings: AppSettings): Promise<void> {
 }
 
 let changes = Promise.resolve()
+export async function loadSettings(): Promise<AppSettings> {
+  await changes
+  return readSettings()
+}
+
 export function updateSettings(change: (settings: AppSettings) => AppSettings): Promise<AppSettings> {
   const next = changes.then(async () => {
-    const settings = change(await loadSettings())
+    const settings = change(await readSettings())
     await saveSettings(settings)
     return settings
   })
