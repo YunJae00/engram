@@ -15,7 +15,7 @@
 .dev-panes-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
 .dev-panes-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .dev-pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas-bg); overflow: hidden; container-type: inline-size; }
-.dev-panes:not(.dev-panes-1) .dev-pane.active > .dev-header .dev-heading > .dev-control { background: var(--selected-soft); }
+.dev-panes:not(.dev-panes-1) .dev-pane.active > .dev-header .dev-heading > h2 { background: var(--selected-soft); }
 .dev-header { min-height: 54px; padding: 10px 20px; }
 .dev-header > div, .dev-actions { display: flex; align-items: center; gap: 8px; }
 .dev-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -80,12 +80,12 @@
 .dev-project-heading, .dev-composer-foot, .dev-composer-foot > div, .dev-composer-tools { display: flex; align-items: center; gap: 3px; }
 .dev-project-heading { padding: 0 1px; }
 .dev-folder-button { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; border: 0; padding: 7px 3px; color: var(--fg-dim); background: transparent; text-align: left; font-size: var(--fs-small); }
-.dev-folder-button span, .dev-heading > .dev-control span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-folder-button span, .dev-heading > h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-project-sessions { padding: 2px 0 0 12px; }
 .dev-task-link small { margin-left: auto; color: var(--fg-faint); }
 .dev-empty-session { border: 0; background: transparent; color: var(--fg-faint); padding: 8px 12px; font-size: var(--fs-small); }
 .dev-header .dev-heading { display: flex; align-items: flex-start; flex-direction: column; gap: 0; min-width: 0; }
-.dev-heading > .dev-control { max-width: 100%; color: var(--fg); font-weight: 500; }
+.dev-heading > h2 { max-width: 100%; margin: 0; padding: 6px 7px; border-radius: 6px; color: var(--fg); font-size: inherit; font-weight: 500; }
 .dev-heading small { display: flex; align-items: center; gap: 5px; padding-left: 7px; font-size: var(--fs-micro); color: var(--fg-faint); }
 .dev-composer { box-shadow: var(--shadow-card-rest); }
 .dev-composer textarea { min-height: 50px; resize: none; }

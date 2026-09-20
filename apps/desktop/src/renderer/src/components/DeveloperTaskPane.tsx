@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, Folder, GitBranch, LoaderCircle, Settings, Square, X } from 'lucide-react'
+import { ArrowUp, Folder, GitBranch, LoaderCircle, Settings, Square, X } from 'lucide-react'
 import type { DevCommand, DevGitState, DevItem, DevRepo, DevSession, DevState } from '../../../shared/developers.js'
 import { api } from '../api.js'
 import { ModelPicker, type ModelSelection } from './ModelPicker.js'
@@ -22,8 +22,8 @@ function Skills({ id, onSelect }: { id: string; onSelect(prompt: string): void }
   return <>{rows.length ? rows.map(row => <button className="dev-menu-row" key={row.name} onClick={() => onSelect(row.prompt)}><strong>{row.name}</strong><small>{row.description}</small></button>) : <p className="setting-hint">No skills reported by this runtime.</p>}</>
 }
 
-export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocus, onSelect, onNew, onCreated, onClose }: {
-  id?: string; slot: number; repo?: DevRepo; state: DevState; active: boolean; split: boolean; onFocus(): void; onSelect(id: string): void; onNew(): void; onCreated(task: DevSession): void; onClose(): void
+export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocus, onCreated, onClose }: {
+  id?: string; slot: number; repo?: DevRepo; state: DevState; active: boolean; split: boolean; onFocus(): void; onCreated(task: DevSession): void; onClose(): void
 }) {
   const [task, setTask] = useState<DevSession | null>(null), [loading, setLoading] = useState(!!id), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [model, setModel] = useState<ModelSelection>({ engine: state.preferences.provider, model: '' })
@@ -73,9 +73,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
     else setModel(value)
   }
   return <section className={`dev-pane${active ? ' active' : ''}`} aria-label={`Development pane ${slot + 1}`} onFocusCapture={onFocus} onPointerDown={onFocus}>
-    <header className="dev-header"><div className="dev-heading"><DeveloperPopover label="Choose session" trigger={<><span>{task?.title ?? (loading ? 'Loading session…' : 'New session')}</span><ChevronDown size={13} /></>}>
-      {close => <><button className="dev-menu-row" onClick={() => { onNew(); close() }}>New session in {repo?.name ?? 'a folder'}</button>{state.sessions.filter(session => session.repoId === repo?.id).map(session => <button className="dev-menu-row" key={session.id} onClick={() => { onSelect(session.id); close() }}>{session.title}</button>)}</>}
-    </DeveloperPopover><small title={task?.cwd ?? repo?.path}><Folder size={12} />{repo?.name ?? 'Choose a folder'}{task?.branch && <span title={task.branch}> · Worktree</span>}</small></div>
+    <header className="dev-header"><div className="dev-heading"><h2 title={task?.title}>{task?.title ?? (loading ? 'Loading session…' : 'New session')}</h2><small title={task?.cwd ?? repo?.path}><Folder size={12} />{repo?.name ?? 'Choose a folder'}{task?.branch && <span title={task.branch}> · Worktree</span>}</small></div>
       <div className="dev-actions">{task && <><button className="dev-control" aria-label="Branch session" title="Branch into a separate worktree" disabled={busy || running || !task.runtimeId} onClick={() => void action(async () => onCreated(await api.devFork(task.id)))}><GitBranch size={16} /></button><button className="dev-control" disabled={busy} onClick={() => void action(async () => { setGit(await api.devGit(task.id)); setSelected([]) })}>Changes</button></>}{split && <button className="dev-control" aria-label="Close pane" onClick={onClose}><X size={16} /></button>}</div>
     </header>
     {error && <div className="dev-error" role="alert">{error}<button className="dev-control" aria-label="Dismiss error" onClick={() => setError('')}><X size={14} /></button></div>}
