@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
-vi.mock('../src/main/dev-catalog.js', () => ({ devAccountUsage: async () => ({ unavailable: 'Fixture' }), devExternal: async () => [] }))
+vi.mock('../src/main/dev-catalog.js', () => ({ devAccountUsage: async () => ({ unavailable: 'Fixture' }), devExternal: async () => [{ id: 'external', title: 'Existing conversation' }, { id: 'live', active: true }], devExternalRead: async () => [{ id: 'original-user', kind: 'user', text: 'Earlier question' }, { id: 'original-answer', kind: 'assistant', text: 'Earlier answer' }] }))
 vi.mock('../src/main/dev-workspace.js', () => ({ canonicalRepo: async (path: string) => resolve(path), devWorktree: async () => ({ cwd: resolve('tmp/fixture-isolated'), branch: 'fixture' }), devGitState: async () => ({ files: [], diff: '', branch: 'fixture', truncated: false }), devCommit: vi.fn() }))
 vi.mock('../src/main/dev-codex.js', () => ({ DevCodex: class {
   constructor(private session: { runtimeId?: string }, private approvals: { close(): void }, private updates: { item(value: unknown): void; finished(): void }) {}
@@ -26,6 +26,11 @@ it('keeps developer opt-in separate, persists tasks and enforces full-access con
   await expect(service.create({ ...request, mode: 'auto-edit' })).rejects.toThrow('worktree')
   await service.preferences({ loadProjectSettings: true })
   const session = await service.create(request)
+  const imported = await service.create({ ...request, resume: 'external', fork: true })
+  expect(imported).toMatchObject({ title: 'Existing conversation', runtimeId: 'external', forkOnStart: true })
+  expect(imported.items.map(item => item.text)).toEqual(['Earlier question', 'Earlier answer', expect.stringContaining('original is unchanged')])
+  expect(imported.items[0]!.id).not.toBe('original-user')
+  await expect(service.create({ ...request, resume: 'live', fork: true })).rejects.toThrow('still active')
   expect(session.loadProjectSettings).toBe(false)
   await service.send(session.id, 'Inspect the fixture')
   expect((await service.session(session.id)).items.map(item => item.text)).toEqual(['Inspect the fixture', 'Inspect the fixture'])
@@ -49,4 +54,6 @@ it('keeps developer opt-in separate, persists tasks and enforces full-access con
   const restored = new DevService(root, vi.fn())
   expect((await restored.session(session.id)).items).toHaveLength(2)
   expect(events).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, state: 'idle' }))
+  expect(events).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, title: 'Inspect the fixture' }))
+  expect((await restored.session(imported.id)).items[1]?.text).toBe('Earlier answer')
 })

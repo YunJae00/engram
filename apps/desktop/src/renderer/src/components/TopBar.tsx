@@ -1,4 +1,4 @@
-import { Columns2, Globe, Grid2X2, PanelLeftOpen, Square } from 'lucide-react'
+import { Code2, Columns2, Globe, Grid2X2, MessageSquare, PanelLeftOpen, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import { t, type Translate } from '../i18n.js'
@@ -19,11 +19,12 @@ function syncLabel(t: Translate, status: SyncStatusDto | null): string {
 
 // The title strip keeps the current view visible without competing with its
 // content header. Ongoing work is grouped with the engine in the sidebar.
-export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit }: {
+export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit, onMode }: {
   sidebarOpen: boolean
   onToggleSidebar(): void
   splitLayout: 1 | 2 | 4
   onSplit(count: 1 | 2 | 4): void
+  onMode(mode: 'bots' | 'developers'): void
 }) {
   const { activity, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
@@ -81,6 +82,10 @@ export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit }: {
 
   return (
     <header className="topbar" data-testid="topbar">
+      <div className="workspace-mode-toggle" role="group" aria-label="Workspace mode">
+        <button aria-label="Chat mode" aria-pressed={activity !== 'developers'} onClick={() => onMode('bots')}><MessageSquare size={15} /><span>Chat</span></button>
+        <button aria-label="Developers mode" aria-pressed={activity === 'developers'} onClick={() => onMode('developers')}><Code2 size={15} /><span>Developers</span></button>
+      </div>
       {!sidebarOpen && (
         <button className="topbar-sidebar-toggle" data-testid="app-sidebar-open" title={t('rail.show')} onClick={onToggleSidebar}>
           <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
@@ -91,7 +96,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit }: {
       </span>
 
       <div className="topbar-spacer" />
-      {(activity === 'bots' || activity === 'mission') && <div className="mission-layout" aria-label="Split conversation view">
+      {(activity === 'bots' || activity === 'mission' || activity === 'developers') && <div className="mission-layout" aria-label="Split conversation view">
         {([1, 2, 4] as const).map(count => {
           const Icon = count === 1 ? Square : count === 2 ? Columns2 : Grid2X2
           const label = count === 1 ? 'Single conversation' : `${count} panes`

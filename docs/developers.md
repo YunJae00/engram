@@ -1,19 +1,27 @@
 # Developers
 
-Developers is an opt-in workspace, separate from ordinary chats. Open it from
-the workspace menu or Settings → Developers. Authentication stays in Settings →
-AI because the same account also serves chats and filing.
+Switch between Chat and Developers in the top bar. Developers is opt-in; ordinary
+chats stay unchanged. Authentication stays in Settings → AI because the same
+account also serves chats and filing. The composer gear opens those settings.
 
 ## Tasks and repositories
 
-Choose a local folder, provider, model, reasoning effort and access mode. Git
+Add a local folder in the project sidebar, then use its + button to start a session.
+Sessions are grouped under their project. Choose a model, reasoning effort and
+access mode in the composer. Usage and limits are behind the gauge button.
+Use the top-bar layout controls for one, two or four independent panes. Switching
+modes keeps selected sessions and drafts during the app session.
+
+New tasks use the selected folder with review enabled. Git
 worktrees require an existing commit. Automatic edits always use an isolated
 worktree; a worktree separates changes but is not a security sandbox.
 
 Tasks retain their provider session ID. Sending another message resumes an owned
 task. Branch task creates a new worktree at the source task's current commit and
 forks its conversation; uncommitted files are not copied. Previous sessions opens
-saved external transcripts, with up to 200 text messages. Branching never takes
+saved external transcripts, with up to 200 text messages, from the project's menu.
+Continuing imports that snapshot into the new chat before your first message.
+Branching never takes
 over a running external process. An absent live indicator is not proof of inactivity.
 
 Disabling Developers stops its runtimes, but keeps task history and files. Normal
@@ -77,7 +85,8 @@ No credit is purchased or usage reset by checking limits.
 
 The normal checks include adapter, approval, cancellation, Git isolation and
 conflict-aware hunk recovery tests. The Developers UI fixture checks opt-in,
-settings grouping, narrow layout and structured message rendering.
+settings grouping, narrow and split layouts, structured message rendering,
+imported history, and task-scoped model controls that leave chat defaults unchanged.
 
 Live provider checks are explicitly opt-in with `ENGRAM_DEV_LIVE=1`. They create
 temporary folders under `tmp`, read a known value and resume the saved session.

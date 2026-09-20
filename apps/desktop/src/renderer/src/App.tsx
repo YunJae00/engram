@@ -69,6 +69,7 @@ function Shell() {
   const [errandOpen, setErrandOpen] = useState(false)
   const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null)
   const [splitLayout, setSplitLayout] = useState<2 | 4>(2)
+  const [devLayout, setDevLayout] = useState<1 | 2 | 4>(1)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
@@ -209,18 +210,18 @@ function Shell() {
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }}
       onDrop={(event) => event.preventDefault()}
     >
-      <AppSidebar
-        open={sidebarOpen && activity !== 'developers'}
+      {activity !== 'developers' && <AppSidebar
+        open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
         onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
         onOpenPalette={() => setPalette('search')}
         onOpenRoutines={() => setActivity('routines')}
         selectedRoutineId={selectedRoutineId}
         onSelectRoutine={setSelectedRoutineId}
-      />
+      />}
       {sidebarOpen && activity !== 'developers' && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
       <main className="app-main">
-        <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} splitLayout={activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
+        <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
         <EvidenceRecording />
         <AppNotices
           engines={engines}
@@ -264,7 +265,7 @@ function Shell() {
             </div>
             {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
-            {activity === 'developers' && <Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView onBack={() => setActivity('bots')} /></Suspense>}
+            {activity === 'developers' && <Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen(value => !value)} onLayout={setDevLayout} /></Suspense>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
                 <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />

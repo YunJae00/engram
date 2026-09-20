@@ -65,15 +65,19 @@ export class DevService {
     const repo = this.store.repo(request.repoId)
     if (prefs.mode === 'full-access' && request.fullAccessConfirmed !== true) throw new Error('Explicitly confirm full access before creating this task.')
     if (prefs.mode === 'auto-edit' && !prefs.isolate) throw new Error('Automatic edits require an isolated worktree.')
+    let title = 'New task', items: DevItem[] = []
     if (request.resume) {
       if (!request.fork) throw new Error('External sessions can be continued only as a new branch to avoid modifying another client’s live session.')
       const external = (await devExternal(repo.path, prefs.provider)).find(session => session.id === request.resume)
       if (!external || external.active) throw new Error('This external session is unavailable or still active.')
+      title = external.title
+      items = (await devExternalRead(repo.path, prefs.provider, request.resume)).map(item => ({ ...item, id: randomUUID() }))
+      items.push({ id: randomUUID(), kind: 'notice', text: 'Imported conversation snapshot. Your next message continues in a separate session; the original is unchanged.' })
     }
     const location = prefs.isolate ? await devWorktree(repo, join(this.root, 'worktrees'), this.hooks) : { cwd: await canonicalRepo(repo.path) }
     const now = Date.now()
     const session: DevSession = { id: randomUUID(), repoId: repo.id, provider: prefs.provider, model: prefs.model, effort: prefs.effort, mode: prefs.mode,
-      ...location, loadProjectSettings: prefs.mode === 'full-access' && prefs.loadProjectSettings, ...(request.resume ? { runtimeId: request.resume, forkOnStart: true } : {}), title: 'New task', createdAt: now, updatedAt: now, state: 'idle', items: [], pending: [], usage: {} }
+      ...location, loadProjectSettings: prefs.mode === 'full-access' && prefs.loadProjectSettings, ...(request.resume ? { runtimeId: request.resume, forkOnStart: true } : {}), title, createdAt: now, updatedAt: now, state: 'idle', items, pending: [], usage: {} }
     this.store.data.sessions.push(session); await this.store.save(); this.emit(null)
     return session
   }
@@ -179,7 +183,7 @@ export class DevService {
     if (!runtime) return
     if (runtime.timer) { clearTimeout(runtime.timer); runtime.timer = undefined }
     const session = this.store.session(id)
-    this.emit({ id, items: [...runtime.changed.values()], state: session.state, pending: session.pending, usage: session.usage, runtimeId: session.runtimeId })
+    this.emit({ id, items: [...runtime.changed.values()], state: session.state, pending: session.pending, usage: session.usage, runtimeId: session.runtimeId, title: session.title, updatedAt: session.updatedAt })
     runtime.changed.clear()
   }
   async respond(id: string, requestId: string, response: DevDecision): Promise<void> {

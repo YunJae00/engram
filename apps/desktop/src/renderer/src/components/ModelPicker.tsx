@@ -6,6 +6,7 @@ import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { useShellState } from '../state-slices.js'
 import { ProviderIcon } from './ProviderIcon.js'
+import type { ReasoningEffort } from 'core'
 
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
@@ -55,7 +56,8 @@ export function useModelChoices(engine: Provider | null) {
   return { ...(result.engine === engine ? result : { rows: engine ? cachedModels(engine) : [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
 }
 
-export function ModelPicker({ variant = 'composer', scope }: { variant?: 'composer' | 'sidebar'; scope?: string }) {
+export interface ModelSelection { engine: Provider; model: string; effort?: ReasoningEffort }
+export function ModelPicker({ variant = 'composer', scope, controlled }: { variant?: 'composer' | 'sidebar'; scope?: string; controlled?: { value: ModelSelection; disabled?: boolean; lockProvider?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
   const { engines, enginesDetected } = useShellState()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -69,7 +71,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
   const menu = useRef<HTMLDivElement>(null)
   const focusLast = useRef(false)
   const menuId = useId()
-  const selection = scope ? settings?.aiSelections?.[scope] : undefined
+  const selection = controlled?.value ?? (scope ? settings?.aiSelections?.[scope] : undefined)
   const engine = selection?.engine ?? settings?.defaultEngine ?? null
   const model = selection?.model ?? (engine === 'codex' ? settings?.codexModel : settings?.claudeModel) ?? ''
   const effort = selection ? selection.effort : engine === 'codex' ? settings?.codexEffort : settings?.claudeEffort
@@ -77,6 +79,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
   const sidebar = variant === 'sidebar'
 
   useEffect(() => {
+    if (controlled) return
     let alive = true
     let revision = 0
     void api.settingsGet().then((value) => { if (alive && revision === 0) setSettings(value) }).catch(() => { if (alive) setSaveError('Could not load settings. Open AI settings to retry.') })
@@ -84,7 +87,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
       if (event.type === 'settings:changed') { revision++; setSettings(event.settings) }
     })
     return () => { alive = false; off() }
-  }, [])
+  }, [!!controlled])
 
   useEffect(() => {
     let alive = true
@@ -108,10 +111,10 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
       if (!box.current || !menu.current) return
       const anchor = (mode === 'effort' ? effortTrigger.current : trigger.current)?.getBoundingClientRect() ?? box.current.getBoundingClientRect()
       if (!anchor.width) { setOpen(false); return }
-      const host = box.current.closest('.mini-chat, .bots-chat, .cosmos-chat, .bots-main')?.getBoundingClientRect()
+      const host = box.current.closest('.dev-pane, .mini-chat, .bots-chat, .cosmos-chat, .bots-main')?.getBoundingClientRect()
       const left = Math.max(0, host?.left ?? 0) + 8
       const right = Math.min(innerWidth, host?.right ?? innerWidth) - 8
-      const width = Math.max(0, Math.min(mode === 'effort' ? 172 : 264, right - left))
+      const width = Math.max(0, Math.min(mode === 'effort' && !controlled ? 172 : 264, right - left))
       const above = Math.max(0, anchor.top - Math.max(8, host?.top ?? 8) - 6)
       const below = Math.max(0, Math.min(innerHeight - 8, host?.bottom ?? innerHeight - 8) - anchor.bottom - 6)
       const down = below > above
@@ -161,10 +164,16 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
     window.dispatchEvent(new Event('engram:open-brain-setup'))
   }
   const save = async (change: Partial<AppSettingsDto>, close: boolean) => {
-    if (saving) return
+    if (saving || controlled?.disabled) return
     setSaving(true)
     setSaveError('')
     try {
+      if (controlled) {
+        const chosen: ModelSelection = { engine: change.defaultEngine ?? controlled.value.engine, model: change.defaultEngine ? '' : change.codexModel ?? change.claudeModel ?? model, effort: change.defaultEngine || 'codexModel' in change || 'claudeModel' in change ? undefined : 'codexEffort' in change ? change.codexEffort : 'claudeEffort' in change ? change.claudeEffort : effort }
+        await controlled.onChange(chosen)
+        if (close) { setOpen(false); (mode === 'effort' ? effortTrigger.current : trigger.current)?.focus() }
+        return
+      }
       const current = settings ?? await api.settingsGet()
       const next = { ...current, ...change }
       if ('claudeModel' in change) next.claudeEffort = undefined
@@ -190,10 +199,10 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
   const effortLabel = (level?: string) => level ? level === 'xhigh' ? 'Extra high' : level.charAt(0).toUpperCase() + level.slice(1) : 'Auto'
   const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: 'Saved selection' }] : [])]
 
-  if (!settings) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
+  if (!settings && !controlled) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
 
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
-    <button type="button" ref={trigger} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
+    <button type="button" ref={trigger} disabled={controlled?.disabled} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
       data-testid={sidebar ? 'engine-status' : 'model-picker'} title={`${providerName} · ${sidebar ? status : label} · Choose provider and model`}
       aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open && mode === 'model'} aria-haspopup="menu" aria-controls={open && mode === 'model' ? menuId : undefined}
       onClick={() => { focusLast.current = false; setMode('model'); setOpen(!open || mode !== 'model') }}
@@ -210,7 +219,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
         const state = stateFor(id)
         const connected = state?.loggedIn === true
         const detail = connected ? 'Connected' : !states && !state ? 'Open AI settings' : state?.installed ? 'Connect in settings' : 'Set up in settings'
-        return <button type="button" key={id} role="menuitemradio" aria-checked={engine === id} tabIndex={-1} disabled={saving} className="model-picker-item provider-picker-option" data-testid={`provider-pick-${id}`}
+        return <button type="button" key={id} role="menuitemradio" aria-checked={engine === id} tabIndex={-1} disabled={saving || controlled?.disabled || (controlled?.lockProvider && engine !== id)} className="model-picker-item provider-picker-option" data-testid={`provider-pick-${id}`}
           onClick={() => { if (!connected) setup(); else if (engine !== id) void save({ defaultEngine: id }, false) }}>
           <ProviderIcon provider={id} size={18} /><span className="model-picker-name" title={detail}>{name}{!connected && <span className="model-picker-detail">Connect</span>}</span>
           {engine === id && <Check className="provider-picker-check" size={14} aria-hidden />}
@@ -229,7 +238,7 @@ export function ModelPicker({ variant = 'composer', scope }: { variant?: 'compos
       {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>Models unavailable · Retry</button>}
       <div className="provider-picker-divider" role="separator" />
       <button type="button" className="model-picker-item provider-picker-settings" role="menuitem" tabIndex={-1} onClick={setup}><Settings size={14} aria-hidden />AI settings</button>
-      </> : <><div className="provider-picker-heading">Reasoning effort</div>{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</>}
+      </> : <><div className="provider-picker-heading">Reasoning effort</div>{controlled && <p className="model-picker-note">Choose how much time the model spends reasoning.</p>}<div className={controlled ? 'dev-effort-scale' : undefined}>{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled?.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
       {saveError && <div className="model-picker-note" role="alert">{saveError}</div>}
     </div>, document.body)}
   </div>

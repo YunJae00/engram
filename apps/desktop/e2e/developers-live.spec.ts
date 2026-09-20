@@ -69,5 +69,22 @@ for (const provider of ['codex', 'claude'] as DevProvider[]) test(`${provider} r
     }, { id, project }), { timeout: 150_000, intervals: [1000] }).toBe(true)
     expect(await readFile(join(project, 'example.ts'), 'utf8')).toBe('export const verificationValue = 731943\n')
     await page.evaluate(async id => { await (window as unknown as { engram: DevelopersApi }).engram.devStop(id) }, id)
+    const imported = await page.evaluate(async id => {
+      const api = (window as unknown as { engram: DevelopersApi }).engram, original = await api.devSession(id)
+      const external = await api.devExternal(original.repoId, original.provider)
+      if (!external.some(session => session.id === original.runtimeId)) throw new Error('Completed runtime session was not listed.')
+      return api.devCreate({ repoId: original.repoId, provider: original.provider, model: '', mode: 'review', isolate: false, resume: original.runtimeId, fork: true })
+    }, id)
+    expect(imported.id).not.toBe(id)
+    expect(imported.items.some(item => item.kind === 'user' && item.text.includes('Read example.ts'))).toBe(true)
+    expect(imported.items.some(item => item.kind === 'assistant' && item.text.includes('731943'))).toBe(true)
+    await page.evaluate(async id => { await (window as unknown as { engram: DevelopersApi }).engram.devSend(id, 'Without using tools, repeat the final verificationValue from this conversation.') }, imported.id)
+    await expect.poll(async () => page.evaluate(async id => {
+      const task = await (window as unknown as { engram: DevelopersApi }).engram.devSession(id)
+      if (task.state === 'failed') throw new Error(task.items.filter(item => item.kind === 'error').map(item => item.text).join('\n'))
+      const lastUser = task.items.reduce((last, item, index) => item.kind === 'user' ? index : last, -1)
+      return task.state === 'idle' && task.items.slice(lastUser + 1).some(item => item.kind === 'assistant' && item.text.includes('731943'))
+    }, imported.id), { timeout: 120_000, intervals: [1000] }).toBe(true)
+    await page.evaluate(async id => { await (window as unknown as { engram: DevelopersApi }).engram.devStop(id) }, imported.id)
   } finally { await app.close() }
 })
