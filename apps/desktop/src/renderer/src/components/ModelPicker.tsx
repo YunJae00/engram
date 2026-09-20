@@ -208,11 +208,11 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   if (!settings && !controlled) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
 
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
-    <button type="button" ref={trigger} disabled={controlled?.disabled || saving} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
+    <button type="button" ref={trigger} disabled={controlled?.disabled} aria-disabled={saving || undefined} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
       data-testid={sidebar ? 'engine-status' : 'model-picker'} title={`${providerName} · ${sidebar ? status : label} · Choose provider and model`}
       aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open && mode === 'model'} aria-haspopup="menu" aria-controls={open && mode === 'model' ? menuId : undefined}
-      onClick={() => { focusLast.current = false; setMode('model'); setOpen(!open || mode !== 'model') }}
-      onKeyDown={(event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setMode('model'); setOpen(true) } }}>
+      onClick={() => { if (saving) return; focusLast.current = false; setMode('model'); setOpen(!open || mode !== 'model') }}
+      onKeyDown={(event) => { if (saving) return; if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setMode('model'); setOpen(true) } }}>
       {saving ? <LoaderCircle size={16} className="computer-spinner" aria-hidden /> : <ProviderIcon provider={engine ?? 'claude'} size={16} />}
       {sidebar ? <span className="provider-picker-status"><span>{providerName}</span><small>{scope === 'filing' ? `Filing · ${status}` : status}</small></span> : <span className="provider-picker-label">{label}{controlled && effort ? ` · ${effortLabel(effort)}` : ''}</span>}
       <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
