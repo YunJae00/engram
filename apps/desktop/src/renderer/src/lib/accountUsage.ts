@@ -44,6 +44,13 @@ export function watchAccountUsage(): () => void {
   document.addEventListener('visibilitychange', refresh)
   const off = api.onEvent(event => {
     if (['engines:detected', 'engines:changed', 'engines:login'].includes(event.type)) { checked = 0; if (!document.hidden) void refreshAccountUsage(true) }
+    if (event.type === 'dev:changed' && event.update?.usage.windows?.length) {
+      const { provider, usage } = event.update
+      if (accounts.some(account => account.provider === provider && (usage.updatedAt ?? 0) > (account.usage?.updatedAt ?? 0))) {
+        accounts = accounts.map(account => account.provider === provider ? { ...account, usage } : account)
+        emit()
+      }
+    }
     if (event.type === 'dev:changed' && event.update?.state === 'idle') refresh()
   })
   return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); off() }

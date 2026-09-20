@@ -64,7 +64,7 @@ export interface DevState { preferences: DevPreferences; repos: DevRepo[]; sessi
 export interface DevGitState { branch: string; files: { path: string; status: string; previousPath?: string }[]; diff: string; truncated: boolean }
 export interface DevFileReview { path: string; before: string; after: string; fingerprint: string; hunks: { index: number; line: number; text: string }[] }
 export interface DevRule { id: string; repoId: string; provider: DevProvider; tool: string; input: string; decision: 'allow' | 'deny' }
-export interface DevUpdate { id: string; items: DevItem[]; state: DevSession['state']; pending: DevApproval[]; usage: DevUsage; runtimeId?: string; title?: string; updatedAt?: number }
+export interface DevUpdate { id: string; items: DevItem[]; state: DevSession['state']; pending: DevApproval[]; usage: DevUsage; provider?: DevProvider; runtimeId?: string; title?: string; updatedAt?: number }
 export interface DevelopersApi {
   devState(): Promise<DevState>
   devPreferences(patch: Partial<DevPreferences>): Promise<DevPreferences>

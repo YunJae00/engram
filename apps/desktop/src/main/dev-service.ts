@@ -183,7 +183,7 @@ export class DevService {
     if (!runtime) return
     if (runtime.timer) { clearTimeout(runtime.timer); runtime.timer = undefined }
     const session = this.store.session(id)
-    this.emit({ id, items: [...runtime.changed.values()], state: session.state, pending: session.pending, usage: session.usage, runtimeId: session.runtimeId, title: session.title, updatedAt: session.updatedAt })
+    this.emit({ id, items: [...runtime.changed.values()], state: session.state, pending: session.pending, usage: session.usage, provider: session.provider, runtimeId: session.runtimeId, title: session.title, updatedAt: session.updatedAt })
     runtime.changed.clear()
   }
   async respond(id: string, requestId: string, response: DevDecision): Promise<void> {

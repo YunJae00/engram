@@ -176,6 +176,10 @@ test('preloads both connected accounts without selecting a provider or starting 
   await expect(page.getByText('codex fixture limit')).toBeVisible()
   await expect(page.getByText('75% remaining')).toBeVisible()
   await expect(page.getByText('60% remaining')).toBeVisible()
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update: { id: 'usage-only', provider: 'codex', state: 'running', items: [], pending: [], usage: { windows: [{ name: 'codex fixture limit', used: 70 }], updatedAt: Date.now() } } })
+  })
+  await expect(page.getByText('30% remaining')).toBeVisible()
   await screenshot('developers-account-usage.png')
   await page.keyboard.press('Escape')
 })
