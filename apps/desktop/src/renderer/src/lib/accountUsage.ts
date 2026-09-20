@@ -16,6 +16,7 @@ export const useAccountUsageChecking = () => useSyncExternalStore(subscribe, () 
 export function refreshAccountUsage(force = false): Promise<void> {
   if (pending) { if (force) refreshAgain = true; return pending }
   if (!force && Date.now() - checked < 60_000) return Promise.resolve()
+  checked = Date.now()
   pending = (async () => {
     const states = await api.engineStates()
     accounts = states.filter(state => state.loggedIn && (state.id === 'claude' || state.id === 'codex')).map(state => ({ provider: state.id as DevProvider, usage: accounts.find(account => account.provider === state.id)?.usage ?? null, loading: true }))
@@ -28,7 +29,7 @@ export function refreshAccountUsage(force = false): Promise<void> {
       emit()
     }))
   })().catch(() => { accounts = accounts.map(account => ({ ...account, loading: false })); emit() }).finally(() => {
-    checked = Date.now(); pending = undefined
+    pending = undefined
     emit()
     if (refreshAgain) { refreshAgain = false; void refreshAccountUsage(true) }
   })
