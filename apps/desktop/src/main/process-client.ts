@@ -3,6 +3,13 @@ import { Readable, Writable } from 'node:stream'
 import { Worker } from 'node:worker_threads'
 
 interface Options { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal; killTree?: boolean }
+const owned = new Set<ProcessClient>()
+let closing = false
+export const runtimeProcessesRunning = () => !closing && owned.size > 0
+export async function stopRuntimeProcesses(): Promise<void> {
+  closing = true
+  await Promise.allSettled([...owned].map(child => { child.kill(); return child.waitForClose() }))
+}
 
 // Process creation itself can block on Windows. Keep it off the UI's main thread.
 export class ProcessClient extends EventEmitter {
@@ -20,10 +27,12 @@ export class ProcessClient extends EventEmitter {
 
   constructor(command: string, args: string[], options: Options = {}) {
     super()
+    if (closing) throw new Error('The app is closing.')
     options.signal?.throwIfAborted()
     this.worker = new Worker(new URL('./process-worker.js', import.meta.url), {
       workerData: { command, args, cwd: options.cwd, env: options.env ?? { ...process.env }, killTree: options.killTree === true },
     })
+    owned.add(this)
     this.stdout = this.output('stdout')
     this.stderr = this.output('stderr')
     this.stdin = new Writable({
@@ -75,6 +84,7 @@ export class ProcessClient extends EventEmitter {
   private close(code: number | null, signal: NodeJS.Signals | null): void {
     if (this.closed) return
     this.closed = true
+    owned.delete(this)
     this.exit(code, signal)
     this.stdout.push(null)
     this.stderr.push(null)

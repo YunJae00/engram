@@ -29,6 +29,7 @@ import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
 import { stopStanding } from './standing.js'
 import { installCloudEngines } from './engine-cloud.js'
+import { runtimeProcessesRunning, stopRuntimeProcesses } from './process-client.js'
 import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './session-watch.js'
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
@@ -728,10 +729,10 @@ app.on('before-quit', (event) => {
   stopDesktopControl('Engram is closing.')
   closeDesktopAccess()
   quitting = true
-  if (nativeBrowserRunning() || developersRunning()) {
+  if (nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
     event.preventDefault()
     abortAllChat()
-    void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers()]).finally(() => app.quit())
+    void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers(), stopRuntimeProcesses()]).finally(() => app.quit())
   }
 })
 

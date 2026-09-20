@@ -10,7 +10,7 @@ it('streams through a worker, preserves exit/errors, and cancels during startup'
   const outdir = await mkdtemp(resolve('tmp/process-test-'))
   await writeFile(join(outdir, 'package.json'), '{"type":"module"}')
   await build({ entryPoints: ['apps/desktop/src/main/process-client.ts', 'apps/desktop/src/main/process-worker.ts'], outdir, platform: 'node', format: 'esm' })
-  const { ProcessClient } = await import(pathToFileURL(join(outdir, 'process-client.js')).href) as typeof import('../src/main/process-client.js')
+  const { ProcessClient, runtimeProcessesRunning, stopRuntimeProcesses } = await import(pathToFileURL(join(outdir, 'process-client.js')).href) as typeof import('../src/main/process-client.js')
   const child = new ProcessClient(process.execPath, ['-e', "process.stdin.pipe(process.stdout); process.stderr.write('diagnostic')"])
   const closed = once(child, 'close')
   let out = '', diagnostic = ''
@@ -59,4 +59,11 @@ it('streams through a worker, preserves exit/errors, and cancels during startup'
       await vi.waitFor(() => expect(() => process.kill(ownedPid, 0)).toThrow(), { timeout: 5000 })
     } finally { tree.kill() }
   }
+  const background = new ProcessClient(process.execPath, ['-e', 'setInterval(() => {}, 1000)'])
+  background.stdout.resume(); background.stderr.resume()
+  expect(runtimeProcessesRunning()).toBe(true)
+  await stopRuntimeProcesses()
+  expect(runtimeProcessesRunning()).toBe(false)
+  expect(background.killed).toBe(true)
+  expect(() => new ProcessClient(process.execPath, [])).toThrow('closing')
 }, 120000)
