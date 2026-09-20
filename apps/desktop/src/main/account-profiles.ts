@@ -7,10 +7,12 @@ import type { AccountProfiles, AccountProvider } from '../shared/account-profile
 
 let root = '', state: AccountProfiles = { profiles: [], selected: { claude: 'system', codex: 'system' } }
 let systemPaths: Record<AccountProvider, string>
+let systemEnvironment: NodeJS.ProcessEnv = { ...process.env }
 let saving: Promise<unknown> = Promise.resolve()
 const providerKey = { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME' } as const
 
 export async function initializeAccountProfiles(userData: string): Promise<void> {
+  if (root !== join(userData, 'account-profiles')) systemEnvironment = { ...process.env }
   root = join(userData, 'account-profiles')
   state = { profiles: [], selected: { claude: 'system', codex: 'system' } }
   systemPaths = { claude: process.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude'), codex: process.env['CODEX_HOME'] || join(homedir(), '.codex') }
@@ -22,16 +24,27 @@ export async function initializeAccountProfiles(userData: string): Promise<void>
     systemPaths = saved.systemPaths
     for (const provider of ['claude', 'codex'] as const) {
       if (typeof systemPaths[provider] !== 'string' || !isAbsolute(systemPaths[provider])) throw new Error('Invalid system profile.')
-      process.env[providerKey[provider]] = profilePath(provider, state.selected[provider])
-      if (state.selected[provider] !== 'system') {
-        const inherited = provider === 'claude' ? ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] : ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_SQLITE_HOME']
-        for (const key of inherited) delete process.env[key]
-      }
+      applyProfile(provider)
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
 }
 export function accountProfiles(): AccountProfiles { return structuredClone(state) }
 export function activeAccountProfile(provider: AccountProvider): string { return state.selected[provider] }
+const credentials = { claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'], codex: ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME'] }
+export function accountEnvironment(provider: AccountProvider, id = activeAccountProfile(provider)): NodeJS.ProcessEnv {
+  if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
+  if (typeof id !== 'string' || !id) throw new Error('Unknown account profile.')
+  const env = { ...systemEnvironment, [providerKey[provider]]: systemPaths ? profilePath(provider, id) : process.env[providerKey[provider]] }
+  if (id !== 'system') for (const key of credentials[provider]) delete env[key]
+  return env
+}
+function applyProfile(provider: AccountProvider): void {
+  const env = accountEnvironment(provider)
+  for (const key of [providerKey[provider], ...credentials[provider]]) {
+    if (env[key] === undefined) delete process.env[key]
+    else process.env[key] = env[key]
+  }
+}
 function profilePath(provider: AccountProvider, id: string): string {
   if (id === 'system') return systemPaths[provider]
   if (!state.profiles.some(profile => profile.id === id && profile.provider === provider)) throw new Error('Unknown account profile.')
@@ -55,9 +68,12 @@ export function addAccountProfile(provider: AccountProvider, name: string): Prom
   }
   const result = saving.then(work); saving = result.catch(() => undefined); return result
 }
-export async function selectAccountProfile(provider: AccountProvider, id: string): Promise<void> {
-  await saving
-  if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
-  profilePath(provider, id)
-  await save({ ...state, selected: { ...state.selected, [provider]: id } })
+export function selectAccountProfile(provider: AccountProvider, id: string): Promise<void> {
+  const work = async () => {
+    if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
+    profilePath(provider, id)
+    await save({ ...state, selected: { ...state.selected, [provider]: id } })
+    applyProfile(provider)
+  }
+  const result = saving.then(work); saving = result.catch(() => undefined); return result
 }

@@ -395,6 +395,7 @@ export type EngramEvent =
   // shell must not claim there is no engine, it simply does not know yet
   | { type: 'engines:detected' }
   | { type: 'models:changed' }
+  | { type: 'accounts:changed'; accounts: import('./account-profiles.js').AccountProfiles }
   | { type: 'engines:login'; login: EngineLoginDto }
   | { type: 'sweep:start' }
   | { type: 'sweep:job'; job: string; index: number; total: number }
@@ -576,7 +577,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   chatFresh(botId: string): Promise<void>
   // The models the signed-in plan offers, in the runtime's own words; empty
   // until the runtime has been asked.
-  modelsList(id?: 'claude' | 'codex'): Promise<ModelChoiceDto[]>
+  modelsList(id?: 'claude' | 'codex', profile?: string): Promise<ModelChoiceDto[]>
   // Whether a window is being mirrored, without joining the watch.
   agentState(): Promise<{ on: boolean; url?: string; lane?: string }>
   // workspace registry/switcher (app-level vaults)
@@ -684,16 +685,17 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   engines(): Promise<EngineStatusDto[]>
   enginesRefresh(): Promise<EngineStatusDto[]>
   // Sign in to / out of a cloud brain through the vendor's own flow.
-  engineConnect(id: 'claude' | 'codex'): Promise<{ ok: boolean; message?: string }>
+  engineConnect(id: 'claude' | 'codex', profile?: string): Promise<{ ok: boolean; message?: string }>
   installClaude(): Promise<void>
   claudeInstallHelp(): Promise<void>
   engineLogins(): Promise<EngineLoginDto[]>
-  engineCancelLogin(id: 'claude' | 'codex'): Promise<void>
-  engineOpenLogin(id: 'claude' | 'codex'): Promise<void>
+  engineCancelLogin(id: 'claude' | 'codex', profile?: string): Promise<void>
+  engineOpenLogin(id: 'claude' | 'codex', profile?: string): Promise<void>
   engineDisconnect(id: 'claude' | 'codex'): Promise<void>
   // Every brain this build carries, signed in or not.
     engineStates(): Promise<EngineStatusDto[]>
     accountProfiles(): Promise<import('./account-profiles.js').AccountProfiles>
+    accountProfileStates(): Promise<import('./account-profiles.js').AccountProfileState[]>
     accountProfileAdd(provider: 'claude' | 'codex', name: string): Promise<import('./account-profiles.js').AccountProfiles>
     accountProfileUse(provider: 'claude' | 'codex', id: string): Promise<void>
   onEvent(listener: (event: EngramEvent) => void): () => void
@@ -822,6 +824,7 @@ export interface ModelChoiceDto {
 
 export interface EngineLoginDto {
   id: 'claude' | 'codex'
+  profile?: string
   phase: 'idle' | 'opening' | 'browser' | 'connected' | 'error'
   canOpen: boolean
   message?: string

@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline'
 import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
 import type { ModelChoiceDto } from '../shared/types.js'
 import { REASONING_EFFORTS, type ReasoningEffort } from 'core'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
 // Account and catalog requests only. No threads, turns, tools or credentials
 // are exposed to the renderer; the bundled runtime owns authentication.
@@ -17,11 +18,11 @@ export class CodexAccount {
   private abort: () => void
   private ready: Promise<unknown>
 
-  constructor(private signal: AbortSignal, timeout = 30_000) {
+  constructor(private signal: AbortSignal, timeout = 30_000, env = accountEnvironment('codex')) {
     signal.throwIfAborted()
     const binary = codexBinary()
     if (!binary) throw new Error('The ChatGPT runtime is not part of this build.')
-    this.child = new ProcessClient(binary, ['app-server'], { env: withHelpersOnPath(binary) })
+    this.child = new ProcessClient(binary, ['app-server'], { env: withHelpersOnPath(binary, env) })
     this.abort = () => this.close(new Error('Sign-in cancelled.'))
     this.timer = setTimeout(() => this.close(new Error('ChatGPT did not respond in time. Try again.')), timeout)
     signal.addEventListener('abort', this.abort, { once: true })
@@ -116,22 +117,23 @@ export class CodexAccount {
   }
 }
 
-let known: ModelChoiceDto[] = []
-let fetching: Promise<ModelChoiceDto[]> | undefined
+const catalogs = new Map<string, { rows?: ModelChoiceDto[]; pending?: Promise<ModelChoiceDto[]> }>()
 let generation = 0
-export function forgetCodexModels(): void { generation++; known = []; fetching = undefined }
-export function fetchCodexModels(): Promise<ModelChoiceDto[]> {
-  if (known.length) return Promise.resolve(known)
-  if (fetching) return fetching
+export function forgetCodexModels(): void { generation++; catalogs.clear() }
+export function fetchCodexModels(profile = activeAccountProfile('codex')): Promise<ModelChoiceDto[]> {
+  const catalog = catalogs.get(profile) ?? {}
+  catalogs.set(profile, catalog)
+  if (catalog.rows?.length) return Promise.resolve(catalog.rows)
+  if (catalog.pending) return catalog.pending
   const at = generation
   const pending = (async () => {
-    const account = new CodexAccount(new AbortController().signal)
+    const account = new CodexAccount(new AbortController().signal, 30_000, accountEnvironment('codex', profile))
     try {
       const rows = await account.models()
-      if (generation === at) known = rows
+      if (generation === at) catalog.rows = rows
       return generation === at ? rows : []
     } finally { account.close() }
-  })().finally(() => { if (fetching === pending) fetching = undefined })
-  fetching = pending
+  })().finally(() => { if (catalog.pending === pending) catalog.pending = undefined })
+  catalog.pending = pending
   return pending
 }

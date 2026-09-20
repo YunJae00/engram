@@ -54,6 +54,20 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
+  it('keeps account sessions separate and closes every account copy of a conversation', async () => {
+    const { sdk, processes, optionsSeen } = fakeSdk([])
+    const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    try {
+      await pool.run(job('Personal', { sessionKey: 'system:chat' }), { ...base, env: { CLAUDE_CONFIG_DIR: 'personal' } })
+      await pool.run(job('Work', { sessionKey: 'work:chat' }), { ...base, env: { CLAUDE_CONFIG_DIR: 'work' } })
+      expect(processes()).toBe(2)
+      expect(optionsSeen.map(options => options['env'])).toEqual([{ CLAUDE_CONFIG_DIR: 'personal' }, { CLAUDE_CONFIG_DIR: 'work' }])
+      pool.closeMatching('chat')
+      await pool.run(job('New personal', { sessionKey: 'system:chat' }), base)
+      await pool.run(job('New work', { sessionKey: 'work:chat' }), base)
+      expect(processes()).toBe(4)
+    } finally { pool.closeAll() }
+  })
   it('invalidates observation deltas when runtime context is compacted', async () => {
     const { sdk } = fakeSdk([], true)
     const pool = new SessionPool(), onContextReset = vi.fn()

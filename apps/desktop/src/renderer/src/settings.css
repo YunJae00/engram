@@ -38,11 +38,13 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
 .account-profile-dialog header { justify-content: space-between; }
 .account-profile-dialog h2 { margin: 0; font-size: var(--fs-title); }
 .account-profile-dialog p { line-height: 1.6; color: var(--fg-dim); }
-.account-profile-dialog fieldset { border: 0; margin: 16px 0; padding: 0; max-height: 260px; overflow: auto; }
-.account-profile-dialog legend { font-size: var(--fs-small); margin-bottom: 8px; }
-.account-profile-dialog label { padding: 10px 8px; border-radius: 8px; }
-.account-profile-dialog label:has(input:checked) { background: var(--selected-soft); }
-.account-profile-dialog small { margin-left: auto; color: var(--fg-dim); }
+.account-profile-list { margin: 16px 0; max-height: min(440px, 50vh); overflow: auto; }
+.account-profile-row { padding: 12px 0; }
+.account-profile-row + .account-profile-row { border-top: 1px solid var(--border-soft); }
+.account-profile-row header > div:first-child { display: grid; gap: 4px; }
+.account-profile-row .dev-usage { margin-top: 10px; }
+.account-picker span { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-profile-dialog small { color: var(--fg-dim); }
 .account-profile-dialog form input { min-width: 0; flex: 1; }
 .account-profile-dialog footer { justify-content: flex-end; margin-top: 20px; }
 .engine-message { margin: 0; color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.5; }

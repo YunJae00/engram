@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { DevProvider, DevUsage } from '../../../shared/developers.js'
 import { api } from '../api.js'
 
-type Account = { provider: DevProvider; usage: DevUsage | null; loading: boolean }
+type Account = { provider: DevProvider; profile: string; name: string; usage: DevUsage | null; loading: boolean }
 let accounts: Account[] = []
 let pending: Promise<void> | undefined
 let checked = 0
@@ -18,14 +18,16 @@ export function refreshAccountUsage(force = false): Promise<void> {
   if (!force && Date.now() - checked < 60_000) return Promise.resolve()
   checked = Date.now()
   pending = (async () => {
-    const states = await api.engineStates()
-    accounts = states.filter(state => state.loggedIn && (state.id === 'claude' || state.id === 'codex')).map(state => ({ provider: state.id as DevProvider, usage: accounts.find(account => account.provider === state.id)?.usage ?? null, loading: true }))
+    const profiles = await api.accountProfiles()
+    const states = profiles.profiles.length ? await api.accountProfileStates() : (await api.engineStates()).filter(state => state.id === 'claude' || state.id === 'codex').map(state => ({ ...state, provider: state.id as DevProvider, id: 'system', name: 'System account' }))
+    accounts = states.filter(state => state.loggedIn).map(state => ({ provider: state.provider, profile: state.id, name: state.name, usage: accounts.find(account => account.provider === state.provider && account.profile === state.id)?.usage ?? null, loading: true }))
     emit()
-    await Promise.all(accounts.map(async ({ provider }) => {
+    const work = [...accounts]
+    for (let at = 0; at < work.length; at += 2) await Promise.all(work.slice(at, at + 2).map(async ({ provider, profile }) => {
       let usage: DevUsage
-      try { usage = await api.devUsage(provider) }
+      try { usage = await api.devUsage(provider, profile) }
       catch { usage = { unavailable: 'Account limits could not be refreshed. Try again later.' } }
-      accounts = accounts.map(account => account.provider === provider ? { provider, usage: { ...usage, updatedAt: usage.updatedAt ?? Date.now() }, loading: false } : account)
+      accounts = accounts.map(account => account.provider === provider && account.profile === profile ? { ...account, usage: { ...usage, updatedAt: usage.updatedAt ?? Date.now() }, loading: false } : account)
       emit()
     }))
   })().catch(() => { accounts = accounts.map(account => ({ ...account, loading: false })); emit() }).finally(() => {
@@ -43,11 +45,11 @@ export function watchAccountUsage(): () => void {
   const timer = window.setInterval(refresh, 60_000)
   document.addEventListener('visibilitychange', refresh)
   const off = api.onEvent(event => {
-    if (['engines:detected', 'engines:changed', 'engines:login'].includes(event.type)) { checked = 0; if (!document.hidden) void refreshAccountUsage(true) }
+    if (['engines:detected', 'engines:changed', 'engines:login', 'accounts:changed'].includes(event.type)) { checked = 0; if (!document.hidden) void refreshAccountUsage(true) }
     if (event.type === 'dev:changed' && event.update?.usage.windows?.length) {
-      const { provider, usage } = event.update
-      if (accounts.some(account => account.provider === provider && (usage.updatedAt ?? 0) > (account.usage?.updatedAt ?? 0))) {
-        accounts = accounts.map(account => account.provider === provider ? { ...account, usage } : account)
+      const { provider, usage, accountProfile = 'system' } = event.update
+      if (accounts.some(account => account.provider === provider && account.profile === accountProfile && (usage.updatedAt ?? 0) > (account.usage?.updatedAt ?? 0))) {
+        accounts = accounts.map(account => account.provider === provider && account.profile === accountProfile ? { ...account, usage } : account)
         emit()
       }
     }

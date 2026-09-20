@@ -7,14 +7,14 @@ import { ProviderIcon } from './ProviderIcon.js'
 import { InstallClaude } from './InstallClaude.js'
 import { AccountProfiles } from './AccountProfiles.js'
 import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
+import { useAccountProfiles } from '../lib/accountProfiles.js'
 
 export function EngineSettings() {
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [profiles, setProfiles] = useState<Profiles | null>(null)
-  useEffect(() => { let alive = true; void api.accountProfiles().then(value => { if (alive) setProfiles(value) }).catch(() => {}); return () => { alive = false } }, [])
+  const profiles: Profiles | null = useAccountProfiles()
   useEffect(() => {
     let alive = true
     let revision = 0
@@ -28,9 +28,10 @@ export function EngineSettings() {
     const off = api.onEvent((event) => {
       if (event.type === 'engines:login') {
         revision++
-        setLogins((prior) => [...prior.filter((one) => one.id !== event.login.id), event.login])
+        setLogins((prior) => [...prior.filter((one) => one.id !== event.login.id || one.profile !== event.login.profile), event.login])
         if (['connected', 'idle', 'error'].includes(event.login.phase)) refresh()
       }
+      if (event.type === 'accounts:changed') setStates(null)
       if (event.type === 'engines:detected' || event.type === 'engines:changed') refresh()
     })
     return () => { alive = false; off() }
@@ -39,11 +40,11 @@ export function EngineSettings() {
   return (
     <div className="engine-settings">
       <p className="setting-note">Use either connected account in any conversation.</p>
-      <section className="engine-card" aria-label="New conversation model"><strong>New conversations</strong><p className="setting-note">A starting choice. Existing conversations keep their own settings.</p><ModelPicker /></section>
-      <section className="engine-card" aria-label="Filing model"><strong>Filing & memory</strong><p className="setting-note">Organize notes and maintain memory independently of your conversations.</p><ModelPicker scope="filing" /></section>
+      <section className="engine-card" aria-label="New conversation model"><strong>New conversations</strong><p className="setting-note">A starting choice. Existing conversations keep their own settings.</p><ModelPicker showAccounts={false} /></section>
+      <section className="engine-card" aria-label="Filing model"><strong>Filing & memory</strong><p className="setting-note">Organize notes and maintain memory independently of your conversations.</p><ModelPicker scope="filing" showAccounts={false} /></section>
       {(['claude', 'codex'] as const).map((id) => {
         const state = states?.find((one) => one.id === id)
-        const login = logins.find((one) => one.id === id)
+        const login = logins.find((one) => one.id === id && (one.profile ?? 'system') === (profiles?.selected[id] ?? 'system'))
         const pending = login?.phase === 'opening' || login?.phase === 'browser'
         const connected = state?.loggedIn === true || login?.phase === 'connected'
         const name = id === 'claude' ? 'Claude' : 'ChatGPT'

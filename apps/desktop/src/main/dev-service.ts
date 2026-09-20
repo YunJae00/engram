@@ -9,7 +9,7 @@ import { DevClaude, claudeAccountUsage, claudeProbe } from './dev-claude.js'
 import { canonicalRepo, devCommit, devGitState, devWorktree } from './dev-workspace.js'
 import { devAccountUsage, devExternal, devExternalRead, devProbe } from './dev-catalog.js'
 import { devFileReview, devUndoHunk } from './dev-review.js'
-import { activeAccountProfile } from './account-profiles.js'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
 interface Running { driver: DevCodex | DevClaude; approvals: DevApprovals; changed: Map<string, DevItem>; timer?: ReturnType<typeof setTimeout>; idle?: ReturnType<typeof setTimeout>; stopping?: Promise<void> }
 
@@ -64,26 +64,28 @@ export class DevService {
     await this.enabled()
     if (!request || typeof request.repoId !== 'string') throw new Error('Choose a repository.')
     const prefs = devPreferences({ provider: request.provider, model: request.model, effort: request.effort, mode: request.mode, isolate: request.isolate }, this.store.data.preferences)
+    const profile = request.accountProfile ?? activeAccountProfile(prefs.provider)
+    accountEnvironment(prefs.provider, profile)
     let repo = this.store.repo(request.repoId)
     if (prefs.mode === 'full-access' && request.fullAccessConfirmed !== true) throw new Error('Explicitly confirm full access before creating this task.')
     if (prefs.mode === 'auto-edit' && !prefs.isolate) throw new Error('Automatic edits require an isolated worktree.')
     let title = 'New task', items: DevItem[] = []
     if (request.resume) {
       if (!request.fork && request.resumeConfirmed !== true) throw new Error('Confirm that this session has stopped in other apps before continuing it.')
-      const external = (await devExternal(repo.path, prefs.provider, request.allFolders === true)).find(session => session.id === request.resume)
+      const external = (await devExternal(repo.path, prefs.provider, request.allFolders === true, profile)).find(session => session.id === request.resume)
       if (!external || external.active) throw new Error('This external session is unavailable or still active.')
       title = external.title
-      items = (await devExternalRead(repo.path, prefs.provider, request.resume, request.allFolders === true)).map(item => ({ ...item, id: randomUUID() }))
+      items = (await devExternalRead(repo.path, prefs.provider, request.resume, request.allFolders === true, profile)).map(item => ({ ...item, id: randomUUID() }))
       if (external.cwd && external.cwd !== repo.path) repo = await this.addRepo(external.cwd)
       if (!request.fork) {
-        const existing = this.store.data.sessions.find(session => session.provider === prefs.provider && (session.accountProfile ?? 'system') === activeAccountProfile(prefs.provider) && session.runtimeId === request.resume && !session.forkOnStart)
+        const existing = this.store.data.sessions.find(session => session.provider === prefs.provider && (session.accountProfile ?? 'system') === profile && session.runtimeId === request.resume && !session.forkOnStart)
         if (existing) return existing
       }
       if (request.fork) items.push({ id: randomUUID(), kind: 'notice', text: 'Separate conversation branch. The original is unchanged.' })
     }
     const location = prefs.isolate ? await devWorktree(repo, join(this.root, 'worktrees'), this.hooks) : { cwd: await canonicalRepo(repo.path) }
     const now = Date.now()
-    const session: DevSession = { id: randomUUID(), repoId: repo.id, provider: prefs.provider, accountProfile: activeAccountProfile(prefs.provider), model: prefs.model, effort: prefs.effort, mode: prefs.mode,
+    const session: DevSession = { id: randomUUID(), repoId: repo.id, provider: prefs.provider, accountProfile: profile, model: prefs.model, effort: prefs.effort, mode: prefs.mode,
       ...location, loadProjectSettings: prefs.mode === 'full-access' && prefs.loadProjectSettings, ...(request.resume ? { runtimeId: request.resume, forkOnStart: request.fork === true } : {}), title, createdAt: now, updatedAt: now, state: 'idle', items, pending: [], usage: {} }
     this.store.data.sessions.push(session); await this.store.save(); this.emit(null)
     return session
@@ -92,7 +94,6 @@ export class DevService {
   async configure(id: string, change: Parameters<DevelopersApi['devConfigure']>[1]): Promise<DevSession> {
     await this.enabled()
     const session = this.store.session(id)
-    if ((session.accountProfile ?? 'system') !== activeAccountProfile(session.provider)) throw new Error('Switch to this session’s account profile in AI settings before continuing.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Stop or finish this task before changing its settings.')
     if (!change || typeof change !== 'object') throw new Error('Invalid task settings.')
     const prefs = devPreferences({ provider: session.provider, model: change.model, effort: change.effort, mode: change.mode }, this.store.data.preferences)
@@ -112,7 +113,6 @@ export class DevService {
     await this.enabled()
     if (typeof text !== 'string' || !text.trim() || text.length > 100_000) throw new Error('Enter a message of up to 100,000 characters.')
     const session = this.store.session(id)
-    if ((session.accountProfile ?? 'system') !== activeAccountProfile(session.provider)) throw new Error('Switch to this session’s account profile in AI settings before continuing.')
     if (this.configuring.has(id) || this.running.get(id)?.stopping) throw new Error('Wait for this task to finish stopping or updating.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Wait for this task or stop it before sending another message.')
     session.state = 'starting'; session.updatedAt = Date.now()
@@ -192,7 +192,7 @@ export class DevService {
     if (!runtime) return
     if (runtime.timer) { clearTimeout(runtime.timer); runtime.timer = undefined }
     const session = this.store.session(id)
-    this.emit({ id, items: [...runtime.changed.values()], state: session.state, pending: session.pending, usage: session.usage, provider: session.provider, runtimeId: session.runtimeId, title: session.title, updatedAt: session.updatedAt })
+    this.emit({ id, items: [...runtime.changed.values()], state: session.state, pending: session.pending, usage: session.usage, provider: session.provider, accountProfile: session.accountProfile ?? 'system', runtimeId: session.runtimeId, title: session.title, updatedAt: session.updatedAt })
     runtime.changed.clear()
   }
   async respond(id: string, requestId: string, response: DevDecision): Promise<void> {
@@ -231,20 +231,19 @@ export class DevService {
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Stop the task before changing its files.')
     return devUndoHunk(session.cwd, path, fingerprint, index, this.hooks, join(this.root, 'review-backups'))
   }
-  async external(repoId: string, provider: 'claude' | 'codex', allFolders = false) {
+  async external(repoId: string, provider: 'claude' | 'codex', allFolders = false, profile = activeAccountProfile(provider)) {
     await this.enabled()
     if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
-    return devExternal(this.store.repo(repoId).path, provider, allFolders === true)
+    return devExternal(this.store.repo(repoId).path, provider, allFolders === true, profile)
   }
-  async externalRead(repoId: string, provider: 'claude' | 'codex', id: string, allFolders = false) {
+  async externalRead(repoId: string, provider: 'claude' | 'codex', id: string, allFolders = false, profile = activeAccountProfile(provider)) {
     await this.enabled()
     if (!['claude', 'codex'].includes(provider) || typeof id !== 'string') throw new Error('Unknown session.')
-    return devExternalRead(this.store.repo(repoId).path, provider, id, allFolders === true)
+    return devExternalRead(this.store.repo(repoId).path, provider, id, allFolders === true, profile)
   }
   async fork(id: string): Promise<DevSession> {
     await this.enabled()
     const source = this.store.session(id)
-    if ((source.accountProfile ?? 'system') !== activeAccountProfile(source.provider)) throw new Error('Switch to this session’s account profile in AI settings before branching.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(source.state)) throw new Error('Finish or stop the task before branching.')
     if (!source.runtimeId) throw new Error('Start a conversation before branching it.')
     const repo = this.store.repo(source.repoId)
@@ -253,27 +252,26 @@ export class DevService {
     this.store.data.sessions.push(session); await this.store.save(); this.emit(null)
     return session
   }
-  async usage(provider: 'claude' | 'codex') {
+  async usage(provider: 'claude' | 'codex', profile = activeAccountProfile(provider)) {
     await this.ready
     if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
-    if (provider === 'codex') return devAccountUsage(this.root)
-    const active = [...this.running.values()].find(runtime => runtime.driver instanceof DevClaude)
-    return active?.driver instanceof DevClaude ? active.driver.usage() : claudeAccountUsage(this.root)
+    if (provider === 'codex') return devAccountUsage(this.root, profile)
+    const active = [...this.running.entries()].find(([id, runtime]) => runtime.driver instanceof DevClaude && (this.store.session(id).accountProfile ?? 'system') === profile)?.[1]
+    return active?.driver instanceof DevClaude ? active.driver.usage() : claudeAccountUsage(this.root, profile)
   }
   async commands(id: string) {
     await this.enabled()
     const session = this.store.session(id)
-    if ((session.accountProfile ?? 'system') !== activeAccountProfile(session.provider)) throw new Error('Switch to this session’s account profile in AI settings to load its skills.')
     const runtime = this.running.get(id)
-    if (!runtime) return this.projectCommands(session.repoId, session.provider)
+    if (!runtime) return this.projectCommands(session.repoId, session.provider, session.accountProfile ?? 'system')
     return runtime.driver.commands()
   }
-  async projectCommands(repoId: string, provider: 'claude' | 'codex') {
+  async projectCommands(repoId: string, provider: 'claude' | 'codex', profile = activeAccountProfile(provider)) {
     await this.enabled()
     const cwd = this.store.repo(repoId).path
-    if (provider === 'claude') return claudeProbe(cwd, async query => (await query.supportedCommands?.() ?? []).slice(0, 200).map(row => ({ name: row.name, description: row.description, prompt: `/${row.name} ` })))
+    if (provider === 'claude') return claudeProbe(cwd, async query => (await query.supportedCommands?.() ?? []).slice(0, 200).map(row => ({ name: row.name, description: row.description, prompt: `/${row.name} ` })), profile)
     if (provider !== 'codex') throw new Error('Unknown provider.')
-    const result = await devProbe(cwd, 'skills/list', { cwds: [cwd] })
+    const result = await devProbe(cwd, 'skills/list', { cwds: [cwd] }, profile)
     const data = result['data'] as { skills?: { name: string; description: string; enabled: boolean }[] }[] | undefined
     return (data ?? []).flatMap(row => row.skills ?? []).filter(skill => skill.enabled && typeof skill.name === 'string').slice(0, 200).map(skill => ({ name: skill.name, description: skill.description, prompt: `$${skill.name} ` }))
   }

@@ -6,6 +6,7 @@ import { classifyEngineError, setCloudEngineFactory, type Engine, type EngineDet
 import { ClaudeEngine } from './engine-claude.js'
 import { CodexEngine } from './engine-codex.js'
 import { installedClaudeBinary } from './claude-runtime.js'
+import { activeAccountProfile } from './account-profiles.js'
 
 // The two cloud brains, each behind the vendor's own command-line runtime that
 // is either bundled or installed separately. The person uses the vendor's flow
@@ -191,13 +192,14 @@ export interface CloudEngine extends Engine {
 
 export interface CloudLoginOptions { signal?: AbortSignal; onUrl?: (url: string) => void }
 
-const instances = new Map<CloudEngineId, CloudEngine>()
+const instances = new Map<string, CloudEngine>()
 
-export function cloudEngine(id: CloudEngineId): CloudEngine {
-  let engine = instances.get(id)
+export function cloudEngine(id: CloudEngineId, profile = activeAccountProfile(id)): CloudEngine {
+  const key = `${id}:${profile}`
+  let engine = instances.get(key)
   if (!engine) {
-    engine = id === 'claude' ? new ClaudeEngine() : new CodexEngine()
-    instances.set(id, engine)
+    engine = id === 'claude' ? new ClaudeEngine(profile) : new CodexEngine(profile)
+    instances.set(key, engine)
   }
   return engine
 }

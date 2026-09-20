@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { DevelopersApi } from '../src/shared/developers.js'
+import type { EngramApi } from '../src/shared/types.js'
 
 test.skip(process.env['ENGRAM_DEV_LIVE'] !== '1', 'Requires explicit live provider verification.')
 test('connected account limits load before any development session exists', async () => {
@@ -26,5 +27,21 @@ test('connected account limits load before any development session exists', asyn
     const state = await page.evaluate(() => (window as unknown as { engram: DevelopersApi }).engram.devState())
     expect(state.sessions).toHaveLength(0)
     expect(state.preferences.enabled).toBe(false)
+    for (const provider of ['claude', 'codex'] as const) {
+      const result = await page.evaluate(async provider => {
+        const api = (window as unknown as { engram: EngramApi }).engram
+        const profiles = await api.accountProfileAdd(provider, 'Isolation check')
+        const profile = profiles.profiles.find(row => row.provider === provider)!.id
+        await api.accountProfileUse(provider, profile)
+        const states = await api.accountProfileStates()
+        const usage = await api.devUsage(provider, 'system')
+        await api.accountProfileUse(provider, 'system')
+        return { isolated: states.find(row => row.provider === provider && row.id === profile), usage }
+      }, provider)
+      expect(result.isolated?.loggedIn).toBe(false)
+      expect(result.isolated?.conclusive).not.toBe(false)
+      expect(result.usage.unavailable).toBeUndefined()
+      expect(result.usage.windows?.length).toBeGreaterThan(0)
+    }
   } finally { await app.close() }
 })

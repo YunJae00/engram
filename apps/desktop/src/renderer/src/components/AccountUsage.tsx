@@ -21,7 +21,7 @@ export function AccountUsage() {
   return <div className="account-usage">
     <div className="dev-usage-label"><strong>Connected accounts</strong><button className="dev-control" aria-label="Refresh account usage" disabled={loading} onClick={() => void refreshAccountUsage(true)}>{loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}</button></div>
     {!accounts.length && <p className="dev-working" role="status">{loading ? <><LoaderCircle size={14} className="spin" />Checking connected accounts…</> : 'Connect an AI account in settings to see its reported limits.'}</p>}
-    {accounts.map(account => <section key={account.provider}><h4 className="dev-working"><ProviderIcon provider={account.provider} size={16} />{account.provider === 'claude' ? 'Claude' : 'ChatGPT'}</h4>{account.loading && !account.usage ? <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" />Checking limits…</p> : <UsageSummary usage={account.usage} />}</section>)}
+    {accounts.map(account => <section key={`${account.provider}:${account.profile}`}><h4 className="dev-working"><ProviderIcon provider={account.provider} size={16} />{account.provider === 'claude' ? 'Claude' : 'ChatGPT'} · {account.name}</h4>{account.loading && !account.usage ? <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" />Checking limits…</p> : <UsageSummary usage={account.usage} />}</section>)}
     <p className="setting-hint">Updates every minute while the app is visible. Availability and timing depend on each provider. Nothing is purchased or reset.</p>
   </div>
 }

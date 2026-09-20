@@ -5,6 +5,7 @@ import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 import { loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
 // The person's chosen model, read per call so a change in Settings or from
 // the composer takes hold on the very next turn. Empty means the app's own
@@ -60,14 +61,16 @@ export interface ClaudeModelChoice {
   detail: string
   efforts?: import('core').ReasoningEffort[]
 }
-let knownModels: ClaudeModelChoice[] = []
-let fetchingModels: Promise<ClaudeModelChoice[]> | null = null
+const catalogs = new Map<string, { rows?: ClaudeModelChoice[]; pending?: Promise<ClaudeModelChoice[]> }>()
 let modelsGeneration = 0
 const MODELS_TIMEOUT_MS = 60_000
 
-export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
-  if (knownModels.length > 0) return Promise.resolve(knownModels)
-  if (fetchingModels) return fetchingModels
+export function fetchClaudeModels(profile = activeAccountProfile('claude')): Promise<ClaudeModelChoice[]> {
+  const catalog = catalogs.get(profile) ?? {}
+  catalogs.set(profile, catalog)
+  if (catalog.rows?.length) return Promise.resolve(catalog.rows)
+  if (catalog.pending) return catalog.pending
+  const env = accountEnvironment('claude', profile)
   const binary = claudeBinary()
   if (!binary) return Promise.resolve([])
   const generation = modelsGeneration
@@ -84,36 +87,36 @@ export function fetchClaudeModels(): Promise<ClaudeModelChoice[]> {
       })()
       const handle = sdk.query({
         prompt: silent,
-        options: { pathToClaudeCodeExecutable: binary, spawnClaudeCodeProcess: spawnRuntime, abortController: abort, tools: [], persistSession: false, settingSources: [], maxTurns: 1 },
+        options: { env, pathToClaudeCodeExecutable: binary, spawnClaudeCodeProcess: spawnRuntime, abortController: abort, tools: [], persistSession: false, settingSources: [], maxTurns: 1 },
       })
       const rows = await Promise.race([
         handle.supportedModels(),
         new Promise<never>((_, reject) => abort.signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true })),
       ])
       if (generation !== modelsGeneration) return []
-      knownModels = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description, efforts: row.supportsEffort === false ? [] : row.supportedEffortLevels ?? [] }))
-      flog('engine-claude', `the plan offers ${knownModels.length} models: ${knownModels.map((m) => m.value).join(', ')}`)
-      return knownModels
+      catalog.rows = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description, efforts: row.supportsEffort === false ? [] : row.supportedEffortLevels ?? [] }))
+      return catalog.rows
     } catch (err) {
       flog('engine-claude', `could not list models: ${err instanceof Error ? err.message : String(err)}`)
       return []
     } finally {
       clearTimeout(timer)
       abort.abort()
-      if (modelsGeneration === generation) fetchingModels = null
+      if (modelsGeneration === generation) catalog.pending = undefined
     }
   })()
-  fetchingModels = pending
+  catalog.pending = pending
   return pending
 }
 
 export function forgetClaudeModels(): void {
-  knownModels = []
-  fetchingModels = null
+  catalogs.clear()
   modelsGeneration++
 }
 
 export class ClaudeEngine implements CloudEngine {
+  private readonly env: NodeJS.ProcessEnv
+  constructor(readonly accountProfile = activeAccountProfile('claude')) { this.env = accountEnvironment('claude', accountProfile) }
   readonly id = 'claude' as const
   readonly label = 'Claude'
   readonly desktopToolIsolation = true
@@ -123,7 +126,7 @@ export class ClaudeEngine implements CloudEngine {
     return this.status.read(async () => {
       const binary = claudeBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
-      const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS)
+      const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
       if (code === null) return { installed: true, loggedIn: false, conclusive: false }
       return readAuthStatus(out)
     })
@@ -132,7 +135,7 @@ export class ClaudeEngine implements CloudEngine {
   async login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }> {
     const binary = claudeBinary()
     if (!binary) return { ok: false, message: 'Install the Claude runtime in Settings → AI before connecting.' }
-    const { code } = await runText(binary, ['auth', 'login'], LOGIN_TIMEOUT_MS, undefined, options)
+    const { code } = await runText(binary, ['auth', 'login'], LOGIN_TIMEOUT_MS, this.env as Record<string, string>, options)
     options?.signal?.throwIfAborted()
     this.status.forget()
     const status = await this.detect()
@@ -143,7 +146,7 @@ export class ClaudeEngine implements CloudEngine {
 
   async logout(): Promise<void> {
     const binary = claudeBinary()
-    if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS)
+    if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
     this.status.forget()
   }
 
@@ -164,6 +167,7 @@ export class ClaudeEngine implements CloudEngine {
         prompt: job.prompt,
         options: {
           cwd: job.workdir,
+          env: this.env,
           pathToClaudeCodeExecutable: binary,
           spawnClaudeCodeProcess: spawnRuntime,
           abortController: abort,
@@ -220,7 +224,7 @@ export class ClaudeEngine implements CloudEngine {
   runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
-    return Promise.all([sdkModule(), chosenModel(undefined, job.model)]).then(([sdk, model]) => sessions.run(job, { sdk, binary, workdir: job.workdir, model }))
+    return Promise.all([sdkModule(), chosenModel(undefined, job.model)]).then(([sdk, model]) => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }))
   }
 }
 
@@ -228,7 +232,7 @@ const sessions = new SessionPool()
 setInterval(() => sessions.sweep(), 60_000).unref()
 
 export function closeClaudeSession(key: string): void {
-  sessions.closeOne(key)
+  sessions.closeMatching(key)
 }
 
 export function closeClaudeSessions(): void {

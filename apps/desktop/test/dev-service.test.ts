@@ -12,6 +12,7 @@ vi.mock('../src/main/dev-codex.js', () => ({ DevCodex: class {
 } }))
 vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {} }))
 import { DevService } from '../src/main/dev-service.js'
+import { initializeAccountProfiles, addAccountProfile, selectAccountProfile } from '../src/main/account-profiles.js'
 
 it('keeps developer opt-in separate, persists tasks and enforces full-access confirmation', async () => {
   await mkdir(resolve('tmp'), { recursive: true })
@@ -61,4 +62,26 @@ it('keeps developer opt-in separate, persists tasks and enforces full-access con
   expect(events).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, state: 'idle' }))
   expect(events).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, title: 'Inspect the fixture' }))
   expect((await restored.session(imported.id)).items[1]?.text).toBe('Earlier answer')
+})
+
+it('keeps existing sessions on their account when the default changes', async () => {
+  const original = { ...process.env }
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-accounts-')), service = new DevService(root, vi.fn())
+  try {
+    await initializeAccountProfiles(root)
+    await service.preferences({ enabled: true })
+    const repo = await service.addRepo(root)
+    const request = { repoId: repo.id, provider: 'codex' as const, model: '', mode: 'review' as const, isolate: false, resume: 'external', resumeConfirmed: true }
+    const personal = await service.create(request)
+    const profiles = await addAccountProfile('codex', 'Work'), workId = profiles.profiles[0]!.id
+    await selectAccountProfile('codex', workId)
+    const work = await service.create(request)
+    expect(work.id).not.toBe(personal.id)
+    expect(work.accountProfile).toBe(workId)
+    expect(personal.accountProfile).toBe('system')
+    await service.send(personal.id, 'Continue on the original account')
+    expect((await service.session(personal.id)).accountProfile).toBe('system')
+    expect(await service.configure(personal.id, { model: '', mode: 'plan' })).toMatchObject({ accountProfile: 'system', mode: 'plan' })
+  } finally { await service.stopAll(); process.env = original }
 })

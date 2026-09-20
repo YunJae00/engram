@@ -4,8 +4,10 @@ import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { InstallClaude } from '../components/InstallClaude.js'
+import { useAccountProfiles } from '../lib/accountProfiles.js'
 
 export function Onboarding() {
+  const profiles = useAccountProfiles()
   const [step, setStep] = useState(1)
   const [root, setRoot] = useState('')
   const [finishing, setFinishing] = useState(false)
@@ -33,7 +35,7 @@ export function Onboarding() {
     void api.engineLogins().then(setLogins).catch(() => undefined)
     return api.onEvent(event => {
       if (event.type === 'engines:changed' || event.type === 'engines:detected') void loadBrains()
-      if (event.type === 'engines:login') setLogins(held => [...held.filter(login => login.id !== event.login.id), event.login])
+      if (event.type === 'engines:login') setLogins(held => [...held.filter(login => login.id !== event.login.id || login.profile !== event.login.profile), event.login])
     })
   }, [])
 
@@ -85,7 +87,7 @@ export function Onboarding() {
       <div className="onboard-providers" aria-busy={loading}>
         {(['claude', 'codex'] as const).map(id => {
           const state = brains.find(brain => brain.id === id)
-          const login = logins.find(item => item.id === id)
+          const login = logins.find(item => item.id === id && (item.profile ?? 'system') === (profiles?.selected[id] ?? 'system'))
           const connected = state?.installed && state.loggedIn
           const active = connecting === id
           return <div className="onboard-provider" key={id}>

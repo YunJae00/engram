@@ -1,34 +1,34 @@
 import { resolve } from 'node:path'
 import type { DevExternalSession, DevItem, DevProvider, DevUsage } from '../shared/developers.js'
-import { loadClaudeSdk } from './claude-runtime.js'
+import { claudeHistory } from './claude-history.js'
 import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
 import { DevRpc } from './dev-rpc.js'
 import { codexUsage } from './dev-usage.js'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
 export function sessionPath(path: string): string {
   const normalized = resolve(path.replace(/^\\\\\?\\/, ''))
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized
 }
 
-export async function devProbe(cwd: string, method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function devProbe(cwd: string, method: string, params: Record<string, unknown>, profile = activeAccountProfile('codex')): Promise<Record<string, unknown>> {
   const binary = codexBinary()
   if (!binary) throw new Error('The coding runtime is not available.')
-  const rpc = new DevRpc(binary, { cwd, env: withHelpersOnPath(binary) }, () => {}, async () => { throw new Error('Read-only account request.') }, () => {})
+  const rpc = new DevRpc(binary, { cwd, env: withHelpersOnPath(binary, accountEnvironment('codex', profile)) }, () => {}, async () => { throw new Error('Read-only account request.') }, () => {})
   try { await rpc.initialize(); return await rpc.send(method, params, 30_000) }
   finally { await rpc.shutdown() }
 }
 
-export async function devExternal(cwd: string, provider: DevProvider, allFolders = false): Promise<DevExternalSession[]> {
+export async function devExternal(cwd: string, provider: DevProvider, allFolders = false, profile = activeAccountProfile(provider)): Promise<DevExternalSession[]> {
   if (provider === 'claude') {
-    const sdk = await loadClaudeSdk() as { listSessions(options: { dir?: string; limit: number }): Promise<{ sessionId: string; summary: string; lastModified: number; cwd?: string }[]> }
-    const rows = await sdk.listSessions({ ...(!allFolders ? { dir: cwd } : {}), limit: 100 })
+    const rows = await claudeHistory<{ sessionId: string; summary: string; lastModified: number; cwd?: string }[]>(profile, 'list', { ...(!allFolders ? { dir: cwd } : {}), limit: 100 })
     return rows.filter(row => row.cwd && (allFolders || sessionPath(row.cwd) === sessionPath(cwd))).map(row => ({ id: row.sessionId, title: row.summary || 'Untitled session', cwd: row.cwd!, provider, updatedAt: row.lastModified }))
   }
   const data: unknown[] = [], cursors = new Set<string>()
   let cursor: string | undefined
   const paths = process.platform === 'win32' ? [...new Set([cwd, cwd.replace(/\\/g, '/'), resolve(cwd), `\\\\?\\${resolve(cwd)}`])] : [cwd]
   do {
-    const result = await devProbe(cwd, 'thread/list', { ...(!allFolders ? { cwd: paths } : {}), limit: 100, archived: false, sortKey: 'updated_at', sourceKinds: ['cli', 'vscode', 'exec', 'appServer'], ...(cursor ? { cursor } : {}) })
+    const result = await devProbe(cwd, 'thread/list', { ...(!allFolders ? { cwd: paths } : {}), limit: 100, archived: false, sortKey: 'updated_at', sourceKinds: ['cli', 'vscode', 'exec', 'appServer'], ...(cursor ? { cursor } : {}) }, profile)
     if (!Array.isArray(result['data'])) throw new Error('The runtime did not return a session list.')
     data.push(...result['data'])
     cursor = !allFolders && typeof result['nextCursor'] === 'string' ? result['nextCursor'] : undefined
@@ -42,25 +42,25 @@ export async function devExternal(cwd: string, provider: DevProvider, allFolders
   }))
 }
 
-export async function devAccountUsage(cwd: string): Promise<DevUsage> {
-  try { return codexUsage(await devProbe(cwd, 'account/rateLimits/read', {})) }
+export async function devAccountUsage(cwd: string, profile = activeAccountProfile('codex')): Promise<DevUsage> {
+  try { return codexUsage(await devProbe(cwd, 'account/rateLimits/read', {}, profile)) }
   catch { return { unavailable: 'Account limits could not be refreshed. Check your AI connection and try again.' } }
 }
 
-export async function devExternalRead(cwd: string, provider: DevProvider, id: string, allFolders = false): Promise<DevItem[]> {
-  const source = (await devExternal(cwd, provider, allFolders)).find(session => session.id === id)
+export async function devExternalRead(cwd: string, provider: DevProvider, id: string, allFolders = false, profile = activeAccountProfile(provider)): Promise<DevItem[]> {
+  const source = (await devExternal(cwd, provider, allFolders, profile)).find(session => session.id === id)
   if (!source) throw new Error('This session does not belong to the selected repository.')
   const items: DevItem[] = []
   if (provider === 'claude') {
-    const sdk = await loadClaudeSdk() as { getSessionMessages(id: string, options: { dir: string; limit: number }): Promise<{ uuid: string; type: string; message: { content?: unknown } }[]> }
-    for (const message of await sdk.getSessionMessages(id, { dir: source.cwd, limit: 200 })) {
+    const messages = await claudeHistory<{ uuid: string; type: string; message: { content?: unknown } }[]>(profile, 'read', { dir: source.cwd, limit: 200 }, id)
+    for (const message of messages) {
       if (!['user', 'assistant'].includes(message.type)) continue
       const content = message.message?.content
       const text = typeof content === 'string' ? content : Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => String(block.text ?? '')).join('\n') : ''
       if (text) items.push({ id: message.uuid, kind: message.type as 'user' | 'assistant', text: text.slice(0, 50_000) })
     }
   } else {
-    const result = await devProbe(cwd, 'thread/read', { threadId: id, includeTurns: true })
+    const result = await devProbe(cwd, 'thread/read', { threadId: id, includeTurns: true }, profile)
     const thread = result['thread'] as { turns?: { items?: Record<string, unknown>[] }[] } | undefined
     for (const turn of thread?.turns ?? []) for (const item of turn.items ?? []) {
       if (item['type'] === 'agentMessage' && typeof item['text'] === 'string') items.push({ id: String(item['id']), kind: 'assistant', text: item['text'].slice(0, 50_000) })

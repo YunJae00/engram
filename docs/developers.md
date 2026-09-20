@@ -90,11 +90,17 @@ No credit is purchased or usage reset by checking limits.
 Settings → AI → Accounts creates separately named subscription account profiles.
 Each has its own native runtime configuration, sign-in and session history. The
 System account retains the existing CLI sign-in; Engram never copies credentials.
-Switching profiles requires an explicit restart, with active work stopped first.
-After switching to a new profile, use Connect to finish the provider's sign-in flow.
-One profile per provider is active at a time; simultaneous accounts of the same
-provider and automatic quota-based switching are not supported. Developer sessions
-remain bound to their original profile, preventing accidental cross-account resume.
+The account button beside the composer model opens the same controls. Connect each
+account once, then choose Use account without restarting or signing other accounts
+out. This selection applies to new development tasks and the next ordinary chat turn.
+Existing development sessions keep their original account, including while running;
+sessions from different accounts can run together. Automatic quota-based switching
+is not supported. Provider limits and sign-in requirements still apply.
+
+Previous sessions has an account selector; importing or resuming a session preserves
+that account. Usage lists each connected account separately and refreshes on provider
+events and once per minute while visible. When coding-session collection is enabled,
+it checks registered profiles with the same private-folder exclusions and cursors.
 
 ## Verification
 

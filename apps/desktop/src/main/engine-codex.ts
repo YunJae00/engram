@@ -3,6 +3,7 @@ import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_
 import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow; each job here is
@@ -81,6 +82,8 @@ export function readLoginStatus(out: string, code: number | null): EngineDetecti
 }
 
 export class CodexEngine implements CloudEngine {
+  private readonly env: NodeJS.ProcessEnv
+  constructor(readonly accountProfile = activeAccountProfile('codex')) { this.env = accountEnvironment('codex', accountProfile) }
   readonly id = 'codex' as const
   readonly label = 'ChatGPT'
   readonly desktopToolIsolation = false
@@ -90,13 +93,13 @@ export class CodexEngine implements CloudEngine {
     return this.status.read(async () => {
       const binary = codexBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
-      const { code, out } = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary))
+      const { code, out } = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
       return readLoginStatus(out, code)
     })
   }
 
   async login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }> {
-    const account = new CodexAccount(options?.signal ?? new AbortController().signal, LOGIN_TIMEOUT_MS)
+    const account = new CodexAccount(options?.signal ?? new AbortController().signal, LOGIN_TIMEOUT_MS, this.env)
     try {
       await account.login((url) => options?.onUrl?.(url))
       this.status.forget()
@@ -106,7 +109,7 @@ export class CodexEngine implements CloudEngine {
 
   async logout(): Promise<void> {
     const binary = codexBinary()
-    if (binary) await runText(binary, ['logout'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary))
+    if (binary) await runText(binary, ['logout'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
     this.status.forget()
   }
 
@@ -127,7 +130,7 @@ export class CodexEngine implements CloudEngine {
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const env = withHelpersOnPath(binary)
+      const env = withHelpersOnPath(binary, this.env)
       let configOverrides: string[] = []
       if (job.disallowTools) {
         // Engram executes the returned action. Starting unrelated MCP servers

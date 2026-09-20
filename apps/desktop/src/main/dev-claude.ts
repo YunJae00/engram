@@ -7,6 +7,7 @@ import { devEditPreview, devLocalPath } from './dev-edit.js'
 import { claudeTurnUsage, claudeUsage } from './dev-usage.js'
 import type { DevUpdates } from './dev-codex.js'
 import type { SdkUserMessage } from './engine-claude-session.js'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -14,25 +15,26 @@ const text = (value: unknown): string => typeof value === 'string' ? value : ''
 interface Query extends AsyncIterable<Data> { interrupt(): Promise<unknown>; supportedCommands?(): Promise<{ name: string; description: string }[]>; usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: (options: { skipBehaviors: boolean }) => Promise<unknown> }
 interface Sdk { query(options: { prompt: AsyncIterable<SdkUserMessage>; options: Data }): Query }
 
-export async function claudeProbe<T>(cwd: string, request: (query: Query) => Promise<T>): Promise<T> {
+export async function claudeProbe<T>(cwd: string, request: (query: Query) => Promise<T>, profile = activeAccountProfile('claude')): Promise<T> {
+  const env = accountEnvironment('claude', profile)
   const abort = new AbortController(), processes = new Set<ProcessClient>()
-  const timer = setTimeout(() => abort.abort(), 20_000)
+  const timer = setTimeout(() => abort.abort(), 60_000)
   try {
     const sdk = await loadClaudeSdk() as Sdk, binary = installedClaudeBinary()
     if (!binary) throw new Error('Connect Claude in AI settings first.')
     const prompt = (async function* () { await new Promise<void>(resolve => { if (abort.signal.aborted) resolve(); else abort.signal.addEventListener('abort', () => resolve(), { once: true }) }); if (!abort.signal.aborted) yield undefined as never })()
-    const query = sdk.query({ prompt, options: { cwd, pathToClaudeCodeExecutable: binary, abortController: abort, tools: [], persistSession: false, settingSources: [], strictMcpConfig: true, maxTurns: 1, spawnClaudeCodeProcess: (options: Parameters<typeof spawnRuntime>[0]) => { const child = spawnRuntime({ ...options, killTree: true }); processes.add(child); return child } } })
+    const query = sdk.query({ prompt, options: { cwd, env, pathToClaudeCodeExecutable: binary, abortController: abort, tools: [], persistSession: false, settingSources: [], strictMcpConfig: true, maxTurns: 1, spawnClaudeCodeProcess: (options: Parameters<typeof spawnRuntime>[0]) => { const child = spawnRuntime({ ...options, killTree: true }); processes.add(child); return child } } })
     return await Promise.race([request(query), new Promise<never>((_, reject) => { if (abort.signal.aborted) reject(new Error('Timed out')); else abort.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true }) })])
   }
   finally { clearTimeout(timer); abort.abort(); await Promise.all([...processes].map(child => { child.kill(); return child.waitForClose() })) }
 }
 
-export async function claudeAccountUsage(cwd: string): Promise<import('../shared/developers.js').DevUsage> {
+export async function claudeAccountUsage(cwd: string, profile = activeAccountProfile('claude')): Promise<import('../shared/developers.js').DevUsage> {
   try { return await claudeProbe(cwd, async query => {
     await query.supportedCommands?.()
     if (!query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET) return { unavailable: 'This Claude runtime does not report account limits.' }
     return claudeUsage(await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }))
-  }) } catch { return { unavailable: 'Claude account limits could not be refreshed. Check your connection and try again.' } }
+  }, profile) } catch { return { unavailable: 'Claude account limits could not be refreshed. Check your connection and try again.' } }
 }
 
 export class DevClaude {
@@ -57,6 +59,7 @@ export class DevClaude {
         this.processes.add(child); child.once('close', () => this.processes.delete(child))
         return child
       },
+      env: accountEnvironment('claude', this.session.accountProfile ?? 'system'),
       abortController: this.abort, includePartialMessages: true, persistSession: true,
       settingSources: this.session.mode === 'full-access' && this.session.loadProjectSettings ? ['user', 'project', 'local'] : [], strictMcpConfig: !(this.session.mode === 'full-access' && this.session.loadProjectSettings), permissionMode: 'default',
       ...(this.session.model ? { model: this.session.model } : {}), ...(this.session.effort ? { effort: this.session.effort } : {}),

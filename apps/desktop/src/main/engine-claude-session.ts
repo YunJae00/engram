@@ -38,6 +38,7 @@ export interface SessionSdk {
 }
 
 export interface SessionSpec {
+  env?: NodeJS.ProcessEnv
   sdk: SessionSdk
   binary: string
   workdir: string
@@ -139,6 +140,7 @@ export class WarmSession {
       prompt: this.input(),
       options: {
         cwd: spec.workdir,
+        env: spec.env,
         pathToClaudeCodeExecutable: spec.binary,
         spawnClaudeCodeProcess: spawnRuntime,
         abortController: this.abort,
@@ -308,6 +310,10 @@ export class SessionPool {
   closeOne(key: string): void {
     this.sessions.get(key)?.close()
     this.sessions.delete(key)
+  }
+
+  closeMatching(key: string): void {
+    for (const stored of this.sessions.keys()) if (stored === key || stored.endsWith(`:${key}`)) this.closeOne(stored)
   }
 
   closeAll(): void {

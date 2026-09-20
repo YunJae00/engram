@@ -8,6 +8,13 @@ import { BrowserWindow } from 'electron'
 import type { EngineHealthDto, EngineHealthReason, EngineStatusDto, EngramEvent } from '../shared/types.js'
 import type { VaultContext } from './vault.js'
 import { overlayWindowIds } from './desktop-overlay.js'
+import { activeAccountProfile } from './account-profiles.js'
+
+function selectedAccount(engine: Engine | undefined): boolean {
+  if (!engine || (engine.id !== 'claude' && engine.id !== 'codex')) return true
+  const profile = (engine as Engine & { accountProfile?: string }).accountProfile
+  return profile === undefined || profile === activeAccountProfile(engine.id)
+}
 
 // Assigning core's EngineErrorKind into the DTO union is the tripwire: a new
 // kind in core stops compiling here instead of shipping a health state that
@@ -90,8 +97,9 @@ export function scheduleQuotaResume(ctx: VaultContext, delayMs: number): void {
 // A run finished: say what it implies about the engine. One function so all
 // four librarian entry points (capture pipeline, auto-tidy, manual sweep, tray
 // sweep) agree instead of each drawing its own conclusion.
-export function noteRunOutcome(ctx: VaultContext, report: RunReport): void {
-  const id = ctx.engines[0]?.id
+export function noteRunOutcome(ctx: VaultContext, report: RunReport, engine = ctx.engines[0]): void {
+  if (!selectedAccount(engine)) return
+  const id = engine?.id
   if (!id) return
   if (report.haltReason) {
     setHealth(id, { healthy: false, reason: report.haltReason })
@@ -123,6 +131,7 @@ export function noteRunOutcome(ctx: VaultContext, report: RunReport): void {
 //   other → the CLI's auth verdict gets first say; failing that, a SECOND
 //           consecutive failure is needed before we accuse anything.
 export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, ctx?: VaultContext): Promise<void> {
+  if (!selectedAccount(engine)) return
   if (kind === 'quota') {
     setHealth(engine.id, { healthy: false, reason: 'quota' })
     // A chat/ping 429 is evidence too: arm the gate so the next sweep waits,

@@ -65,19 +65,19 @@ export interface DevState { preferences: DevPreferences; repos: DevRepo[]; sessi
 export interface DevGitState { branch: string; files: { path: string; status: string; previousPath?: string }[]; diff: string; truncated: boolean }
 export interface DevFileReview { path: string; before: string; after: string; fingerprint: string; hunks: { index: number; line: number; text: string }[] }
 export interface DevRule { id: string; repoId: string; provider: DevProvider; tool: string; input: string; decision: 'allow' | 'deny' }
-export interface DevUpdate { id: string; items: DevItem[]; state: DevSession['state']; pending: DevApproval[]; usage: DevUsage; provider?: DevProvider; runtimeId?: string; title?: string; updatedAt?: number }
+export interface DevUpdate { id: string; items: DevItem[]; state: DevSession['state']; pending: DevApproval[]; usage: DevUsage; provider?: DevProvider; accountProfile?: string; runtimeId?: string; title?: string; updatedAt?: number }
 export interface DevelopersApi {
   devState(): Promise<DevState>
   devPreferences(patch: Partial<DevPreferences>): Promise<DevPreferences>
   devAddRepo(): Promise<DevRepo | null>
   devRemoveRepo(id: string): Promise<void>
-  devCreate(request: { repoId: string; provider: DevProvider; model: string; effort?: ReasoningEffort; mode: DevMode; isolate: boolean; fullAccessConfirmed?: boolean; resume?: string; fork?: boolean; resumeConfirmed?: boolean; allFolders?: boolean }): Promise<DevSession>
+  devCreate(request: { repoId: string; provider: DevProvider; accountProfile?: string; model: string; effort?: ReasoningEffort; mode: DevMode; isolate: boolean; fullAccessConfirmed?: boolean; resume?: string; fork?: boolean; resumeConfirmed?: boolean; allFolders?: boolean }): Promise<DevSession>
   devSession(id: string): Promise<DevSession>
   devSend(id: string, text: string): Promise<void>
   devStop(id: string): Promise<void>
   devRespond(id: string, requestId: string, response: { decision: 'allow' | 'deny'; remember?: boolean; answers?: Record<string, string[]> }): Promise<void>
-  devExternal(repoId: string, provider: DevProvider, allFolders?: boolean): Promise<DevExternalSession[]>
-  devExternalRead(repoId: string, provider: DevProvider, id: string, allFolders?: boolean): Promise<DevItem[]>
+  devExternal(repoId: string, provider: DevProvider, allFolders?: boolean, profile?: string): Promise<DevExternalSession[]>
+  devExternalRead(repoId: string, provider: DevProvider, id: string, allFolders?: boolean, profile?: string): Promise<DevItem[]>
   devFork(id: string): Promise<DevSession>
   devGit(id: string): Promise<DevGitState>
   devCommit(id: string, paths: string[], message: string): Promise<void>
@@ -85,7 +85,7 @@ export interface DevelopersApi {
   devUndoHunk(id: string, path: string, fingerprint: string, index: number): Promise<{ review: DevFileReview; backup: string }>
   devRules(): Promise<DevRule[]>
   devRemoveRule(id: string): Promise<void>
-  devUsage(provider: DevProvider): Promise<DevUsage>
+  devUsage(provider: DevProvider, profile?: string): Promise<DevUsage>
   devCommands(id: string): Promise<DevCommand[]>
   devProjectCommands(repoId: string, provider: DevProvider): Promise<DevCommand[]>
   devConfigure(id: string, change: { model: string; effort?: ReasoningEffort; mode: DevMode; fullAccessConfirmed?: boolean }): Promise<DevSession>

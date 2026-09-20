@@ -16,8 +16,11 @@ export function installedClaudeBinary(): string | null {
   return existsSync(path) && existsSync(join(runtimeHome(), 'sdk', 'sdk.mjs')) ? path : null
 }
 export async function loadClaudeSdk(): Promise<unknown> {
+  return import(/* @vite-ignore */ claudeSdkUrl())
+}
+export function claudeSdkUrl(): string {
   if (!installedClaudeBinary()) throw new Error('Install the Claude runtime in Settings → AI before connecting.')
-  return import(/* @vite-ignore */ pathToFileURL(join(runtimeHome(), 'sdk', 'sdk.mjs')).href)
+  return pathToFileURL(join(runtimeHome(), 'sdk', 'sdk.mjs')).href
 }
 
 export function registryArchive(value: unknown): { url: string; integrity: string } {

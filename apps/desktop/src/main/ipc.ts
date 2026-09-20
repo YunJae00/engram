@@ -133,6 +133,8 @@ import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './eng
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
 import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
+import { registerAccountIpc } from './account-ipc.js'
+import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
@@ -351,10 +353,11 @@ function startPipeline(ctx: VaultContext, message: string): void {
   }
   pipelineRunning = true
   broadcast({ type: 'filing:start' })
+  const runEngine = ctx.engines[0]
   void processCapture(ctx.paths, ctx.engines, LIBRARIAN_RUN_OPTS)
     .then(async (report) => {
       lastFailures = report.failed
-      noteRunOutcome(ctx, report)
+      noteRunOutcome(ctx, report, runEngine)
       // The capture path used to swallow the report whole: on a quota/auth halt
       // the filing spinner appeared, vanished, the note stayed a scrap and the
       // user was told nothing. Only announce when there IS news — a normal run
@@ -432,6 +435,7 @@ export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
       // empty the queue, so only the final drain sweep pays for a briefing.
       const finalBatch = state.pending.length <= ABSORB_DRAIN_BATCH
       const jobsRun: string[] = []
+      const runEngine = ctx.engines[0]
       const report = await sweep(ctx.paths, ctx.engines, {
         ...LIBRARIAN_RUN_OPTS,
         onJobStart: (job, index, total) => {
@@ -442,7 +446,7 @@ export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
         skipBrief: !finalBatch,
       })
       lastFailures = report.failed
-      noteRunOutcome(ctx, report)
+      noteRunOutcome(ctx, report, runEngine)
       void autoCommit(ctx, 'librarian: absorb-drain sweep')
       broadcast({ type: 'sweep:done', report: toReport(report) })
       broadcast({ type: 'vault:changed' })
@@ -569,6 +573,7 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
   broadcast({ type: 'sweep:start' })
   try {
     const jobsRun: string[] = []
+    const runEngine = ctx.engines[0]
     const report = await sweep(ctx.paths, ctx.engines, {
       ...LIBRARIAN_RUN_OPTS,
       onJobStart: (job, index, total) => {
@@ -578,7 +583,7 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
       shouldStop: () => stopRequested,
     })
     lastFailures = report.failed
-    noteRunOutcome(ctx, report)
+    noteRunOutcome(ctx, report, runEngine)
     void autoCommit(ctx, 'librarian: auto-tidy')
     // The vault moved, so the block every Claude session reads is now stale.
     void syncSessionContext(ctx)
@@ -1877,6 +1882,7 @@ export function registerIpc(ctx: VaultContext): void {
     try {
       if (ctx.engines.length === 0) throw new Error('No engine available — connect an AI to start auto-organizing.')
       const jobsRun: string[] = []
+      const runEngine = ctx.engines[0]
       const report = await sweep(paths, ctx.engines, {
         ...LIBRARIAN_RUN_OPTS,
         onJobStart: (job, index, total) => {
@@ -1886,7 +1892,7 @@ export function registerIpc(ctx: VaultContext): void {
         shouldStop: () => stopRequested,
       })
       lastFailures = report.failed
-      noteRunOutcome(ctx, report)
+      noteRunOutcome(ctx, report, runEngine)
       void autoCommit(ctx, 'librarian: sweep')
       const dto = toReport(report)
       broadcast({ type: 'sweep:done', report: dto })
@@ -2579,18 +2585,7 @@ export function registerIpc(ctx: VaultContext): void {
 // Sign-in happens in the vendor's own window; this only starts it, waits, and
 // re-detects. Nothing about the credential passes through here.
 export function registerEngineIpc(): void {
-  ipcMain.handle('accounts:list', async () => (await import('./account-profiles.js')).accountProfiles())
-  ipcMain.handle('accounts:add', async (event, provider: unknown, name: string) => {
-    if (event.sender !== (await import('./desktop-access.js')).desktopOwner()?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Account settings require the main window.')
-    return (await import('./account-profiles.js')).addAccountProfile(cloudId(provider), name)
-  })
-  ipcMain.handle('accounts:use', async (event, provider: unknown, id: string) => {
-    if (event.sender !== (await import('./desktop-access.js')).desktopOwner()?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Account settings require the main window.')
-    if (answering.size || pipelineRunning || draining || manualSweepInFlight || errandRunning || (await import('./dev-ipc.js')).developersBusy() || engineLogins().some(login => ['opening', 'browser'].includes(login.phase))) throw new Error('Finish or stop active work and sign-in before switching accounts.')
-    await (await import('./dev-ipc.js')).stopDevelopers()
-    await (await import('./account-profiles.js')).selectAccountProfile(cloudId(provider), id)
-    app.relaunch(); app.quit()
-  })
+  registerAccountIpc(async () => { await onEnginesChanged?.() })
   const cloudId = (id: unknown): 'claude' | 'codex' => {
     if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
     return id
@@ -2602,16 +2597,17 @@ export function registerEngineIpc(): void {
     broadcast({ type: 'engines:changed', engines: await engineStates() })
   })
   ipcMain.handle('engines:claudeInstallHelp', () => shell.openExternal(CLAUDE_INSTALL_HELP))
-  ipcMain.handle('models:list', async (_e, id: unknown = 'claude') => {
+  ipcMain.handle('models:list', async (_e, id: unknown = 'claude', profile?: string) => {
     const provider = cloudId(id)
-    if (!(await engineStates([provider])).some(state => state.id === provider && state.loggedIn)) return []
-    return provider === 'claude' ? fetchClaudeModels() : fetchCodexModels()
+    if (['none', 'mock'].includes(process.env['ENGRAM_ENGINE'] ?? '')) return []
+    if (!(await cloudEngine(provider, profile).detect()).loggedIn) return []
+    return provider === 'claude' ? fetchClaudeModels(profile) : fetchCodexModels(profile)
   })
   ipcMain.handle('engines:logins', () => engineLogins())
-  ipcMain.handle('engines:cancelLogin', (_e, id: unknown) => cancelEngineLogin(cloudId(id)))
-  ipcMain.handle('engines:openLogin', (_e, id: unknown) => reopenEngineLogin(cloudId(id)))
-  ipcMain.handle('engines:connect', async (_e, id: unknown) => {
-    const result = await connectEngine(cloudId(id))
+  ipcMain.handle('engines:cancelLogin', (_e, id: unknown, profile?: string) => cancelEngineLogin(cloudId(id), profile))
+  ipcMain.handle('engines:openLogin', (_e, id: unknown, profile?: string) => reopenEngineLogin(cloudId(id), profile))
+  ipcMain.handle('engines:connect', async (_e, id: unknown, profile?: string) => {
+    const result = await connectEngine(cloudId(id), profile)
     if (result.ok) {
       if (id === 'claude') forgetClaudeModels()
       else forgetCodexModels()

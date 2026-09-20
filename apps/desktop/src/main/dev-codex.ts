@@ -3,6 +3,7 @@ import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
 import { DevRpc } from './dev-rpc.js'
 import { DevApprovals } from './dev-approvals.js'
 import { codexTurnUsage, codexUsage } from './dev-usage.js'
+import { accountEnvironment } from './account-profiles.js'
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -24,7 +25,7 @@ export class DevCodex {
   constructor(private readonly session: DevSession, private readonly approvals: DevApprovals, private readonly updates: DevUpdates) {
     const binary = codexBinary()
     if (!binary) throw new Error('The coding runtime is not available in this installation.')
-    this.rpc = new DevRpc(binary, { cwd: session.cwd, env: withHelpersOnPath(binary), trustedProject: session.mode === 'full-access' && session.loadProjectSettings === true },
+    this.rpc = new DevRpc(binary, { cwd: session.cwd, env: withHelpersOnPath(binary, accountEnvironment('codex', session.accountProfile ?? 'system')), trustedProject: session.mode === 'full-access' && session.loadProjectSettings === true },
       (method, params) => this.event(method, params), (method, params) => this.request(method, params), error => {
         this.abort.abort(); this.approvals.close()
         if (!this.closed) { this.closed = true; updates.finished(error.message) }

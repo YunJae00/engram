@@ -7,36 +7,41 @@ import { t } from '../i18n.js'
 import { useShellState } from '../state-slices.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import type { ReasoningEffort } from 'core'
+import { useAccountProfiles } from '../lib/accountProfiles.js'
+import { AccountProfiles } from './AccountProfiles.js'
 
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
-const catalogs = new Map<Provider, { rows: ModelChoiceDto[]; checked: number; pending?: Promise<ModelChoiceDto[]> }>()
-function cachedModels(engine: Provider): ModelChoiceDto[] {
-  if (!catalogs.has(engine)) {
+const catalogs = new Map<string, { rows: ModelChoiceDto[]; checked: number; pending?: Promise<ModelChoiceDto[]> }>()
+const catalogKey = (engine: Provider, profile: string) => profile === 'system' ? engine : `${engine}.${profile}`
+function cachedModels(engine: Provider, profile: string): ModelChoiceDto[] {
+  const key = catalogKey(engine, profile)
+  if (!catalogs.has(key)) {
     let rows: ModelChoiceDto[] = []
     try {
-      const saved = JSON.parse(localStorage.getItem(`engram.models.${engine}`) ?? 'null')
+      const saved = JSON.parse(localStorage.getItem(`engram.models.${key}`) ?? 'null')
       if (saved && Date.now() - saved.at < 86_400_000 && Array.isArray(saved.rows)) rows = saved.rows.filter((row: ModelChoiceDto) => row && typeof row.value === 'string' && typeof row.label === 'string' && typeof row.detail === 'string' && (!row.efforts || Array.isArray(row.efforts) && row.efforts.every(level => typeof level === 'string'))).slice(0, 200)
     } catch { /* A missing catalog is loaded from the runtime. */ }
-    catalogs.set(engine, { rows, checked: 0 })
+    catalogs.set(key, { rows, checked: 0 })
   }
-  return catalogs.get(engine)!.rows
+  return catalogs.get(key)!.rows
 }
-function readModels(engine: Provider, force = false): Promise<ModelChoiceDto[]> {
-  cachedModels(engine)
-  const catalog = catalogs.get(engine)!
+function readModels(engine: Provider, profile: string, force = false): Promise<ModelChoiceDto[]> {
+  cachedModels(engine, profile)
+  const key = catalogKey(engine, profile), catalog = catalogs.get(key)!
   if (catalog.pending) return catalog.pending
   if (!force && catalog.rows.length && Date.now() - catalog.checked < 60_000) return Promise.resolve(catalog.rows)
-  catalog.pending = api.modelsList(engine).then(rows => {
+  catalog.pending = api.modelsList(engine, profile).then(rows => {
     catalog.rows = rows; catalog.checked = Date.now()
-    try { localStorage.setItem(`engram.models.${engine}`, JSON.stringify({ rows, at: catalog.checked })) } catch { /* Memory caching still works without storage. */ }
+    try { localStorage.setItem(`engram.models.${key}`, JSON.stringify({ rows, at: catalog.checked })) } catch { /* Memory caching still works without storage. */ }
     return rows
   }).finally(() => { catalog.pending = undefined })
   return catalog.pending
 }
 
-export function useModelChoices(engine: Provider | null) {
-  const [result, setResult] = useState<{ engine: typeof engine; rows: ModelChoiceDto[]; loading: boolean; error: boolean }>({ engine, rows: engine ? cachedModels(engine) : [], loading: true, error: false })
+export function useModelChoices(engine: Provider | null, pinnedProfile?: string) {
+  const profiles = useAccountProfiles(), profile = pinnedProfile ?? (engine ? profiles?.selected[engine] : undefined) ?? 'system'
+  const [result, setResult] = useState<{ engine: typeof engine; profile: string; rows: ModelChoiceDto[]; loading: boolean; error: boolean }>({ engine, profile, rows: engine ? cachedModels(engine, profile) : [], loading: true, error: false })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let alive = true
@@ -44,20 +49,20 @@ export function useModelChoices(engine: Provider | null) {
     if (!engine) return
     const read = (force = false) => {
       const at = ++serial
-      setResult({ engine, rows: cachedModels(engine), loading: true, error: false })
-      void readModels(engine, force || attempt > 0).then((rows) => {
-        if (alive && at === serial) setResult({ engine, rows, loading: false, error: rows.length === 0 })
-      }).catch(() => { if (alive && at === serial) setResult({ engine, rows: cachedModels(engine), loading: false, error: true }) })
+      setResult({ engine, profile, rows: cachedModels(engine, profile), loading: true, error: false })
+      void readModels(engine, profile, force || attempt > 0).then((rows) => {
+        if (alive && at === serial) setResult({ engine, profile, rows, loading: false, error: rows.length === 0 })
+      }).catch(() => { if (alive && at === serial) setResult({ engine, profile, rows: cachedModels(engine, profile), loading: false, error: true }) })
     }
     read()
     const off = api.onEvent((event) => { if (event.type === 'models:changed') read(true) })
     return () => { alive = false; off() }
-  }, [engine, attempt])
-  return { ...(result.engine === engine ? result : { rows: engine ? cachedModels(engine) : [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
+  }, [engine, profile, attempt])
+  return { ...(result.engine === engine && result.profile === profile ? result : { rows: engine ? cachedModels(engine, profile) : [], loading: true, error: false }), refresh: () => setAttempt((value) => value + 1) }
 }
 
 export interface ModelSelection { engine: Provider; model: string; effort?: ReasoningEffort }
-export function ModelPicker({ variant = 'composer', scope, controlled }: { variant?: 'composer' | 'sidebar'; scope?: string; controlled?: { value: ModelSelection; disabled?: boolean; lockProvider?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
+export function ModelPicker({ variant = 'composer', scope, controlled, showAccounts = true }: { variant?: 'composer' | 'sidebar'; scope?: string; showAccounts?: boolean; controlled?: { value: ModelSelection; accountProfile?: string; disabled?: boolean; lockProvider?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
   const { engines, enginesDetected } = useShellState()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -75,7 +80,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled }: { varia
   const engine = selection?.engine ?? settings?.defaultEngine ?? null
   const model = selection?.model ?? (engine === 'codex' ? settings?.codexModel : settings?.claudeModel) ?? ''
   const effort = selection ? selection.effort : engine === 'codex' ? settings?.codexEffort : settings?.claudeEffort
-  const { rows, loading, error, refresh } = useModelChoices(engine)
+  const { rows, loading, error, refresh } = useModelChoices(engine, controlled?.accountProfile)
   const sidebar = variant === 'sidebar'
 
   useEffect(() => {
@@ -94,16 +99,17 @@ export function ModelPicker({ variant = 'composer', scope, controlled }: { varia
     let serial = 0
     const read = () => {
       const at = ++serial
-      void api.engineStates().then((next) => { if (alive && at === serial) setStates(next) }).catch(() => {
+      const request = controlled?.accountProfile ? api.accountProfileStates().then(rows => rows.filter(row => row.id === controlled.accountProfile).map(row => ({ ...row, id: row.provider }))) : api.engineStates()
+      void request.then((next) => { if (alive && at === serial) setStates(next) }).catch(() => {
         if (alive && at === serial) setSaveError('Could not check connections. Open AI settings to retry.')
       })
     }
     if (open || !states) read()
     const off = api.onEvent((event) => {
-      if (event.type === 'engines:detected' || event.type === 'engines:changed' || event.type === 'engines:login') read()
+      if (event.type === 'engines:detected' || event.type === 'engines:changed' || event.type === 'engines:login' || event.type === 'accounts:changed') read()
     })
     return () => { alive = false; off() }
-  }, [open])
+  }, [open, controlled?.accountProfile])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -212,6 +218,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled }: { varia
       <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
     </button>
     {!sidebar && !controlled && efforts.length > 0 && <button type="button" ref={effortTrigger} className="model-picker-btn effort-picker-btn" data-testid="effort-picker" aria-label={`Reasoning effort: ${effortLabel(effort)}`} title="Reasoning effort" aria-haspopup="menu" aria-controls={open && mode === 'effort' ? menuId : undefined} aria-expanded={open && mode === 'effort'} onClick={() => { focusLast.current = false; setMode('effort'); setOpen(!open || mode !== 'effort') }} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setMode('effort'); setOpen(true) } }}><span>{effortLabel(effort)}</span><ChevronDown size={16} aria-hidden /></button>}
+    {showAccounts && !sidebar && engine && <AccountProfiles provider={engine} compact sessionProfile={controlled?.accountProfile} />}
     {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label={mode === 'effort' ? 'Reasoning effort' : 'Provider and model'} data-testid={mode === 'effort' ? 'effort-picker-menu' : sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
       {mode === 'model' ? <>
       <div className="provider-picker-heading">{controlled ? 'This session' : scope === 'filing' ? 'Filing provider' : scope ? 'This conversation' : 'New conversations'}</div>

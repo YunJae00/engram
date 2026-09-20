@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { LIBRARIAN_RUN_OPTS, noteRunOutcome, runPipelineAsync } from './ipc.js'
 import type { VaultContext } from './vault.js'
 import { readSessionCursors, writeSessionCursors, type SessionCursor as Cursor } from './session-cursor.js'
+import { accountEnvironment, accountProfiles } from './account-profiles.js'
 
 // Consent switch — the README privacy table promises AI CLI session harvest
 // is off by default. Absent state file = OFF; the Settings toggle writes it.
@@ -68,15 +69,15 @@ async function headCwd(file: string): Promise<string | null> {
 interface HarvestSource {
   id: 'claude' | 'codex'
   parse: (span: string) => Promise<{ turns: SessionTurn[]; consumed: number }>
-  list(ctx: VaultContext): Promise<{ file: string; project: string }[]>
+  list(ctx: VaultContext, env: NodeJS.ProcessEnv): Promise<{ file: string; project: string }[]>
 }
 
 const SOURCES: HarvestSource[] = [
   {
     id: 'claude',
     parse: parseSessionSpan,
-    async list(ctx) {
-      const PROJECTS_DIR = join(process.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude'), 'projects')
+    async list(ctx, env) {
+      const PROJECTS_DIR = join(env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude'), 'projects')
       const out: { file: string; project: string }[] = []
       const dirs = await readdir(PROJECTS_DIR, { withFileTypes: true }).catch(() => [])
       for (const dir of dirs) {
@@ -93,8 +94,8 @@ const SOURCES: HarvestSource[] = [
   {
     id: 'codex',
     parse: parseCodexSpan,
-    async list(ctx) {
-      const CODEX_DIR = join(process.env['CODEX_HOME'] || join(homedir(), '.codex'), 'sessions')
+    async list(ctx, env) {
+      const CODEX_DIR = join(env['CODEX_HOME'] || join(homedir(), '.codex'), 'sessions')
       // year/month/day — three bounded levels, newest days only would need
       // stat sorting; the cursor map already makes re-listing cheap.
       const out: { file: string; project: string }[] = []
@@ -257,6 +258,7 @@ export async function readNewSpan(
 // user reached during the window — silently, since the offset had already moved.
 async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Promise<boolean> {
   if (ctx.engines.length === 0) return false
+  const runEngine = ctx.engines[0]
   const runner = new JobRunner(ctx.paths, ctx.engines, LIBRARIAN_RUN_OPTS)
   const report = await runner.runAll([
     buildJ11(ctx.paths, await readAgentsMd(ctx.paths), project, cursor.held.slice(0, MAX_TURNS_HELD), cursor.kept, (title) => {
@@ -266,7 +268,7 @@ async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Prom
   ])
   // Feed the shared health verdict, so a quota or auth halt raises the same
   // banner the rest of the librarian does instead of failing invisibly here.
-  noteRunOutcome(ctx, report)
+  noteRunOutcome(ctx, report, runEngine)
   if (report.haltReason || report.failed.length > 0 || report.deferred > 0) return false
   // Anything harvested landed in the inbox; from here it is an ordinary
   // capture and the existing pipeline absorbs, links and files it.
@@ -286,7 +288,10 @@ export async function scanSessions(ctx: VaultContext): Promise<void> {
     let harvested = 0
     let dirtyState = false
     for (const source of SOURCES) {
-      for (const entry of await source.list(ctx)) {
+      const profiles = ['system', ...accountProfiles().profiles.filter(profile => profile.provider === source.id).map(profile => profile.id)]
+      const entries = []
+      for (const profile of profiles) entries.push(...await source.list(ctx, accountEnvironment(source.id, profile)))
+      for (const entry of entries) {
         const file = entry.file
         const info = await stat(file).catch(() => null)
         if (!info) continue

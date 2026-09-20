@@ -19,6 +19,7 @@ it('shares a pending sign-in, offers browser recovery and does not leak its URL 
   const signin = await import('../src/main/engine-signin.js')
   const first = signin.connectEngine('codex')
   expect(signin.connectEngine('codex')).toBe(first)
+  expect(await signin.connectEngine('codex', 'another-profile')).toMatchObject({ ok: false })
   expect(fake.login).toHaveBeenCalledOnce()
   expect(fake.open).toHaveBeenCalledOnce()
   expect(JSON.stringify(signin.engineLogins())).not.toContain('private')
@@ -31,7 +32,7 @@ it('shares a pending sign-in, offers browser recovery and does not leak its URL 
   await signin.disconnectEngine('codex')
   expect(fake.logout).toHaveBeenCalledOnce()
   expect(signin.engineLogins()).toEqual([])
-  expect(fake.broadcast).toHaveBeenLastCalledWith({ type: 'engines:login', login: { id: 'codex', phase: 'idle', canOpen: false } })
+  expect(fake.broadcast).toHaveBeenLastCalledWith({ type: 'engines:login', login: { id: 'codex', profile: 'system', phase: 'idle', canOpen: false } })
 })
 it('cancels just the chosen login and allows a fresh attempt', async () => {
   fake.login.mockImplementation(({ signal }: { signal: AbortSignal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })))
