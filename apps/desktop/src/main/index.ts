@@ -604,6 +604,7 @@ app.whenReady().then(async () => {
   // Lost the single-instance race: quit was already requested above, so boot
   // nothing — no window, no vault, no watchers on a vault another process owns.
   if (!singleInstance) return
+  await (await import('./account-profiles.js')).initializeAccountProfiles(app.getPath('userData'))
   nativeTheme.themeSource = (await loadSettings()).theme
   watchResponsiveness()
   // Engine child bookkeeping, before anything can spawn one: every spawn is

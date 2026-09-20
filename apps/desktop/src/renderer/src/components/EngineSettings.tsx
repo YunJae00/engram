@@ -5,12 +5,16 @@ import { api } from '../api.js'
 import { ModelPicker } from './ModelPicker.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import { InstallClaude } from './InstallClaude.js'
+import { AccountProfiles } from './AccountProfiles.js'
+import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
 
 export function EngineSettings() {
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const [profiles, setProfiles] = useState<Profiles | null>(null)
+  useEffect(() => { let alive = true; void api.accountProfiles().then(value => { if (alive) setProfiles(value) }).catch(() => {}); return () => { alive = false } }, [])
   useEffect(() => {
     let alive = true
     let revision = 0
@@ -43,12 +47,13 @@ export function EngineSettings() {
         const pending = login?.phase === 'opening' || login?.phase === 'browser'
         const connected = state?.loggedIn === true || login?.phase === 'connected'
         const name = id === 'claude' ? 'Claude' : 'ChatGPT'
+        const profileName = profiles?.profiles.find(profile => profile.id === profiles.selected[id])?.name
         const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : !states ? 'Checking connection…' : connected ? 'Connected' : state?.installed ? 'Not connected' : id === 'claude' ? 'Not installed' : 'Runtime unavailable'
         return (
-          <section key={id} className="engine-card" aria-label={`${name} connection`}>
-            <div className="engine-card-heading"><strong><ProviderIcon provider={id} size={16} /> {name}</strong></div>
-            <div className="engine-status" data-testid={`brain-${id}-status`} role="status">{(pending || !states) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</div>
+          <section key={id} className="engine-card engine-connection" aria-label={`${name} connection`}>
+            <div className="engine-card-heading"><strong><ProviderIcon provider={id} size={16} /> {name}</strong>{profileName && <small>{profileName}</small>}<span className="engine-status" data-connected={connected && !pending} data-testid={`brain-${id}-status`} role="status">{(pending || !states) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</span></div>
             <div className="engine-actions">
+              {!pending && <AccountProfiles provider={id} />}
               {pending ? <>
                 {login.canOpen && <button className="secondary" onClick={() => run(api.engineOpenLogin(id))}><ExternalLink size={13} /> Open browser</button>}
                 <button className="secondary" data-testid={`brain-${id}-cancel`} onClick={() => run(api.engineCancelLogin(id))}>Cancel</button>

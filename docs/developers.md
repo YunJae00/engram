@@ -1,6 +1,6 @@
 # Developers
 
-Switch between Chat and Developers in the top bar. Developers is opt-in; ordinary
+Switch between Chat and Developers with the two-icon toggle in the sidebar header. Developers is opt-in; ordinary
 chats stay unchanged. Authentication stays in Settings → AI because the same
 account also serves chats and filing. The composer gear opens those settings.
 
@@ -20,9 +20,11 @@ Tasks retain their provider session ID. Sending another message resumes an owned
 task. Branch task creates a new worktree at the source task's current commit and
 forks its conversation; uncommitted files are not copied. Previous sessions opens
 saved external transcripts, with up to 200 text messages, from the project's menu.
-Continuing imports that snapshot into the new chat before your first message.
-Branching never takes
-over a running external process. An absent live indicator is not proof of inactivity.
+Resume session continues the original runtime conversation after you confirm it has
+stopped in other apps. Create a branch keeps the original unchanged. Neither action
+takes over a running external process; an absent live indicator is not proof of inactivity.
+Include other folders shows the 100 most recently updated sessions across folders.
+Continuing one adds its original working folder to the sidebar instead of changing its scope.
 
 Disabling Developers stops its runtimes, but keeps task history and files. Normal
 chat use does not start a developer runtime. Stream updates are batched; only the
@@ -59,8 +61,9 @@ answer. Permission requests show their details alongside Allow once and Deny.
 Supported Claude edit approvals can remember an exact tool input and starting
 content. Saved decisions can be removed in Settings → Developers.
 
-After connecting a task, Skills loads commands reported by that runtime. Selecting
-one inserts its native invocation into the composer; nothing runs until sending.
+Type `/` in an empty composer to load skills above the input, including before the
+first message. Arrow keys select, Enter or Tab inserts, and Escape dismisses the list.
+Selecting a skill inserts its native invocation; nothing runs until sending.
 The available list depends on provider configuration and loaded skills.
 
 Provider extensions are off by default. Settings → Developers can allow installed
@@ -78,8 +81,20 @@ collection into Cosmos is independently opt-in.
 Task token counts and estimated API cost appear only when reported by the provider.
 API cost is not a subscription bill. Account limits can be refreshed from the task
 or Developers settings; unavailable values are labeled, never shown as zero.
-Claude account limits require a connected development task and a supporting SDK.
+Connected account limits preload without a development task. Provider events update
+them immediately when available; visible windows also refresh once per minute.
 No credit is purchased or usage reset by checking limits.
+
+## Multiple accounts
+
+Settings → AI → Accounts creates separately named subscription account profiles.
+Each has its own native runtime configuration, sign-in and session history. The
+System account retains the existing CLI sign-in; Engram never copies credentials.
+Switching profiles requires an explicit restart, with active work stopped first.
+After switching to a new profile, use Connect to finish the provider's sign-in flow.
+One profile per provider is active at a time; simultaneous accounts of the same
+provider and automatic quota-based switching are not supported. Developer sessions
+remain bound to their original profile, preventing accidental cross-account resume.
 
 ## Verification
 

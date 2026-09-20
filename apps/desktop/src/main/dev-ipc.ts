@@ -33,8 +33,8 @@ export function registerDevIpc(): void {
   handle('devSend', (id, text) => get().send(id, text))
   handle('devStop', id => get().stop(id))
   handle('devRespond', (id, requestId, response) => get().respond(id, requestId, response))
-  handle('devExternal', (repo, provider) => get().external(repo, provider))
-  handle('devExternalRead', (repo, provider, id) => get().externalRead(repo, provider, id))
+  handle('devExternal', (repo, provider, allFolders) => get().external(repo, provider, allFolders))
+  handle('devExternalRead', (repo, provider, id, allFolders) => get().externalRead(repo, provider, id, allFolders))
   handle('devFork', id => get().fork(id))
   handle('devGit', id => get().git(id))
   handle('devCommit', (id, paths, message) => get().commit(id, paths, message))
@@ -49,8 +49,10 @@ export function registerDevIpc(): void {
     return provider === 'claude' ? claudeAccountUsage(cwd) : devAccountUsage(cwd)
   })
   handle('devCommands', id => get().commands(id))
+  handle('devProjectCommands', (repoId, provider) => get().projectCommands(repoId, provider))
   handle('devConfigure', (id, change) => get().configure(id, change))
 }
 
 export async function stopDevelopers(): Promise<void> { await service?.stopAll() }
 export function developersRunning(): boolean { return service?.active ?? false }
+export function developersBusy(): boolean { return service?.busy ?? false }

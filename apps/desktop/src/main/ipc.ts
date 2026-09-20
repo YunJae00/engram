@@ -2579,6 +2579,18 @@ export function registerIpc(ctx: VaultContext): void {
 // Sign-in happens in the vendor's own window; this only starts it, waits, and
 // re-detects. Nothing about the credential passes through here.
 export function registerEngineIpc(): void {
+  ipcMain.handle('accounts:list', async () => (await import('./account-profiles.js')).accountProfiles())
+  ipcMain.handle('accounts:add', async (event, provider: unknown, name: string) => {
+    if (event.sender !== (await import('./desktop-access.js')).desktopOwner()?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Account settings require the main window.')
+    return (await import('./account-profiles.js')).addAccountProfile(cloudId(provider), name)
+  })
+  ipcMain.handle('accounts:use', async (event, provider: unknown, id: string) => {
+    if (event.sender !== (await import('./desktop-access.js')).desktopOwner()?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Account settings require the main window.')
+    if (answering.size || pipelineRunning || draining || manualSweepInFlight || errandRunning || (await import('./dev-ipc.js')).developersBusy() || engineLogins().some(login => ['opening', 'browser'].includes(login.phase))) throw new Error('Finish or stop active work and sign-in before switching accounts.')
+    await (await import('./dev-ipc.js')).stopDevelopers()
+    await (await import('./account-profiles.js')).selectAccountProfile(cloudId(provider), id)
+    app.relaunch(); app.quit()
+  })
   const cloudId = (id: unknown): 'claude' | 'codex' => {
     if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
     return id

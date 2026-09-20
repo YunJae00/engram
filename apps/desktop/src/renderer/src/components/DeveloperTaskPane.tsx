@@ -1,11 +1,12 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import { ArrowUp, Folder, GitBranch, LoaderCircle, Settings, Square, X } from 'lucide-react'
-import type { DevCommand, DevGitState, DevItem, DevRepo, DevSession, DevState } from '../../../shared/developers.js'
+import type { DevGitState, DevItem, DevRepo, DevSession, DevState } from '../../../shared/developers.js'
 import { api } from '../api.js'
 import { ModelPicker, type ModelSelection } from './ModelPicker.js'
 import { DeveloperApproval } from './DeveloperApproval.js'
 import { DeveloperFileReview } from './DeveloperFileReview.js'
-import { DeveloperAccess, DeveloperPopover, DeveloperUsage, type AccessSelection } from './DeveloperControls.js'
+import { DeveloperAccess, DeveloperUsage, type AccessSelection } from './DeveloperControls.js'
+import { DeveloperSkills } from './DeveloperSkills.js'
 import { renderMarkdown } from '../lib/markdown.js'
 const DeveloperCode = lazy(() => import('./DeveloperCode.js').then(module => ({ default: module.DeveloperCode })))
 
@@ -14,14 +15,6 @@ export const DeveloperMessage = memo(function DeveloperMessage({ item }: { item:
   return <article className={`dev-message dev-message-${item.kind}`}><div>{item.kind === 'user' ? item.text : renderMarkdown(item.text, (text, language, key) => <Suspense key={key} fallback={<pre><code>{text}</code></pre>}><DeveloperCode text={text} language={language} /></Suspense>)}</div></article>
 })
 
-function Skills({ id, onSelect }: { id: string; onSelect(prompt: string): void }) {
-  const [rows, setRows] = useState<DevCommand[] | null>(null), [error, setError] = useState('')
-  useEffect(() => { let alive = true; void api.devCommands(id).then(value => { if (alive) setRows(value) }).catch(error => { if (alive) setError(error.message) }); return () => { alive = false } }, [id])
-  if (error) return <p role="alert">{error}</p>
-  if (!rows) return <p role="status">Loading skills…</p>
-  return <>{rows.length ? rows.map(row => <button className="dev-menu-row" key={row.name} onClick={() => onSelect(row.prompt)}><strong>{row.name}</strong><small>{row.description}</small></button>) : <p className="setting-hint">No skills reported by this runtime.</p>}</>
-}
-
 export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocus, onCreated, onClose }: {
   id?: string; slot: number; repo?: DevRepo; state: DevState; active: boolean; split: boolean; onFocus(): void; onCreated(task: DevSession): void; onClose(): void
 }) {
@@ -29,6 +22,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   const [model, setModel] = useState<ModelSelection>({ engine: state.preferences.provider, model: '' })
   const [access, setAccess] = useState<AccessSelection>({ mode: 'review', isolate: false, confirmed: false })
   const [prompt, setPrompt] = useState(''), [visible, setVisible] = useState(100), [git, setGit] = useState<DevGitState | null>(null), [reviewPath, setReviewPath] = useState('')
+  const [dismissedSkills, setDismissedSkills] = useState<string | null>(null)
   const [selected, setSelected] = useState<string[]>([]), [commit, setCommit] = useState('')
   const log = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), follow = useRef(true), request = useRef(0), gate = useRef(false)
   const draftKey = `engram.dev.draft.${id ?? `${repo?.id ?? 'empty'}.${slot}`}`
@@ -52,7 +46,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   }), [id])
   useEffect(() => { if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight }, [task?.items, task?.pending])
   useEffect(() => { if (input.current) { input.current.style.height = 'auto'; input.current.style.height = `${Math.min(180, input.current.scrollHeight)}px` } }, [prompt])
-  const write = (value: string) => { setPrompt(value); try { if (value) sessionStorage.setItem(draftKey, value); else sessionStorage.removeItem(draftKey) } catch { /* The mounted composer still retains its draft. */ } }
+  const write = (value: string) => { setPrompt(value); setDismissedSkills(null); try { if (value) sessionStorage.setItem(draftKey, value); else sessionStorage.removeItem(draftKey) } catch { /* The mounted composer still retains its draft. */ } }
   const action = async (work: () => Promise<unknown>) => { if (gate.current) return; gate.current = true; setBusy(true); setError(''); try { await work() } catch (error) { setError((error as Error).message) } finally { gate.current = false; setBusy(false) } }
   const running = !!task && ['starting', 'running', 'waiting', 'stopping'].includes(task.state)
   const chosenModel: ModelSelection = task ? { engine: task.provider, model: task.model, effort: task.effort } : model
@@ -85,9 +79,9 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
       {running && <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" />{task?.state === 'waiting' ? 'Waiting for your response' : task?.state === 'stopping' ? 'Stopping the runtime…' : task?.state === 'starting' ? 'Connecting…' : 'Working…'}</p>}
     </div>
     <div className="dev-composer">
+      {repo && !running && !busy && /^\/[^\s]*$/.test(prompt) && dismissedSkills !== prompt && <DeveloperSkills session={task?.id} repoId={repo.id} provider={chosenModel.engine} query={prompt.slice(1)} input={input} onSelect={value => { write(value); input.current?.focus() }} onDismiss={() => setDismissedSkills(prompt)} />}
       <textarea ref={input} aria-label="Development message" placeholder="Ask about the code, or describe a change…" value={prompt} disabled={running || busy || loading || !repo} onChange={event => write(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!running && !loading) void send() } }} />
       <div className="dev-composer-toolbar"><div className="dev-composer-tools">
-        <DeveloperPopover label="Skills" disabled={!task || running || busy} trigger={<>/ Skills</>}>{close => task && <Skills id={task.id} onSelect={value => { write(value); close(); input.current?.focus() }} />}</DeveloperPopover>
         <DeveloperAccess value={chosenAccess} task={task} disabled={running || busy || loading} extensions={state.preferences.loadProjectSettings} onChange={async value => { if (task) setTask(await api.devConfigure(task.id, { model: task.model, effort: task.effort, mode: value.mode, fullAccessConfirmed: value.confirmed })); else setAccess(value) }} />
       </div><fieldset className="dev-model-controls" disabled={running || busy || loading}><ModelPicker controlled={{ value: chosenModel, disabled: running || busy || loading, lockProvider: !!task, onChange: changeModel }} /></fieldset>
       <button className="dev-send" disabled={busy || loading || (!running && (!prompt.trim() || !repo))} aria-label={running ? 'Stop development task' : 'Send development message'} onClick={() => void (running && task ? action(() => api.devStop(task.id)) : send())}>{busy ? <LoaderCircle size={17} className="spin" /> : running ? <Square size={16} /> : <ArrowUp size={18} />}</button></div>

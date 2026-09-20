@@ -48,6 +48,7 @@ export interface DevSession {
   cwd: string
   branch?: string
   runtimeId?: string
+  accountProfile?: string
   forkOnStart?: boolean
   loadProjectSettings?: boolean
   title: string
@@ -70,13 +71,13 @@ export interface DevelopersApi {
   devPreferences(patch: Partial<DevPreferences>): Promise<DevPreferences>
   devAddRepo(): Promise<DevRepo | null>
   devRemoveRepo(id: string): Promise<void>
-  devCreate(request: { repoId: string; provider: DevProvider; model: string; effort?: ReasoningEffort; mode: DevMode; isolate: boolean; fullAccessConfirmed?: boolean; resume?: string; fork?: boolean }): Promise<DevSession>
+  devCreate(request: { repoId: string; provider: DevProvider; model: string; effort?: ReasoningEffort; mode: DevMode; isolate: boolean; fullAccessConfirmed?: boolean; resume?: string; fork?: boolean; resumeConfirmed?: boolean; allFolders?: boolean }): Promise<DevSession>
   devSession(id: string): Promise<DevSession>
   devSend(id: string, text: string): Promise<void>
   devStop(id: string): Promise<void>
   devRespond(id: string, requestId: string, response: { decision: 'allow' | 'deny'; remember?: boolean; answers?: Record<string, string[]> }): Promise<void>
-  devExternal(repoId: string, provider: DevProvider): Promise<DevExternalSession[]>
-  devExternalRead(repoId: string, provider: DevProvider, id: string): Promise<DevItem[]>
+  devExternal(repoId: string, provider: DevProvider, allFolders?: boolean): Promise<DevExternalSession[]>
+  devExternalRead(repoId: string, provider: DevProvider, id: string, allFolders?: boolean): Promise<DevItem[]>
   devFork(id: string): Promise<DevSession>
   devGit(id: string): Promise<DevGitState>
   devCommit(id: string, paths: string[], message: string): Promise<void>
@@ -86,5 +87,6 @@ export interface DevelopersApi {
   devRemoveRule(id: string): Promise<void>
   devUsage(provider: DevProvider): Promise<DevUsage>
   devCommands(id: string): Promise<DevCommand[]>
+  devProjectCommands(repoId: string, provider: DevProvider): Promise<DevCommand[]>
   devConfigure(id: string, change: { model: string; effort?: ReasoningEffort; mode: DevMode; fullAccessConfirmed?: boolean }): Promise<DevSession>
 }

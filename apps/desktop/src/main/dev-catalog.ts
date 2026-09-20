@@ -5,6 +5,11 @@ import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
 import { DevRpc } from './dev-rpc.js'
 import { codexUsage } from './dev-usage.js'
 
+export function sessionPath(path: string): string {
+  const normalized = resolve(path.replace(/^\\\\\?\\/, ''))
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
 export async function devProbe(cwd: string, method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
   const binary = codexBinary()
   if (!binary) throw new Error('The coding runtime is not available.')
@@ -13,15 +18,24 @@ export async function devProbe(cwd: string, method: string, params: Record<strin
   finally { await rpc.shutdown() }
 }
 
-export async function devExternal(cwd: string, provider: DevProvider): Promise<DevExternalSession[]> {
+export async function devExternal(cwd: string, provider: DevProvider, allFolders = false): Promise<DevExternalSession[]> {
   if (provider === 'claude') {
-    const sdk = await loadClaudeSdk() as { listSessions(options: { dir: string; limit: number }): Promise<{ sessionId: string; summary: string; lastModified: number; cwd?: string }[]> }
-    const rows = await sdk.listSessions({ dir: cwd, limit: 100 })
-    return rows.filter(row => row.cwd && resolve(row.cwd) === resolve(cwd)).map(row => ({ id: row.sessionId, title: row.summary || 'Untitled session', cwd: row.cwd!, provider, updatedAt: row.lastModified }))
+    const sdk = await loadClaudeSdk() as { listSessions(options: { dir?: string; limit: number }): Promise<{ sessionId: string; summary: string; lastModified: number; cwd?: string }[]> }
+    const rows = await sdk.listSessions({ ...(!allFolders ? { dir: cwd } : {}), limit: 100 })
+    return rows.filter(row => row.cwd && (allFolders || sessionPath(row.cwd) === sessionPath(cwd))).map(row => ({ id: row.sessionId, title: row.summary || 'Untitled session', cwd: row.cwd!, provider, updatedAt: row.lastModified }))
   }
-  const result = await devProbe(cwd, 'thread/list', { cwd, limit: 100, archived: false })
-  if (!Array.isArray(result['data'])) throw new Error('The runtime did not return a session list.')
-  return result['data'].filter((row): row is Record<string, unknown> => !!row && typeof row === 'object').filter(row => typeof row['id'] === 'string' && typeof row['cwd'] === 'string' && resolve(row['cwd']) === resolve(cwd)).map(row => ({
+  const data: unknown[] = [], cursors = new Set<string>()
+  let cursor: string | undefined
+  const paths = process.platform === 'win32' ? [...new Set([cwd, cwd.replace(/\\/g, '/'), resolve(cwd), `\\\\?\\${resolve(cwd)}`])] : [cwd]
+  do {
+    const result = await devProbe(cwd, 'thread/list', { ...(!allFolders ? { cwd: paths } : {}), limit: 100, archived: false, sortKey: 'updated_at', sourceKinds: ['cli', 'vscode', 'exec', 'appServer'], ...(cursor ? { cursor } : {}) })
+    if (!Array.isArray(result['data'])) throw new Error('The runtime did not return a session list.')
+    data.push(...result['data'])
+    cursor = !allFolders && typeof result['nextCursor'] === 'string' ? result['nextCursor'] : undefined
+    if (cursor && (cursors.has(cursor) || cursors.size >= 50)) throw new Error('The session list is too large or did not advance. Archive older sessions and try again.')
+    if (cursor) cursors.add(cursor)
+  } while (cursor)
+  return data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object').filter(row => typeof row['id'] === 'string' && typeof row['cwd'] === 'string' && (allFolders || sessionPath(row['cwd']) === sessionPath(cwd))).map(row => ({
     id: String(row['id']), provider, title: typeof row['name'] === 'string' && row['name'] ? row['name'] : typeof row['preview'] === 'string' ? row['preview'].slice(0, 120) : 'Untitled session', cwd: String(row['cwd']),
     updatedAt: typeof row['updatedAt'] === 'number' ? row['updatedAt'] * 1000 : 0,
     ...((row['status'] as { type?: string } | undefined)?.type === 'active' ? { active: true } : {}),
@@ -33,12 +47,13 @@ export async function devAccountUsage(cwd: string): Promise<DevUsage> {
   catch { return { unavailable: 'Account limits could not be refreshed. Check your AI connection and try again.' } }
 }
 
-export async function devExternalRead(cwd: string, provider: DevProvider, id: string): Promise<DevItem[]> {
-  if (!(await devExternal(cwd, provider)).some(session => session.id === id)) throw new Error('This session does not belong to the selected repository.')
+export async function devExternalRead(cwd: string, provider: DevProvider, id: string, allFolders = false): Promise<DevItem[]> {
+  const source = (await devExternal(cwd, provider, allFolders)).find(session => session.id === id)
+  if (!source) throw new Error('This session does not belong to the selected repository.')
   const items: DevItem[] = []
   if (provider === 'claude') {
     const sdk = await loadClaudeSdk() as { getSessionMessages(id: string, options: { dir: string; limit: number }): Promise<{ uuid: string; type: string; message: { content?: unknown } }[]> }
-    for (const message of await sdk.getSessionMessages(id, { dir: cwd, limit: 200 })) {
+    for (const message of await sdk.getSessionMessages(id, { dir: source.cwd, limit: 200 })) {
       if (!['user', 'assistant'].includes(message.type)) continue
       const content = message.message?.content
       const text = typeof content === 'string' ? content : Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => String(block.text ?? '')).join('\n') : ''

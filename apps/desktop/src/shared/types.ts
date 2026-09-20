@@ -692,7 +692,10 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   engineOpenLogin(id: 'claude' | 'codex'): Promise<void>
   engineDisconnect(id: 'claude' | 'codex'): Promise<void>
   // Every brain this build carries, signed in or not.
-  engineStates(): Promise<EngineStatusDto[]>
+    engineStates(): Promise<EngineStatusDto[]>
+    accountProfiles(): Promise<import('./account-profiles.js').AccountProfiles>
+    accountProfileAdd(provider: 'claude' | 'codex', name: string): Promise<import('./account-profiles.js').AccountProfiles>
+    accountProfileUse(provider: 'claude' | 'codex', id: string): Promise<void>
   onEvent(listener: (event: EngramEvent) => void): () => void
   // quick-capture floating window helpers
   hideQuickCapture(): void

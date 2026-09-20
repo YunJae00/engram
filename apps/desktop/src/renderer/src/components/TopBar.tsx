@@ -1,4 +1,4 @@
-import { Code2, Columns2, Globe, Grid2X2, MessageSquare, PanelLeftOpen, Square } from 'lucide-react'
+import { Columns2, Globe, Grid2X2, PanelLeftOpen, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SyncStatusDto } from '../../../shared/types.js'
 import { t, type Translate } from '../i18n.js'
@@ -6,6 +6,7 @@ import { api } from '../api.js'
 import { useTopBarState } from '../state-slices.js'
 import { DialogHeader } from './DialogHeader.js'
 import { CometTitle } from './CometTitle.js'
+import { WorkspaceMode } from './WorkspaceMode.js'
 
 function syncLabel(t: Translate, status: SyncStatusDto | null): string {
   if (!status || status.state === 'no-remote') return t('topbar.syncNone')
@@ -82,7 +83,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit, onM
 
   return (
     <header className="topbar" data-testid="topbar">
-      {!sidebarOpen && <button className="topbar-sidebar-toggle" aria-label={activity === 'developers' ? 'Chat mode' : 'Developers mode'} title="Switch workspace mode" onClick={() => onMode(activity === 'developers' ? 'bots' : 'developers')}>{activity === 'developers' ? <MessageSquare size={17} /> : <Code2 size={17} />}</button>}
+      {!sidebarOpen && <WorkspaceMode developer={activity === 'developers'} onChange={onMode} />}
       {!sidebarOpen && (
         <button className="topbar-sidebar-toggle" data-testid="app-sidebar-open" title={t('rail.show')} onClick={onToggleSidebar}>
           <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />

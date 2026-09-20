@@ -40,8 +40,6 @@ export function registerSessionWatchIpc(): void {
   })
 }
 
-const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
-const CODEX_DIR = join(homedir(), '.codex', 'sessions')
 
 // A transcript's working directory, for the project label. Codex writes it in
 // the head (session_meta); one bounded read per file, cached for the process
@@ -78,6 +76,7 @@ const SOURCES: HarvestSource[] = [
     id: 'claude',
     parse: parseSessionSpan,
     async list(ctx) {
+      const PROJECTS_DIR = join(process.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude'), 'projects')
       const out: { file: string; project: string }[] = []
       const dirs = await readdir(PROJECTS_DIR, { withFileTypes: true }).catch(() => [])
       for (const dir of dirs) {
@@ -95,6 +94,7 @@ const SOURCES: HarvestSource[] = [
     id: 'codex',
     parse: parseCodexSpan,
     async list(ctx) {
+      const CODEX_DIR = join(process.env['CODEX_HOME'] || join(homedir(), '.codex'), 'sessions')
       // year/month/day — three bounded levels, newest days only would need
       // stat sorting; the cursor map already makes re-listing cheap.
       const out: { file: string; project: string }[] = []

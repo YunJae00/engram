@@ -21,8 +21,8 @@ const api: EngramApi = {
   devSend: (id, text) => ipcRenderer.invoke('devSend', id, text),
   devStop: id => ipcRenderer.invoke('devStop', id),
   devRespond: (id, request, response) => ipcRenderer.invoke('devRespond', id, request, response),
-  devExternal: (repo, provider) => ipcRenderer.invoke('devExternal', repo, provider),
-  devExternalRead: (repo, provider, id) => ipcRenderer.invoke('devExternalRead', repo, provider, id),
+  devExternal: (repo, provider, allFolders) => ipcRenderer.invoke('devExternal', repo, provider, allFolders),
+  devExternalRead: (repo, provider, id, allFolders) => ipcRenderer.invoke('devExternalRead', repo, provider, id, allFolders),
   devFork: id => ipcRenderer.invoke('devFork', id),
   devGit: id => ipcRenderer.invoke('devGit', id),
   devCommit: (id, paths, message) => ipcRenderer.invoke('devCommit', id, paths, message),
@@ -32,6 +32,7 @@ const api: EngramApi = {
   devRemoveRule: id => ipcRenderer.invoke('devRemoveRule', id),
   devUsage: provider => ipcRenderer.invoke('devUsage', provider),
   devCommands: id => ipcRenderer.invoke('devCommands', id),
+  devProjectCommands: (repoId, provider) => ipcRenderer.invoke('devProjectCommands', repoId, provider),
   devConfigure: (id, change) => ipcRenderer.invoke('devConfigure', id, change),
   artifactReveal: (id) => ipcRenderer.invoke('artifact:reveal', id),
   evidenceStatus: () => ipcRenderer.invoke('evidence:status'),
@@ -215,6 +216,9 @@ const api: EngramApi = {
   engineOpenLogin: (id: 'claude' | 'codex') => ipcRenderer.invoke('engines:openLogin', id),
   engineDisconnect: (id: 'claude' | 'codex') => ipcRenderer.invoke('engines:disconnect', id),
   engineStates: () => ipcRenderer.invoke('engines:states'),
+  accountProfiles: () => ipcRenderer.invoke('accounts:list'),
+  accountProfileAdd: (provider, name) => ipcRenderer.invoke('accounts:add', provider, name),
+  accountProfileUse: (provider, id) => ipcRenderer.invoke('accounts:use', provider, id),
   onEvent: (listener: (event: EngramEvent) => void) => {
     const wrapped = (_e: unknown, event: EngramEvent) => listener(event)
     ipcRenderer.on('engram:event', wrapped)
