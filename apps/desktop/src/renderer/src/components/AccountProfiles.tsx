@@ -12,7 +12,7 @@ export function AccountProfiles({ provider, compact = false, sessionProfile }: {
   const [open, setOpen] = useState(false), profiles = useAccountProfiles()
   const id = sessionProfile ?? profiles?.selected[provider] ?? 'system'
   const name = profiles?.profiles.find(row => row.id === id)?.name ?? 'System account'
-  return <><button type="button" className={compact ? 'model-picker-btn account-picker' : 'secondary'} title={`${name} · Accounts`} aria-label={`Manage ${provider === 'claude' ? 'Claude' : 'ChatGPT'} accounts`} onClick={() => setOpen(true)}><Users size={14} />{compact ? id !== 'system' && <span>{name}</span> : 'Accounts'}</button>{open && <ProfileDialog provider={provider} sessionProfile={sessionProfile} close={() => setOpen(false)} />}</>
+  return <><button type="button" className={compact ? 'model-picker-btn account-picker' : 'secondary'} title={`${name} · Accounts`} aria-label={`Manage ${provider === 'claude' ? 'Claude' : 'ChatGPT'} accounts`} onClick={() => setOpen(true)}><Users size={16} />{compact ? id !== 'system' && <span>{name}</span> : 'Accounts'}</button>{open && <ProfileDialog provider={provider} sessionProfile={sessionProfile} close={() => setOpen(false)} />}</>
 }
 function ProfileDialog({ provider, sessionProfile, close }: { provider: AccountProvider; sessionProfile?: string; close(): void }) {
   const dialog = useRef<HTMLDialogElement>(null), profiles = useAccountProfiles(), usage = useAccountUsage()
