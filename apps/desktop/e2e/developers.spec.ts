@@ -17,6 +17,10 @@ test.beforeAll(async () => {
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('accounts:states')
+    ipcMain.handle('accounts:states', () => ['claude', 'codex'].map(provider => ({ provider, id: 'system', name: 'System account', installed: true, loggedIn: true, selected: true })))
+  })
   await page.setViewportSize({ width: 1360, height: 900 })
 })
 
@@ -145,6 +149,7 @@ async function historyFixture() {
   await expect(page.getByTestId('effort-pick-high')).toBeVisible()
   await screenshot('developers-effort.png')
   await page.getByTestId('effort-pick-high').click()
+  await expect(page.getByTestId('model-picker-menu')).not.toBeVisible()
   await expect(page.getByTestId('developers-view').getByTestId('effort-picker')).toHaveCount(0)
   await page.getByTestId('developers-view').getByTestId('model-picker').click()
   await expect(page.getByTestId('effort-pick-high')).toHaveAttribute('aria-checked', 'true')

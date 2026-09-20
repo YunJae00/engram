@@ -208,7 +208,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   if (!settings && !controlled) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
 
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
-    <button type="button" ref={trigger} disabled={controlled?.disabled} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
+    <button type="button" ref={trigger} disabled={controlled?.disabled || saving} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
       data-testid={sidebar ? 'engine-status' : 'model-picker'} title={`${providerName} · ${sidebar ? status : label} · Choose provider and model`}
       aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open && mode === 'model'} aria-haspopup="menu" aria-controls={open && mode === 'model' ? menuId : undefined}
       onClick={() => { focusLast.current = false; setMode('model'); setOpen(!open || mode !== 'model') }}

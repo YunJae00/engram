@@ -732,7 +732,7 @@ app.on('before-quit', (event) => {
   if (nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
     event.preventDefault()
     abortAllChat()
-    void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers(), stopRuntimeProcesses()]).finally(() => app.quit())
+    void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers()]).finally(stopRuntimeProcesses).finally(() => app.quit())
   }
 })
 
