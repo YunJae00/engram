@@ -15,8 +15,8 @@
 .dev-panes-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
 .dev-panes-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .dev-pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas-bg); overflow: hidden; container-type: inline-size; }
-.dev-pane.active > .dev-header { box-shadow: inset 0 -2px var(--accent-line); }
-.dev-header { min-height: 54px; padding: 10px 20px; border-bottom: 1px solid var(--border-soft); }
+.dev-panes:not(.dev-panes-1) .dev-pane.active > .dev-header .dev-heading > .dev-control { background: var(--selected-soft); }
+.dev-header { min-height: 54px; padding: 10px 20px; }
 .dev-header > div, .dev-actions { display: flex; align-items: center; gap: 8px; }
 .dev-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-header > div:first-child { min-width: 0; }

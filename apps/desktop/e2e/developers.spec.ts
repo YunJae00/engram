@@ -66,6 +66,8 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   await expect(page.locator('.sidebar-status-block')).toBeVisible()
   await expect(page.locator('.recent-web')).toHaveCount(0)
   await expect(page.locator('.dev-composer select')).toHaveCount(0)
+  await expect(page.locator('.dev-header')).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('.dev-header')).toHaveCSS('border-bottom-width', '0px')
   await page.getByRole('button', { name: 'Task access', exact: true }).click()
   await page.getByRole('radio', { name: /Full access/ }).check()
   await expect(page.getByLabel('I allow commands and file changes without approval.')).not.toBeChecked()
