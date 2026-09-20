@@ -205,21 +205,21 @@ function Shell() {
 
   return (
     <div
-      className={`shell sidebar-${sidebarOpen && activity !== 'developers' ? 'open' : 'closed'}`}
+      className={`shell sidebar-${sidebarOpen ? 'open' : 'closed'}`}
       data-testid="shell"
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }}
       onDrop={(event) => event.preventDefault()}
     >
-      {activity !== 'developers' && <AppSidebar
+      <AppSidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
-        onOpenSettings={() => { setSettingsSection('general'); setSettingsOpen(true) }}
+        onOpenSettings={() => { setSettingsSection(activity === 'developers' ? 'developers' : 'general'); setSettingsOpen(true) }}
         onOpenPalette={() => setPalette('search')}
         onOpenRoutines={() => setActivity('routines')}
         selectedRoutineId={selectedRoutineId}
         onSelectRoutine={setSelectedRoutineId}
-      />}
-      {sidebarOpen && activity !== 'developers' && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
+      />
+      {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
       <main className="app-main">
         <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
         <EvidenceRecording />
@@ -265,7 +265,7 @@ function Shell() {
             </div>
             {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
-            {activity === 'developers' && <Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen(value => !value)} onLayout={setDevLayout} /></Suspense>}
+            {activity === 'developers' && <Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} onLayout={setDevLayout} /></Suspense>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
                 <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />

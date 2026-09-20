@@ -1,17 +1,25 @@
 import { expect, it, vi } from 'vitest'
 import type { DevApproval, DevSession } from '../src/shared/developers.js'
 
-const fake = vi.hoisted(() => ({ options: {} as Record<string, unknown>, messages: [] as Record<string, unknown>[], end: () => {}, interrupt: vi.fn() }))
+const fake = vi.hoisted(() => ({ options: {} as Record<string, unknown>, messages: [] as Record<string, unknown>[], end: () => {}, interrupt: vi.fn(), usage: vi.fn(async () => ({ rate_limits: { five_hour: { utilization: 25 } } })) }))
 vi.mock('../src/main/process-client.js', () => ({ spawnRuntime: vi.fn() }))
 vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: () => 'runtime', loadClaudeSdk: async () => ({
   query: ({ options }: { options: Record<string, unknown> }) => {
     fake.options = options
     const ended = new Promise<void>(resolve => { fake.end = resolve })
-    return { async *[Symbol.asyncIterator]() { for (const message of fake.messages) yield message; await ended; yield { type: 'system', subtype: 'closed' } }, interrupt: async () => { fake.interrupt(); fake.end() } }
+    return { usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: fake.usage, async *[Symbol.asyncIterator]() { for (const message of fake.messages) yield message; await ended; yield { type: 'system', subtype: 'closed' } }, interrupt: async () => { fake.interrupt(); fake.end() } }
   },
 }) }))
-import { DevClaude } from '../src/main/dev-claude.js'
+import { DevClaude, claudeAccountUsage } from '../src/main/dev-claude.js'
 import { DevApprovals } from '../src/main/dev-approvals.js'
+
+it('reads account usage without a development turn, tools, or saved session', async () => {
+  const result = await claudeAccountUsage('.')
+  expect(result.windows?.[0]?.used).toBe(25)
+  expect(fake.usage).toHaveBeenCalledWith({ skipBehaviors: true })
+  expect(fake.options).toMatchObject({ tools: [], persistSession: false, settingSources: [], strictMcpConfig: true })
+  expect((fake.options['abortController'] as AbortController).signal.aborted).toBe(true)
+})
 
 function setup(mode: DevSession['mode'] = 'review') {
   fake.messages = []

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Folder, FolderPlus, History, LoaderCircle, MoreHorizontal, PanelLeftClose, Plus, Settings } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ChevronDown, ChevronRight, Folder, FolderPlus, History, LoaderCircle, MoreHorizontal, Plus } from 'lucide-react'
 import type { DevRepo, DevSession, DevState } from '../../../shared/developers.js'
 import { api } from '../api.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { DeveloperTaskPane } from '../components/DeveloperTaskPane.js'
 import { DeveloperHistory } from '../components/DeveloperHistory.js'
 import { DeveloperPopover } from '../components/DeveloperControls.js'
+import { SidebarDisclosure } from '../components/SidebarDisclosure.js'
 
 interface Slot { id?: string; repoId?: string }
 const emptySlots = (): Slot[] => Array.from({ length: 4 }, () => ({}))
@@ -13,7 +15,9 @@ function savedSlots(): Slot[] {
   try { const value = JSON.parse(sessionStorage.getItem('engram.dev.panes') ?? 'null'); if (Array.isArray(value) && value.length === 4 && value.every(slot => slot && typeof slot === 'object')) return value.map(slot => ({ id: typeof slot.id === 'string' ? slot.id : undefined, repoId: typeof slot.repoId === 'string' ? slot.repoId : undefined })) } catch { /* A fresh layout is safe when storage is unavailable. */ }
   return emptySlots()
 }
-export function DevelopersView({ layout, sidebarOpen, onToggleSidebar, onLayout }: { layout: 1 | 2 | 4; sidebarOpen: boolean; onToggleSidebar(): void; onLayout(count: 1 | 2 | 4): void }) {
+export function DevelopersView({ layout, onLayout }: { layout: 1 | 2 | 4; onLayout(count: 1 | 2 | 4): void }) {
+  const [sidebar, setSidebar] = useState<HTMLElement | null>(null)
+  useEffect(() => { setSidebar(document.getElementById('developer-sidebar')) }, [])
   const [state, setState] = useState<DevState | null>(null), [slots, setSlots] = useState(savedSlots), [active, setActive] = useState(0), [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [history, setHistory] = useState<DevRepo | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const refresh = async () => { const value = await api.devState(); setState(value); return value }
@@ -52,11 +56,11 @@ export function DevelopersView({ layout, sidebarOpen, onToggleSidebar, onLayout 
     setActive(0); onLayout(layout === 4 ? 2 : 1)
   }
   return <div className="dev-workspace" data-testid="developers-view">
-    {sidebarOpen && <aside className="dev-rail" aria-label="Development projects"><div className="dev-rail-heading"><strong>Projects</strong><div><button className="dev-control" aria-label="Add repository" title="Add folder" disabled={busy} onClick={() => void add()}><FolderPlus size={16} /></button><button className="dev-control" aria-label="Hide project sidebar" onClick={onToggleSidebar}><PanelLeftClose size={16} /></button></div></div>
+    {sidebar && createPortal(<section className="dev-rail" aria-label="Development projects"><div className="dev-rail-heading"><strong>Projects</strong><button className="dev-control" aria-label="Add repository" title="Add folder" disabled={busy} onClick={() => void add()}><FolderPlus size={16} /></button></div>
       <div className="dev-projects">{state?.repos.map(repo => <section key={repo.id} className="dev-project"><div className="dev-project-heading"><button className="dev-folder-button" title={repo.path} aria-expanded={!collapsed[repo.id]} onClick={() => setCollapsed(current => ({ ...current, [repo.id]: !current[repo.id] }))}>{collapsed[repo.id] ? <ChevronRight size={13} /> : <ChevronDown size={13} />}<Folder size={15} /><span>{repo.name}</span></button><button className="dev-control" aria-label={`New session in ${repo.name}`} title="New session" onClick={() => fresh(repo.id)}><Plus size={15} /></button><DeveloperPopover label={`Project options for ${repo.name}`} trigger={<MoreHorizontal size={15} />}>{close => <><button className="dev-menu-row" onClick={() => { setHistory(repo); close() }}><History size={15} />Previous sessions</button><button className="dev-menu-row" onClick={() => { close(); void action(async () => { await api.devRemoveRepo(repo.id); setSlots(current => current.map(slot => slot.repoId === repo.id ? {} : slot)); await refresh() }) }}>Remove from sidebar</button><p className="setting-hint">Files and session history are kept. Add the folder again to restore it.</p></>}</DeveloperPopover></div>
-        {!collapsed[repo.id] && <div className="dev-project-sessions">{state.sessions.filter(session => session.repoId === repo.id).sort((a, b) => b.updatedAt - a.updatedAt).map(session => <button key={session.id} className={`dev-task-link${slots[focused]?.id === session.id ? ' selected' : ''}`} title={session.title} aria-current={slots[focused]?.id === session.id ? 'page' : undefined} onClick={() => open(session.id)}>{['starting', 'running', 'waiting', 'stopping'].includes(session.state) ? <LoaderCircle size={13} className="spin" /> : <ProviderIcon provider={session.provider} size={13} />}<span>{session.title}</span>{slots.slice(0, layout).some(slot => slot.id === session.id) && <small>{slots.findIndex(slot => slot.id === session.id) + 1}</small>}</button>)}{!state.sessions.some(session => session.repoId === repo.id) && <button className="dev-empty-session" onClick={() => fresh(repo.id)}>Start a session</button>}</div>}
-      </section>)}</div><footer><button className="dev-control" onClick={() => window.dispatchEvent(new Event('engram:open-developer-settings'))}><Settings size={16} />Developer settings</button></footer>
-    </aside>}
+        <SidebarDisclosure id={`dev-folder-${repo.id}`} open={!collapsed[repo.id]} unmountOnExit><div className="dev-project-sessions">{state.sessions.filter(session => session.repoId === repo.id).sort((a, b) => b.updatedAt - a.updatedAt).map(session => <button key={session.id} className={`dev-task-link${slots[focused]?.id === session.id ? ' selected' : ''}`} title={session.title} aria-current={slots[focused]?.id === session.id ? 'page' : undefined} onClick={() => open(session.id)}>{['starting', 'running', 'waiting', 'stopping'].includes(session.state) ? <LoaderCircle size={13} className="spin" /> : <ProviderIcon provider={session.provider} size={13} />}<span>{session.title}</span>{slots.slice(0, layout).some(slot => slot.id === session.id) && <small>{slots.findIndex(slot => slot.id === session.id) + 1}</small>}</button>)}{!state.sessions.some(session => session.repoId === repo.id) && <button className="dev-empty-session" onClick={() => fresh(repo.id)}>Start a session</button>}</div></SidebarDisclosure>
+      </section>)}</div>
+    </section>, sidebar)}
     <main className="dev-content">{error && <p className="dev-error" role="alert">{error}</p>}{!state ? <div className="dev-empty" role="status"><LoaderCircle className="spin" />Loading workspace…</div> : !state.preferences.enabled ? <div className="dev-empty"><h2>Code, in conversation</h2><p>Use your AI connection to work in a project. Development stays off until you enable it.</p><button className="primary" disabled={busy} onClick={() => void action(async () => { await api.devPreferences({ enabled: true }); await refresh() })}>Enable Developers</button></div> : !state.repos.length ? <div className="dev-empty"><Folder size={28} /><h2>Choose your first project</h2><p>Add a folder. Its sessions will appear together in the sidebar.</p><button className="primary" disabled={busy} onClick={() => void add()}>Add folder</button></div> : <div className={`dev-panes dev-panes-${layout}`}>
       {slots.slice(0, layout).map((slot, index) => <DeveloperTaskPane key={`${index}:${slot.id ?? slot.repoId ?? ''}`} slot={index} id={state.sessions.some(session => session.id === slot.id) ? slot.id : undefined} repo={state.repos.find(repo => repo.id === (state.sessions.find(session => session.id === slot.id)?.repoId ?? slot.repoId)) ?? state.repos[0]} state={state} active={focused === index} split={layout > 1} onFocus={() => setActive(index)} onSelect={id => open(id, index)} onNew={() => fresh(slot.repoId ?? state.repos[0]?.id, index)} onCreated={task => created(task, index, slot)} onClose={() => closePane(index)} />)}
     </div>}</main>

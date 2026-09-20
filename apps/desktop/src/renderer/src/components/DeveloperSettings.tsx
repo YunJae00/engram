@@ -1,27 +1,14 @@
 import { useEffect, useState } from 'react'
-import { LoaderCircle, RefreshCw } from 'lucide-react'
-import type { DevPreferences, DevRule, DevState, DevUsage } from '../../../shared/developers.js'
+import { LoaderCircle } from 'lucide-react'
+import type { DevPreferences, DevRule, DevState } from '../../../shared/developers.js'
 import { api } from '../api.js'
 import { ExternalConnections } from './ExternalConnections.js'
-
-export function UsageSummary({ usage }: { usage: DevUsage | null }) {
-  if (!usage) return <p className="setting-hint">Refresh to check your provider’s account limits.</p>
-  return <div className="dev-usage">
-    {usage.unavailable && <p className="setting-hint">{usage.unavailable}</p>}
-    {usage.windows?.map((window, index) => <div key={`${window.name}-${index}`}>
-      <div className="dev-usage-label"><span>{window.name}</span><span>{window.used === undefined ? 'Unavailable' : `${Math.round(100 - window.used)}% remaining`}</span></div>
-      {window.used !== undefined && <progress max={100} value={100 - window.used} aria-label={`${window.name} remaining`} />}
-      {window.resetsAt !== undefined && <small>Resets {new Date(window.resetsAt).toLocaleString('en-US')}</small>}
-    </div>)}
-    {usage.updatedAt && <small>Checked {new Date(usage.updatedAt).toLocaleTimeString('en-US')}</small>}
-  </div>
-}
+import { AccountUsage } from './AccountUsage.js'
 
 export function DeveloperSettings() {
   const [state, setState] = useState<DevState | null>(null), [error, setError] = useState(''), [saving, setSaving] = useState(false)
-  const [collect, setCollect] = useState(false), [usage, setUsage] = useState<DevUsage | null>(null), [loadingUsage, setLoadingUsage] = useState(false)
+  const [collect, setCollect] = useState(false)
   const [rules, setRules] = useState<DevRule[]>([])
-  const [usageProvider, setUsageProvider] = useState<'claude' | 'codex'>('codex')
   useEffect(() => {
     let alive = true
     void Promise.all([api.devState(), api.sessionWatchGet()]).then(([value, watching]) => { if (alive) { setState(value); setCollect(watching) } }).catch(error => { if (alive) setError(error.message) })
@@ -43,10 +30,7 @@ export function DeveloperSettings() {
       <p className="setting-hint">Turning this off stops development tasks. Files and task history are kept.</p>
     </div>
     <div className="settings-group">
-      <div className="dev-usage-label"><h3>Account usage</h3><button className="icon-btn" disabled={loadingUsage} aria-label="Refresh account usage" onClick={() => { setLoadingUsage(true); void api.devUsage(usageProvider).then(setUsage).catch(error => setError(error.message)).finally(() => setLoadingUsage(false)) }}>{loadingUsage ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}</button></div>
-      <div className="workspace-mode-toggle" role="group" aria-label="Usage provider">{(['claude', 'codex'] as const).map(provider => <button key={provider} disabled={loadingUsage} aria-pressed={usageProvider === provider} onClick={() => { setUsageProvider(provider); setUsage(null) }}>{provider === 'claude' ? 'Claude' : 'Codex'}</button>)}</div>
-      <UsageSummary usage={usage} />
-      <p className="setting-hint">Provider-reported limits, not a billing estimate. Nothing is purchased or reset here.</p>
+      <AccountUsage />
     </div>
     <div className="settings-group">
       <h3>Coding activity in Cosmos</h3>

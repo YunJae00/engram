@@ -82,10 +82,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit, onM
 
   return (
     <header className="topbar" data-testid="topbar">
-      <div className="workspace-mode-toggle" role="group" aria-label="Workspace mode">
-        <button aria-label="Chat mode" aria-pressed={activity !== 'developers'} onClick={() => onMode('bots')}><MessageSquare size={15} /><span>Chat</span></button>
-        <button aria-label="Developers mode" aria-pressed={activity === 'developers'} onClick={() => onMode('developers')}><Code2 size={15} /><span>Developers</span></button>
-      </div>
+      {!sidebarOpen && <button className="topbar-sidebar-toggle" aria-label={activity === 'developers' ? 'Chat mode' : 'Developers mode'} title="Switch workspace mode" onClick={() => onMode(activity === 'developers' ? 'bots' : 'developers')}>{activity === 'developers' ? <MessageSquare size={17} /> : <Code2 size={17} />}</button>}
       {!sidebarOpen && (
         <button className="topbar-sidebar-toggle" data-testid="app-sidebar-open" title={t('rail.show')} onClick={onToggleSidebar}>
           <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />

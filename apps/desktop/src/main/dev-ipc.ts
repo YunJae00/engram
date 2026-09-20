@@ -4,6 +4,8 @@ import type { DevelopersApi } from '../shared/developers.js'
 import { desktopOwner } from './desktop-access.js'
 import { broadcast } from './engine-health.js'
 import { DevService } from './dev-service.js'
+import { claudeAccountUsage } from './dev-claude.js'
+import { devAccountUsage } from './dev-catalog.js'
 
 let service: DevService | undefined
 function get(): DevService {
@@ -40,7 +42,12 @@ export function registerDevIpc(): void {
   handle('devUndoHunk', (id, path, fingerprint, index) => get().undoHunk(id, path, fingerprint, index))
   handle('devRules', async () => { await get().state(); return get().store.data.rules })
   handle('devRemoveRule', async id => { await get().state(); get().store.data.rules = get().store.data.rules.filter(rule => rule.id !== id); await get().store.save() })
-  handle('devUsage', provider => get().usage(provider))
+  handle('devUsage', provider => {
+    if (provider !== 'claude' && provider !== 'codex') throw new Error('Unknown provider.')
+    if (service) return service.usage(provider)
+    const cwd = app.getPath('userData')
+    return provider === 'claude' ? claudeAccountUsage(cwd) : devAccountUsage(cwd)
+  })
   handle('devCommands', id => get().commands(id))
   handle('devConfigure', (id, change) => get().configure(id, change))
 }

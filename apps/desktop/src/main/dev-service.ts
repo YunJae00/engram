@@ -5,7 +5,7 @@ import type { DevelopersApi, DevItem, DevSession, DevState, DevUpdate } from '..
 import { DevStore, devPreferences } from './dev-store.js'
 import { DevApprovals, type DevDecision } from './dev-approvals.js'
 import { DevCodex, type DevUpdates } from './dev-codex.js'
-import { DevClaude } from './dev-claude.js'
+import { DevClaude, claudeAccountUsage } from './dev-claude.js'
 import { canonicalRepo, devCommit, devGitState, devWorktree } from './dev-workspace.js'
 import { devAccountUsage, devExternal, devExternalRead } from './dev-catalog.js'
 import { devFileReview, devUndoHunk } from './dev-review.js'
@@ -248,7 +248,7 @@ export class DevService {
     if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
     if (provider === 'codex') return devAccountUsage(this.root)
     const active = [...this.running.values()].find(runtime => runtime.driver instanceof DevClaude)
-    return active?.driver instanceof DevClaude ? active.driver.usage() : { unavailable: 'Start a Claude development task to see provider-reported account limits.' }
+    return active?.driver instanceof DevClaude ? active.driver.usage() : claudeAccountUsage(this.root)
   }
   async commands(id: string) {
     await this.enabled()

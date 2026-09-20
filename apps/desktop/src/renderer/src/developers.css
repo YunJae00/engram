@@ -1,7 +1,8 @@
 .dev-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; color: var(--fg); background: var(--canvas-bg); }
 .dev-workspace .icon-btn, .settings-panel .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); }
 .dev-workspace .icon-btn:hover, .settings-panel .icon-btn:hover { background: var(--hover-bg); }
-.dev-rail { width: 248px; flex: 0 0 248px; display: flex; flex-direction: column; min-height: 0; padding: 14px 10px 10px; background: var(--rail-bg); border-right: 1px solid var(--border-soft); }
+.developer-sidebar-content { display: flex; flex: 1; min-height: 0; }
+.dev-rail { width: 100%; display: flex; flex-direction: column; min-height: 0; padding: 14px 12px 0; }
 .dev-task-link { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; }
 .dev-rail-heading, .dev-header, .dev-review header, .dev-usage-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dev-rail-heading { padding: 0 9px 12px; }
@@ -66,6 +67,8 @@
 .dev-usage progress { display: block; width: 100%; height: 5px; margin: 8px 0; accent-color: var(--accent); }
 .dev-usage small { color: var(--fg-dim); font-size: var(--fs-micro); }
 .dev-usage-label { font-size: var(--fs-small); }
+.account-usage > section { padding: 8px 0; border-top: 1px solid var(--border-soft); }
+.account-usage h4 { margin: 8px 0; color: var(--fg); }
 .workspace-mode-toggle { display: inline-flex; align-items: center; flex: none; padding: 3px; gap: 2px; border-radius: 10px; background: var(--hover-bg); -webkit-app-region: no-drag; }
 .workspace-mode-toggle button { display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); padding: 5px 9px; font: inherit; font-size: var(--fs-small); }
 .workspace-mode-toggle button[aria-pressed='true'] { background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); }
@@ -74,19 +77,25 @@
 .dev-control:hover, .dev-control[aria-expanded='true'], .dev-menu-row:hover, .dev-task-link:hover { background: var(--hover-bg); color: var(--fg); }
 .dev-control:focus-visible, .dev-menu-row:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
 .dev-projects { overflow: auto; flex: 1; min-height: 0; }
-.dev-rail-heading > div, .dev-project-heading, .dev-rail > footer, .dev-composer-foot, .dev-composer-foot > div, .dev-composer-tools { display: flex; align-items: center; gap: 3px; }
+.dev-project-heading, .dev-composer-foot, .dev-composer-foot > div, .dev-composer-tools { display: flex; align-items: center; gap: 3px; }
 .dev-project-heading { padding: 0 1px; }
 .dev-folder-button { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; border: 0; padding: 7px 3px; color: var(--fg-dim); background: transparent; text-align: left; font-size: var(--fs-small); }
 .dev-folder-button span, .dev-heading > .dev-control span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-project-sessions { padding: 2px 0 0 12px; }
 .dev-task-link small { margin-left: auto; color: var(--fg-faint); }
 .dev-empty-session { border: 0; background: transparent; color: var(--fg-faint); padding: 8px 12px; font-size: var(--fs-small); }
-.dev-rail > footer { padding: 12px 6px 2px; border-top: 1px solid var(--border-soft); }
 .dev-header .dev-heading { display: flex; align-items: flex-start; flex-direction: column; gap: 0; min-width: 0; }
 .dev-heading > .dev-control { max-width: 100%; color: var(--fg); font-weight: 500; }
 .dev-heading small { display: flex; align-items: center; gap: 5px; padding-left: 7px; font-size: var(--fs-micro); color: var(--fg-faint); }
 .dev-composer { box-shadow: var(--shadow-card-rest); }
 .dev-composer textarea { min-height: 50px; resize: none; }
+.dev-composer textarea:focus { outline: none; box-shadow: none; border: 0; }
+.dev-history-body [role='status'], .dev-popover [role='status'] { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: 0; }
+.dev-history-body [role='status'] svg, .dev-task-link svg { flex-shrink: 0; }
+.dev-control, .dev-task-link { transition: background-color 120ms ease, color 120ms ease; }
+.dev-popover { animation: dev-popover-in 120ms ease-out; }
+@keyframes dev-popover-in { from { opacity: 0; translate: 0 3px; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .dev-popover { animation: none; } .dev-control, .dev-task-link { transition: none; } }
 .dev-composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .dev-model-controls { display: flex; border: 0; margin: 0 0 0 auto; padding: 0; min-width: 0; }
 .dev-model-controls .provider-picker-label { max-width: 160px; }
@@ -127,5 +136,4 @@
 .dev-history-dialog > footer { padding-top: 16px; }
 @container (max-width: 800px) { .dev-panes-2 { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); } .dev-panes-4 { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(4, minmax(360px, 1fr)); overflow: auto; } }
 @container (max-width: 550px) { .dev-log { padding: 16px; } .dev-composer { margin: 8px 12px 12px; padding: 8px; } .dev-header { padding: 6px 10px; } .dev-composer-tools .dev-control > span { display: none; } .dev-model-controls .provider-picker-label { max-width: 110px; } }
-@media (max-width: 900px) { .dev-rail { width: 205px; flex-basis: 205px; } }
-@media (max-width: 650px) { .topbar > .workspace-mode-toggle span { display: none; } .dev-workspace { flex-direction: column; } .dev-rail { width: 100%; flex: 0 0 auto; max-height: 150px; padding: 6px 10px; border-right: 0; border-bottom: 1px solid var(--border-soft); } .dev-rail-heading { padding: 0 3px; } .dev-rail > footer { display: none; } .dev-project { margin: 2px 0; } .dev-history-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 35% minmax(0, 1fr); } .dev-history-body > nav { border-right: 0; border-bottom: 1px solid var(--border-soft); } .dev-history-dialog > footer { flex-wrap: wrap; } }
+@media (max-width: 650px) { .dev-history-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 35% minmax(0, 1fr); } .dev-history-body > nav { border-right: 0; border-bottom: 1px solid var(--border-soft); } .dev-history-dialog > footer { flex-wrap: wrap; } }

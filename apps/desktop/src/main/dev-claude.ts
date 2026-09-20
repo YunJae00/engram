@@ -14,6 +14,22 @@ const text = (value: unknown): string => typeof value === 'string' ? value : ''
 interface Query extends AsyncIterable<Data> { interrupt(): Promise<unknown>; supportedCommands?(): Promise<{ name: string; description: string }[]>; usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: (options: { skipBehaviors: boolean }) => Promise<unknown> }
 interface Sdk { query(options: { prompt: AsyncIterable<SdkUserMessage>; options: Data }): Query }
 
+export async function claudeAccountUsage(cwd: string): Promise<import('../shared/developers.js').DevUsage> {
+  const abort = new AbortController(), processes = new Set<ProcessClient>()
+  const timer = setTimeout(() => abort.abort(), 20_000)
+  try {
+    const sdk = await loadClaudeSdk() as Sdk, binary = installedClaudeBinary()
+    if (!binary) return { unavailable: 'Connect Claude in AI settings to see account limits.' }
+    const prompt = (async function* () { await new Promise<void>(resolve => { if (abort.signal.aborted) resolve(); else abort.signal.addEventListener('abort', () => resolve(), { once: true }) }); if (!abort.signal.aborted) yield undefined as never })()
+    const query = sdk.query({ prompt, options: { cwd, pathToClaudeCodeExecutable: binary, abortController: abort, tools: [], persistSession: false, settingSources: [], strictMcpConfig: true, maxTurns: 1, spawnClaudeCodeProcess: (options: Parameters<typeof spawnRuntime>[0]) => { const child = spawnRuntime({ ...options, killTree: true }); processes.add(child); return child } } })
+    const read = query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET
+    if (!read) return { unavailable: 'This Claude runtime does not report account limits.' }
+    const request = async () => { await query.supportedCommands?.(); return read.call(query, { skipBehaviors: true }) }
+    return claudeUsage(await Promise.race([request(), new Promise<never>((_, reject) => { if (abort.signal.aborted) reject(new Error('Timed out')); else abort.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true }) })]))
+  } catch { return { unavailable: abort.signal.aborted ? 'Claude account limits timed out. Try again shortly.' : 'Claude account limits could not be refreshed. Check your connection.' } }
+  finally { clearTimeout(timer); abort.abort(); await Promise.all([...processes].map(child => { child.kill(); return child.waitForClose() })) }
+}
+
 export class DevClaude {
   private query?: Query
   private readonly abort = new AbortController()
