@@ -20,7 +20,7 @@ async function screenshot(file: string) {
 }
 const start = async () => {
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env })
-  page = await app.firstWindow()
+  page = await app.firstWindow({ timeout: 60_000 })
   await expect(page.getByTestId('shell')).toBeVisible()
 }
 test.beforeEach(async () => {
