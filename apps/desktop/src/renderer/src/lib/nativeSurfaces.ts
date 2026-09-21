@@ -15,6 +15,7 @@ export function useNativeBrowser(): boolean {
 }
 
 const surfaces = new Map<HTMLElement, string>()
+const visibility = new Map<HTMLElement, (hidden: boolean) => void>()
 let timer: ReturnType<typeof setInterval> | undefined
 let last = ''
 let sent = 0
@@ -73,14 +74,16 @@ function measure(): void {
     if (clear) result.push({ lane, x: full.x, y: full.y, width: full.width, height: full.height, clip: { x: left - full.x, y: top - full.y, width: rect.width, height: rect.height } })
   }
   const next = JSON.stringify(result)
+  for (const [element, callback] of visibility) callback(!result.some(rect => rect.lane === surfaces.get(element)))
   if (next === last && Date.now() - sent < 1000) return
   last = next
   sent = Date.now()
   void api.nativeLayout(result).catch(() => { last = '' })
 }
 
-export function mountNativeSurface(element: HTMLElement, lane: string): () => void {
+export function mountNativeSurface(element: HTMLElement, lane: string, onHidden?: (hidden: boolean) => void): () => void {
   surfaces.set(element, lane)
+  if (onHidden) visibility.set(element, onHidden)
   if (!timer) {
     // Keep the native host's lease alive without polling layout at frame rate.
     timer = setInterval(measure, 1000)
@@ -102,6 +105,7 @@ export function mountNativeSurface(element: HTMLElement, lane: string): () => vo
   measure()
   return () => {
     surfaces.delete(element)
+    visibility.delete(element)
     sizes?.unobserve(element)
     measure()
     if (!surfaces.size) {

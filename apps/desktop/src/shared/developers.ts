@@ -50,6 +50,8 @@ export interface DevSession {
   runtimeId?: string
   accountProfile?: string
   forkOnStart?: boolean
+  handoff?: string
+  engineEpoch?: string
   loadProjectSettings?: boolean
   title: string
   createdAt: number
@@ -88,5 +90,5 @@ export interface DevelopersApi {
   devUsage(provider: DevProvider, profile?: string): Promise<DevUsage>
   devCommands(id: string): Promise<DevCommand[]>
   devProjectCommands(repoId: string, provider: DevProvider): Promise<DevCommand[]>
-  devConfigure(id: string, change: { model: string; effort?: ReasoningEffort; mode: DevMode; fullAccessConfirmed?: boolean }): Promise<DevSession>
+  devConfigure(id: string, change: { provider?: DevProvider; model: string; effort?: ReasoningEffort; mode: DevMode; fullAccessConfirmed?: boolean }): Promise<DevSession>
 }

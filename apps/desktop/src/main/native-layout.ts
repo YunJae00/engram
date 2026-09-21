@@ -77,6 +77,18 @@ export function registerNativeLayout(): void {
   if (registered) return
   registered = true
   ipcMain.handle('native:enabled', () => nativeBrowserEnabled())
+  ipcMain.handle('native:snapshot', async (event, lane: unknown) => {
+    if (!window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || typeof lane !== 'string' || lane.length > 160) return null
+    const page = lanePage(lane)
+    if (!page || !isNativePage(page)) return null
+    const cdp = await page.context().newCDPSession(page).catch(() => null)
+    if (!cdp) return null
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const shot = await Promise.race([cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 85, fromSurface: true, captureBeyondViewport: false }), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Preview timed out')), 3000) })])
+      return lanePage(lane) === page ? `data:image/jpeg;base64,${shot.data}` : null
+    } catch { return null } finally { clearTimeout(timer); await cdp.detach().catch(() => undefined) }
+  })
   ipcMain.on('native:focus-shell', event => {
     if (!window || window.isDestroyed() || !window.isVisible() || !window.isFocused() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
     // A child WebView belongs to another process; DOM focus alone cannot

@@ -63,10 +63,10 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   })
   const changeModel = async (value: ModelSelection) => {
     if (running || gate.current) throw new Error('Finish or stop the task before changing its model.')
-    if (task) setTask(await api.devConfigure(task.id, { model: value.model, effort: value.effort, mode: task.mode, fullAccessConfirmed: task.mode === 'full-access' }))
+    if (task) setTask(await api.devConfigure(task.id, { provider: value.engine, model: value.model, effort: value.effort, mode: task.mode, fullAccessConfirmed: task.mode === 'full-access' }))
     else setModel(value)
   }
-  return <section className={`dev-pane${active ? ' active' : ''}`} aria-label={`Development pane ${slot + 1}`} onFocusCapture={onFocus} onPointerDown={onFocus}>
+  return <section className={`dev-pane${active ? ' active' : ''}${!task && !loading ? ' dev-pane-welcome' : ''}`} aria-label={`Development pane ${slot + 1}`} onFocusCapture={onFocus} onPointerDown={onFocus}>
     <header className="dev-header"><div className="dev-heading"><h2 title={task?.title}>{task?.title ?? (loading ? 'Loading session…' : 'New session')}</h2><small title={task?.cwd ?? repo?.path}><Folder size={12} />{repo?.name ?? 'Choose a folder'}{task?.branch && <span title={task.branch}> · Worktree</span>}</small></div>
       <div className="dev-actions">{task && <><button className="dev-control" aria-label="Branch session" title="Branch into a separate worktree" disabled={busy || running || !task.runtimeId} onClick={() => void action(async () => onCreated(await api.devFork(task.id)))}><GitBranch size={16} /></button><button className="dev-control" disabled={busy} onClick={() => void action(async () => { setGit(await api.devGit(task.id)); setSelected([]) })}>Changes</button></>}{split && <button className="dev-control" aria-label="Close pane" onClick={onClose}><X size={16} /></button>}</div>
     </header>
@@ -83,7 +83,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
       <textarea ref={input} aria-label="Development message" placeholder="Ask about the code, or describe a change…" value={prompt} disabled={running || busy || loading || !repo} onChange={event => write(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!running && !loading) void send() } }} />
       <div className="dev-composer-toolbar"><div className="dev-composer-tools">
         <DeveloperAccess value={chosenAccess} task={task} disabled={running || busy || loading} extensions={state.preferences.loadProjectSettings} onChange={async value => { if (task) setTask(await api.devConfigure(task.id, { model: task.model, effort: task.effort, mode: value.mode, fullAccessConfirmed: value.confirmed })); else setAccess(value) }} />
-      </div><fieldset className="dev-model-controls" disabled={running || busy || loading}><ModelPicker controlled={{ value: chosenModel, accountProfile: task ? task.accountProfile ?? 'system' : undefined, disabled: running || busy || loading, lockProvider: !!task, onChange: changeModel }} /></fieldset>
+      </div><fieldset className="dev-model-controls" disabled={running || busy || loading}><ModelPicker controlled={{ value: chosenModel, accountProfile: task ? task.accountProfile ?? 'system' : undefined, disabled: running || busy || loading, onChange: changeModel }} /></fieldset>
       <button className="dev-send" disabled={busy || loading || (!running && (!prompt.trim() || !repo))} aria-label={running ? 'Stop development task' : 'Send development message'} onClick={() => void (running && task ? action(() => api.devStop(task.id)) : send())}>{busy ? <LoaderCircle size={17} className="spin" /> : running ? <Square size={16} /> : <ArrowUp size={18} />}</button></div>
       <div className="dev-composer-foot"><span title={task?.cwd ?? repo?.path}>{chosenAccess.isolate ? <><GitBranch size={12} />Separate worktree</> : <><Folder size={12} />{repo?.name ?? 'No folder selected'}</>}</span><div><DeveloperUsage usage={task?.usage ?? {}} /><button className="dev-control" aria-label="AI settings" title="AI settings" onClick={() => window.dispatchEvent(new Event('engram:open-brain-setup'))}><Settings size={14} /></button></div></div>
     </div>

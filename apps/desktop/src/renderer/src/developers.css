@@ -16,11 +16,11 @@
 .dev-panes-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .dev-pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas-bg); overflow: hidden; container-type: inline-size; }
 .dev-panes:not(.dev-panes-1) .dev-pane.active > .dev-header .dev-heading > h2 { background: var(--selected-soft); }
-.dev-header { min-height: 64px; padding: 10px 20px 14px; background: color-mix(in srgb, var(--hover-bg) 45%, var(--canvas-bg)); flex-shrink: 0; }
+.dev-header { min-height: 64px; padding: 10px 24px 14px; background: var(--canvas-bg); flex-shrink: 0; }
 .dev-header > div, .dev-actions { display: flex; align-items: center; gap: 8px; }
 .dev-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-header > div:first-child { min-width: 0; }
-.dev-log { flex: 1; min-height: 0; overflow: auto; padding: 24px max(24px, calc((100% - 800px) / 2)); overscroll-behavior: contain; }
+.dev-log { flex: 1; min-height: 0; overflow: auto; padding: 24px max(24px, calc((100% - var(--composer-width, 820px)) / 2)); overscroll-behavior: contain; }
 .dev-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin: auto; padding: 56px 20px; text-align: center; min-height: 240px; }
 .dev-empty h2 { margin: 0; font-size: 24px; font-weight: 550; letter-spacing: -.5px; }
 .dev-empty p { max-width: 400px; color: var(--fg-dim); line-height: 1.6; margin: 0 0 12px; }
@@ -42,7 +42,12 @@
 .dev-tool small { margin-left: auto; color: var(--fg-faint); }
 .dev-tool pre, .dev-approval pre, .dev-review pre { overflow: auto; max-height: 360px; padding: 12px; background: var(--rail-bg); border-radius: 8px; font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dev-working { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
-.dev-composer { margin: 12px max(20px, calc((100% - 800px) / 2)) 20px; padding: 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--input-bg); }
+.dev-composer { margin: 12px max(24px, calc((100% - var(--composer-width, 820px)) / 2)) 20px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-composer); background: var(--input-bg); }
+.dev-pane-welcome > .dev-log { flex: 0 1 auto; margin-top: auto; padding-top: 32px; padding-bottom: 0; }
+.dev-pane-welcome .dev-empty { min-height: 0; padding: 12px 0 18px; gap: 10px; }
+.dev-pane-welcome .dev-empty h2 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.035em; overflow-wrap: anywhere; }
+.dev-pane-welcome > .dev-composer { flex-shrink: 0; margin-top: 0; margin-bottom: auto; }
+.dev-pane-welcome::after { content: ''; height: 64px; flex-shrink: 1; }
 .dev-composer textarea { display: block; width: 100%; min-height: 70px; max-height: 220px; resize: vertical; border: 0; padding: 8px; background: transparent; color: inherit; font: inherit; outline: none; }
 .dev-composer:focus-within { border-color: var(--accent-line); }
 .dev-send { display: grid; place-items: center; margin-left: auto; width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 50%; background: var(--button-bg); color: var(--selected-fg); }
@@ -85,8 +90,8 @@
 .dev-task-link small { margin-left: auto; color: var(--fg-faint); }
 .dev-empty-session { border: 0; background: transparent; color: var(--fg-faint); padding: 8px 12px; font-size: var(--fs-small); }
 .dev-header .dev-heading { display: flex; align-items: flex-start; flex-direction: column; gap: 0; min-width: 0; }
-.dev-heading > h2 { max-width: 100%; margin: 0; padding: 6px 7px; border-radius: 6px; color: var(--fg); font-size: inherit; font-weight: 500; }
-.dev-heading small { display: flex; align-items: center; gap: 5px; padding-left: 7px; font-size: var(--fs-micro); color: var(--fg-faint); }
+.dev-heading > h2 { max-width: 100%; margin: 0; padding: 6px 0; border-radius: 6px; color: var(--fg); font-size: inherit; font-weight: 500; }
+.dev-heading small { display: flex; align-items: center; gap: 5px; font-size: var(--fs-micro); color: var(--fg-faint); }
 .dev-composer { position: relative; box-shadow: var(--shadow-card-rest); }
 .dev-skills { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; max-height: 260px; overflow: auto; padding: 6px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--panel-bg); box-shadow: var(--shadow-card-rest); z-index: 2; }
 .dev-skills button { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px 12px; border: 0; border-radius: 7px; background: transparent; text-align: left; color: var(--fg); }

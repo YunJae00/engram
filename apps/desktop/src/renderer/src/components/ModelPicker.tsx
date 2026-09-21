@@ -62,7 +62,7 @@ export function useModelChoices(engine: Provider | null, pinnedProfile?: string)
 }
 
 export interface ModelSelection { engine: Provider; model: string; effort?: ReasoningEffort }
-export function ModelPicker({ variant = 'composer', scope, controlled, showAccounts = true }: { variant?: 'composer' | 'sidebar'; scope?: string; showAccounts?: boolean; controlled?: { value: ModelSelection; accountProfile?: string; disabled?: boolean; lockProvider?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
+export function ModelPicker({ variant = 'composer', scope, controlled, showAccounts = true }: { variant?: 'composer' | 'sidebar'; scope?: string; showAccounts?: boolean; controlled?: { value: ModelSelection; accountProfile?: string; disabled?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
   const { engines, enginesDetected } = useShellState()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -99,7 +99,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
     let serial = 0
     const read = () => {
       const at = ++serial
-      const request = controlled?.accountProfile ? api.accountProfileStates().then(rows => rows.filter(row => row.id === controlled.accountProfile).map(row => ({ ...row, id: row.provider }))) : api.engineStates()
+      const request = controlled?.accountProfile ? Promise.all([api.accountProfileStates(), api.engineStates()]).then(([rows, defaults]) => [...defaults.filter(row => row.id !== engine), ...rows.filter(row => row.provider === engine && row.id === controlled.accountProfile).map(row => ({ ...row, id: row.provider }))]) : api.engineStates()
       void request.then((next) => { if (alive && at === serial) setStates(next) }).catch(() => {
         if (alive && at === serial) setSaveError('Could not check connections. Open AI settings to retry.')
       })
@@ -109,7 +109,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       if (event.type === 'engines:detected' || event.type === 'engines:changed' || event.type === 'engines:login' || event.type === 'accounts:changed') read()
     })
     return () => { alive = false; off() }
-  }, [open, controlled?.accountProfile])
+  }, [open, controlled?.accountProfile, engine])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -226,7 +226,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
         const state = stateFor(id)
         const connected = state?.loggedIn === true
         const detail = connected ? 'Connected' : !states && !state ? 'Open AI settings' : state?.installed ? 'Connect in settings' : 'Set up in settings'
-        return <button type="button" key={id} role="menuitemradio" aria-checked={engine === id} tabIndex={-1} disabled={saving || controlled?.disabled || (controlled?.lockProvider && engine !== id)} className="model-picker-item provider-picker-option" data-testid={`provider-pick-${id}`}
+        return <button type="button" key={id} role="menuitemradio" aria-checked={engine === id} tabIndex={-1} disabled={saving || controlled?.disabled} className="model-picker-item provider-picker-option" data-testid={`provider-pick-${id}`}
           onClick={() => { if (!connected) setup(); else if (engine !== id) void save({ defaultEngine: id }, false) }}>
           <ProviderIcon provider={id} size={18} /><span className="model-picker-name" title={detail}>{name}{!connected && <span className="model-picker-detail">Connect</span>}</span>
           {engine === id && <Check className="provider-picker-check" size={14} aria-hidden />}

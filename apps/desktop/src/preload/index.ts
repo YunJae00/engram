@@ -172,6 +172,7 @@ const api: EngramApi = {
   nativeEnabled: () => ipcRenderer.invoke('native:enabled'),
   nativeFocusShell: () => ipcRenderer.send('native:focus-shell'),
   nativeLayout: (surfaces) => ipcRenderer.invoke('native:layout', surfaces),
+  nativeSnapshot: (lane) => ipcRenderer.invoke('native:snapshot', lane),
   agentWatch: (on: boolean) => ipcRenderer.invoke('agent:watch', on),
   agentInput: (input: AgentInputDto, lane: string) => ipcRenderer.invoke('agent:input', input, lane),
   agentWindow: (show: boolean) => ipcRenderer.invoke('agent:window', show),

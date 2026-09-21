@@ -10,9 +10,49 @@ vi.mock('../src/main/dev-codex.js', () => ({ DevCodex: class {
   async send(text: string) { this.updates.item({ id: 'response', kind: 'assistant', text }); this.updates.finished() }
   async stop() { this.approvals.close(); this.updates.finished() }
 } }))
-vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {} }))
+vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {
+  constructor(private session: { runtimeId?: string }, private approvals: { close(): void }, private updates: { item(value: unknown): void; finished(): void }) {}
+  async start() { this.session.runtimeId = 'claude-fixture-session' }
+  async send(text: string) { this.updates.item({ id: 'response', kind: 'assistant', text }); this.updates.finished() }
+  async stop() { this.approvals.close(); this.updates.finished() }
+} }))
 import { DevService } from '../src/main/dev-service.js'
 import { initializeAccountProfiles, addAccountProfile, selectAccountProfile } from '../src/main/account-profiles.js'
+
+it('switches both providers in one conversation without reusing runtime IDs or overwriting messages', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-handoff-')), service = new DevService(root, vi.fn())
+  const original = { ...process.env }
+  try {
+    await initializeAccountProfiles(root)
+    await service.preferences({ enabled: true })
+    const repo = await service.addRepo(root)
+    const session = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+    await service.send(session.id, 'Preserve the current files')
+    const oldAnswer = session.items[1]!.text, cwd = session.cwd
+    await service.configure(session.id, { provider: 'claude', model: '', mode: 'review' })
+    expect(session.runtimeId).toBeUndefined()
+    expect(session.handoff).toContain('Preserve the current files')
+    expect((await service.state()).sessions[0]).not.toHaveProperty('handoff')
+    const restored = new DevService(root, vi.fn())
+    expect((await restored.session(session.id)).handoff).toContain('Preserve the current files')
+    await service.send(session.id, 'Continue with the fix')
+    expect(session.runtimeId).toBe('claude-fixture-session')
+    expect(session.handoff).toBeUndefined()
+    expect(session.items[1]!.text).toBe(oldAnswer)
+    expect(session.items.at(-1)!.text).toContain('Current user request:\nContinue with the fix')
+    await service.configure(session.id, { provider: 'codex', model: '', mode: 'plan' })
+    expect(session.runtimeId).toBeUndefined()
+    expect(session.handoff).toContain('Continue with the fix')
+    await service.send(session.id, 'Review the result')
+    expect(session.cwd).toBe(cwd)
+    expect(session.mode).toBe('plan')
+    expect((await service.state()).sessions).toHaveLength(1)
+    session.state = 'running'
+    await expect(service.configure(session.id, { provider: 'claude', model: '', mode: 'review' })).rejects.toThrow('Stop or finish')
+    session.state = 'idle'
+  } finally { await service.stopAll(); process.env = original }
+})
 
 it('keeps developer opt-in separate, persists tasks and enforces full-access confirmation', async () => {
   await mkdir(resolve('tmp'), { recursive: true })

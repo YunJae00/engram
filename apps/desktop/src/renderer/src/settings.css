@@ -33,12 +33,16 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
 .engine-connection .engine-status { gap: 6px; }
 .engine-status[data-connected='true']::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--fg-dim); }
 .engine-connection .engine-message { grid-column: 1 / -1; margin: 0; }
-.account-profile-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; padding: 24px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--panel-bg); color: var(--fg); }
+.account-profile-dialog { box-sizing: border-box; width: min(800px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--panel-bg); color: var(--fg); }
+.account-profile-dialog[open] { display: flex; flex-direction: column; }
 .account-profile-dialog header, .account-profile-dialog footer, .account-profile-dialog form, .account-profile-dialog label { display: flex; align-items: center; gap: 12px; }
 .account-profile-dialog header { justify-content: space-between; }
 .account-profile-dialog h2 { margin: 0; font-size: var(--fs-title); }
 .account-profile-dialog p { line-height: 1.6; color: var(--fg-dim); }
-.account-profile-list { margin: 16px 0; max-height: min(440px, 50vh); overflow: auto; }
+.account-profile-list { margin: 16px 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding-right: 12px; }
+.account-profile-dialog > header, .account-profile-dialog > form, .account-profile-dialog > footer { flex-shrink: 0; }
+.account-profile-row .dev-usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 24px; }
+.account-profile-row .dev-usage > small, .account-profile-row .dev-usage > p { grid-column: 1 / -1; }
 .account-profile-row { padding: 12px 0; }
 .account-profile-row + .account-profile-row { border-top: 1px solid var(--border-soft); }
 .account-profile-row header > div:first-child { display: grid; gap: 4px; }
@@ -49,6 +53,16 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
 .account-profile-dialog small { color: var(--fg-dim); }
 .account-profile-dialog form input { min-width: 0; flex: 1; }
 .account-profile-dialog footer { justify-content: flex-end; margin-top: 20px; }
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open]:not(.delete-conversation-dialog) { animation: view-in 160ms var(--ease-out); }
+  dialog[open]:not(.delete-conversation-dialog)::backdrop { animation: fade-in 160ms ease-out; }
+  .dev-skills, .dev-review, .workspace-menu, .mission-add-menu, .browser-bookmarks, .sidebar-menu, [role='menu']:not(.model-picker-menu) { animation: dev-popover-in 140ms var(--ease-out); }
+  .settings-panel:not([hidden]), .dev-pane-welcome .dev-empty, .dev-project-sessions { animation: fade-in 160ms ease-out; }
+  .dev-control, .dev-menu-row, .dev-history-row, .dev-folder-button, .dev-access-options label, .model-picker-item { transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html :is(dialog, [role='dialog'], [role='menu'], .dev-skills, .dev-review, .settings-panel, .dev-empty, .dev-project-sessions, .mission-add-menu) { animation: none; }
+}
 .engine-message { margin: 0; color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.5; }
 .settings-panel .settings-input { max-width: 100%; }
 .settings-panel .settings-support-actions { margin-bottom: 20px; }

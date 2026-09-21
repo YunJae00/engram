@@ -26,6 +26,16 @@ takes over a running external process; an absent live indicator is not proof of 
 Include other folders shows the 100 most recently updated sessions across folders.
 Continuing one adds its original working folder to the sidebar instead of changing its scope.
 
+Between turns, choose a different provider in the same model menu to continue the
+same Engram conversation and working folder. The new provider uses its selected
+account and a fresh native session, with bounded prior conversation context; it
+does not inherit the other provider's internal state or approval rules. A small
+notice marks each switch. Current access restrictions remain in effect. Transfers
+survive app restarts and are retained until the new provider completes a turn.
+Long transcripts transfer their most recent 80,000 characters with an explicit
+omission warning; files remain in place and the provider is instructed to inspect
+their current state before editing.
+
 Disabling Developers stops its runtimes, but keeps task history and files. Normal
 chat use does not start a developer runtime. Stream updates are batched; only the
 latest 100 items render initially, with earlier messages available on demand.
@@ -93,7 +103,8 @@ System account retains the existing CLI sign-in; Engram never copies credentials
 The account button beside the composer model opens the same controls. Connect each
 account once, then choose Use account without restarting or signing other accounts
 out. This selection applies to new development tasks and the next ordinary chat turn.
-Existing development sessions keep their original account, including while running;
+Existing development sessions keep their original account, including while running,
+unless you explicitly switch the session to another provider;
 sessions from different accounts can run together. Automatic quota-based switching
 is not supported. Provider limits and sign-in requirements still apply.
 

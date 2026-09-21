@@ -54,7 +54,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   // The application owns these pages; stop it before detaching the test client.
   await app?.close()
-  await browser?.close()
+  if (browser?.isConnected()) await browser.close()
+  server?.closeAllConnections()
   await new Promise<void>((resolve) => server?.close(() => resolve()))
   if (previousAttach === undefined) delete process.env['PW_CHROMIUM_ATTACH_TO_OTHER']
   else process.env['PW_CHROMIUM_ATTACH_TO_OTHER'] = previousAttach
@@ -202,8 +203,12 @@ test('occlusion keeps native layout while a dialog hides it immediately and rest
     await expect.poll(lastCount).toBeGreaterThan(0)
     await shell.evaluate(() => { const modal = document.createElement('dialog'); modal.id = 'fixture-modal'; modal.textContent = 'Delete conversation?'; document.body.append(modal); modal.showModal() })
     await expect.poll(lastCount, { intervals: [10], timeout: 1000 }).toBe(0)
+    await expect(shell.locator('.native-browser-snapshot').first()).toBeVisible()
+    await expect.poll(() => shell.locator('.native-browser-snapshot').first().evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
+    await shell.screenshot({ path: join(tmp, 'native-modal-background.png') })
     await shell.evaluate(() => document.querySelector('#fixture-modal')?.remove())
     await expect.poll(lastCount, { intervals: [10], timeout: 1000 }).toBeGreaterThan(0)
+    await expect(shell.locator('.native-browser-snapshot')).toHaveCount(0)
     await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Survives occlusion')
   } finally {
     await shell.evaluate(() => { Reflect.deleteProperty(document, 'visibilityState'); document.querySelector('#fixture-modal')?.remove() })

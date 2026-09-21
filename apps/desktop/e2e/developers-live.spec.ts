@@ -6,6 +6,44 @@ import { fileURLToPath } from 'node:url'
 import type { DevelopersApi, DevProvider } from '../src/shared/developers.js'
 
 test.skip(process.env['ENGRAM_DEV_LIVE'] !== '1', 'Requires explicit live provider verification.')
+test('transfers one conversation between real providers in both directions', async () => {
+  test.setTimeout(360_000)
+  const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(tmp, { recursive: true })
+  const root = await mkdtemp(join(tmp, 'dev-handoff-live-')), userData = join(root, 'data'), project = join(root, 'project'), vault = join(root, 'vault')
+  await Promise.all([mkdir(userData), mkdir(project), initVault(vault, { git: false })])
+  const source = process.env['ENGRAM_DEV_CLAUDE_RUNTIME']
+  if (!source) throw new Error('Set ENGRAM_DEV_CLAUDE_RUNTIME to the existing runtimes directory.')
+  await symlink(source, join(userData, 'runtimes'), process.platform === 'win32' ? 'junction' : 'dir')
+  const app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByTestId('shell')).toBeVisible()
+    await app.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }) }, project)
+    const session = await page.evaluate(async () => {
+      const api = window.engram
+      await api.devPreferences({ enabled: true })
+      const repo = await api.devAddRepo()
+      return api.devCreate({ repoId: repo!.id, provider: 'claude', model: '', mode: 'plan', isolate: false })
+    })
+    for (const [index, provider] of (['claude', 'codex', 'claude'] as const).entries()) {
+      await page.evaluate(async ({ id, provider, index }) => {
+        const api = window.engram
+        if (index) await api.devConfigure(id, { provider, model: '', mode: 'plan' })
+        await api.devSend(id, index ? 'Without tools, repeat the verification phrase from the earlier conversation. Reply only with that phrase.' : 'Remember this verification phrase: ORBIT-7391. Reply only with that phrase. Do not use tools or access any files.')
+      }, { id: session.id, provider, index })
+      await expect.poll(async () => page.evaluate(async id => {
+        const task = await window.engram.devSession(id)
+        if (task.pending.length || task.state === 'failed') throw new Error('The transfer fixture failed or unexpectedly requested a tool approval.')
+        const last = task.items.reduce((at, item, i) => item.kind === 'user' ? i : at, -1)
+        return task.state === 'idle' && task.items.slice(last + 1).some(item => item.kind === 'assistant' && item.text.includes('ORBIT-7391'))
+      }, session.id), { timeout: 100_000, intervals: [1000] }).toBe(true)
+      const after = await page.evaluate(id => window.engram.devSession(id), session.id)
+      expect(after.cwd).toBe(session.cwd); expect(after.provider).toBe(provider)
+      expect(after.handoff).toBeUndefined()
+    }
+  } finally { await app.close() }
+})
 for (const provider of ['codex', 'claude'] as DevProvider[]) test(`${provider} reads an isolated fixture through its real development runtime`, async () => {
   test.setTimeout(360_000)
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
