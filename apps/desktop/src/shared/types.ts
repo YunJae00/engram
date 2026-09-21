@@ -707,6 +707,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   chatSend(request: ChatRequestDto): Promise<void>
   chatAttach(name: string, data: Uint8Array): Promise<ChatAttachmentDto>
   chatAttachmentPreview(id: string): Promise<ChatAttachmentPreviewDto>
+  chatAttachmentCopy(id: string): Promise<void>
   copyText(text: string): Promise<void>
   activityToday(): Promise<{ totalMs: number; apps: { app: string; ms: number; topTitles: string[] }[] }>
   // Desk journal switch (settings ⑨ + tray share the same state).

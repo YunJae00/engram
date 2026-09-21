@@ -115,8 +115,8 @@ test('splitting a conversation preserves and sends its multiline draft and attac
   await expect(page.locator('.bots-view .bubble-msg.user').last().getByRole('img', { name: 'pixel.png' })).toBeVisible()
 })
 
-test('long pasted text becomes a readable attachment without filling the composer', async () => {
-  const text = 'Reference for the task\n' + 'Detailed source material.\n'.repeat(120)
+test('long pasted text previews stay bounded while copy preserves the entire saved text', async () => {
+  const text = 'Reference for the task\n' + 'Detailed source material.\n'.repeat(3000) + '마지막 줄 😀'
   await page.getByTestId('bots-input').evaluate((node, text) => {
     const transfer = new DataTransfer()
     transfer.setData('text/plain', text)
@@ -126,6 +126,32 @@ test('long pasted text becomes a readable attachment without filling the compose
   const files = page.getByLabel('Attached files')
   await expect(files).toContainText('Pasted text.txt')
   await files.locator('summary').click()
-  await expect(files.locator('pre')).toHaveText(text)
+  await expect(files.locator('pre')).toHaveText(text.slice(0, 60_000))
+  // Capture only in this isolated app; never read or overwrite the user's clipboard.
+  await app.evaluate(({ clipboard }) => {
+    clipboard.writeText = text => { (globalThis as typeof globalThis & { copiedText?: string }).copiedText = text }
+  })
+  const copy = files.getByRole('button', { name: 'Copy Pasted text.txt', exact: true })
+  await copy.focus()
+  await page.keyboard.press('Enter')
+  await expect(files.getByRole('status')).toHaveText('Copied')
+  expect(await app.evaluate(() => (globalThis as typeof globalThis & { copiedText?: string }).copiedText)).toBe(text)
+  await expect(files.getByRole('status')).toHaveCount(0)
+  const layout = await files.locator('.chat-file-card').evaluate(card => {
+    const span = card.querySelector('summary > span')!
+    const actions = card.querySelector('.chat-file-actions')!
+    return { textRight: span.getBoundingClientRect().right - parseFloat(getComputedStyle(span).paddingRight), actionsLeft: actions.getBoundingClientRect().left }
+  })
+  expect(layout.textRight).toBeLessThanOrEqual(layout.actionsLeft)
+  await app.evaluate(({ clipboard }) => { clipboard.writeText = () => { throw new Error('Clipboard unavailable') } })
+  await copy.click()
+  await expect(files.getByRole('alert')).toContainText('Could not copy the full attachment')
+  await expect(files.getByRole('status')).toHaveCount(0)
+  await app.evaluate(({ clipboard }) => {
+    clipboard.writeText = text => { (globalThis as typeof globalThis & { copiedText?: string }).copiedText = text }
+  })
+  await copy.click()
+  await expect(files.getByRole('status')).toHaveText('Copied')
+  await expect(files.getByRole('alert')).toHaveCount(0)
   await page.screenshot({ path: test.info().outputPath('pasted-text-card.png') })
 })

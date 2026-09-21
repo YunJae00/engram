@@ -227,9 +227,34 @@ it('copies through native clipboard and restricts attachment/copy IPC to the mai
   expect(state.clipboard).toHaveBeenCalledExactlyOnceWith('if ready:\n    run()\n')
   expect(() => copy(event, null)).toThrow('too large')
   expect(() => copy(event, 'x'.repeat(2_000_001))).toThrow('too large')
-  for (const name of ['clipboard:writeText', 'chat:attach']) {
+  for (const name of ['clipboard:writeText', 'chat:attach', 'chat:attachmentCopy']) {
     expect(() => state.handlers.get(name)!({ ...event, senderFrame: {} }, 'input.txt', Buffer.from('safe'))).toThrow('main window')
     expect(() => state.handlers.get(name)!({ ...event, sender: { mainFrame: event.senderFrame } }, 'input.txt', Buffer.from('safe'))).toThrow('main window')
   }
   expect(await state.handlers.get('chat:attach')!(event, 'input.txt', Buffer.from('safe'))).toMatchObject({ name: 'input.txt', size: 4 })
+})
+
+it('copies complete saved text without expanding previews and rejects unsafe inputs without changing clipboard', async () => {
+  const paths = vaultPaths(root)
+  registerChatAttachmentIpc(paths)
+  const event = { sender: state.owner.webContents, senderFrame: state.owner.webContents.mainFrame }
+  const copy = state.handlers.get('chat:attachmentCopy')!
+  const text = 'x'.repeat(60_000) + '\r\n마지막 줄 😀'
+  const file = await saveChatAttachment(paths, 'Pasted text.txt', Buffer.from(text))
+  expect((await previewChatAttachment(paths, file.id)).text).toHaveLength(60_000)
+  await copy(event, file.id)
+  expect(state.clipboard).toHaveBeenCalledExactlyOnceWith(text)
+  for (const [name, bytes] of [
+    ['large.txt', Buffer.from('x'.repeat(2_000_001))],
+    ['invalid.txt', Buffer.from([0xff])],
+    ['nul.txt', Buffer.from('before\0after')],
+    ['brief.pdf', Buffer.from('not plain text')],
+  ] as const) {
+    const rejected = await saveChatAttachment(paths, name, bytes)
+    await expect(copy(event, rejected.id)).rejects.toThrow()
+  }
+  await expect(copy(event, '../private.txt')).rejects.toThrow('Invalid')
+  expect(state.clipboard).toHaveBeenCalledTimes(1)
+  state.clipboard.mockImplementationOnce(() => { throw new Error('Clipboard unavailable') })
+  await expect(copy(event, file.id)).rejects.toThrow('Clipboard unavailable')
 })
