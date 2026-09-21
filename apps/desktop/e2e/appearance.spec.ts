@@ -10,6 +10,7 @@ let app: ElectronApplication
 let page: Page
 let env: Record<string, string>
 async function screenshot(file: string) {
+  await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
     await window.webContents.capturePage()
