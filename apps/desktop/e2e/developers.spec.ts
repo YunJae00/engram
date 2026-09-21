@@ -138,9 +138,11 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   expect(composerAlignment.right).toBeLessThan(2)
   expect(composerAlignment.left).toBeLessThan(2)
   await page.setViewportSize({ width: 600, height: 850 })
+  await page.getByTestId('app-sidebar-close').click()
   await expect(page.getByRole('textbox', { name: 'Development message' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await screenshot('developers-narrow.png')
+  await page.getByTestId('app-sidebar-open').click()
   await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
   await expect(page.getByTestId('developers-view')).toHaveCount(0)
 })
@@ -321,4 +323,46 @@ test('connected accounts switch without restarting and keep per-account limits',
   await expect(work.getByRole('button', { name: 'Current', exact: true })).toBeVisible()
   await page.getByRole('dialog', { name: 'Account profiles' }).getByRole('region', { name: 'System account', exact: true }).getByRole('button', { name: 'Use account', exact: true }).click()
   await page.keyboard.press('Escape')
+})
+
+test('Stop remains available while an existing task is still connecting', async () => {
+  await page.getByRole('textbox', { name: 'Development message' }).fill('Inspect without changing files')
+  await app.evaluate(({ ipcMain }) => {
+    let release: (() => void) | undefined
+    ipcMain.removeHandler('devSend')
+    ipcMain.handle('devSend', async (event, id) => {
+      event.sender.send('engram:event', { type: 'dev:changed', update: { id, state: 'starting', items: [], pending: [], usage: {} } })
+      await new Promise<void>(resolve => { release = resolve })
+    })
+    ipcMain.removeHandler('devStop')
+    ipcMain.handle('devStop', (event, id) => {
+      event.sender.send('engram:event', { type: 'dev:changed', update: { id, state: 'idle', items: [], pending: [], usage: {} } })
+      release?.()
+    })
+  })
+  await page.getByRole('button', { name: 'Send development message', exact: true }).click()
+  const stop = page.getByRole('button', { name: 'Stop development task', exact: true })
+  await expect(stop).toBeEnabled()
+  await stop.click()
+  await expect(page.getByRole('textbox', { name: 'Development message' })).toBeEnabled()
+  await expect(page.getByText('Connecting…', { exact: true })).toHaveCount(0)
+})
+
+test('retains live updates arriving while a conversation snapshot is loading', async () => {
+  const snapshot = await page.evaluate(async () => {
+    const state = await window.engram.devState()
+    return window.engram.devSession(state.sessions.at(-1)!.id)
+  })
+  await app.evaluate(({ ipcMain }, snapshot) => {
+    ipcMain.removeHandler('devSession')
+    ipcMain.handle('devSession', async event => {
+      await new Promise(resolve => setTimeout(resolve, 200))
+      event.sender.send('engram:event', { type: 'dev:changed', update: { id: snapshot.id, state: 'idle', items: [{ id: 'during-load', kind: 'assistant', text: 'Completed while the conversation was loading' }], pending: [], usage: {} } })
+      await new Promise(resolve => setTimeout(resolve, 200))
+      return snapshot
+    })
+  }, snapshot)
+  await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
+  await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
+  await expect(page.locator('.dev-log').getByText('Completed while the conversation was loading', { exact: true })).toBeVisible()
 })

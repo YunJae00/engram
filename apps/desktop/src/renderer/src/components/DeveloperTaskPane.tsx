@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import { ArrowUp, Check, ChevronRight, CircleAlert, FilePenLine, Folder, GitBranch, ListChecks, LoaderCircle, Search, Settings, Square, Terminal, Wrench, X } from 'lucide-react'
-import type { DevGitState, DevItem, DevRepo, DevSession, DevState } from '../../../shared/developers.js'
+import type { DevGitState, DevItem, DevRepo, DevSession, DevState, DevUpdate } from '../../../shared/developers.js'
 import { api, apiErrorText } from '../api.js'
 import { ModelPicker, type ModelSelection } from './ModelPicker.js'
 import { DeveloperApproval } from './DeveloperApproval.js'
@@ -10,6 +10,12 @@ import { DeveloperSkills } from './DeveloperSkills.js'
 import { DeveloperPanePicker } from './DeveloperPanePicker.js'
 import { renderMarkdown } from '../lib/markdown.js'
 const DeveloperCode = lazy(() => import('./DeveloperCode.js').then(module => ({ default: module.DeveloperCode })))
+
+function mergeUpdate(current: DevSession, update: DevUpdate): DevSession {
+  const incoming = new Map(update.items.map(item => [item.id, item]))
+  const items = current.items.map(item => { const next = incoming.get(item.id); incoming.delete(item.id); return next ?? item })
+  return { ...current, ...update, title: update.title ?? current.title, updatedAt: update.updatedAt ?? current.updatedAt, items: [...items, ...incoming.values()] }
+}
 
 export const DeveloperMessage = memo(function DeveloperMessage({ item }: { item: DevItem }) {
   if (['tool', 'plan', 'agent'].includes(item.kind)) {
@@ -28,6 +34,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   const [access, setAccess] = useState<AccessSelection>({ mode: 'review', isolate: false, confirmed: false })
   const [prompt, setPrompt] = useState(''), [visible, setVisible] = useState(100), [git, setGit] = useState<DevGitState | null>(null), [reviewPath, setReviewPath] = useState('')
   const [dismissedSkills, setDismissedSkills] = useState<string | null>(null)
+  const [stopping, setStopping] = useState(false)
   const [selected, setSelected] = useState<string[]>([]), [commit, setCommit] = useState('')
   const log = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), follow = useRef(true), request = useRef(0), gate = useRef(false)
   const draftKey = `engram.dev.draft.${id ?? `${repo?.id ?? 'empty'}.${slot}`}`
@@ -36,24 +43,29 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
     setLoading(!!id); setTask(null); setError(''); setGit(null); setReviewPath(''); setVisible(100); follow.current = true
     try { setPrompt(sessionStorage.getItem(draftKey) ?? '') } catch { setPrompt('') }
     if (!id) { setAccess({ mode: 'review', isolate: false, confirmed: false }); return }
-    void api.devSession(id).then(value => { if (at === request.current) setTask(value) }).catch(error => { if (at === request.current) setError(error.message) }).finally(() => { if (at === request.current) setLoading(false) })
-    return () => { request.current++ }
-  }, [id, draftKey])
-  useEffect(() => api.onEvent(event => {
-    if (event.type !== 'dev:changed' || !event.update || event.update.id !== id) return
-    const update = event.update
-    setTask(current => {
-      if (!current) return current
-      const incoming = new Map(update.items.map(item => [item.id, item]))
-      const items = current.items.map(item => { const next = incoming.get(item.id); incoming.delete(item.id); return next ?? item })
-      return { ...current, ...update, title: update.title ?? current.title, updatedAt: update.updatedAt ?? current.updatedAt, items: [...items, ...incoming.values()] }
+    let pending: DevUpdate[] | null = []
+    const unsubscribe = api.onEvent(event => {
+      if (event.type !== 'dev:changed' || !event.update || event.update.id !== id) return
+      const update = event.update
+      if (pending) pending.push(update)
+      else setTask(current => current ? mergeUpdate(current, update) : current)
     })
-  }), [id])
+    void api.devSession(id).then(value => {
+      if (at !== request.current) return
+      setTask((pending ?? []).reduce(mergeUpdate, value)); pending = null
+    }).catch(error => { pending = null; if (at === request.current) setError(error.message) }).finally(() => { if (at === request.current) setLoading(false) })
+    return () => { request.current++; unsubscribe() }
+  }, [id, draftKey])
   useEffect(() => { if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight }, [task?.items, task?.pending])
   useEffect(() => { if (input.current) { input.current.style.height = 'auto'; input.current.style.height = `${Math.min(180, input.current.scrollHeight)}px` } }, [prompt])
   const write = (value: string) => { setPrompt(value); setDismissedSkills(null); try { if (value) sessionStorage.setItem(draftKey, value); else sessionStorage.removeItem(draftKey) } catch { /* The mounted composer still retains its draft. */ } }
   const action = async (work: () => Promise<unknown>) => { if (gate.current) return; gate.current = true; setBusy(true); setError(''); try { await work() } catch (error) { setError((error as Error).message) } finally { gate.current = false; setBusy(false) } }
   const running = !!task && ['starting', 'running', 'waiting', 'stopping'].includes(task.state)
+  const stop = async () => {
+    if (!task || stopping) return
+    setStopping(true); setError('')
+    try { await api.devStop(task.id) } catch (error) { setError((error as Error).message) } finally { setStopping(false) }
+  }
   const chosenModel: ModelSelection = task ? { engine: task.provider, model: task.model, effort: task.effort } : model
   const chosenAccess: AccessSelection = task ? { mode: task.mode, isolate: !!task.branch, confirmed: task.mode === 'full-access' } : access
   const send = () => action(async () => {
@@ -89,7 +101,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
       <div className="dev-composer-toolbar"><div className="dev-composer-tools">
         <DeveloperAccess value={chosenAccess} task={task} disabled={running || busy || loading} extensions={state.preferences.loadProjectSettings} onChange={async value => { if (task) setTask(await api.devConfigure(task.id, { model: task.model, effort: task.effort, mode: value.mode, fullAccessConfirmed: value.confirmed })); else setAccess(value) }} />
       </div><fieldset className="dev-model-controls" disabled={running || busy || loading}><ModelPicker controlled={{ value: chosenModel, accountProfile: task ? task.accountProfile ?? 'system' : undefined, disabled: running || busy || loading, onChange: changeModel }} /></fieldset>
-      <button className="dev-send" disabled={busy || loading || (!running && (!prompt.trim() || !repo))} aria-label={running ? 'Stop development task' : 'Send development message'} onClick={() => void (running && task ? action(() => api.devStop(task.id)) : send())}>{busy ? <LoaderCircle size={17} className="spin" /> : running ? <Square size={16} /> : <ArrowUp size={18} />}</button></div>
+      <button className="dev-send" disabled={stopping || loading || (!running && (busy || !prompt.trim() || !repo))} aria-label={running ? 'Stop development task' : 'Send development message'} onClick={() => void (running ? stop() : send())}>{stopping || (busy && !running) ? <LoaderCircle size={17} className="spin" /> : running ? <Square size={16} /> : <ArrowUp size={18} />}</button></div>
       <div className="dev-composer-foot"><span title={task?.cwd ?? repo?.path}>{chosenAccess.isolate ? <><GitBranch size={14} />Separate worktree</> : <><Folder size={14} />{repo?.name ?? 'No folder selected'}</>}</span><div><DeveloperUsage usage={task?.usage ?? {}} /><button className="dev-control" aria-label="AI settings" title="AI settings" onClick={() => window.dispatchEvent(new Event('engram:open-brain-setup'))}><Settings size={14} /></button></div></div>
     </div>
     {git && task && <aside className="dev-review" aria-label="Working tree changes"><header><strong>Working tree</strong><button className="dev-control" aria-label="Close changes" onClick={() => setGit(null)}><X size={16} /></button></header><small>{git.branch}</small>

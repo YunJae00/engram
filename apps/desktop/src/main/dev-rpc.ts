@@ -55,7 +55,13 @@ export class DevRpc {
     if (this.failure) return Promise.reject(this.failure)
     const id = ++this.serial
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.close(new Error(`${method} did not respond in time.`)), timeout)
+      const timer = setTimeout(() => {
+        const error = new Error(`${method} did not respond in time.`)
+        // Optional reads must not terminate a task; uncertain mutations still close the transport.
+        if (['skills/list', 'account/rateLimits/read', 'thread/list', 'thread/read', 'thread/turns/list'].includes(method)) {
+          this.pending.delete(id); reject(error)
+        } else this.close(error)
+      }, timeout)
       this.pending.set(id, { resolve, reject, timer })
       this.write({ id, method, params })
     })

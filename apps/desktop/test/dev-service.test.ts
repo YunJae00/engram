@@ -23,6 +23,7 @@ vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {
   async stop() { this.approvals.close(); this.updates.finished() }
 } }))
 import { DevService } from '../src/main/dev-service.js'
+import * as workspace from '../src/main/dev-workspace.js'
 import { initializeAccountProfiles, addAccountProfile, selectAccountProfile } from '../src/main/account-profiles.js'
 
 it('switches both providers in one conversation without reusing runtime IDs or overwriting messages', async () => {
@@ -192,4 +193,99 @@ it('keeps existing sessions on their account when the default changes', async ()
     expect((await service.session(personal.id)).accountProfile).toBe('system')
     expect(await service.configure(personal.id, { model: '', mode: 'plan' })).toMatchObject({ accountProfile: 'system', mode: 'plan' })
   } finally { await service.stopAll(); process.env = original }
+})
+
+it('does not dispatch a turn stopped while its history checkpoint is pending', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-stop-save-')), service = new DevService(root, vi.fn())
+  await service.preferences({ enabled: true })
+  const repo = await service.addRepo(root)
+  const session = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+  let release!: () => void
+  const checkpoint = new Promise<void>(resolve => { release = resolve })
+  const save = vi.spyOn(service.store, 'save').mockImplementationOnce(() => checkpoint)
+  runtimeFixture.sent = []
+  try {
+    const sending = service.send(session.id, 'Do not execute after stop')
+    await vi.waitFor(() => expect(save).toHaveBeenCalled())
+    await service.stop(session.id)
+    release(); await sending
+    expect(runtimeFixture.sent).toEqual([])
+    expect(session.state).toBe('idle')
+  } finally { release(); save.mockRestore(); await service.stopAll() }
+})
+
+it('waits for every task to finish stopping even when one cleanup fails', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-stop-all-')), service = new DevService(root, vi.fn())
+  await service.preferences({ enabled: true })
+  const repo = await service.addRepo(root)
+  const request = { repoId: repo.id, provider: 'codex' as const, model: '', mode: 'review' as const, isolate: false }
+  const first = await service.create(request), second = await service.create(request)
+  await service.send(first.id, 'First task'); await service.send(second.id, 'Second task')
+  let release!: () => void, failed = false, settled = false
+  const pending = new Promise<void>(resolve => { release = resolve })
+  const originalStop = service.stop.bind(service)
+  const stop = vi.spyOn(service, 'stop').mockImplementation(async id => {
+    if (id === second.id) await pending
+    await originalStop(id)
+    if (id === first.id) { failed = true; throw new Error('Fixture cleanup failed') }
+  })
+  const result = service.stopAll().then(() => { settled = true; return undefined }, error => { settled = true; return error })
+  try {
+    await vi.waitFor(() => expect(failed).toBe(true))
+    expect(settled).toBe(false)
+    release()
+    expect(await result).toBeInstanceOf(Error)
+    expect(service.active).toBe(false)
+    const restored = new DevService(root, vi.fn())
+    expect((await restored.session(second.id)).items[0]?.text).toBe('Second task')
+  } finally { release(); await result; stop.mockRestore(); await service.stopAll() }
+})
+
+it('blocks new turns as soon as Developers is disabled, before cleanup finishes', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-disable-')), service = new DevService(root, vi.fn())
+  await service.preferences({ enabled: true })
+  const repo = await service.addRepo(root)
+  const session = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  const stopAll = vi.spyOn(service, 'stopAll').mockImplementationOnce(() => pending)
+  const disabling = service.preferences({ enabled: false })
+  try {
+    await vi.waitFor(() => expect(stopAll).toHaveBeenCalled())
+    await expect(service.send(session.id, 'Must not start')).rejects.toThrow('Enable Developers')
+    release(); await disabling
+    expect(service.active).toBe(false)
+    await service.preferences({ enabled: true })
+    stopAll.mockRejectedValueOnce(new Error('Fixture cleanup failed'))
+    await expect(service.preferences({ enabled: false })).rejects.toThrow('Fixture cleanup failed')
+    const restored = new DevService(root, vi.fn())
+    expect((await restored.state()).preferences.enabled).toBe(false)
+  } finally { release(); await disabling; stopAll.mockRestore(); await service.stopAll() }
+})
+
+it('keeps a branch source stable while its folder is being prepared', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-fork-race-')), service = new DevService(root, vi.fn())
+  await service.preferences({ enabled: true })
+  const repo = await service.addRepo(root)
+  const source = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+  await service.send(source.id, 'Original conversation')
+  let release!: () => void
+  const pending = new Promise<void>(resolve => { release = resolve })
+  const folder = vi.spyOn(workspace, 'canonicalRepo').mockImplementationOnce(async path => { await pending; return resolve(path) })
+  const branching = service.fork(source.id, false)
+  try {
+    await vi.waitFor(() => expect(folder).toHaveBeenCalled())
+    await expect(service.configure(source.id, { provider: 'claude', model: '', mode: 'review' })).rejects.toThrow('already being updated')
+    await expect(service.send(source.id, 'Concurrent turn')).rejects.toThrow('updating')
+    await expect(service.fork(source.id, false)).rejects.toThrow('already being updated')
+    release()
+    const branch = await branching
+    expect(branch.provider).toBe('codex')
+    expect(branch.runtimeId).toBe('fixture-session')
+    expect(branch.items.filter(item => item.kind === 'user')).toHaveLength(1)
+  } finally { release(); await branching; folder.mockRestore(); await service.stopAll() }
 })

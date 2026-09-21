@@ -37,9 +37,9 @@ export class DevService {
   async preferences(patch: unknown): Promise<DevState['preferences']> {
     await this.ready
     const next = devPreferences(patch, this.store.data.preferences)
-    if (!next.enabled) await this.stopAll()
     this.store.data.preferences = next
-    await this.store.save(); this.emit(null)
+    try { if (!next.enabled) await this.stopAll() }
+    finally { await this.store.save(); this.emit(null) }
     return next
   }
   private async enabled(): Promise<void> {
@@ -198,6 +198,8 @@ export class DevService {
       if (runtime.failed) throw new Error('The development connection ended before the message could be sent. Review the task before trying again.')
       session.state = 'running'; this.flush(id)
       await this.store.save()
+      if (this.running.get(id) !== runtime || runtime.stopping) return
+      if (runtime.failed) throw new Error('The development connection ended before the message could be sent. Review the task before trying again.')
       await runtime.driver.send(session.handoff ? `${session.handoff}\n\nCurrent user request:\n${text.trim()}` : text.trim())
     } catch (error) {
       if (runtime && this.running.get(id) !== runtime) return
@@ -254,7 +256,11 @@ export class DevService {
     await this.store.save().catch(error => { this.reportSaveError(session, error); throw error })
     if (failure) { this.reportRuntimeError(session, failure); throw failure }
   }
-  async stopAll(): Promise<void> { await Promise.all([...this.running.keys()].map(id => this.stop(id))) }
+  async stopAll(): Promise<void> {
+    const results = await Promise.allSettled([...this.running.keys()].map(id => this.stop(id)))
+    const failure = results.find(result => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+  }
   async git(id: string) { await this.enabled(); return devGitState(this.store.session(id).cwd, this.hooks) }
   async fileReview(id: string, path: string) { await this.enabled(); return devFileReview(this.store.session(id).cwd, path, this.hooks) }
   async undoHunk(id: string, path: string, fingerprint: string, index: number) {
@@ -279,11 +285,15 @@ export class DevService {
     const source = this.store.session(id)
     if (['starting', 'running', 'waiting', 'stopping'].includes(source.state)) throw new Error('Finish or stop the task before branching.')
     if (!source.runtimeId) throw new Error('Start a conversation before branching it.')
-    const repo = this.store.repo(source.repoId)
-    const location = isolate ? await devWorktree({ ...repo, path: source.cwd }, join(this.root, 'worktrees'), this.hooks) : { cwd: await canonicalRepo(source.cwd), branch: source.branch }
-    const now = Date.now(), session: DevSession = { ...source, ...location, id: randomUUID(), mode: 'review', loadProjectSettings: false, createdAt: now, updatedAt: now, title: `${source.title} · branch`, state: 'idle', pending: [], forkOnStart: true, usage: {}, items: [...source.items.map(item => ({ ...item })), { id: randomUUID(), kind: 'notice', text: isolate ? 'Branched conversation. This worktree starts at the source task’s current commit; uncommitted changes were not copied.' : 'Branched conversation in the same folder. Files are shared with the original task.' }] }
-    this.store.data.sessions.push(session); await this.store.save(); this.emit(null)
-    return session
+    if (this.configuring.has(id)) throw new Error('Task settings are already being updated.')
+    this.configuring.add(id)
+    try {
+      const repo = this.store.repo(source.repoId)
+      const location = isolate ? await devWorktree({ ...repo, path: source.cwd }, join(this.root, 'worktrees'), this.hooks) : { cwd: await canonicalRepo(source.cwd), branch: source.branch }
+      const now = Date.now(), session: DevSession = { ...source, ...location, id: randomUUID(), mode: 'review', loadProjectSettings: false, createdAt: now, updatedAt: now, title: `${source.title} · branch`, state: 'idle', pending: [], forkOnStart: true, usage: {}, items: [...source.items.map(item => ({ ...item })), { id: randomUUID(), kind: 'notice', text: isolate ? 'Branched conversation. This worktree starts at the source task’s current commit; uncommitted changes were not copied.' : 'Branched conversation in the same folder. Files are shared with the original task.' }] }
+      this.store.data.sessions.push(session); await this.store.save(); this.emit(null)
+      return session
+    } finally { this.configuring.delete(id) }
   }
   async usage(provider: 'claude' | 'codex', profile = activeAccountProfile(provider)) {
     await this.ready

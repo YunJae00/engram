@@ -20,6 +20,7 @@ interface Saved { preferences: DevPreferences; repos: DevRepo[]; sessions: DevSe
 export class DevStore {
   readonly data: Saved = { preferences: { ...DEV_DEFAULTS }, repos: [], sessions: [], rules: [] }
   private writing = Promise.resolve()
+  private queued?: Promise<void>
   constructor(readonly file: string) {}
   async load(): Promise<void> {
     let text: string
@@ -36,14 +37,18 @@ export class DevStore {
     }))
   }
   save(): Promise<void> {
-    const text = JSON.stringify({ ...this.data, sessions: this.data.sessions.map(session => ({ ...session, pending: [] })) })
+    if (this.queued) return this.queued
     const write = async () => {
+      this.queued = undefined
+      // ponytail: one full snapshot per write; split storage if individual snapshots become too costly.
+      const text = JSON.stringify({ ...this.data, sessions: this.data.sessions.map(session => ({ ...session, pending: [] })) })
       await mkdir(dirname(this.file), { recursive: true })
       const pending = `${this.file}.${randomUUID()}.tmp`
       try { await writeFile(pending, text, { mode: 0o600 }); await renameWithRetry(pending, this.file) }
       finally { await rm(pending, { force: true }) }
     }
     const result = this.writing.then(write)
+    this.queued = result
     this.writing = result.catch(() => undefined)
     return result
   }

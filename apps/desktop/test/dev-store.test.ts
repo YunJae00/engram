@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { DEV_DEFAULTS, DevStore, devPreferences } from '../src/main/dev-store.js'
 import type { DevSession } from '../src/shared/developers.js'
 
@@ -29,4 +29,25 @@ it('serializes saves and preserves a corrupt settings file instead of resetting 
   await writeFile(file, '{broken')
   await expect(new DevStore(file).load()).rejects.toThrow()
   expect(await readFile(file, 'utf8')).toBe('{broken')
+})
+
+it('coalesces queued history saves without losing the latest state', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-store-burst-')), store = new DevStore(join(root, 'state.json'))
+  const items = vi.fn(() => [{ id: 'answer', kind: 'assistant', text: 'Synthetic history' }])
+  store.data.sessions.push({ id: 'task', cwd: root, state: 'idle', get items() { return items() }, pending: [] } as unknown as DevSession)
+  const saves: Promise<void>[] = []
+  for (let i = 0; i < 20; i++) { store.data.preferences.model = `model-${i}`; saves.push(store.save()) }
+  await Promise.all(saves)
+  expect(items).toHaveBeenCalledTimes(1)
+  const restored = new DevStore(store.file)
+  await restored.load()
+  expect(restored.data.preferences.model).toBe('model-19')
+  expect(restored.session('task').items[0]?.text).toBe('Synthetic history')
+  items.mockImplementationOnce(() => { throw new Error('Fixture snapshot failure') })
+  await expect(store.save()).rejects.toThrow('Fixture snapshot failure')
+  store.data.preferences.model = 'recovered'
+  await store.save()
+  await restored.load()
+  expect(restored.data.preferences.model).toBe('recovered')
 })
