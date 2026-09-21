@@ -11,7 +11,7 @@ import { devAccountUsage, devExternal, devExternalRead, devProbe } from './dev-c
 import { devFileReview, devUndoHunk } from './dev-review.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
-interface Running { driver: DevCodex | DevClaude; approvals: DevApprovals; changed: Map<string, DevItem>; timer?: ReturnType<typeof setTimeout>; idle?: ReturnType<typeof setTimeout>; stopping?: Promise<void> }
+interface Running { driver: DevCodex | DevClaude; approvals: DevApprovals; changed: Map<string, DevItem>; failed?: boolean; timer?: ReturnType<typeof setTimeout>; checkpoint?: ReturnType<typeof setTimeout>; idle?: ReturnType<typeof setTimeout>; stopping?: Promise<void> }
 
 export class DevService {
   readonly store: DevStore
@@ -127,6 +127,11 @@ export class DevService {
     const session = this.store.session(id)
     if (this.configuring.has(id) || this.running.get(id)?.stopping) throw new Error('Wait for this task to finish stopping or updating.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Wait for this task or stop it before sending another message.')
+    // Reconnect only for a new user request. Never replay a possibly executed turn.
+    if (this.running.get(id)?.failed) {
+      await this.stop(id)
+      if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Wait for this task before sending another message.')
+    }
     session.state = 'starting'; session.updatedAt = Date.now()
     if (!session.items.some(item => item.kind === 'user')) session.title = text.trim().split('\n')[0]!.slice(0, 80)
     const user: DevItem = { id: randomUUID(), kind: 'user', text: text.trim() }
@@ -136,7 +141,7 @@ export class DevService {
     try {
       if (!runtime) {
         const approvals = new DevApprovals(pending => {
-          if (this.running.get(id) !== runtime || runtime?.stopping) return
+          if (this.running.get(id) !== runtime || runtime?.stopping || runtime?.failed) return
           session.pending = pending
           session.state = pending.length ? 'waiting' : 'running'
           this.flush(id)
@@ -153,7 +158,7 @@ export class DevService {
         })
         const updates: DevUpdates = {
           item: (item, append) => {
-            if (this.running.get(id) !== runtime || runtime?.stopping || !item.id) return
+            if (this.running.get(id) !== runtime || runtime?.stopping || runtime?.failed || !item.id) return
             if (session.engineEpoch) item = { ...item, id: `${session.engineEpoch}:${item.id}` }
             const existing = session.items.find(value => value.id === item.id)
             if (existing) Object.assign(existing, item, { text: (append ? existing.text + item.text : item.text).slice(-200_000) })
@@ -161,18 +166,25 @@ export class DevService {
             const value = existing ?? session.items.at(-1)!
             runtime!.changed.set(item.id, value)
             if (!runtime!.timer) runtime!.timer = setTimeout(() => this.flush(id), 100)
+            if (!runtime!.checkpoint) runtime!.checkpoint = setTimeout(() => {
+              runtime!.checkpoint = undefined
+              void this.store.save().catch(error => this.reportSaveError(session, error))
+            }, 5000)
           },
           usage: value => { if (this.running.get(id) === runtime && !runtime?.stopping) { session.usage = { ...session.usage, ...value }; this.flush(id) } },
           finished: error => {
-            if (this.running.get(id) !== runtime || runtime?.stopping) return
+            if (this.running.get(id) !== runtime || runtime?.stopping || runtime?.failed) return
             if (!error) session.handoff = undefined
+            runtime!.failed = !!error
+            if (error) { runtime!.approvals.close(); session.pending = [] }
+            clearTimeout(runtime!.checkpoint); runtime!.checkpoint = undefined
             session.state = error ? 'failed' : 'idle'; session.updatedAt = Date.now()
             for (const item of session.items) if (item.status === 'running') { item.status = error ? 'failed' : 'done'; runtime!.changed.set(item.id, item) }
             if (error && !(session.items.at(-1)?.kind === 'error' && session.items.at(-1)?.text === error)) { const item: DevItem = { id: randomUUID(), kind: 'error', text: error }; session.items.push(item); runtime!.changed.set(item.id, item) }
             this.flush(id)
             void this.store.save().catch(cause => this.reportSaveError(session, cause))
             if (runtime!.idle) clearTimeout(runtime!.idle)
-            runtime!.idle = setTimeout(() => { void this.stop(id).catch(cause => this.reportSaveError(session, cause)) }, 5 * 60_000)
+            runtime!.idle = setTimeout(() => { void this.stop(id).catch(() => { /* stop reports storage and cleanup failures separately. */ }) }, 5 * 60_000)
           },
         }
         const driver = session.provider === 'codex' ? new DevCodex(session, approvals, updates) : new DevClaude(session, approvals, updates)
@@ -183,12 +195,13 @@ export class DevService {
         if (session.provider === 'codex') session.forkOnStart = false
       } else runtime.changed.set(user.id, user)
       if (this.running.get(id) !== runtime || runtime.stopping) return
+      if (runtime.failed) throw new Error('The development connection ended before the message could be sent. Review the task before trying again.')
       session.state = 'running'; this.flush(id)
       await this.store.save()
       await runtime.driver.send(session.handoff ? `${session.handoff}\n\nCurrent user request:\n${text.trim()}` : text.trim())
     } catch (error) {
       if (runtime && this.running.get(id) !== runtime) return
-      await this.stop(id)
+      try { await this.stop(id) } catch { /* Preserve the original send error; stop already reported cleanup failures. */ }
       if (session.handoff) session.runtimeId = undefined
       session.state = 'failed'
       const item: DevItem = { id: randomUUID(), kind: 'error', text: error instanceof Error ? error.message : 'The task could not start.' }
@@ -200,6 +213,10 @@ export class DevService {
   }
   private reportSaveError(session: DevSession, error: unknown): void {
     const item: DevItem = { id: randomUUID(), kind: 'error', text: `Task history could not be saved: ${error instanceof Error ? error.message : 'storage error'}` }
+    this.emit({ id: session.id, items: [item], state: session.state, pending: session.pending, usage: session.usage })
+  }
+  private reportRuntimeError(session: DevSession, error: unknown): void {
+    const item: DevItem = { id: randomUUID(), kind: 'error', text: `The development connection could not close cleanly. Review the files before continuing. ${error instanceof Error ? error.message : ''}` }
     this.emit({ id: session.id, items: [item], state: session.state, pending: session.pending, usage: session.usage })
   }
   private flush(id: string): void {
@@ -224,7 +241,7 @@ export class DevService {
       if (!runtime.stopping) {
         session.state = 'stopping'; session.pending = []
         this.flush(id)
-        clearTimeout(runtime.timer); clearTimeout(runtime.idle)
+        clearTimeout(runtime.timer); clearTimeout(runtime.idle); clearTimeout(runtime.checkpoint)
         runtime.stopping = Promise.resolve().then(async () => { runtime.approvals.close(); await runtime.driver.stop() })
       }
       try { await runtime.stopping } catch (error) { failure = error }
@@ -234,8 +251,8 @@ export class DevService {
     const interrupted = session.items.filter(item => item.status === 'running')
     for (const item of interrupted) item.status = 'failed'
     this.emit({ id, items: interrupted, state: session.state, pending: [], usage: session.usage })
-    await this.store.save()
-    if (failure) throw failure
+    await this.store.save().catch(error => { this.reportSaveError(session, error); throw error })
+    if (failure) { this.reportRuntimeError(session, failure); throw failure }
   }
   async stopAll(): Promise<void> { await Promise.all([...this.running.keys()].map(id => this.stop(id))) }
   async git(id: string) { await this.enabled(); return devGitState(this.store.session(id).cwd, this.hooks) }
@@ -256,14 +273,15 @@ export class DevService {
     if (!['claude', 'codex'].includes(provider) || typeof id !== 'string') throw new Error('Unknown session.')
     return devExternalRead(this.store.repo(repoId).path, provider, id, allFolders === true, profile)
   }
-  async fork(id: string): Promise<DevSession> {
+  async fork(id: string, isolate = true): Promise<DevSession> {
     await this.enabled()
+    if (typeof isolate !== 'boolean') throw new Error('Choose a valid branch location.')
     const source = this.store.session(id)
     if (['starting', 'running', 'waiting', 'stopping'].includes(source.state)) throw new Error('Finish or stop the task before branching.')
     if (!source.runtimeId) throw new Error('Start a conversation before branching it.')
     const repo = this.store.repo(source.repoId)
-    const location = await devWorktree({ ...repo, path: source.cwd }, join(this.root, 'worktrees'), this.hooks)
-    const now = Date.now(), session: DevSession = { ...source, ...location, id: randomUUID(), mode: 'review', loadProjectSettings: false, createdAt: now, updatedAt: now, title: `${source.title} · branch`, state: 'idle', pending: [], forkOnStart: true, usage: {}, items: [...source.items.map(item => ({ ...item })), { id: randomUUID(), kind: 'notice', text: 'Branched conversation. This worktree starts at the source task’s current commit; uncommitted changes were not copied.' }] }
+    const location = isolate ? await devWorktree({ ...repo, path: source.cwd }, join(this.root, 'worktrees'), this.hooks) : { cwd: await canonicalRepo(source.cwd), branch: source.branch }
+    const now = Date.now(), session: DevSession = { ...source, ...location, id: randomUUID(), mode: 'review', loadProjectSettings: false, createdAt: now, updatedAt: now, title: `${source.title} · branch`, state: 'idle', pending: [], forkOnStart: true, usage: {}, items: [...source.items.map(item => ({ ...item })), { id: randomUUID(), kind: 'notice', text: isolate ? 'Branched conversation. This worktree starts at the source task’s current commit; uncommitted changes were not copied.' : 'Branched conversation in the same folder. Files are shared with the original task.' }] }
     this.store.data.sessions.push(session); await this.store.save(); this.emit(null)
     return session
   }
@@ -271,14 +289,14 @@ export class DevService {
     await this.ready
     if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
     if (provider === 'codex') return devAccountUsage(this.root, profile)
-    const active = [...this.running.entries()].find(([id, runtime]) => runtime.driver instanceof DevClaude && (this.store.session(id).accountProfile ?? 'system') === profile)?.[1]
+    const active = [...this.running.entries()].find(([id, runtime]) => !runtime.failed && !runtime.stopping && runtime.driver instanceof DevClaude && (this.store.session(id).accountProfile ?? 'system') === profile)?.[1]
     return active?.driver instanceof DevClaude ? active.driver.usage() : claudeAccountUsage(this.root, profile)
   }
   async commands(id: string) {
     await this.enabled()
     const session = this.store.session(id)
     const runtime = this.running.get(id)
-    if (!runtime) return this.projectCommands(session.repoId, session.provider, session.accountProfile ?? 'system')
+    if (!runtime || runtime.failed || runtime.stopping) return this.projectCommands(session.repoId, session.provider, session.accountProfile ?? 'system')
     return runtime.driver.commands()
   }
   async projectCommands(repoId: string, provider: 'claude' | 'codex', profile = activeAccountProfile(provider)) {

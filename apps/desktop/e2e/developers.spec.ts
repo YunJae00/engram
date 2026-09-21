@@ -35,10 +35,16 @@ async function renderTaskFixture() {
   await expect(page.getByRole('textbox', { name: 'Development message' })).toBeEnabled()
   const update: DevUpdate = { id, state: 'waiting', runtimeId: 'fixture', usage: { input: 1200, output: 240 }, items: [
     { id: 'request', kind: 'user', text: 'Fix the off-by-one error and add a focused check.' },
+    { id: 'command', kind: 'tool', title: 'Command', activity: 'command', text: 'pnpm test\nAll checks passed', status: 'done' },
+    { id: 'edit', kind: 'tool', title: 'Edit · example.ts', activity: 'file', text: 'example.ts\n- return items.slice(0, limit + 1)\n+ return items.slice(0, limit)', status: 'running' },
     { id: 'response', kind: 'assistant', text: 'The boundary includes one extra item. The proposed change is:\n\n```ts\nreturn items.slice(0, limit)\n```\n\nI will keep the existing public API unchanged.' },
   ], pending: [{ id: 'question', kind: 'question', title: 'Your input is needed', detail: '', questions: [{ id: 'scope', text: 'How should a zero limit behave?', options: ['Return an empty list', 'Use the default limit'] }] }] }
   await app.evaluate(({ BrowserWindow }, update) => { BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update }) }, update)
   await expect(page.locator('.dev-message pre code')).toHaveText('return items.slice(0, limit)')
+  await expect(page.locator('.dev-tool').first()).toContainText('Done')
+  await page.locator('.dev-tool').first().locator('summary').click()
+  await expect(page.locator('.dev-tool').first().locator('pre')).toBeVisible()
+  await expect(page.locator('.dev-tool').last()).toContainText('Running')
   await page.getByLabel('Return an empty list', { exact: true }).check()
   await page.getByRole('button', { name: 'Usage and limits', exact: true }).click()
   await expect(page.getByText('1,200 input · 240 output tokens')).toBeVisible()
@@ -47,9 +53,22 @@ async function renderTaskFixture() {
   await page.evaluate(() => { document.documentElement.dataset['theme'] = 'dark' })
   await screenshot('developers-task-dark.png')
   await page.evaluate(() => { document.documentElement.dataset['theme'] = 'light' })
+  await app.evaluate(({ BrowserWindow, ipcMain }, id) => {
+    BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update: { id, state: 'idle', items: [], pending: [], usage: {} } })
+    ipcMain.removeHandler('devFork')
+    ipcMain.handle('devFork', (_event, _id, isolate) => { if (isolate !== true) throw new Error('Wrong branch option'); throw new Error('A separate worktree needs a Git repository with at least one commit. Choose “Same folder” to branch only the conversation. No files were changed.') })
+  }, id)
+  await page.getByRole('button', { name: 'Branch session', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Same folder/ })).toBeVisible()
+  await screenshot('developers-branch-options.png')
+  await page.getByRole('button', { name: /Separate worktree.*Isolated files/ }).click()
+  await expect(page.getByRole('alert')).toContainText('needs a Git repository')
+  await expect(page.getByRole('alert')).not.toContainText('Error invoking remote method')
+  await page.getByRole('button', { name: 'Dismiss error' }).click()
 }
 test.afterAll(async () => { await app?.close() })
 async function screenshot(file: string) {
+  await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
     await window.webContents.capturePage()
@@ -111,6 +130,13 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   const workspace = await page.getByTestId('developers-view').boundingBox(), canvas = await page.locator('.canvas').boundingBox()
   expect(workspace?.width).toBe(canvas?.width)
   await screenshot('developers-workspace.png')
+  const composerAlignment = await page.locator('.dev-composer').evaluate(composer => {
+    const send = composer.querySelector('.dev-send')!.getBoundingClientRect(), settings = composer.querySelector('[aria-label="AI settings"]')!.getBoundingClientRect()
+    const access = composer.querySelector('[aria-label="Task access"] svg')!.getBoundingClientRect(), folder = composer.querySelector('.dev-composer-foot > span svg')!.getBoundingClientRect()
+    return { right: Math.abs(send.x + send.width / 2 - settings.x - settings.width / 2), left: Math.abs(access.x - folder.x) }
+  })
+  expect(composerAlignment.right).toBeLessThan(2)
+  expect(composerAlignment.left).toBeLessThan(2)
   await page.setViewportSize({ width: 600, height: 850 })
   await expect(page.getByRole('textbox', { name: 'Development message' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -130,7 +156,8 @@ async function historyFixture() {
   session.items = [{ id: 'prior-user', kind: 'user', text: 'Earlier saved question' }, { id: 'prior-answer', kind: 'assistant', text: 'Earlier saved answer' }]
   await app.evaluate(({ ipcMain }, session) => {
     ipcMain.removeHandler('devExternal'); ipcMain.handle('devExternal', () => [{ id: 'previous', title: session.title, provider: 'codex', cwd: session.cwd, updatedAt: Date.now() }])
-    ipcMain.removeHandler('devExternalRead'); ipcMain.handle('devExternalRead', () => session.items)
+    let failed = false
+    ipcMain.removeHandler('devExternalRead'); ipcMain.handle('devExternalRead', () => { if (!failed) { failed = true; throw new Error('The development response exceeded the size limit.') } return session.items })
     ipcMain.removeHandler('devCreate'); ipcMain.handle('devCreate', () => session)
     ipcMain.removeHandler('devSession'); ipcMain.handle('devSession', () => session)
     ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', () => [{ value: 'fixture-model', label: 'Fixture model', detail: 'Test catalog', efforts: ['low', 'medium', 'high'] }])
@@ -139,8 +166,17 @@ async function historyFixture() {
   await page.getByRole('button', { name: /^Project options for/ }).click()
   await page.getByRole('button', { name: 'Previous sessions', exact: true }).click()
   await page.getByRole('button', { name: 'Imported conversation' }).click()
+  await expect(page.getByRole('alert')).toContainText('Could not load this session')
+  await expect(page.getByRole('button', { name: 'Resume session', exact: true })).toBeDisabled()
+  await screenshot('developers-history-error.png')
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Saved session preview' }).getByText('Earlier saved answer')).toBeVisible()
   await screenshot('developers-history.png')
+  const aligned = await page.locator('.dev-history-dialog > footer label').evaluate(label => {
+    const box = label.querySelector('input')!.getBoundingClientRect(), text = label.querySelector('span')!.getBoundingClientRect()
+    return Math.abs(box.y + box.height / 2 - text.y - text.height / 2) < 3
+  })
+  expect(aligned).toBe(true)
   await expect(page.getByRole('button', { name: 'Resume session', exact: true })).toBeDisabled()
   await page.getByLabel('I have stopped this session in other apps.').check()
   await page.getByRole('button', { name: 'Resume session', exact: true }).click()
@@ -175,6 +211,16 @@ test('project sessions split independently and drafts survive switching modes', 
   await panes.nth(1).getByRole('textbox', { name: 'Development message' }).fill('Second pane draft')
   await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
   await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
+  await expect(panes.nth(1).getByRole('textbox', { name: 'Development message' })).toHaveValue('Second pane draft')
+  await panes.nth(1).getByRole('button', { name: 'Choose conversation for this pane' }).click()
+  await page.getByRole('searchbox', { name: 'Search project sessions' }).fill('New task')
+  await screenshot('developers-pane-picker.png')
+  await page.getByRole('dialog', { name: 'Choose conversation for this pane' }).getByRole('button', { name: 'New task', exact: true }).click()
+  await expect(panes.nth(1).locator('.dev-heading h2')).toHaveText('New task')
+  await expect(panes.nth(0).getByRole('textbox', { name: 'Development message' })).toBeEnabled()
+  await panes.nth(1).getByRole('button', { name: 'Choose conversation for this pane' }).click()
+  await page.getByRole('searchbox', { name: 'Search project sessions' }).fill('')
+  await page.getByRole('dialog', { name: 'Choose conversation for this pane' }).getByRole('button', { name: 'New session', exact: true }).click()
   await expect(panes.nth(1).getByRole('textbox', { name: 'Development message' })).toHaveValue('Second pane draft')
   const wide = await panes.evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y })))
   expect(wide[0]!.y).toBe(wide[1]!.y); expect(wide[0]!.x).toBeLessThan(wide[1]!.x)

@@ -8,6 +8,7 @@ import { claudeTurnUsage, claudeUsage } from './dev-usage.js'
 import type { DevUpdates } from './dev-codex.js'
 import type { SdkUserMessage } from './engine-claude-session.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
+import { devActivity } from './dev-activity.js'
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -132,7 +133,8 @@ export class DevClaude {
           for (const raw of content) {
             const block = object(raw)
             if (block['type'] === 'tool_use') {
-              const item: DevItem = { id: text(block['id']), kind: ['Agent', 'Task'].includes(text(block['name'])) ? 'agent' : block['name'] === 'TodoWrite' ? 'plan' : 'tool', text: `${text(block['name'])}\n${JSON.stringify(block['input'], null, 2)}`.slice(0, 50_000), status: 'running' }
+              const name = text(block['name']), input = object(block['input'])
+              const item: DevItem = { id: text(block['id']), ...devActivity(name, input), kind: ['Agent', 'Task'].includes(name) ? 'agent' : name === 'TodoWrite' ? 'plan' : 'tool', text: `${name}\n${text(input['command']) || JSON.stringify(input, null, 2)}`.slice(0, 50_000), status: 'running' }
               this.tools.set(item.id, item); this.updates.item(item)
             }
           }
@@ -144,7 +146,7 @@ export class DevClaude {
             if (block['type'] === 'tool_result') {
               const id = text(block['tool_use_id']), previous = this.tools.get(id)
               const result = typeof block['content'] === 'string' ? block['content'] : JSON.stringify(block['content'] ?? '')
-              this.updates.item({ id, kind: previous?.kind ?? 'tool', text: `${previous?.kind === 'plan' ? previous.text : previous?.text.split('\n')[0] ?? 'Tool'}\n${result}`.slice(0, 50_000), status: block['is_error'] ? 'failed' : 'done' })
+              this.updates.item({ ...previous, id, kind: previous?.kind ?? 'tool', text: `${previous?.text ?? 'Tool'}\n\n${result}`.slice(0, 50_000), status: block['is_error'] ? 'failed' : 'done' })
               this.tools.delete(id)
             }
           }
@@ -180,6 +182,10 @@ export class DevClaude {
         this.closed = true; this.approvals.close(); this.wake?.()
         const timer = setTimeout(() => this.abort.abort(), 5000)
         try { await this.query?.interrupt() }
+        catch (error) {
+          // A closed query cannot acknowledge interruption; owned processes are still reaped below.
+          if (!(error instanceof Error) || !/Query closed before response received/.test(error.message)) throw error
+        }
         finally { clearTimeout(timer); this.abort.abort(); this.updates.finished() }
       }
     } finally { await Promise.all([...this.processes].map(child => { child.kill(); return child.waitForClose() })) }

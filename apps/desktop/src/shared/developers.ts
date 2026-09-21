@@ -34,6 +34,8 @@ export interface DevApproval {
 }
 export interface DevItem {
   id: string
+  title?: string
+  activity?: 'command' | 'file' | 'search' | 'agent' | 'plan' | 'tool'
   kind: 'user' | 'assistant' | 'tool' | 'plan' | 'agent' | 'error' | 'notice'
   text: string
   status?: 'running' | 'done' | 'failed'
@@ -80,7 +82,7 @@ export interface DevelopersApi {
   devRespond(id: string, requestId: string, response: { decision: 'allow' | 'deny'; remember?: boolean; answers?: Record<string, string[]> }): Promise<void>
   devExternal(repoId: string, provider: DevProvider, allFolders?: boolean, profile?: string): Promise<DevExternalSession[]>
   devExternalRead(repoId: string, provider: DevProvider, id: string, allFolders?: boolean, profile?: string): Promise<DevItem[]>
-  devFork(id: string): Promise<DevSession>
+  devFork(id: string, isolate?: boolean): Promise<DevSession>
   devGit(id: string): Promise<DevGitState>
   devCommit(id: string, paths: string[], message: string): Promise<void>
   devFileReview(id: string, path: string): Promise<DevFileReview>

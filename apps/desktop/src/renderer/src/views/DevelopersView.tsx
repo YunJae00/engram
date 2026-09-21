@@ -46,6 +46,14 @@ export function DevelopersView({ layout, onLayout }: { layout: 1 | 2 | 4; onLayo
     setSlots(current => current.map((slot, at) => at === index ? { id, repoId: session?.repoId } : slot.id === id ? {} : slot)); setActive(index)
   }
   const fresh = (repoId: string | undefined, index = focused) => { setSlots(current => current.map((slot, at) => at === index ? { repoId } : slot)); setActive(index); if (repoId) setCollapsed(current => ({ ...current, [repoId]: false })) }
+  const choose = (id: string | undefined, repoId: string, index: number) => {
+    if (!id) { fresh(repoId, index); return }
+    setSlots(current => {
+      const other = current.slice(0, layout).findIndex(slot => slot.id === id)
+      return current.map((slot, at) => at === index ? { id, repoId } : at === other ? current[index]! : slot.id === id ? {} : slot)
+    })
+    setActive(index)
+  }
   const created = (task: DevSession, index: number, expected: Slot) => {
     setState(current => current && { ...current, sessions: [...current.sessions.filter(session => session.id !== task.id), task] })
     setSlots(current => current.map((slot, at) => at === index && slot === expected ? { id: task.id, repoId: task.repoId } : slot))
@@ -62,7 +70,7 @@ export function DevelopersView({ layout, onLayout }: { layout: 1 | 2 | 4; onLayo
       </section>)}</div>
     </section>, sidebar)}
     <main className="dev-content">{error && <p className="dev-error" role="alert">{error}</p>}{!state ? <div className="dev-empty" role="status"><LoaderCircle className="spin" />Loading workspace…</div> : !state.preferences.enabled ? <div className="dev-empty"><h2>Code, in conversation</h2><p>Use your AI connection to work in a project. Development stays off until you enable it.</p><button className="primary" disabled={busy} onClick={() => void action(async () => { await api.devPreferences({ enabled: true }); await refresh() })}>Enable Developers</button></div> : !state.repos.length ? <div className="dev-empty"><Folder size={28} /><h2>Choose your first project</h2><p>Add a folder. Its sessions will appear together in the sidebar.</p><button className="primary" disabled={busy} onClick={() => void add()}>Add folder</button></div> : <div className={`dev-panes dev-panes-${layout}`}>
-      {slots.slice(0, layout).map((slot, index) => <DeveloperTaskPane key={`${index}:${slot.id ?? slot.repoId ?? ''}`} slot={index} id={state.sessions.some(session => session.id === slot.id) ? slot.id : undefined} repo={state.repos.find(repo => repo.id === (state.sessions.find(session => session.id === slot.id)?.repoId ?? slot.repoId)) ?? state.repos[0]} state={state} active={focused === index} split={layout > 1} onFocus={() => setActive(index)} onCreated={task => created(task, index, slot)} onClose={() => closePane(index)} />)}
+      {slots.slice(0, layout).map((slot, index) => <DeveloperTaskPane key={`${index}:${slot.id ?? slot.repoId ?? ''}`} slot={index} id={state.sessions.some(session => session.id === slot.id) ? slot.id : undefined} repo={state.repos.find(repo => repo.id === (state.sessions.find(session => session.id === slot.id)?.repoId ?? slot.repoId)) ?? state.repos[0]} state={state} active={focused === index} split={layout > 1} onFocus={() => setActive(index)} onCreated={task => created(task, index, slot)} onClose={() => closePane(index)} onChoose={(id, repoId) => choose(id, repoId, index)} />)}
     </div>}</main>
     {history && state && <DeveloperHistory repo={history} provider={state.preferences.provider} onClose={() => setHistory(null)} onImported={task => { setHistory(null); created(task, focused, slots[focused]!) }} />}
   </div>

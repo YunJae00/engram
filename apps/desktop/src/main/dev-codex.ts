@@ -4,6 +4,7 @@ import { DevRpc } from './dev-rpc.js'
 import { DevApprovals } from './dev-approvals.js'
 import { codexTurnUsage, codexUsage } from './dev-usage.js'
 import { accountEnvironment } from './account-profiles.js'
+import { devActivity } from './dev-activity.js'
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -36,7 +37,7 @@ export class DevCodex {
     await this.rpc.initialize()
     const full = this.session.mode === 'full-access'
     const result = await this.rpc.send(this.session.runtimeId ? (fork ? 'thread/fork' : 'thread/resume') : 'thread/start', {
-      ...(this.session.runtimeId ? { threadId: this.session.runtimeId } : {}),
+      ...(this.session.runtimeId ? { threadId: this.session.runtimeId, excludeTurns: true } : {}),
       cwd: this.session.cwd, ...(this.session.model ? { model: this.session.model } : {}),
       approvalPolicy: full ? 'never' : this.session.mode === 'plan' ? 'on-request' : 'untrusted', approvalsReviewer: 'user',
       sandbox: full ? 'danger-full-access' : this.session.mode === 'auto-edit' ? 'workspace-write' : 'read-only',
@@ -77,14 +78,19 @@ export class DevCodex {
     else if (method === 'turn/plan/updated') {
       const steps = Array.isArray(params['plan']) ? params['plan'].map(raw => { const step = object(raw); return `${step['status'] === 'completed' ? '[x]' : '[ ]'} ${string(step['step'])}` }).join('\n') : ''
       this.updates.item({ id: `plan-${this.turnId}`, kind: 'plan', text: steps, status: 'running' })
+    } else if (method === 'item/commandExecution/outputDelta') {
+      const id = string(params['itemId']), item = this.items.get(id)
+      if (!item) return
+      item['aggregatedOutput'] = (string(item['aggregatedOutput']) + string(params['delta'])).slice(-50_000)
+      this.updates.item({ id, kind: 'tool', ...devActivity('commandExecution', item), text: `${string(item['command']) || 'Command'}\n${string(item['aggregatedOutput'])}`, status: 'running' })
     } else if (method === 'item/started' || method === 'item/completed') {
-      const item = object(params['item']), id = string(item['id']), type = string(item['type'])
+      const incoming = object(params['item']), id = string(incoming['id']), item = { ...this.items.get(id), ...incoming }, type = string(item['type'])
       if (!id || type === 'userMessage') return
       this.items.set(id, item)
-      const status = method === 'item/started' ? 'running' : item['status'] === 'failed' ? 'failed' : 'done'
+      const status = method === 'item/started' ? 'running' : item['status'] === 'failed' || (typeof item['exitCode'] === 'number' && item['exitCode'] !== 0) ? 'failed' : 'done'
       if (type === 'agentMessage' || type === 'plan') this.updates.item({ id, kind: type === 'plan' ? 'plan' : 'assistant', text: string(item['text']), status })
-      else if (type === 'commandExecution') this.updates.item({ id, kind: 'tool', text: `${string(item['command'])}\n${string(item['aggregatedOutput'])}`.slice(0, 50_000), status })
-      else if (type === 'fileChange') this.updates.item({ id, kind: 'tool', text: this.changes(item), status })
+      else if (type === 'commandExecution') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: `${string(item['command']) || 'Command details are not available.'}\n${string(item['aggregatedOutput'])}`.trim().slice(0, 50_000), status })
+      else if (type === 'fileChange') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: this.changes(item) || 'File changes are being prepared.', status })
       else if (type === 'collabAgentToolCall' || type === 'subAgentActivity') this.updates.item({ id, kind: 'agent', text: `${string(item['tool']) || 'Agent'}\n${string(item['prompt']) || string(item['agentPath'])}`, status })
       else if (type !== 'reasoning') this.updates.item({ id, kind: 'tool', text: `${type}${item['tool'] ? ` · ${string(item['tool'])}` : ''}`, status })
       if (method === 'item/completed') this.items.delete(id)

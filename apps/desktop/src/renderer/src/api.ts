@@ -7,3 +7,5 @@ declare global {
 }
 
 export const api: EngramApi = window.engram
+
+export const apiErrorText = (message: string): string => message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '')

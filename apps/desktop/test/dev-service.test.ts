@@ -2,13 +2,19 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
+const runtimeFixture = vi.hoisted(() => ({ starts: 0, failNext: false, hold: false, stopError: false, sent: [] as string[] }))
+
 vi.mock('../src/main/dev-catalog.js', () => ({ devAccountUsage: async () => ({ unavailable: 'Fixture' }), devExternal: async () => [{ id: 'external', title: 'Existing conversation' }, { id: 'live', active: true }], devExternalRead: async () => [{ id: 'original-user', kind: 'user', text: 'Earlier question' }, { id: 'original-answer', kind: 'assistant', text: 'Earlier answer' }] }))
 vi.mock('../src/main/dev-workspace.js', () => ({ canonicalRepo: async (path: string) => resolve(path), devWorktree: async () => ({ cwd: resolve('tmp/fixture-isolated'), branch: 'fixture' }), devGitState: async () => ({ files: [], diff: '', branch: 'fixture', truncated: false }), devCommit: vi.fn() }))
 vi.mock('../src/main/dev-codex.js', () => ({ DevCodex: class {
-  constructor(private session: { runtimeId?: string }, private approvals: { close(): void }, private updates: { item(value: unknown): void; finished(): void }) {}
-  async start() { this.session.runtimeId = 'fixture-session' }
-  async send(text: string) { this.updates.item({ id: 'response', kind: 'assistant', text }); this.updates.finished() }
-  async stop() { this.approvals.close(); this.updates.finished() }
+  constructor(private session: { runtimeId?: string }, private approvals: { close(): void }, private updates: { item(value: unknown): void; finished(error?: string): void }) {}
+  async start() { runtimeFixture.starts++; this.session.runtimeId = 'fixture-session' }
+  async send(text: string) {
+    runtimeFixture.sent.push(text)
+    if (runtimeFixture.failNext) { runtimeFixture.failNext = false; this.updates.finished('Connection closed'); return }
+    this.updates.item({ id: 'response', kind: 'assistant', text, status: 'running' }); if (!runtimeFixture.hold) this.updates.finished()
+  }
+  async stop() { this.approvals.close(); this.updates.finished(); if (runtimeFixture.stopError) { runtimeFixture.stopError = false; throw new Error('Fixture cleanup failed') } }
 } }))
 vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {
   constructor(private session: { runtimeId?: string }, private approvals: { close(): void }, private updates: { item(value: unknown): void; finished(): void }) {}
@@ -85,6 +91,9 @@ it('keeps developer opt-in separate, persists tasks and enforces full-access con
   expect(branch).toMatchObject({ runtimeId: 'fixture-session', forkOnStart: true, mode: 'review', cwd: resolve('tmp/fixture-isolated') })
   expect(branch.id).not.toBe(session.id)
   expect(branch.items.at(-1)?.text).toContain('uncommitted changes were not copied')
+  const shared = await service.fork(session.id, false)
+  expect(shared.cwd).toBe(session.cwd)
+  expect(shared.items.at(-1)?.text).toContain('Files are shared')
   branch.items[0]!.text = 'Branch only'
   expect((await service.session(session.id)).items[0]!.text).toBe('Inspect the fixture')
   await expect(service.configure(session.id, { model: '', mode: 'full-access' })).rejects.toThrow('confirm')
@@ -103,6 +112,65 @@ it('keeps developer opt-in separate, persists tasks and enforces full-access con
   expect(events).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, title: 'Inspect the fixture' }))
   expect((await restored.session(imported.id)).items[1]?.text).toBe('Earlier answer')
 })
+
+it('retains disconnected history and reconnects only on the next user message without replay', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-reconnect-')), service = new DevService(root, vi.fn())
+  try {
+    await service.preferences({ enabled: true })
+    const repo = await service.addRepo(root)
+    const session = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+    const before = runtimeFixture.starts
+    runtimeFixture.sent = []; runtimeFixture.failNext = true
+    await service.send(session.id, 'First command')
+    expect(session.state).toBe('failed')
+    expect(runtimeFixture.starts).toBe(before + 1)
+    expect(runtimeFixture.sent).toEqual(['First command'])
+    await service.send(session.id, 'Inspect what completed before continuing')
+    expect(runtimeFixture.starts).toBe(before + 2)
+    expect(runtimeFixture.sent).toEqual(['First command', 'Inspect what completed before continuing'])
+    expect(session.runtimeId).toBe('fixture-session')
+    expect(session.items.filter(item => item.kind === 'user')).toHaveLength(2)
+    expect(session.items.some(item => item.text.includes('history could not be saved'))).toBe(false)
+  } finally { await service.stopAll() }
+  const restored = new DevService(root, vi.fn())
+  expect((await restored.session((await service.state()).sessions[0]!.id)).items.some(item => item.text === 'Connection closed')).toBe(true)
+})
+
+it('does not label runtime cleanup failures as lost history', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-cleanup-')), events = vi.fn(), service = new DevService(root, events)
+  await service.preferences({ enabled: true })
+  const repo = await service.addRepo(root)
+  const session = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+  try {
+    await service.send(session.id, 'Keep this conversation')
+    runtimeFixture.stopError = true
+    await expect(service.stop(session.id)).rejects.toThrow('Fixture cleanup failed')
+    const updates = JSON.stringify(events.mock.calls)
+    expect(updates).toContain('could not close cleanly')
+    expect(updates).not.toContain('Task history could not be saved')
+    const restored = new DevService(root, vi.fn())
+    expect((await restored.session(session.id)).items[0]?.text).toBe('Keep this conversation')
+  } finally { runtimeFixture.stopError = false; await service.stopAll() }
+})
+
+it('checkpoints partial responses before a long turn completes', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-checkpoint-')), service = new DevService(root, vi.fn())
+  try {
+    await service.preferences({ enabled: true })
+    const repo = await service.addRepo(root)
+    const session = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+    runtimeFixture.hold = true
+    await service.send(session.id, 'Partial response')
+    const save = vi.spyOn(service.store, 'save')
+    await vi.waitFor(() => expect(save).toHaveBeenCalled(), { timeout: 8000, interval: 100 })
+    await save.mock.results[0]!.value
+    const restored = new DevService(root, vi.fn())
+    expect((await restored.session(session.id)).items).toContainEqual(expect.objectContaining({ kind: 'assistant', text: 'Partial response', status: 'failed' }))
+  } finally { runtimeFixture.hold = false; await service.stopAll() }
+}, 15_000)
 
 it('keeps existing sessions on their account when the default changes', async () => {
   const original = { ...process.env }

@@ -22,6 +22,21 @@ function setup(mode: DevSession['mode'] = 'review') {
   return { driver, gate, session, updates, approvals: () => approvals }
 }
 
+it('resumes without a full history response and retains command details on completion', async () => {
+  const test = setup()
+  test.session.runtimeId = 'existing'
+  await test.driver.start()
+  expect(fake.calls[0]).toMatchObject({ method: 'thread/resume', params: { excludeTurns: true } })
+  fake.notify('item/started', { threadId: 'owned', item: { id: 'cmd', type: 'commandExecution', command: 'git status' } })
+  fake.notify('item/commandExecution/outputDelta', { threadId: 'owned', itemId: 'cmd', delta: 'Checking' })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'git status\nChecking', status: 'running' }))
+  fake.notify('item/completed', { threadId: 'owned', item: { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'failed', exitCode: 1 } })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Command', activity: 'command', text: 'git status\nfailed', status: 'failed' }))
+  fake.notify('item/started', { threadId: 'owned', item: { id: 'read', type: 'commandExecution', command: 'read file', commandActions: [{ type: 'read', path: 'src/main.ts' }] } })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Read · main.ts', activity: 'file' }))
+  await test.driver.stop()
+})
+
 it('keeps review read-only until an explicit approval and rejects foreign requests', async () => {
   const test = setup()
   await test.driver.start()

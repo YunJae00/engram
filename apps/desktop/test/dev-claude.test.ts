@@ -74,3 +74,11 @@ it('returns structured answers and denies pending actions when stopped', async (
   await test.driver.stop()
   expect((await action).hookSpecificOutput.permissionDecision).toBe('deny')
 })
+
+it('treats an already closed interrupt channel as normal cleanup', async () => {
+  const test = setup()
+  await test.driver.start()
+  fake.interrupt.mockImplementationOnce(() => { fake.end(); throw new Error('Query closed before response received') })
+  await expect(test.driver.stop()).resolves.toBeUndefined()
+  expect((fake.options['abortController'] as AbortController).signal.aborted).toBe(true)
+})

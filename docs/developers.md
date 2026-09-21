@@ -20,6 +20,9 @@ Tasks retain their provider session ID. Sending another message resumes an owned
 task. Branch task creates a new worktree at the source task's current commit and
 forks its conversation; uncommitted files are not copied. Previous sessions opens
 saved external transcripts, with up to 200 text messages, from the project's menu.
+Codex previews read summary pages instead of hydrating the full tool history and
+are capped at 500,000 text characters. Native resume keeps the original history;
+the preview limit does not trim the provider session. Failed previews can be retried.
 Resume session continues the original runtime conversation after you confirm it has
 stopped in other apps. Create a branch keeps the original unchanged. Neither action
 takes over a running external process; an absent live indicator is not proof of inactivity.
@@ -114,6 +117,13 @@ events and once per minute while visible. When coding-session collection is enab
 it checks registered profiles with the same private-folder exclusions and cursors.
 
 ## Verification
+
+Branch a conversation in the same folder to share files, or explicitly choose a
+separate worktree to isolate files at the current Git commit. Worktrees require
+a Git repository with a commit; ordinary folders are never initialized automatically.
+Disconnected turns are retained, not replayed. The next user message reconnects
+using the saved native session. Active output is checkpointed at most once every
+five seconds; an interrupted app restart marks unfinished activity as interrupted.
 
 The normal checks include adapter, approval, cancellation, Git isolation and
 conflict-aware hunk recovery tests. The Developers UI fixture checks opt-in,

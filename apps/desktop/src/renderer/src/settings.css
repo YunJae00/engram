@@ -63,6 +63,8 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
 @media (prefers-reduced-motion: reduce) {
   html :is(dialog, [role='dialog'], [role='menu'], .dev-skills, .dev-review, .settings-panel, .dev-empty, .dev-project-sessions, .mission-add-menu) { animation: none; }
 }
+label:has(> input:is([type='checkbox'], [type='radio']):not(.switch):not([role='switch'])) { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; }
+input:is([type='checkbox'], [type='radio']):not(.switch):not([role='switch']) { flex: 0 0 14px; width: 14px; height: 14px; margin: calc(.75em - 7px) 0 0; padding: 0; accent-color: var(--accent); }
 .engine-message { margin: 0; color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.5; }
 .settings-panel .settings-input { max-width: 100%; }
 .settings-panel .settings-support-actions { margin-bottom: 20px; }

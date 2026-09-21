@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
-vi.mock('../src/main/process-client.js', () => ({ ProcessClient: function (command: string, args: string[], options: object) { return spawn(command, args, options) } }))
+vi.mock('../src/main/process-client.js', () => ({ ProcessClient: function (command: string, args: string[], options: { cwd: string; env: Record<string, string> }) { return spawn(command, args, { ...options, env: { ...options.env, GIT_CEILING_DIRECTORIES: dirname(options.cwd) } }) } }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: () => ({ git: () => 'git', gitExecPath: () => undefined }) }))
 import { devCommit, devGitState, devWorktree, runDevGit, statusFiles } from '../src/main/dev-workspace.js'
 import { devFileReview, devUndoHunk } from '../src/main/dev-review.js'
@@ -19,7 +19,13 @@ it('isolates work and commits only selected changes without consuming unrelated 
   const root = await mkdtemp(resolve('tmp/dev-git-')), repo = join(root, 'repo'), hooks = join(root, 'empty-hooks')
   await mkdir(repo); await mkdir(hooks)
   const git = (args: string[]) => runDevGit(repo, args, hooks)
+  // The fixture process ceiling prevents discovery of the user's parent repository.
+  const plain = join(root, 'plain')
+  await mkdir(plain)
+  await expect(devWorktree({ id: 'plain', name: 'plain', path: plain }, join(root, 'worktrees'), hooks)).rejects.toThrow('needs a Git repository')
+  expect(await readdir(plain)).toEqual([])
   await git(['init'])
+  await expect(devWorktree({ id: 'repo', name: 'repo', path: repo }, join(root, 'worktrees'), hooks)).rejects.toThrow('at least one commit')
   await git(['config', 'user.name', 'Fixture'])
   await git(['config', 'user.email', 'fixture@example.invalid'])
   await git(['config', 'commit.gpgsign', 'false'])

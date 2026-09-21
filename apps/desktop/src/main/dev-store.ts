@@ -32,7 +32,7 @@ export class DevStore {
     this.data.rules = saved.rules.filter(rule => ['allow', 'deny'].includes(rule.decision) && typeof rule.input === 'string' && typeof rule.repoId === 'string')
     this.data.sessions = saved.sessions.filter(session => typeof session.id === 'string' && typeof session.cwd === 'string' && Array.isArray(session.items)).map(session => ({
       ...session, state: session.state === 'failed' ? 'failed' : 'idle', pending: [],
-      items: [...session.items, ...(['starting', 'running', 'waiting', 'stopping'].includes(session.state) ? [{ id: randomUUID(), kind: 'notice' as const, text: 'The app closed while this task was active. Review the working tree before continuing.' }] : [])],
+      items: [...session.items.map(item => item.status === 'running' ? { ...item, status: 'failed' as const } : item), ...(['starting', 'running', 'waiting', 'stopping'].includes(session.state) ? [{ id: randomUUID(), kind: 'notice' as const, text: 'The app closed while this task was active. Review the working tree before continuing.' }] : [])],
     }))
   }
   save(): Promise<void> {

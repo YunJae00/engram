@@ -12,10 +12,14 @@ export function sessionPath(path: string): string {
 }
 
 export async function devProbe(cwd: string, method: string, params: Record<string, unknown>, profile = activeAccountProfile('codex')): Promise<Record<string, unknown>> {
+  return withCodex(cwd, profile, rpc => rpc.send(method, params, 30_000))
+}
+
+async function withCodex<T>(cwd: string, profile: string, read: (rpc: DevRpc) => Promise<T>): Promise<T> {
   const binary = codexBinary()
   if (!binary) throw new Error('The coding runtime is not available.')
   const rpc = new DevRpc(binary, { cwd, env: withHelpersOnPath(binary, accountEnvironment('codex', profile)) }, () => {}, async () => { throw new Error('Read-only account request.') }, () => {})
-  try { await rpc.initialize(); return await rpc.send(method, params, 30_000) }
+  try { await rpc.initialize(); return await read(rpc) }
   finally { await rpc.shutdown() }
 }
 
@@ -60,12 +64,27 @@ export async function devExternalRead(cwd: string, provider: DevProvider, id: st
       if (text) items.push({ id: message.uuid, kind: message.type as 'user' | 'assistant', text: text.slice(0, 50_000) })
     }
   } else {
-    const result = await devProbe(cwd, 'thread/read', { threadId: id, includeTurns: true }, profile)
-    const thread = result['thread'] as { turns?: { items?: Record<string, unknown>[] }[] } | undefined
-    for (const turn of thread?.turns ?? []) for (const item of turn.items ?? []) {
-      if (item['type'] === 'agentMessage' && typeof item['text'] === 'string') items.push({ id: String(item['id']), kind: 'assistant', text: item['text'].slice(0, 50_000) })
-      if (item['type'] === 'userMessage' && Array.isArray(item['content'])) items.push({ id: String(item['id']), kind: 'user', text: item['content'].filter(block => block?.type === 'text').map(block => String(block.text ?? '')).join('\n').slice(0, 50_000) })
-    }
+    await withCodex(cwd, profile, async rpc => {
+      const cursors = new Set<string>()
+      let cursor: string | undefined, characters = 0
+      // ponytail: preview recent text only; the runtime resumes the full original history.
+      do {
+        const result = await rpc.send('thread/turns/list', { threadId: id, limit: 5, sortDirection: 'desc', itemsView: 'summary', ...(cursor ? { cursor } : {}) }, 30_000)
+        if (!Array.isArray(result['data'])) throw new Error('The runtime did not return session messages.')
+        for (const turn of result['data']) for (const item of [...(turn.items ?? [])].reverse()) {
+          const kind = item.type === 'agentMessage' ? 'assistant' : item.type === 'userMessage' ? 'user' : null
+          const text = kind === 'assistant' ? item.text : kind === 'user' && Array.isArray(item.content) ? item.content.filter((block: { type?: string }) => block?.type === 'text').map((block: { text?: string }) => block.text ?? '').join('\n') : ''
+          if (kind && typeof text === 'string' && text.trim() && items.length < 200 && characters < 500_000) {
+            const excerpt = text.slice(0, Math.min(50_000, 500_000 - characters))
+            items.push({ id: String(item.id), kind, text: excerpt }); characters += excerpt.length
+          }
+        }
+        cursor = typeof result['nextCursor'] === 'string' ? result['nextCursor'] : undefined
+        if (cursor && cursors.has(cursor)) throw new Error('The session history did not advance. Try again.')
+        if (cursor) cursors.add(cursor)
+      } while (cursor && cursors.size < 40 && items.length < 200 && characters < 500_000)
+      items.reverse()
+    })
   }
   return items.slice(-200)
 }

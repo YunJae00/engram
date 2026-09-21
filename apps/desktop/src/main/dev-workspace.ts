@@ -59,6 +59,11 @@ export async function devGitState(cwd: string, hooks: string): Promise<DevGitSta
 }
 
 export async function devWorktree(repo: DevRepo, managedRoot: string, hooks: string): Promise<{ cwd: string; branch: string }> {
+  try { await runDevGit(repo.path, ['rev-parse', '--verify', 'HEAD'], hooks) }
+  catch (error) {
+    if (error instanceof Error && /not a git repository|Needed a single revision|unknown revision|bad revision|ambiguous argument/i.test(error.message)) throw new Error('A separate worktree needs a Git repository with at least one commit. Choose “Same folder” to branch only the conversation. No files were changed.')
+    throw error
+  }
   await mkdir(managedRoot, { recursive: true })
   const parent = await realpath(managedRoot), id = randomUUID(), cwd = join(parent, id), branch = `engram/${id}`
   await runDevGit(repo.path, ['worktree', 'add', '-b', branch, cwd, 'HEAD'], hooks)

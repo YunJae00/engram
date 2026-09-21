@@ -35,7 +35,7 @@ export function registerDevIpc(): void {
   handle('devRespond', (id, requestId, response) => get().respond(id, requestId, response))
   handle('devExternal', (repo, provider, allFolders, profile) => get().external(repo, provider, allFolders, profile))
   handle('devExternalRead', (repo, provider, id, allFolders, profile) => get().externalRead(repo, provider, id, allFolders, profile))
-  handle('devFork', id => get().fork(id))
+  handle('devFork', (id, isolate) => get().fork(id, isolate))
   handle('devGit', id => get().git(id))
   handle('devCommit', (id, paths, message) => get().commit(id, paths, message))
   handle('devFileReview', (id, path) => get().fileReview(id, path))
