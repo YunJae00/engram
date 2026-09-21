@@ -135,6 +135,7 @@ test('long pasted text previews stay bounded while copy preserves the entire sav
   await copy.focus()
   await page.keyboard.press('Enter')
   await expect(files.getByRole('status')).toHaveText('Copied')
+  expect(await files.getByRole('status').evaluate(node => getComputedStyle(node).clipPath)).toBe('inset(50%)')
   expect(await app.evaluate(() => (globalThis as typeof globalThis & { copiedText?: string }).copiedText)).toBe(text)
   await expect(files.getByRole('status')).toHaveCount(0)
   const layout = await files.locator('.chat-file-card').evaluate(card => {
