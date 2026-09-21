@@ -1,13 +1,13 @@
 import { useEffect, useId, useState, type RefObject } from 'react'
 import type { DevCommand, DevProvider } from '../../../shared/developers.js'
-import { api } from '../api.js'
+import { api, apiErrorText } from '../api.js'
 
 export function DeveloperSkills({ session, repoId, provider, query, input, onSelect, onDismiss }: { session?: string; repoId: string; provider: DevProvider; query: string; input: RefObject<HTMLTextAreaElement | null>; onSelect(prompt: string): void; onDismiss(): void }) {
   const id = useId(), [rows, setRows] = useState<DevCommand[] | null>(null), [error, setError] = useState(''), [selected, setSelected] = useState(0)
   useEffect(() => {
     let alive = true
     setRows(null); setError('')
-    void (session ? api.devCommands(session) : api.devProjectCommands(repoId, provider)).then(value => { if (alive) setRows(value) }).catch(error => { if (alive) setError(error.message) })
+    void (session ? api.devCommands(session) : api.devProjectCommands(repoId, provider)).then(value => { if (alive) setRows(value) }).catch(error => { if (alive) setError(apiErrorText(error.message)) })
     return () => { alive = false }
   }, [session, repoId, provider])
   const matches = rows?.filter(row => row.name.toLowerCase().includes(query.toLowerCase())) ?? []

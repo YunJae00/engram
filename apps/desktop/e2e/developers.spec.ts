@@ -3,7 +3,9 @@ import { initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { DevelopersApi, DevUpdate } from '../src/shared/developers.js'
+import type { DevelopersApi } from '../src/shared/developers.js'
+import { renderTaskFixture } from './developer-task-fixture.js'
+import { queueFixture } from './developer-queue-fixture.js'
 
 let app: ElectronApplication, page: Page, project: string
 test.describe.configure({ mode: 'serial' })
@@ -24,32 +26,9 @@ test.beforeAll(async () => {
   await page.setViewportSize({ width: 1360, height: 900 })
 })
 
-async function renderTaskFixture() {
-  await page.setViewportSize({ width: 1360, height: 900 })
-  await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
-  const id = await page.evaluate(async () => {
-    const api = (window as unknown as { engram: DevelopersApi }).engram, state = await api.devState()
-    return (await api.devCreate({ repoId: state.repos[0]!.id, provider: 'codex', model: '', mode: 'review', isolate: false })).id
-  })
-  await page.locator('.dev-task-link').filter({ hasText: 'New task' }).click()
-  await expect(page.getByRole('textbox', { name: 'Development message' })).toBeEnabled()
-  const update: DevUpdate = { id, state: 'waiting', runtimeId: 'fixture', usage: { input: 1200, output: 240 }, items: [
-    { id: 'request', kind: 'user', text: 'Fix the off-by-one error and add a focused check.' },
-    { id: 'response', kind: 'assistant', text: 'The boundary includes one extra item. The proposed change is:\n\n```ts\nreturn items.slice(0, limit)\n```\n\nI will keep the existing public API unchanged.' },
-  ], pending: [{ id: 'question', kind: 'question', title: 'Your input is needed', detail: '', questions: [{ id: 'scope', text: 'How should a zero limit behave?', options: ['Return an empty list', 'Use the default limit'] }] }] }
-  await app.evaluate(({ BrowserWindow }, update) => { BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update }) }, update)
-  await expect(page.locator('.dev-message pre code')).toHaveText('return items.slice(0, limit)')
-  await page.getByLabel('Return an empty list', { exact: true }).check()
-  await page.getByRole('button', { name: 'Usage and limits', exact: true }).click()
-  await expect(page.getByText('1,200 input · 240 output tokens')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await screenshot('developers-task-light.png')
-  await page.evaluate(() => { document.documentElement.dataset['theme'] = 'dark' })
-  await screenshot('developers-task-dark.png')
-  await page.evaluate(() => { document.documentElement.dataset['theme'] = 'light' })
-}
 test.afterAll(async () => { await app?.close() })
 async function screenshot(file: string) {
+  await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
     await window.webContents.capturePage()
@@ -91,6 +70,18 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   await composer.fill(''); await composer.fill('/')
   await expect(page.getByRole('listbox', { name: 'Skills' })).toBeVisible()
   await composer.fill('')
+  const compactHeight = (await page.locator('.dev-composer').boundingBox())!.height
+  expect(compactHeight).toBeLessThan(108)
+  await composer.fill('One\nTwo\nThree\nFour')
+  expect((await page.locator('.dev-composer').boundingBox())!.height).toBeGreaterThan(compactHeight)
+  await composer.fill('')
+  await page.getByTestId('workspace-switcher').click()
+  await page.getByTestId('activity-sky').click()
+  await expect(page.locator('.dev-folder-button')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Developers mode', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('developers-view')).not.toBeVisible()
+  await page.getByRole('button', { name: 'Start a session', exact: true }).click()
+  await expect(composer).toBeVisible()
   await page.getByRole('button', { name: 'Task access', exact: true }).click()
   await expect(page.locator('.dev-popover')).toHaveCSS('animation-name', 'dev-popover-in')
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -103,7 +94,8 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   await page.getByTestId('activity-settings').click()
   await expect(page.getByTestId('settings-nav-developers')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('setting-session-watch')).not.toBeChecked()
-  await expect(page.getByText('Connected accounts', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('computer-settings')).toBeVisible()
+  await expect(page.locator('.settings-nav button')).toHaveCount(5)
   await expect(page.getByRole('heading', { name: 'Repositories', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Open Developers', exact: true })).toHaveCount(0)
   await screenshot('developers-settings.png')
@@ -111,10 +103,25 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   const workspace = await page.getByTestId('developers-view').boundingBox(), canvas = await page.locator('.canvas').boundingBox()
   expect(workspace?.width).toBe(canvas?.width)
   await screenshot('developers-workspace.png')
+  const composerAlignment = await page.locator('.dev-composer').evaluate(composer => {
+    const send = composer.querySelector('.dev-send')!.getBoundingClientRect(), options = composer.querySelector('[aria-label="Session options"]')!.getBoundingClientRect()
+    const access = composer.querySelector('[aria-label="Task access"]')!.getBoundingClientRect()
+    return { right: Math.abs(send.y + send.height / 2 - options.y - options.height / 2), left: Math.abs(access.y + access.height / 2 - options.y - options.height / 2) }
+  })
+  expect(composerAlignment.right).toBeLessThan(2)
+  expect(composerAlignment.left).toBeLessThan(2)
   await page.setViewportSize({ width: 600, height: 850 })
+  await page.getByTestId('app-sidebar-close').click()
   await expect(page.getByRole('textbox', { name: 'Development message' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await screenshot('developers-narrow.png')
+  const titlebar = await page.getByTestId('topbar').evaluate(node => {
+    const mode = node.querySelector('.workspace-mode-toggle')!.getBoundingClientRect(), toggle = node.querySelector('.topbar-sidebar-toggle')!.getBoundingClientRect(), title = node.querySelector('.topbar-title')!.getBoundingClientRect()
+    return { first: toggle.left - mode.right, second: title.left - toggle.right, center: Math.abs(mode.y + mode.height / 2 - toggle.y - toggle.height / 2) }
+  })
+  expect(Math.abs(titlebar.first - titlebar.second)).toBeLessThan(1)
+  expect(titlebar.center).toBeLessThan(1)
+  await page.getByTestId('app-sidebar-open').click()
   await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
   await expect(page.getByTestId('developers-view')).toHaveCount(0)
 })
@@ -130,7 +137,8 @@ async function historyFixture() {
   session.items = [{ id: 'prior-user', kind: 'user', text: 'Earlier saved question' }, { id: 'prior-answer', kind: 'assistant', text: 'Earlier saved answer' }]
   await app.evaluate(({ ipcMain }, session) => {
     ipcMain.removeHandler('devExternal'); ipcMain.handle('devExternal', () => [{ id: 'previous', title: session.title, provider: 'codex', cwd: session.cwd, updatedAt: Date.now() }])
-    ipcMain.removeHandler('devExternalRead'); ipcMain.handle('devExternalRead', () => session.items)
+    let failed = false
+    ipcMain.removeHandler('devExternalRead'); ipcMain.handle('devExternalRead', () => { if (!failed) { failed = true; throw new Error('The development response exceeded the size limit.') } return session.items })
     ipcMain.removeHandler('devCreate'); ipcMain.handle('devCreate', () => session)
     ipcMain.removeHandler('devSession'); ipcMain.handle('devSession', () => session)
     ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', () => [{ value: 'fixture-model', label: 'Fixture model', detail: 'Test catalog', efforts: ['low', 'medium', 'high'] }])
@@ -139,8 +147,17 @@ async function historyFixture() {
   await page.getByRole('button', { name: /^Project options for/ }).click()
   await page.getByRole('button', { name: 'Previous sessions', exact: true }).click()
   await page.getByRole('button', { name: 'Imported conversation' }).click()
+  await expect(page.getByRole('alert')).toContainText('Could not load this session')
+  await expect(page.getByRole('button', { name: 'Resume session', exact: true })).toBeDisabled()
+  await screenshot('developers-history-error.png')
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Saved session preview' }).getByText('Earlier saved answer')).toBeVisible()
   await screenshot('developers-history.png')
+  const aligned = await page.locator('.dev-history-dialog > footer label').evaluate(label => {
+    const box = label.querySelector('input')!.getBoundingClientRect(), text = label.querySelector('span')!.getBoundingClientRect()
+    return Math.abs(box.y + box.height / 2 - text.y - text.height / 2) < 3
+  })
+  expect(aligned).toBe(true)
   await expect(page.getByRole('button', { name: 'Resume session', exact: true })).toBeDisabled()
   await page.getByLabel('I have stopped this session in other apps.').check()
   await page.getByRole('button', { name: 'Resume session', exact: true }).click()
@@ -165,7 +182,7 @@ async function historyFixture() {
   expect(after.codexModel).toBe(before.codexModel)
   expect(after.codexEffort).toBe(before.codexEffort)
 }
-test('renders structured questions, code and task usage in light and dark layouts', renderTaskFixture)
+test('renders structured questions, code and task usage in light and dark layouts', () => renderTaskFixture({ app, page, screenshot }))
 
 test('project sessions split independently and drafts survive switching modes', async () => {
   await page.setViewportSize({ width: 1360, height: 900 })
@@ -175,6 +192,16 @@ test('project sessions split independently and drafts survive switching modes', 
   await panes.nth(1).getByRole('textbox', { name: 'Development message' }).fill('Second pane draft')
   await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
   await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
+  await expect(panes.nth(1).getByRole('textbox', { name: 'Development message' })).toHaveValue('Second pane draft')
+  await panes.nth(1).getByRole('button', { name: 'Choose conversation for this pane' }).click()
+  await page.getByRole('searchbox', { name: 'Search project sessions' }).fill('New task')
+  await screenshot('developers-pane-picker.png')
+  await page.getByRole('dialog', { name: 'Choose conversation for this pane' }).getByRole('button', { name: 'New task', exact: true }).click()
+  await expect(panes.nth(1).locator('.dev-heading h2')).toHaveText('New task')
+  await expect(panes.nth(0).getByRole('textbox', { name: 'Development message' })).toBeEnabled()
+  await panes.nth(1).getByRole('button', { name: 'Choose conversation for this pane' }).click()
+  await page.getByRole('searchbox', { name: 'Search project sessions' }).fill('')
+  await page.getByRole('dialog', { name: 'Choose conversation for this pane' }).getByRole('button', { name: 'New session', exact: true }).click()
   await expect(panes.nth(1).getByRole('textbox', { name: 'Development message' })).toHaveValue('Second pane draft')
   const wide = await panes.evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y })))
   expect(wide[0]!.y).toBe(wide[1]!.y); expect(wide[0]!.x).toBeLessThan(wide[1]!.x)
@@ -221,6 +248,14 @@ test('switches providers from the same task composer and retains its folder and 
 
 test('previous-session preview continues with visible history and task-scoped model controls', historyFixture)
 
+test('session options expose agent settings without IDE editing or a manual console', async () => {
+  await page.locator('.dev-pane').first().getByRole('button', { name: 'Session options', exact: true }).click()
+  const options = page.getByRole('dialog', { name: 'Session options', exact: true })
+  await expect(options.getByRole('button', { name: 'AI settings', exact: true })).toBeVisible()
+  await expect(options.getByRole('button', { name: /Project files|Command console/ })).toHaveCount(0)
+  expect(await page.evaluate(() => ['devSaveFile', 'devCreateFile', 'devRunCommand', 'devLanguage'].some(name => name in window.engram))).toBe(false)
+  await page.keyboard.press('Escape')
+})
 test('preloads both connected accounts without selecting a provider or starting a task', async () => {
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const engines = [{ id: 'claude', installed: true, loggedIn: true }, { id: 'codex', installed: true, loggedIn: true }]
@@ -228,7 +263,16 @@ test('preloads both connected accounts without selecting a provider or starting 
     ipcMain.removeHandler('devUsage'); ipcMain.handle('devUsage', (_event, provider) => ({ windows: [{ name: `${provider} fixture limit`, used: provider === 'claude' ? 25 : 40 }], updatedAt: Date.now() }))
     BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'engines:changed', engines })
   })
-  await page.getByRole('button', { name: 'Usage and limits', exact: true }).click()
+  await page.getByRole('button', { name: 'Manage ChatGPT accounts', exact: true }).hover()
+  await expect(page.getByRole('tooltip')).toContainText('60% left')
+  await expect(page.getByRole('tooltip')).toContainText('ChatGPT · System account')
+  await screenshot('developers-usage-ring.png')
+  await page.getByRole('button', { name: 'Manage ChatGPT accounts', exact: true }).focus()
+  await expect(page.getByRole('tooltip')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await page.getByTestId('activity-settings').click()
+  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByText('claude fixture limit')).toBeVisible()
   await expect(page.getByText('codex fixture limit')).toBeVisible()
   await expect(page.getByText('75% remaining')).toBeVisible()
@@ -256,10 +300,13 @@ test('connected accounts switch without restarting and keep per-account limits',
   await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-claude-status')).toHaveText('Connected')
   const card = await page.getByRole('region', { name: 'Claude connection', exact: true }).boundingBox()
-  expect(card!.height).toBeLessThan(100)
+  expect(card!.height).toBeLessThan(400)
   await screenshot('developers-connections.png')
   await page.getByTestId('settings-view').getByRole('button', { name: 'Manage ChatGPT accounts', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Account profiles' })).toBeVisible()
+  await expect(page.locator('.account-profile-dialog > header [data-provider="codex"]')).toHaveCount(1)
+  const noteGap = await page.locator('.account-profile-note').evaluate(note => note.getBoundingClientRect().top - note.previousElementSibling!.getBoundingClientRect().bottom)
+  expect(noteGap).toBeGreaterThanOrEqual(12)
   await page.getByLabel('New account label').fill('Work account')
   await page.getByRole('button', { name: 'Add account', exact: true }).click()
   const work = page.getByRole('region', { name: 'Work account', exact: true })
@@ -275,4 +322,48 @@ test('connected accounts switch without restarting and keep per-account limits',
   await expect(work.getByRole('button', { name: 'Current', exact: true })).toBeVisible()
   await page.getByRole('dialog', { name: 'Account profiles' }).getByRole('region', { name: 'System account', exact: true }).getByRole('button', { name: 'Use account', exact: true }).click()
   await page.keyboard.press('Escape')
+})
+
+test('keeps follow-ups editable while working and distinguishes Codex steering from Claude queues', () => queueFixture({ app, page, screenshot }))
+
+test('Stop remains available while an existing task is still connecting', async () => {
+  await page.getByRole('textbox', { name: 'Development message' }).fill('Inspect without changing files')
+  await app.evaluate(({ ipcMain }) => {
+    let release: (() => void) | undefined
+    ipcMain.removeHandler('devSend')
+    ipcMain.handle('devSend', async (event, id) => {
+      event.sender.send('engram:event', { type: 'dev:changed', update: { id, state: 'starting', items: [], pending: [], usage: {} } })
+      await new Promise<void>(resolve => { release = resolve })
+    })
+    ipcMain.removeHandler('devStop')
+    ipcMain.handle('devStop', (event, id) => {
+      event.sender.send('engram:event', { type: 'dev:changed', update: { id, state: 'idle', items: [], pending: [], usage: {} } })
+      release?.()
+    })
+  })
+  await page.getByRole('button', { name: 'Send development message', exact: true }).click()
+  const stop = page.getByRole('button', { name: 'Stop development task', exact: true })
+  await expect(stop).toBeEnabled()
+  await stop.click()
+  await expect(page.getByRole('textbox', { name: 'Development message' })).toBeEnabled()
+  await expect(page.getByText('Connecting…', { exact: true })).toHaveCount(0)
+})
+
+test('retains live updates arriving while a conversation snapshot is loading', async () => {
+  const snapshot = await page.evaluate(async () => {
+    const state = await window.engram.devState()
+    return window.engram.devSession(state.sessions.at(-1)!.id)
+  })
+  await app.evaluate(({ ipcMain }, snapshot) => {
+    ipcMain.removeHandler('devSession')
+    ipcMain.handle('devSession', async event => {
+      await new Promise(resolve => setTimeout(resolve, 200))
+      event.sender.send('engram:event', { type: 'dev:changed', update: { id: snapshot.id, state: 'idle', items: [{ id: 'during-load', kind: 'assistant', text: 'Completed while the conversation was loading' }], pending: [], usage: {} } })
+      await new Promise(resolve => setTimeout(resolve, 200))
+      return snapshot
+    })
+  }, snapshot)
+  await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
+  await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
+  await expect(page.locator('.dev-log').getByText('Completed while the conversation was loading', { exact: true })).toBeVisible()
 })

@@ -22,6 +22,42 @@ function setup(mode: DevSession['mode'] = 'review') {
   return { driver, gate, session, updates, approvals: () => approvals }
 }
 
+it('steers only the identified active turn and ignores stale completion and approval events', async () => {
+  const test = setup()
+  await test.driver.start()
+  await expect(test.driver.steer('Too early')).rejects.toThrow('active turn')
+  await test.driver.send('Start')
+  await expect(test.driver.steer('Belongs to an earlier turn', 'old')).rejects.toThrow('active turn')
+  await test.driver.steer('Focus on tests')
+  expect(fake.calls.at(-1)).toMatchObject({ method: 'turn/steer', params: { threadId: 'owned', expectedTurnId: 'turn', input: [{ type: 'text', text: 'Focus on tests' }] } })
+  fake.notify('turn/completed', { threadId: 'owned', turn: { id: 'old', status: 'completed' } })
+  expect(test.updates.finished).not.toHaveBeenCalled()
+  await expect(fake.request('item/commandExecution/requestApproval', { threadId: 'owned', turnId: 'old', command: 'wrong turn' })).rejects.toThrow('active turn')
+  fake.notify('turn/completed', { threadId: 'owned', turn: { id: 'turn', status: 'completed' } })
+  fake.notify('turn/completed', { threadId: 'owned', turn: { id: 'turn', status: 'completed' } })
+  expect(test.updates.finished).toHaveBeenCalledTimes(1)
+  fake.notify('turn/started', { threadId: 'owned', turn: { id: 'turn' } })
+  fake.notify('item/agentMessage/delta', { threadId: 'owned', turnId: 'turn', itemId: 'late', delta: 'Stale' })
+  expect(test.updates.item).not.toHaveBeenCalled()
+  await expect(test.driver.steer('Too late')).rejects.toThrow('active turn')
+  await test.driver.stop()
+})
+
+it('resumes without a full history response and retains command details on completion', async () => {
+  const test = setup()
+  test.session.runtimeId = 'existing'
+  await test.driver.start()
+  expect(fake.calls[0]).toMatchObject({ method: 'thread/resume', params: { excludeTurns: true } })
+  fake.notify('item/started', { threadId: 'owned', item: { id: 'cmd', type: 'commandExecution', command: 'git status' } })
+  fake.notify('item/commandExecution/outputDelta', { threadId: 'owned', itemId: 'cmd', delta: 'Checking' })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'git status\nChecking', status: 'running' }))
+  fake.notify('item/completed', { threadId: 'owned', item: { id: 'cmd', type: 'commandExecution', aggregatedOutput: 'failed', exitCode: 1 } })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Command', activity: 'command', text: 'git status\nfailed', status: 'failed' }))
+  fake.notify('item/started', { threadId: 'owned', item: { id: 'read', type: 'commandExecution', command: 'read file', commandActions: [{ type: 'read', path: 'src/main.ts' }] } })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Read · main.ts', activity: 'file' }))
+  await test.driver.stop()
+})
+
 it('keeps review read-only until an explicit approval and rejects foreign requests', async () => {
   const test = setup()
   await test.driver.start()
@@ -55,6 +91,11 @@ it('routes structured streaming, questions and usage without reading terminal te
   await test.driver.start()
   fake.notify('item/agentMessage/delta', { threadId: 'owned', itemId: 'message', delta: 'Hello' })
   expect(test.updates.item).toHaveBeenCalledWith({ id: 'message', kind: 'assistant', text: 'Hello', status: 'running' }, true)
+  fake.notify('item/completed', { threadId: 'owned', item: { id: 'mcp', type: 'mcpToolCall', server: 'fixture', tool: 'inspect', status: 'failed', arguments: { path: 'source.ts' }, result: { content: [{ type: 'text', text: 'Readable tool output' }, { type: 'image', data: 'do-not-render-binary' }] }, error: { message: 'Fixture failure' } } })
+  expect(test.updates.item).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'fixture · inspect', status: 'failed', text: expect.stringContaining('Readable tool output') }))
+  expect(test.updates.item.mock.calls.at(-1)?.[0].text).not.toContain('do-not-render-binary')
+  fake.notify('turn/completed', { threadId: 'owned', turn: { status: 'interrupted' } })
+  expect(test.updates.finished).toHaveBeenCalledWith(expect.stringContaining('interrupted'))
   fake.notify('thread/tokenUsage/updated', { threadId: 'owned', tokenUsage: { total: { inputTokens: 10, outputTokens: 2 } } })
   expect(test.updates.usage).toHaveBeenCalledWith({ input: 10, output: 2, cached: undefined })
   const question = fake.request('item/tool/requestUserInput', { threadId: 'owned', questions: [{ id: 'target', question: 'Which file?', options: [{ label: 'One' }] }] })

@@ -3,7 +3,7 @@ import { parentPort, workerData } from 'node:worker_threads'
 
 const port = parentPort!
 const child = spawn(workerData.command, workerData.args, {
-  cwd: workerData.cwd, env: workerData.env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+  cwd: workerData.cwd, env: workerData.env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], detached: workerData.killTree && process.platform !== 'win32',
 })
 let stopping = false
 function stop(signal: NodeJS.Signals = 'SIGTERM'): void {
@@ -14,6 +14,8 @@ function stop(signal: NodeJS.Signals = 'SIGTERM'): void {
     const fallback = setTimeout(() => child.kill(signal), 15_000)
     killer.on('error', () => { clearTimeout(fallback); child.kill(signal) })
     killer.on('exit', code => { clearTimeout(fallback); if (code !== 0) child.kill(signal) })
+  } else if (workerData.killTree && child.pid) {
+    try { process.kill(-child.pid, signal) } catch { child.kill(signal) }
   } else child.kill(signal)
 }
 port.on('message', message => {

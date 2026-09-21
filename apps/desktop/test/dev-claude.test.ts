@@ -3,6 +3,7 @@ import type { DevApproval, DevSession } from '../src/shared/developers.js'
 
 const fake = vi.hoisted(() => ({ options: {} as Record<string, unknown>, messages: [] as Record<string, unknown>[], end: () => {}, interrupt: vi.fn(), usage: vi.fn(async () => ({ rate_limits: { five_hour: { utilization: 25 } } })) }))
 vi.mock('../src/main/process-client.js', () => ({ spawnRuntime: vi.fn() }))
+vi.mock('../src/main/dev-instructions.js', () => ({ devClaudeInstructions: async () => 'Project instructions from CLAUDE.md: fixture guidance' }))
 vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: () => 'runtime', loadClaudeSdk: async () => ({
   query: ({ options }: { options: Record<string, unknown> }) => {
     fake.options = options
@@ -39,6 +40,7 @@ it('gates shell actions before native auto-approval and rejects them in plan mod
   const test = setup('auto-edit')
   await test.driver.start()
   expect(fake.options).toMatchObject({ settingSources: [], strictMcpConfig: true, permissionMode: 'default' })
+  expect(fake.options['systemPrompt']).toMatchObject({ type: 'preset', preset: 'claude_code', append: expect.stringContaining('fixture guidance') })
   const action = test.hook('Bash', { command: 'delete files' })
   await vi.waitFor(() => expect(test.shown()).toHaveLength(1))
   test.gate.respond(test.shown()[0]!.id, { decision: 'deny' })
@@ -73,4 +75,12 @@ it('returns structured answers and denies pending actions when stopped', async (
   await vi.waitFor(() => expect(test.shown()).toHaveLength(1))
   await test.driver.stop()
   expect((await action).hookSpecificOutput.permissionDecision).toBe('deny')
+})
+
+it('treats an already closed interrupt channel as normal cleanup', async () => {
+  const test = setup()
+  await test.driver.start()
+  fake.interrupt.mockImplementationOnce(() => { fake.end(); throw new Error('Query closed before response received') })
+  await expect(test.driver.stop()).resolves.toBeUndefined()
+  expect((fake.options['abortController'] as AbortController).signal.aborted).toBe(true)
 })

@@ -12,6 +12,7 @@ import type {
 } from '../shared/types.js'
 
 const api: EngramApi = {
+  devOpenLink: url => ipcRenderer.invoke('devOpenLink', url),
   devState: () => ipcRenderer.invoke('devState'),
   devPreferences: patch => ipcRenderer.invoke('devPreferences', patch),
   devAddRepo: () => ipcRenderer.invoke('devAddRepo'),
@@ -19,12 +20,15 @@ const api: EngramApi = {
   devCreate: request => ipcRenderer.invoke('devCreate', request),
   devSession: id => ipcRenderer.invoke('devSession', id),
   devSend: (id, text) => ipcRenderer.invoke('devSend', id, text),
+  devFollowup: (id, text, mode) => ipcRenderer.invoke('devFollowup', id, text, mode),
+  devQueued: (id, messageId, action, text) => ipcRenderer.invoke('devQueued', id, messageId, action, text),
   devStop: id => ipcRenderer.invoke('devStop', id),
   devRespond: (id, request, response) => ipcRenderer.invoke('devRespond', id, request, response),
   devExternal: (repo, provider, allFolders, profile) => ipcRenderer.invoke('devExternal', repo, provider, allFolders, profile),
   devExternalRead: (repo, provider, id, allFolders, profile) => ipcRenderer.invoke('devExternalRead', repo, provider, id, allFolders, profile),
-  devFork: id => ipcRenderer.invoke('devFork', id),
+  devFork: (id, isolate) => ipcRenderer.invoke('devFork', id, isolate),
   devGit: id => ipcRenderer.invoke('devGit', id),
+  devStage: (id, paths, staged, fingerprint) => ipcRenderer.invoke('devStage', id, paths, staged, fingerprint),
   devCommit: (id, paths, message) => ipcRenderer.invoke('devCommit', id, paths, message),
   devFileReview: (id, path) => ipcRenderer.invoke('devFileReview', id, path),
   devUndoHunk: (id, path, fingerprint, index) => ipcRenderer.invoke('devUndoHunk', id, path, fingerprint, index),

@@ -15,6 +15,19 @@ it('denies outstanding approvals on cancellation and rejects late responses', as
   expect(await gate.ask({ kind: 'permission', title: 'Late', detail: '' }, new AbortController().signal)).toEqual({ decision: 'deny' })
 })
 
+it('cancels completed-turn approvals without closing the next turn', async () => {
+  let shown: DevApproval[] = []
+  const gate = new DevApprovals(value => { shown = value }), signal = new AbortController().signal
+  const first = gate.ask({ kind: 'permission', title: 'Old turn', detail: '' }, signal)
+  const old = shown[0]!.id
+  gate.cancelPending()
+  expect(await first).toEqual({ decision: 'deny' })
+  expect(() => gate.respond(old, { decision: 'allow' })).toThrow('no longer')
+  const next = gate.ask({ kind: 'permission', title: 'Next turn', detail: '' }, signal)
+  gate.respond(shown[0]!.id, { decision: 'allow' })
+  expect(await next).toEqual({ decision: 'allow' })
+})
+
 it('validates questions without losing the pending request and supports free text', async () => {
   let shown: DevApproval[] = []
   const gate = new DevApprovals(value => { shown = value })

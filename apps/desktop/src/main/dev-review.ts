@@ -5,21 +5,33 @@ import { changeHunks, undoChangeHunk } from 'core'
 import { devEditPreview } from './dev-edit.js'
 import { devGitState, runDevGit } from './dev-workspace.js'
 import type { DevFileReview } from '../shared/developers.js'
+import { devTaskFileReview } from './dev-baseline.js'
 
 export async function devFileReview(cwd: string, path: string, hooks: string): Promise<DevFileReview> {
   if (typeof path !== 'string') throw new Error('Choose a changed file.')
   const state = await devGitState(cwd, hooks), file = state.files.find(file => file.path === path)
   if (!file) throw new Error('The file is no longer changed. Refresh the review.')
-  if (/[DRCU]/.test(file.status)) throw new Error('Review deleted, renamed, copied or conflicted files in your editor.')
+  if (/U/.test(file.status) || ['AA', 'DD'].includes(file.status)) throw new Error('Ask the agent to resolve this merge conflict before reviewing individual hunks.')
   const preview = await devEditPreview(cwd, 'Write', { file_path: path, content: '' })
   if (!preview) throw new Error('This file cannot be reviewed safely inside the app.')
-  const before = file.status === '??' ? '' : await runDevGit(cwd, ['show', `HEAD:${path}`], hooks)
-  const after = preview.before
-  return { path, before, after, fingerprint: createHash('sha256').update(before).update('\0').update(after).digest('hex'), hunks: changeHunks(before, after) }
+  const before = file.status === '??' || file.status.startsWith('A') ? '' : await runDevGit(cwd, ['show', `HEAD:${file.previousPath ?? path}`], hooks)
+  const after = file.status.includes('D') ? '' : preview.before
+  if (before.includes('\0') || after.includes('\0') || before.length > 500_000) throw new Error('Binary or large files cannot be shown as a text diff.')
+  return { path, before, after, readOnly: /[DRC]/.test(file.status), fingerprint: createHash('sha256').update(before).update('\0').update(after).digest('hex'), hunks: changeHunks(before, after) }
 }
 
 export async function devUndoHunk(cwd: string, path: string, fingerprint: string, index: number, hooks: string, backupRoot: string): Promise<{ review: DevFileReview; backup: string }> {
   const review = await devFileReview(cwd, path, hooks)
+  return undoReview(cwd, review, fingerprint, index, backupRoot)
+}
+
+export async function devUndoTaskHunk(root: string, id: string, cwd: string, path: string, fingerprint: string, index: number, backupRoot: string): Promise<{ review: DevFileReview; backup: string }> {
+  return undoReview(cwd, await devTaskFileReview(root, id, cwd, path), fingerprint, index, backupRoot)
+}
+
+async function undoReview(cwd: string, review: DevFileReview, fingerprint: string, index: number, backupRoot: string): Promise<{ review: DevFileReview; backup: string }> {
+  const path = review.path
+  if (review.readOnly) throw new Error('This preview cannot safely restore file identity. Ask the agent to review this change instead.')
   if (review.fingerprint !== fingerprint) throw new Error('The file changed after this preview. Refresh before discarding anything.')
   const content = undoChangeHunk(review.before, review.after, index)
   const preview = await devEditPreview(cwd, 'Write', { file_path: path, content })

@@ -25,7 +25,8 @@ export function claudeUsage(value: unknown): DevUsage {
   for (const [key, raw] of Object.entries(limits)) {
     if (!raw || key === 'extra_usage' || key === 'model_scoped') continue
     const window = record(raw), reset = typeof window['resets_at'] === 'string' ? Date.parse(window['resets_at']) : NaN
-    windows.push({ name: key.replaceAll('_', ' '), used: percent(window['utilization']), resetsAt: Number.isFinite(reset) ? reset : undefined })
+    if (!('utilization' in window) && !('resets_at' in window)) continue
+    windows.push({ name: key === 'five_hour' ? '5-hour limit' : key === 'seven_day' ? 'Weekly limit' : key.replaceAll('_', ' '), used: percent(window['utilization']), resetsAt: Number.isFinite(reset) ? reset : undefined })
   }
   return { windows, updatedAt: Date.now(), ...(windows.length ? {} : { unavailable: 'Account limits are not available for this connection.' }) }
 }

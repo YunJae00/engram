@@ -2,13 +2,16 @@
 
 Switch between Chat and Developers with the two-icon toggle in the sidebar header. Developers is opt-in; ordinary
 chats stay unchanged. Authentication stays in Settings → AI because the same
-account also serves chats and filing. The composer gear opens those settings.
+account also serves chats and filing. Session options opens those settings.
+Developers is an agent workspace, not an IDE: there is no direct project editor,
+language service or manual command console. Ask the agent to inspect, change and
+test files; review its activity, approvals and changes in the conversation.
 
 ## Tasks and repositories
 
 Add a local folder in the project sidebar, then use its + button to start a session.
 Sessions are grouped under their project. Choose a model, reasoning effort and
-access mode in the composer. Usage and limits are behind the gauge button.
+access mode in the composer. Hover or focus the account ring for reported limits.
 Use the top-bar layout controls for one, two or four independent panes. Switching
 modes keeps selected sessions and drafts during the app session.
 
@@ -17,9 +20,12 @@ worktrees require an existing commit. Automatic edits always use an isolated
 worktree; a worktree separates changes but is not a security sandbox.
 
 Tasks retain their provider session ID. Sending another message resumes an owned
-task. Branch task creates a new worktree at the source task's current commit and
-forks its conversation; uncommitted files are not copied. Previous sessions opens
+task. Branch a conversation in the same folder, or explicitly create a separate
+worktree at its current commit; uncommitted files are not copied to a worktree. Previous sessions opens
 saved external transcripts, with up to 200 text messages, from the project's menu.
+Codex previews read summary pages instead of hydrating the full tool history and
+are capped at 500,000 text characters. Native resume keeps the original history;
+the preview limit does not trim the provider session. Failed previews can be retried.
 Resume session continues the original runtime conversation after you confirm it has
 stopped in other apps. Create a branch keeps the original unchanged. Neither action
 takes over a running external process; an absent live indicator is not proof of inactivity.
@@ -55,14 +61,32 @@ Sensitive-path screening is additional protection, not a complete credential san
 
 Codex approvals accept or reject the complete native request. They do not offer
 pre-execution hunk selection. The Changes panel separately reviews completed text
-edits and can discard a single hunk. It compares against the current commit, so
-changes may include the user's own work. A changed file invalidates an old review.
+edits and can discard a single hunk. It compares against a local snapshot before
+this task's first message, preserving pre-existing uncommitted text. Changes made
+later by other apps in the same folder cannot be attributed to a specific author.
+A changed file invalidates an old review.
 Original content is retained in a local recovery file before discarding anything.
-Renames, deletions, binary files and oversized diffs require review in an editor.
+New/deleted files are read-only in the review; ask the agent about restoring them.
+Binary, sensitive, symlinked and oversized files are excluded. Snapshots cover up
+to 5,000 paths, 500 KB per text file and approximately 20 MB total. Incomplete
+coverage is labeled. An imported task gets its baseline before its next message,
+not retroactively for earlier changes. Snapshot creation must succeed before sending.
 
-Commit selected files leaves unrelated staged paths alone. Git hooks are disabled
-for these panel operations. Ask to prepare a pull request drafts a request for
-the selected coding agent; it does not silently push or publish a pull request.
+Ask the selected agent to commit or prepare a pull request. Reviewing changes does
+not silently push, publish or change Git's index.
+
+## Follow-ups and interruption
+
+While working, Enter queues a follow-up for the next turn. Up to ten messages can
+be queued, edited or removed. Codex additionally supports Steer (Ctrl+Enter) for
+the identified active turn. Claude uses next-turn delivery; no equivalent live
+steering is claimed. Stop remains available during connection and dispatch.
+
+Stopping, disabling, changing settings or restarting pauses queued work. A failed
+or uncertain delivery is never automatically replayed. Review the conversation
+and files before creating a new message when delivery was not confirmed. Paused
+messages require an explicit Resume. Outstanding approvals are denied when their
+turn ends rather than carried into another turn.
 
 ## Questions, skills and extensions
 
@@ -114,6 +138,13 @@ events and once per minute while visible. When coding-session collection is enab
 it checks registered profiles with the same private-folder exclusions and cursors.
 
 ## Verification
+
+Branch a conversation in the same folder to share files, or explicitly choose a
+separate worktree to isolate files at the current Git commit. Worktrees require
+a Git repository with a commit; ordinary folders are never initialized automatically.
+Disconnected turns are retained, not replayed. The next user message reconnects
+using the saved native session. Active output is checkpointed at most once every
+five seconds; an interrupted app restart marks unfinished activity as interrupted.
 
 The normal checks include adapter, approval, cancellation, Git isolation and
 conflict-aware hunk recovery tests. The Developers UI fixture checks opt-in,

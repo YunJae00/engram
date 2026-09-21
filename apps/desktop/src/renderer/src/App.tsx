@@ -44,6 +44,9 @@ const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) =
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
   const { startRoutine } = useCometState()
+  const [workspace, setWorkspace] = useState<'developers' | 'bots'>('bots')
+  const developerSidebar = activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers')
+  useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (['bots', 'mission', 'routines'].includes(activity)) setWorkspace('bots') }, [activity])
   const [palette, setPalette] = useState<PaletteMode>(null)
   // What the panel should open with — a question to send outright, or a
   // scaffold to write into. Held here because the panel is unmounted while it
@@ -211,9 +214,10 @@ function Shell() {
       onDrop={(event) => event.preventDefault()}
     >
       <AppSidebar
+        developer={developerSidebar}
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
-        onOpenSettings={() => { setSettingsSection(activity === 'developers' ? 'developers' : 'general'); setSettingsOpen(true) }}
+        onOpenSettings={() => { setSettingsSection(developerSidebar ? 'developers' : 'general'); setSettingsOpen(true) }}
         onOpenPalette={() => setPalette('search')}
         onOpenRoutines={() => setActivity('routines')}
         selectedRoutineId={selectedRoutineId}
@@ -221,7 +225,7 @@ function Shell() {
       />
       {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
       <main className="app-main">
-        <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
+        <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
         <EvidenceRecording />
         <AppNotices
           engines={engines}
@@ -265,7 +269,7 @@ function Shell() {
             </div>
             {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
-            {activity === 'developers' && <Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} onLayout={setDevLayout} /></Suspense>}
+            {developerSidebar && <div className="canvas-slot" hidden={activity !== 'developers'}><Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} onLayout={setDevLayout} onActivate={() => setActivity('developers')} /></Suspense></div>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
                 <SkyView focus={skyFocus} onFocusConsumed={() => setSkyFocus(null)} />

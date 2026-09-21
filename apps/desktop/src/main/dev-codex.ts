@@ -4,6 +4,7 @@ import { DevRpc } from './dev-rpc.js'
 import { DevApprovals } from './dev-approvals.js'
 import { codexTurnUsage, codexUsage } from './dev-usage.js'
 import { accountEnvironment } from './account-profiles.js'
+import { devActivity } from './dev-activity.js'
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -19,6 +20,7 @@ export class DevCodex {
   private readonly rpc: DevRpc
   private readonly abort = new AbortController()
   private turnId?: string
+  private completedTurnId?: string
   private closed = false
   private readonly items = new Map<string, Data>()
 
@@ -36,7 +38,7 @@ export class DevCodex {
     await this.rpc.initialize()
     const full = this.session.mode === 'full-access'
     const result = await this.rpc.send(this.session.runtimeId ? (fork ? 'thread/fork' : 'thread/resume') : 'thread/start', {
-      ...(this.session.runtimeId ? { threadId: this.session.runtimeId } : {}),
+      ...(this.session.runtimeId ? { threadId: this.session.runtimeId, excludeTurns: true } : {}),
       cwd: this.session.cwd, ...(this.session.model ? { model: this.session.model } : {}),
       approvalPolicy: full ? 'never' : this.session.mode === 'plan' ? 'on-request' : 'untrusted', approvalsReviewer: 'user',
       sandbox: full ? 'danger-full-access' : this.session.mode === 'auto-edit' ? 'workspace-write' : 'read-only',
@@ -53,7 +55,13 @@ export class DevCodex {
       threadId: this.session.runtimeId, input: [{ type: 'text', text, text_elements: [] }],
       ...(this.session.effort ? { effort: this.session.effort } : {}),
     })
-    this.turnId = string(object(result['turn'])['id']) || this.turnId
+    const id = string(object(result['turn'])['id'])
+    if (id && id !== this.completedTurnId) this.turnId = id
+  }
+  get activeTurnId(): string | undefined { return this.turnId }
+  async steer(text: string, expectedTurnId = this.turnId): Promise<void> {
+    if (this.closed || !expectedTurnId || expectedTurnId !== this.turnId || !this.session.runtimeId) throw new Error('There is no matching active turn to steer. Queue this message for the next turn instead.')
+    await this.rpc.send('turn/steer', { threadId: this.session.runtimeId, expectedTurnId, input: [{ type: 'text', text, text_elements: [] }] })
   }
   async commands(): Promise<import('../shared/developers.js').DevCommand[]> {
     const result = await this.rpc.send('skills/list', { cwds: [this.session.cwd] }, 15_000)
@@ -66,25 +74,48 @@ export class DevCodex {
 
   private event(method: string, params: Data): void {
     if (this.closed || (params['threadId'] && params['threadId'] !== this.session.runtimeId)) return
-    if (method === 'turn/started') this.turnId = string(object(params['turn'])['id'])
+    if (params['turnId'] && (params['turnId'] === this.completedTurnId || (this.turnId && params['turnId'] !== this.turnId))) return
+    if (method === 'turn/started') {
+      const id = string(object(params['turn'])['id'])
+      if (id && id !== this.completedTurnId && (!this.turnId || this.turnId === id)) this.turnId = id
+    }
     else if (method === 'turn/completed') {
+      const id = string(object(params['turn'])['id'])
+      if (id && (id === this.completedTurnId || (this.turnId && id !== this.turnId))) return
+      this.completedTurnId = id || this.turnId
       this.turnId = undefined
       const turn = object(params['turn']), error = object(turn['error'])
-      this.updates.finished(string(error['message']) || (turn['status'] === 'failed' ? 'The runtime could not complete this turn.' : undefined))
+      this.updates.finished(string(error['message']) || (turn['status'] === 'failed' ? 'The runtime could not complete this turn.' : turn['status'] === 'interrupted' ? 'This turn was interrupted. Review any partial changes before continuing.' : undefined))
     } else if (method === 'thread/tokenUsage/updated') this.updates.usage(codexTurnUsage(params))
     else if (method === 'account/rateLimits/updated') this.updates.usage(codexUsage(params))
     else if (method === 'item/agentMessage/delta') this.updates.item({ id: string(params['itemId']), kind: 'assistant', text: string(params['delta']), status: 'running' }, true)
+    else if (method === 'item/plan/delta') this.updates.item({ id: string(params['itemId']), kind: 'plan', text: string(params['delta']), status: 'running' }, true)
+    else if (method === 'item/mcpToolCall/progress') this.updates.item({ id: string(params['itemId']), kind: 'tool', text: `\n${string(params['message'])}`, status: 'running' }, true)
     else if (method === 'turn/plan/updated') {
       const steps = Array.isArray(params['plan']) ? params['plan'].map(raw => { const step = object(raw); return `${step['status'] === 'completed' ? '[x]' : '[ ]'} ${string(step['step'])}` }).join('\n') : ''
       this.updates.item({ id: `plan-${this.turnId}`, kind: 'plan', text: steps, status: 'running' })
+    } else if (method === 'item/commandExecution/outputDelta') {
+      const id = string(params['itemId']), item = this.items.get(id)
+      if (!item) return
+      item['aggregatedOutput'] = (string(item['aggregatedOutput']) + string(params['delta'])).slice(-50_000)
+      this.updates.item({ id, kind: 'tool', ...devActivity('commandExecution', item), text: `${string(item['command']) || 'Command'}\n${string(item['aggregatedOutput'])}`, status: 'running' })
     } else if (method === 'item/started' || method === 'item/completed') {
-      const item = object(params['item']), id = string(item['id']), type = string(item['type'])
+      const incoming = object(params['item']), id = string(incoming['id']), item = { ...this.items.get(id), ...incoming }, type = string(item['type'])
       if (!id || type === 'userMessage') return
       this.items.set(id, item)
-      const status = method === 'item/started' ? 'running' : item['status'] === 'failed' ? 'failed' : 'done'
+      const status = method === 'item/started' ? 'running' : ['failed', 'declined', 'cancelled'].includes(string(item['status'])) || item['success'] === false || (typeof item['exitCode'] === 'number' && item['exitCode'] !== 0) ? 'failed' : 'done'
       if (type === 'agentMessage' || type === 'plan') this.updates.item({ id, kind: type === 'plan' ? 'plan' : 'assistant', text: string(item['text']), status })
-      else if (type === 'commandExecution') this.updates.item({ id, kind: 'tool', text: `${string(item['command'])}\n${string(item['aggregatedOutput'])}`.slice(0, 50_000), status })
-      else if (type === 'fileChange') this.updates.item({ id, kind: 'tool', text: this.changes(item), status })
+      else if (type === 'commandExecution') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: `${string(item['command']) || 'Command details are not available.'}\n${string(item['aggregatedOutput'])}`.trim().slice(0, 50_000), status })
+      else if (type === 'fileChange') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: this.changes(item) || 'File changes are being prepared.', status })
+      else if (type === 'mcpToolCall' || type === 'dynamicToolCall') {
+        const result = object(item['result']), content = result['content'] ?? item['contentItems']
+        const output = Array.isArray(content) ? content.map(value => string(object(value)['text'])).filter(Boolean).join('\n') : ''
+        const failure = string(object(item['error'])['message'])
+        const title = [string(item['server']), string(item['tool'])].filter(Boolean).join(' · ') || 'Tool'
+        this.updates.item({ id, kind: 'tool', title, activity: 'tool', text: [title, JSON.stringify(item['arguments'] ?? {}), output || (result['structuredContent'] ? JSON.stringify(result['structuredContent']) : ''), failure].filter(Boolean).join('\n').slice(0, 50_000), status })
+      }
+      else if (type === 'contextCompaction') this.updates.item({ id, kind: 'notice', text: status === 'running' ? 'Compacting conversation context…' : 'Conversation context compacted.', status })
+      else if (type === 'webSearch') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: string(item['query']) || 'Web search', status })
       else if (type === 'collabAgentToolCall' || type === 'subAgentActivity') this.updates.item({ id, kind: 'agent', text: `${string(item['tool']) || 'Agent'}\n${string(item['prompt']) || string(item['agentPath'])}`, status })
       else if (type !== 'reasoning') this.updates.item({ id, kind: 'tool', text: `${type}${item['tool'] ? ` · ${string(item['tool'])}` : ''}`, status })
       if (method === 'item/completed') this.items.delete(id)
@@ -97,6 +128,7 @@ export class DevCodex {
 
   private async request(method: string, params: Data): Promise<unknown> {
     if (this.closed || params['threadId'] !== this.session.runtimeId) throw new Error('This request does not belong to the active development session.')
+    if (params['turnId'] && params['turnId'] !== this.turnId) throw new Error('This approval no longer belongs to the active turn.')
     if (method === 'item/tool/requestUserInput') {
       const questions = Array.isArray(params['questions']) ? params['questions'].map(raw => {
         const question = object(raw)

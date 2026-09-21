@@ -107,7 +107,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <section className="settings-panel" hidden={section !== 'help'} aria-label="Help"><HelpPanel /></section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="General">
         <h2>General</h2>
-        <p className="setting-hint">Make Engram feel at home.</p>
         <AppearanceSettings value={settings.theme} onChange={(theme) => patch({ theme })} />
         <div className="settings-group">
           <label className="setting-row">
@@ -122,13 +121,8 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
           </label>
         </div>
         </section>
-        <section className="settings-panel" hidden={section !== 'computer'} aria-label="Computer use">
-        <h2>Computer use</h2>
-        <ComputerSettings />
-        </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
         <h2>Memory &amp; data</h2>
-        <p className="setting-hint">Choose what Engram remembers.</p>
         <div className="settings-group">
           <label className="setting-row">
             <span>{t('settings.deskJournal')}</span>
@@ -146,16 +140,15 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
             />
           </label>
         </div>
-        <details className="setting-hint"><summary>What gets remembered</summary><p>App activity records foreground app and window titles. Coding-session collection is managed in Developers.</p></details>
+        <p className="setting-hint">Records foreground app and window titles. Coding activity is managed in Workspace.</p>
         </section>
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
-        <h2>AI connection</h2>
+        <h2>AI &amp; accounts</h2>
         {section === 'ai' && <EngineSettings />}
         </section>
-        <section className="settings-panel" hidden={section !== 'developers'} aria-label="Developers">{section === 'developers' && <DeveloperSettings />}</section>
+        <section className="settings-panel" hidden={section !== 'developers'} aria-label="Workspace"><h2>Workspace</h2>{section === 'developers' && <><ComputerSettings /><DeveloperSettings /></>}</section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
-        <details className="settings-more" data-testid="settings-more">
-          <summary>{t('settings.more')}</summary>
+        <div data-testid="settings-more">
           <div className="settings-group-head">{t('settings.groupConnections')}</div>
           <div className="setting-row column">
             <span>{t('settings.watchTitle')}</span>
@@ -186,9 +179,9 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
               </button>
             </div>
           </div>
-        </details>
+        </div>
         </section>
-        <section className="settings-panel" hidden={section !== 'about'} aria-label="About">
+        <section className="settings-panel" hidden={section !== 'general'} aria-label="About">
         <h2>About Engram</h2>
         <div className="settings-app-section">
           <div className="settings-support-actions">

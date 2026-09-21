@@ -35,8 +35,7 @@ export function ComputerSettings() {
       <span className="computer-settings-label"><Monitor size={18} aria-hidden /><span>Control apps<small>{value}</small></span></span>
       <input type="checkbox" className="switch" data-testid="setting-computer-use" checked={enabled} disabled={!settings || available === false} onChange={(event) => void toggle(event.target.checked)} />
     </label>
-    <p className="computer-settings-description">Use your mouse and keyboard to work in apps. Press <kbd>Esc</kbd> to stop.</p>
-    <details className="computer-settings-details"><summary>How control works</summary><p>A desktop banner shows who is controlling the computer. Move the mouse or type to pause; press Esc or Stop to end control. Passwords, sign-in pages and security settings remain off limits.</p></details>
+    <p className="computer-settings-description">Move the mouse or type to pause. <kbd>Esc</kbd> stops control. Passwords, sign-in pages and security settings stay off limits.</p>
     {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? 'Dismiss' : 'Stop computer control'}{!dismiss && <kbd>Esc</kbd>}</button>}
     {error && <p className="computer-error" role="alert">{error}</p>}
   </section>

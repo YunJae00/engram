@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { app, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import type { DevelopersApi } from '../shared/developers.js'
 import { desktopOwner } from './desktop-access.js'
@@ -20,6 +20,13 @@ export function registerDevIpc(): void {
     })
   }
   handle('devState', () => get().state())
+  handle('devOpenLink', async value => {
+    if (typeof value !== 'string' || value.length > 4000) throw new Error('Invalid web link.')
+    const url = new URL(value), owner = desktopOwner()
+    if (!owner || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Only web links without embedded credentials can be opened.')
+    const result = await dialog.showMessageBox(owner, { type: 'question', title: 'Open web link?', message: 'Open this link in your default browser?', detail: url.href, buttons: ['Cancel', 'Open link'], defaultId: 0, cancelId: 0 })
+    if (result.response === 1) await shell.openExternal(url.href)
+  })
   handle('devPreferences', patch => get().preferences(patch))
   handle('devAddRepo', async () => {
     const owner = desktopOwner()
@@ -31,12 +38,15 @@ export function registerDevIpc(): void {
   handle('devCreate', request => get().create(request))
   handle('devSession', id => get().session(id))
   handle('devSend', (id, text) => get().send(id, text))
+  handle('devFollowup', (id, text, mode) => get().followup(id, text, mode))
+  handle('devQueued', (id, messageId, action, text) => get().queued(id, messageId, action, text))
   handle('devStop', id => get().stop(id))
   handle('devRespond', (id, requestId, response) => get().respond(id, requestId, response))
   handle('devExternal', (repo, provider, allFolders, profile) => get().external(repo, provider, allFolders, profile))
   handle('devExternalRead', (repo, provider, id, allFolders, profile) => get().externalRead(repo, provider, id, allFolders, profile))
-  handle('devFork', id => get().fork(id))
+  handle('devFork', (id, isolate) => get().fork(id, isolate))
   handle('devGit', id => get().git(id))
+  handle('devStage', (id, paths, staged, fingerprint) => get().stage(id, paths, staged, fingerprint))
   handle('devCommit', (id, paths, message) => get().commit(id, paths, message))
   handle('devFileReview', (id, path) => get().fileReview(id, path))
   handle('devUndoHunk', (id, path, fingerprint, index) => get().undoHunk(id, path, fingerprint, index))

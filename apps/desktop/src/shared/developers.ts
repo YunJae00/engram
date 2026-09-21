@@ -34,10 +34,13 @@ export interface DevApproval {
 }
 export interface DevItem {
   id: string
+  title?: string
+  activity?: 'command' | 'file' | 'search' | 'agent' | 'plan' | 'tool'
   kind: 'user' | 'assistant' | 'tool' | 'plan' | 'agent' | 'error' | 'notice'
   text: string
   status?: 'running' | 'done' | 'failed'
 }
+export interface DevQueuedMessage { id: string; text: string; state: 'queued' | 'paused' | 'sending' | 'uncertain' }
 export interface DevSession {
   id: string
   repoId: string
@@ -60,15 +63,17 @@ export interface DevSession {
   items: DevItem[]
   pending: DevApproval[]
   usage: DevUsage
+  outbox?: DevQueuedMessage[]
 }
 export interface DevExternalSession { id: string; provider: DevProvider; title: string; cwd: string; updatedAt: number; active?: boolean }
 export interface DevCommand { name: string; description: string; prompt: string }
 export interface DevState { preferences: DevPreferences; repos: DevRepo[]; sessions: Omit<DevSession, 'items' | 'pending'>[] }
-export interface DevGitState { branch: string; files: { path: string; status: string; previousPath?: string }[]; diff: string; truncated: boolean }
-export interface DevFileReview { path: string; before: string; after: string; fingerprint: string; hunks: { index: number; line: number; text: string }[] }
+export interface DevGitState { branch: string; files: { path: string; status: string; previousPath?: string }[]; diff: string; truncated: boolean; fingerprint?: string; scope?: 'task'; warning?: string }
+export interface DevFileReview { path: string; before: string; after: string; fingerprint: string; readOnly?: boolean; scope?: 'task'; hunks: { index: number; line: number; text: string }[] }
 export interface DevRule { id: string; repoId: string; provider: DevProvider; tool: string; input: string; decision: 'allow' | 'deny' }
-export interface DevUpdate { id: string; items: DevItem[]; state: DevSession['state']; pending: DevApproval[]; usage: DevUsage; provider?: DevProvider; accountProfile?: string; runtimeId?: string; title?: string; updatedAt?: number }
+export interface DevUpdate { id: string; items: DevItem[]; state: DevSession['state']; pending: DevApproval[]; usage: DevUsage; outbox?: DevQueuedMessage[]; provider?: DevProvider; accountProfile?: string; runtimeId?: string; title?: string; updatedAt?: number }
 export interface DevelopersApi {
+  devOpenLink(url: string): Promise<void>
   devState(): Promise<DevState>
   devPreferences(patch: Partial<DevPreferences>): Promise<DevPreferences>
   devAddRepo(): Promise<DevRepo | null>
@@ -76,12 +81,15 @@ export interface DevelopersApi {
   devCreate(request: { repoId: string; provider: DevProvider; accountProfile?: string; model: string; effort?: ReasoningEffort; mode: DevMode; isolate: boolean; fullAccessConfirmed?: boolean; resume?: string; fork?: boolean; resumeConfirmed?: boolean; allFolders?: boolean }): Promise<DevSession>
   devSession(id: string): Promise<DevSession>
   devSend(id: string, text: string): Promise<void>
+  devFollowup(id: string, text: string, mode: 'queue' | 'steer'): Promise<void>
+  devQueued(id: string, messageId: string, action: 'remove' | 'resume' | 'edit', text?: string): Promise<void>
   devStop(id: string): Promise<void>
   devRespond(id: string, requestId: string, response: { decision: 'allow' | 'deny'; remember?: boolean; answers?: Record<string, string[]> }): Promise<void>
   devExternal(repoId: string, provider: DevProvider, allFolders?: boolean, profile?: string): Promise<DevExternalSession[]>
   devExternalRead(repoId: string, provider: DevProvider, id: string, allFolders?: boolean, profile?: string): Promise<DevItem[]>
-  devFork(id: string): Promise<DevSession>
+  devFork(id: string, isolate?: boolean): Promise<DevSession>
   devGit(id: string): Promise<DevGitState>
+  devStage(id: string, paths: string[], staged: boolean, fingerprint: string): Promise<DevGitState>
   devCommit(id: string, paths: string[], message: string): Promise<void>
   devFileReview(id: string, path: string): Promise<DevFileReview>
   devUndoHunk(id: string, path: string, fingerprint: string, index: number): Promise<{ review: DevFileReview; backup: string }>

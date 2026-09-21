@@ -6,7 +6,14 @@ import { c as archive } from 'tar'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 import { installedClaudeBinary, installClaudeRuntime, registryArchive, safeRuntimeEntry } from '../src/main/claude-runtime.js'
 
-const state = vi.hoisted(() => ({ root: '', fetch: vi.fn() }))
+const state = vi.hoisted(() => ({ root: '', fetch: vi.fn(), locked: false }))
+vi.mock('node:fs/promises', async importOriginal => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...fs, rename: async (...args: Parameters<typeof fs.rename>) => {
+    if (state.locked && String(args[0]).includes('.install-')) { state.locked = false; throw Object.assign(new Error('Temporary Windows lock'), { code: 'EPERM' }) }
+    return fs.rename(...args)
+  } }
+})
 vi.mock('electron', () => ({ app: { getPath: () => state.root }, net: { fetch: (...args: unknown[]) => state.fetch(...args) } }))
 beforeEach(async () => { state.root = await tmpVaultRoot('runtime-install'); state.fetch.mockReset() })
 
@@ -29,7 +36,9 @@ describe('separately installed Claude runtime', () => {
     const integrity = `sha512-${createHash('sha512').update(data).digest('base64')}`
     state.fetch.mockImplementation(async (url: string) => url.endsWith('.tgz') ? new Response(data) : Response.json({ dist: { tarball: 'https://registry.npmjs.org/fixture.tgz', integrity } }))
     expect(installedClaudeBinary()).toBeNull()
+    state.locked = process.platform === 'win32'
     await Promise.all([installClaudeRuntime(), installClaudeRuntime()])
+    expect(state.locked).toBe(false)
     expect(installedClaudeBinary()).toContain('runtimes')
     expect(state.fetch).toHaveBeenCalledTimes(4)
     await installClaudeRuntime()

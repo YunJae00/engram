@@ -27,7 +27,7 @@ test('appearance survives restart, follows the system only when chosen, and keep
   await openActivity(page, 'settings')
   await page.getByRole('radio', { name: 'Dark', exact: true }).check()
   await page.getByTestId('setting-autostart').check()
-  for (const section of ['ai', 'computer', 'memory', 'about', 'general']) {
+  for (const section of ['ai', 'developers', 'memory', 'help', 'general']) {
     await page.getByTestId(`settings-nav-${section}`).click()
     await expect(page.getByTestId(`settings-nav-${section}`)).toHaveAttribute('aria-current', 'page')
   }
@@ -58,7 +58,7 @@ test('appearance survives restart, follows the system only when chosen, and keep
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.setViewportSize({ width: 620, height: 720 })
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-about').click()
+  await page.getByTestId('settings-nav-general').click()
   await expect(page.getByTestId('settings-feedback')).toBeVisible()
   expect(await page.getByTestId('settings-view').evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
 })
