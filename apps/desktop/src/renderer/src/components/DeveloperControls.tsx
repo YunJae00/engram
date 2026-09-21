@@ -1,8 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Folder, Gauge, GitBranch, ShieldCheck, ShieldOff, X } from 'lucide-react'
-import type { DevMode, DevSession, DevUsage } from '../../../shared/developers.js'
-import { AccountUsage } from './AccountUsage.js'
+import { Check, Folder, GitBranch, ShieldCheck, ShieldOff, X } from 'lucide-react'
+import type { DevMode, DevSession } from '../../../shared/developers.js'
 
 export function DeveloperPopover({ label, trigger, disabled, children }: { label: string; trigger: ReactNode; disabled?: boolean; children(close: () => void): ReactNode }) {
   const [open, setOpen] = useState(false), anchor = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null), id = useId()
@@ -48,20 +47,4 @@ function AccessForm({ value, task, extensions, onChange, close }: { value: Acces
 }
 export function DeveloperAccess({ value, task, disabled, extensions, onChange }: { value: AccessSelection; task: DevSession | null; disabled: boolean; extensions: boolean; onChange(value: AccessSelection): Promise<void> }) {
   return <DeveloperPopover label="Task access" disabled={disabled} trigger={<>{value.mode === 'full-access' ? <ShieldOff size={15} /> : <ShieldCheck size={15} />}<span>{ACCESS.find(option => option.id === value.mode)?.name}</span></>}>{close => <AccessForm value={value} task={task} extensions={extensions} onChange={onChange} close={close} />}</DeveloperPopover>
-}
-
-export function DeveloperUsage({ usage, inline = false }: { usage: DevUsage; inline?: boolean }) {
-  const content = <><p className="setting-hint">{usage.input === undefined ? 'Token usage appears when reported.' : `${usage.input.toLocaleString('en-US')} input · ${(usage.output ?? 0).toLocaleString('en-US')} output tokens`}</p>{usage.cost !== undefined && <p className="setting-hint">Estimated API cost: ${usage.cost.toFixed(4)}. This is not your subscription bill.</p>}<AccountUsage /></>
-  return inline ? content : <DeveloperPopover label="Usage and limits" trigger={<Gauge size={15} />}>{() => content}</DeveloperPopover>
-}
-
-export function DeveloperRuntimeInfo({ task, provider, extensions }: { task: DevSession | null; provider: 'claude' | 'codex'; extensions: boolean }) {
-  const loaded = task ? task.loadProjectSettings === true : extensions
-  return <details className="dev-options-usage"><summary>Runtime and project settings</summary>
-    <p>{provider === 'claude' ? 'Claude Code through the Agent SDK, with the native coding prompt preset.' : 'Codex through its native app-server, with runtime-managed coding instructions.'}</p>
-    <p>{loaded ? 'Project extensions are enabled for this full-access configuration. Installed hooks and MCP servers may run outside approval prompts.' : provider === 'claude' ? 'Root CLAUDE.md and .claude/CLAUDE.md text guidance is loaded without executing project settings. Installed hooks and configured MCP servers are not enabled.' : 'Project trust and hooks are restricted. Account-level configuration may still apply.'}</p>
-    <p>Use / in your message to discover available skills. Native session history stays with its original provider and account; switching providers transfers recent visible context into a new native runtime.</p>
-    {provider === 'claude' && task?.runtimeId && <p>Resumed native sessions can retain their original system prompt until the runtime rebuilds context.</p>}
-    {task?.runtimeId && <p>Native session: <code>{task.runtimeId}</code></p>}
-  </details>
 }

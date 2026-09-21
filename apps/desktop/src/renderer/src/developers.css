@@ -70,13 +70,13 @@
 @media (prefers-reduced-motion: no-preference) { .dev-tool { animation: fade-in 160ms ease-out; } .dev-tool-chevron { transition: transform 120ms ease; } .dev-tool[open] > pre { animation: fade-in 120ms ease-out; } }
 .dev-tool pre, .dev-approval pre, .dev-review pre { overflow: auto; max-height: 360px; padding: 12px; background: var(--rail-bg); border-radius: 8px; font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dev-working { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
-.dev-composer { margin: 12px var(--composer-gutter) 20px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-composer); background: var(--input-bg); }
+.dev-composer { margin: 12px var(--composer-gutter) 20px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-composer); background: var(--input-bg); }
 .dev-pane-welcome > .dev-log { flex: 0 1 auto; margin-top: auto; padding-top: 32px; padding-bottom: 0; }
 .dev-pane-welcome .dev-empty { min-height: 0; padding: 12px 0 18px; gap: 10px; }
 .dev-pane-welcome .dev-empty h2 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.035em; overflow-wrap: anywhere; }
 .dev-pane-welcome > .dev-composer { flex-shrink: 0; margin-top: 0; margin-bottom: auto; }
 .dev-pane-welcome::after { content: ''; height: 64px; flex-shrink: 1; }
-.dev-composer textarea { display: block; width: 100%; min-height: 70px; max-height: 220px; resize: vertical; border: 0; padding: 8px; background: transparent; color: inherit; font: inherit; outline: none; }
+.dev-composer textarea { display: block; width: 100%; min-height: 38px; max-height: 180px; resize: none; border: 0; padding: 6px 8px; background: transparent; color: inherit; font: inherit; outline: none; }
 .dev-composer:focus-within { border-color: var(--accent-line); }
 .dev-send { display: grid; place-items: center; margin-left: auto; width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 50%; background: var(--button-bg); color: var(--selected-fg); }
 .dev-send:disabled { opacity: .45; }
@@ -123,9 +123,9 @@
 .account-usage > section { padding: 8px 0; border-top: 1px solid var(--border-soft); }
 .account-usage h4 { margin: 8px 0; color: var(--fg); }
 .workspace-mode-toggle { display: inline-flex; align-items: center; flex: none; padding: 3px; gap: 2px; border-radius: 10px; background: var(--hover-bg); -webkit-app-region: no-drag; }
-.workspace-mode-toggle button { display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); padding: 5px 9px; font: inherit; font-size: var(--fs-small); }
+.workspace-mode-toggle button { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 32px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); padding: 4px 8px; font: inherit; font-size: var(--fs-small); }
 .workspace-mode-toggle button[aria-pressed='true'] { background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); }
-.topbar > .workspace-mode-toggle { margin-right: 10px; }
+.topbar > .workspace-mode-toggle { margin-right: 0; }
 .dev-control { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 28px; min-height: 28px; border: 0; border-radius: 7px; padding: 5px 7px; background: transparent; color: var(--fg-dim); font: inherit; font-size: var(--fs-small); }
 .dev-control:hover, .dev-control[aria-expanded='true'], .dev-menu-row:hover, .dev-task-link:hover { background: var(--hover-bg); color: var(--fg); }
 .dev-control:focus-visible, .dev-menu-row:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
@@ -164,7 +164,6 @@
 .dev-console form { display: flex; flex-wrap: wrap; gap: 8px; }
 .dev-console textarea { flex-basis: 100%; min-height: 80px; resize: vertical; font-family: monospace; }
 .dev-console pre { flex: 1; min-height: 120px; overflow: auto; padding: 12px; background: var(--input-bg); white-space: pre-wrap; overflow-wrap: anywhere; }
-.dev-composer textarea { min-height: 50px; resize: none; }
 .dev-composer textarea:focus { outline: none; box-shadow: none; border: 0; }
 .dev-history-body [role='status'], .dev-popover [role='status'] { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: 0; }
 .dev-history-body [role='status'] svg, .dev-task-link svg { flex-shrink: 0; }
@@ -177,8 +176,6 @@
 .dev-composer-tools { flex-shrink: 0; }
 .dev-context-path { display: flex; align-items: baseline; gap: 6px; color: var(--fg-dim); overflow-wrap: anywhere; }
 .dev-context-path svg { flex-shrink: 0; }
-.dev-options-usage { padding: 9px; }
-.dev-options-usage > summary { cursor: pointer; }
 .dev-model-controls { display: flex; border: 0; margin: 0 0 0 auto; padding: 0; min-width: 0; }
 .dev-model-controls .provider-picker-label { max-width: 160px; }
 .dev-composer .dev-send { margin-left: 4px; }

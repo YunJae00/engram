@@ -20,8 +20,9 @@ function syncLabel(t: Translate, status: SyncStatusDto | null): string {
 
 // The title strip keeps the current view visible without competing with its
 // content header. Ongoing work is grouped with the engine in the sidebar.
-export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit, onMode }: {
+export function TopBar({ sidebarOpen, developer, onToggleSidebar, splitLayout, onSplit, onMode }: {
   sidebarOpen: boolean
+  developer: boolean
   onToggleSidebar(): void
   splitLayout: 1 | 2 | 4
   onSplit(count: 1 | 2 | 4): void
@@ -83,7 +84,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, splitLayout, onSplit, onM
 
   return (
     <header className="topbar" data-testid="topbar">
-      {!sidebarOpen && <WorkspaceMode developer={activity === 'developers'} onChange={onMode} />}
+      {!sidebarOpen && <WorkspaceMode developer={developer} onChange={onMode} />}
       {!sidebarOpen && (
         <button className="topbar-sidebar-toggle" data-testid="app-sidebar-open" title={t('rail.show')} onClick={onToggleSidebar}>
           <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />

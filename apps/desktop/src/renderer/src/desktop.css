@@ -94,9 +94,6 @@
 .computer-settings-label small { display: block; margin-top: 4px; font-size: var(--fs-micro); color: var(--fg-faint); }
 .computer-settings-value { text-align: right; font-size: var(--fs-small); color: var(--fg-faint); }
 .computer-settings-description { margin: 8px 0 8px 26px; font-size: var(--fs-small); line-height: 1.6; color: var(--fg-dim); }
-.computer-settings-details { margin-left: 26px; font-size: var(--fs-small); color: var(--fg-dim); }
-.computer-settings-details summary { cursor: pointer; color: var(--accent); }
-.computer-settings-details p { margin-top: 8px; max-width: 58ch; }
 .computer-settings-bindings { margin-top: 10px; }
 @keyframes computer-arrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @container computer (max-width: 320px) {

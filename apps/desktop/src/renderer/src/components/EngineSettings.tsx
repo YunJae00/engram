@@ -6,6 +6,7 @@ import { ModelPicker } from './ModelPicker.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import { InstallClaude } from './InstallClaude.js'
 import { AccountProfiles } from './AccountProfiles.js'
+import { AccountUsage } from './AccountUsage.js'
 import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
 
@@ -31,7 +32,7 @@ export function EngineSettings() {
         setLogins((prior) => [...prior.filter((one) => one.id !== event.login.id || one.profile !== event.login.profile), event.login])
         if (['connected', 'idle', 'error'].includes(event.login.phase)) refresh()
       }
-      if (event.type === 'accounts:changed') setStates(null)
+      if (event.type === 'accounts:changed') { setStates(null); refresh() }
       if (event.type === 'engines:detected' || event.type === 'engines:changed') refresh()
     })
     return () => { alive = false; off() }
@@ -39,16 +40,13 @@ export function EngineSettings() {
   const run = (operation: Promise<unknown>) => { setError(''); void operation.catch(() => setError('That did not finish. Please try again.')) }
   return (
     <div className="engine-settings">
-      <p className="setting-note">Use either connected account in any conversation.</p>
-      <section className="engine-card" aria-label="New conversation model"><strong>New conversations</strong><p className="setting-note">A starting choice. Existing conversations keep their own settings.</p><ModelPicker showAccounts={false} /></section>
-      <section className="engine-card" aria-label="Filing model"><strong>Filing & memory</strong><p className="setting-note">Organize notes and maintain memory independently of your conversations.</p><ModelPicker scope="filing" showAccounts={false} /></section>
       {(['claude', 'codex'] as const).map((id) => {
         const state = states?.find((one) => one.id === id)
         const login = logins.find((one) => one.id === id && (one.profile ?? 'system') === (profiles?.selected[id] ?? 'system'))
         const pending = login?.phase === 'opening' || login?.phase === 'browser'
         const connected = state?.loggedIn === true || login?.phase === 'connected'
         const name = id === 'claude' ? 'Claude' : 'ChatGPT'
-        const profileName = profiles?.profiles.find(profile => profile.id === profiles.selected[id])?.name
+        const profileName = profiles?.profiles.find(profile => profile.id === profiles.selected[id])?.name ?? 'System account'
         const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : !states ? 'Checking connection…' : connected ? 'Connected' : state?.installed ? 'Not connected' : id === 'claude' ? 'Not installed' : 'Runtime unavailable'
         return (
           <section key={id} className="engine-card engine-connection" aria-label={`${name} connection`}>
@@ -63,9 +61,11 @@ export function EngineSettings() {
               </> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
             </div>
             {login?.message && <p className="engine-message" role="status">{login.message}</p>}
+            <AccountUsage provider={id} />
           </section>
         )
       })}
+      <div className="engine-card engine-defaults"><section className="setting-row" aria-label="New conversation model"><strong>New conversations</strong><ModelPicker showAccounts={false} /></section><section className="setting-row" aria-label="Filing model"><strong>Filing &amp; memory</strong><ModelPicker scope="filing" showAccounts={false} /></section></div>
       {error && <div role="alert" className="engine-message">{error} <button className="secondary" onClick={() => { setError(''); setAttempt((value) => value + 1) }}>Retry</button></div>}
     </div>
   )

@@ -416,7 +416,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 
 /* ── Top bar ─────────────────────────────────────────────────── */
 .topbar {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 8px;
   height: var(--titlebar-height); padding: 0 var(--page-gutter); flex-shrink: 0;
   background: var(--panel-bg);
   border-bottom: 1px solid var(--border-soft);
@@ -437,7 +437,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .topbar button, .topbar input { -webkit-app-region: no-drag; }
 .topbar-sidebar-toggle {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; flex: none; color: var(--fg-dim);
+  width: 32px; height: 32px; padding: 0; border-radius: 8px; flex: none; color: var(--fg-dim);
 }
 .topbar-sidebar-toggle:hover { color: var(--fg); background: var(--hover-bg); }
 .topbar-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-body); font-weight: 550; color: var(--fg); white-space: nowrap; }

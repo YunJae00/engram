@@ -3,7 +3,6 @@ import { LoaderCircle } from 'lucide-react'
 import type { DevPreferences, DevRule, DevState } from '../../../shared/developers.js'
 import { api } from '../api.js'
 import { ExternalConnections } from './ExternalConnections.js'
-import { AccountUsage } from './AccountUsage.js'
 
 export function DeveloperSettings() {
   const [state, setState] = useState<DevState | null>(null), [error, setError] = useState(''), [saving, setSaving] = useState(false)
@@ -21,21 +20,18 @@ export function DeveloperSettings() {
     catch (error) { setError((error as Error).message) }
     finally { setSaving(false) }
   }
-  if (!state) return <section><h2>Developers</h2>{error ? <p role="alert">{error}</p> : <p role="status"><LoaderCircle size={16} className="spin" /> Loading developer settings…</p>}</section>
+  if (!state) return <section><h3>Development tasks</h3>{error ? <p role="alert">{error}</p> : <p role="status"><LoaderCircle size={16} className="spin" /> Loading developer settings…</p>}</section>
   return <>
-    <h2>Developers</h2><p className="setting-hint">Privacy, connections and safety. Manage projects and sessions from the sidebar in Developers mode.</p>
+    <h3>Development tasks</h3>
     {error && <p role="alert">{error}</p>}
     <div className="settings-group">
       <label className="setting-row"><span>Enable development workspace</span><input className="switch" type="checkbox" checked={state.preferences.enabled} disabled={saving} onChange={event => void patch({ enabled: event.target.checked })} /></label>
       <p className="setting-hint">Turning this off stops development tasks. Files and task history are kept.</p>
     </div>
     <div className="settings-group">
-      <AccountUsage />
-    </div>
-    <div className="settings-group">
       <h3>Coding activity in Cosmos</h3>
       <label className="setting-row"><span>Remember coding sessions</span><input data-testid="setting-session-watch" className="switch" type="checkbox" checked={collect} disabled={saving} onChange={event => { setSaving(true); void api.sessionWatchSet(event.target.checked).then(setCollect).catch(error => setError(error.message)).finally(() => setSaving(false)) }} /></label>
-      <p className="setting-hint">Collect sessions from connected coding tools into your memory. This is separate from running development tasks and stays off unless you enable it.</p>
+      <p className="setting-hint">Save coding activity to memory. Off by default; not required to run tasks.</p>
     </div>
     <ExternalConnections />
     <div className="settings-group"><h3>Provider extensions</h3><label className="setting-row"><span>Load installed hooks and project configuration in full-access tasks</span><input className="switch" type="checkbox" checked={state.preferences.loadProjectSettings} disabled={saving} onChange={event => void patch({ loadProjectSettings: event.target.checked })} /></label><p className="setting-hint">Only newly created, explicitly confirmed full-access tasks use this setting. Installed hooks, skills and MCP servers can run commands outside Engram’s approval prompts. Configure them with your provider’s own configuration files. Review, plan and automatic-edit tasks do not enable project hooks. Provider account-level connections may still be available.</p></div>

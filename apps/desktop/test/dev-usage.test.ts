@@ -14,3 +14,10 @@ it('uses provider-supplied window units and cumulative model totals', () => {
   expect(claudeUsage({ rate_limits: { five_hour: { utilization: 35, resets_at: '2026-09-20T12:00:00Z' } } }).windows?.[0]?.used).toBe(35)
   expect(claudeTurnUsage({ total_cost_usd: 0.1, modelUsage: { one: { inputTokens: 4, outputTokens: 8, cacheReadInputTokens: 2 }, two: { inputTokens: 3, outputTokens: 1 } } })).toEqual({ input: 7, output: 9, cached: 2, cost: 0.1 })
 })
+
+it('omits structural Claude usage fields while preserving unknown real windows', () => {
+  expect(claudeUsage({ rate_limits: { limits: {}, spend: { amount: 5 }, seven_day_breakdown: [], five_hour: { utilization: null }, seven_day: { utilization: 100 } } }).windows).toEqual([
+    { name: '5-hour limit', used: undefined, resetsAt: undefined },
+    { name: 'Weekly limit', used: 100, resetsAt: undefined },
+  ])
+})

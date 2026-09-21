@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 const send = vi.hoisted(() => vi.fn())
 vi.mock('../src/main/engine-cloud.js', () => ({ codexBinary: () => 'fixture', withHelpersOnPath: () => ({}) }))
@@ -13,6 +13,22 @@ it('includes app-created sessions and follows every history page', async () => {
   expect(send).toHaveBeenNthCalledWith(1, 'thread/list', expect.objectContaining({ sourceKinds: expect.arrayContaining(['appServer', 'exec']), sortKey: 'updated_at' }), 30_000)
   expect(send).toHaveBeenNthCalledWith(2, 'thread/list', expect.objectContaining({ cursor: 'second' }), 30_000)
   if (process.platform === 'win32') expect(sessionPath('\\\\?\\C:\\project')).toBe(sessionPath('c:/project'))
+})
+
+it('finds parent-folder desktop sessions across providers without matching sibling prefixes', async () => {
+  send.mockReset()
+  const cwd = resolve('tmp/workspace/project')
+  send.mockResolvedValueOnce({ data: [{ id: 'parent', cwd: dirname(cwd) }, { id: 'sibling', cwd: `${dirname(cwd)}-other` }] })
+  expect((await devExternal(cwd, 'codex')).map(row => row.id)).toEqual(['parent'])
+  const params = send.mock.calls[0]![1]
+  expect(params.modelProviders).toEqual([])
+  expect(params).not.toHaveProperty('cwd')
+})
+
+it('keeps background exec tasks out of the all-folder interactive catalog', async () => {
+  send.mockReset(); send.mockResolvedValueOnce({ data: [] })
+  await devExternal(resolve('tmp/project'), 'codex', true)
+  expect(send.mock.calls[0]![1].sourceKinds).not.toContain('exec')
 })
 
 it('pages recent conversation text without hydrating the full tool history', async () => {

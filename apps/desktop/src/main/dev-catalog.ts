@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { resolve, sep } from 'node:path'
 import type { DevExternalSession, DevItem, DevProvider, DevUsage } from '../shared/developers.js'
 import { claudeHistory } from './claude-history.js'
 import { codexBinary, withHelpersOnPath } from './engine-cloud.js'
@@ -28,18 +28,25 @@ export async function devExternal(cwd: string, provider: DevProvider, allFolders
     const rows = await claudeHistory<{ sessionId: string; summary: string; lastModified: number; cwd?: string }[]>(profile, 'list', { ...(!allFolders ? { dir: cwd } : {}), limit: 100 })
     return rows.filter(row => row.cwd && (allFolders || sessionPath(row.cwd) === sessionPath(cwd))).map(row => ({ id: row.sessionId, title: row.summary || 'Untitled session', cwd: row.cwd!, provider, updatedAt: row.lastModified }))
   }
-  const data: unknown[] = [], cursors = new Set<string>()
+  const data: Record<string, unknown>[] = [], cursors = new Set<string>()
   let cursor: string | undefined
-  const paths = process.platform === 'win32' ? [...new Set([cwd, cwd.replace(/\\/g, '/'), resolve(cwd), `\\\\?\\${resolve(cwd)}`])] : [cwd]
+  const project = sessionPath(cwd)
+  await withCodex(cwd, profile, async rpc => {
   do {
-    const result = await devProbe(cwd, 'thread/list', { ...(!allFolders ? { cwd: paths } : {}), limit: 100, archived: false, sortKey: 'updated_at', sourceKinds: ['cli', 'vscode', 'exec', 'appServer'], ...(cursor ? { cursor } : {}) }, profile)
+    // Native cwd filters are exact: desktop sessions can start in a parent folder.
+    const result = await rpc.send('thread/list', { limit: 100, archived: false, sortKey: 'updated_at', modelProviders: [], sourceKinds: allFolders ? ['cli', 'vscode', 'appServer', 'unknown'] : ['cli', 'vscode', 'exec', 'appServer', 'unknown'], ...(cursor ? { cursor } : {}) }, 30_000)
     if (!Array.isArray(result['data'])) throw new Error('The runtime did not return a session list.')
-    data.push(...result['data'])
-    cursor = !allFolders && typeof result['nextCursor'] === 'string' ? result['nextCursor'] : undefined
+    for (const row of result['data']) {
+      if (!row || typeof row.id !== 'string' || typeof row.cwd !== 'string') continue
+      const folder = sessionPath(row.cwd)
+      if ((allFolders || project === folder || project.startsWith(folder.endsWith(sep) ? folder : folder + sep)) && !data.some(value => value['id'] === row.id)) data.push(row)
+    }
+    cursor = typeof result['nextCursor'] === 'string' && data.length < 100 ? result['nextCursor'] : undefined
     if (cursor && (cursors.has(cursor) || cursors.size >= 50)) throw new Error('The session list is too large or did not advance. Archive older sessions and try again.')
     if (cursor) cursors.add(cursor)
   } while (cursor)
-  return data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object').filter(row => typeof row['id'] === 'string' && typeof row['cwd'] === 'string' && (allFolders || sessionPath(row['cwd']) === sessionPath(cwd))).map(row => ({
+  })
+  return data.slice(0, 100).map(row => ({
     id: String(row['id']), provider, title: typeof row['name'] === 'string' && row['name'] ? row['name'] : typeof row['preview'] === 'string' ? row['preview'].slice(0, 120) : 'Untitled session', cwd: String(row['cwd']),
     updatedAt: typeof row['updatedAt'] === 'number' ? row['updatedAt'] * 1000 : 0,
     ...((row['status'] as { type?: string } | undefined)?.type === 'active' ? { active: true } : {}),

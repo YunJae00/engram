@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
-const runtimeFixture = vi.hoisted(() => ({ starts: 0, failNext: false, hold: false, stopError: false, sent: [] as string[] }))
+const runtimeFixture = vi.hoisted(() => ({ starts: 0, failNext: false, hold: false, stopError: false, sent: [] as string[], externalCwd: undefined as string | undefined }))
 
-vi.mock('../src/main/dev-catalog.js', () => ({ devAccountUsage: async () => ({ unavailable: 'Fixture' }), devExternal: async () => [{ id: 'external', title: 'Existing conversation' }, { id: 'live', active: true }], devExternalRead: async () => [{ id: 'original-user', kind: 'user', text: 'Earlier question' }, { id: 'original-answer', kind: 'assistant', text: 'Earlier answer' }] }))
+vi.mock('../src/main/dev-catalog.js', () => ({ devAccountUsage: async () => ({ unavailable: 'Fixture' }), devExternal: async () => [{ id: 'external', title: 'Existing conversation', cwd: runtimeFixture.externalCwd }, { id: 'live', active: true }], devExternalRead: async () => [{ id: 'original-user', kind: 'user', text: 'Earlier question' }, { id: 'original-answer', kind: 'assistant', text: 'Earlier answer' }] }))
 vi.mock('../src/main/dev-workspace.js', () => ({ canonicalRepo: async (path: string) => resolve(path), devWorktree: async () => ({ cwd: resolve('tmp/fixture-isolated'), branch: 'fixture' }), devGitState: async () => ({ files: [], diff: '', branch: 'fixture', truncated: false }), devCommit: vi.fn() }))
 vi.mock('../src/main/dev-codex.js', () => ({ DevCodex: class {
   constructor(private session: { runtimeId?: string }, private approvals: { close(): void }, private updates: { item(value: unknown): void; finished(error?: string): void }) {}
@@ -25,6 +25,22 @@ vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {
 import { DevService } from '../src/main/dev-service.js'
 import * as workspace from '../src/main/dev-workspace.js'
 import { initializeAccountProfiles, addAccountProfile, selectAccountProfile } from '../src/main/account-profiles.js'
+
+it('imports a parent-folder conversation in its original folder without starting or replaying it', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-parent-history-')), service = new DevService(root, vi.fn())
+  await initializeAccountProfiles(root)
+  await service.preferences({ enabled: true })
+  const child = await service.addRepo(resolve(root, 'child')), starts = runtimeFixture.starts
+  runtimeFixture.externalCwd = root
+  try {
+    const session = await service.create({ repoId: child.id, provider: 'codex', model: '', mode: 'review', isolate: false, resume: 'external', resumeConfirmed: true })
+    expect(session.cwd).toBe(root)
+    expect(session.repoId).not.toBe(child.id)
+    expect(session.items).toHaveLength(2)
+    expect(runtimeFixture.starts).toBe(starts)
+  } finally { runtimeFixture.externalCwd = undefined }
+})
 
 it('awaits pending workspace writes before shutdown and blocks new work during shutdown', async () => {
   await mkdir(resolve('tmp'), { recursive: true })

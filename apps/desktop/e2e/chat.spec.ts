@@ -133,7 +133,7 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   await screenshot('ui-conversation.png')
   await openActivity(page, 'settings')
   await expect(page.getByTestId('setting-autostart')).toBeVisible()
-  await page.getByTestId('settings-nav-computer').click()
+  await page.getByTestId('settings-nav-developers').click()
   await page.evaluate(async () => { await window.engram.settingsSet({ ...await window.engram.settingsGet(), computerUse: true }) })
   await expect(page.getByTestId('setting-computer-use')).toBeChecked()
   await screenshot('ui-settings.png')

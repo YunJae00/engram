@@ -16,14 +16,14 @@ import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
 
 interface Props {
+  developer: boolean
   open: boolean; onToggle(): void; onOpenPalette(): void; onOpenSettings(): void; onOpenRoutines(): void
   selectedRoutineId: string | null; onSelectRoutine(id: string): void
 }
 
-export function AppSidebar({ open, onToggle, onOpenPalette, onOpenSettings, onOpenRoutines, selectedRoutineId, onSelectRoutine }: Props) {
+export function AppSidebar({ developer, open, onToggle, onOpenPalette, onOpenSettings, onOpenRoutines, selectedRoutineId, onSelectRoutine }: Props) {
   const { activity, setActivity, vaultReady, showToast } = useShellState()
   const library = activity === 'routines'
-  const developer = activity === 'developers'
   useEffect(() => { if (vaultReady) return watchAccountUsage() }, [vaultReady])
   const [bots, setBots] = useState<BotDto[]>([])
   const [routines, setRoutines] = useState<RoutineDto[]>([])
