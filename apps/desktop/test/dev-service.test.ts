@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
 const runtimeFixture = vi.hoisted(() => ({ starts: 0, failNext: false, hold: false, stopError: false, sent: [] as string[], externalCwd: undefined as string | undefined }))
+vi.mock('../src/main/dev-baseline.js', () => ({ captureDevBaseline: async () => undefined }))
 
 vi.mock('../src/main/dev-catalog.js', () => ({ devAccountUsage: async () => ({ unavailable: 'Fixture' }), devExternal: async () => [{ id: 'external', title: 'Existing conversation', cwd: runtimeFixture.externalCwd }, { id: 'live', active: true }], devExternalRead: async () => [{ id: 'original-user', kind: 'user', text: 'Earlier question' }, { id: 'original-answer', kind: 'assistant', text: 'Earlier answer' }] }))
 vi.mock('../src/main/dev-workspace.js', () => ({ canonicalRepo: async (path: string) => resolve(path), devWorktree: async () => ({ cwd: resolve('tmp/fixture-isolated'), branch: 'fixture' }), devGitState: async () => ({ files: [], diff: '', branch: 'fixture', truncated: false }), devCommit: vi.fn() }))
@@ -24,7 +25,29 @@ vi.mock('../src/main/dev-claude.js', () => ({ DevClaude: class {
 } }))
 import { DevService } from '../src/main/dev-service.js'
 import * as workspace from '../src/main/dev-workspace.js'
+import * as baseline from '../src/main/dev-baseline.js'
 import { initializeAccountProfiles, addAccountProfile, selectAccountProfile } from '../src/main/account-profiles.js'
+
+it('never dispatches an older cancelled start when a new message starts during checkpoint capture', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-start-generation-')), service = new DevService(root, vi.fn())
+  await service.preferences({ enabled: true })
+  const repo = await service.addRepo(root), task = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
+  let release!: () => void
+  const capture = vi.spyOn(baseline, 'captureDevBaseline').mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve }))
+  runtimeFixture.sent = []
+  const first = service.send(task.id, 'Cancelled message')
+  try {
+    await vi.waitFor(() => expect(capture).toHaveBeenCalled())
+    expect(service.busy).toBe(true)
+    await expect(service.removeRepo(repo.id)).rejects.toThrow('Stop this repository')
+    await service.stop(task.id)
+    await service.send(task.id, 'New message')
+    release(); await first
+    expect(runtimeFixture.sent).toEqual(['New message'])
+    expect(task.state).toBe('idle')
+  } finally { release(); await first; capture.mockRestore(); await service.stopAll() }
+})
 
 it('imports a parent-folder conversation in its original folder without starting or replaying it', async () => {
   await mkdir(resolve('tmp'), { recursive: true })
@@ -63,24 +86,6 @@ it('awaits pending workspace writes before shutdown and blocks new work during s
   } finally { release(); await writing; await stopping }
 })
 
-it('scopes file access to the chosen workspace and blocks saves while any same-folder task runs', async () => {
-  await mkdir(resolve('tmp'), { recursive: true })
-  const root = await mkdtemp(resolve('tmp/dev-file-service-')), service = new DevService(root, vi.fn())
-  await initializeAccountProfiles(root)
-  await service.preferences({ enabled: true })
-  const repo = await service.addRepo(root), otherRoot = await mkdtemp(resolve('tmp/dev-other-project-')), other = await service.addRepo(otherRoot)
-  await writeFile(resolve(root, 'sample.ts'), 'original')
-  const task = await service.create({ repoId: repo.id, provider: 'codex', model: '', mode: 'review', isolate: false })
-  const context = { repoId: repo.id, sessionId: task.id }
-  const file = await service.readFile(context, 'sample.ts')
-  await expect(service.readFile({ repoId: other.id, sessionId: task.id }, 'sample.ts')).rejects.toThrow('different project')
-  task.state = 'running'
-  await expect(service.saveFile({ repoId: repo.id }, file.path, file.fingerprint, 'modified')).rejects.toThrow('Stop workspace tasks')
-  task.state = 'idle'
-  expect((await service.saveFile(context, file.path, file.fingerprint, 'modified')).text).toBe('modified')
-  await service.preferences({ enabled: false })
-  await expect(service.files(context, '')).rejects.toThrow('Enable Developers')
-})
 
 it('switches both providers in one conversation without reusing runtime IDs or overwriting messages', async () => {
   await mkdir(resolve('tmp'), { recursive: true })

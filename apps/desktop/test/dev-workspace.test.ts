@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
@@ -7,6 +7,56 @@ vi.mock('../src/main/process-client.js', () => ({ ProcessClient: function (comma
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: () => ({ git: () => 'git', gitExecPath: () => undefined }) }))
 import { devCommit, devGitState, devStage, devWorktree, runDevGit, statusFiles } from '../src/main/dev-workspace.js'
 import { devFileReview, devUndoHunk } from '../src/main/dev-review.js'
+import { devUndoTaskHunk } from '../src/main/dev-review.js'
+import { captureDevBaseline, devTaskChanges, devTaskFileReview } from '../src/main/dev-baseline.js'
+
+it('reviews against starting files and preserves pre-existing edits when discarding task changes', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-baseline-')), repo = join(root, 'repo'), hooks = join(root, 'hooks')
+  await mkdir(repo); await mkdir(hooks)
+  const git = (args: string[]) => runDevGit(repo, args, hooks)
+  await git(['init']); await git(['config', 'user.name', 'Fixture']); await git(['config', 'user.email', 'fixture@example.invalid']); await git(['config', 'commit.gpgsign', 'false'])
+  await writeFile(join(repo, 'source.txt'), 'committed\n')
+  await git(['add', '.']); await git(['commit', '-m', 'Fixture'])
+  await writeFile(join(repo, 'source.txt'), 'user draft before task\n')
+  await writeFile(join(repo, '.env'), 'fixture-only-excluded')
+  await Promise.all([captureDevBaseline(root, 'task', repo, hooks), captureDevBaseline(root, 'task', repo, hooks)])
+  await writeFile(join(repo, 'source.txt'), 'agent change\n')
+  await writeFile(join(repo, 'new.txt'), 'new file\n')
+  const changes = await devTaskChanges(root, 'task', repo, hooks)
+  expect(changes.files).toEqual(expect.arrayContaining([{ path: 'source.txt', status: ' M' }, { path: 'new.txt', status: ' A' }]))
+  expect(changes.files.some(value => value.path === '.env')).toBe(false)
+  const review = await devTaskFileReview(root, 'task', repo, 'source.txt')
+  expect(review.before).toBe('user draft before task\n')
+  await writeFile(join(repo, 'source.txt'), 'external change while preview open\n')
+  await expect(devUndoTaskHunk(root, 'task', repo, 'source.txt', review.fingerprint, 0, join(root, 'backups'))).rejects.toThrow('changed after')
+  const fresh = await devTaskFileReview(root, 'task', repo, 'source.txt')
+  const undone = await devUndoTaskHunk(root, 'task', repo, 'source.txt', fresh.fingerprint, 0, join(root, 'backups'))
+  expect(await readFile(join(repo, 'source.txt'), 'utf8')).toBe('user draft before task\n')
+  expect(JSON.parse(await readFile(undone.backup, 'utf8')).before).toBe('external change while preview open\n')
+  expect(await git(['show', 'HEAD:source.txt'])).toBe('committed\n')
+  expect((await devTaskChanges(root, 'task', repo, hooks)).files).not.toContainEqual(expect.objectContaining({ path: 'source.txt' }))
+  await expect(devTaskFileReview(root, 'task', repo, '../outside.txt')).rejects.toThrow()
+  await expect(devTaskFileReview(root, 'task', repo, '.env')).rejects.toThrow('excluded')
+}, 180_000)
+
+it('captures plain folders without Git and marks binary and oversized files as excluded', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-plain-baseline-')), repo = join(root, 'plain'), hooks = join(root, 'hooks')
+  await mkdir(repo); await mkdir(hooks)
+  await writeFile(join(repo, 'text.txt'), 'before\n')
+  await writeFile(join(repo, 'empty-deleted.txt'), '')
+  await writeFile(join(repo, 'binary'), Buffer.from([0, 1, 2]))
+  await writeFile(join(repo, 'large'), 'x'.repeat(500001))
+  await captureDevBaseline(root, 'plain', repo, hooks)
+  await writeFile(join(repo, 'text.txt'), 'after\n')
+  await unlink(join(repo, 'empty-deleted.txt'))
+  await writeFile(join(repo, 'empty-added.txt'), '')
+  expect(await devTaskChanges(root, 'plain', repo, hooks)).toMatchObject({ scope: 'task', truncated: true, files: expect.arrayContaining([{ path: 'text.txt', status: ' M' }, { path: 'empty-deleted.txt', status: ' D' }, { path: 'empty-added.txt', status: ' A' }]) })
+  expect(await devTaskFileReview(root, 'plain', repo, 'empty-deleted.txt')).toMatchObject({ before: '', after: '', readOnly: true })
+  expect(await devTaskFileReview(root, 'plain', repo, 'text.txt')).toMatchObject({ before: 'before\n', after: 'after\n', scope: 'task' })
+  await expect(devTaskFileReview(root, 'plain', repo, 'large')).rejects.toThrow('excluded')
+}, 180_000)
 
 it('parses renamed and spaced paths without confusing the old path for another change', () => {
   expect(statusFiles('R  next name.txt\0old name.txt\0 M other.txt\0?? new.txt\0')).toEqual([

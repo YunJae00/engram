@@ -20,6 +20,7 @@ export class DevCodex {
   private readonly rpc: DevRpc
   private readonly abort = new AbortController()
   private turnId?: string
+  private completedTurnId?: string
   private closed = false
   private readonly items = new Map<string, Data>()
 
@@ -54,7 +55,13 @@ export class DevCodex {
       threadId: this.session.runtimeId, input: [{ type: 'text', text, text_elements: [] }],
       ...(this.session.effort ? { effort: this.session.effort } : {}),
     })
-    this.turnId = string(object(result['turn'])['id']) || this.turnId
+    const id = string(object(result['turn'])['id'])
+    if (id && id !== this.completedTurnId) this.turnId = id
+  }
+  get activeTurnId(): string | undefined { return this.turnId }
+  async steer(text: string, expectedTurnId = this.turnId): Promise<void> {
+    if (this.closed || !expectedTurnId || expectedTurnId !== this.turnId || !this.session.runtimeId) throw new Error('There is no matching active turn to steer. Queue this message for the next turn instead.')
+    await this.rpc.send('turn/steer', { threadId: this.session.runtimeId, expectedTurnId, input: [{ type: 'text', text, text_elements: [] }] })
   }
   async commands(): Promise<import('../shared/developers.js').DevCommand[]> {
     const result = await this.rpc.send('skills/list', { cwds: [this.session.cwd] }, 15_000)
@@ -67,8 +74,15 @@ export class DevCodex {
 
   private event(method: string, params: Data): void {
     if (this.closed || (params['threadId'] && params['threadId'] !== this.session.runtimeId)) return
-    if (method === 'turn/started') this.turnId = string(object(params['turn'])['id'])
+    if (params['turnId'] && (params['turnId'] === this.completedTurnId || (this.turnId && params['turnId'] !== this.turnId))) return
+    if (method === 'turn/started') {
+      const id = string(object(params['turn'])['id'])
+      if (id && id !== this.completedTurnId && (!this.turnId || this.turnId === id)) this.turnId = id
+    }
     else if (method === 'turn/completed') {
+      const id = string(object(params['turn'])['id'])
+      if (id && (id === this.completedTurnId || (this.turnId && id !== this.turnId))) return
+      this.completedTurnId = id || this.turnId
       this.turnId = undefined
       const turn = object(params['turn']), error = object(turn['error'])
       this.updates.finished(string(error['message']) || (turn['status'] === 'failed' ? 'The runtime could not complete this turn.' : turn['status'] === 'interrupted' ? 'This turn was interrupted. Review any partial changes before continuing.' : undefined))
@@ -114,6 +128,7 @@ export class DevCodex {
 
   private async request(method: string, params: Data): Promise<unknown> {
     if (this.closed || params['threadId'] !== this.session.runtimeId) throw new Error('This request does not belong to the active development session.')
+    if (params['turnId'] && params['turnId'] !== this.turnId) throw new Error('This approval no longer belongs to the active turn.')
     if (method === 'item/tool/requestUserInput') {
       const questions = Array.isArray(params['questions']) ? params['questions'].map(raw => {
         const question = object(raw)

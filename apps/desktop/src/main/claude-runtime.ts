@@ -1,10 +1,11 @@
 import { app, net } from 'electron'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, open, rename, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { x as extract } from 'tar'
+import { renameWithRetry } from 'core'
 
 export const CLAUDE_RUNTIME_VERSION = '0.3.272'
 export const CLAUDE_INSTALL_HELP = 'https://code.claude.com/docs/en/setup'
@@ -84,7 +85,7 @@ export function installClaudeRuntime(): Promise<void> {
       await downloadPackage('@anthropic-ai/claude-agent-sdk', join(staging, 'sdk'), join(staging, 'sdk.tgz'), signal)
       await downloadPackage(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`, join(staging, 'runtime'), join(staging, 'runtime.tgz'), signal)
       if (!existsSync(join(staging, 'sdk', 'sdk.mjs')) || !existsSync(join(staging, 'runtime', process.platform === 'win32' ? 'claude.exe' : 'claude'))) throw new Error('The downloaded runtime is incomplete.')
-      await rename(staging, runtimeHome())
+      await renameWithRetry(staging, runtimeHome())
     } finally { await rm(staging, { recursive: true, force: true }) }
   })().finally(() => { installing = null })
   return installing

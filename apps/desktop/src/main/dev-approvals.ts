@@ -54,6 +54,9 @@ export class DevApprovals {
   private emit(): void { this.changed([...this.pending.values()].map(pending => pending.approval)) }
   close(): void {
     this.closed = true
+    this.cancelPending()
+  }
+  cancelPending(): void {
     for (const id of this.pending.keys()) this.finish(id, { decision: 'deny' })
   }
 }

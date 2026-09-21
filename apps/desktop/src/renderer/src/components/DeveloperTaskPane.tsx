@@ -8,10 +8,9 @@ import { DeveloperFileReview } from './DeveloperFileReview.js'
 import { DeveloperAccess, DeveloperPopover, type AccessSelection } from './DeveloperControls.js'
 import { DeveloperSkills } from './DeveloperSkills.js'
 import { DeveloperPanePicker } from './DeveloperPanePicker.js'
+import { DeveloperQueue } from './DeveloperQueue.js'
 import { renderMarkdown } from '../lib/markdown.js'
 const DeveloperCode = lazy(() => import('./DeveloperCode.js').then(module => ({ default: module.DeveloperCode })))
-const DeveloperFiles = lazy(() => import('./DeveloperFiles.js').then(module => ({ default: module.DeveloperFiles })))
-const DeveloperConsole = lazy(() => import('./DeveloperConsole.js').then(module => ({ default: module.DeveloperConsole })))
 
 function mergeUpdate(current: DevSession, update: DevUpdate): DevSession {
   const incoming = new Map(update.items.map(item => [item.id, item]))
@@ -21,12 +20,14 @@ function mergeUpdate(current: DevSession, update: DevUpdate): DevSession {
 
 export const DeveloperMessage = memo(function DeveloperMessage({ item }: { item: DevItem }) {
   const [linkError, setLinkError] = useState('')
+  if (item.kind === 'error') return <article className="dev-message dev-message-error" role="alert"><p>{apiErrorText(item.text)}</p></article>
+  if (item.kind === 'user') return <article className="dev-message dev-message-user"><div>{item.text}</div>{item.status === 'running' && <small>Sending…</small>}{item.status === 'failed' && <small>Delivery not confirmed. Review the conversation before sending again.</small>}</article>
   if (['tool', 'plan', 'agent'].includes(item.kind)) {
     const Icon = item.activity === 'command' ? Terminal : item.activity === 'file' ? FilePenLine : item.activity === 'search' ? Search : item.kind === 'plan' ? ListChecks : Wrench
     const title = item.title || (item.kind === 'agent' ? 'Agent task' : item.kind === 'plan' ? 'Plan' : item.text.trim().split('\n')[0]?.slice(0, 100) || 'Tool')
     return <details className="dev-tool" data-status={item.status}><summary><Icon size={15} /><span className="dev-tool-title">{title}</span><span className="dev-tool-status">{item.status === 'running' ? <><LoaderCircle size={13} className="spin" />Running</> : item.status === 'failed' ? <><CircleAlert size={13} />Failed</> : <><Check size={13} />Done</>}</span><ChevronRight size={13} className="dev-tool-chevron" /></summary><pre>{item.text.trim() || 'No additional details reported.'}</pre></details>
   }
-  return <article className={`dev-message dev-message-${item.kind}`}><div>{item.kind === 'user' ? item.text : renderMarkdown(item.text, (text, language, key) => <Suspense key={key} fallback={<pre><code>{text}</code></pre>}><DeveloperCode text={text} language={language} /></Suspense>, url => { setLinkError(''); void api.devOpenLink(url).catch(error => setLinkError(apiErrorText(error.message))) })}</div>{linkError && <p role="alert">{linkError}</p>}</article>
+  return <article className={`dev-message dev-message-${item.kind}`}><div>{renderMarkdown(item.text, (text, language, key) => <Suspense key={key} fallback={<pre><code>{text}</code></pre>}><DeveloperCode text={text} language={language} /></Suspense>, url => { setLinkError(''); void api.devOpenLink(url).catch(error => setLinkError(apiErrorText(error.message))) })}</div>{linkError && <p role="alert">{linkError}</p>}</article>
 })
 
 export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocus, onCreated, onClose, onChoose }: {
@@ -38,14 +39,12 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   const [prompt, setPrompt] = useState(''), [visible, setVisible] = useState(100), [git, setGit] = useState<DevGitState | null>(null), [reviewPath, setReviewPath] = useState('')
   const [dismissedSkills, setDismissedSkills] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
-  const [files, setFiles] = useState(false)
-  const [consoleOpen, setConsoleOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>([]), [commit, setCommit] = useState('')
   const log = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), follow = useRef(true), request = useRef(0), gate = useRef(false)
   const draftKey = `engram.dev.draft.${id ?? `${repo?.id ?? 'empty'}.${slot}`}`
   useEffect(() => {
     const at = ++request.current
-    setLoading(!!id); setTask(null); setError(''); setGit(null); setReviewPath(''); setVisible(100); setFiles(false); setConsoleOpen(false); follow.current = true
+    setLoading(!!id); setTask(null); setError(''); setGit(null); setReviewPath(''); setVisible(100); follow.current = true
     try { setPrompt(sessionStorage.getItem(draftKey) ?? '') } catch { setPrompt('') }
     if (!id) { setAccess({ mode: 'review', isolate: false, confirmed: false }); return }
     let pending: DevUpdate[] | null = []
@@ -73,15 +72,15 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   }
   const chosenModel: ModelSelection = task ? { engine: task.provider, model: task.model, effort: task.effort } : model
   const chosenAccess: AccessSelection = task ? { mode: task.mode, isolate: !!task.branch, confirmed: task.mode === 'full-access' } : access
-  const send = () => action(async () => {
-    if (!prompt.trim() || !repo || running) return
+  const send = (steer = false) => action(async () => {
+    if (!prompt.trim() || !repo) return
     let current = task
     if (!current) {
       current = await api.devCreate({ repoId: repo.id, provider: model.engine, model: model.model, effort: model.effort, mode: access.mode, isolate: access.isolate || access.mode === 'auto-edit', fullAccessConfirmed: access.confirmed })
       setTask(current); onCreated(current)
     }
     const text = prompt.trim(); write(''); follow.current = true
-    try { await api.devSend(current.id, text) } catch (error) { write(text); throw error }
+    try { if (running) await api.devFollowup(current.id, text, steer ? 'steer' : 'queue'); else await api.devSend(current.id, text) } catch (error) { write(text); throw error }
   })
   const changeModel = async (value: ModelSelection) => {
     if (running || gate.current) throw new Error('Finish or stop the task before changing its model.')
@@ -101,21 +100,22 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
       {running && <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" />{task?.state === 'waiting' ? 'Waiting for your response' : task?.state === 'stopping' ? 'Stopping the runtime…' : task?.state === 'starting' ? 'Connecting…' : 'Working…'}</p>}
     </div>
     <div className="dev-composer">
+      {task && <DeveloperQueue sessionId={task.id} messages={task.outbox ?? []} />}
       {repo && !running && !busy && /^\/[^\s]*$/.test(prompt) && dismissedSkills !== prompt && <DeveloperSkills session={task?.id} repoId={repo.id} provider={chosenModel.engine} query={prompt.slice(1)} input={input} onSelect={value => { write(value); input.current?.focus() }} onDismiss={() => setDismissedSkills(prompt)} />}
-      <textarea ref={input} rows={1} aria-label="Development message" placeholder="Ask about the code, or describe a change…" value={prompt} disabled={running || busy || loading || !repo} onChange={event => write(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!running && !loading) void send() } }} />
+      <textarea ref={input} rows={1} aria-label="Development message" placeholder={running ? 'Add a follow-up…' : 'Ask about the code, or describe a change…'} value={prompt} disabled={busy || loading || !repo} onChange={event => write(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!loading) void send(running && task?.provider === 'codex' && event.ctrlKey) } }} />
       <div className="dev-composer-toolbar"><div className="dev-composer-tools">
-        <DeveloperPopover label="Session options" trigger={<Ellipsis size={17} />}>{close => <><p className="dev-context-path"><Folder size={14} />{task?.cwd ?? repo?.path ?? 'No folder selected'}{chosenAccess.isolate && ' · Separate worktree'}</p><button className="dev-menu-row" disabled={!repo} onClick={() => { close(); setFiles(true) }}><Folder size={15} />Project files</button><button className="dev-menu-row" disabled={!repo} onClick={() => { close(); setConsoleOpen(true) }}><Terminal size={15} />Command console</button><button className="dev-menu-row" onClick={() => { close(); window.dispatchEvent(new Event('engram:open-brain-setup')) }}><Settings size={15} />AI settings</button></>}</DeveloperPopover>
+        <DeveloperPopover label="Session options" trigger={<Ellipsis size={17} />}>{close => <><p className="dev-context-path"><Folder size={14} />{task?.cwd ?? repo?.path ?? 'No folder selected'}{chosenAccess.isolate && ' · Separate worktree'}</p><button className="dev-menu-row" onClick={() => { close(); window.dispatchEvent(new Event('engram:open-brain-setup')) }}><Settings size={15} />AI settings</button></>}</DeveloperPopover>
         <DeveloperAccess value={chosenAccess} task={task} disabled={running || busy || loading} extensions={state.preferences.loadProjectSettings} onChange={async value => { if (task) setTask(await api.devConfigure(task.id, { model: task.model, effort: task.effort, mode: value.mode, fullAccessConfirmed: value.confirmed })); else setAccess(value) }} />
       </div><fieldset className="dev-model-controls" disabled={running || busy || loading}><ModelPicker controlled={{ value: chosenModel, accountProfile: task ? task.accountProfile ?? 'system' : undefined, disabled: running || busy || loading, onChange: changeModel }} /></fieldset>
+      {running && prompt.trim() && <>{task?.provider === 'codex' && task.state === 'running' && <button className="dev-control" title="Add to the current turn (Ctrl+Enter)" disabled={busy || stopping} onClick={() => void send(true)}>Steer</button>}<button className="dev-control" aria-label="Queue development message" title="Send after this turn" disabled={busy || stopping} onClick={() => void send()}><ArrowUp size={16} /></button></>}
       <button className="dev-send" disabled={stopping || loading || (!running && (busy || !prompt.trim() || !repo))} aria-label={running ? 'Stop development task' : 'Send development message'} onClick={() => void (running ? stop() : send())}>{stopping || (busy && !running) ? <LoaderCircle size={17} className="spin" /> : running ? <Square size={16} /> : <ArrowUp size={18} />}</button></div>
     </div>
-    {files && repo && <Suspense fallback={<p role="status">Opening project files…</p>}><DeveloperFiles workspace={{ repoId: repo.id, sessionId: task?.id }} locked={running || busy} onClose={() => setFiles(false)} onAttach={text => { write(`${prompt}${prompt ? '\n\n' : ''}${text}`); input.current?.focus() }} /></Suspense>}
-    {consoleOpen && repo && <Suspense fallback={<p role="status">Opening command console…</p>}><DeveloperConsole workspace={{ repoId: repo.id, sessionId: task?.id }} locked={running || busy} onClose={() => setConsoleOpen(false)} /></Suspense>}
-    {git && task && <aside className="dev-review" aria-label="Working tree changes"><header><strong>Working tree</strong><button className="dev-control" aria-label="Close changes" onClick={() => setGit(null)}><X size={16} /></button></header><small>{git.branch}</small>
-      <div className="dev-actions"><button className="secondary" disabled={busy} onClick={() => void action(async () => { setGit(await api.devGit(task.id)); setReviewPath('') })}>Refresh</button>{[true, false].map(staged => <button key={String(staged)} className="secondary" disabled={busy || running || !selected.length || !git.fingerprint} onClick={() => void action(async () => setGit(await api.devStage(task.id, selected, staged, git.fingerprint!)))}>{staged ? 'Stage selected' : 'Unstage selected'}</button>)}</div>
-      {git.files.map(file => <div key={file.path} className="dev-file-row"><input aria-label={`Include ${file.path} in commit`} type="checkbox" checked={selected.includes(file.path)} onChange={event => setSelected(current => event.target.checked ? [...current, file.path] : current.filter(path => path !== file.path))} /><code title="Index / working tree status">{file.status}</code><button onClick={() => setReviewPath(file.path)}>{file.previousPath ? `${file.previousPath} → ` : ''}{file.path}</button></div>)}
-      {reviewPath ? <DeveloperFileReview key={`${task.id}-${reviewPath}`} sessionId={task.id} path={reviewPath} locked={running} onChanged={() => { void api.devGit(task.id).then(setGit).catch(error => setError(error.message)) }} /> : <details open><summary>Tracked changes{git.truncated ? ' (truncated)' : ''}</summary><pre>{git.diff || 'No tracked text changes. Select a file above to review it.'}</pre></details>}
-      <input aria-label="Commit message" placeholder="Commit message" value={commit} onChange={event => setCommit(event.target.value)} /><button className="primary" disabled={busy || running || !selected.length || !commit.trim()} onClick={() => void action(async () => { await api.devCommit(task.id, selected, commit); setGit(await api.devGit(task.id)); setSelected([]); setCommit(''); setReviewPath('') })}>Commit selected files</button>
+    {git && task && <aside className="dev-review" aria-label="Working tree changes"><header><strong>{git.scope === 'task' ? 'Task changes' : 'Working tree'}</strong><button className="dev-control" aria-label="Close changes" onClick={() => setGit(null)}><X size={16} /></button></header><small>{git.branch}</small>
+      <div className="dev-actions"><button className="secondary" disabled={busy} onClick={() => void action(async () => { setGit(await api.devGit(task.id)); setReviewPath('') })}>Refresh</button>{!git.scope && [true, false].map(staged => <button key={String(staged)} className="secondary" disabled={busy || running || !selected.length || !git.fingerprint} onClick={() => void action(async () => setGit(await api.devStage(task.id, selected, staged, git.fingerprint!)))}>{staged ? 'Stage selected' : 'Unstage selected'}</button>)}</div>
+      {git.warning && <p className="setting-hint">{git.warning}</p>}{git.truncated && <p className="setting-hint">Preview limited: sensitive, binary, oversized or excluded files are not covered by automatic discard.</p>}
+      {git.files.map(file => <div key={file.path} className="dev-file-row">{!git.scope && <input aria-label={`Include ${file.path} in commit`} type="checkbox" checked={selected.includes(file.path)} onChange={event => setSelected(current => event.target.checked ? [...current, file.path] : current.filter(path => path !== file.path))} />}<code title="Index / working tree status">{file.status}</code><button onClick={() => setReviewPath(file.path)}>{file.previousPath ? `${file.previousPath} → ` : ''}{file.path}</button></div>)}
+      {reviewPath ? <DeveloperFileReview key={`${task.id}-${reviewPath}`} sessionId={task.id} path={reviewPath} locked={running} onChanged={() => { void api.devGit(task.id).then(setGit).catch(error => setError(error.message)) }} /> : git.scope === 'task' ? <p>{git.files.length ? 'Select a file to review its changes.' : 'No reviewable text changes since this task started.'}</p> : <details open><summary>Tracked changes{git.truncated ? ' (truncated)' : ''}</summary><pre>{git.diff || 'No tracked text changes. Select a file above to review it.'}</pre></details>}
+      {!git.scope && <><input aria-label="Commit message" placeholder="Commit message" value={commit} onChange={event => setCommit(event.target.value)} /><button className="primary" disabled={busy || running || !selected.length || !commit.trim()} onClick={() => void action(async () => { await api.devCommit(task.id, selected, commit); setGit(await api.devGit(task.id)); setSelected([]); setCommit(''); setReviewPath('') })}>Commit selected files</button></>}
       <button className="secondary" disabled={busy || running} onClick={() => { write('Review the current branch and help prepare a pull request for the committed changes. Explain what will be pushed and request approval before publishing. Do not include unrelated changes.'); setGit(null); input.current?.focus() }}>Ask to prepare a pull request</button>
     </aside>}
   </section>

@@ -22,6 +22,27 @@ function setup(mode: DevSession['mode'] = 'review') {
   return { driver, gate, session, updates, approvals: () => approvals }
 }
 
+it('steers only the identified active turn and ignores stale completion and approval events', async () => {
+  const test = setup()
+  await test.driver.start()
+  await expect(test.driver.steer('Too early')).rejects.toThrow('active turn')
+  await test.driver.send('Start')
+  await expect(test.driver.steer('Belongs to an earlier turn', 'old')).rejects.toThrow('active turn')
+  await test.driver.steer('Focus on tests')
+  expect(fake.calls.at(-1)).toMatchObject({ method: 'turn/steer', params: { threadId: 'owned', expectedTurnId: 'turn', input: [{ type: 'text', text: 'Focus on tests' }] } })
+  fake.notify('turn/completed', { threadId: 'owned', turn: { id: 'old', status: 'completed' } })
+  expect(test.updates.finished).not.toHaveBeenCalled()
+  await expect(fake.request('item/commandExecution/requestApproval', { threadId: 'owned', turnId: 'old', command: 'wrong turn' })).rejects.toThrow('active turn')
+  fake.notify('turn/completed', { threadId: 'owned', turn: { id: 'turn', status: 'completed' } })
+  fake.notify('turn/completed', { threadId: 'owned', turn: { id: 'turn', status: 'completed' } })
+  expect(test.updates.finished).toHaveBeenCalledTimes(1)
+  fake.notify('turn/started', { threadId: 'owned', turn: { id: 'turn' } })
+  fake.notify('item/agentMessage/delta', { threadId: 'owned', turnId: 'turn', itemId: 'late', delta: 'Stale' })
+  expect(test.updates.item).not.toHaveBeenCalled()
+  await expect(test.driver.steer('Too late')).rejects.toThrow('active turn')
+  await test.driver.stop()
+})
+
 it('resumes without a full history response and retains command details on completion', async () => {
   const test = setup()
   test.session.runtimeId = 'existing'

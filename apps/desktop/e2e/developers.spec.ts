@@ -3,8 +3,9 @@ import { initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { DevelopersApi, DevUpdate } from '../src/shared/developers.js'
-import { filesFixture, consoleFixture } from './developer-workspace-fixture.js'
+import type { DevelopersApi } from '../src/shared/developers.js'
+import { renderTaskFixture } from './developer-task-fixture.js'
+import { queueFixture } from './developer-queue-fixture.js'
 
 let app: ElectronApplication, page: Page, project: string
 test.describe.configure({ mode: 'serial' })
@@ -25,66 +26,6 @@ test.beforeAll(async () => {
   await page.setViewportSize({ width: 1360, height: 900 })
 })
 
-async function renderTaskFixture() {
-  await page.setViewportSize({ width: 1360, height: 900 })
-  await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
-  const id = await page.evaluate(async () => {
-    const api = (window as unknown as { engram: DevelopersApi }).engram, state = await api.devState()
-    return (await api.devCreate({ repoId: state.repos[0]!.id, provider: 'codex', model: '', mode: 'review', isolate: false })).id
-  })
-  await page.locator('.dev-task-link').filter({ hasText: 'New task' }).click()
-  await expect(page.getByRole('textbox', { name: 'Development message' })).toBeEnabled()
-  const update: DevUpdate = { id, state: 'waiting', runtimeId: 'fixture', usage: { input: 1200, output: 240 }, items: [
-    { id: 'request', kind: 'user', text: 'Fix the off-by-one error and add a focused check.' },
-    { id: 'command', kind: 'tool', title: 'Command', activity: 'command', text: 'pnpm test\nAll checks passed', status: 'done' },
-    { id: 'edit', kind: 'tool', title: 'Edit · example.ts', activity: 'file', text: 'example.ts\n- return items.slice(0, limit + 1)\n+ return items.slice(0, limit)', status: 'running' },
-    { id: 'response', kind: 'assistant', text: 'The boundary includes one extra item. The proposed change is:\n\n```ts\nreturn items.slice(0, limit)\n```\n\n| Check | Result |\n| --- | --- |\n| Boundary | Fixed |\n\n1. Preserve the public API.\n2. Add a regression check.' },
-  ], pending: [{ id: 'question', kind: 'question', title: 'Your input is needed', detail: '', questions: [{ id: 'scope', text: 'How should a zero limit behave?', options: ['Return an empty list', 'Use the default limit'] }] }] }
-  await app.evaluate(({ BrowserWindow }, update) => { BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update }) }, update)
-  await expect(page.locator('.dev-message pre code')).toHaveText('return items.slice(0, limit)')
-  await expect(page.locator('.dev-message table')).toContainText('Boundary')
-  await expect(page.locator('.dev-message ol > li')).toHaveCount(2)
-  const reading = await page.locator('.dev-log').evaluate(log => {
-    const style = getComputedStyle(log), composer = log.parentElement!.querySelector('.dev-composer')!.getBoundingClientRect()
-    return { width: log.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), composer: composer.width, overflow: log.scrollWidth > log.clientWidth }
-  })
-  expect(reading.width).toBeLessThanOrEqual(740)
-  expect(reading.composer - reading.width).toBeGreaterThanOrEqual(32)
-  expect(reading.overflow).toBe(false)
-  await expect(page.locator('.dev-tool').first()).toContainText('Done')
-  await page.locator('.dev-tool').first().locator('summary').click()
-  await expect(page.locator('.dev-tool').first().locator('pre')).toBeVisible()
-  await expect(page.locator('.dev-tool').last()).toContainText('Running')
-  await page.getByLabel('Return an empty list', { exact: true }).check()
-  await page.getByRole('button', { name: 'Session options', exact: true }).click()
-  await expect(page.getByText('Usage and limits', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Project files', exact: true })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await screenshot('developers-task-light.png')
-  await page.evaluate(() => { document.documentElement.dataset['theme'] = 'dark' })
-  await screenshot('developers-task-dark.png')
-  await page.evaluate(() => { document.documentElement.dataset['theme'] = 'light' })
-  await app.evaluate(({ BrowserWindow, ipcMain }, id) => {
-    BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update: { id, state: 'idle', items: [], pending: [], usage: {} } })
-    ipcMain.removeHandler('devFork')
-    ipcMain.handle('devFork', (_event, _id, isolate) => { if (isolate !== true) throw new Error('Wrong branch option'); throw new Error('A separate worktree needs a Git repository with at least one commit. Choose “Same folder” to branch only the conversation. No files were changed.') })
-  }, id)
-  await page.getByRole('button', { name: 'Branch session', exact: true }).click()
-  await expect(page.getByRole('button', { name: /Same folder/ })).toBeVisible()
-  await screenshot('developers-branch-options.png')
-  await page.getByRole('button', { name: /Separate worktree.*Isolated files/ }).click()
-  await expect(page.getByRole('alert')).toContainText('needs a Git repository')
-  await expect(page.getByRole('alert')).not.toContainText('Error invoking remote method')
-  await page.getByRole('button', { name: 'Dismiss error' }).click()
-  await page.setViewportSize({ width: 950, height: 900 })
-  const narrow = await page.locator('.dev-log').evaluate(log => {
-    const style = getComputedStyle(log), composer = log.parentElement!.querySelector('.dev-composer')!.getBoundingClientRect()
-    return { width: log.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), composer: composer.width, overflow: log.scrollWidth > log.clientWidth }
-  })
-  expect(narrow.composer - narrow.width).toBeGreaterThanOrEqual(32)
-  expect(narrow.overflow).toBe(false)
-  await screenshot('developers-reading-narrow.png')
-}
 test.afterAll(async () => { await app?.close() })
 async function screenshot(file: string) {
   await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
@@ -241,7 +182,7 @@ async function historyFixture() {
   expect(after.codexModel).toBe(before.codexModel)
   expect(after.codexEffort).toBe(before.codexEffort)
 }
-test('renders structured questions, code and task usage in light and dark layouts', renderTaskFixture)
+test('renders structured questions, code and task usage in light and dark layouts', () => renderTaskFixture({ app, page, screenshot }))
 
 test('project sessions split independently and drafts survive switching modes', async () => {
   await page.setViewportSize({ width: 1360, height: 900 })
@@ -307,8 +248,14 @@ test('switches providers from the same task composer and retains its folder and 
 
 test('previous-session preview continues with visible history and task-scoped model controls', historyFixture)
 
-test('project files preserve drafts, reject external edit conflicts and attach selected context', () => filesFixture({ app, page, project, screenshot }))
-test('command console executes, retains output and cancels its owned process', () => consoleFixture({ app, page, project, screenshot }))
+test('session options expose agent settings without IDE editing or a manual console', async () => {
+  await page.locator('.dev-pane').first().getByRole('button', { name: 'Session options', exact: true }).click()
+  const options = page.getByRole('dialog', { name: 'Session options', exact: true })
+  await expect(options.getByRole('button', { name: 'AI settings', exact: true })).toBeVisible()
+  await expect(options.getByRole('button', { name: /Project files|Command console/ })).toHaveCount(0)
+  expect(await page.evaluate(() => ['devSaveFile', 'devCreateFile', 'devRunCommand', 'devLanguage'].some(name => name in window.engram))).toBe(false)
+  await page.keyboard.press('Escape')
+})
 test('preloads both connected accounts without selecting a provider or starting a task', async () => {
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const engines = [{ id: 'claude', installed: true, loggedIn: true }, { id: 'codex', installed: true, loggedIn: true }]
@@ -376,6 +323,8 @@ test('connected accounts switch without restarting and keep per-account limits',
   await page.getByRole('dialog', { name: 'Account profiles' }).getByRole('region', { name: 'System account', exact: true }).getByRole('button', { name: 'Use account', exact: true }).click()
   await page.keyboard.press('Escape')
 })
+
+test('keeps follow-ups editable while working and distinguishes Codex steering from Claude queues', () => queueFixture({ app, page, screenshot }))
 
 test('Stop remains available while an existing task is still connecting', async () => {
   await page.getByRole('textbox', { name: 'Development message' }).fill('Inspect without changing files')

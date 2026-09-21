@@ -1,5 +1,8 @@
 # Developers workspace delivery
 
+Historical 0.8.8 delivery record. Direct IDE features described below are removed
+in 0.8.10; see [the agent-workspace delivery](developers-agent-workspace.md).
+
 Scope: the requested developer workspace release after 0.8.7. This is a delivery checklist, not a claim of feature parity. Preserve ordinary chat and filing, account credentials and external running sessions. No automatic replay of possibly executed commands.
 
 ## Delivery gates
