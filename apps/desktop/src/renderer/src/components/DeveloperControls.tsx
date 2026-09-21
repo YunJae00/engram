@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Folder, GitBranch, ShieldCheck, ShieldOff, X } from 'lucide-react'
+import { Check, Folder, GitBranch, LoaderCircle, ShieldCheck, ShieldOff, X } from 'lucide-react'
 import type { DevMode, DevSession } from '../../../shared/developers.js'
 
 export function DeveloperPopover({ label, trigger, disabled, children }: { label: string; trigger: ReactNode; disabled?: boolean; children(close: () => void): ReactNode }) {
@@ -42,7 +42,7 @@ function AccessForm({ value, task, extensions, onChange, close }: { value: Acces
   </label>)}</div>
     {!task ? <fieldset className="dev-location"><legend>Working folder</legend><label><input type="radio" name={`${group}-folder`} checked={!next.isolate} disabled={busy || next.mode === 'auto-edit'} onChange={() => setNext(current => ({ ...current, isolate: false }))} /><Folder size={14} />Current folder</label><label><input type="radio" name={`${group}-folder`} checked={next.isolate} disabled={busy || next.mode === 'auto-edit'} onChange={() => setNext(current => ({ ...current, isolate: true }))} /><GitBranch size={14} />Separate worktree</label><p>A worktree separates file changes. It is not a security sandbox.</p></fieldset> : <p className="setting-hint">{task.branch ? 'This session uses a separate worktree.' : 'This session uses your current folder. Branch the session for automatic edits.'}</p>}
     {next.mode === 'full-access' && <label className="dev-full-confirm"><input type="checkbox" checked={next.confirmed} disabled={busy} onChange={event => setNext(current => ({ ...current, confirmed: event.target.checked }))} /><span>I allow commands and file changes without approval.{extensions && ' Installed hooks and project extensions are also enabled.'}</span></label>}
-    {error && <p role="alert">{error}</p>}<button className="primary dev-popover-apply" disabled={busy || (next.mode === 'full-access' && !next.confirmed)} onClick={() => { setBusy(true); void onChange(next).then(close).catch(error => setError(error.message)).finally(() => setBusy(false)) }}>{busy ? 'Applying…' : 'Apply'}</button>
+    {error && <p role="alert">{error}</p>}<button className="primary dev-popover-apply" aria-busy={busy} disabled={busy || (next.mode === 'full-access' && !next.confirmed)} onClick={() => { setBusy(true); void onChange(next).then(close).catch(error => setError(error.message)).finally(() => setBusy(false)) }}>{busy ? <><LoaderCircle size={14} className="spin" aria-hidden />Applying…</> : 'Apply'}</button>
   </>
 }
 export function DeveloperAccess({ value, task, disabled, extensions, onChange }: { value: AccessSelection; task: DevSession | null; disabled: boolean; extensions: boolean; onChange(value: AccessSelection): Promise<void> }) {

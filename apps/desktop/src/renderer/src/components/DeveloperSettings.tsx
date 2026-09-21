@@ -23,18 +23,18 @@ export function DeveloperSettings() {
   if (!state) return <section><h3>Development tasks</h3>{error ? <p role="alert">{error}</p> : <p role="status"><LoaderCircle size={16} className="spin" /> Loading developer settings…</p>}</section>
   return <>
     <h3>Development tasks</h3>
+    {saving && <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" aria-hidden />Saving…</p>}
     {error && <p role="alert">{error}</p>}
     <div className="settings-group">
       <label className="setting-row"><span>Enable development workspace</span><input className="switch" type="checkbox" checked={state.preferences.enabled} disabled={saving} onChange={event => void patch({ enabled: event.target.checked })} /></label>
-      <p className="setting-hint">Turning this off stops development tasks. Files and task history are kept.</p>
+      <p className="setting-hint">Turning off stops tasks; files and history stay.</p>
     </div>
     <div className="settings-group">
-      <h3>Coding activity in Cosmos</h3>
-      <label className="setting-row"><span>Remember coding sessions</span><input data-testid="setting-session-watch" className="switch" type="checkbox" checked={collect} disabled={saving} onChange={event => { setSaving(true); void api.sessionWatchSet(event.target.checked).then(setCollect).catch(error => setError(error.message)).finally(() => setSaving(false)) }} /></label>
-      <p className="setting-hint">Save coding activity to memory. Off by default; not required to run tasks.</p>
+      <label className="setting-row"><span>Remember coding sessions in Cosmos</span><input data-testid="setting-session-watch" className="switch" type="checkbox" checked={collect} disabled={saving} onChange={event => { setSaving(true); void api.sessionWatchSet(event.target.checked).then(setCollect).catch(error => setError(error.message)).finally(() => setSaving(false)) }} /></label>
+      <p className="setting-hint">Saves session summaries to memory when enabled.</p>
     </div>
     <ExternalConnections />
-    <div className="settings-group"><h3>Provider extensions</h3><label className="setting-row"><span>Load installed hooks and project configuration in full-access tasks</span><input className="switch" type="checkbox" checked={state.preferences.loadProjectSettings} disabled={saving} onChange={event => void patch({ loadProjectSettings: event.target.checked })} /></label><p className="setting-hint">Only newly created, explicitly confirmed full-access tasks use this setting. Installed hooks, skills and MCP servers can run commands outside Engram’s approval prompts. Configure them with your provider’s own configuration files. Review, plan and automatic-edit tasks do not enable project hooks. Provider account-level connections may still be available.</p></div>
-    <div className="settings-group"><h3>Saved edit decisions</h3><p className="setting-hint">Exact tool input and starting content only. Shell commands and sensitive operations still ask in review and automatic-edit modes.</p>{rules.length ? rules.map(rule => <div className="setting-row" key={rule.id}><span>{state.repos.find(repo => repo.id === rule.repoId)?.name ?? 'Removed repository'} · {rule.tool} · {rule.decision}</span><button className="secondary" onClick={() => { void api.devRemoveRule(rule.id).then(() => setRules(current => current.filter(value => value.id !== rule.id))).catch(error => setError(error.message)) }}>Remove</button></div>) : <p className="setting-hint">No saved decisions.</p>}</div>
+    <div className="settings-group"><label className="setting-row"><span>Provider hooks &amp; project settings</span><input className="switch" type="checkbox" checked={state.preferences.loadProjectSettings} disabled={saving} onChange={event => void patch({ loadProjectSettings: event.target.checked })} /></label><p className="setting-hint">New full-access tasks only. Hooks, skills and MCP servers can run commands without Engram approval. Account-level connections are managed by your provider.</p></div>
+    {rules.length > 0 && <div className="settings-group"><h3>Saved edit decisions</h3><p className="setting-hint">Applies only to matching inputs and content. Commands and sensitive actions still ask outside full access.</p>{rules.map(rule => <div className="setting-row" key={rule.id}><span>{state.repos.find(repo => repo.id === rule.repoId)?.name ?? 'Removed repository'} · {rule.tool} · {rule.decision}</span><button className="secondary" onClick={() => { void api.devRemoveRule(rule.id).then(() => setRules(current => current.filter(value => value.id !== rule.id))).catch(error => setError(error.message)) }}>Remove</button></div>)}</div>}
   </>
 }

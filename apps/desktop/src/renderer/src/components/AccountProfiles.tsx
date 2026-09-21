@@ -39,8 +39,8 @@ function ProfileDialog({ provider, sessionProfile, close }: { provider: AccountP
   const rows = [{ id: 'system', name: 'System account' }, ...(profiles?.profiles.filter(row => row.provider === provider) ?? [])]
   return createPortal(<dialog className="account-profile-dialog" ref={dialog} aria-label="Account profiles" onCancel={event => { event.preventDefault(); if (!busy) close() }}>
     <header><h2><ProviderIcon provider={provider} size={24} />{provider === 'claude' ? 'Claude' : 'ChatGPT'} accounts</h2><button className="dev-control" aria-label="Close accounts" disabled={busy} onClick={close}><X size={17} /></button></header>
-    <p>Choose an account. No restart or sign-out needed.</p>
     {sessionProfile && <p className="setting-hint">Running sessions keep their account. Selection applies to new tasks.</p>}
+    {busy && <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" aria-hidden />Updating account…</p>}
     <div className="account-profile-list">{rows.map(row => {
       const state = states.find(value => value.provider === provider && value.id === row.id)
       const login = logins.find(value => value.id === provider && (value.profile ?? 'system') === row.id)

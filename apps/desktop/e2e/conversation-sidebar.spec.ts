@@ -135,12 +135,14 @@ test('conversation rows show persisted previews, timestamps and avatars after re
 
 test('Engram navigation is inside its menu and the menu stays within the window', async () => {
   await showSidebar()
-  for (const activity of ['bots', 'sky', 'list', 'mission']) await expect(page.getByTestId(`activity-${activity}`)).toHaveCount(0)
+  for (const activity of ['sky', 'list', 'mission']) await expect(page.getByTestId(`activity-${activity}`)).toHaveCount(0)
+  await expect(page.getByTestId('activity-bots')).toBeVisible()
   await expect(page.getByTestId('app-sidebar').locator('.sidebar-nav-row')).toHaveCount(0)
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
   await expect(menu).toBeVisible()
-  for (const activity of ['bots', 'sky', 'list', 'routines']) await expect(menu.getByTestId(`activity-${activity}`)).toBeVisible()
+  for (const activity of ['sky', 'list', 'routines']) await expect(menu.getByTestId(`activity-${activity}`)).toBeVisible()
+  await expect(menu.getByTestId('activity-bots')).toHaveCount(0)
   await expect(menu.getByTestId('activity-mission')).toHaveCount(0)
   expect(await menu.evaluate(node => {
     const box = node.getBoundingClientRect()

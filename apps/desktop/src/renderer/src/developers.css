@@ -146,8 +146,10 @@
 .dev-composer-toolbar { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
 .dev-composer-toolbar .dev-control { height: 32px; }
 .dev-composer-tools { flex-shrink: 0; }
-.dev-context-path { display: flex; align-items: baseline; gap: 6px; color: var(--fg-dim); overflow-wrap: anywhere; }
-.dev-context-path svg { flex-shrink: 0; }
+.dev-folder-context { min-width: 0; max-width: 100%; }
+.dev-folder-context > svg, .dev-folder-context > .dev-folder-badge { flex: none; }
+.dev-folder-context > span:first-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-folder-badge { border: 1px solid var(--border-soft); border-radius: 4px; padding: 1px 5px; font-size: var(--fs-micro); }
 .dev-model-controls { display: flex; border: 0; margin: 0 0 0 auto; padding: 0; min-width: 0; }
 .dev-model-controls .provider-picker-label { max-width: 160px; }
 .dev-composer .dev-send { margin-left: 4px; }

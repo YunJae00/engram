@@ -55,7 +55,7 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   await expect(page.locator('.dev-header')).toHaveCSS('box-shadow', 'none')
   await expect(page.locator('.dev-header')).toHaveCSS('border-bottom-width', '0px')
   await expect(page.getByRole('button', { name: 'Developers mode', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: 'Chat mode', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('button', { name: 'Comets mode', exact: true })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByRole('button', { name: 'Skills', exact: true })).toHaveCount(0)
   await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('devProjectCommands'); ipcMain.handle('devProjectCommands', () => [{ name: 'review', description: 'Review a change', prompt: '$review ' }, { name: 'test', description: 'Run focused checks', prompt: '$test ' }]) })
   const composer = page.getByRole('textbox', { name: 'Development message' })
@@ -104,12 +104,11 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   expect(workspace?.width).toBe(canvas?.width)
   await screenshot('developers-workspace.png')
   const composerAlignment = await page.locator('.dev-composer').evaluate(composer => {
-    const send = composer.querySelector('.dev-send')!.getBoundingClientRect(), options = composer.querySelector('[aria-label="Session options"]')!.getBoundingClientRect()
+    const send = composer.querySelector('.dev-send')!.getBoundingClientRect()
     const access = composer.querySelector('[aria-label="Task access"]')!.getBoundingClientRect()
-    return { right: Math.abs(send.y + send.height / 2 - options.y - options.height / 2), left: Math.abs(access.y + access.height / 2 - options.y - options.height / 2) }
+    return Math.abs(send.y + send.height / 2 - access.y - access.height / 2)
   })
-  expect(composerAlignment.right).toBeLessThan(2)
-  expect(composerAlignment.left).toBeLessThan(2)
+  expect(composerAlignment).toBeLessThan(2)
   await page.setViewportSize({ width: 600, height: 850 })
   await page.getByTestId('app-sidebar-close').click()
   await expect(page.getByRole('textbox', { name: 'Development message' })).toBeVisible()
@@ -122,7 +121,7 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   expect(Math.abs(titlebar.first - titlebar.second)).toBeLessThan(1)
   expect(titlebar.center).toBeLessThan(1)
   await page.getByTestId('app-sidebar-open').click()
-  await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
+  await page.getByRole('button', { name: 'Comets mode', exact: true }).click()
   await expect(page.getByTestId('developers-view')).toHaveCount(0)
 })
 
@@ -190,7 +189,7 @@ test('project sessions split independently and drafts survive switching modes', 
   const panes = page.locator('.dev-pane')
   await expect(panes).toHaveCount(2)
   await panes.nth(1).getByRole('textbox', { name: 'Development message' }).fill('Second pane draft')
-  await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
+  await page.getByRole('button', { name: 'Comets mode', exact: true }).click()
   await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
   await expect(panes.nth(1).getByRole('textbox', { name: 'Development message' })).toHaveValue('Second pane draft')
   await panes.nth(1).getByRole('button', { name: 'Choose conversation for this pane' }).click()
@@ -248,13 +247,10 @@ test('switches providers from the same task composer and retains its folder and 
 
 test('previous-session preview continues with visible history and task-scoped model controls', historyFixture)
 
-test('session options expose agent settings without IDE editing or a manual console', async () => {
-  await page.locator('.dev-pane').first().getByRole('button', { name: 'Session options', exact: true }).click()
-  const options = page.getByRole('dialog', { name: 'Session options', exact: true })
-  await expect(options.getByRole('button', { name: 'AI settings', exact: true })).toBeVisible()
-  await expect(options.getByRole('button', { name: /Project files|Command console/ })).toHaveCount(0)
+test('folder context stays visible without a redundant session menu or IDE controls', async () => {
+  await expect(page.locator('.dev-pane').first().locator('.dev-folder-context')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Session options', exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => ['devSaveFile', 'devCreateFile', 'devRunCommand', 'devLanguage'].some(name => name in window.engram))).toBe(false)
-  await page.keyboard.press('Escape')
 })
 test('preloads both connected accounts without selecting a provider or starting a task', async () => {
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
@@ -363,7 +359,7 @@ test('retains live updates arriving while a conversation snapshot is loading', a
       return snapshot
     })
   }, snapshot)
-  await page.getByRole('button', { name: 'Chat mode', exact: true }).click()
+  await page.getByRole('button', { name: 'Comets mode', exact: true }).click()
   await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
   await expect(page.locator('.dev-log').getByText('Completed while the conversation was loading', { exact: true })).toBeVisible()
 })

@@ -14,10 +14,17 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
 .settings-panel > .setting-hint { margin: 0; }
 .settings-panel .settings-group { padding: 0; }
 .settings-panel .settings-group-head { margin: 8px 0; }
+.settings-row-label { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.settings-row-label > svg { flex: none; color: var(--fg-dim); }
+.settings-row-label small { display: block; margin-top: 4px; font-size: var(--fs-small); color: var(--fg-dim); font-weight: 400; }
+.settings-panel .setting-row > .secondary { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 .settings-panel .computer-settings { padding-bottom: 16px; border-bottom: 1px solid var(--border-soft); }
 .settings-panel .settings-more { margin: 0; }
 .settings-panel .settings-fact { grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1.2fr); }
 .settings-panel .settings-fact-value { min-width: 0; overflow-wrap: anywhere; }
+.settings-fact-btn { display: inline-flex; align-items: center; gap: 6px; }
+.settings-fact-value > .spin { margin-right: 6px; vertical-align: middle; }
+.settings-fact-value > progress { display: block; width: 100%; margin-top: 8px; accent-color: var(--fg); }
 .engine-settings { display: grid; gap: 16px; }
 .engine-card { padding: 18px; border: 1px solid var(--border-soft); border-radius: var(--radius-m); display: grid; gap: 12px; min-width: 0; }
 .engine-card[data-selected='true'] { border-color: var(--border); }

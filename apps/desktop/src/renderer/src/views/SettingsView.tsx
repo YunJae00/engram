@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { FolderOpen, CloudUpload, ScrollText, LoaderCircle } from 'lucide-react'
 import type { AppSettingsDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
@@ -31,6 +32,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [ready, setReady] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
@@ -43,7 +45,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
       // What the updater already knows, shown without a click — a downloaded
       // update used to hide behind Check now.
       api.updateState().then(setUpdate),
-      api.semanticStatus().then(setSemantic),
+      api.semanticStatus().then(setSemantic).catch(() => setSemantic({ status: 'error', detail: 'Could not check status. Retrying…', model: '' })),
     ]
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
@@ -84,11 +86,15 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const patch = (p: Partial<AppSettingsDto>) => setSettings((current) => current ? { ...current, ...p } : current)
 
   const save = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       await api.settingsSet(settings)
     } catch (err) {
       showToast(t('toast.settingsFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
       return
+    } finally {
+      setSaving(false)
     }
     showToast(t('toast.settingsSaved'))
     onClose()
@@ -140,7 +146,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
             />
           </label>
         </div>
-        <p className="setting-hint">Records foreground app and window titles. Coding activity is managed in Workspace.</p>
+        <p className="setting-hint">Records foreground app names and window titles.</p>
         </section>
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
         <h2>AI &amp; accounts</h2>
@@ -149,24 +155,15 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <section className="settings-panel" hidden={section !== 'developers'} aria-label="Workspace"><h2>Workspace</h2>{section === 'developers' && <><ComputerSettings /><DeveloperSettings /></>}</section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         <div data-testid="settings-more">
-          <div className="settings-group-head">{t('settings.groupConnections')}</div>
-          <div className="setting-row column">
-            <span>{t('settings.watchTitle')}</span>
-            <div className="setting-hint">{t('settings.watchHint')}</div>
+          <div className="settings-group-head">Files &amp; backup</div>
+          <div className="setting-row" data-testid="setting-audit">
+            <span className="settings-row-label"><ScrollText size={18} aria-hidden /><span>{t('settings.auditTitle')}<small>Actions and approvals, saved locally.</small></span></span>
+            <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast('Could not open the activity log.'))}>
+              <FolderOpen size={15} aria-hidden />Open folder
+            </button>
           </div>
-          <div className="setting-row column" data-testid="setting-audit">
-            <span>{t('settings.auditTitle')}</span>
-            <div className="setting-hint">{t('settings.auditHint')}</div>
-            <div className="mcp-actions">
-              <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => undefined)}>
-                {t('settings.auditOpen')}
-              </button>
-            </div>
-          </div>
-          <div className="setting-row column">
-            <span>{t('settings.githubTitle')}</span>
-            <div className="setting-hint">{t('settings.githubHint')}</div>
-            <div className="mcp-actions">
+          <div className="setting-row">
+            <span className="settings-row-label"><CloudUpload size={18} aria-hidden /><span>{t('settings.githubTitle')}<small>Sync to your private repository.</small></span></span>
               <button
                 className="secondary"
                 data-testid="settings-github-backup"
@@ -175,9 +172,8 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
                   window.dispatchEvent(new Event('engram:open-github'))
                 }}
               >
-                {t('settings.githubButton')}
+                Set up
               </button>
-            </div>
           </div>
         </div>
         </section>
@@ -206,12 +202,12 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </div>
 
         <div className="dialog-actions">
-          {section === 'developers' ? <><span className="setting-hint">Changes apply immediately.</span><button className="primary" onClick={onClose}>Done</button></> : <>
+          {section === 'developers' ? <button className="primary" onClick={onClose}>Done</button> : <>
           <button className="secondary" onClick={onClose}>
             {t('settings.cancel')}
           </button>
-          <button className="primary" onClick={() => void save()}>
-            {t('settings.save')}
+          <button className="primary" disabled={saving} aria-busy={saving} onClick={() => void save()}>
+            {saving ? <><LoaderCircle size={14} className="spin" aria-hidden /> Saving…</> : t('settings.save')}
           </button>
           </>}
         </div>

@@ -1,4 +1,6 @@
 import type { SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
+import { useState } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 
@@ -19,12 +21,14 @@ export function SettingsStatus({
   onCheckingUpdate,
   onUpdate,
 }: SettingsStatusProps) {
+  const [installing, setInstalling] = useState(false)
   const checkForUpdate = () => {
+    if (checkingUpdate) return
     onCheckingUpdate(true)
     void api
       .updateCheck()
       .then(onUpdate)
-      .catch(() => {})
+      .catch(() => onUpdate({ state: 'error', message: 'Could not check for updates. Try again.', selfInstalls: false }))
       .finally(() => onCheckingUpdate(false))
   }
 
@@ -32,7 +36,8 @@ export function SettingsStatus({
     <div className="settings-facts">
       <div className="settings-fact" title={t('settings.semanticHint')}>
         <span className="settings-fact-key">{t('settings.semanticTitle')}</span>
-        <span className="settings-fact-value" data-testid="semantic-status">
+        <span className="settings-fact-value" data-testid="semantic-status" role="status" aria-busy={!semantic || ['loading', 'indexing'].includes(semantic.status)}>
+          {(!semantic || ['loading', 'indexing'].includes(semantic.status)) && <LoaderCircle size={14} className="spin" aria-hidden />}
           {semantic && semantic.status !== 'off' ? (
             <>
               {
@@ -47,7 +52,7 @@ export function SettingsStatus({
               <span className="settings-fact-sub">{semantic.model}</span>
             </>
           ) : (
-            t('settings.semanticIdle')
+            semantic ? t('settings.semanticIdle') : 'Checking…'
           )}
         </span>
       </div>
@@ -59,34 +64,29 @@ export function SettingsStatus({
       </div>
       <div className="settings-fact">
         <span className="settings-fact-key">{t('settings.updateKey')}</span>
-        <span className="settings-fact-value" data-testid="settings-update">
+        <span className="settings-fact-value" data-testid="settings-update" aria-busy={checkingUpdate || installing || update?.state === 'downloading'}>
           {update?.state === 'downloading' ? (
             <>
               {t('settings.updateDownloading', {
                 version: update.version ?? '',
                 percent: update.percent ?? 0,
               })}
-              <button
-                className="secondary settings-fact-btn"
-                data-testid="settings-update-refresh"
-                disabled={checkingUpdate}
-                onClick={checkForUpdate}
-              >
-                {t('settings.updateCheck')}
-              </button>
+              <progress max={100} value={update.percent} aria-label="Update download" />
             </>
           ) : update?.state === 'ready' || update?.state === 'available' ? (
             <>
               {t('settings.updateAvailable', { version: update.version ?? '' })}
               <button
                 className="secondary settings-fact-btn"
+                disabled={installing}
                 onClick={() => {
+                  setInstalling(true)
                   void api.updateInstall().then((result) => {
-                    if (!result.started) void api.updateCheck().then(onUpdate)
-                  })
+                    if (!result.started) return api.updateCheck().then(onUpdate)
+                  }).catch(() => onUpdate({ state: 'error', message: 'Could not open the update. Try again.', selfInstalls: false })).finally(() => setInstalling(false))
                 }}
               >
-                {update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}
+                {installing ? <><LoaderCircle size={14} className="spin" aria-hidden />Opening…</> : update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}
               </button>
             </>
           ) : (
@@ -106,7 +106,7 @@ export function SettingsStatus({
                 disabled={checkingUpdate}
                 onClick={checkForUpdate}
               >
-                {t('settings.updateCheck')}
+                {checkingUpdate && <LoaderCircle size={14} className="spin" aria-hidden />}{t('settings.updateCheck')}
               </button>
             </>
           )}

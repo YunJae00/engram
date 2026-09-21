@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type RefObject } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import type { DevCommand, DevProvider } from '../../../shared/developers.js'
 import { api, apiErrorText } from '../api.js'
 
@@ -28,6 +29,6 @@ export function DeveloperSkills({ session, repoId, provider, query, input, onSel
     return () => { node.removeEventListener('keydown', key); for (const attr of ['aria-controls', 'aria-expanded', 'aria-activedescendant']) node.removeAttribute(attr) }
   }, [input, id, index, matches, onSelect, onDismiss])
   return <div className="dev-skills" id={id} role="listbox" aria-label="Skills">
-    {error ? <p role="status">{error}</p> : !rows ? <p role="status">Loading skills…</p> : !matches.length ? <p role="status">No matching skills.</p> : matches.map((row, at) => <button id={`${id}-${at}`} key={row.name} role="option" aria-selected={index === at} onMouseDown={event => event.preventDefault()} onClick={() => onSelect(row.prompt)}><strong>/{row.name}</strong><small>{row.description}</small></button>)}
+    {error ? <p role="status">{error}</p> : !rows ? <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" aria-hidden />Loading skills…</p> : !matches.length ? <p role="status">No matching skills.</p> : matches.map((row, at) => <button id={`${id}-${at}`} key={row.name} role="option" aria-selected={index === at} onMouseDown={event => event.preventDefault()} onClick={() => onSelect(row.prompt)}><strong>/{row.name}</strong><small>{row.description}</small></button>)}
   </div>
 }

@@ -40,21 +40,20 @@ export function ExternalConnections() {
     finally { working.current = false; setBusy('') }
   }
   return <section className="external-connections" aria-label="External connections">
-    <h2>External connections</h2>
-    <p className="setting-hint">Use Engram’s tools from your preferred AI client. Keep Engram open while you work.</p>
+    <h3>Connect other AI apps</h3>
     <div className="external-access"><div><strong>Allow local connections</strong><small>Off again when Engram restarts</small></div><input aria-label="Allow local connections for this app session" type="checkbox" role="switch" checked={status?.enabled ?? false} disabled={!!busy || !status} onChange={event => { const enabled = event.target.checked; setStatus(value => value ? { ...value, enabled } : value); void act('toggle', async () => { try { setStatus(await api.mcpEnable(enabled)) } catch (cause) { setStatus(await api.mcpStatus()); throw cause } }) }} /></div>
-    <div className="external-session" role="status">{(!status || busy === 'toggle') && <LoaderCircle size={15} className="computer-spinner" aria-hidden />}{!status ? 'Checking connection…' : !status.enabled ? 'Off · Local connections are disabled' : status.active ? 'Working · An external request is in progress' : status.connected ? `${status.connected} live ${status.connected === 1 ? 'session' : 'sessions'}` : 'Ready · Waiting for a client to connect'}</div>
+    <div className="external-session" role="status">{(!status || busy === 'toggle') && <LoaderCircle size={15} className="computer-spinner" aria-hidden />}{!status ? 'Checking…' : !status.enabled ? 'Off' : status.active ? 'Working' : status.connected ? `${status.connected} live ${status.connected === 1 ? 'session' : 'sessions'}` : 'Ready to connect'}</div>
     <div className="external-client-list">{CLIENTS.map(({ id, name }) => {
       const state = clients.find(client => client.id === id)?.state
       const configured = state === 'configured'
       return <div className="external-client" key={id} data-testid={`external-client-${id}`}>
         <ProviderIcon provider={id === 'codex' ? 'codex' : 'claude'} size={22} />
-        <div className="external-client-copy"><strong>{name}</strong><small role={clientMessages[id] && !configured ? 'alert' : undefined}>{checking && <LoaderCircle size={13} className="computer-spinner" aria-hidden />}{clientMessages[id] || (configured ? 'Configured · Reload the client’s MCP connection to begin.' : checking ? 'Checking configuration…' : state === 'unavailable' ? 'Runtime unavailable' : state === 'error' ? 'Could not verify configuration. Retry or configure below.' : 'Not configured')}</small></div>
+        <div className="external-client-copy"><strong>{name}</strong><small role={clientMessages[id] && !configured ? 'alert' : undefined}>{checking && <LoaderCircle size={13} className="computer-spinner" aria-hidden />}{clientMessages[id] || (configured ? 'Reload the client’s MCP connection.' : checking ? 'Checking…' : state === 'unavailable' ? 'Runtime unavailable' : state === 'error' ? 'Could not verify. Retry below.' : 'Not connected')}</small></div>
         <button className="secondary" disabled={!!busy || checking || !status?.enabled || configured || state === 'unavailable'} onClick={() => void act(id, async () => {
           const result = await (id === 'desktop' ? api.mcpConnectDesktop() : id === 'claude' ? api.mcpConnectCode() : api.mcpConnectCodex())
           if (!result.ok) { setClientMessages(value => ({ ...value, [id]: result.detail ?? 'Could not configure this client. Check that it is installed.' })); return }
           setClients(value => [...value.filter(client => client.id !== id), { id, state: 'configured' }])
-          setClientMessages(value => ({ ...value, [id]: 'Configured · Reload the client’s MCP connection to begin.' }))
+          setClientMessages(value => ({ ...value, [id]: 'Reload the client’s MCP connection.' }))
         })}>{busy === id ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Connecting…</> : configured ? <><Check size={14} aria-hidden />Configured</> : 'Connect'}</button>
       </div>
     })}</div>
