@@ -4,6 +4,7 @@ import type { DevelopersApi, DevUpdate } from '../src/shared/developers.js'
 export async function renderTaskFixture({ app, page, screenshot }: { app: ElectronApplication; page: Page; screenshot(name: string): Promise<void> }) {
   await page.setViewportSize({ width: 1360, height: 900 })
   await page.getByRole('button', { name: 'Developers mode', exact: true }).click()
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   const id = await page.evaluate(async () => {
     const api = (window as unknown as { engram: DevelopersApi }).engram, state = await api.devState()
     return (await api.devCreate({ repoId: state.repos[0]!.id, provider: 'codex', model: '', mode: 'review', isolate: false })).id
