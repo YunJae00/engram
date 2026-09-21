@@ -133,6 +133,13 @@ export function registerChatAttachmentIpc(paths: VaultPaths): void {
     return saveChatAttachment(paths, name, data)
   })
   handle('chat:attachmentPreview', id => previewChatAttachment(paths, id))
+  handle('chat:attachmentCopy', async id => {
+    const file = await readAttachment(paths, id)
+    if (!textExtensions.includes(extname(file.name).toLowerCase())) throw new Error('Only text attachments can be copied.')
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)
+    if (text.length > 2_000_000 || text.includes('\0')) throw new Error('This attachment cannot be copied as plain text.')
+    clipboard.writeText(text)
+  })
   handle('clipboard:writeText', (text) => {
     if (typeof text !== 'string' || text.length > 2_000_000) throw new Error('Text is too large to copy.')
     clipboard.writeText(text)

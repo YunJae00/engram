@@ -162,6 +162,7 @@ const api: EngramApi = {
   routinesList: () => ipcRenderer.invoke('routines:list'),
   routineUpdateGoal: (id: string, goal: string) => ipcRenderer.invoke('routines:updateGoal', id, goal),
   chatAttachmentPreview: (id: string) => ipcRenderer.invoke('chat:attachmentPreview', id),
+  chatAttachmentCopy: (id: string) => ipcRenderer.invoke('chat:attachmentCopy', id),
   routineAdd: (input: { name: string; steps: RoutineStepDto[] }) => ipcRenderer.invoke('routines:add', input),
   routineRename: (id: string, name: string) => ipcRenderer.invoke('routines:rename', id, name),
   routineRemove: (id: string) => ipcRenderer.invoke('routines:remove', id),
