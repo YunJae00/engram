@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { DevelopersApi, DevUpdate } from '../src/shared/developers.js'
+import { filesFixture, consoleFixture } from './developer-workspace-fixture.js'
 
 let app: ElectronApplication, page: Page, project: string
 test.describe.configure({ mode: 'serial' })
@@ -37,16 +38,26 @@ async function renderTaskFixture() {
     { id: 'request', kind: 'user', text: 'Fix the off-by-one error and add a focused check.' },
     { id: 'command', kind: 'tool', title: 'Command', activity: 'command', text: 'pnpm test\nAll checks passed', status: 'done' },
     { id: 'edit', kind: 'tool', title: 'Edit · example.ts', activity: 'file', text: 'example.ts\n- return items.slice(0, limit + 1)\n+ return items.slice(0, limit)', status: 'running' },
-    { id: 'response', kind: 'assistant', text: 'The boundary includes one extra item. The proposed change is:\n\n```ts\nreturn items.slice(0, limit)\n```\n\nI will keep the existing public API unchanged.' },
+    { id: 'response', kind: 'assistant', text: 'The boundary includes one extra item. The proposed change is:\n\n```ts\nreturn items.slice(0, limit)\n```\n\n| Check | Result |\n| --- | --- |\n| Boundary | Fixed |\n\n1. Preserve the public API.\n2. Add a regression check.' },
   ], pending: [{ id: 'question', kind: 'question', title: 'Your input is needed', detail: '', questions: [{ id: 'scope', text: 'How should a zero limit behave?', options: ['Return an empty list', 'Use the default limit'] }] }] }
   await app.evaluate(({ BrowserWindow }, update) => { BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'dev:changed', update }) }, update)
   await expect(page.locator('.dev-message pre code')).toHaveText('return items.slice(0, limit)')
+  await expect(page.locator('.dev-message table')).toContainText('Boundary')
+  await expect(page.locator('.dev-message ol > li')).toHaveCount(2)
+  const reading = await page.locator('.dev-log').evaluate(log => {
+    const style = getComputedStyle(log), composer = log.parentElement!.querySelector('.dev-composer')!.getBoundingClientRect()
+    return { width: log.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), composer: composer.width, overflow: log.scrollWidth > log.clientWidth }
+  })
+  expect(reading.width).toBeLessThanOrEqual(740)
+  expect(reading.composer - reading.width).toBeGreaterThanOrEqual(32)
+  expect(reading.overflow).toBe(false)
   await expect(page.locator('.dev-tool').first()).toContainText('Done')
   await page.locator('.dev-tool').first().locator('summary').click()
   await expect(page.locator('.dev-tool').first().locator('pre')).toBeVisible()
   await expect(page.locator('.dev-tool').last()).toContainText('Running')
   await page.getByLabel('Return an empty list', { exact: true }).check()
-  await page.getByRole('button', { name: 'Usage and limits', exact: true }).click()
+  await page.getByRole('button', { name: 'Session options', exact: true }).click()
+  await page.locator('.dev-options-usage > summary').filter({ hasText: 'Usage and limits' }).click()
   await expect(page.getByText('1,200 input · 240 output tokens')).toBeVisible()
   await page.keyboard.press('Escape')
   await screenshot('developers-task-light.png')
@@ -65,6 +76,14 @@ async function renderTaskFixture() {
   await expect(page.getByRole('alert')).toContainText('needs a Git repository')
   await expect(page.getByRole('alert')).not.toContainText('Error invoking remote method')
   await page.getByRole('button', { name: 'Dismiss error' }).click()
+  await page.setViewportSize({ width: 950, height: 900 })
+  const narrow = await page.locator('.dev-log').evaluate(log => {
+    const style = getComputedStyle(log), composer = log.parentElement!.querySelector('.dev-composer')!.getBoundingClientRect()
+    return { width: log.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), composer: composer.width, overflow: log.scrollWidth > log.clientWidth }
+  })
+  expect(narrow.composer - narrow.width).toBeGreaterThanOrEqual(32)
+  expect(narrow.overflow).toBe(false)
+  await screenshot('developers-reading-narrow.png')
 }
 test.afterAll(async () => { await app?.close() })
 async function screenshot(file: string) {
@@ -131,9 +150,9 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   expect(workspace?.width).toBe(canvas?.width)
   await screenshot('developers-workspace.png')
   const composerAlignment = await page.locator('.dev-composer').evaluate(composer => {
-    const send = composer.querySelector('.dev-send')!.getBoundingClientRect(), settings = composer.querySelector('[aria-label="AI settings"]')!.getBoundingClientRect()
-    const access = composer.querySelector('[aria-label="Task access"] svg')!.getBoundingClientRect(), folder = composer.querySelector('.dev-composer-foot > span svg')!.getBoundingClientRect()
-    return { right: Math.abs(send.x + send.width / 2 - settings.x - settings.width / 2), left: Math.abs(access.x - folder.x) }
+    const send = composer.querySelector('.dev-send')!.getBoundingClientRect(), options = composer.querySelector('[aria-label="Session options"]')!.getBoundingClientRect()
+    const access = composer.querySelector('[aria-label="Task access"]')!.getBoundingClientRect()
+    return { right: Math.abs(send.y + send.height / 2 - options.y - options.height / 2), left: Math.abs(access.y + access.height / 2 - options.y - options.height / 2) }
   })
   expect(composerAlignment.right).toBeLessThan(2)
   expect(composerAlignment.left).toBeLessThan(2)
@@ -269,6 +288,8 @@ test('switches providers from the same task composer and retains its folder and 
 
 test('previous-session preview continues with visible history and task-scoped model controls', historyFixture)
 
+test('project files preserve drafts, reject external edit conflicts and attach selected context', () => filesFixture({ app, page, project, screenshot }))
+test('command console executes, retains output and cancels its owned process', () => consoleFixture({ app, page, project, screenshot }))
 test('preloads both connected accounts without selecting a provider or starting a task', async () => {
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const engines = [{ id: 'claude', installed: true, loggedIn: true }, { id: 'codex', installed: true, loggedIn: true }]
@@ -276,7 +297,8 @@ test('preloads both connected accounts without selecting a provider or starting 
     ipcMain.removeHandler('devUsage'); ipcMain.handle('devUsage', (_event, provider) => ({ windows: [{ name: `${provider} fixture limit`, used: provider === 'claude' ? 25 : 40 }], updatedAt: Date.now() }))
     BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'engines:changed', engines })
   })
-  await page.getByRole('button', { name: 'Usage and limits', exact: true }).click()
+  await page.getByRole('button', { name: 'Session options', exact: true }).click()
+  await page.locator('.dev-options-usage > summary').filter({ hasText: 'Usage and limits' }).click()
   await expect(page.getByText('claude fixture limit')).toBeVisible()
   await expect(page.getByText('codex fixture limit')).toBeVisible()
   await expect(page.getByText('75% remaining')).toBeVisible()

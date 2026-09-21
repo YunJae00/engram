@@ -71,10 +71,12 @@ export class DevCodex {
     else if (method === 'turn/completed') {
       this.turnId = undefined
       const turn = object(params['turn']), error = object(turn['error'])
-      this.updates.finished(string(error['message']) || (turn['status'] === 'failed' ? 'The runtime could not complete this turn.' : undefined))
+      this.updates.finished(string(error['message']) || (turn['status'] === 'failed' ? 'The runtime could not complete this turn.' : turn['status'] === 'interrupted' ? 'This turn was interrupted. Review any partial changes before continuing.' : undefined))
     } else if (method === 'thread/tokenUsage/updated') this.updates.usage(codexTurnUsage(params))
     else if (method === 'account/rateLimits/updated') this.updates.usage(codexUsage(params))
     else if (method === 'item/agentMessage/delta') this.updates.item({ id: string(params['itemId']), kind: 'assistant', text: string(params['delta']), status: 'running' }, true)
+    else if (method === 'item/plan/delta') this.updates.item({ id: string(params['itemId']), kind: 'plan', text: string(params['delta']), status: 'running' }, true)
+    else if (method === 'item/mcpToolCall/progress') this.updates.item({ id: string(params['itemId']), kind: 'tool', text: `\n${string(params['message'])}`, status: 'running' }, true)
     else if (method === 'turn/plan/updated') {
       const steps = Array.isArray(params['plan']) ? params['plan'].map(raw => { const step = object(raw); return `${step['status'] === 'completed' ? '[x]' : '[ ]'} ${string(step['step'])}` }).join('\n') : ''
       this.updates.item({ id: `plan-${this.turnId}`, kind: 'plan', text: steps, status: 'running' })
@@ -87,10 +89,19 @@ export class DevCodex {
       const incoming = object(params['item']), id = string(incoming['id']), item = { ...this.items.get(id), ...incoming }, type = string(item['type'])
       if (!id || type === 'userMessage') return
       this.items.set(id, item)
-      const status = method === 'item/started' ? 'running' : item['status'] === 'failed' || (typeof item['exitCode'] === 'number' && item['exitCode'] !== 0) ? 'failed' : 'done'
+      const status = method === 'item/started' ? 'running' : ['failed', 'declined', 'cancelled'].includes(string(item['status'])) || item['success'] === false || (typeof item['exitCode'] === 'number' && item['exitCode'] !== 0) ? 'failed' : 'done'
       if (type === 'agentMessage' || type === 'plan') this.updates.item({ id, kind: type === 'plan' ? 'plan' : 'assistant', text: string(item['text']), status })
       else if (type === 'commandExecution') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: `${string(item['command']) || 'Command details are not available.'}\n${string(item['aggregatedOutput'])}`.trim().slice(0, 50_000), status })
       else if (type === 'fileChange') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: this.changes(item) || 'File changes are being prepared.', status })
+      else if (type === 'mcpToolCall' || type === 'dynamicToolCall') {
+        const result = object(item['result']), content = result['content'] ?? item['contentItems']
+        const output = Array.isArray(content) ? content.map(value => string(object(value)['text'])).filter(Boolean).join('\n') : ''
+        const failure = string(object(item['error'])['message'])
+        const title = [string(item['server']), string(item['tool'])].filter(Boolean).join(' · ') || 'Tool'
+        this.updates.item({ id, kind: 'tool', title, activity: 'tool', text: [title, JSON.stringify(item['arguments'] ?? {}), output || (result['structuredContent'] ? JSON.stringify(result['structuredContent']) : ''), failure].filter(Boolean).join('\n').slice(0, 50_000), status })
+      }
+      else if (type === 'contextCompaction') this.updates.item({ id, kind: 'notice', text: status === 'running' ? 'Compacting conversation context…' : 'Conversation context compacted.', status })
+      else if (type === 'webSearch') this.updates.item({ id, kind: 'tool', ...devActivity(type, item), text: string(item['query']) || 'Web search', status })
       else if (type === 'collabAgentToolCall' || type === 'subAgentActivity') this.updates.item({ id, kind: 'agent', text: `${string(item['tool']) || 'Agent'}\n${string(item['prompt']) || string(item['agentPath'])}`, status })
       else if (type !== 'reasoning') this.updates.item({ id, kind: 'tool', text: `${type}${item['tool'] ? ` · ${string(item['tool'])}` : ''}`, status })
       if (method === 'item/completed') this.items.delete(id)

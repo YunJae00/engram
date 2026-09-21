@@ -51,3 +51,18 @@ it('coalesces queued history saves without losing the latest state', async () =>
   await restored.load()
   expect(restored.data.preferences.model).toBe('recovered')
 })
+
+it('encodes large histories in bounded pieces while preserving the existing file format', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/dev-store-stream-')), store = new DevStore(join(root, 'state.json'))
+  const text = '한글 "quoted"\n'.repeat(300)
+  store.data.sessions.push({ id: 'large', cwd: root, state: 'idle', items: Array.from({ length: 700 }, (_, id) => ({ id: String(id), kind: 'assistant', text })), pending: [] } as unknown as DevSession)
+  const original = JSON.stringify, lengths: number[] = []
+  const spy = vi.spyOn(JSON, 'stringify').mockImplementation(value => { const result = original(value); lengths.push(result?.length ?? 0); return result })
+  try { await store.save() } finally { spy.mockRestore() }
+  expect(Math.max(...lengths)).toBeLessThan(10_000)
+  const restored = new DevStore(store.file)
+  await restored.load()
+  expect(restored.session('large').items).toHaveLength(700)
+  expect(restored.session('large').items.at(-1)?.text).toBe(text)
+})

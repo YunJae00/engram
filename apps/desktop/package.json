@@ -1,7 +1,7 @@
 {
   "name": "desktop",
   "private": true,
-  "version": "0.8.7",
+  "version": "0.8.8",
   "license": "MIT",
   "description": "Engram — a self-organizing knowledge vault with an AI librarian",
   "author": "YunJae Kwon",
@@ -26,6 +26,7 @@
     "pptxgenjs": "^4.0.1",
     "sql.js": "^1.14.1",
     "tar": "^7.5.21",
+    "typescript": "^5.5.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
@@ -52,7 +53,6 @@
     "marked": "^15.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "typescript": "^5.5.0",
     "vite": "^6.0.0"
   },
   "optionalDependencies": {

@@ -20,7 +20,8 @@ export function DeveloperFileReview({ sessionId, path, locked, onChanged }: { se
   return <section className="dev-file-review"><h3>{path}</h3><p>Compared with the latest commit. These changes may include your own edits.</p>
     {error && <p role="alert">{error}</p>}
     {!review && !error && <p role="status">Loading file changes…</p>}
-    {review?.hunks.map(hunk => <details key={`${review.fingerprint}-${hunk.index}`} open={!kept.includes(hunk.index)}><summary>Line {hunk.line}{kept.includes(hunk.index) ? ' · Kept' : ''}</summary><pre>{hunk.text}</pre><div className="dev-actions"><button className="secondary" disabled={busy} onClick={() => setKept(current => [...current, hunk.index])}>Keep change</button><button className="secondary" disabled={locked || busy} onClick={() => void discard(hunk.index)}>Discard this hunk</button></div></details>)}
+    {review?.readOnly && <p>Rename/deletion preview. Use an explicit Git command in the console to change file identity.</p>}
+    {review?.hunks.map(hunk => <details key={`${review.fingerprint}-${hunk.index}`} open={!kept.includes(hunk.index)}><summary>Line {hunk.line}{kept.includes(hunk.index) ? ' · Kept' : ''}</summary><pre>{hunk.text}</pre><div className="dev-actions"><button className="secondary" disabled={busy} onClick={() => setKept(current => [...current, hunk.index])}>Keep change</button>{!review.readOnly && <button className="secondary" disabled={locked || busy} onClick={() => void discard(hunk.index)}>Discard this hunk</button>}</div></details>)}
     {review?.hunks.length === 0 && <p>No remaining text changes.</p>}
     {backup && <p role="status">Original content preserved in <code>{backup}</code>.</p>}
   </section>

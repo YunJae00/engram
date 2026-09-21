@@ -12,6 +12,16 @@ import type {
 } from '../shared/types.js'
 
 const api: EngramApi = {
+  devOpenLink: url => ipcRenderer.invoke('devOpenLink', url),
+  devFiles: (workspace, path) => ipcRenderer.invoke('devFiles', workspace, path),
+  devConsole: workspace => ipcRenderer.invoke('devConsole', workspace),
+  devRunCommand: (workspace, command) => ipcRenderer.invoke('devRunCommand', workspace, command),
+  devStopCommand: workspace => ipcRenderer.invoke('devStopCommand', workspace),
+  devSearchFiles: (workspace, query) => ipcRenderer.invoke('devSearchFiles', workspace, query),
+  devLanguage: (workspace, path, text, position, kind) => ipcRenderer.invoke('devLanguage', workspace, path, text, position, kind),
+  devCreateFile: (workspace, path) => ipcRenderer.invoke('devCreateFile', workspace, path),
+  devReadFile: (workspace, path) => ipcRenderer.invoke('devReadFile', workspace, path),
+  devSaveFile: (workspace, path, fingerprint, text) => ipcRenderer.invoke('devSaveFile', workspace, path, fingerprint, text),
   devState: () => ipcRenderer.invoke('devState'),
   devPreferences: patch => ipcRenderer.invoke('devPreferences', patch),
   devAddRepo: () => ipcRenderer.invoke('devAddRepo'),
@@ -25,6 +35,7 @@ const api: EngramApi = {
   devExternalRead: (repo, provider, id, allFolders, profile) => ipcRenderer.invoke('devExternalRead', repo, provider, id, allFolders, profile),
   devFork: (id, isolate) => ipcRenderer.invoke('devFork', id, isolate),
   devGit: id => ipcRenderer.invoke('devGit', id),
+  devStage: (id, paths, staged, fingerprint) => ipcRenderer.invoke('devStage', id, paths, staged, fingerprint),
   devCommit: (id, paths, message) => ipcRenderer.invoke('devCommit', id, paths, message),
   devFileReview: (id, path) => ipcRenderer.invoke('devFileReview', id, path),
   devUndoHunk: (id, path, fingerprint, index) => ipcRenderer.invoke('devUndoHunk', id, path, fingerprint, index),

@@ -46,7 +46,7 @@ it('streams through a worker, preserves exit/errors, and cancels during startup'
   blocked.kill()
   await drained
 
-  if (process.platform === 'win32') {
+  {
     const tree = new ProcessClient(process.execPath, ['-e', "const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});process.stdout.write(String(child.pid)+'\\n');setInterval(()=>{},1000)"], { killTree: true })
     tree.stderr.resume()
     const closedTree = once(tree, 'close')

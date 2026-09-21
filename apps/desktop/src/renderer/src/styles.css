@@ -1595,7 +1595,8 @@ body.bubble-host { background: transparent; }
 .bots-suggestion-x:hover { opacity: 1; color: var(--clay); background: var(--hover-bg); }
 .bots-suggestion-reason { font-size: var(--fs-micro); color: var(--fg-faint); }
 .bots-main { flex: 1; min-width: 0; display: flex; flex-direction: row; position: relative; background: var(--panel-bg); }
-.bots-chat { --composer-gutter: max(var(--page-gutter), calc((100% - var(--composer-width)) / 2)); --reading-gutter: max(calc(var(--composer-gutter) + var(--space-4)), calc((100% - var(--reading-width)) / 2)); flex: 1; min-width: 320px; min-height: 0; display: flex; flex-direction: column; }
+.bots-chat, .dev-pane { --composer-gutter: max(var(--page-gutter), calc((100% - var(--composer-width)) / 2)); --reading-gutter: max(calc(var(--composer-gutter) + var(--space-4)), calc((100% - var(--reading-width)) / 2)); }
+.bots-chat { flex: 1; min-width: 320px; min-height: 0; display: flex; flex-direction: column; }
 /* The page as the other half of the screen: full height, its own bar, the
    picture as large as the pane allows. The grip on its left edge drags the
    split; folded, it is a sliver that names the page it is holding. */

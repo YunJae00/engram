@@ -14,9 +14,15 @@ Copyright 2025 OpenAI. The complete license distributed with the SDK follows bel
 
 The Anthropic Claude runtime and Agent SDK are not included in this installer. Users install the official packages separately and authenticate through Anthropic's own flow. Anthropic's applicable terms govern their use: https://code.claude.com/docs/en/legal-and-compliance
 
+## TypeScript
+
+The editor includes the unmodified TypeScript compiler and language service (5.9.3). Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the Apache License, Version 2.0 below. Its LICENSE.txt and ThirdPartyNoticeText.txt remain in the distributed typescript package, including notices for incorporated definition files.
+
+Source: https://github.com/microsoft/TypeScript
+
 ## Apache License, Version 2.0
 
-The Apache license below applies to OpenAI Codex. Additional editor notices follow it.
+The Apache license below applies to OpenAI Codex and TypeScript. Additional editor notices follow it.
 
 Apache License
                            Version 2.0, January 2004

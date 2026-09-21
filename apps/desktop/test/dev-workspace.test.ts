@@ -5,7 +5,7 @@ import { expect, it, vi } from 'vitest'
 
 vi.mock('../src/main/process-client.js', () => ({ ProcessClient: function (command: string, args: string[], options: { cwd: string; env: Record<string, string> }) { return spawn(command, args, { ...options, env: { ...options.env, GIT_CEILING_DIRECTORIES: dirname(options.cwd) } }) } }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: () => ({ git: () => 'git', gitExecPath: () => undefined }) }))
-import { devCommit, devGitState, devWorktree, runDevGit, statusFiles } from '../src/main/dev-workspace.js'
+import { devCommit, devGitState, devStage, devWorktree, runDevGit, statusFiles } from '../src/main/dev-workspace.js'
 import { devFileReview, devUndoHunk } from '../src/main/dev-review.js'
 
 it('parses renamed and spaced paths without confusing the old path for another change', () => {
@@ -36,6 +36,12 @@ it('isolates work and commits only selected changes without consuming unrelated 
   await writeFile(join(work.cwd, 'first.txt'), 'isolated\n')
   expect(await readFile(join(repo, 'first.txt'), 'utf8')).toBe('before\n')
   await writeFile(join(repo, 'first.txt'), 'selected\n')
+  const unstaged = await devGitState(repo, hooks)
+  const staged = await devStage(repo, ['first.txt'], true, unstaged.fingerprint!, hooks)
+  expect(staged.files.find(file => file.path === 'first.txt')?.status).toBe('M ')
+  await expect(devStage(repo, ['first.txt'], false, unstaged.fingerprint!, hooks)).rejects.toThrow('Refresh')
+  await devStage(repo, ['first.txt'], false, staged.fingerprint!, hooks)
+  expect(await readFile(join(repo, 'first.txt'), 'utf8')).toBe('selected\n')
   await writeFile(join(repo, 'second.txt'), 'unrelated staged\n')
   await git(['add', 'second.txt'])
   await devCommit(repo, ['first.txt'], 'Selected change', hooks)
@@ -52,8 +58,11 @@ it('isolates work and commits only selected changes without consuming unrelated 
   expect(JSON.parse(await readFile(result.backup, 'utf8')).before).toBe('Changed during review\n')
   expect(await git(['show', ':second.txt'])).toBe('unrelated staged\n')
   await git(['mv', 'first.txt', 'renamed.txt'])
+  expect(await devFileReview(repo, 'renamed.txt', hooks)).toMatchObject({ before: 'selected\n', after: 'selected\n', readOnly: true })
   await devCommit(repo, ['renamed.txt'], 'Rename selected file', hooks)
   expect(await git(['show', 'HEAD:renamed.txt'])).toBe('selected\n')
   await expect(git(['show', 'HEAD:first.txt'])).rejects.toThrow()
   expect(await git(['show', ':second.txt'])).toBe('unrelated staged\n')
-}, 120_000)
+  await git(['rm', 'renamed.txt'])
+  expect(await devFileReview(repo, 'renamed.txt', hooks)).toMatchObject({ before: 'selected\n', after: '', readOnly: true })
+}, 180_000)

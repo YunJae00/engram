@@ -1,15 +1,17 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, ChevronRight, CircleAlert, FilePenLine, Folder, GitBranch, ListChecks, LoaderCircle, Search, Settings, Square, Terminal, Wrench, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronRight, CircleAlert, Ellipsis, FilePenLine, Folder, GitBranch, ListChecks, LoaderCircle, Search, Settings, Square, Terminal, Wrench, X } from 'lucide-react'
 import type { DevGitState, DevItem, DevRepo, DevSession, DevState, DevUpdate } from '../../../shared/developers.js'
 import { api, apiErrorText } from '../api.js'
 import { ModelPicker, type ModelSelection } from './ModelPicker.js'
 import { DeveloperApproval } from './DeveloperApproval.js'
 import { DeveloperFileReview } from './DeveloperFileReview.js'
-import { DeveloperAccess, DeveloperPopover, DeveloperUsage, type AccessSelection } from './DeveloperControls.js'
+import { DeveloperAccess, DeveloperPopover, DeveloperUsage, DeveloperRuntimeInfo, type AccessSelection } from './DeveloperControls.js'
 import { DeveloperSkills } from './DeveloperSkills.js'
 import { DeveloperPanePicker } from './DeveloperPanePicker.js'
 import { renderMarkdown } from '../lib/markdown.js'
 const DeveloperCode = lazy(() => import('./DeveloperCode.js').then(module => ({ default: module.DeveloperCode })))
+const DeveloperFiles = lazy(() => import('./DeveloperFiles.js').then(module => ({ default: module.DeveloperFiles })))
+const DeveloperConsole = lazy(() => import('./DeveloperConsole.js').then(module => ({ default: module.DeveloperConsole })))
 
 function mergeUpdate(current: DevSession, update: DevUpdate): DevSession {
   const incoming = new Map(update.items.map(item => [item.id, item]))
@@ -18,12 +20,13 @@ function mergeUpdate(current: DevSession, update: DevUpdate): DevSession {
 }
 
 export const DeveloperMessage = memo(function DeveloperMessage({ item }: { item: DevItem }) {
+  const [linkError, setLinkError] = useState('')
   if (['tool', 'plan', 'agent'].includes(item.kind)) {
     const Icon = item.activity === 'command' ? Terminal : item.activity === 'file' ? FilePenLine : item.activity === 'search' ? Search : item.kind === 'plan' ? ListChecks : Wrench
     const title = item.title || (item.kind === 'agent' ? 'Agent task' : item.kind === 'plan' ? 'Plan' : item.text.trim().split('\n')[0]?.slice(0, 100) || 'Tool')
     return <details className="dev-tool" data-status={item.status}><summary><Icon size={15} /><span className="dev-tool-title">{title}</span><span className="dev-tool-status">{item.status === 'running' ? <><LoaderCircle size={13} className="spin" />Running</> : item.status === 'failed' ? <><CircleAlert size={13} />Failed</> : <><Check size={13} />Done</>}</span><ChevronRight size={13} className="dev-tool-chevron" /></summary><pre>{item.text.trim() || 'No additional details reported.'}</pre></details>
   }
-  return <article className={`dev-message dev-message-${item.kind}`}><div>{item.kind === 'user' ? item.text : renderMarkdown(item.text, (text, language, key) => <Suspense key={key} fallback={<pre><code>{text}</code></pre>}><DeveloperCode text={text} language={language} /></Suspense>)}</div></article>
+  return <article className={`dev-message dev-message-${item.kind}`}><div>{item.kind === 'user' ? item.text : renderMarkdown(item.text, (text, language, key) => <Suspense key={key} fallback={<pre><code>{text}</code></pre>}><DeveloperCode text={text} language={language} /></Suspense>, url => { setLinkError(''); void api.devOpenLink(url).catch(error => setLinkError(apiErrorText(error.message))) })}</div>{linkError && <p role="alert">{linkError}</p>}</article>
 })
 
 export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocus, onCreated, onClose, onChoose }: {
@@ -35,12 +38,14 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   const [prompt, setPrompt] = useState(''), [visible, setVisible] = useState(100), [git, setGit] = useState<DevGitState | null>(null), [reviewPath, setReviewPath] = useState('')
   const [dismissedSkills, setDismissedSkills] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
+  const [files, setFiles] = useState(false)
+  const [consoleOpen, setConsoleOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>([]), [commit, setCommit] = useState('')
   const log = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), follow = useRef(true), request = useRef(0), gate = useRef(false)
   const draftKey = `engram.dev.draft.${id ?? `${repo?.id ?? 'empty'}.${slot}`}`
   useEffect(() => {
     const at = ++request.current
-    setLoading(!!id); setTask(null); setError(''); setGit(null); setReviewPath(''); setVisible(100); follow.current = true
+    setLoading(!!id); setTask(null); setError(''); setGit(null); setReviewPath(''); setVisible(100); setFiles(false); setConsoleOpen(false); follow.current = true
     try { setPrompt(sessionStorage.getItem(draftKey) ?? '') } catch { setPrompt('') }
     if (!id) { setAccess({ mode: 'review', isolate: false, confirmed: false }); return }
     let pending: DevUpdate[] | null = []
@@ -99,13 +104,16 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
       {repo && !running && !busy && /^\/[^\s]*$/.test(prompt) && dismissedSkills !== prompt && <DeveloperSkills session={task?.id} repoId={repo.id} provider={chosenModel.engine} query={prompt.slice(1)} input={input} onSelect={value => { write(value); input.current?.focus() }} onDismiss={() => setDismissedSkills(prompt)} />}
       <textarea ref={input} aria-label="Development message" placeholder="Ask about the code, or describe a change…" value={prompt} disabled={running || busy || loading || !repo} onChange={event => write(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!running && !loading) void send() } }} />
       <div className="dev-composer-toolbar"><div className="dev-composer-tools">
+        <DeveloperPopover label="Session options" trigger={<Ellipsis size={17} />}>{close => <><p className="dev-context-path"><Folder size={14} />{task?.cwd ?? repo?.path ?? 'No folder selected'}{chosenAccess.isolate && ' · Separate worktree'}</p><button className="dev-menu-row" disabled={!repo} onClick={() => { close(); setFiles(true) }}><Folder size={15} />Project files</button><button className="dev-menu-row" disabled={!repo} onClick={() => { close(); setConsoleOpen(true) }}><Terminal size={15} />Command console</button><button className="dev-menu-row" onClick={() => { close(); window.dispatchEvent(new Event('engram:open-brain-setup')) }}><Settings size={15} />AI settings</button><details className="dev-options-usage"><summary>Usage and limits</summary><DeveloperUsage usage={task?.usage ?? {}} inline /></details><DeveloperRuntimeInfo task={task} provider={chosenModel.engine} extensions={chosenAccess.mode === 'full-access' && state.preferences.loadProjectSettings} /></>}</DeveloperPopover>
         <DeveloperAccess value={chosenAccess} task={task} disabled={running || busy || loading} extensions={state.preferences.loadProjectSettings} onChange={async value => { if (task) setTask(await api.devConfigure(task.id, { model: task.model, effort: task.effort, mode: value.mode, fullAccessConfirmed: value.confirmed })); else setAccess(value) }} />
       </div><fieldset className="dev-model-controls" disabled={running || busy || loading}><ModelPicker controlled={{ value: chosenModel, accountProfile: task ? task.accountProfile ?? 'system' : undefined, disabled: running || busy || loading, onChange: changeModel }} /></fieldset>
       <button className="dev-send" disabled={stopping || loading || (!running && (busy || !prompt.trim() || !repo))} aria-label={running ? 'Stop development task' : 'Send development message'} onClick={() => void (running ? stop() : send())}>{stopping || (busy && !running) ? <LoaderCircle size={17} className="spin" /> : running ? <Square size={16} /> : <ArrowUp size={18} />}</button></div>
-      <div className="dev-composer-foot"><span title={task?.cwd ?? repo?.path}>{chosenAccess.isolate ? <><GitBranch size={14} />Separate worktree</> : <><Folder size={14} />{repo?.name ?? 'No folder selected'}</>}</span><div><DeveloperUsage usage={task?.usage ?? {}} /><button className="dev-control" aria-label="AI settings" title="AI settings" onClick={() => window.dispatchEvent(new Event('engram:open-brain-setup'))}><Settings size={14} /></button></div></div>
     </div>
+    {files && repo && <Suspense fallback={<p role="status">Opening project files…</p>}><DeveloperFiles workspace={{ repoId: repo.id, sessionId: task?.id }} locked={running || busy} onClose={() => setFiles(false)} onAttach={text => { write(`${prompt}${prompt ? '\n\n' : ''}${text}`); input.current?.focus() }} /></Suspense>}
+    {consoleOpen && repo && <Suspense fallback={<p role="status">Opening command console…</p>}><DeveloperConsole workspace={{ repoId: repo.id, sessionId: task?.id }} locked={running || busy} onClose={() => setConsoleOpen(false)} /></Suspense>}
     {git && task && <aside className="dev-review" aria-label="Working tree changes"><header><strong>Working tree</strong><button className="dev-control" aria-label="Close changes" onClick={() => setGit(null)}><X size={16} /></button></header><small>{git.branch}</small>
-      {git.files.map(file => <div key={file.path} className="dev-file-row"><input aria-label={`Include ${file.path} in commit`} type="checkbox" checked={selected.includes(file.path)} onChange={event => setSelected(current => event.target.checked ? [...current, file.path] : current.filter(path => path !== file.path))} /><code>{file.status}</code><button onClick={() => setReviewPath(file.path)}>{file.path}</button></div>)}
+      <div className="dev-actions"><button className="secondary" disabled={busy} onClick={() => void action(async () => { setGit(await api.devGit(task.id)); setReviewPath('') })}>Refresh</button>{[true, false].map(staged => <button key={String(staged)} className="secondary" disabled={busy || running || !selected.length || !git.fingerprint} onClick={() => void action(async () => setGit(await api.devStage(task.id, selected, staged, git.fingerprint!)))}>{staged ? 'Stage selected' : 'Unstage selected'}</button>)}</div>
+      {git.files.map(file => <div key={file.path} className="dev-file-row"><input aria-label={`Include ${file.path} in commit`} type="checkbox" checked={selected.includes(file.path)} onChange={event => setSelected(current => event.target.checked ? [...current, file.path] : current.filter(path => path !== file.path))} /><code title="Index / working tree status">{file.status}</code><button onClick={() => setReviewPath(file.path)}>{file.previousPath ? `${file.previousPath} → ` : ''}{file.path}</button></div>)}
       {reviewPath ? <DeveloperFileReview key={`${task.id}-${reviewPath}`} sessionId={task.id} path={reviewPath} locked={running} onChanged={() => { void api.devGit(task.id).then(setGit).catch(error => setError(error.message)) }} /> : <details open><summary>Tracked changes{git.truncated ? ' (truncated)' : ''}</summary><pre>{git.diff || 'No tracked text changes. Select a file above to review it.'}</pre></details>}
       <input aria-label="Commit message" placeholder="Commit message" value={commit} onChange={event => setCommit(event.target.value)} /><button className="primary" disabled={busy || running || !selected.length || !commit.trim()} onClick={() => void action(async () => { await api.devCommit(task.id, selected, commit); setGit(await api.devGit(task.id)); setSelected([]); setCommit(''); setReviewPath('') })}>Commit selected files</button>
       <button className="secondary" disabled={busy || running} onClick={() => { write('Review the current branch and help prepare a pull request for the committed changes. Explain what will be pushed and request approval before publishing. Do not include unrelated changes.'); setGit(null); input.current?.focus() }}>Ask to prepare a pull request</button>

@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import type { DevelopersApi, DevItem, DevSession, DevState, DevUpdate } from '../shared/developers.js'
+import type { DevelopersApi, DevItem, DevSession, DevState, DevUpdate, DevWorkspace } from '../shared/developers.js'
+import { devCreateFile, devFiles, devReadFile, devSaveFile, devSearchFiles } from './dev-files.js'
 import { DevStore, devPreferences } from './dev-store.js'
 import { DevApprovals, type DevDecision } from './dev-approvals.js'
 import { DevCodex, type DevUpdates } from './dev-codex.js'
 import { DevClaude, claudeAccountUsage, claudeProbe } from './dev-claude.js'
-import { canonicalRepo, devCommit, devGitState, devWorktree } from './dev-workspace.js'
+import { canonicalRepo, devCommit, devGitState, devStage, devWorktree } from './dev-workspace.js'
 import { devAccountUsage, devExternal, devExternalRead, devProbe } from './dev-catalog.js'
 import { devFileReview, devUndoHunk } from './dev-review.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
+import { DevConsole } from './dev-console.js'
+import { queryDevLanguage } from './dev-language-client.js'
 
 interface Running { driver: DevCodex | DevClaude; approvals: DevApprovals; changed: Map<string, DevItem>; failed?: boolean; timer?: ReturnType<typeof setTimeout>; checkpoint?: ReturnType<typeof setTimeout>; idle?: ReturnType<typeof setTimeout>; stopping?: Promise<void> }
 
@@ -17,12 +20,16 @@ export class DevService {
   readonly store: DevStore
   private readonly running = new Map<string, Running>()
   private readonly configuring = new Set<string>()
+  private readonly fileWrites = new Map<string, Promise<unknown>>()
+  private stoppingAll = 0
+  private readonly console: DevConsole
   private readonly ready: Promise<void>
   readonly hooks: string
-  get active(): boolean { return this.running.size > 0 }
-  get busy(): boolean { return [...this.running.keys()].some(id => ['starting', 'running', 'waiting', 'stopping'].includes(this.store.session(id).state)) }
+  get active(): boolean { return this.running.size > 0 || this.fileWrites.size > 0 }
+  get busy(): boolean { return this.fileWrites.size > 0 || [...this.running.keys()].some(id => ['starting', 'running', 'waiting', 'stopping'].includes(this.store.session(id).state)) }
   constructor(private readonly root: string, private readonly emit: (update: DevUpdate | null) => void) {
     this.store = new DevStore(join(root, 'state.json'))
+    this.console = new DevConsole(join(root, 'command-logs'))
     this.hooks = join(root, 'disabled-git-hooks')
     this.ready = Promise.all([this.store.load(), mkdir(this.hooks, { recursive: true })]).then(() => undefined)
   }
@@ -45,6 +52,7 @@ export class DevService {
   private async enabled(): Promise<void> {
     await this.ready
     if (!this.store.data.preferences.enabled) throw new Error('Enable Developers in Settings first.')
+    if (this.stoppingAll) throw new Error('Wait for Developers to finish stopping.')
   }
   async addRepo(path: string): Promise<DevState['repos'][number]> {
     await this.enabled()
@@ -91,9 +99,53 @@ export class DevService {
     return session
   }
   async session(id: string): Promise<DevSession> { await this.ready; return this.store.session(id) }
+  private async workspace(context: DevWorkspace): Promise<string> {
+    await this.enabled()
+    if (!context || typeof context.repoId !== 'string' || (context.sessionId !== undefined && typeof context.sessionId !== 'string')) throw new Error('Choose a workspace.')
+    const repo = this.store.repo(context.repoId)
+    if (!context.sessionId) return repo.path
+    const session = this.store.session(context.sessionId)
+    if (session.repoId !== repo.id) throw new Error('The session belongs to a different project.')
+    return session.cwd
+  }
+  async files(context: DevWorkspace, path: string) { return devFiles(await this.workspace(context), path) }
+  async language(context: DevWorkspace, path: string, text: string, position: number, kind: 'check' | 'complete' | 'definition') { return queryDevLanguage(await this.workspace(context), path, text, position, kind) }
+  async consoleState(context: DevWorkspace) { return this.console.state(await this.workspace(context)) }
+  async commandFolder(context: DevWorkspace) { return this.workspace(context) }
+  async stopCommand(context: DevWorkspace) { await this.console.stop(await this.workspace(context)) }
+  async runCommand(context: DevWorkspace, command: string) {
+    const cwd = await this.workspace(context)
+    return this.writeWorkspace(cwd, () => {
+      if (this.stoppingAll || !this.store.data.preferences.enabled) throw new Error('Developers is stopping. Command was not started.')
+      return this.console.run(cwd, command)
+    })
+  }
+  async searchFiles(context: DevWorkspace, query: string) { return devSearchFiles(await this.workspace(context), query) }
+  async createFile(context: DevWorkspace, path: string) {
+    const cwd = await this.workspace(context)
+    return this.writeWorkspace(cwd, check => devCreateFile(cwd, path, check))
+  }
+  async readFile(context: DevWorkspace, path: string) { return devReadFile(await this.workspace(context), path) }
+  async saveFile(context: DevWorkspace, path: string, fingerprint: string, text: string) {
+    const cwd = await this.workspace(context)
+    return this.writeWorkspace(cwd, check => devSaveFile(cwd, path, fingerprint, text, join(this.root, 'editor-backups'), check))
+  }
+  private async writeWorkspace<T>(cwd: string, operation: (check: () => void) => Promise<T>): Promise<T> {
+    const assertWritable = () => {
+      if (!this.store.data.preferences.enabled || this.store.data.sessions.some(session => session.cwd === cwd && (this.configuring.has(session.id) || ['starting', 'running', 'waiting', 'stopping'].includes(session.state)))) throw new Error('Stop workspace tasks before saving files.')
+    }
+    assertWritable()
+    if (this.stoppingAll) throw new Error('Wait for Developers to finish stopping.')
+    if (this.fileWrites.has(cwd)) throw new Error('Another workspace operation is in progress. Try again after it finishes.')
+    const pending = Promise.resolve().then(() => operation(assertWritable))
+    this.fileWrites.set(cwd, pending)
+    try { return await pending }
+    finally { this.fileWrites.delete(cwd) }
+  }
   async configure(id: string, change: Parameters<DevelopersApi['devConfigure']>[1]): Promise<DevSession> {
     await this.enabled()
     const session = this.store.session(id)
+    if (this.fileWrites.has(session.cwd)) throw new Error('Wait for the workspace file operation before changing settings.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Stop or finish this task before changing its settings.')
     if (!change || typeof change !== 'object') throw new Error('Invalid task settings.')
     const prefs = devPreferences({ provider: change.provider ?? session.provider, model: change.model, effort: change.effort, mode: change.mode }, this.store.data.preferences)
@@ -125,6 +177,7 @@ export class DevService {
     await this.enabled()
     if (typeof text !== 'string' || !text.trim() || text.length > 100_000) throw new Error('Enter a message of up to 100,000 characters.')
     const session = this.store.session(id)
+    if (this.fileWrites.has(session.cwd)) throw new Error('Wait for the workspace file save before sending a message.')
     if (this.configuring.has(id) || this.running.get(id)?.stopping) throw new Error('Wait for this task to finish stopping or updating.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Wait for this task or stop it before sending another message.')
     // Reconnect only for a new user request. Never replay a possibly executed turn.
@@ -132,6 +185,7 @@ export class DevService {
       await this.stop(id)
       if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Wait for this task before sending another message.')
     }
+    if (this.fileWrites.has(session.cwd)) throw new Error('Wait for the workspace file save before sending a message.')
     session.state = 'starting'; session.updatedAt = Date.now()
     if (!session.items.some(item => item.kind === 'user')) session.title = text.trim().split('\n')[0]!.slice(0, 80)
     const user: DevItem = { id: randomUUID(), kind: 'user', text: text.trim() }
@@ -257,17 +311,25 @@ export class DevService {
     if (failure) { this.reportRuntimeError(session, failure); throw failure }
   }
   async stopAll(): Promise<void> {
-    const results = await Promise.allSettled([...this.running.keys()].map(id => this.stop(id)))
-    const failure = results.find(result => result.status === 'rejected')
-    if (failure?.status === 'rejected') throw failure.reason
+    this.stoppingAll++
+    try {
+      const results = await Promise.allSettled([this.console.stopAll(), ...this.fileWrites.values(), ...[...this.running.keys()].map(id => this.stop(id))])
+      const failure = results.find(result => result.status === 'rejected')
+      if (failure?.status === 'rejected') throw failure.reason
+    } finally { this.stoppingAll-- }
   }
   async git(id: string) { await this.enabled(); return devGitState(this.store.session(id).cwd, this.hooks) }
+  async stage(id: string, paths: string[], staged: boolean, fingerprint: string) {
+    await this.enabled()
+    const cwd = this.store.session(id).cwd
+    return this.writeWorkspace(cwd, () => devStage(cwd, paths, staged, fingerprint, this.hooks))
+  }
   async fileReview(id: string, path: string) { await this.enabled(); return devFileReview(this.store.session(id).cwd, path, this.hooks) }
   async undoHunk(id: string, path: string, fingerprint: string, index: number) {
     await this.enabled()
     const session = this.store.session(id)
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Stop the task before changing its files.')
-    return devUndoHunk(session.cwd, path, fingerprint, index, this.hooks, join(this.root, 'review-backups'))
+    return this.writeWorkspace(session.cwd, () => devUndoHunk(session.cwd, path, fingerprint, index, this.hooks, join(this.root, 'review-backups')))
   }
   async external(repoId: string, provider: 'claude' | 'codex', allFolders = false, profile = activeAccountProfile(provider)) {
     await this.enabled()
@@ -283,6 +345,7 @@ export class DevService {
     await this.enabled()
     if (typeof isolate !== 'boolean') throw new Error('Choose a valid branch location.')
     const source = this.store.session(id)
+    if (this.fileWrites.has(source.cwd)) throw new Error('Wait for the workspace file operation before branching.')
     if (['starting', 'running', 'waiting', 'stopping'].includes(source.state)) throw new Error('Finish or stop the task before branching.')
     if (!source.runtimeId) throw new Error('Start a conversation before branching it.')
     if (this.configuring.has(id)) throw new Error('Task settings are already being updated.')
@@ -322,6 +385,6 @@ export class DevService {
     await this.enabled()
     const session = this.store.session(id)
     if (['starting', 'running', 'waiting', 'stopping'].includes(session.state)) throw new Error('Wait for the task to finish before committing.')
-    await devCommit(session.cwd, paths, message, this.hooks)
+    await this.writeWorkspace(session.cwd, () => devCommit(session.cwd, paths, message, this.hooks))
   }
 }

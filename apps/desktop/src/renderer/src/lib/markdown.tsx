@@ -1,112 +1,38 @@
-import { createElement, type ReactNode } from 'react'
+import { createElement, Fragment, type ReactNode } from 'react'
+import { marked, type MarkedToken, type Token } from 'marked'
 
-// Minimal, XSS-safe markdown renderer for the librarian brief. The app's other
-// previews pipe engine text through `marked` + dangerouslySetInnerHTML — fine
-// for note bodies the user authored, but the brief is model output, so it gets
-// a renderer that builds React elements (every string is auto-escaped) and
-// understands only a small, safe subset: ATX headings, unordered bullets, bold,
-// italic, inline code and fenced code. Anything else renders as literal text.
-
-const HEADING = /^(#{1,6})\s+(.*)$/
-const BULLET = /^\s*[-*]\s+(.*)$/
-// Split on the smallest inline spans, keeping the delimiters (capturing group).
-// `**bold**` is tried before `*italic*`, and each span forbids its own marker
-// inside so matches stay local to one run.
-const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|_[^_]+_)/
-const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const
-
-// Render one line's text into inline React nodes (bold / italic / code / text).
-// Recurses into bold/italic spans so `**a `b`**` still styles the inner code.
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
-  const nodes: ReactNode[] = []
-  text.split(INLINE).forEach((part, i) => {
-    if (!part) return
-    const key = `${keyPrefix}.${i}`
-    if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) {
-      nodes.push(<strong key={key}>{renderInline(part.slice(2, -2), key)}</strong>)
-    } else if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
-      nodes.push(<code key={key}>{part.slice(1, -1)}</code>)
-    } else if (part.length > 2 && part.startsWith('*') && part.endsWith('*')) {
-      nodes.push(<em key={key}>{renderInline(part.slice(1, -1), key)}</em>)
-    } else if (part.length > 2 && part.startsWith('_') && part.endsWith('_')) {
-      nodes.push(<em key={key}>{renderInline(part.slice(1, -1), key)}</em>)
-    } else {
-      nodes.push(part)
+// React escapes model HTML. Remote images never load implicitly, and only
+// explicit web links are active.
+export function renderMarkdown(src: string, codeBlock?: (text: string, language: string, key: string) => ReactNode, onLink?: (url: string) => void): ReactNode[] {
+  const render = (tokens: Token[], prefix: string): ReactNode[] => tokens.map((entry, index) => {
+    const token = entry as MarkedToken, key = `${prefix}.${index}`
+    const children = () => render('tokens' in token && token.tokens ? token.tokens : [], key)
+    switch (token.type) {
+      case 'space': case 'def': return null
+      case 'heading': return createElement(`h${token.depth}`, { key }, children())
+      case 'paragraph': return <p key={key}>{children()}</p>
+      case 'blockquote': return <blockquote key={key}>{children()}</blockquote>
+      case 'strong': return <strong key={key}>{children()}</strong>
+      case 'em': return <em key={key}>{children()}</em>
+      case 'del': return <del key={key}>{children()}</del>
+      case 'br': return <br key={key} />
+      case 'hr': return <hr key={key} />
+      case 'codespan': return <code key={key}>{token.text}</code>
+      case 'code': {
+        const language = token.lang?.trim().split(/\s/)[0] ?? ''
+        return codeBlock ? codeBlock(token.text, language, key) : <pre key={key}><code data-language={language || undefined}>{token.text}</code></pre>
+      }
+      case 'list': return createElement(token.ordered ? 'ol' : 'ul', { key, start: token.ordered ? Number(token.start) : undefined }, token.items.map((item, i) => <li key={i}>{item.task && <input type="checkbox" checked={!!item.checked} disabled aria-label={item.checked ? 'Completed item' : 'Incomplete item'} />}{render(item.tokens, `${key}.${i}`)}</li>))
+      case 'table': return <div className="markdown-table" key={key} tabIndex={0} role="region" aria-label="Table"><table><thead><tr>{token.header.map((cell, i) => <th key={i} scope="col" style={{ textAlign: cell.align ?? undefined }}>{render(cell.tokens, `${key}.h${i}`)}</th>)}</tr></thead><tbody>{token.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c} style={{ textAlign: cell.align ?? undefined }}>{render(cell.tokens, `${key}.${r}.${c}`)}</td>)}</tr>)}</tbody></table></div>
+      case 'link': {
+        const safe = /^https?:\/\/[^\s]+$/i.test(token.href)
+        return safe ? <a key={key} href={token.href} target="_blank" rel="noopener noreferrer" title={token.title ?? undefined} onClick={onLink ? event => { event.preventDefault(); onLink(token.href) } : undefined}>{children()}</a> : <Fragment key={key}>{children()}</Fragment>
+      }
+      case 'image': return <span key={key}>{token.text || 'Image'}</span>
+      case 'text': return <Fragment key={key}>{token.tokens ? children() : token.text}</Fragment>
+      case 'escape': case 'html': return <Fragment key={key}>{token.text}</Fragment>
+      default: return <Fragment key={key}>{entry.raw}</Fragment>
     }
   })
-  return nodes
-}
-
-// Parse block structure (headings, bullet lists, paragraphs) into React nodes.
-// Consecutive bullet lines fold into one <ul>; consecutive plain lines into one
-// <p>; blank lines and headings flush whatever is buffered.
-export function renderMarkdown(src: string, codeBlock?: (text: string, language: string, key: string) => ReactNode): ReactNode[] {
-  const lines = src.replace(/\r\n?/g, '\n').split('\n')
-  const blocks: ReactNode[] = []
-  let para: string[] = []
-  let items: string[] = []
-  let key = 0
-  let fence: { marker: string; language: string; lines: string[] } | undefined
-  const flushCode = () => {
-    if (!fence) return
-    const id = `code${key++}`, text = fence.lines.join('\n')
-    blocks.push(codeBlock ? codeBlock(text, fence.language, id) : <pre key={id}><code data-language={fence.language || undefined}>{text}</code></pre>)
-    fence = undefined
-  }
-
-  const flushPara = () => {
-    if (para.length === 0) return
-    const k = `p${key++}`
-    blocks.push(<p key={k}>{renderInline(para.join(' '), k)}</p>)
-    para = []
-  }
-  const flushList = () => {
-    if (items.length === 0) return
-    const k = `ul${key++}`
-    blocks.push(
-      <ul key={k}>
-        {items.map((it, i) => (
-          <li key={`${k}.${i}`}>{renderInline(it, `${k}.${i}`)}</li>
-        ))}
-      </ul>,
-    )
-    items = []
-  }
-
-  for (const raw of lines) {
-    if (fence) {
-      if (new RegExp(`^ {0,3}${fence.marker[0]}{${fence.marker.length},}\\s*$`).test(raw)) flushCode()
-      else fence.lines.push(raw)
-      continue
-    }
-    const opening = /^ {0,3}(`{3,}|~{3,})([^`]*)$/.exec(raw)
-    if (opening) {
-      flushPara(); flushList()
-      fence = { marker: opening[1]!, language: opening[2]!.trim().split(/\s/)[0] ?? '', lines: [] }
-      continue
-    }
-    const line = raw.replace(/\s+$/, '')
-    const heading = HEADING.exec(line)
-    const bullet = BULLET.exec(line)
-    if (heading) {
-      flushPara()
-      flushList()
-      const k = `h${key++}`
-      const tag = HEADING_TAGS[Math.min(heading[1]!.length, 6) - 1]!
-      blocks.push(createElement(tag, { key: k }, renderInline(heading[2]!, k)))
-    } else if (bullet) {
-      flushPara()
-      items.push(bullet[1]!)
-    } else if (line.trim() === '') {
-      flushPara()
-      flushList()
-    } else {
-      flushList()
-      para.push(line.trim())
-    }
-  }
-  flushPara()
-  flushList()
-  flushCode()
-  return blocks
+  return render(marked.lexer(src, { gfm: true }), 'md')
 }
