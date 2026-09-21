@@ -57,7 +57,7 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
 .account-profile-row + .account-profile-row { border-top: 1px solid var(--border-soft); }
 .account-profile-row header > div:first-child { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .account-profile-row .dev-usage { margin-top: 10px; }
-.account-picker { flex: none; }
+.account-picker { flex: 0 1 auto; }
 .account-picker svg { flex: none; }
 .account-picker span { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-profile-dialog small { color: var(--fg-dim); }
