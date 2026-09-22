@@ -136,14 +136,22 @@ async function readRoutines(paths: VaultPaths, now: Date): Promise<Routine[]> {
 
 export async function addRoutine(
   paths: VaultPaths,
-  input: { name: string; steps: RoutineStep[]; task?: Routine['task'] },
+  input: { name: string; steps: RoutineStep[]; task?: Routine['task']; id?: string },
   now: Date = new Date(),
 ): Promise<Routine> {
   const name = input.name.trim().slice(0, ROUTINE_NAME_CAP)
   if (!name) throw new Error('a routine needs a name')
   const invalid = input.task && input.steps.length === 0 ? null : validateRoutineSteps(input.steps)
   if (invalid) throw new Error(invalid)
-  const id = `rt-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`
+  if (input.id && !/^rt-[a-z0-9-]{1,100}$/.test(input.id)) throw new Error('Invalid routine id')
+  const id = input.id ?? `rt-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`
+  if (input.id) {
+    try {
+      const existing = toRoutine(await readNote(paths, id))
+      if (!existing) throw new Error('This routine was archived or changed. Start a new draft instead.')
+      return existing
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  }
   const steps = input.steps.map(normalizeStep)
   const note = buildNote(id, name, steps, now, undefined, input.task)
   await writeNote(paths, note)

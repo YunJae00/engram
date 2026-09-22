@@ -5,6 +5,18 @@ import type { DesktopApi, DesktopControlStatusDto } from './desktop.js'
 import type { DevelopersApi, DevUpdate } from './developers.js'
 import type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
+export interface RoutineLearningDto {
+  id: string
+  phase: 'recording' | 'review'
+  preparing: boolean
+  turns: number
+  incomplete: number
+  limited: boolean
+  draft: { name: string; goal: string; does: string }
+  urls: string[]
+  method: string[]
+  checks: string[]
+}
 export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
 
 export interface McpInfoDto {
@@ -369,6 +381,7 @@ export interface PendingWorkDto {
 export interface BrowserTabDto { id: string; url: string; title?: string; active: boolean }
 
 export type EngramEvent =
+  | { type: 'routine:learning'; botId: string; error?: string }
   | { type: 'dev:changed'; update: DevUpdate | null }
   | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
   | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null; reason?: string }
@@ -632,6 +645,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
+  routineLearning(botId: string): Promise<RoutineLearningDto | null>
+  routineLearningAction(botId: string, action: 'start' | 'finish' | 'discard' | 'save', input?: { id: string; name: string; goal: string }): Promise<RoutineLearningDto | null>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
   botStandingDecline(botId: string, goal: string): Promise<void>
   botTaskRemove(botId: string, taskId: string): Promise<void>

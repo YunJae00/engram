@@ -114,6 +114,7 @@ export type { ToolSessionCall, ToolSessionJob, ToolSessionResult } from './engin
 export { appendAudit, auditDays, auditDir, readAudit, type AuditEntry, type AuditKind } from './audit-log.js'
 export { recordedSteps, successfulTurnSteps, type TurnStep } from './routine-record.js'
 export { routineTask, routineTaskPrompt } from './routine-task.js'
+export { readRoutineLearning, changeRoutineLearning, startRoutineLearning, learnRoutineTurn, routineLearningPrompt, parseRoutineLearningDraft, type RoutineLearning } from './routine-learning.js'
 export { DesktopControlLease } from './desktop-control-lease.js'
 export type { ToolOutcome } from './agent-loop.js'
 export { fileWorkTools, resolveArtifact, saveArtifact, readArtifact, type FileFound, type FileSearchResult, type FileWorkOptions } from './file-work.js'

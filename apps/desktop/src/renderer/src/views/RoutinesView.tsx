@@ -82,7 +82,7 @@ export function RoutinesView({ selectedId }: { selectedId: string | null }) {
       {!selectedId ? <div className="routine-overview" data-testid="routines-overview">
         <Repeat size={32} strokeWidth={1.4} aria-hidden />
         <h1>Saved routines</h1>
-        <p>Keep a useful task with its instructions and starting pages, ready for next time.</p>
+        <p>Type /routine in a Comet to learn from that chat, then finish and review what to save.</p>
         <p>{data?.routines.length ? 'Choose a routine in the sidebar to see its description and recorded steps.' : data ? t('routines.empty') : 'Loading saved routines…'}</p>
         <p className="routine-run-hint">Run opens a new chat. Progress, approvals and results stay with that conversation.</p>
       </div> : selected ? <article className="routine-detail" data-testid={`routine-detail-${selected.id}`}>

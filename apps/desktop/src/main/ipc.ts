@@ -1,6 +1,5 @@
 import { registerBrowserTabs } from './browser-tabs.js'
 import {
-  routineDraftTool,
   updateRoutineGoal,
   activationRerank,
   fadingMemories,
@@ -60,9 +59,6 @@ import {
   deriveSearchTemplate,
   fillSlots,
   parsePendingCall,
-  parseProposal,
-  proposalPrompt,
-  PROPOSAL_TOKENS,
   runErrand,
   addRoutine,
   hostOf,
@@ -70,9 +66,6 @@ import {
   ruleFor,
   askKey,
   declineStanding,
-  repeatedAsk,
-  routineSlots,
-  routineWrites,
   renameBot,
   titleFromMessage,
   UNTITLED_BOT_NAME,
@@ -128,6 +121,7 @@ import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
 import { botPreviews } from './bot-previews.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
+import { registerRoutineLearning } from './routine-learning.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
@@ -950,6 +944,7 @@ export function registerIpc(ctx: VaultContext): void {
   scheduleAutoTidy(ctx, 120_000)
 
   const { paths } = ctx
+  const learning = registerRoutineLearning(ctx, id => answering.has(`bot-${id}`) || externalOwns(`bot-${id}`))
   const sidebarIds = async (kind?: unknown) => {
     if (kind !== undefined && kind !== 'chat' && kind !== 'routine') throw new Error('Invalid sidebar section')
     return {
@@ -1009,6 +1004,7 @@ export function registerIpc(ctx: VaultContext): void {
     abortAllChat(channel)
     releaseDesktop(channel)
     closeClaudeSession(id)
+    await learning.discard(id)
     await archiveBotTranscript(paths, id)
     await resetLaneView(channel)
     broadcast({ type: 'bots:changed' })
@@ -1227,6 +1223,7 @@ export function registerIpc(ctx: VaultContext): void {
     abortAllChat(`bot-${id}`)
     releaseDesktop(`bot-${id}`)
     await deleteBot(paths, id)
+    await learning.discard(id)
     await updateSettings(settings => { delete settings.aiSelections[`bot-${id}`]; return settings })
     resumeState.delete(id)
     lastTurns.delete(id)
@@ -1494,12 +1491,6 @@ export function registerIpc(ctx: VaultContext): void {
   // Enough of a page for an answer to stand on, short of drowning a small
   // model's context in one reading.
   const ROUTINE_READING_CAP = 1_200
-
-  // Fewer than this and the answer was cheap enough to just ask again.
-  const KEEP_AFTER_STEPS = 3
-  // Writing the button is one short call after the answer is already out;
-  // past this the offer is simply not made.
-  const PROPOSAL_TIMEOUT_MS = 45_000
 
   async function runProcedureForComet(id: string, slots: Record<string, string>, again: boolean, lane: string): Promise<string> {
     const instruction = (await listRoutines(paths)).find(routine => routine.id === id)
@@ -2016,6 +2007,18 @@ export function registerIpc(ctx: VaultContext): void {
 
   async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine): Promise<void> {
     if (externalOwns(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))) throw new Error('An external client is working in this conversation. Stop its session in Settings → External connections before sending here.')
+    if (request.botId && learning.pending(request.botId)) throw new Error('Wait for the routine draft to finish preparing.')
+    const command = /^\/routine(?:\s+(start|finish|cancel))?$/i.exec(request.message.trim())
+    if (command && request.botId && !savedRoutine && !recovery) {
+      if (request.attachments?.length) throw new Error('Send attachments separately from the Routine skill command.')
+      const operation = command[1]?.toLowerCase() === 'finish' ? 'finish' : command[1]?.toLowerCase() === 'cancel' ? 'discard' : 'start'
+      await learning.action(request.botId, operation)
+      const answer = operation === 'start' ? 'Routine skill started. Only work from now on in this chat will be collected. Choose Finish when you are ready to review and save.' : operation === 'finish' ? 'Your routine draft is ready to review. Saving does not schedule or run it.' : 'Routine draft discarded. Saved routines are unchanged.'
+      await appendBotTurn(paths, request.botId, { role: 'user', text: request.message, at: new Date().toISOString() })
+      await appendBotTurn(paths, request.botId, { role: 'assistant', text: answer, at: new Date().toISOString() })
+      broadcast({ type: 'chat:done', channel: request.channel ?? `bot-${request.botId}`, text: answer })
+      return
+    }
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
     chatAborts.add(entry)
@@ -2037,6 +2040,7 @@ export function registerIpc(ctx: VaultContext): void {
     const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
     const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
+    const learningId = bot ? await learning.active(bot.id) : undefined
     const firstTitle = bot?.name === UNTITLED_BOT_NAME && secretsIn(request.message).length === 0 ? titleFromMessage(request.message) : null
     if (bot && firstTitle) {
       await renameBot(paths, bot.id, firstTitle)
@@ -2255,12 +2259,12 @@ export function registerIpc(ctx: VaultContext): void {
           ? `On screen right now: the browser is open at ${open.url}. It is the same window as last turn - read it with read_open_page before opening anything, and work in it rather than starting again elsewhere.`
           : ''
       const onScreen = [!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [officeContext(), desktopContext()].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
+      let learningRecorded = false
       try {
         assertDesktopChatEngine(channel, engine)
         const resume = resumeState.get(bot.id)
         resumeState.delete(bot.id)
         const skillLedger = await readSkillsLedger(paths)
-        const routineDraft = { current: null as import('core').TaskProposal | null }
         const result = await runComet(
           {
             engine,
@@ -2341,7 +2345,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), routineDraftTool(draft => { routineDraft.current = draft }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2383,7 +2387,11 @@ export function registerIpc(ctx: VaultContext): void {
               : {}),
           },
         )
-        if (signal.aborted) return
+        if (signal.aborted) {
+          await learning.record(bot.id, learningId, request.message, [], false)
+          learningRecorded = true
+          return
+        }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         // A model that was pushed to act may announce that it acted. The
@@ -2414,11 +2422,9 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        // A job worked on a website, hands and all: worth writing down how it
-        // went, so the next time starts from what was learned rather than from
-        // nothing. The note is the person's to approve, like any other.
-        const HANDS = new Set(['press', 'type_text', 'choose', 'press_point', 'reveal'])
         const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete
+        await learning.record(bot.id, learningId, request.message, result.steps, finished)
+        learningRecorded = true
         await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
         if (savedRoutine?.task) {
           await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
@@ -2428,41 +2434,17 @@ export function registerIpc(ctx: VaultContext): void {
         const checkpoint = resumeCheckpoint(request.message, result)
         if (checkpoint) resumeState.set(bot.id, checkpoint)
         else resumeState.delete(bot.id)
-        const handled = finished && result.steps.some((step) => HANDS.has(step.tool))
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
           for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch { /* Invalid addresses have no icon. */ } }
           broadcast({ type: 'bots:changed' })
         }
-        // What to offer is read off what happened, never off a fixed row of
-        // buttons: a job it was never shown asks to be taught, a procedure
-        // it found asks to be run, and a job that took real work - several
-        // tools, a real answer at the end - asks whether to be kept for one
-        // click next time. A quick answer offers nothing at all.
-        const worked = result.steps.filter((step) => !step.seeded).length
-        const keepable = !routine && finished && worked >= KEEP_AFTER_STEPS
-        // The third morning of the same ask, and a read-only procedure with
-        // no blanks was just run for it: that one can run itself from now on.
-        const ranId = result.steps.map((step) => (step.tool === 'run_procedure' ? String(step.args['id'] ?? '') : '')).find((id) => id)
-        const ran = ranId ? (await listRoutines(paths)).find((r) => r.id === ranId) : undefined
-        const standing =
-          finished && ran && !routineWrites(ran) && routineSlots(ran.steps).length === 0 && !(bot.declined ?? []).includes(askKey(request.message))
-            ? repeatedAsk(
-                (await readBotTranscript(paths, bot.id)).filter((turn) => turn.role === 'user'),
-                request.message,
-              )
-            : null
-        // The answer goes out the moment it exists. Writing the keep-offer
-        // takes the brain another spell, and a person reading their answer
-        // under a spinner for it read the whole turn as unfinished.
         await deliverAnswer(
           `${result.answer}${note}`,
           result.asked && result.options?.length
             ? { kind: 'asked', question: result.answer, options: result.options }
-            : standing && ran
-              ? { kind: 'standing', name: ran.name, goal: request.message, count: standing.count, schedule: standing.schedule, routineId: ran.id }
-              : routine
+            : routine
                 ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
                 : undefined,
         )
@@ -2476,36 +2458,7 @@ export function registerIpc(ctx: VaultContext): void {
           execution: aiSelection(settings, channel),
         }
         lastTurns.set(bot.id, completed)
-        // The words they typed name this morning, not the work. Asked after
-        // the answer is out, it writes the offer, which follows on its own.
         const filingEngine = ctx.engines[0]
-        const proposal = routineDraft.current ?? (
-          filingEngine && (keepable || handled)
-            ? await collectResult(filingEngine, {
-                prompt: proposalPrompt({
-                  user: request.message,
-                  history: request.history,
-                  answer: result.answer,
-                  steps: result.steps
-                    .filter((step) => !step.seeded)
-                    .map((step) => `${step.tool}: ${String(Object.values(step.args).find((one) => typeof one === 'string') ?? '').slice(0, 80)}`),
-                }),
-                workdir: engineCwd(paths),
-                disallowTools: true,
-                timeoutMs: PROPOSAL_TIMEOUT_MS,
-                modelHint: 'fast',
-                maxTokens: PROPOSAL_TOKENS,
-                ...(signal ? { signal } : {}),
-              })
-                .then((raw: string) => parseProposal(raw))
-                .catch(() => null)
-            : null)
-        if (keepable || handled) flog('comet', `a button for this turn: ${proposal ? proposal.name : 'not worth one'}`)
-        if (lastTurns.get(bot.id) === completed && !signal.aborted && proposal) {
-          completed.keepGoal = proposal.goal
-          if (!result.asked && !standing && !routine)
-            broadcast({ type: 'chat:offer', channel, offer: { kind: 'keep', name: proposal.name, goal: proposal.goal, does: proposal.does } })
-        }
         // After the answer is out, while the model is still held: what of
         // this turn is worth keeping about the person.
         if (!result.asked && filingEngine)
@@ -2520,6 +2473,7 @@ export function registerIpc(ctx: VaultContext): void {
             signal,
           })
       } catch (err) {
+        if (!learningRecorded) await learning.record(bot.id, learningId, request.message, [], false)
         if (signal.aborted) {
           broadcast({ type: 'chat:done', channel, text: '' })
           return
