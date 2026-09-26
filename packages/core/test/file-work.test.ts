@@ -14,6 +14,12 @@ function tools(approveRead = async () => true) {
   return async (name: string, args: Record<string, unknown>, signal?: AbortSignal) => JSON.parse(await all.find((tool) => tool.name === name)!.run(args, { ...context, signal }))
 }
 
+it('reports measured words, characters and lines for a saved text file', async () => {
+  const output = await tools()('file_create_copy', { name: 'email.txt', content: 'UNSENT\nTo: the team\n\nThree  more\twords here.\n' })
+  expect(output).toMatchObject({ words: 8, characters: 45, lines: 5 })
+  expect((await tools()('file_create_copy', { name: 'empty.txt', content: '' })).words).toBe(0)
+})
+
 it('reads an approved revision, creates and verifies a copy, and never changes the source', async () => {
   const path = join(root, 'data.json')
   await writeFile(path, '{"amount":10,"keep":"unchanged"}')
