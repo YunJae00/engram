@@ -22,9 +22,14 @@ interface JsonSchema {
   pattern?: string
   minItems?: number
   maxItems?: number
+  anyOf?: JsonSchema[]
 }
 
 function fieldOf(schema: JsonSchema): ZodTypeAny {
+  if (schema.anyOf) {
+    const choices = schema.anyOf.map(fieldOf)
+    return choices.length > 1 ? z.union(choices as [ZodTypeAny, ZodTypeAny, ...ZodTypeAny[]]) : choices[0] ?? z.never()
+  }
   if (schema.enum && schema.enum.length > 0) return z.enum(schema.enum.map(String) as [string, ...string[]])
   switch (schema.type) {
     case 'string': {
@@ -44,6 +49,8 @@ function fieldOf(schema: JsonSchema): ZodTypeAny {
     }
     case 'boolean':
       return z.boolean()
+    case 'null':
+      return z.null()
     case 'array': {
       let value = z.array(schema.items ? fieldOf(schema.items) : z.unknown())
       if (schema.minItems !== undefined) value = value.min(schema.minItems)

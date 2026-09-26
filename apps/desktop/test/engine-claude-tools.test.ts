@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { allowedToolNames, shapeOf } from '../src/main/engine-claude-tools.js'
+import { workbookTool } from 'core'
 
 describe('the comet tools in the runtime\'s shape', () => {
+  it('preserves workbook cell alternatives instead of sending unconstrained unknown cells', () => {
+    const schema = z.object(shapeOf(workbookTool('unused').argsSchema))
+    const base = { name: 'output.xlsx', sheet: 'Data' }
+    expect(schema.safeParse({ ...base, rows: [['text', 2, true, null, { formula: 'B1*2' }]] }).success).toBe(true)
+    for (const value of [{ arbitrary: 'not a cell' }, ['nested'], { formula: 'A1', extra: true }]) {
+      expect(schema.safeParse({ ...base, rows: [[value]] }).success).toBe(false)
+    }
+  })
   it('translates the argument schemas the tools actually use', () => {
     const shape = shapeOf({
       type: 'object',

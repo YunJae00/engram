@@ -119,6 +119,22 @@ it('refuses nonrectangular workbooks and external or executable formula features
   expect(await readdir(root)).toHaveLength(0)
 })
 
+it('creates multiple sheets with local cross-sheet formulas while rejecting unknown or external targets', async () => {
+  const tool = workbookTool(join(root, 'outputs'))
+  const sheets = [{ sheet: 'Summary', rows: [[{ formula: "SUM('Prepaid Expenses'!A1:A2)" }]] }, { sheet: 'Prepaid Expenses', rows: [[12], [18]] }]
+  const result = JSON.parse(await tool.run({ name: 'linked.xlsx', sheets }, context))
+  expect(result.sheets.map((sheet: { sheet: string }) => sheet.sheet)).toEqual(['Summary', 'Prepaid Expenses'])
+  const XLSX = await import('xlsx')
+  const workbook = XLSX.read(await readFile(result.path), { type: 'buffer', sheetStubs: true })
+  expect(workbook.SheetNames).toEqual(['Summary', 'Prepaid Expenses'])
+  expect(workbook.Sheets.Summary!.A1.f).toBe("SUM('PREPAID EXPENSES'!A1:A2)")
+  for (const formula of ["'Missing'!A1", "'[external.xlsx]Prepaid Expenses'!A1", "WEBSERVICE('Prepaid Expenses'!A1)"]) {
+    await expect(tool.run({ name: 'bad.xlsx', sheets: [{ sheet: 'Summary', rows: [[{ formula }]] }, sheets[1]] }, context)).rejects.toThrow()
+  }
+  await expect(tool.run({ name: 'bad.xlsx', sheets: [sheets[1], sheets[1]] }, context)).rejects.toThrow()
+  await expect(tool.run({ name: 'bad.xlsx', sheets, sheet: 'Extra', rows: [[1]] }, context)).rejects.toThrow()
+})
+
 it('rejects CSV formula injection while preserving numeric negatives and quoted multiline values', async () => {
   const call = tools()
   for (const content of ['name,value\nitem,=1+2', 'name,value\nitem,"\t=HYPERLINK(A1)"', 'name,value\nitem,@SUM(A1)']) {
