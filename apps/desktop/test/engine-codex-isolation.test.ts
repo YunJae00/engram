@@ -20,7 +20,7 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
   withHelpersOnPath: () => ({ PATH: 'fixture-runtime-path' }),
 }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
-import { CodexEngine } from '../src/main/engine-codex.js'
+import { CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides } from '../src/main/engine-codex.js'
 import { ClaudeEngine, fetchClaudeModels, forgetClaudeModels } from '../src/main/engine-claude.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
@@ -84,22 +84,45 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.options).not.toHaveBeenCalled()
   })
 
-  it('rejects selected-app jobs before runtime discovery, settings access or SDK startup', async () => {
+  it('isolates selected-app plain-text decisions without exposing inherited tools', async () => {
     const events = await collect(new CodexEngine().run({ prompt: 'Operate the selected app', workdir: WORKDIR, disallowTools: true, requireToolIsolation: true }))
-    expect(events).toEqual([{ type: 'error', kind: 'crash', message: expect.stringContaining('cannot safely run selected-app tools') }])
-    expect(fixture.binary).not.toHaveBeenCalled()
-    expect(fixture.settings).not.toHaveBeenCalled()
-    expect(fixture.options).not.toHaveBeenCalled()
-    expect(fixture.run).not.toHaveBeenCalled()
+    expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])
+    expect(fixture.options.mock.lastCall![0].configOverrides).toEqual(['mcp_servers={"fixture"={command="node",enabled=false}}', ...RUNTIME_TOOLS_OFF])
+    expect(fixture.catalog).toHaveBeenCalledWith('fixture-codex', ['-C', WORKDIR, 'mcp', 'list', '--json'], expect.any(Number), expect.any(Object), expect.any(Object))
   })
 
-  it('retains the existing ordinary text job settings without promising desktop isolation', async () => {
+  it('keeps ordinary text jobs read-only with the runtime tools off', async () => {
     const events = await collect(new CodexEngine().run({ prompt: 'Read the provided text', workdir: WORKDIR, disallowTools: true, jsonSchema: { type: 'object', properties: { answer: { type: 'string' } } } }))
     expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])
-    expect(new CodexEngine().desktopToolIsolation).toBe(false)
-    expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' }, configOverrides: ['mcp_servers={"fixture"={command="node",enabled=false}}'] })
+    expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' }, configOverrides: ['mcp_servers={"fixture"={command="node",enabled=false}}', ...RUNTIME_TOOLS_OFF] })
+    expect(RUNTIME_TOOLS_OFF).toEqual(expect.arrayContaining(['features.shell_tool=false', 'features.unified_exec=false', 'features.apps=false', 'features.plugins=false', 'features.computer_use=false']))
     expect(fixture.threadOptions).toHaveBeenCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', webSearchMode: 'disabled', networkAccessEnabled: false, model: 'chosen-model' }))
     expect(fixture.run).toHaveBeenCalledWith('Read the provided text', expect.objectContaining({ outputSchema: { type: 'object', properties: { answer: { anyOf: [{ type: 'string' }, { type: 'null' }] } }, required: ['answer'], additionalProperties: false }, signal: expect.any(AbortSignal) }))
+  })
+
+  it('runs a tool session with only the comet tools, reachable through an authenticated loopback server', async () => {
+    const seen: Record<string, unknown>[] = []
+    let served = ''
+    fixture.run.mockImplementationOnce(async (input: string) => {
+      const options = fixture.options.mock.lastCall![0] as { env: Record<string, string>; configOverrides: string[] }
+      const url = /engram_comet=\{url="([^"]+)"/.exec(options.configOverrides[0]!)![1]!
+      const call = (auth: string) => fetch(url, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'note_read', arguments: { id: 'n1' } } }) })
+      expect((await call('Bearer wrong')).status).toBe(401)
+      served = JSON.stringify(await (await call('Bearer ' + options.env['ENGRAM_COMET_TOOL_TOKEN'])).json())
+      return { finalResponse: 'answer from ' + input.split('\n\n').length + ' parts' }
+    })
+    const tokens: string[] = []
+    const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: 'Rules', opening: 'Earlier', prompt: 'Do it', maxCalls: 5, onToken: text => tokens.push(text),
+      tools: [{ name: 'note_read', description: 'Read a note', argsSchema: { properties: { id: { type: 'string' } } }, run: async args => { seen.push(args); return 'note body' } }] })
+    expect(result).toEqual({ answer: 'answer from 3 parts' })
+    expect(tokens).toEqual(['answer from 3 parts'])
+    expect(seen).toEqual([{ id: 'n1' }])
+    expect(served).toContain('note body')
+    const options = fixture.options.mock.lastCall![0] as { configOverrides: string[] }
+    expect(options.configOverrides[0]).toMatch(/^mcp_servers=\{"fixture"=\{command="node",enabled=false\},engram_comet=\{url="http:\/\/127\.0\.0\.1:\d+\/mcp",bearer_token_env_var="ENGRAM_COMET_TOOL_TOKEN",tool_timeout_sec=900,default_tools_approval_mode="approve"\}\}$/)
+    expect(options.configOverrides.slice(1)).toEqual(RUNTIME_TOOLS_OFF)
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', webSearchMode: 'disabled', networkAccessEnabled: false }))
+    expect(new CodexEngine().desktopToolIsolation).toBe(true)
   })
 
   it('does not start the SDK when inherited connection discovery fails', async () => {
@@ -107,6 +130,31 @@ describe('text runtime desktop isolation boundary', () => {
     const events = await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, disallowTools: true }))
     expect(events).toEqual([{ type: 'error', kind: 'unknown', message: expect.stringContaining('Could not read the ChatGPT tool configuration') }])
     expect(fixture.run).not.toHaveBeenCalled()
+  })
+
+  it('disables inherited MCP for ordinary jobs too and replaces a colliding local server name', async () => {
+    await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR }))
+    expect(fixture.options.mock.lastCall![0].configOverrides[0]).toContain('enabled=false')
+    expect(disableMcpOverrides('[{"name":"engram_comet","transport":{"command":"untrusted"}}]', { engram_comet: '{url="http://127.0.0.1:1234/mcp"}' }))
+      .toEqual(['mcp_servers={engram_comet={url="http://127.0.0.1:1234/mcp"}}'])
+  })
+
+  it('does not start an already canceled tool session', async () => {
+    const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: '', prompt: 'Do it', tools: [], maxCalls: 1, signal: AbortSignal.abort() })
+    expect(result.error).toBe('canceled')
+    expect(fixture.binary).not.toHaveBeenCalled()
+    expect(fixture.run).not.toHaveBeenCalled()
+  })
+
+  it('closes the tool endpoint after a runtime failure', async () => {
+    let url = ''
+    fixture.run.mockImplementationOnce(async () => {
+      url = /url="([^"]+)"/.exec(fixture.options.mock.lastCall![0].configOverrides[0])![1]!
+      throw new Error('fixture failure')
+    })
+    const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: '', prompt: 'Do it', tools: [], maxCalls: 1 })
+    expect(result.error).toBe('fixture failure')
+    await expect(fetch(url)).rejects.toThrow()
   })
 
   it('restores optional fields before returning structured output to the tool loop', async () => {

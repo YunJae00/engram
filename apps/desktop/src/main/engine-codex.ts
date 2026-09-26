@@ -1,19 +1,32 @@
-import { DESKTOP_TOOL_ISOLATION_MESSAGE, ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput } from 'core'
+import { ENGINE_BUDGETS, SESSION_TURN_MS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
+import { startToolServer } from './codex-tool-server.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
-// person signs in with their own plan in the vendor's flow; each job here is
-// one read-only turn with web search disabled. This is not an isolated
-// tool session: inherited runtime tools are a separate boundary.
+// person signs in with their own plan in the vendor's flow. Every turn runs
+// read-only with web search off and the runtime's own tools switched off. A
+// tool session reaches the comet's tools, and nothing else, through a
+// loopback tool server.
 
-export function disableMcpOverrides(catalog: string): string[] {
+// Runtime features that act on their own: shell, account-connected apps,
+// browsers, computer use, plugins, hooks, image generation and file viewing.
+export const RUNTIME_TOOLS_OFF = [
+  'apps', 'multi_agent', 'image_generation', 'shell_tool', 'unified_exec', 'plugins', 'remote_plugin', 'browser_use',
+  'browser_use_external', 'computer_use', 'in_app_browser', 'goals', 'tool_suggest', 'skill_search',
+  'skill_mcp_dependency_install', 'view_image', 'hooks', 'sleep_tool', 'workspace_dependencies',
+  'multi_agent_v2', 'artifact', 'standalone_web_search', 'in_app_local_automation', 'worktrees',
+].map(feature => `features.${feature}=false`).concat('include_apply_patch_tool=false')
+const TOOL_SERVER = 'engram_comet'
+const TOKEN_ENV = 'ENGRAM_COMET_TOOL_TOKEN'
+
+export function disableMcpOverrides(catalog: string, extra: Record<string, string> = {}): string[] {
   const servers: unknown = JSON.parse(catalog)
   if (!Array.isArray(servers)) throw new Error('Could not read the ChatGPT tool configuration.')
-  const disabled = servers.map(server => {
+  const disabled = servers.filter(server => !Object.hasOwn(extra, server?.name)).map(server => {
     const key = typeof server?.transport?.url === 'string' ? 'url' : 'command'
     const transport = server?.transport?.[key]
     if (typeof server?.name !== 'string' || typeof transport !== 'string') throw new Error('Could not read the ChatGPT tool configuration.')
@@ -21,7 +34,7 @@ export function disableMcpOverrides(catalog: string): string[] {
     // transport so the override remains valid, without starting it.
     return `${JSON.stringify(server.name)}={${key}=${JSON.stringify(transport)},enabled=false}`
   })
-  return [`mcp_servers={${disabled.join(',')}}`]
+  return [`mcp_servers={${[...disabled, ...Object.entries(extra).map(([name, value]) => `${name}=${value}`)].join(',')}}`]
 }
 
 // Strict output requires every property; nullable fields represent omissions.
@@ -86,7 +99,7 @@ export class CodexEngine implements CloudEngine {
   constructor(readonly accountProfile = activeAccountProfile('codex')) { this.env = accountEnvironment('codex', accountProfile) }
   readonly id = 'codex' as const
   readonly label = 'ChatGPT'
-  readonly desktopToolIsolation = false
+  readonly desktopToolIsolation = true
   private readonly status = new StatusCache()
 
   detect(): Promise<EngineDetection> {
@@ -114,10 +127,7 @@ export class CodexEngine implements CloudEngine {
   }
 
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
-    if (job.requireToolIsolation) {
-      yield { type: 'error', kind: 'crash', message: DESKTOP_TOOL_ISOLATION_MESSAGE }
-      return
-    }
+    if (job.signal?.aborted) return
     const binary = codexBinary()
     if (!binary) {
       yield { type: 'error', message: 'the ChatGPT runtime is not part of this build', kind: 'crash' }
@@ -131,14 +141,10 @@ export class CodexEngine implements CloudEngine {
     job.signal?.addEventListener('abort', onAbort, { once: true })
     try {
       const env = withHelpersOnPath(binary, this.env)
-      let configOverrides: string[] = []
-      if (job.disallowTools) {
-        // Engram executes the returned action. Starting unrelated MCP servers
-        // for each JSON decision adds their connection time to every step.
-        const catalog = await runText(binary, ['mcp', 'list', '--json'], Math.min(budget, 60_000), env, { signal: abort.signal })
-        if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
-        configOverrides = disableMcpOverrides(catalog.out)
-      }
+      // Match the turn's directory so project-local servers are disabled too.
+      const catalog = await runText(binary, ['-C', job.workdir, 'mcp', 'list', '--json'], Math.min(budget, 60_000), env, { signal: abort.signal })
+      if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+      const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF]
       let text = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides },
         thread: {
@@ -171,6 +177,51 @@ export class CodexEngine implements CloudEngine {
     } finally {
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
+    }
+  }
+
+  // One turn with the comet's tools. The person's other tool servers stay off.
+  async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
+    if (job.signal?.aborted) return { answer: '', error: 'canceled' }
+    const binary = codexBinary()
+    if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
+    const abort = new AbortController()
+    const timer = setTimeout(() => abort.abort(new Error(`timed out after ${SESSION_TURN_MS}ms`)), SESSION_TURN_MS)
+    const onAbort = (): void => abort.abort()
+    job.signal?.addEventListener('abort', onAbort, { once: true })
+    let server: Awaited<ReturnType<typeof startToolServer>> | undefined
+    try {
+      server = await startToolServer(job.tools, abort.signal)
+      const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
+      const catalog = await runText(binary, ['-C', job.workdir, 'mcp', 'list', '--json'], 60_000, env, { signal: abort.signal })
+      if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+      const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
+      const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
+      const answer = await runCodexTurn({
+        options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF] },
+        thread: {
+          workingDirectory: job.workdir,
+          sandboxMode: 'read-only',
+          skipGitRepoCheck: true,
+          approvalPolicy: 'never',
+          webSearchMode: 'disabled',
+          networkAccessEnabled: false,
+          ...(job.effort ? { modelReasoningEffort: job.effort } : {}),
+          ...(codexModel ? { model: codexModel } : {}),
+        },
+        input: [job.system, job.opening, job.prompt].filter(Boolean).join('\n\n'),
+      }, abort.signal)
+      abort.signal.throwIfAborted()
+      job.onToken?.(answer)
+      return { answer }
+    } catch (err) {
+      if (job.signal?.aborted) return { answer: '', error: 'canceled' }
+      if (abort.signal.aborted) return { answer: '', error: `timed out after ${SESSION_TURN_MS}ms` }
+      return { answer: '', error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      clearTimeout(timer)
+      job.signal?.removeEventListener('abort', onAbort)
+      await server?.close()
     }
   }
 }
