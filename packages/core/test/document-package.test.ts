@@ -131,6 +131,23 @@ it('rejects traversal, duplicate parts, macros, oversized expansion and wrong do
   await expect(caller()('file_read_package', { path: input.path }, AbortSignal.abort())).rejects.toThrow()
 })
 
+it('accepts unused macro defaults but rejects actual VBA, ActiveX and binary macro parts', async () => {
+  const input = await fixture('xlsx')
+  const parts = await readPackage(input.bytes)
+  parts.set('[Content_Types].xml', Buffer.from(parts.get('[Content_Types].xml')!.toString().replace('</Types>',
+    '<Default Extension="bin" ContentType="application/vnd.ms-excel.sheet.binary.macroEnabled.main"/></Types>')))
+  expect(() => validatePackage(parts, '.xlsx')).not.toThrow()
+  const zip = new JSZip()
+  for (const [name, bytes] of parts) zip.file(name, bytes)
+  await writeFile(input.path, await zip.generateAsync({ type: 'nodebuffer' }))
+  expect((await caller()('file_read_package', { path: input.path })).partCount).toBe(parts.size)
+  for (const name of ['xl/vbaProject.bin', 'xl/activeX/activeX1.bin', 'xl/payload.bin']) {
+    const active = new Map(parts)
+    active.set(name, Buffer.from('untrusted payload'))
+    expect(() => validatePackage(active, '.xlsx')).toThrow()
+  }
+})
+
 it('does not save when control is stopped, and rejects unsafe formula or external-link edits', async () => {
   const input = await fixture('xlsx')
   let stopped = false

@@ -120,7 +120,6 @@ export function validatePackage(parts: DocumentPackage, extension: string): void
     if (entry.nodeType !== 1) continue
     const element = entry as typeof types
     const contentType = element.getAttribute('ContentType') ?? ''
-    if (/macroEnabled|vbaProject|activeX/i.test(contentType)) throw new Error('Executable document content is not supported.')
     if (element.namespaceURI !== CONTENT_TYPES) throw new Error('Unknown content type namespace.')
     if (element.localName === 'Override') {
       const name = partName((element.getAttribute('PartName') ?? '').replace(/^\//, ''))
@@ -135,7 +134,13 @@ export function validatePackage(parts: DocumentPackage, extension: string): void
   }
   const mainType = extension === '.docx' ? 'wordprocessingml.document' : extension === '.pptx' ? 'presentationml.presentation' : 'spreadsheetml.sheet'
   if (overrides.get(main[0]!) !== `application/vnd.openxmlformats-officedocument.${mainType}.main+xml`) throw new Error('The main content type does not match the document format.')
-  for (const name of parts.keys()) if (name !== '[Content_Types].xml' && !(overrides.get(name) || defaults.get(name.endsWith('.rels') ? 'rels' : extname(name).slice(1)))) throw new Error(`Missing content type for ${name}.`)
+  for (const name of parts.keys()) {
+    if (name === '[Content_Types].xml') continue
+    const contentType = overrides.get(name) || defaults.get(name.endsWith('.rels') ? 'rels' : extname(name).slice(1))
+    if (!contentType) throw new Error(`Missing content type for ${name}.`)
+    // Writers can declare unused binary defaults in a plain XLSX. Reject actual active parts.
+    if (/macroEnabled|vbaProject|activeX/i.test(contentType)) throw new Error('Executable document content is not supported.')
+  }
   const relationships = new Map<string, Set<string>>()
   let rootMain = false
   for (const [name, document] of documents) {
