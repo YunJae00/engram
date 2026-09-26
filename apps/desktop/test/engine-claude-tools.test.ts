@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { allowedToolNames, shapeOf } from '../src/main/engine-claude-tools.js'
-import { workbookTool } from 'core'
+import { fileWorkTools, workbookTool } from 'core'
 
 describe('the comet tools in the runtime\'s shape', () => {
+  it('keeps arithmetic operands numeric or explicit prior-result references', () => {
+    const tool = fileWorkTools({ directory: 'unused', approveRead: async () => false }).find(tool => tool.name === 'work_calculate')!
+    const schema = z.object(shapeOf(tool.argsSchema))
+    const calculation = { id: 'total', operation: 'sum', values: [2, { ref: 'prior' }] }
+    expect(schema.safeParse({ calculations: [calculation] }).success).toBe(true)
+    for (const values of [['2+2'], [{ ref: 'prior', code: 'run' }], [null]]) {
+      expect(schema.safeParse({ calculations: [{ ...calculation, values }] }).success).toBe(false)
+    }
+  })
   it('preserves workbook cell alternatives instead of sending unconstrained unknown cells', () => {
     const schema = z.object(shapeOf(workbookTool('unused').argsSchema))
     const base = { name: 'output.xlsx', sheet: 'Data' }

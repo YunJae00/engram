@@ -11,6 +11,7 @@ export function workCapabilities(tools: AgentTool[]): AgentTool {
     async run(_args, context) {
       context.signal?.throwIfAborted()
       return JSON.stringify({
+        calculations: tools.filter(tool => tool.name === 'work_calculate').map(tool => ({ name: tool.name, description: tool.description })),
         savedFiles: tools.filter((tool) => tool.name.startsWith('file_') || tool.name === 'find_files').map((tool) => ({ name: tool.name, description: tool.description })),
         web: tools.filter((tool) => ['open_page', 'read_open_page', 'read_pages', 'press', 'type_text', 'look'].includes(tool.name)).map((tool) => tool.name),
         evidence: tools.filter(tool => ['record_start', 'record_stop', 'capture_evidence', 'verify', 'wait_for', 'upload_file'].includes(tool.name)).map(tool => ({ name: tool.name, description: tool.description })),
