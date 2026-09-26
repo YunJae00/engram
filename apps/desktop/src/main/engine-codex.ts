@@ -19,6 +19,7 @@ export const RUNTIME_TOOLS_OFF = [
   'browser_use_external', 'computer_use', 'in_app_browser', 'goals', 'tool_suggest', 'skill_search',
   'skill_mcp_dependency_install', 'view_image', 'hooks', 'sleep_tool', 'workspace_dependencies',
   'multi_agent_v2', 'artifact', 'standalone_web_search', 'in_app_local_automation', 'worktrees',
+  'code_mode', 'code_mode_only', 'code_mode_host', 'shell_snapshot', 'shell_snapshot_v2', 'request_permissions_tool',
 ].map(feature => `features.${feature}=false`).concat('include_apply_patch_tool=false')
 const TOOL_SERVER = 'engram_comet'
 const TOKEN_ENV = 'ENGRAM_COMET_TOOL_TOKEN'

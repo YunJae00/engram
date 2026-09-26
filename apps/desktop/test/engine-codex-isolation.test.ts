@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, EngineEvent } from 'core'
+import { SESSION_TURN_MS } from 'core'
 
 const fixture = vi.hoisted(() => ({
   ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
@@ -155,6 +156,22 @@ describe('text runtime desktop isolation boundary', () => {
     const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: '', prompt: 'Do it', tools: [], maxCalls: 1 })
     expect(result.error).toBe('fixture failure')
     await expect(fetch(url)).rejects.toThrow()
+  })
+
+  it('bounds a silent tool turn and reports timeout rather than success', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let started!: () => void
+    const ready = new Promise<void>(resolve => { started = resolve })
+    fixture.run.mockImplementationOnce((_input: unknown, { signal }: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      started()
+    }))
+    try {
+      const pending = new CodexEngine().runTools({ workdir: WORKDIR, system: '', prompt: 'Do it', tools: [], maxCalls: 1 })
+      await ready
+      await vi.advanceTimersByTimeAsync(SESSION_TURN_MS)
+      expect((await pending).error).toBe(`timed out after ${SESSION_TURN_MS}ms`)
+    } finally { vi.useRealTimers() }
   })
 
   it('restores optional fields before returning structured output to the tool loop', async () => {
