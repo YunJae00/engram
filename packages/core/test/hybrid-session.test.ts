@@ -28,12 +28,10 @@ it('completes a file workflow through the real session and storage tools without
       const methods = await json('work_capabilities')
       expect(methods.liveDocumentApi.available).toBe(false)
       expect(methods.desktop).toEqual([])
-      await invoke('task_plan', { phases: ['Read source', 'Create and verify a separate revised copy'] })
+      expect(job.tools.some((tool) => tool.name === 'task_plan')).toBe(false)
       const source = await json('file_read', { path })
-      await invoke('task_plan', { evidenceStep: 3, finding: 'Original count and unrelated content observed.' })
       const output = await json('file_create_copy', { name: 'revised.json', sourcePath: path, expectedSha256: source.sha256, content: '{"count":3,"untouched":"keep"}' })
       expect(JSON.parse(output.content)).toEqual({ count: 3, untouched: 'keep' })
-      await invoke('task_plan', { evidenceStep: 5, finding: 'Separate saved copy read back with count 3 and unrelated content preserved; no live application update claimed.' })
       return { answer: `Created and verified a separate copy: ${output.link}. Original unchanged.` }
     })
     const result = await runToolSession({ engine, workdir: root as EngineCwd, tools: fileWorkTools({ directory: join(root, 'outputs'), approveRead: async () => true }) }, 'Revise the count in a separate file copy.')

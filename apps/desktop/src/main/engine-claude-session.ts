@@ -1,5 +1,6 @@
 import { SESSION_TURN_MS, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
+import { claudeSessionStarted } from './claude-runtime.js'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 
@@ -204,6 +205,7 @@ export class WarmSession {
         // line in the field log, because "which model answered" is otherwise
         // unanswerable after the fact.
         if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
+          claudeSessionStarted()
           flog('engine-claude', `session running on ${(message as { model?: string }).model ?? 'an unnamed model'}; startup_ms=${Math.round(performance.now() - this.startedAt)}`)
           continue
         }

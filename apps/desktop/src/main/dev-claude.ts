@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { DevItem, DevSession } from '../shared/developers.js'
-import { installedClaudeBinary, loadClaudeSdk } from './claude-runtime.js'
+import { afterFirstClaudeSession, claudeSessionStarted, installedClaudeBinary, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime, type ProcessClient } from './process-client.js'
 import { DevApprovals } from './dev-approvals.js'
 import { devEditPreview, devLocalPath } from './dev-edit.js'
@@ -20,10 +20,12 @@ interface Sdk { query(options: { prompt: AsyncIterable<SdkUserMessage>; options:
 export async function claudeProbe<T>(cwd: string, request: (query: Query) => Promise<T>, profile = activeAccountProfile('claude')): Promise<T> {
   const env = accountEnvironment('claude', profile)
   const abort = new AbortController(), processes = new Set<ProcessClient>()
-  const timer = setTimeout(() => abort.abort(), 60_000)
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const sdk = await loadClaudeSdk() as Sdk, binary = installedClaudeBinary()
     if (!binary) throw new Error('Connect Claude in AI settings first.')
+    await afterFirstClaudeSession()
+    timer = setTimeout(() => abort.abort(), 60_000)
     const prompt = (async function* () { await new Promise<void>(resolve => { if (abort.signal.aborted) resolve(); else abort.signal.addEventListener('abort', () => resolve(), { once: true }) }); if (!abort.signal.aborted) yield undefined as never })()
     const query = sdk.query({ prompt, options: { cwd, env, pathToClaudeCodeExecutable: binary, abortController: abort, tools: [], persistSession: false, settingSources: [], strictMcpConfig: true, maxTurns: 1, spawnClaudeCodeProcess: (options: Parameters<typeof spawnRuntime>[0]) => { const child = spawnRuntime({ ...options, killTree: true }); processes.add(child); return child } } })
     return await Promise.race([request(query), new Promise<never>((_, reject) => { if (abort.signal.aborted) reject(new Error('Timed out')); else abort.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true }) })])
@@ -125,7 +127,7 @@ export class DevClaude {
     try {
       for await (const message of query) {
         if (this.closed) break
-        if (message['type'] === 'system' && message['subtype'] === 'init') { this.session.runtimeId = text(message['session_id']) || this.session.runtimeId; this.session.forkOnStart = false }
+        if (message['type'] === 'system' && message['subtype'] === 'init') { claudeSessionStarted(); this.session.runtimeId = text(message['session_id']) || this.session.runtimeId; this.session.forkOnStart = false }
         else if (message['type'] === 'stream_event') {
           const event = object(message['event']), delta = object(event['delta'])
           if (event['type'] === 'message_start') this.messageId = text(object(event['message'])['id']) || randomUUID()

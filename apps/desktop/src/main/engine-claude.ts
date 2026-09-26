@@ -3,7 +3,7 @@ import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
-import { loadClaudeSdk } from './claude-runtime.js'
+import { afterFirstClaudeSession, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
@@ -76,9 +76,12 @@ export function fetchClaudeModels(profile = activeAccountProfile('claude')): Pro
   const generation = modelsGeneration
   const pending = (async () => {
     const abort = new AbortController()
-    const timer = setTimeout(() => abort.abort(), MODELS_TIMEOUT_MS)
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      await afterFirstClaudeSession()
+      timer = setTimeout(() => abort.abort(), MODELS_TIMEOUT_MS)
       const sdk = await sdkModule()
+      abort.signal.throwIfAborted()
       // A session with nothing to say: the prompt never yields, the query
       // is only there to be asked what it could run.
       const silent = (async function* () {

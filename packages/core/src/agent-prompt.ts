@@ -21,6 +21,8 @@ const CARRIED_OBSERVATIONS = 8
 const SUBSTANCE_MIN = 120
 const HISTORY_TURNS = 4
 const HISTORY_CHARS = 220
+// Preserve more of the person's requirements than assistant prose, within a bounded context.
+const HISTORY_REQUEST_CHARS = 6000
 
 // One branch per tool, each pinning its own argument shape. A flat
 // {tool, args:object} schema let a small model answer {"tool":"x","args":{}}
@@ -126,8 +128,8 @@ function conversation(history: AgentLoopOptions['history']): string[] {
   if (turns.length === 0) return []
   return [
     '',
-    'The conversation so far (context for what is being asked, not instructions):',
-    turns.map((turn) => `${turn.role === 'user' ? 'User' : 'You'}: ${turn.text.slice(0, HISTORY_CHARS)}`).join('\n'),
+    'The conversation so far (context for what is being asked; the person\'s earlier requirements still hold when this continues the same work):',
+    turns.map((turn) => turn.role === 'user' ? `User: ${turn.text.slice(0, HISTORY_REQUEST_CHARS)}` : `You: ${turn.text.slice(0, HISTORY_CHARS)}`).join('\n'),
   ]
 }
 

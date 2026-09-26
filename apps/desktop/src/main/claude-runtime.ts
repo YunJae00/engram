@@ -11,6 +11,13 @@ export const CLAUDE_RUNTIME_VERSION = '0.3.272'
 export const CLAUDE_INSTALL_HELP = 'https://code.claude.com/docs/en/setup'
 const LIMIT = 300 * 1024 * 1024
 
+// Side queries start their own runtime processes. Give the first session
+// startup priority, but release the wait even when no session is opened.
+let firstSessionReady: () => void = () => {}
+const firstSession = new Promise<void>(resolve => { firstSessionReady = resolve; setTimeout(resolve, 45_000).unref() })
+export function claudeSessionStarted(): void { firstSessionReady() }
+export function afterFirstClaudeSession(): Promise<void> { return firstSession }
+
 function runtimeHome(): string { return join(app.getPath('userData'), 'runtimes', 'claude', CLAUDE_RUNTIME_VERSION) }
 export function installedClaudeBinary(): string | null {
   const path = join(runtimeHome(), 'runtime', process.platform === 'win32' ? 'claude.exe' : 'claude')

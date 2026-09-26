@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, EngineEvent } from 'core'
 
 const fixture = vi.hoisted(() => ({
-  options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
+  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
 }))
-vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
+vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: fixture.ready, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('../src/main/codex-turn.js', () => ({
   runCodexTurn: async (request: import('../src/main/codex-turn.js').CodexTurn, signal: AbortSignal) => {
     fixture.options(request.options)
@@ -21,7 +21,7 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
 }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
 import { CodexEngine } from '../src/main/engine-codex.js'
-import { ClaudeEngine } from '../src/main/engine-claude.js'
+import { ClaudeEngine, fetchClaudeModels, forgetClaudeModels } from '../src/main/engine-claude.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 async function collect(events: AsyncIterable<EngineEvent>): Promise<EngineEvent[]> {
@@ -32,6 +32,7 @@ async function collect(events: AsyncIterable<EngineEvent>): Promise<EngineEvent[
 
 beforeEach(() => {
   vi.clearAllMocks()
+  fixture.ready.mockResolvedValue(undefined)
   fixture.binary.mockReturnValue('fixture-codex')
   fixture.catalog.mockResolvedValue({ code: 0, out: '[{"name":"fixture","transport":{"command":"node"}}]' })
   fixture.settings.mockResolvedValue({ codexModel: 'chosen-model', claudeModel: 'chosen-model' })
@@ -40,6 +41,20 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('does not spend model discovery timeout waiting for the first session', async () => {
+    vi.useFakeTimers()
+    forgetClaudeModels()
+    try {
+      fixture.ready.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 45_000)))
+      fixture.query.mockImplementationOnce(() => ({ supportedModels: async () => {
+        await new Promise(resolve => setTimeout(resolve, 30_000))
+        return [{ value: 'fixture', displayName: 'Fixture', description: 'Test model' }]
+      } }))
+      const pending = fetchClaudeModels()
+      await vi.advanceTimersByTimeAsync(75_000)
+      expect(await pending).toEqual([expect.objectContaining({ value: 'fixture' })])
+    } finally { forgetClaudeModels(); vi.useRealTimers() }
+  })
   it('forwards explicit effort to both runtimes instead of the fast hint', async () => {
     await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', modelHint: 'fast', effort: 'high' }))
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ modelReasoningEffort: 'high' }))

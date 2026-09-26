@@ -6,23 +6,30 @@ import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../sr
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 
-it('gives browser work 80 calls and extends it through fresh phase evidence', async () => {
+it('gives browser work 80 calls without self-checkpoints', async () => {
   const engine = sessionBrain(async job => {
     expect(job.maxCalls).toBe(120)
-    const plan = job.tools.find(tool => tool.name === 'task_plan')!
+    expect(job.tools.map(tool => tool.name)).not.toContain('task_plan')
+    expect(job.system).not.toContain('task_plan')
     const read = job.tools.find(tool => tool.name === 'read_open_page')!
-    await plan.run({ phases: ['Collect entries', 'Verify totals'] })
-    for (let i = 0; i < 79; i++) await read.run({})
-    expect(await plan.run({ evidenceStep: 80, finding: 'All entries read' })).toContain('"completed":1')
-    await read.run({})
-    await plan.run({ evidenceStep: 82, finding: 'Total verified' })
-    return { answer: 'Verified' }
+    for (let i = 0; i < 80; i++) await read.run({})
+    expect(await read.run({})).toContain('No more calls this turn')
+    return { answer: 'Read' }
   })
   const available = ['open_page', 'read_open_page'].map(name => ({ name, description: name, argsSchema: {}, run: async () => 'Fresh report observation' }))
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: available }, 'Read all entries and verify the total')
-  expect(result.steps).toHaveLength(83)
-  expect(result.stopped).toBeUndefined()
-  expect(result.incomplete).toBeUndefined()
+  expect(result.steps).toHaveLength(80)
+  expect(result.stopped).toBe('calls')
+})
+
+it('opens a fresh session with the person\'s earlier request whole and its own replies cut', async () => {
+  const request = `Save decision.json with keys vendor, total and currency. ${'Keep this clause. '.repeat(40)}Final clause.`
+  const engine = sessionBrain(async job => {
+    expect(job.opening).toContain(request)
+    expect(job.opening).not.toContain('x'.repeat(221))
+    return { answer: 'Done' }
+  })
+  await runToolSession({ engine, workdir: WORKDIR, tools: [] }, 'Update it with the new fare', { history: [{ role: 'user', text: request }, { role: 'assistant', text: 'x'.repeat(400) }] })
 })
 
 // A brain that holds its own loop: it calls the tools it is handed in the

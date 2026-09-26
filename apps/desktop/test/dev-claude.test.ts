@@ -1,10 +1,10 @@
 import { expect, it, vi } from 'vitest'
 import type { DevApproval, DevSession } from '../src/shared/developers.js'
 
-const fake = vi.hoisted(() => ({ options: {} as Record<string, unknown>, messages: [] as Record<string, unknown>[], end: () => {}, interrupt: vi.fn(), usage: vi.fn(async () => ({ rate_limits: { five_hour: { utilization: 25 } } })) }))
+const fake = vi.hoisted(() => ({ ready: vi.fn(async () => {}), options: {} as Record<string, unknown>, messages: [] as Record<string, unknown>[], end: () => {}, interrupt: vi.fn(), usage: vi.fn(async () => ({ rate_limits: { five_hour: { utilization: 25 } } })) }))
 vi.mock('../src/main/process-client.js', () => ({ spawnRuntime: vi.fn() }))
 vi.mock('../src/main/dev-instructions.js', () => ({ devClaudeInstructions: async () => 'Project instructions from CLAUDE.md: fixture guidance' }))
-vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: () => 'runtime', loadClaudeSdk: async () => ({
+vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: fake.ready, claudeSessionStarted: () => {}, installedClaudeBinary: () => 'runtime', loadClaudeSdk: async () => ({
   query: ({ options }: { options: Record<string, unknown> }) => {
     fake.options = options
     const ended = new Promise<void>(resolve => { fake.end = resolve })
@@ -20,6 +20,20 @@ it('reads account usage without a development turn, tools, or saved session', as
   expect(fake.usage).toHaveBeenCalledWith({ skipBehaviors: true })
   expect(fake.options).toMatchObject({ tools: [], persistSession: false, settingSources: [], strictMcpConfig: true })
   expect((fake.options['abortController'] as AbortController).signal.aborted).toBe(true)
+})
+
+it('keeps the probe timeout available after the bounded session-start wait', async () => {
+  vi.useFakeTimers()
+  try {
+    fake.ready.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 45_000)))
+    fake.usage.mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 30_000))
+      return { rate_limits: { five_hour: { utilization: 25 } } }
+    })
+    const pending = claudeAccountUsage('.')
+    await vi.advanceTimersByTimeAsync(75_000)
+    expect((await pending).windows?.[0]?.used).toBe(25)
+  } finally { vi.useRealTimers() }
 })
 
 function setup(mode: DevSession['mode'] = 'review') {

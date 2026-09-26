@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { c as archive } from 'tar'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
-import { installedClaudeBinary, installClaudeRuntime, registryArchive, safeRuntimeEntry } from '../src/main/claude-runtime.js'
+import { afterFirstClaudeSession, claudeSessionStarted, installedClaudeBinary, installClaudeRuntime, registryArchive, safeRuntimeEntry } from '../src/main/claude-runtime.js'
 
 const state = vi.hoisted(() => ({ root: '', fetch: vi.fn(), locked: false }))
 vi.mock('node:fs/promises', async importOriginal => {
@@ -18,6 +18,16 @@ vi.mock('electron', () => ({ app: { getPath: () => state.root }, net: { fetch: (
 beforeEach(async () => { state.root = await tmpVaultRoot('runtime-install'); state.fetch.mockReset() })
 
 describe('separately installed Claude runtime', () => {
+  it('holds side queries until the first session starts', async () => {
+    let released = false
+    const waiting = afterFirstClaudeSession().then(() => { released = true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(released).toBe(false)
+    claudeSessionStarted()
+    await waiting
+    expect(released).toBe(true)
+  })
+
   it('rejects untrusted sources and archive traversal, links and devices', () => {
     expect(() => registryArchive({ dist: { tarball: 'https://other.example/runtime.tgz', integrity: 'sha512-YQ==' } })).toThrow()
     expect(() => registryArchive({ dist: { tarball: 'https://registry.npmjs.org/runtime.tgz', integrity: 'sha1-YQ==' } })).toThrow()
