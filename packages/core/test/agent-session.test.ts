@@ -50,6 +50,28 @@ const tools: AgentTool[] = [
   { name: 'ask_person', description: 'ask', argsSchema: { type: 'object', properties: { question: { type: 'string' } } }, run: async (args) => formatAsk(String(args['question']), ['A', 'B']) },
 ]
 
+it.each(['new','none','both'])('respects artifact revision selection (%s) without discarding unrelated outputs', async selection => {
+  const oldId='11111111-1111-1111-1111-111111111111-email.txt'
+  const newId='22222222-2222-2222-2222-222222222222-email.txt'
+  const otherId='33333333-3333-3333-3333-333333333333-memo.md'
+  let index=0
+  const create:AgentTool={name:'file_create_copy',description:'save',argsSchema:{},run:async()=>{
+    const id=[oldId,newId,otherId][index++]!
+    return JSON.stringify({markdownLink:`[${id.slice(37)}](engram-artifact:${id})`})
+  }}
+  const engine=sessionBrain(async job=>{
+    const save=job.tools.find(t=>t.name==='file_create_copy')!
+    await save.run({}); await save.run({}); await save.run({})
+    return {answer:selection==='none'?'Saved both drafts.':`Final draft: [Download](engram-artifact:${newId}).${selection==='both'?` Previous: [Earlier](engram-artifact:${oldId}).`:' Previous draft is superseded.'}`}
+  })
+  const result=await runToolSession({engine:{...engine,desktopToolIsolation:true},workdir:WORKDIR,tools:[create]},'Prepare final draft',{guided:false})
+  expect(result.answer).toContain(newId)
+  expect(result.answer).toContain(otherId)
+  if (selection==='new') expect(result.answer).not.toContain(oldId)
+  else expect(result.answer).toContain(oldId)
+  expect(result.answer.split(newId)).toHaveLength(2)
+})
+
 it('offers method discovery for desktop and web work without saved-file tools', async () => {
   const read = vi.fn(async () => 'Unneeded observation')
   const available: AgentTool[] = ['read_desktop', 'desktop_sequence', 'open_page'].map(name => ({ name, description: name, argsSchema: {}, run: read }))

@@ -42,14 +42,22 @@ function summarizeArgs(args: Record<string, unknown>): string {
 }
 
 function outputLinks(steps: AgentLoopStep[], answer: string): string {
+  const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
+  const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
+  const outputs: { link: string; id: string; name: string }[] = []
   const links = new Set<string>()
   for (const step of steps) {
     if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', 'record_stop'].includes(step.tool)) continue
     try {
       const result = JSON.parse(step.observation) as { markdownLink?: unknown }
-      if (typeof result.markdownLink === 'string' && /^\[[^\]\r\n]+\]\(engram-artifact:[A-Za-z0-9%_.-]+\)$/.test(result.markdownLink) && !answer.includes(result.markdownLink)) links.add(result.markdownLink)
+      const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
+      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!) })
     } catch { /* Failed writes have no output receipt. */ }
   }
+  // Respect an explicit final revision without deleting earlier files or guessing
+  // which version wins when the answer has not selected one.
+  const chosenNames = new Set(outputs.filter(output => selected.has(output.id)).map(output => output.name))
+  for (const output of outputs) if (!selected.has(output.id) && !chosenNames.has(output.name)) links.add(output.link)
   return links.size ? `${answer}\n\n${[...links].join('\n\n')}` : answer
 }
 
