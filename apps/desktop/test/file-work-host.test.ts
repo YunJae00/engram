@@ -55,6 +55,26 @@ it('reads explicitly attached copies without asking to approve their contents ag
   expect(state.confirm).not.toHaveBeenCalled()
 })
 
+it('does not carry an interrupted read approval into a fresh tool session', async () => {
+  const path=join(root,'review.txt')
+  await writeFile(path,'draft r1')
+  let answer!: (value:{response:number})=>void
+  state.confirm.mockImplementationOnce(()=>new Promise(resolve=>{answer=resolve}))
+  const controller=new AbortController()
+  const old=cometFileTools(vaultPaths(root),'lane').find(t=>t.name==='file_read')!
+  const pending=old.run({path},{task:'Read the draft',signal:controller.signal})
+  const rejected=expect(pending).rejects.toThrow()
+  await vi.waitFor(()=>expect(state.confirm).toHaveBeenCalledOnce())
+  controller.abort()
+  answer({response:1})
+  await rejected
+  await writeFile(path,'draft r2')
+  state.confirm.mockResolvedValueOnce({response:0})
+  const fresh=cometFileTools(vaultPaths(root),'lane').find(t=>t.name==='file_read')!
+  await expect(fresh.run({path},{task:'Continue reading'})).rejects.toThrow()
+  expect(state.confirm).toHaveBeenCalledTimes(2)
+})
+
 it('does not bypass a cancelled desktop turn by switching to file creation', async () => {
   state.stopped = true
   const tools = cometFileTools(vaultPaths(root), 'lane')
@@ -62,6 +82,20 @@ it('does not bypass a cancelled desktop turn by switching to file creation', asy
     await expect(tools.find((tool) => tool.name === name)!.run({}, { task: 'Keep working.' })).rejects.toThrow('Stopped')
   }
   expect(await readdir(root)).toEqual(['private'])
+})
+
+it('can inspect a workbook it just created without asking again, but does not trust another chat output', async () => {
+  const tools = cometFileTools(vaultPaths(root), 'lane')
+  const context = { task: 'Create and verify a workbook.' }
+  const args = { name: 'budget.xlsx', sheet: 'Budget', rows: [['Cost'], [123]] }
+  const created = JSON.parse(await tools.find(tool => tool.name === 'file_create_workbook')!.run(args, context))
+  await tools.find(tool => tool.name === 'file_read_package')!.run({ path: created.path }, context)
+  const inspected = JSON.parse(await tools.find(tool => tool.name === 'file_read_workbook')!.run({ path: created.path, sheet: 'Budget' }, context))
+  expect(inspected.columns[0].literalSum).toBe(123)
+  expect(state.confirm).not.toHaveBeenCalled()
+  const other = cometFileTools(vaultPaths(root), 'other')
+  await other.find(tool => tool.name === 'file_read_package')!.run({ path: created.path }, context)
+  expect(state.confirm).toHaveBeenCalledOnce()
 })
 
 it('uses operating-system document folders for discovery without approving or reading content', async () => {

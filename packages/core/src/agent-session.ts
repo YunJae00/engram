@@ -30,7 +30,7 @@ const SESSION_MAX_CALLS = 40
 export const SESSION_TURN_MS = 900_000
 const SESSION_SOFT_MS = 780_000
 
-const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
+const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')

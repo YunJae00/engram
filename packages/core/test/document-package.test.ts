@@ -148,6 +148,24 @@ it('accepts unused macro defaults but rejects actual VBA, ActiveX and binary mac
   }
 })
 
+
+it('reads bounded workbook cells and sums literal numbers without treating cached formulas as recalculated', async () => {
+  const input = await fixture('xlsx')
+  const call = caller()
+  const result = await call('file_read_workbook', { path: input.path, sheet: 'Data', range: 'A1:D1' })
+  expect(result.rows[0]).toEqual([
+    { cell: 'A1', value: 'Draft proposal' }, { cell: 'B1', value: 3 },
+    { cell: 'C1', value: 2500 }, { cell: 'D1', value: 7500, formula: 'B1*C1', cachedOnly: true },
+  ])
+  expect(result.columns).toContainEqual({ column: 'B', literalSum: 3, literalCount: 1, formulaCells: 0 })
+  expect(result.columns).toContainEqual({ column: 'D', literalSum: 0, literalCount: 0, formulaCells: 1 })
+  expect(result.completeReadback).toBe(true)
+  for (const range of ['A0', 'A1:A10001', 'A1:XFE1', 'A1:B1048577', 'B2:A1', '[other]A1']) {
+    await expect(call('file_read_workbook', { path: input.path, sheet: 'Data', range })).rejects.toThrow()
+  }
+  await expect(caller(async () => false)('file_read_workbook', { path: input.path, sheet: 'Data' })).rejects.toThrow('declined')
+})
+
 it('does not save when control is stopped, and rejects unsafe formula or external-link edits', async () => {
   const input = await fixture('xlsx')
   let stopped = false
