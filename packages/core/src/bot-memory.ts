@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { namesSubject } from './search-template.js'
@@ -150,6 +150,36 @@ export async function forgetFact(paths: VaultPaths, botId: string, factId: strin
   })
 }
 
+// Forgetting is by what was said, so a line forgotten in one comet also
+// leaves the profile every comet shares.
+export async function forgetFactText(paths: VaultPaths, botId: string, text: string): Promise<void> {
+  const key = normalizeFact(text).toLowerCase()
+  await serialized(memoryPath(paths, botId), async () => {
+    const file = await loadBotMemory(paths, botId)
+    const kept = file.facts.filter((f) => normalizeFact(f.text).toLowerCase() !== key)
+    if (kept.length !== file.facts.length) await saveBotMemory(paths, botId, { ...file, facts: kept })
+  })
+  if (botId === PERSON_MEMORY) {
+    const copies = await readdir(join(paths.cache, MEMORY_DIR)).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error })
+    await Promise.all(copies.filter(name => name.endsWith('.json') && name !== `${PERSON_MEMORY}.json`).map(name => forgetFactText(paths, name.slice(0, -5), text)))
+  }
+}
+
+// One reading of the person that every comet adds to and reads from, beside
+// each comet's own: what one comet learns about how they work, the next knows.
+export const PERSON_MEMORY = '_person'
+
+// Shared and own facts as one list, each line once, the fresher clock kept.
+export function mergeMemory(...files: BotMemoryFile[]): BotMemoryFile {
+  const byText = new Map<string, BotFact>()
+  for (const fact of files.flatMap((file) => file.facts)) {
+    const key = normalizeFact(fact.text).toLowerCase()
+    const prior = byText.get(key)
+    if (!prior || prior.touchedAt < fact.touchedAt) byText.set(key, fact)
+  }
+  return { facts: [...byText.values()], turns: files.reduce((sum, file) => sum + file.turns, 0) }
+}
+
 export async function forgetBotMemory(paths: VaultPaths, botId: string): Promise<void> {
   await rm(memoryPath(paths, botId), { force: true }).catch(() => undefined)
 }
@@ -178,15 +208,17 @@ export function renderMemory(file: BotMemoryFile, now = new Date()): string {
 // answers in a few hundred tokens and must not be asked to classify, diff
 // or copy - only to notice what is worth keeping.
 export const REMEMBER_TOKENS = 120
-export function rememberPrompt(exchange: { user: string; answer: string }, known: readonly string[]): string {
+export function rememberPrompt(exchange: { user: string; answer: string; previous?: string }, known: readonly string[]): string {
   return [
     'JOB: COMET-REMEMBER',
     'You keep short notes about the person you assist. From the exchange below, write only what is worth remembering in later, unrelated conversations: who they are, how they like to be helped, ongoing work, decisions, dates.',
+    'When the person corrects your previous answer or says how they want something done, keep the rule they gave, stated so it applies next time.',
     'Rules: at most 3 lines, each a complete short sentence in their language, each beginning with "- ". Nothing that is already in "Already kept". Nothing about this one request itself. No passwords or keys. If nothing is worth keeping, write only: NONE',
     '',
     'Already kept:',
     ...(known.length ? known.map((k) => `- ${k}`) : ['(nothing yet)']),
     '',
+    ...(exchange.previous ? [`Your previous answer: ${exchange.previous.slice(0, 400)}`] : []),
     `Person: ${exchange.user.slice(0, 600)}`,
     `You answered: ${exchange.answer.slice(0, 600)}`,
   ].join('\n')

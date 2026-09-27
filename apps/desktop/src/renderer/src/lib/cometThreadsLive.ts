@@ -36,6 +36,10 @@ export async function loadCometThread(id: string): Promise<void> {
 }
 
 api.onEvent((event) => {
+  if (event.type === 'comet:continue') {
+    cometThreads.carryOn(event.botId)
+    return
+  }
   if (event.type === 'routine:chat') {
     cometThreads.fresh(event.botId)
     cometThreads.begin(event.botId, event.message)

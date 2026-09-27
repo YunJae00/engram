@@ -93,6 +93,9 @@ export {
   factScore,
   forgetBotMemory,
   forgetFact,
+  forgetFactText,
+  mergeMemory,
+  PERSON_MEMORY,
   loadBotMemory,
   memorableTurn,
   parseFactLines,
@@ -132,3 +135,5 @@ export type { ReasoningEffort } from './engine/types.js'
 export { REASONING_EFFORTS } from './engine/types.js'
 export { gitEnv, bundledGitEnv } from './git.js'
 export { changeHunks, undoChangeHunk } from './change-review.js'
+export { createTask, continuationPrompt, listTasks, logTask, tasksToResume, updateTask, TASK_MAX_MS, TASK_MAX_TURNS, type DelegatedTask, type TaskApproval, type TaskState } from './delegated-tasks.js'
+export { PROFILE_NOTE_ID, PROFILE_TYPE, profileLines, syncPersonNote } from './person-note.js'

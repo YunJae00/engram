@@ -111,3 +111,25 @@ describe('ranking and rendering', () => {
     expect(prompt.length).toBeLessThan(1_200)
   })
 })
+
+describe('the profile every comet shares', () => {
+  it('merges shared and own facts once each, keeping the fresher clock, and forgets by text in both', async () => {
+    const { mergeMemory, forgetFactText, PERSON_MEMORY } = await import('../src/bot-memory.js')
+    const paths = await tempPaths()
+    await recordFacts(paths, PERSON_MEMORY, ['Prefers totals in USD', 'Works in the finance team'], T1)
+    await recordFacts(paths, 'bot-a', ['Prefers totals in USD.', 'Reviews invoices on Mondays'], T2)
+    const merged = mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, 'bot-a'))
+    expect(merged.facts.map((f) => f.text).sort()).toEqual(['Prefers totals in USD', 'Reviews invoices on Mondays', 'Works in the finance team'])
+    expect(merged.facts.find((f) => f.text === 'Prefers totals in USD')!.touchedAt).toBe(T2.toISOString())
+    await forgetFactText(paths, PERSON_MEMORY, 'prefers totals in usd')
+    await forgetFactText(paths, 'bot-a', 'Prefers totals in USD')
+    expect((await loadBotMemory(paths, PERSON_MEMORY)).facts.map((f) => f.text)).toEqual(['Works in the finance team'])
+    expect((await loadBotMemory(paths, 'bot-a')).facts.map((f) => f.text)).toEqual(['Reviews invoices on Mondays'])
+  })
+  it('shows the previous answer so a correction can become a rule', () => {
+    const prompt = rememberPrompt({ user: 'No, always round to whole euros', answer: 'Understood.', previous: 'The total is 1,234.56 EUR' }, [])
+    expect(prompt).toContain('Your previous answer: The total is 1,234.56 EUR')
+    expect(prompt).toContain('keep the rule they gave')
+    expect(rememberPrompt({ user: 'Hi there, my team is Ops', answer: 'Noted.' }, [])).not.toContain('Your previous answer')
+  })
+})

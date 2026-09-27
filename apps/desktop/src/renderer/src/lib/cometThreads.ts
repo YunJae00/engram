@@ -190,6 +190,13 @@ export function createCometThreads(initialSelected: string | null = null) {
       })
       return history
     },
+    // The same task going on in a turn nobody typed: a fresh answer seat and
+    // no line from the person.
+    carryOn(id: string): void {
+      const current = thread(id)
+      if (current.busy) return
+      patch(id, { busy: true, adopted: false, stopped: false, startedAt: Date.now(), workLines: [], keptWork: [], offer: null, messages: [...current.messages, { role: 'assistant', text: '', streaming: true }] })
+    },
     // An answer main is still producing for this comet, started before this
     // renderer existed: hold a seat so its done event has somewhere to land.
     adopt(id: string): void {

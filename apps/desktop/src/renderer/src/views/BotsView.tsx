@@ -16,6 +16,7 @@ import { ErrorAnswer, isProviderError } from '../components/ErrorAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { PressGate } from '../components/PressGate.js'
+import { TaskApprovals } from '../components/TaskApprovals.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
@@ -210,6 +211,7 @@ export const BotsView = memo(function BotsView() {
               )}
             </div>
             <PressGate channel={cometChannel(selected.id)} />
+            <TaskApprovals botId={selected.id} />
             <BotComposer
               key={selected.id}
               botId={selected.id}

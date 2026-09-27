@@ -88,6 +88,11 @@ import {
   successfulTurnSteps,
   loadBotMemory,
   renderMemory,
+  mergeMemory,
+  PERSON_MEMORY,
+  listTasks,
+  PROFILE_TYPE,
+  syncPersonNote,
   removeRoutine,
   renameRoutine,
   routineBlock,
@@ -132,6 +137,7 @@ import { engineStates } from './vault.js'
 import { registerAccountIpc } from './account-ipc.js'
 import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
+import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
@@ -961,6 +967,8 @@ export function registerIpc(ctx: VaultContext): void {
     return value
   })
   const resumeState = new Map<string, string>()
+  // How each comet's last turn ended, read by delegated tasks after each turn.
+  const turnOutcomes = new Map<string, TurnOutcome>()
   const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string; execution?: NonNullable<Routine['task']>['execution'] }>()
 
   // Only an explicitly kept, completed turn can supply reusable guidance.
@@ -996,7 +1004,11 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Stopping a running answer is the difference between waiting and being
   // stuck; the plumbing existed, nothing ever called it from the UI.
-  ipcMain.handle('chat:abort', (_e, channel?: string) => abortAllChat(channel))
+  ipcMain.handle('chat:abort', async (_e, channel?: string) => {
+    abortAllChat(channel)
+    if (channel) await tasks.stopChannel(channel)
+    else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
+  })
   // Start this conversation over: the running turn stops, what was said is
   // put away (not deleted), the brain's warm session forgets it, and the
   // comet's page closes so the next ask starts clean everywhere.
@@ -1004,6 +1016,7 @@ export function registerIpc(ctx: VaultContext): void {
     const id = String(botId)
     const channel = `bot-${id}`
     abortAllChat(channel)
+    await tasks.stopChannel(channel)
     releaseDesktop(channel)
     closeClaudeSession(id)
     await learning.discard(id)
@@ -1099,7 +1112,7 @@ export function registerIpc(ctx: VaultContext): void {
             // handing them back as answers: asked where the address change was
             // announced, the comet read a procedure's steps and reported that
             // it could not find out. Procedures are reached by running them.
-            .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine')
+            .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
             .slice(0, limit)
             .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
         },
@@ -1223,6 +1236,7 @@ export function registerIpc(ctx: VaultContext): void {
   })
   ipcMain.handle('bots:delete', async (_e, id: string) => {
     abortAllChat(`bot-${id}`)
+    await tasks.stopChannel(`bot-${id}`)
     releaseDesktop(`bot-${id}`)
     await deleteBot(paths, id)
     await learning.discard(id)
@@ -1600,6 +1614,22 @@ export function registerIpc(ctx: VaultContext): void {
       return { ok: reply.ok, ...((reply as { blocked?: boolean }).blocked ? { blocked: true } : {}) }
     },
   })
+
+  // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
+  // It resumes once the brains have had a moment to connect after start.
+  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }
+  const tasks = taskRunner({
+    paths,
+    send: (request, turn) => { takeOutcome(request.channel ?? ''); return sendChat(request, undefined, undefined, turn) },
+    outcome: takeOutcome,
+    abort: (channel) => abortAllChat(channel),
+    broadcast,
+    // Finished work that did something is written down for the librarian to
+    // file and link, so it outlives the conversation that did it.
+    remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
+  })
+  tasks.register()
+  setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
 
   ipcMain.handle('routines:wallDone', (_e, routineId: string, verdict: 'resolved' | 'skip') => {
     routineWallWaiters.get(String(routineId))?.(verdict === 'resolved' ? 'resolved' : 'skip')
@@ -2005,9 +2035,11 @@ export function registerIpc(ctx: VaultContext): void {
   // Chat panel: streams engine tokens to the renderer. The
   // prompt carries only current-note context — never superseded text.
 
-  ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => sendChat(request))
+  // A comet message is a task: it goes on past one turn until the work is
+  // done (task-runner.ts). Skill commands stay plain turns.
+  ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => request.botId && !request.message.trim().startsWith('/') ? tasks.chat(request) : sendChat(request))
 
-  async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine): Promise<void> {
+  async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
     if (externalOwns(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))) throw new Error('An external client is working in this conversation. Stop its session in Settings → External connections before sending here.')
     if (request.botId && learning.pending(request.botId)) throw new Error('Wait for the routine draft to finish preparing.')
     const command = /^\/routine(?:\s+(start|finish|cancel))?$/i.exec(request.message.trim())
@@ -2027,7 +2059,7 @@ export function registerIpc(ctx: VaultContext): void {
     answering.add(entry.channel)
     try {
       if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
-      return await handleChatSend(request, controller.signal, recovery, savedRoutine)
+      return await handleChatSend(request, controller.signal, recovery, savedRoutine, turn)
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
@@ -2038,7 +2070,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
   }
 
-  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine): Promise<void> {
+  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
     const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
     const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
@@ -2201,7 +2233,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        if (!recovery) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
+        if (!recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
@@ -2248,7 +2280,10 @@ export function registerIpc(ctx: VaultContext): void {
       // one that cannot needs the loop's guidance step by step.
       const guided = engine.id !== 'claude' && engine.id !== 'codex'
       // Read once per turn so every prompt of the turn carries the same bytes.
-      const botMemory = await loadBotMemory(paths, bot.id)
+      // What every comet has learned about the person, with this comet's own.
+      // The profile note is the person's edit surface: their edits land first.
+      await syncPersonNote(paths).catch((error) => flog('comet-memory', error))
+      const botMemory = mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, bot.id))
       const remembered = botMemory.facts.map((f) => f.text)
       const memory = [renderMemory(botMemory), taskRecall(ctx.store, request.message)].filter(Boolean).join('\n\n')
       // Everything the comet does on the person's behalf is written down
@@ -2289,7 +2324,7 @@ export function registerIpc(ctx: VaultContext): void {
               // a new comet never inherits the page an old one left open.
               courier: agentBrowserAvailable()
                 ? agentCourier({
-                    askBeforePress: askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
+                    askBeforePress: tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
                     lane: channel,
                     onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
                     onAside: (phase) => {
@@ -2346,7 +2381,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .map((h) => ctx.store.get(h.id))
                   // A saved procedure is a note too, and handing one back as
                   // an answer sent the comet reading steps instead of looking.
-                  .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine')
+                  .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
@@ -2365,7 +2400,7 @@ export function registerIpc(ctx: VaultContext): void {
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length) ? { attachmentContext: [attachments.context, recovery, priorOutputLines(earlierOutputs)].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context) ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs)].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
@@ -2439,6 +2474,7 @@ export function registerIpc(ctx: VaultContext): void {
         const checkpoint = resumeCheckpoint(request.message, result)
         if (checkpoint) resumeState.set(bot.id, checkpoint)
         else resumeState.delete(bot.id)
+        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length })
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
@@ -2464,9 +2500,11 @@ export function registerIpc(ctx: VaultContext): void {
         }
         lastTurns.set(bot.id, completed)
         const filingEngine = ctx.engines[0]
+        // The answer this message may be correcting.
+        const previousAnswer = [...request.history].reverse().find((turn) => turn.role === 'assistant')?.text
         // After the answer is out, while the model is still held: what of
         // this turn is worth keeping about the person.
-        if (!result.asked && filingEngine)
+        if (!turn?.quiet && !result.asked && filingEngine)
           await rememberTurn({
             engine: filingEngine,
             workdir: engineCwd(paths),
@@ -2475,6 +2513,7 @@ export function registerIpc(ctx: VaultContext): void {
             channel,
             message: request.message,
             answer: result.answer,
+            ...(previousAnswer ? { previous: previousAnswer } : {}),
             signal,
           })
       } catch (err) {

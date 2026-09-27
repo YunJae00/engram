@@ -43,7 +43,8 @@ test('native picker attaches a file to a new chat without importing it into Cosm
   expect(turns.filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['Attached: request.txt'])
   expect(await readdir(paths.inbox)).toEqual([])
   expect(await readdir(paths.sources)).toEqual([])
-  expect(await readdir(paths.notes)).toEqual([])
+  // Only the profile the comets share may appear; attachments are never imported.
+  expect((await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])
   expect(await readdir(join(paths.cache, 'chat-attachments'))).toHaveLength(1)
 })
 
@@ -77,7 +78,8 @@ test('keeps pending attachments in their chat, removes them, and accepts drop an
   await expect(page.locator('.bots-view .bubble-msg.user').last().getByTestId('chat-file-card')).toHaveCount(2)
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
   expect(await readdir(paths.inbox)).toEqual([])
-  expect(await readdir(paths.notes)).toEqual([])
+  // Only the profile the comets share may appear; attachments are never imported.
+  expect((await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])
 })
 
 test('rejects unsupported inputs visibly and accepts an image', async () => {

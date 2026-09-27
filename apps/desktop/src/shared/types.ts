@@ -258,6 +258,23 @@ export interface ChatTurnDto {
   attachments?: string[]
 }
 
+// Work handed to Engram to finish in the background (core delegated-tasks.ts).
+export interface DelegatedTaskDto {
+  id: string
+  goal: string
+  botId: string
+  state: 'queued' | 'running' | 'waiting' | 'done' | 'failed' | 'stopped'
+  turns: number
+  work?: number
+  createdAt: string
+  updatedAt: string
+  finishedAt?: string
+  question?: string
+  approvals: { id: string; words: string; host: string; url: string; at: string; answer?: 'approve' | 'decline'; settled?: boolean }[]
+  result?: string
+  log: { at: string; line: string }[]
+}
+
 export interface ChatRequestDto {
   engineId: string
   message: string
@@ -460,6 +477,9 @@ export type EngramEvent =
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
   // A comet was renamed or otherwise changed outside the person's own hand.
   | { type: 'bots:changed' }
+  | { type: 'tasks:changed' }
+  // A comet's task goes on in a turn the person did not type.
+  | { type: 'comet:continue'; channel: string; botId: string }
   // A procedure is about to post something. The run waits until
   // routineSubmitDone answers with the person's verdict.
   | {
@@ -663,6 +683,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   // agent window, 'skip' to move on without it).
   errandWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   routinesList(): Promise<RoutineDto[]>
+  tasksList(): Promise<DelegatedTaskDto[]>
+  taskDecide(id: string, approvalId: string, answer: 'approve' | 'decline'): Promise<void>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
   routineUpdateGoal(id: string, goal: string): Promise<void>
