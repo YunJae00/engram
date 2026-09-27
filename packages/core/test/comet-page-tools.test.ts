@@ -121,4 +121,12 @@ describe('a press that would commit is put to the person', () => {
     expect(theirs).not.toContain('not yours')
     expect(asked).toHaveLength(2)
   })
+
+  it('in a delegated task, leaves the press waiting and tells the work to go on', async () => {
+    const base = courier([])
+    const press = pageTools({}, { ...base, press: async () => ({ ok: false, refused: 'Place on hold', later: true }) }).find((t) => t.name === 'press')!
+    const said = await press.run({ target: 'Place on hold' }, { task: 'hold the duplicates' })
+    expect(said).toContain('waits for the person\'s approval')
+    expect(said).toContain('Continue with the rest of the work')
+  })
 })

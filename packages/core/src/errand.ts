@@ -74,6 +74,8 @@ export interface PageMove {
   changed?: boolean
   // The person was asked and said they would rather do it themselves.
   theirs?: boolean
+  // Left for the person's approval in a delegated task; the work goes on.
+  later?: boolean
 }
 
 // Injected by the host (the desktop drives a real browser); core stays pure

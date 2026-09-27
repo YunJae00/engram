@@ -141,7 +141,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask), deps.awaitCompletion), signal)
+      return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask, signal), deps.awaitCompletion), signal)
     },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)

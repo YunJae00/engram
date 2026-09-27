@@ -17,6 +17,8 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
   if (!readOpen) return []
   // What came of a move: the page as it now stands, or why it did not move.
   const after = async (move: PageMove, what: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string | ToolOutcome> => {
+    if (move.later)
+      return `"${move.refused || what}" was not pressed: it waits for the person's approval in their task list. Continue with the rest of the work, and at the end list what waits for approval`
     if (move.theirs)
       return `the person read what "${move.refused || what}" would do and chose to do it themselves - the page is open in front of them; say what is left for them and wait for their word`
     if (move.refused !== undefined)
