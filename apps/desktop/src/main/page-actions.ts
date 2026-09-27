@@ -258,17 +258,11 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
       if (said !== 'yes') return { ok: false, refused: control.words.slice(0, 80), ...(said === 'theirs' ? { theirs: true } : said === 'later' ? { later: true } : {}) }
     }
     const before = await signature(page)
-    try {
-      await hand.scrollIntoViewIfNeeded({ timeout: FIND_TIMEOUT_MS })
-      await showHand(page, hand, 'press')
-      signal?.throwIfAborted()
-      await hand.click({ timeout: FIND_TIMEOUT_MS })
-    } catch {
-      signal?.throwIfAborted()
-      // Something sits over it (a sticky bar, a fade): the press is delivered
-      // to the control itself, as a page's own script would.
-      await hand.dispatchEvent('click', undefined, { timeout: FIND_TIMEOUT_MS })
-    }
+    await hand.scrollIntoViewIfNeeded({ timeout: FIND_TIMEOUT_MS })
+    await showHand(page, hand, 'press')
+    signal?.throwIfAborted()
+    // A click timeout can happen after dispatch. Never retry it as a DOM event.
+    await hand.click({ timeout: FIND_TIMEOUT_MS })
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before }
   } catch (err) {
