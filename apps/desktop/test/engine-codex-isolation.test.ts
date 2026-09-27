@@ -97,6 +97,8 @@ describe('text runtime desktop isolation boundary', () => {
     expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])
     expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' }, configOverrides: ['mcp_servers={"fixture"={command="node",enabled=false}}', ...RUNTIME_TOOLS_OFF] })
     expect(RUNTIME_TOOLS_OFF).toEqual(expect.arrayContaining(['features.shell_tool=false', 'features.unified_exec=false', 'features.apps=false', 'features.plugins=false', 'features.computer_use=false']))
+    // Current models call every tool through the code-mode host; switching it off leaves a tool session with no tools.
+    expect(RUNTIME_TOOLS_OFF).not.toContain('features.code_mode_host=false')
     expect(fixture.threadOptions).toHaveBeenCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', webSearchMode: 'disabled', networkAccessEnabled: false, model: 'chosen-model' }))
     expect(fixture.run).toHaveBeenCalledWith('Read the provided text', expect.objectContaining({ outputSchema: { type: 'object', properties: { answer: { anyOf: [{ type: 'string' }, { type: 'null' }] } }, required: ['answer'], additionalProperties: false }, signal: expect.any(AbortSignal) }))
   })
@@ -115,8 +117,8 @@ describe('text runtime desktop isolation boundary', () => {
     const tokens: string[] = []
     const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: 'Rules', opening: 'Earlier', prompt: 'Do it', maxCalls: 5, onToken: text => tokens.push(text),
       tools: [{ name: 'note_read', description: 'Read a note', argsSchema: { properties: { id: { type: 'string' } } }, run: async args => { seen.push(args); return 'note body' } }] })
-    expect(result).toEqual({ answer: 'answer from 3 parts' })
-    expect(tokens).toEqual(['answer from 3 parts'])
+    expect(result).toEqual({ answer: 'answer from 4 parts' })
+    expect(tokens).toEqual(['answer from 4 parts'])
     expect(seen).toEqual([{ id: 'n1' }])
     expect(served).toContain('note body')
     const options = fixture.options.mock.lastCall![0] as { configOverrides: string[] }

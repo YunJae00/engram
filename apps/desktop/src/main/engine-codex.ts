@@ -14,14 +14,17 @@ import { startToolServer } from './codex-tool-server.js'
 
 // Runtime features that act on their own: shell, account-connected apps,
 // browsers, computer use, plugins, hooks, image generation and file viewing.
+// The code-mode host stays on: current models reach every tool through it, and
+// it offers only those tools (no file, network or process access of its own).
 export const RUNTIME_TOOLS_OFF = [
   'apps', 'multi_agent', 'image_generation', 'shell_tool', 'unified_exec', 'plugins', 'remote_plugin', 'browser_use',
   'browser_use_external', 'computer_use', 'in_app_browser', 'goals', 'tool_suggest', 'skill_search',
   'skill_mcp_dependency_install', 'view_image', 'hooks', 'sleep_tool', 'workspace_dependencies',
   'multi_agent_v2', 'artifact', 'standalone_web_search', 'in_app_local_automation', 'worktrees',
-  'code_mode', 'code_mode_only', 'code_mode_host', 'shell_snapshot', 'shell_snapshot_v2', 'request_permissions_tool',
+  'code_mode', 'code_mode_only', 'shell_snapshot', 'shell_snapshot_v2', 'request_permissions_tool',
 ].map(feature => `features.${feature}=false`).concat('include_apply_patch_tool=false')
 const TOOL_SERVER = 'engram_comet'
+const TOOL_REACH = `Work only through the ${TOOL_SERVER} tools. The read-only sandbox applies to this runtime's own commands, not to those tools: they can read the approved files, save outputs and act in the browser and applications as their descriptions say.`
 const TOKEN_ENV = 'ENGRAM_COMET_TOOL_TOKEN'
 
 export function disableMcpOverrides(catalog: string, extra: Record<string, string> = {}): string[] {
@@ -210,7 +213,9 @@ export class CodexEngine implements CloudEngine {
           ...(job.effort ? { modelReasoningEffort: job.effort } : {}),
           ...(codexModel ? { model: codexModel } : {}),
         },
-        input: [job.system, job.opening, job.prompt].filter(Boolean).join('\n\n'),
+        // The runtime describes its own sandbox as read-only; that is about its
+        // commands, and a model that read it as its limit saved nothing.
+        input: [job.system, TOOL_REACH, job.opening, job.prompt].filter(Boolean).join('\n\n'),
       }, abort.signal)
       abort.signal.throwIfAborted()
       job.onToken?.(answer)
