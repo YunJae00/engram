@@ -21,6 +21,8 @@ interface Props {
   selectedRoutineId: string | null; onSelectRoutine(id: string): void
 }
 
+const DAY_MS = 86_400_000
+
 export function AppSidebar({ developer, open, onToggle, onOpenPalette, onOpenSettings, onOpenRoutines, selectedRoutineId, onSelectRoutine }: Props) {
   const { activity, setActivity, vaultReady, showToast } = useShellState()
   const library = activity === 'routines'
@@ -31,6 +33,8 @@ export function AppSidebar({ developer, open, onToggle, onOpenPalette, onOpenSet
   const [layout, setLayout] = useState<SidebarLayout | null>(null)
   const [layoutError, setLayoutError] = useState('')
   const [creating, setCreating] = useState({ chat: 0, routine: 0 })
+  const [showEarlier, setShowEarlier] = useState(false)
+  const [waiting, setWaiting] = useState<Set<string>>(new Set())
   const reloadGeneration = useRef(0)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const activityOf = useCometActivity()
@@ -48,6 +52,13 @@ export function AppSidebar({ developer, open, onToggle, onOpenPalette, onOpenSet
     const current = cometThreads.getSnapshot().selectedId
     if (current && current === selectedBefore && !nextBots.some(bot => bot.id === current)) selectComet(null)
   }
+  // Conversations whose task still runs or waits for the person never drop out of sight.
+  useEffect(() => {
+    if (!vaultReady) return
+    const load = () => void api.tasksList().then(tasks => setWaiting(new Set(tasks.filter(task => ['queued', 'running', 'waiting'].includes(task.state)).map(task => task.botId)))).catch(() => undefined)
+    load()
+    return api.onEvent(event => { if (event.type === 'tasks:changed') load() })
+  }, [vaultReady])
   useEffect(() => {
     void reload().catch(error => showToast(String(error)))
     if (!vaultReady) return
@@ -74,7 +85,12 @@ export function AppSidebar({ developer, open, onToggle, onOpenPalette, onOpenSet
   const remove = async (kind: SidebarKind, id: string) => { if (kind === 'chat') { await api.botDelete(id); cometThreads.forget(id) } else await api.routineRemove(id); await reload() }
   const newFolder = (kind: SidebarKind) => setCreating(current => ({ ...current, [kind]: current[kind] + 1 }))
   const search = query.trim().toLocaleLowerCase()
-  const matchingBots = search ? bots.filter(bot => `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search)) : bots
+  // A conversation quiet for a day leaves the list, not the disk; search and
+  // Show earlier still reach it.
+  const pinned = new Set(layout?.chat.items.filter(item => item.pinned).map(item => item.id) ?? [])
+  const recent = (bot: BotDto) => Date.now() - Date.parse(bot.lastMessage?.at ?? bot.createdAt) < DAY_MS || bot.id === selectedId || pinned.has(bot.id) || waiting.has(bot.id) || activityOf(bot) !== 'ready'
+  const earlier = bots.filter(bot => !recent(bot)).length
+  const matchingBots = search ? bots.filter(bot => `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search)) : showEarlier ? bots : bots.filter(recent)
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
   const matchingRoutines = search ? routines.filter(routine => routine.name.toLocaleLowerCase().includes(search)) : routines
@@ -96,6 +112,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenPalette, onOpenSet
       <section className="sidebar-section sidebar-conversations" aria-label={library ? 'Saved routines' : 'Conversations'}>
         {library && <h2 className="sidebar-library-title">Routines</h2>}
         {collection(library ? 'routine' : 'chat')}
+        {!library && !search && earlier > 0 && <button className="sidebar-new" data-testid="sidebar-earlier" onClick={() => setShowEarlier(value => !value)}><span>{showEarlier ? 'Hide earlier' : `Show earlier (${earlier})`}</span></button>}
         {!(library ? matchingRoutines : matchingBots).length && <p className="sidebar-empty">{search ? 'No matches found' : library ? t('sidebar.noRoutines') : 'Your conversations will appear here.'}</p>}
       </section>
     </div>

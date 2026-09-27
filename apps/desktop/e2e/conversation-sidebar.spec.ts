@@ -8,7 +8,8 @@ import { openActivity } from './navigation.js'
 test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const FIRST_TITLE = 'Cobalt deployment decisions for the next three release cycles'
-const STAMP = '2026-09-10T08:35:00.000Z'
+// Recent, so every seeded conversation is in the list rather than under Show earlier.
+const STAMP = new Date(Date.now() - 60 * 60_000).toISOString()
 let app: ElectronApplication
 let page: Page
 let paths: VaultPaths

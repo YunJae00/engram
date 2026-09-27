@@ -31,6 +31,8 @@ async function screenshot(file: string) {
 }
 
 test('Cosmos reads as a conversation with compact citations and no premature copy action', async () => {
+  // A 2020 conversation is quiet, so it sits under Show earlier.
+  await page.getByTestId('sidebar-earlier').click()
   const row = page.locator('.bots-row', { hasText: '한국어 대화' })
   await expect(row.locator('time')).toHaveText('Sep 11')
   await expect(row.locator('time')).toHaveAttribute('title', /9\/11\/2020/)
