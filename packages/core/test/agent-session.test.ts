@@ -6,19 +6,19 @@ import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../sr
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 
-it('gives browser work 80 calls without self-checkpoints', async () => {
+it('gives browser work the 120-call ceiling without self-checkpoints', async () => {
   const engine = sessionBrain(async job => {
     expect(job.maxCalls).toBe(120)
     expect(job.tools.map(tool => tool.name)).not.toContain('task_plan')
     expect(job.system).not.toContain('task_plan')
     const read = job.tools.find(tool => tool.name === 'read_open_page')!
-    for (let i = 0; i < 80; i++) await read.run({})
+    for (let i = 0; i < 120; i++) await read.run({})
     expect(await read.run({})).toContain('No more calls this turn')
     return { answer: 'Read' }
   })
   const available = ['open_page', 'read_open_page'].map(name => ({ name, description: name, argsSchema: {}, run: async () => 'Fresh report observation' }))
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: available }, 'Read all entries and verify the total')
-  expect(result.steps).toHaveLength(80)
+  expect(result.steps).toHaveLength(120)
   expect(result.stopped).toBe('calls')
 })
 

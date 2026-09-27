@@ -82,7 +82,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const workflow = desktop || files
   const browser = deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
-  const baseCalls = browser ? 80 : SESSION_MAX_CALLS
+  // Browser work once earned calls past 80 through self-checkpoints; without
+  // them it gets the ceiling directly. Repetition guards still end a loop.
+  const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   deps = { ...deps, tools: desktopScopeTools(deps.tools) }
   const runTools = deps.engine.runTools

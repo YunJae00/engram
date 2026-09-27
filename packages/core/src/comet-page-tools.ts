@@ -59,7 +59,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     tools.push({
       name: 'type_text',
       description:
-        'type into a search or filter box on the open page and, with "enter": true, ask the page for it; never into a form that posts, and never a password - args: {"target": "the box\'s words or #12", "text": "...", "enter": true}',
+        'type into a text field on the open page - a search or filter box, or a field of a form the task asks you to fill. Use "enter": false for forms; Enter is refused in posting forms. Websites may autosave typed text. Use press for submission, subject to approval. Never a password - args: {"target": "the box\'s words or #12", "text": "...", "enter": true}',
       argsSchema: { type: 'object', properties: { target: { type: 'string' }, text: { type: 'string' }, enter: { type: 'boolean' }, find: { type: 'string' } }, required: ['target', 'text'] },
       async run(args, context) {
         const target = str(args, 'target')
