@@ -55,6 +55,8 @@ import {
   recordRecallReceipt,
   rejectCard,
   runComet,
+  priorOutputs,
+  priorOutputLines,
   cometTools,
   deriveSearchTemplate,
   fillSlots,
@@ -133,7 +135,7 @@ import { startStanding } from './standing.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
-import { cometFileTools, registerArtifactIpc } from './file-work.js'
+import { artifactDirectory, cometFileTools, registerArtifactIpc } from './file-work.js'
 import { workEvidenceTools, stopEvidenceRecording } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -2068,8 +2070,11 @@ export function registerIpc(ctx: VaultContext): void {
     // Short on purpose. These ride on EVERY local turn (the warm-session lane
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
-    const attachmentIds = chatAttachmentIds(request.attachments, bot ? await readBotTranscript(paths, bot.id) : request.history)
+    const savedHistory = bot ? await readBotTranscript(paths, bot.id) : request.history
+    const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
+    // What this conversation already saved, so a later day can reopen it.
+    const earlierOutputs = bot ? await priorOutputs(artifactDirectory(paths), savedHistory) : []
     const rules: string[] = [
       ...(recovery ? [recovery] : []),
       // A bot is the librarian wearing a charter: same grounding, same
@@ -2345,7 +2350,7 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, attachments.paths) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)]) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2360,7 +2365,7 @@ export function registerIpc(ctx: VaultContext): void {
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
             guided,
-            ...((attachments.context || recovery) ? { attachmentContext: [attachments.context, recovery].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length) ? { attachmentContext: [attachments.context, recovery, priorOutputLines(earlierOutputs)].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes

@@ -118,6 +118,7 @@ export { readRoutineLearning, changeRoutineLearning, startRoutineLearning, learn
 export { DesktopControlLease } from './desktop-control-lease.js'
 export type { ToolOutcome } from './agent-loop.js'
 export { fileWorkTools, resolveArtifact, saveArtifact, readArtifact, type FileFound, type FileSearchResult, type FileWorkOptions } from './file-work.js'
+export { priorOutputs, priorOutputLines, type PriorOutput } from './prior-outputs.js'
 export { evidenceTools, checkPage, evidenceFault, type EvidenceHost, type PageCheck } from './work-evidence.js'
 export { findLocalFiles } from './file-search.js'
 export { workbookTool } from './file-workbook.js'

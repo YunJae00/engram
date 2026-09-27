@@ -123,10 +123,21 @@ function historyLines(steps: AgentLoopStep[]): string {
     .join('\n')
 }
 
+// Requests older than the recent window still carry the rules of work that
+// continues days later; the first request and the latest ones fit first.
+const EARLIER_REQUESTS_CHARS = 12000
+function earlierRequests(history: NonNullable<AgentLoopOptions['history']>): string[] {
+  const asks = history.slice(0, -HISTORY_TURNS).filter((turn) => turn.role === 'user').map((turn) => turn.text.slice(0, HISTORY_REQUEST_CHARS))
+  let room = EARLIER_REQUESTS_CHARS - (asks[0]?.length ?? 0)
+  const kept = asks.slice(1).reverse().filter((text) => (room -= text.length) >= 0).reverse()
+  return asks.length ? ['', 'Earlier requests in this conversation, oldest first (their requirements still hold when the same work continues):', ...[asks[0]!, ...kept].map((text) => `User: ${text}`)] : []
+}
+
 function conversation(history: AgentLoopOptions['history']): string[] {
   const turns = (history ?? []).slice(-HISTORY_TURNS)
   if (turns.length === 0) return []
   return [
+    ...earlierRequests(history ?? []),
     '',
     'The conversation so far (context for what is being asked; the person\'s earlier requirements still hold when this continues the same work):',
     turns.map((turn) => turn.role === 'user' ? `User: ${turn.text.slice(0, HISTORY_REQUEST_CHARS)}` : `You: ${turn.text.slice(0, HISTORY_CHARS)}`).join('\n'),
@@ -186,7 +197,7 @@ export function openRuleLines(): string[] {
     'When a search is blocked, or a page comes back empty or cut short, take one more route to the same source - its own address, the next part of the page - before answering; cite only pages you read, never a results address.',
     'When the ask names a country, a date or "now", that goes into the first search or address - a store\'s country path, a page\'s date - not into a retry after the wrong one came back. When one field of the ask is missing from the page that has the rest, ask for it by word with "find" before leaving the site.',
     'What you say about the subject is what was read this turn: where a page read and your own knowledge disagree, the page wins, and anything not read is labelled unverified in the same sentence. A figure from a view you never got open is not reported as read - say which view would not open. When a press changes nothing, that was the wrong thing: take another route - a control from a fresh read, the address of that view, reveal, the keyboard - rather than pressing it again.',
-    'On an open page you have hands, and they read what came up: press (a tab, a day, "more", an arrow - by its words, or by its number from the control list, so an icon with no words counts), type_text (a search or filter box; never a form that posts), choose (a dropdown), scroll (further down a long or endless list), hover (a menu that opens on hover), press_key (Escape for a dialog, arrows in a picker). When a page shows only part of what was asked, the hands are tried before the person is. None of them will submit, save, send or buy: that is described to the person, and asked. A page with few words but plainly not empty - a canvas, a chart, a map, images - is looked at with look. When a thing has no number in the control list and no words of its own, look at the page and press its point with press_point; when a press changes nothing, it was the wrong thing, so try another rather than reporting it as done.',
+    'On an open page you have hands, and they read what came up: press (a tab, a day, "more", an arrow - by its words, or by its number from the control list, so an icon with no words counts), type_text (a search, filter or requested form field; use enter: false for forms; never passwords), choose (a dropdown), scroll (further down a long or endless list), hover (a menu that opens on hover), press_key (Escape for a dialog, arrows in a picker). When a page shows only part of what was asked, the hands are tried before the person is. Sites may autosave typed text; fill only fields authorized by the task. Submission, sending, purchases and destructive actions require approval through the tool; never bypass a refusal using another control. A page with few words but plainly not empty - a canvas, a chart, a map, images - is looked at with look. When a thing has no number in the control list and no words of its own, look at the page and press its point with press_point; when a press changes nothing, it was the wrong thing, so try another rather than reporting it as done.',
     // What a person does without thinking, and a loop will not do unless it
     // is told: read the thing that just appeared, deal with it, try again.
     'When a move does not go through, the page has usually just said why. A dialog standing open is answered first, by pressing one of ITS own controls. A field the page marks as wrong or missing is filled with what it asks for. Then the move that failed is made again - once the page has been answered, it is a fresh attempt, not a repeat. Only after that has failed too is another route taken, or the person asked.',
