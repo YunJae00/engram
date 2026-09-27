@@ -33,7 +33,11 @@ export interface PressTarget {
 // "save" (a draft, a view) are NOT here - those were what turned reading a
 // page into a queue of questions.
 const COMMIT_WORDS =
-  /\b(buy|purchase|pay|checkout|place (the )?order|order now|delete|remove|discard|publish|post|send|submit|withdraw|transfer)\b|결제|구매|주문|삭제|제거|발송|전송|제출|게시|송금|해지|탈퇴/i
+  /\b(buy|purchase|pay|checkout|place (the )?order|order now|delete|remove|discard|publish|post|send|submit|withdraw|transfer|unsubscribe)\b|결제|구매|주문|삭제|제거|발송|전송|제출|게시|송금|해지|탈퇴/i
+
+// Unambiguous destinations are safe; link semantics alone cannot prove that
+// clicking does not send, publish or submit through a page's event handler.
+const LINK_DESTINATIONS = /^(purchase orders|sent mail|submitted requests|주문 목록|구매 요청)$/i
 
 // Words that carry a person through a site. A control saying one of these is
 // passage, not commitment, and is pressed without asking even when it happens
@@ -50,9 +54,10 @@ export function pressCommits(target: PressTarget): boolean {
   // Passage first, so a sign-in button inside a login form reads as passage
   // rather than as a submission.
   if (PASSAGE_WORDS.test(target.words) && !COMMIT_WORDS.test(target.words)) return false
+  // A link or a menu entry goes where it says: "Purchase orders" and "Sent
+  // mail" are places. Only a link naming an act done by the click itself asks.
+  if (target.navigates && !target.submits && LINK_DESTINATIONS.test(target.words.trim())) return false
   if (COMMIT_WORDS.test(target.words)) return true
-  // A link or a menu entry carrying no committing word goes where it says.
-  if (target.navigates && !target.submits) return false
   // What is left is an unlabelled button that posts a form: nobody can say
   // what it carries, so the person does.
   return target.submits && target.posts !== false

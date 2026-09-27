@@ -35,8 +35,16 @@ describe('a press that would be hard to take back is told apart from one that on
     for (const words of ['Reports', '설정', 'Sign up page', '신청 내역']) {
       expect(pressCommits({ submits: false, words, navigates: true })).toBe(false)
     }
-    // A link that says it deletes is still a deletion.
-    expect(pressCommits({ submits: false, words: 'Delete this row', navigates: true })).toBe(true)
+    // A link named for a place is passage even when the name holds an action word.
+    for (const words of ['Purchase orders', 'Sent mail', 'Submitted requests', '주문 목록', '구매 요청']) {
+      expect(pressCommits({ submits: false, words, navigates: true })).toBe(false)
+    }
+    // A link that says it deletes, pays or cancels is still that act.
+    for (const words of ['Delete this row', 'Pay now', 'Unsubscribe', 'Send message', 'Publish now', 'Submit request', 'Buy', '결제하기', '회원 탈퇴', '전송', '게시', '제출', '구매']) {
+      expect(pressCommits({ submits: false, words, navigates: true })).toBe(true)
+    }
+    // The same place words on a form's own button still ask.
+    expect(pressCommits({ submits: true, words: 'Submit request', posts: true })).toBe(true)
   })
 
   it('lets a control that only changes what is shown through, whatever its words say', () => {
