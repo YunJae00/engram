@@ -99,7 +99,9 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, ask), deps.awaitCompletion), signal)
+      // Human approval is not a timed-out click: retain the lane until it
+      // resolves. The actual Playwright click has its own bounded timeout.
+      return inTurnOn(page.url(), () => pressOn(page, target, signal, ask), signal)
     },
     async typeText(target, text, enter, signal) {
       await aside(signal)
@@ -141,7 +143,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(pressPoint(page, x, y, ask, signal), deps.awaitCompletion), signal)
+      return inTurnOn(page.url(), () => pressPoint(page, x, y, ask, signal), signal)
     },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)

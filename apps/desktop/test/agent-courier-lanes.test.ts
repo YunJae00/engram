@@ -39,13 +39,13 @@ function fixture() {
 }
 
 describe('courier legacy action lanes', () => {
-  it('keeps an external hand pending until its receipt and never dispatches a canceled queued click', async () => {
+  it.each([true, false])('keeps a press pending through approval and never dispatches a canceled queued click (external: %s)', async (awaitCompletion) => {
     vi.useFakeTimers()
     try {
       browser.ensureAgentPage.mockResolvedValue({ url: () => 'https://external-fixture.test' })
       let finish!: (value: { ok: boolean }) => void
       vi.mocked(pressPoint).mockImplementation(() => new Promise(resolve => { finish = resolve }))
-      const courier = agentCourier({ lane: 'external', awaitCompletion: true })
+      const courier = agentCourier({ lane: 'external', awaitCompletion })
       const first = courier.pressPoint!(0.2, 0.3)
       await vi.advanceTimersByTimeAsync(1)
       const controller = new AbortController()
