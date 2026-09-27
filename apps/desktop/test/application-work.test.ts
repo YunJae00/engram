@@ -71,10 +71,17 @@ it('brings a hidden app forward once and uses the visible frame, not invisible r
   await vi.advanceTimersByTimeAsync(101)
   expect(fake.request.mock.calls.filter(([method]) => method === 'activateWindow')).toHaveLength(1)
 })
-it('does not acknowledge work when foreground activation fails', async () => {
-  fake.request.mockResolvedValueOnce({ ...target, foreground: false }).mockRejectedValueOnce(new Error('Activation refused'))
-  await expect(applicationWork('one').show('100', 'Excel')).rejects.toThrow('Activation refused')
+it('keeps working on the verified window when Windows refuses foreground, but not on other activation failures', async () => {
+  fake.request.mockResolvedValueOnce({ ...target, foreground: false }).mockRejectedValueOnce(new Error('The application could not be brought to the foreground.')).mockResolvedValueOnce({ ...target, foreground: false }).mockResolvedValueOnce({ window: '101' }).mockResolvedValueOnce({ escaped: false }).mockResolvedValueOnce({ ...target, foreground: false })
+  await applicationWork('one').show('100', 'Excel')
+  expect(fake.prepare).toHaveBeenCalled()
+  clearApplicationWork()
+  fake.prepare.mockClear()
+  fake.request.mockReset().mockResolvedValueOnce({ ...target, foreground: false }).mockRejectedValueOnce(new Error('This application surface requires manual control'))
+  await expect(applicationWork('two').show('100', 'Excel')).rejects.toThrow('manual control')
   expect(fake.prepare).not.toHaveBeenCalled()
+  fake.request.mockReset().mockResolvedValueOnce({ ...target, minimized: true }).mockRejectedValueOnce(new Error('The app did not acknowledge foreground activation')).mockResolvedValueOnce({ ...target, minimized: true })
+  await expect(applicationWork('three').show('100', 'Excel')).rejects.toThrow('minimized')
 })
 it('honors Escape during overlay startup before acknowledging any document work', async () => {
   fake.request.mockResolvedValueOnce(target).mockResolvedValueOnce({ window: '101' }).mockResolvedValueOnce({ escaped: true })

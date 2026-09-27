@@ -71,9 +71,18 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       let target = await held.host.request<WindowInfo>('inspectWindow', { window, pid: 0 })
       combined.throwIfAborted()
       const entering = held.target?.window !== target.window || held.target.pid !== target.pid
-      if (entering && (!target.foreground || target.minimized)) target = await held.host.request<WindowInfo>('activateWindow', { window: target.window, pid: target.pid })
+      // Bringing the window forward lets the person watch; Windows refuses it
+      // while they work in another app. Document commands are bound to the
+      // verified window, so a refused foreground does not stop the work.
+      if (entering && (!target.foreground || target.minimized)) {
+        try { target = await held.host.request<WindowInfo>('activateWindow', { window: target.window, pid: target.pid }) }
+        catch (error) {
+          if (!/foreground/i.test(error instanceof Error ? error.message : String(error))) throw error
+          target = await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
+        }
+      }
       combined.throwIfAborted()
-      if (entering && (!target.foreground || target.minimized)) throw new Error('The application did not come to the foreground.')
+      if (entering && target.minimized) throw new Error('The application window is minimized and could not be restored.')
       if (active !== held) throw new Error('Application work changed before the window was ready')
       held.target = target
       held.name = name
