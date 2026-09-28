@@ -7,6 +7,7 @@ const SELECTED_KEY = 'engram.comets.selected'
 // One store for the renderer's lifetime. The view mounts and unmounts with
 // the tab; the conversations do not.
 export const cometThreads = createCometThreads(null)
+const pendingReloads = new Set<string>()
 
 export function selectComet(id: string | null): void {
   cometThreads.select(id)
@@ -32,7 +33,12 @@ export async function loadCometThread(id: string): Promise<void> {
   const turns = await api.botTranscript(id)
   cometThreads.load(id, turns, seenBefore)
   const active = await api.chatActive().catch(() => [] as string[])
-  if (active.includes(cometChannel(id)) && cometThreads.thread(id).doneSeen === seenBefore) cometThreads.adopt(id)
+  const tasks = await api.tasksList().catch(() => [])
+  if (active.includes(cometChannel(id)) && cometThreads.thread(id).doneSeen === seenBefore) {
+    cometThreads.adopt(id)
+    if (tasks.some(task => task.botId === id && ['running', 'queued'].includes(task.state)))
+      cometThreads.handleEvent({ type: 'comet:working', channel: cometChannel(id), working: true })
+  }
 }
 
 api.onEvent((event) => {
@@ -51,7 +57,12 @@ api.onEvent((event) => {
   if (handled) {
     // A seat taken for someone else's send only ever held the reply; the
     // question that produced it is on disk, so disk is the whole story now.
-    if (event.type === 'chat:done' && adoptedBefore) void reloadFromDisk(handled)
+    if (event.type === 'chat:done' && adoptedBefore) {
+      if (cometThreads.thread(handled).taskWorking) pendingReloads.add(handled)
+      void reloadFromDisk(handled)
+    }
+    if (event.type === 'comet:working' && !event.working && pendingReloads.delete(handled) && !cometThreads.thread(handled).stopped)
+      void reloadFromDisk(handled)
     return
   }
   if (event.type === 'errand:logged') {

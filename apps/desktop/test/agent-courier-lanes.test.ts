@@ -7,6 +7,8 @@ const browser = vi.hoisted(() => ({
   agentPage: vi.fn(),
   readAgentPage: vi.fn(),
   armIdleClose: vi.fn(),
+  lanePage: vi.fn(),
+  laneLastUrl: vi.fn(),
 }))
 
 vi.mock('../src/main/agent-browser.js', () => ({
@@ -39,6 +41,13 @@ function fixture() {
 }
 
 describe('courier legacy action lanes', () => {
+  it('does not read a new blank tab as though it were the closed task page', async () => {
+    browser.lanePage.mockReturnValue(null)
+    browser.laneLastUrl.mockReturnValueOnce('https://example.test/report')
+    await expect(agentCourier({ lane: 'bot-report' }).readOpen!()).rejects.toThrow('Use open_page')
+    expect(browser.ensureAgentPage).not.toHaveBeenCalled()
+    expect(browser.laneLastUrl).toHaveBeenCalledWith('bot-report')
+  })
   it.each([true, false])('keeps a press pending through approval and never dispatches a canceled queued click (external: %s)', async (awaitCompletion) => {
     vi.useFakeTimers()
     try {

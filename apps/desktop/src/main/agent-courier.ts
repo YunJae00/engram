@@ -1,5 +1,5 @@
 import type { PageMove, WebCourier } from 'core'
-import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
+import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, laneLastUrl, lanePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
 import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
 import { revealText } from './page-reveal.js'
@@ -75,9 +75,11 @@ export function agentCourier(
   const aside = (signal?: AbortSignal) => stepAside(lane, signal, deps.onAside)
   return {
     async readOpen(signal) {
+      if (!lanePage(lane) && laneLastUrl(lane))
+        throw new Error('This conversation\'s browser has closed. Use open_page to reopen the relevant address, then read_open_page. Do not treat a new blank tab as the previous page or switch to computer use because it closed.')
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withAbort(readWhenReady(page, () => readPage(page), signal), signal)
+      return withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
     },
     async typeInto(field, text, signal) {
       await aside(signal)
@@ -163,7 +165,7 @@ export function agentCourier(
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
       await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
-      const result = await withAbort(readWhenReady(page, () => readPage(page), signal), signal)
+      const result = await withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
       armIdleClose()
       return result
     },

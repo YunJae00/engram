@@ -315,24 +315,33 @@ function frameName(frame: Frame): string {
 
 // The whole page: every frame read, the controls numbered straight through,
 // and where each number lives kept for the next press.
-export async function readFrames(page: Page): Promise<PageReading> {
+export async function readFrames(page: Page, signal?: AbortSignal): Promise<PageReading> {
+  signal?.throwIfAborted()
   const observation = observationOf(page)
   const document = observation.document
   const frames = [page.mainFrame(), ...page.frames().filter((frame) => frame !== page.mainFrame())]
   const map = new Map<number, ControlPlace>()
   const whole: PageReading = { text: '', hidden: '', hasPasswordField: false, links: [], controls: [], lines: [], dialog: '', faults: [] }
   for (const frame of frames) {
+    signal?.throwIfAborted()
     let reading: FrameReading
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
       // A frame that will not answer (a script in a loop, a page far too
       // large) is left out rather than holding the whole read.
       reading = await Promise.race([
         frame.evaluate(readDocument, undefined),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('frame read timed out')), FRAME_READ_MS)),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('frame read timed out')), FRAME_READ_MS) }),
       ])
     } catch {
+      signal?.throwIfAborted()
+      whole.faults.push('A frame could not be read. This extract is incomplete; reobserve before claiming all requested fields were checked.')
       continue
+    } finally {
+      clearTimeout(timer)
     }
+    // A late read must not overwrite controls from a newer observation.
+    signal?.throwIfAborted()
     if (!reading.text.trim() && reading.controls.length === 0) continue
     whole.text += (whole.text && reading.text.trim() ? `\n\n[frame: ${frameName(frame)}]\n` : '') + reading.text
     whole.hidden += (whole.hidden && reading.hidden ? '\n' : '') + reading.hidden

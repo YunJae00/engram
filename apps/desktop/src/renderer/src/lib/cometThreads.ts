@@ -20,6 +20,8 @@ export interface CometThread {
   // look the same on screen.
   loaded: boolean
   busy: boolean
+  taskWorking?: boolean
+  awaitingModel?: boolean
   workLines: string[]
   // The steps of the turn that just ended, kept so a person can look back at
   // what was done; the next turn clears them.
@@ -113,7 +115,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: false, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: null, messages, doneSeen: thread(id).doneSeen + 1, ...extra })
+    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages, doneSeen: thread(id).doneSeen + 1, ...extra })
   const fail = (id: string, text: string) =>
     settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }])
 
@@ -178,6 +180,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         .map((m) => ({ role: m.role, text: m.text, ...(m.attachments?.length ? { attachments: m.attachments } : {}) }))
       patch(id, {
         busy: true,
+        awaitingModel: false,
         adopted: false,
         stopped: false,
         startedAt: Date.now(),
@@ -194,8 +197,8 @@ export function createCometThreads(initialSelected: string | null = null) {
     // no line from the person.
     carryOn(id: string): void {
       const current = thread(id)
-      if (current.busy) return
-      patch(id, { busy: true, adopted: false, stopped: false, startedAt: Date.now(), workLines: [], keptWork: [], offer: null, messages: [...current.messages, { role: 'assistant', text: '', streaming: true }] })
+      if (streamingAt(current.messages) >= 0) return
+      patch(id, { busy: true, awaitingModel: false, adopted: false, stopped: false, startedAt: Date.now(), workLines: [], keptWork: [], offer: null, messages: [...current.messages, { role: 'assistant', text: '', streaming: true }] })
     },
     // An answer main is still producing for this comet, started before this
     // renderer existed: hold a seat so its done event has somewhere to land.
@@ -235,6 +238,16 @@ export function createCometThreads(initialSelected: string | null = null) {
       const id = cometOfChannel(event.channel)
       if (!id) return null
       const current = thread(id)
+      if (event.type === 'comet:working') {
+        patch(id, {
+          taskWorking: event.working, busy: event.working,
+          startedAt: event.working ? current.startedAt ?? Date.now() : null,
+          doneSeen: current.doneSeen + 1,
+          ...(event.working && !current.busy ? { adopted: true, messages: [...current.messages, { role: 'assistant' as const, text: '', streaming: true }] } : {}),
+          ...(!event.working ? { workLines: [], messages: current.messages.filter(m => !m.streaming || m.text).map(m => ({ ...m, streaming: false })) } : {}),
+        })
+        return id
+      }
       // The keep-offer follows its answer: by the time it lands the thread
       // has settled, and it is patched in where the done event would have
       // put it.
@@ -244,8 +257,12 @@ export function createCometThreads(initialSelected: string | null = null) {
         return id
       }
       if (!current.busy) return null
+      if (event.type === 'comet:observed') {
+        patch(id, { awaitingModel: true })
+        return id
+      }
       if (event.type === 'comet:step') {
-        patch(id, { workLines: [...current.workLines.slice(1 - WORK_LINES_KEPT), event.line] }, true)
+        patch(id, { awaitingModel: false, workLines: [...current.workLines.slice(1 - WORK_LINES_KEPT), event.line] }, true)
         return id
       }
       if (event.type === 'chat:token') {

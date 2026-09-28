@@ -50,7 +50,7 @@ export const BotsView = memo(function BotsView() {
   const listRef = useRef<HTMLDivElement | null>(null)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const selected = bots.find((b) => b.id === selectedId) ?? null
-  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
+  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt, awaitingModel } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   // Each comet works on its own tab with its own brain session: only this
@@ -59,7 +59,7 @@ export const BotsView = memo(function BotsView() {
 
   // The wait, said from evidence - see pendingStatus for the order it trusts.
   const latestStep = workLines[workLines.length - 1]
-  const status = pendingStatus(t, latestStep)
+  const status = pendingStatus(t, awaitingModel ? undefined : latestStep)
 
   // Until the first read comes back, an empty list means "not read yet",
   // and the screen says nothing rather than "no comets" - a claim it cannot

@@ -246,6 +246,8 @@ export function lanePage(lane: string): Page | null {
   return page && !page.isClosed() ? page : null
 }
 
+export function laneLastUrl(lane: string): string | undefined { return lanes.lastUrl(lane) }
+
 export function lanePages(lane: string): Page[] { return lanes.pages(lane).filter(page => !page.isClosed()) }
 
 export function selectLanePage(lane: string, page: Page): void {
@@ -500,10 +502,11 @@ async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
 
 // What the page shows, through every frame and open shadow root, with its
 // controls numbered so a press can name one that has no words.
-export async function readPage(page: Page): Promise<WebPage> {
+export async function readPage(page: Page, signal?: AbortSignal): Promise<WebPage> {
   const url = page.url()
   const title = await page.title().catch(() => '')
-  const reading = await readFrames(page).catch(() => null)
+  const reading = await readFrames(page, signal).catch(() => null)
+  signal?.throwIfAborted()
   const text = reading?.text ?? ''
   const wall = classifyWall(url, title, text, reading?.hasPasswordField ?? false)
   return {

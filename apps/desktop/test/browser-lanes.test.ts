@@ -6,10 +6,22 @@ import { BrowserLanes } from '../src/main/browser-lanes.js'
 function page() {
   let closed = false
   const events = new EventEmitter()
-  return Object.assign(events, { isClosed: () => closed, close: () => { closed = true; events.emit('close') } }) as unknown as Page
+  return Object.assign(events, { url: () => 'https://example.test/report', isClosed: () => closed, close: () => { closed = true; events.emit('close') } }) as unknown as Page
 }
 
 describe('browser lane ownership', () => {
+  it('keeps the last address after browser shutdown, but forgets it on explicit reset', async () => {
+    const lanes = new BrowserLanes(vi.fn()), first = page(), second = page()
+    second.url = () => 'https://other.test/docs'
+    lanes.set('one', first); lanes.set('two', second)
+    lanes.clear()
+    await first.close(); await second.close()
+    expect(lanes.get('one')).toBeUndefined()
+    expect(lanes.lastUrl('one')).toBe('https://example.test/report')
+    expect(lanes.lastUrl('two')).toBe('https://other.test/docs')
+    lanes.delete('one')
+    expect(lanes.lastUrl('one')).toBeUndefined()
+  })
   it('refuses to attach a page already owned by another chat', () => {
     const lanes = new BrowserLanes(vi.fn()), first = page(), second = page()
     lanes.set('one', first); lanes.set('two', second)

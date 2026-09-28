@@ -55,6 +55,14 @@ export function taskRunner(deps: {
   const { paths } = deps
   const running = new Set<string>()
   const channels = new Set<string>()
+  const acquire = (channel: string) => {
+    if (channels.has(channel)) return
+    channels.add(channel)
+    deps.broadcast({ type: 'comet:working', channel, working: true })
+  }
+  const release = (channel: string) => {
+    if (channels.delete(channel)) deps.broadcast({ type: 'comet:working', channel, working: false })
+  }
   const stopped = new Set<string>()
   // The task each comet is working on, by channel; presses the person
   // approved, each good for one press; presses they declined, never asked again.
@@ -82,6 +90,7 @@ export function taskRunner(deps: {
     }
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const checking = started.verificationPending === true
+    if (checking) deps.broadcast({ type: 'comet:step', channel: channelOf(started), line: 'note: Checking the result against your request' })
     await deps.send(request, checking ? { ...extra, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : extra)
     const outcome = deps.outcome(request.channel ?? '')
     const trail = [...(trails.get(id) ?? []), ...(outcome?.trail ?? [])]
@@ -132,10 +141,10 @@ export function taskRunner(deps: {
   }
 
   // Turns the person does not type: the thread shows them as the same work going on.
-  async function carryOn(id: string, reason: Reason, detail = ''): Promise<void> {
+  async function carryOn(id: string, reason: Reason, detail = '', heldChannel?: string): Promise<void> {
     if (running.has(id)) return
     running.add(id)
-    let channel: string | undefined
+    let channel = heldChannel
     try {
       let why = reason, note = detail
       for (;;) {
@@ -144,7 +153,7 @@ export function taskRunner(deps: {
         channel ??= channelOf(task)
         if (stopped.has(channel)) return
         if (channels.has(channel) && owners.get(channel) !== id) return
-        channels.add(channel)
+        acquire(channel)
         owners.set(channel, id)
         const history = (await readBotTranscript(paths, task.botId)).map((one) => ({ role: one.role, text: one.text }))
         const after = await turn(id, { engineId: '', botId: task.botId, channel, message: continuationPrompt(task, why, note), history }, { quiet: true })
@@ -154,16 +163,17 @@ export function taskRunner(deps: {
     } catch (error) {
       await finished(await edit(id, (t) => { if (t.state === 'running') { t.state = 'failed'; logTask(t, `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
       if (channel) deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
-    } finally { running.delete(id); if (channel) channels.delete(channel); approved.delete(id) }
+    } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }
 
   return {
+    activeChannels: (): string[] => [...channels],
     // The person's message to a comet: an answer to what the comet asked, or new work.
     async chat(request: ChatRequestDto): Promise<void> {
       const botId = request.botId!, channel = `bot-${botId}`
       if (request.channel && request.channel !== channel) throw new Error('The conversation channel does not match.')
       if (channels.has(channel)) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
-      channels.add(channel)
+      acquire(channel)
       stopped.delete(channel)
       let task: DelegatedTask | undefined
       let after: DelegatedTask | undefined
@@ -180,12 +190,13 @@ export function taskRunner(deps: {
           ? { context: `This message answers your question in the task below; continue that task with it.\nThe task, verbatim:\n${asked.goal}` }
           : playbook ? { context: playbookContext(playbook) } : undefined
         after = await turn(task.id, { ...request, channel }, extra)
+        if (after?.state === 'running') await carryOn(after.id, nextReason(after), '', channel)
+        else await finished(after)
       } catch (error) {
         if (task) await finished(await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = 'failed'; logTask(t, `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
+        deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
         throw error
-      } finally { channels.delete(channel) }
-      if (after?.state === 'running') void carryOn(after.id, nextReason(after)).catch(error => flog('tasks', error))
-      else await finished(after)
+      } finally { release(channel) }
     },
     stopChannel: async (channel: string): Promise<void> => {
       stopped.add(channel)

@@ -38,6 +38,7 @@ test('native picker attaches a file to a new chat without importing it into Cosm
   await expect(page.locator('.bots-view .bubble-msg.user').last().getByTestId('chat-file-card')).toContainText('request.txt')
   await expect(page.locator('.bots-view .bubble-msg.user').last().locator('.chat-user-text')).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
+  await expect(page.locator('.bots-view .bubble-stop')).toHaveCount(0)
   const first = (await page.evaluate(() => window.engram.botsList()))[0]!
   const turns = await page.evaluate(id => window.engram.botTranscript(id), first.id)
   expect(turns.filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['Attached: request.txt'])
@@ -77,6 +78,7 @@ test('keeps pending attachments in their chat, removes them, and accepts drop an
   await expect(page.locator('.bots-view .bubble-msg.user').last().locator('.chat-user-text')).toHaveText('Compare the attached files.')
   await expect(page.locator('.bots-view .bubble-msg.user').last().getByTestId('chat-file-card')).toHaveCount(2)
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
+  await expect(page.locator('.bots-view .bubble-stop')).toHaveCount(0)
   expect(await readdir(paths.inbox)).toEqual([])
   // Only the profile the comets share may appear; attachments are never imported.
   expect((await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])

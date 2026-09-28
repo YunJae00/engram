@@ -65,6 +65,33 @@ test('a new conversation runs as a task to the end', async () => {
   await expect.poll(async () => (await listTasks(paths)).map((task) => [task.goal, task.state]), { timeout: 30_000 }).toEqual([['Summarize the deploy procedure for the team', 'done']])
 })
 
+test('an answer does not unlock the composer while its task is still finishing', async () => {
+  const task = (await listTasks(paths))[0]!
+  await app.evaluate(({ BrowserWindow }, botId) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('engram:event', { type: 'comet:working', channel: `bot-${botId}`, working: true })
+      window.webContents.send('engram:event', { type: 'chat:done', channel: `bot-${botId}`, text: 'Initial answer' })
+    }
+  }, task.botId)
+  await expect(page.locator('.bots-view .bubble-stop')).toBeVisible()
+  await expect(page.getByTestId('bots-thinking')).toBeVisible()
+  await app.evaluate(({ BrowserWindow }, botId) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('engram:event', { type: 'comet:step', channel: `bot-${botId}`, line: 'read_open_page: ' })
+      window.webContents.send('engram:event', { type: 'comet:observed', channel: `bot-${botId}` })
+    }
+  }, task.botId)
+  await expect(page.getByTestId('bots-thinking')).toContainText('Thinking')
+  await expect(page.getByTestId('bots-thinking')).not.toContainText('Reading the page')
+  await expect(page.getByTestId('bots-thinking')).toContainText('Total')
+  await app.evaluate(({ BrowserWindow }, botId) => {
+    for (const window of BrowserWindow.getAllWindows())
+      window.webContents.send('engram:event', { type: 'comet:working', channel: `bot-${botId}`, working: false })
+  }, task.botId)
+  await expect(page.locator('.bots-view .bubble-stop')).toHaveCount(0)
+  await expect(page.getByTestId('bots-thinking')).toHaveCount(0)
+})
+
 test('deferred decisions stay in the conversation and remain readable in narrow and dark layouts', async () => {
   const bot = await createBot(paths, { name: 'Invoice approvals' })
   const task = await createTask(paths, 'Review duplicate invoices', bot.id)

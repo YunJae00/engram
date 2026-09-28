@@ -40,7 +40,7 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
     cometThreads.stop(botId, t('bubble.stopped'))
     void api.chatAbort(cometChannel(botId)).catch(() => undefined)
   }
-  const status = thread.busy ? pendingStatus(t, thread.workLines[thread.workLines.length - 1]) : ''
+  const status = thread.busy ? pendingStatus(t, thread.awaitingModel ? undefined : thread.workLines[thread.workLines.length - 1]) : ''
   return (
     <div className="mini-chat" data-testid={`mini-chat-${botId}`}>
       <div className="mini-chat-thread conversation-thread" ref={listRef}>

@@ -42,6 +42,28 @@ async function setup(script: Script) {
 const pressed = (target: string) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"` })
 const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })
 
+it('holds one working state across the initial answer and its verification turn', async () => {
+  let finish!: () => void
+  const gate = new Promise<void>(resolve => { finish = resolve })
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('Saved', 1), trail: [pressed('Save')] }
+    await gate
+    return readback('Checked')
+  })
+  const sending = t.chat('Update the report')
+  await vi.waitFor(() => expect(t.sent).toHaveLength(2))
+  expect(t.runner.activeChannels()).toEqual(['bot-bot-1'])
+  expect(t.events.filter(event => event.type === 'comet:working')).toEqual([{ type: 'comet:working', channel: 'bot-bot-1', working: true }])
+  await expect(t.chat('Inspect activity too')).rejects.toThrow('still working')
+  finish()
+  await sending
+  expect(t.runner.activeChannels()).toEqual([])
+  expect(t.events.filter(event => event.type === 'comet:working')).toEqual([
+    { type: 'comet:working', channel: 'bot-bot-1', working: true },
+    { type: 'comet:working', channel: 'bot-bot-1', working: false },
+  ])
+})
+
 it('rereads a result that changed something once before calling it done, and says it stopped', async () => {
   const t = await setup(async (_r, turn) => turn === 1
     ? { ...done('Saved the supplier form', 3), trail: [{ tool: 'open_page', args: { url: 'https://portal.example/suppliers' }, observation: 'opened' }, pressed('Save')] }

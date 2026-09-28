@@ -4,11 +4,16 @@ export class BrowserLanes {
   private current = new Map<string, Page>()
   private members = new Map<string, Set<Page>>()
   private owners = new WeakMap<Page, string>()
+  private lastUrls = new Map<string, string>()
 
   constructor(private restored: (page: Page, lane: string) => void) {}
 
   get size(): number { return this.current.size }
   get(lane: string): Page | undefined { return this.current.get(lane) }
+  lastUrl(lane: string): string | undefined {
+    const current = this.current.get(lane)?.url()
+    return current && current !== 'about:blank' ? current : this.lastUrls.get(lane)
+  }
   owner(page: Page): string | null { return this.owners.get(page) ?? null }
   pages(lane: string): Page[] { return [...(this.members.get(lane) ?? [])] }
 
@@ -27,6 +32,7 @@ export class BrowserLanes {
       this.owners.delete(page)
       members.delete(page)
       if (this.current.get(lane) !== page) return
+      this.lastUrls.set(lane, page.url())
       const previous = [...members].reverse().find((one) => !one.isClosed())
       if (previous) {
         this.current.set(lane, previous)
@@ -39,12 +45,15 @@ export class BrowserLanes {
   }
 
   delete(lane: string): void {
+    this.lastUrls.delete(lane)
     for (const page of this.members.get(lane) ?? []) this.owners.delete(page)
     this.members.delete(lane)
     this.current.delete(lane)
   }
 
   clear(): void {
+    // Keep only navigation context in memory, never replay clicks or form data.
+    for (const [lane, page] of this.current) this.lastUrls.set(lane, page.url())
     this.current.clear()
     this.members.clear()
     this.owners = new WeakMap()

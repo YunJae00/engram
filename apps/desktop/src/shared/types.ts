@@ -480,6 +480,8 @@ export type EngramEvent =
   | { type: 'tasks:changed' }
   // A comet's task goes on in a turn the person did not type.
   | { type: 'comet:continue'; channel: string; botId: string }
+  | { type: 'comet:working'; channel: string; working: boolean }
+  | { type: 'comet:observed'; channel: string }
   // A procedure is about to post something. The run waits until
   // routineSubmitDone answers with the person's verdict.
   | {
