@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, updateTask, type VaultPaths } from 'core'
+import { createTask, findPlaybook, listTasks, updateTask, type VaultPaths } from 'core'
 import type { ChatRequestDto, EngramEvent } from '../src/shared/types.js'
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknown>())
@@ -16,7 +16,7 @@ const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false
 async function setup(script: Script) {
   const root = await mkdtemp(join(tmpdir(), 'engram-task-runner-'))
   const paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private') } as unknown as VaultPaths
-  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = []
+  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = []
   let last: TurnOutcome | undefined
   const runner: ReturnType<typeof taskRunner> = taskRunner({
     paths,
@@ -25,6 +25,7 @@ async function setup(script: Script) {
     abort: () => {},
     broadcast: (event) => events.push(event),
     remember: async (text) => { remembered.push(text) },
+    notify: (task) => notified.push(`${task.state}: ${task.goal}`),
   })
   handlers.clear()
   runner.register()
@@ -35,8 +36,92 @@ async function setup(script: Script) {
     expect(task.state).toBe(state)
     return task
   }, { timeout: 5000 })
-  return { paths, runner, sent, events, remembered, call, chat, settle }
+  return { paths, runner, sent, events, remembered, notified, call, chat, settle }
 }
+
+const pressed = (target: string) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"` })
+const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })
+
+it('rereads a result that changed something once before calling it done, and says it stopped', async () => {
+  const t = await setup(async (_r, turn) => turn === 1
+    ? { ...done('Saved the supplier form', 3), trail: [{ tool: 'open_page', args: { url: 'https://portal.example/suppliers' }, observation: 'opened' }, pressed('Save')] }
+    : readback('Reread the form; every field matches.'))
+  await t.chat('Update the supplier address')
+  const task = await t.settle('done')
+  expect(task.turns).toBe(2)
+  expect(task.verified).toBe(true)
+  expect(task.verificationPending).toBeUndefined()
+  expect(t.sent[1]!.request.message).toContain('check the result against the request below')
+  expect(t.sent[1]!.request.message).toContain('The delegated task, verbatim:\nUpdate the supplier address')
+  expect(task.result).toBe('Saved the supplier form\n\nChecked: Reread the form; every field matches.')
+  await vi.waitFor(() => expect(t.notified).toEqual(['done: Update the supplier address']))
+})
+
+it('does not add a check turn to an answer that changed nothing', async () => {
+  const t = await setup(async () => ({ ...done('Read three pages', 3), trail: [{ tool: 'open_page', args: { url: 'https://docs.example' }, observation: 'opened' }, { tool: 'press', args: { target: 'Submit' }, observation: '"Submit" was not pressed: it waits' }] }))
+  await t.chat('Summarize the docs')
+  expect((await t.settle('done')).turns).toBe(1)
+})
+
+it('starts a similar request from the steps that worked last time', async () => {
+  const t = await setup(async (_request, turn) => turn % 2 === 0 ? readback('Checked') : ({ ...done('Filed', 4), trail: [
+    { tool: 'open_page', args: { url: 'https://expenses.example/new' }, observation: 'opened' },
+    { tool: 'type_text', args: { target: 'Amount' }, observation: 'typed' },
+    pressed('Attach receipt'),
+    pressed('Submit'),
+  ] }))
+  await t.chat('File the taxi receipt as an expense')
+  await t.settle('done')
+  expect(t.sent[0]!.extra).toBeUndefined()
+  await vi.waitFor(async () => expect(await findPlaybook(t.paths, 'File the hotel receipt as an expense')).toBeDefined())
+  await t.chat('File the hotel receipt as an expense')
+  await vi.waitFor(async () => expect((await listTasks(t.paths)).map(x => x.state)).toEqual(['done', 'done']))
+  const context = t.sent[2]!.extra?.context ?? ''
+  expect(context).toContain('A similar task was finished')
+  expect(context).toContain('Started from: https://expenses.example/new')
+  expect(context).toContain('- press: Submit')
+  expect(t.sent[2]!.request.message).toBe('File the hotel receipt as an expense')
+})
+
+it('does not accept a claimed check without a real readback or save a successful method', async () => {
+  const t = await setup(async (_r, turn) => turn === 1
+    ? { ...done('Saved', 1), trail: [pressed('Save')] }
+    : done('Everything is correct'))
+  await t.chat('Update the supplier address')
+  const task = await t.settle('failed')
+  expect(task.turns).toBe(8)
+  expect(task.verified).not.toBe(true)
+  expect(task.verificationPending).toBe(true)
+  expect(await findPlaybook(t.paths, task.goal)).toBeUndefined()
+})
+
+it('keeps pending verification through a question and requires a read after a correction', async () => {
+  const t = await setup(async (_r, turn) => {
+    if (turn === 1) return { ...done('Saved', 1), trail: [pressed('Save')] }
+    if (turn === 2) return { ...done('Which address is correct?'), asked: true }
+    if (turn === 3) return { ...readback('Corrected'), trail: [...readback('').trail!, pressed('Save')] }
+    return readback('Verified the correction')
+  })
+  await t.chat('Update the supplier address')
+  const waiting = await t.settle('waiting')
+  expect(waiting.verified).not.toBe(true)
+  expect(waiting.verificationPending).toBe(true)
+  await vi.waitFor(() => expect(t.notified).toHaveLength(1))
+  await t.chat('Use the new address')
+  expect((await t.settle('done')).turns).toBe(4)
+  expect(t.sent[2]!.extra?.context).toContain('check the result against the request')
+})
+
+it('restores a pending check from disk without running it before the person resumes', async () => {
+  const t = await setup(async () => readback('Verified after restart'))
+  const task = await createTask(t.paths, 'Check saved supplier', 'bot-1')
+  await updateTask(t.paths, task.id, x => { x.state = 'running'; x.turns = 1; x.verificationPending = true; x.result = 'Saved supplier' })
+  await t.runner.resume()
+  expect(t.sent).toHaveLength(0)
+  await t.chat('Continue after checking the current state')
+  expect((await t.settle('done')).verified).toBe(true)
+  expect(t.sent[0]!.extra?.context).toContain('check the result against the request')
+})
 
 it('runs a comet message as a task that carries on past a turn limit, then files what it did', async () => {
   const t = await setup(async (_r, turn) => turn === 1 ? { answer: 'Half done', asked: false, unfinished: true, steps: 4 } : done('All done', 2))

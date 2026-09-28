@@ -7,6 +7,12 @@ import { tmpVaultRoot } from './helpers.js'
 import { readNote, writeNote } from '../src/notes.js'
 
 describe('saved task routines', () => {
+  it('does not retain fragment credentials or signed cloud links as start addresses', () => {
+    const urls = ['https://example.test/#access_token=hidden', 'https://example.test/#/login?token=hidden', 'https://example.test/file?X-Amz-Signature=hidden', 'https://example.test/?api_key=hidden', 'https://example.test/home']
+    const task = routineTask('Check the report', urls.map(url => ({ tool: 'open_page', args: { url }, observation: 'opened' })))
+    expect(task.urls).toEqual(['https://example.test/home'])
+    expect(JSON.stringify(task)).not.toContain('hidden')
+  })
   it('keeps known batch addresses without learning response contents or old readiness values', () => {
     const task = routineTask('Read the current reports', [{ tool: 'read_pages', args: { pages: [
       { url: 'https://example.com/reports', ready: 'Old date and private value' },

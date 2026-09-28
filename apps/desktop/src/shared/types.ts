@@ -500,6 +500,8 @@ export type EngramEvent =
   | { type: 'press:ask'; channel: string; words: string; host: string | null }
   // Another window asked the shell to open a note (a citation click).
   | { type: 'note:open'; id: string }
+  // A task notification was clicked: show that conversation.
+  | { type: 'comet:open'; botId: string }
   | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.

@@ -6,6 +6,22 @@ import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../sr
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 
+it.each([false, true])('marks tool dispatch before an interrupted receipt (rich=%s)', async rich => {
+  const started: string[] = []
+  let effects = 0
+  const action: AgentTool = {
+    name: 'press', description: 'press', argsSchema: {},
+    run: async () => { expect(started).toEqual(['press']); effects++; return 'pressed' },
+    ...(rich ? { runRich: async () => { expect(started).toEqual(['press']); effects++; return { text: 'pressed' } } } : {}),
+  }
+  const engine = sessionBrain(async job => {
+    await job.tools.find(t => t.name === 'press')!.run({})
+    return { answer: '', error: 'usage limit reached' }
+  })
+  await expect(runComet({ engine, workdir: WORKDIR, tools: [action] }, 'Save once', { guided: false, onToolStart: name => started.push(name) })).rejects.toThrow('usage limit')
+  expect(effects).toBe(1)
+})
+
 it('gives browser work the 120-call ceiling without self-checkpoints', async () => {
   const engine = sessionBrain(async job => {
     expect(job.maxCalls).toBe(120)

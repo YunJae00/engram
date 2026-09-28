@@ -57,6 +57,8 @@ export interface AgentLoopDeps {
 }
 
 export interface AgentLoopOptions {
+  // Called before an offered tool starts, including calls whose receipt never arrives.
+  onToolStart?(name: string): void
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal

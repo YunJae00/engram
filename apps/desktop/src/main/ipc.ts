@@ -19,6 +19,7 @@ import {
   daysOpen,
   daysUntilDue,
   EngineCallError,
+  QuotaError,
   engineCwd,
   expandQueries,
   hybridMerge,
@@ -138,6 +139,7 @@ import { registerAccountIpc } from './account-ipc.js'
 import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
+import { notifyTask } from './task-notify.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
@@ -145,7 +147,7 @@ import { artifactDirectory, cometFileTools, registerArtifactIpc } from './file-w
 import { workEvidenceTools, stopEvidenceRecording } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
-import { aiSelection, chatEngine, rememberSelections } from './ai-selection.js'
+import { aiSelection, brainName, chatEngine, isLimited, noteLimited, rememberSelections } from './ai-selection.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -1627,6 +1629,7 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
+    notify: (task) => notifyTask(task, broadcast),
   })
   tasks.register()
   setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
@@ -2099,6 +2102,7 @@ export function registerIpc(ctx: VaultContext): void {
       })
       return
     }
+    if (engine.id !== wanted && isLimited(wanted, channel)) broadcast({ type: 'comet:step', channel, line: `switch: ${brainName(wanted)} reached its usage limit; ${brainName(engine.id)} continues` })
     // Short on purpose. These ride on EVERY local turn (the warm-session lane
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
@@ -2300,6 +2304,9 @@ export function registerIpc(ctx: VaultContext): void {
           : ''
       const onScreen = [!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [officeContext(), desktopContext()].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
       let learningRecorded = false
+      let switchTo: string | undefined
+      let toolStarted = false
+      let answerDelivered = false
       try {
         assertDesktopChatEngine(channel, engine)
         const resume = resumeState.get(bot.id)
@@ -2390,6 +2397,7 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
+            onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: relevantSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
@@ -2474,7 +2482,7 @@ export function registerIpc(ctx: VaultContext): void {
         const checkpoint = resumeCheckpoint(request.message, result)
         if (checkpoint) resumeState.set(bot.id, checkpoint)
         else resumeState.delete(bot.id)
-        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length })
+        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps })
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
@@ -2489,6 +2497,7 @@ export function registerIpc(ctx: VaultContext): void {
                 ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
                 : undefined,
         )
+        answerDelivered = true
         // What this turn did, held the moment the answer is out: a keep that
         // follows right away must find the path to record, not wait out the
         // offer-writing below.
@@ -2522,8 +2531,28 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'chat:done', channel, text: '' })
           return
         }
-        broadcast({ type: 'chat:error', channel, message: err instanceof Error ? err.message : String(err) })
-        void noteEngineFailure(engine, err instanceof EngineCallError ? err.kind : 'unknown', ctx).then(() =>
+        const said = err instanceof Error ? err.message : String(err)
+        const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
+        // A brain at its usage limit hands the turn to the other signed-in one.
+        if (kind === 'quota' && !request.engineId) {
+          noteLimited(engine.id, channel, err instanceof QuotaError ? err.retryAfterMs : undefined)
+          // No receipt can prove that an interrupted action did not happen.
+          // Only hand off automatically before any offered tool was invoked.
+          if (!toolStarted && !answerDelivered) {
+            const next = await chatEngine(channel, ctx.engines).catch(() => undefined)
+            if (next && next.id !== engine.id && !isLimited(next.id, channel)) switchTo = next.id
+          }
+        }
+        if (answerDelivered) { flog('chat-after-answer', err); return }
+        if (kind === 'quota' && toolStarted) {
+          const question = `${brainName(engine.id)} reached its usage limit after tools started. Some changes may already have happened. Automatic handoff was paused to avoid repeating them. Check the current results before asking me to continue only unfinished work.`
+          turnOutcomes.set(channel, { answer: question, asked: true, unfinished: true, steps: 0 })
+          await deliverAnswer(question)
+          return
+        }
+        if (switchTo) broadcast({ type: 'comet:step', channel, line: `switch: ${brainName(engine.id)} reached its usage limit; ${brainName(switchTo)} continues` })
+        else broadcast({ type: 'chat:error', channel, message: said })
+        void noteEngineFailure(engine, kind, ctx).then(() =>
           revalidateEngines(ctx),
         )
       } finally {
@@ -2536,6 +2565,10 @@ export function registerIpc(ctx: VaultContext): void {
         // after a few quiet minutes, when the next question opens a fresh one,
         // or when the machine needs the memory.
         if (!wallHolds.has(channel)) armIdleClose()
+      }
+      if (switchTo && !signal.aborted) {
+        broadcast({ type: 'chat:token', channel, text: '', reset: true })
+        return handleChatSend(request, signal, recovery, savedRoutine, turn)
       }
       return
     }

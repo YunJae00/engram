@@ -263,6 +263,11 @@ export function correctableFault(result: AgentLoopResult): string | undefined {
 
 // Preserve evidence across one bounded correction; a new session is not a clean bill of health.
 export async function runComet(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
+  if (options.onToolStart) deps = { ...deps, tools: deps.tools.map((tool): AgentLoopDeps['tools'][number] => ({
+    ...tool,
+    run: (args, context) => { options.onToolStart!(tool.name); return tool.run(args, context) },
+    ...(tool.runRich ? { runRich: (args, context) => { options.onToolStart!(tool.name); return tool.runRich!(args, context) } } : {}),
+  })) }
   const started = Date.now()
   const session = !!deps.engine.runTools && options.guided === false
   const budget = options.maxCalls ?? (session ? SESSION_MAX_CALLS : options.guided === false ? 12 : 6)

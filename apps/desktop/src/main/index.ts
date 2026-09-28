@@ -42,6 +42,7 @@ import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
 import { closeOfficeHost, primeOffice } from './office-host.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { developersRunning, registerDevIpc, stopDevelopers } from './dev-ipc.js'
+import { setTaskSurface } from './task-notify.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -50,13 +51,16 @@ const singleInstance = !app.isPackaged || app.requestSingleInstanceLock()
 if (!singleInstance) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    if (!mainWin || mainWin.isDestroyed()) return
-    if (mainWin.isMinimized()) mainWin.restore()
-    mainWin.show()
-    mainWin.focus()
-  })
+  app.on('second-instance', () => surfaceMain())
 }
+
+function surfaceMain(): void {
+  if (!mainWin || mainWin.isDestroyed()) return
+  if (mainWin.isMinimized()) mainWin.restore()
+  mainWin.show()
+  mainWin.focus()
+}
+setTaskSurface(surfaceMain)
 
 // Must run before anything resolves engines or spawns a pty — see the module
 // comment (macOS Dock launches get a PATH without claude/whisper/brew).

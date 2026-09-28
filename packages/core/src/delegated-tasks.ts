@@ -32,6 +32,10 @@ export interface DelegatedTask {
   turns: number
   // Tool steps taken across its turns: how much the task actually did.
   work?: number
+  // The one check turn before it is reported done has run.
+  verified?: boolean
+  // Persists until a check turn finishes, including across questions and restarts.
+  verificationPending?: boolean
   createdAt: string
   updatedAt: string
   finishedAt?: string
@@ -117,12 +121,13 @@ export function tasksToResume(tasks: DelegatedTask[]): DelegatedTask[] {
 
 // The next message a task's comet receives. The goal travels verbatim every
 // time; what came before is in the comet's own conversation.
-export function continuationPrompt(task: DelegatedTask, reason: 'limit' | 'restart' | 'answer' | 'approved', detail = ''): string {
+export function continuationPrompt(task: DelegatedTask, reason: 'limit' | 'restart' | 'answer' | 'approved' | 'verify', detail = ''): string {
   const lead = {
     limit: 'Continue the delegated task where the last turn stopped. Do not repeat work already confirmed; re-read the current state first.',
     restart: 'The app restarted while this delegated task was running. Re-observe the current state before acting, do not repeat confirmed effects, and continue the unfinished work.',
     answer: 'The person answered your question. Continue the delegated task with their answer.',
     approved: 'The person decided on the presses you left for them. Where they approved, make exactly that press now; where they declined, leave it. Then finish the unfinished work.',
+    verify: 'Before this task is reported done, check the result against the request below, requirement by requirement: reopen each file you wrote and read back each page you changed rather than trusting your earlier answer, and compare names, numbers, dates, counts, formats and limits. Correct only what does not match; do not redo correct work and do not press anything new that commits. Then answer in one or two sentences: what you checked and what, if anything, you corrected.',
   }[reason]
   return [lead, ...(detail ? [detail] : []), '', 'The delegated task, verbatim:', task.goal].join('\n')
 }

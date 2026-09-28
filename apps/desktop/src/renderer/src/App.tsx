@@ -99,7 +99,7 @@ function Shell() {
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
-      else if (e.type === 'routine:chat') {
+      else if (e.type === 'routine:chat' || e.type === 'comet:open') {
         selectComet(e.botId); setActivity('bots')
         if (window.innerWidth <= 900) setSidebarOpen(false)
       }

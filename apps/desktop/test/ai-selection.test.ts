@@ -1,9 +1,36 @@
 import { expect, it, vi } from 'vitest'
 import type { Engine, EngineJobInput, ToolSessionJob } from 'core'
-import { aiSelection, withModel } from '../src/main/ai-selection.js'
+import { aiSelection, chatEngine, isLimited, noteLimited, withModel } from '../src/main/ai-selection.js'
+import { loadSettings } from '../src/main/settings.js'
 import type { AppSettingsDto } from '../src/shared/types.js'
 
 vi.mock('../src/main/settings.js', () => ({ loadSettings: vi.fn(), updateSettings: vi.fn() }))
+const models = vi.hoisted(() => [] as string[])
+vi.mock('core', async (original) => ({
+  ...await original<typeof import('core')>(),
+  createEngine: (id: string) => ({
+    id, detect: async () => ({ installed: true, loggedIn: true }),
+    async *run(job: EngineJobInput) { models.push(`${id}:${job.model}`); yield { type: 'result', text: 'ok' } },
+  }),
+}))
+
+it('hands a conversation to the other signed-in brain while its own is at the usage limit', async () => {
+  vi.mocked(loadSettings).mockResolvedValue({ defaultEngine: 'claude', claudeModel: 'opus', codexModel: 'gpt', autoStart: false, teamSync: 'manual', aiSelections: {} })
+  const pick = async (explicit?: string) => {
+    const engine = (await chatEngine('bot-1', [], explicit))!
+    for await (const event of engine.run({} as EngineJobInput)) expect(event.type).toBe('result')
+    return engine.id
+  }
+  expect(await pick()).toBe('claude')
+  noteLimited('claude', 'bot-1', 60_000)
+  expect(await pick()).toBe('codex')
+  expect(await pick('claude')).toBe('claude')
+  expect((await chatEngine('bot-2', []))!.id).toBe('claude')
+  noteLimited('codex', 'bot-1')
+  await expect(pick()).rejects.toThrow('Both AI providers')
+  expect(models).toEqual(['claude:opus', 'codex:gpt', 'claude:opus'])
+  expect(isLimited('claude', 'bot-1', Date.now() + 61_000)).toBe(false)
+})
 
 it('keeps filing and conversation choices independent of new-conversation defaults', () => {
   const settings: AppSettingsDto = { defaultEngine: 'claude', claudeModel: 'default', autoStart: false, teamSync: 'manual', aiSelections: {

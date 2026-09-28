@@ -15,7 +15,8 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
   for (const text of texts) for (const match of text.matchAll(/https?:\/\/[^\s<>"`\])]+/g)) {
     try {
       const url = new URL(match[0].replace(/[.,;:!?]+$/, ''))
-      const credential = [...url.searchParams.keys()].some(key => /^(access_token|refresh_token|id_token|token|jwt|code|session|sessionid|password|secret|signature|sig|samlrequest|samlresponse|relaystate|ticket|nonce|state)$/i.test(key))
+      const fragment = new URLSearchParams(url.hash.slice(1).split('?').at(-1))
+      const credential = [...url.searchParams.keys(), ...fragment.keys()].some(key => /^(access_token|refresh_token|id_token|token|jwt|code|session|sessionid|password|secret|signature|sig|samlrequest|samlresponse|relaystate|ticket|nonce|state|api[-_]?key|x-amz-.+|x-goog-.+)$/i.test(key))
       if (!credential && !url.username && !url.password && withoutSecrets(url.href, source) === url.href && url.href.length <= 2048 && urls.size < 12) urls.add(url.href)
     } catch { /* Incomplete addresses cannot be reused. */ }
   }
