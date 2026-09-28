@@ -2531,6 +2531,9 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'chat:done', channel, text: '' })
           return
         }
+        // Post-answer learning may use a different provider. Its failure must
+        // neither replay completed work nor mark this conversation's AI limited.
+        if (answerDelivered) { flog('chat-after-answer', err); return }
         const said = err instanceof Error ? err.message : String(err)
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
         // A brain at its usage limit hands the turn to the other signed-in one.
@@ -2543,7 +2546,6 @@ export function registerIpc(ctx: VaultContext): void {
             if (next && next.id !== engine.id && !isLimited(next.id, channel)) switchTo = next.id
           }
         }
-        if (answerDelivered) { flog('chat-after-answer', err); return }
         if (kind === 'quota' && toolStarted) {
           const question = `${brainName(engine.id)} reached its usage limit after tools started. Some changes may already have happened. Automatic handoff was paused to avoid repeating them. Check the current results before asking me to continue only unfinished work.`
           turnOutcomes.set(channel, { answer: question, asked: true, unfinished: true, steps: 0 })
