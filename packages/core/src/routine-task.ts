@@ -29,7 +29,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
     if (step.tool === 'read_pages') { controls.clear(); continue }
     const found = [...step.observation.matchAll(/(?:^|\n)(#\d+)\s+\[([^\]\n]+)\]\s+([^\n]+)/g)]
     if (found.length) controls = new Map(found.map(match => [match[1]!, `${match[2]}: ${match[3]}`.slice(0, 300)]))
-    else if (['open_page', 'press', 'press_key', 'press_point', 'type_text', 'choose'].includes(step.tool)) controls.clear()
+    else if (['open_page', 'press', 'press_key', 'press_point', 'type_text', 'choose', 'page_steps'].includes(step.tool)) controls.clear()
   }
   const checks = [...new Set(successful.flatMap(step => {
     if (['verify', 'wait_for'].includes(step.tool)) {

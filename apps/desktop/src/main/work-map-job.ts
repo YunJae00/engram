@@ -8,6 +8,7 @@ import {
   engineBackoff,
   engineCwd,
   labelPrompt,
+  learnedPlaces,
   placeNote,
   placeNoteId,
   readNote,
@@ -51,9 +52,13 @@ async function readVisits(sinceMs: number, signal: AbortSignal): Promise<TraceVi
       signal.throwIfAborted()
       const db = new SQL.Database(await readFile(temp))
       const since = Math.floor((sinceMs - WEBKIT_EPOCH_MS) * 1_000)
-      const rows = db.exec(`SELECT u.url, u.title, v.visit_time / 1000 FROM visits v JOIN urls u ON u.id = v.url WHERE v.visit_time > ${since} AND u.hidden = 0`)
+      // The visit it came from: a link in the same tab, or the tab that opened it (newer browsers).
+      const columns = new Set((db.exec('PRAGMA table_info(visits)')[0]?.values ?? []).map(column => String(column[1])))
+      const origin = ['from_visit', 'opener_visit'].filter(name => columns.has(name)).map(name => `NULLIF(v.${name}, 0)`)
+      const via = origin.length ? `LEFT JOIN visits fv ON fv.id = ${origin.length > 1 ? `COALESCE(${origin.join(', ')})` : origin[0]} LEFT JOIN urls fu ON fu.id = fv.url` : ''
+      const rows = db.exec(`SELECT u.url, u.title, v.visit_time / 1000, ${via ? 'fu.url' : 'NULL'} FROM visits v JOIN urls u ON u.id = v.url ${via} WHERE v.visit_time > ${since} AND u.hidden = 0`)
       db.close()
-      for (const [url, title, at] of (rows[0]?.values ?? []) as [string, string | null, number][]) visits.push({ url, title: title ?? '', at: WEBKIT_EPOCH_MS + at })
+      for (const [url, title, at, from] of (rows[0]?.values ?? []) as [string, string | null, number, string | null][]) visits.push({ url, title: title ?? '', at: WEBKIT_EPOCH_MS + at, ...(from ? { from } : {}) })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') flog('work-map', error)
     } finally {
@@ -117,7 +122,7 @@ async function refreshIfStale(): Promise<void> {
 // What each comet turn carries: the short list of work places, or nothing.
 export async function workMapShortcuts(ctx: VaultContext): Promise<string> {
   if (!(await loadSettings()).workMap) return ''
-  return workShortcuts(await readWorkMap(ctx.paths).catch(() => null))
+  return workShortcuts(await readWorkMap(ctx.paths).catch(() => null), 40, await learnedPlaces(ctx.paths).catch(() => new Map<string, string>()))
 }
 
 let timer: NodeJS.Timeout | null = null

@@ -29,8 +29,13 @@ const SESSION_MAX_CALLS = 40
 // counted out loud so the answer is written before it runs out.
 export const SESSION_TURN_MS = 900_000
 const SESSION_SOFT_MS = 780_000
+// A model that has neither called a tool nor said a word for this long is
+// stuck, not thinking: the turn ends with its work kept, and the task goes on
+// in a fresh session instead of waiting out the whole turn.
+export const SESSION_STALL_MS = 180_000
+const STALL_NOTE = 'The model stopped responding for three minutes. The work so far is kept, and the task continues from the current state.'
 
-const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
+const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'page_steps', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
@@ -107,11 +112,14 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let lookedFirst = false
   let exhausted = false
   let toolMs = 0
+  let lastActivity = Date.now(), stalled = false
+  const touch = (): void => { lastActivity = Date.now() }
   const calls: ToolSessionCall[] = tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
     argsSchema: tool.argsSchema,
     run: async (args) => {
+      touch()
       signal.throwIfAborted()
       // A question to the person ends the turn: whatever the model says
       // after it, the question is the answer.
@@ -189,7 +197,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const sessionCalls = calls.map((call): ToolSessionCall => ({ ...call, run: (args) => {
     queued++
     const outcome = planned ? toolTail.then(() => call.run(args)) : call.run(args)
-    const settled = outcome.finally(() => { queued-- })
+    const settled = outcome.finally(() => { queued--; touch() })
     if (planned) toolTail = settled.then(() => undefined, () => undefined)
     return settled
   } }))
@@ -198,6 +206,12 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // what they want travel with each turn, and the conversation so far only
   // with the first.
   const opening = conversationLines(options.history).join('\n')
+  const watchdog = setInterval(() => {
+    if (queued === 0 && Date.now() - lastActivity > SESSION_STALL_MS) {
+      stalled = true
+      lifetime.abort(new Error(STALL_NOTE))
+    }
+  }, 5_000)
   const session = await runTools.call(deps.engine, {
     workdir: deps.workdir,
     system: [
@@ -208,6 +222,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       DOCUMENT_CHECK_RULE,
       'Page deltas replace only the indicated body lines in the stated base observation. Controls in each result are complete and current. If the base is no longer available, call read_open_page for a full report before acting. Never infer success from an unchanged page. Use read_pages only for a short list of known addresses within the current request, with a positive readiness check for each; stop at the first unexpected result.',
       ...(planned && !workflow ? ['For a multi-stage browser task, confirm each outcome from fresh read_open_page observations. Continue unfinished work within the original scope without asking merely to continue. Never repeat successful submissions. Two identical failed attempts are a blocker, not progress. Stop for missing inputs or approval.'] : []),
+      ...(browser && deps.tools.some(tool => tool.name === 'page_steps') ? ['On a form, make the moves you already know in one page_steps call - its fields, options and tabs - rather than one call per field; read once after it.'] : []),
       ...(desktop ? [DESKTOP_TASK_RULE] : []),
       ...(desktop ? ['Within a phase, combine known operations and exact field-value checks in one short guarded desktop_sequence instead of narrating and calling the model for each keystroke. The complete batch is validated before execution; a streamed draft is not executable. Plan only to the next uncertain boundary. Read a surprising result and revise only the unfinished work; do not replay completed input. Give brief updates at phase boundaries or blockers, not between every input. Known routines and memories can inform phases, but their targets must be checked against the current app. A matching field value proves only that checkpoint, not the whole task.'] : []),
       ...(desktop ? ['For multi-stage requests, first use task_plan to define short outcome-based phases and their result checks from this request. Do not use application-specific recipes. Work on one phase at a time; use supported bounded sequences only when their prerequisites hold. A rejected sequence is not progress: inspect why and change approach, never repeat the same rejected batch. Reuse the returned observation instead of reading it again unnecessarily. After a phase, inspect the actual result and cite that observation in task_plan. A checkpoint records your assessment, not automatic proof. Keep user restrictions throughout every phase, including stop-on-first-error. Do not mark unfinished work complete. Simple requests need no plan.'] : []),
@@ -229,10 +244,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     tools: sessionCalls,
     onContextReset: () => { compactPage() },
     maxCalls: Math.min(options.maxCalls ?? 120, planned ? 120 : SESSION_MAX_CALLS),
-    ...(options.onToken ? { onToken: options.onToken } : {}),
+    ...(options.onToken ? { onToken: (text: string) => { touch(); options.onToken!(text) } } : {}),
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
   }).finally(() => {
+    clearInterval(watchdog)
     lifetime.abort(new Error('The tool session has ended.'))
     options.onMetric?.({ kind: 'model', operation: 'session-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   })
@@ -240,6 +256,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
+  }
+  if (stalled) {
+    options.onMetric?.({ kind: 'model', operation: 'stall', ms: SESSION_STALL_MS })
+    return { answer: withoutSecrets(outputLinks(steps, `Not verified as complete.\n\n${STALL_NOTE}`), task), steps, fellBack: false, incomplete: STALL_NOTE }
   }
   if (session.error) throw new Error(session.error)
   const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))

@@ -10,7 +10,8 @@ import type { VaultPaths } from './vault.js'
 // bookmarks, and the days and hours they go there. Addresses and titles only;
 // no page is opened and no content is read to build it.
 
-export interface TraceVisit { url: string; title: string; at: number }
+// from: the address the visit was reached from, when the browser recorded one.
+export interface TraceVisit { url: string; title: string; at: number; from?: string }
 export interface TraceBookmark { title: string; url: string; folder: string; managed?: boolean }
 
 export interface WorkPlace {
@@ -26,6 +27,8 @@ export interface WorkPlace {
   // Listed by the organisation only; the person never bookmarked it.
   managed: boolean
   rhythm?: { day?: number; hour?: number; weekdaysOnly?: boolean }
+  // The site the person usually comes through to get here (a portal, a hub).
+  via?: string
   purpose?: string
   work?: boolean
 }
@@ -37,6 +40,8 @@ const WINDOW_DAYS = 90
 const KEEP = 80
 const SHOWN_PAGES = 5
 const RHYTHM_DAYS = 6
+// A way in counts once it is used on this share of the days the place is visited.
+const VIA_SHARE = 0.3
 // Sign-in, hand-off and redirect pages are passages, not places.
 const PASSAGE = /login|signin|sign-in|sign_in|oauth|saml|\/sso\b|\/auth\b|callback|redirect|password|로그인|인증/i
 const PASSAGE_TITLE = /^(working\.\.\.|redirecting|리디렉션 중)/i
@@ -62,11 +67,11 @@ const argmax = (values: number[]) => values.indexOf(Math.max(...values))
 
 export function buildWorkMap(visits: TraceVisit[], bookmarks: TraceBookmark[], now = new Date(), windowDays = WINDOW_DAYS): WorkMap {
   const since = now.getTime() - windowDays * 86_400_000
-  interface Seen { days: Set<string>; weekdays: Set<string>[]; hours: number[]; pages: Map<string, { title: string; days: Set<string> }>; bookmarks: string[]; bookmarkUrl?: string; personal: boolean; last: string }
+  interface Seen { days: Set<string>; weekdays: Set<string>[]; hours: number[]; pages: Map<string, { title: string; days: Set<string> }>; via: Map<string, Set<string>>; bookmarks: string[]; bookmarkUrl?: string; personal: boolean; last: string }
   const hosts = new Map<string, Seen>()
   const seen = (host: string): Seen => {
     let one = hosts.get(host)
-    if (!one) hosts.set(host, one = { days: new Set(), weekdays: WEEKDAYS.map(() => new Set()), hours: Array<number>(24).fill(0), pages: new Map(), bookmarks: [], personal: false, last: '' })
+    if (!one) hosts.set(host, one = { days: new Set(), weekdays: WEEKDAYS.map(() => new Set()), hours: Array<number>(24).fill(0), pages: new Map(), via: new Map(), bookmarks: [], personal: false, last: '' })
     return one
   }
   for (const visit of visits) {
@@ -81,6 +86,9 @@ export function buildWorkMap(visits: TraceVisit[], bookmarks: TraceBookmark[], n
     const page = one.pages.get(url) ?? { title: title.slice(0, 100), days: new Set<string>() }
     page.days.add(day); if (!page.title && title) page.title = title.slice(0, 100)
     one.pages.set(url, page)
+    const from = visit.from && !PASSAGE.test(visit.from) ? safeAddress(visit.from) : null
+    const fromHost = from ? new URL(from).hostname : ''
+    if (fromHost && fromHost !== new URL(url).hostname) one.via.set(fromHost, (one.via.get(fromHost) ?? new Set<string>()).add(day))
   }
   for (const mark of bookmarks) {
     const url = safeAddress(mark.url)
@@ -97,10 +105,12 @@ export function buildWorkMap(visits: TraceVisit[], bookmarks: TraceBookmark[], n
     const rhythm = total >= RHYTHM_DAYS
       ? { hour: argmax(one.hours), ...(byDay[peak]! / total >= 0.4 ? { day: peak } : {}), ...(byDay[0]! + byDay[6]! === 0 ? { weekdaysOnly: true } : {}) }
       : undefined
+    const [via, viaDays] = [...one.via.entries()].map(([name, days]) => [name, days.size] as const).sort((a, b) => b[1] - a[1])[0] ?? []
     return {
       host, entry, title: pages[0]?.title || one.bookmarks[0]?.split(' / ').at(-1) || host, pages: pages.slice(0, SHOWN_PAGES),
       days: total, lastSeen: one.last, bookmarks: [...new Set(one.bookmarks)].slice(0, 6), managed: !one.personal && one.bookmarks.length > 0,
       ...(rhythm ? { rhythm } : {}),
+      ...(via && viaDays! >= Math.max(2, total * VIA_SHARE) ? { via } : {}),
     }
   })
   const weight = (place: WorkPlace) => place.days + (place.bookmarks.length && !place.managed ? 10 : 0)
@@ -134,18 +144,18 @@ export function applyLabels(map: WorkMap, raw: string): WorkMap {
 
 const rhythmText = (place: WorkPlace): string => {
   const r = place.rhythm
-  if (!r) return ''
-  const parts = [r.day !== undefined ? `usually ${WEEKDAYS[r.day]}` : r.weekdaysOnly ? 'weekdays' : '', r.hour !== undefined ? `around ${String(r.hour).padStart(2, '0')}:00` : ''].filter(Boolean)
+  const parts = [place.via ? `reached via ${place.via}` : '', r?.day !== undefined ? `usually ${WEEKDAYS[r.day]}` : r?.weekdaysOnly ? 'weekdays' : '', r?.hour !== undefined ? `around ${String(r.hour).padStart(2, '0')}:00` : ''].filter(Boolean)
   return parts.length ? ` (${parts.join(', ')})` : ''
 }
 
-// What every comet carries: one line per place, the purpose and the address.
-export function workShortcuts(map: WorkMap | null, max = 40): string {
+// What every comet carries: one line per place, the purpose and the address,
+// and what was last done there when a task there has been finished.
+export function workShortcuts(map: WorkMap | null, max = 40, learned: Map<string, string> = new Map()): string {
   const places = (map?.places ?? []).filter((place) => place.work !== false && (place.days > 0 || !place.managed)).slice(0, max)
   if (!places.length) return ''
   return [
     "Where this person works, learned from their own browser history and bookmarks. Start from these addresses instead of searching or asking where something is; they are hints, not permission, so confirm on the page.",
-    ...places.map((place) => `- ${place.purpose ?? place.title}: ${place.entry}${rhythmText(place)}`),
+    ...places.map((place) => `- ${place.purpose ?? place.title}: ${place.entry}${rhythmText(place)}${learned.has(place.host) ? ` - done here before: "${learned.get(place.host)}"` : ''}`),
   ].join('\n')
 }
 

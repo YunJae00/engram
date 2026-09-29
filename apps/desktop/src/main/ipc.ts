@@ -2432,7 +2432,7 @@ export function registerIpc(ctx: VaultContext): void {
             onStep: (line) => {
               broadcast({ type: 'comet:step', channel, line })
               const said = /^([a-z_]+): ([^]*)$/.exec(line)
-              if (said && /^(open|read|look|press|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
+              if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
             onToken: (text) => broadcast({ type: 'chat:token', channel, text }),

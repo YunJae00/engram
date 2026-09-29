@@ -37,7 +37,7 @@ type Reason = Parameters<typeof continuationPrompt>[1]
 const WORTH_KEEPING_STEPS = 3
 // Steps that change something outside the conversation: a task that took one
 // rereads its result once before it is called done.
-const CHANGES = /^(press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+const CHANGES = /^(page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
 // A read receipt is necessary, not proof that every requirement was satisfied.
 const READBACK = /^(read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)

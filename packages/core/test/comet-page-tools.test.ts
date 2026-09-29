@@ -57,7 +57,7 @@ describe('the hands on a page', () => {
     const tools = pageTools({}, courier(log))
     const tool = (name: string) => tools.find((t) => t.name === name)!
     const ctx = { task: 'last week' }
-    expect(tools.map((t) => t.name)).toEqual(['press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'look'])
+    expect(tools.map((t) => t.name)).toEqual(['press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'page_steps', 'look'])
     expect(await tool('press').run({ target: '#1' }, ctx)).toContain('week of the 17th')
     expect(await tool('press').run({ target: 'Submit' }, ctx)).toContain('would submit or commit')
     expect(await tool('press').run({ target: 'Nowhere' }, ctx)).toContain('could not find "Nowhere"')
@@ -128,5 +128,24 @@ describe('a press that would commit is put to the person', () => {
     const said = await press.run({ target: 'Place on hold' }, { task: 'hold the duplicates' })
     expect(said).toContain('waits for the person\'s approval')
     expect(said).toContain('Continue with the rest of the work')
+  })
+})
+
+describe('page_steps', () => {
+  it('makes several known moves in order and reads the page once, stopping at the first that does not go', async () => {
+    const log: string[] = []
+    const base = courier(log)
+    let reads = 0
+    const steps = pageTools({}, { ...base, readOpen: async (signal) => { reads++; return base.readOpen!(signal) } }).find(tool => tool.name === 'page_steps')!
+    const ok = await steps.run({ steps: [{ do: 'type', target: 'Hours', text: '4' }, { do: 'choose', target: 'Activity', option: 'ChatX' }, { do: 'key', key: 'Escape' }] }, { task: '', read: '' })
+    expect(log).toEqual(['type Hours=4', 'choose Activity:ChatX', 'key Escape'])
+    expect(reads).toBe(1)
+    expect(ok).toContain('Done in order: type into "Hours"; choose "ChatX" in "Activity"; press Escape.')
+    log.length = 0
+    const stopped = await steps.run({ steps: [{ do: 'type', target: 'Hours', text: '2' }, { do: 'press', target: 'Submit' }, { do: 'type', target: 'Remarks', text: 'late' }] }, { task: '', read: '' })
+    expect(log).toEqual(['type Hours=2', 'press Submit'])
+    expect(stopped).toContain('Stopped at move 2 of 3 (press "Submit")')
+    expect(stopped).toContain('was not pressed')
+    expect(await steps.run({ steps: [{ do: 'choose', target: 'Activity' }] }, { task: '', read: '' })).toContain('move 1 is incomplete')
   })
 })

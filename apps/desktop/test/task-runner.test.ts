@@ -85,7 +85,7 @@ it('does not add a check turn to an answer that changed nothing', async () => {
   expect((await t.settle('done')).turns).toBe(1)
 })
 
-it('starts a similar request from the steps that worked last time', async () => {
+it('starts a similar request from where it began last time, and from its steps once it has worked twice', async () => {
   const t = await setup(async (_request, turn) => turn % 2 === 0 ? readback('Checked') : ({ ...done('Filed', 4), trail: [
     { tool: 'open_page', args: { url: 'https://expenses.example/new' }, observation: 'opened' },
     { tool: 'type_text', args: { target: 'Amount' }, observation: 'typed' },
@@ -101,8 +101,14 @@ it('starts a similar request from the steps that worked last time', async () => 
   const context = t.sent[2]!.extra?.context ?? ''
   expect(context).toContain('A similar task was finished')
   expect(context).toContain('Started from: https://expenses.example/new')
-  expect(context).toContain('- press: Submit')
+  expect(context).not.toContain('- press: Submit')
   expect(t.sent[2]!.request.message).toBe('File the hotel receipt as an expense')
+  await vi.waitFor(async () => expect((await findPlaybook(t.paths, 'File the train receipt as an expense'))?.count).toBe(2))
+  await t.chat('File the train receipt as an expense')
+  await vi.waitFor(async () => expect((await listTasks(t.paths)).map(x => x.state)).toEqual(['done', 'done', 'done']))
+  const detailed = t.sent[4]!.extra?.context ?? ''
+  expect(detailed).toContain('finished 2 times')
+  expect(detailed).toContain('- press: Submit')
 })
 
 it('does not accept a claimed check without a real readback or save a successful method', async () => {

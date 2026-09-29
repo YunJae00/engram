@@ -2,7 +2,7 @@ import { mkdtemp, readFile, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { findPlaybook, playbookContext, recordPlaybook } from '../src/task-playbooks.js'
+import { findPlaybook, learnedPlaces, playbookContext, recordPlaybook } from '../src/task-playbooks.js'
 import type { VaultPaths } from '../src/vault.js'
 
 const step = (tool: string, args: Record<string, unknown>, observation = 'ok') => ({ tool, args, observation })
@@ -24,6 +24,8 @@ it('keeps the steps that worked and hands them to a similar request only', async
   expect(found.urls).toEqual(['https://expenses.example/new'])
   expect(found.method).toEqual(['open_page', 'open_page', 'type_text: Amount', 'press: Submit'])
   expect(playbookContext(found)).toContain('hints only')
+  expect(found.count).toBe(2)
+  expect(playbookContext(found)).toContain('- press: Submit')
   expect(JSON.parse(await readFile(join(paths.cache, 'task-playbooks.json'), 'utf8'))).toHaveLength(1)
 })
 
@@ -36,4 +38,15 @@ it('preserves a malformed method store instead of silently replacing it', async 
   await expect(findPlaybook(paths, 'File the receipt')).rejects.toThrow('preserved')
   await expect(recordPlaybook(paths, 'File the receipt', trail)).rejects.toThrow('preserved')
   expect(await readFile(join(cache, 'task-playbooks.json'), 'utf8')).toBe(invalid)
+})
+
+it('hands on only where a task began until it has worked twice, and names what each site was used for', async () => {
+  const paths = { cache: join(await mkdtemp(join(tmpdir(), 'engram-playbooks-')), '.engram') } as VaultPaths
+  await recordPlaybook(paths, "Enter today's hours in the time report", [step('open_page', { url: 'https://portal.example/' }), step('open_page', { url: 'https://time.example/week' }), step('type_text', { target: 'Hours' }), step('press', { target: 'Save' })])
+  const once = playbookContext((await findPlaybook(paths, "Enter yesterday's hours in the time report"))!)
+  expect(once).toContain('Started from: https://portal.example/ https://time.example/week')
+  expect(once).not.toContain('Steps that worked')
+  const places = await learnedPlaces(paths)
+  expect(places.get('time.example')).toBe("Enter today's hours in the time report")
+  expect(places.get('portal.example')).toBe("Enter today's hours in the time report")
 })

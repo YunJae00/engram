@@ -8,6 +8,8 @@ import { findOf, pageReport, str } from './page-report.js'
 // control that would submit, save, send or buy is refused, and the person
 // is told what it is.
 
+const PAGE_STEPS_MAX = 12
+
 export interface PageToolDeps {
   wallMet?(url: string): void
 }
@@ -149,6 +151,44 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         const y = typeof args['y'] === 'number' ? args['y'] : Number.NaN
         if (!Number.isFinite(x) || !Number.isFinite(y)) return 'press_point needs x and y as fractions of the picture, between 0 and 1'
         return after(await pressPoint(x, y, context.signal), `press the point ${x.toFixed(2)},${y.toFixed(2)}`, args, context.signal)
+      },
+    })
+  }
+  // Several known moves on one form in one call: each goes through the same
+  // hands and guards as its own tool, the page is read once at the end, and
+  // the first move that does not go as asked stops the rest.
+  const { press, typeText, choose, pressKey } = courier
+  if (press && typeText && choose && pressKey) {
+    tools.push({
+      name: 'page_steps',
+      description:
+        `do several known moves on the open page in order, in one call - fill a form's fields, pick its options, press its tabs or buttons - instead of one call per field. Controls are named by their words or their number from the latest page report; the page is read once at the end, so a move that needs what an earlier one reveals (a list that only opens after a press) goes in a new call. Stops at the first move that fails, changes nothing or waits for approval - args: {"steps": [{"do": "type", "target": "#12", "text": "4"}, {"do": "choose", "target": "Activity", "option": "ChatX"}, {"do": "press", "target": "Add"}, {"do": "key", "key": "Tab"}]}`,
+      argsSchema: { type: 'object', properties: { steps: { type: 'array', maxItems: PAGE_STEPS_MAX, items: { type: 'object', properties: { do: { type: 'string', enum: ['type', 'choose', 'press', 'key'] }, target: { type: 'string' }, text: { type: 'string' }, option: { type: 'string' }, key: { type: 'string' } }, required: ['do'] } } }, required: ['steps'] },
+      async run(args, context) {
+        const steps = Array.isArray(args['steps']) ? (args['steps'] as Record<string, unknown>[]).slice(0, PAGE_STEPS_MAX) : []
+        if (!steps.length) return `page_steps needs a list of moves (at most ${PAGE_STEPS_MAX})`
+        const done: string[] = []
+        let last: { move: PageMove; what: string } | undefined
+        for (const [index, step] of steps.entries()) {
+          const target = str(step, 'target'), kind = str(step, 'do')
+          const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : `press ${str(step, 'key')}`
+          const move = kind === 'type' && target && typeof step['text'] === 'string' && step['text'] ? await typeText(target, step['text'], false, context.signal)
+            : kind === 'choose' && target && str(step, 'option') ? await choose(target, str(step, 'option'), context.signal)
+              : kind === 'press' && target ? await press(target, context.signal)
+                : kind === 'key' && str(step, 'key') ? await pressKey(str(step, 'key'), context.signal)
+                  : { ok: false, error: `move ${index + 1} is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key` }
+          last = { move, what }
+          const stuck = !move.ok || move.later || move.theirs || move.refused !== undefined || (kind === 'press' && move.changed === false)
+          if (stuck) {
+            const outcome = await after(move, what, args, context.signal)
+            const text = typeof outcome === 'string' ? outcome : outcome.text
+            return `${done.length ? `Done in order: ${done.join('; ')}.\n` : ''}Stopped at move ${index + 1} of ${steps.length} (${what}); the moves after it were not made:\n${text}`
+          }
+          done.push(what)
+        }
+        const outcome = await after(last!.move, `${done.length} moves`, args, context.signal)
+        // The whole report, not a delta: the list of moves made travels with it.
+        return `Done in order: ${done.join('; ')}.\n${typeof outcome === 'string' ? outcome : outcome.text}`
       },
     })
   }

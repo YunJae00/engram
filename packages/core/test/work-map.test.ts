@@ -75,3 +75,17 @@ it('drops credentials and token-shaped values from addresses, and round-trips th
   await writeWorkMap(paths, map)
   expect(await readWorkMap(paths)).toEqual(map)
 })
+
+it('notes the site a place is usually reached through, past sign-in pages, and what was done there before', () => {
+  const from = (visits: { url: string; title: string; at: number }[], origin: string) => visits.map(visit => ({ ...visit, from: origin }))
+  const map = buildWorkMap([
+    ...from(on('https://time.example/week', 'Time Report', weekdays.slice(0, 8), 17), 'https://portal.example/home'),
+    ...from(on('https://time.example/week', 'Time Report', weekdays.slice(8), 17), 'https://login.example/sso'),
+    ...from(on('https://cards.example/list', 'Card', weekdays.slice(0, 3), 10), 'https://cards.example/'),
+  ], [], NOW)
+  const time = map.places.find(place => place.host === 'time.example')!
+  expect(time.via).toBe('portal.example')
+  expect(map.places.find(place => place.host === 'cards.example')!.via).toBeUndefined()
+  const shortcuts = workShortcuts(map, 40, new Map([['time.example', 'Enter today\'s hours']]))
+  expect(shortcuts).toContain('- Time Report: https://time.example/week (reached via portal.example, weekdays, around 17:00) - done here before: "Enter today\'s hours"')
+})
