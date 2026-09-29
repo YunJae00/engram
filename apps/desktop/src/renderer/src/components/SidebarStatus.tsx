@@ -59,14 +59,12 @@ export function SidebarStatus() {
 
   return (
     <div className="sidebar-status-block">
-      <div className="sidebar-filing-row">
+      <ModelPicker variant="sidebar" scope="filing" />
         <div className={`sidebar-status-row sidebar-work-status${working ? ' working' : ''}`} data-testid="sweep-status" role="status" title={activityText}>
           <span className="sidebar-status-icon">{working ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : paused ? <CirclePause size={14} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
           <span>{activityText || 'Filing ready'}</span>
         </div>
-        {!working && <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label="Retry filing" title="Retry filing with the selected filing AI" disabled={!vaultReady} onClick={() => void retry()}><RotateCw size={13} aria-hidden /></button>}
-      </div>
-      <ModelPicker variant="sidebar" scope="filing" />
+      <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label="Retry filing" title="Retry filing with the selected filing AI" disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={16} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>
     </div>
   )
 }

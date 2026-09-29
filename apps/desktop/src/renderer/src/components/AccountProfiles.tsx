@@ -16,7 +16,7 @@ export function AccountProfiles({ provider, compact = false, sessionProfile }: {
   const name = profiles?.profiles.find(row => row.id === id)?.name ?? 'System account'
   return <>{compact ? <AccountLimit provider={provider} profile={id} name={name} onClick={() => setOpen(true)} /> : <button type="button" className="secondary" aria-label={`Manage ${provider === 'claude' ? 'Claude' : 'ChatGPT'} accounts`} onClick={() => setOpen(true)}><Users size={16} />Manage accounts</button>}{open && <ProfileDialog provider={provider} sessionProfile={sessionProfile} close={() => setOpen(false)} />}</>
 }
-function ProfileDialog({ provider, sessionProfile, close }: { provider: AccountProvider; sessionProfile?: string; close(): void }) {
+export function ProfileDialog({ provider, sessionProfile, close }: { provider: AccountProvider; sessionProfile?: string; close(): void }) {
   const dialog = useRef<HTMLDialogElement>(null), profiles = useAccountProfiles(), usage = useAccountUsage()
   const [states, setStates] = useState<AccountProfileState[]>([]), [logins, setLogins] = useState<EngineLoginDto[]>([])
   const [name, setName] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false), [attempt, setAttempt] = useState(0)

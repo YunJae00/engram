@@ -1,4 +1,4 @@
-import { Check, ChevronDown, LoaderCircle, Settings } from 'lucide-react'
+import { Check, LoaderCircle, Settings, Users } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppSettingsDto, EngineStatusDto, ModelChoiceDto } from '../../../shared/types.js'
@@ -8,7 +8,8 @@ import { useShellState } from '../state-slices.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import type { ReasoningEffort } from 'core'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
-import { AccountProfiles } from './AccountProfiles.js'
+import { ProfileDialog } from './AccountProfiles.js'
+import { useAccountUsage } from '../lib/accountUsage.js'
 
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
@@ -67,6 +68,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
   const [open, setOpen] = useState(false)
+  const [accountsOpen, setAccountsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const box = useRef<HTMLDivElement>(null)
@@ -76,6 +78,13 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   const menuId = useId()
   const selection = controlled?.value ?? (scope ? settings?.aiSelections?.[scope] : undefined)
   const engine = selection?.engine ?? settings?.defaultEngine ?? null
+  const profiles = useAccountProfiles()
+  const profile = controlled?.accountProfile ?? (engine ? profiles?.selected[engine] : undefined) ?? 'system'
+  const accountName = profiles?.profiles.find(row => row.id === profile)?.name ?? 'System account'
+  const account = useAccountUsage().find(row => row.provider === engine && row.profile === profile)
+  const limits = account?.usage?.windows ?? []
+  const known = limits.filter(window => typeof window.used === 'number' && Number.isFinite(window.used))
+  const remaining = known.length ? Math.max(0, Math.min(100, ...known.map(window => 100 - window.used!))) : undefined
   const model = selection?.model ?? (engine === 'codex' ? settings?.codexModel : settings?.claudeModel) ?? ''
   const effort = selection ? selection.effort : engine === 'codex' ? settings?.codexEffort : settings?.claudeEffort
   const { rows, loading, error, refresh } = useModelChoices(engine, controlled?.accountProfile)
@@ -202,20 +211,22 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   const efforts = rows.find(row => row.value === model)?.efforts ?? []
   const effortLabel = (level?: string) => level ? level === 'xhigh' ? 'Extra high' : level.charAt(0).toUpperCase() + level.slice(1) : 'Auto'
   const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: 'Saved selection' }] : [])]
+  const description = `${providerName} · ${label}${effort ? ` · ${effortLabel(effort)}` : ''} · ${accountName}\n${status}\n${limits.length ? limits.map(window => `${window.name}: ${window.used === undefined ? 'Unavailable' : `${Math.round(100 - window.used)}% left`}${window.resetsAt !== undefined ? ` · Resets ${new Date(window.resetsAt).toLocaleString('en-US')}` : ''}`).join('\n') : account?.loading ? 'Checking limits…' : 'Limits unavailable'}\nChoose provider and model`
 
   if (!settings && !controlled) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
 
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
     <button type="button" ref={trigger} disabled={controlled?.disabled} aria-disabled={saving || undefined} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
-      data-testid={sidebar ? 'engine-status' : 'model-picker'} title={`${providerName} · ${sidebar ? status : label} · Choose provider and model`}
-      aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open} aria-haspopup="menu" aria-controls={open ? menuId : undefined}
+      data-testid={sidebar ? 'engine-status' : 'model-picker'} title={description}
+      aria-label={`${providerName} · ${label} · ${accountName} · Choose provider and model`} aria-expanded={open} aria-haspopup="menu" aria-controls={open ? menuId : undefined}
       onClick={() => { if (saving) return; focusLast.current = false; setOpen(!open) }}
       onKeyDown={(event) => { if (saving) return; if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true) } }}>
-      {saving ? <LoaderCircle size={16} className="computer-spinner" aria-hidden /> : <ProviderIcon provider={engine ?? 'claude'} size={16} />}
-      {sidebar ? <span className="provider-picker-status"><span>{providerName}</span><small>{scope === 'filing' ? `Filing · ${status}` : status}</small></span> : <span className="provider-picker-label">{label}{effort ? ` · ${effortLabel(effort)}` : ''}</span>}
-      <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
+      <span className="provider-usage-icon">
+        {!sidebar && <svg className="account-limit-ring" viewBox="0 0 20 20" width="32" height="32" aria-hidden data-unknown={remaining === undefined}><circle cx="10" cy="10" r="9" /><circle cx="10" cy="10" r="9" pathLength="100" strokeDasharray={`${remaining ?? 0} 100`} /></svg>}
+        {saving ? <LoaderCircle size={16} className="computer-spinner" aria-hidden /> : <ProviderIcon provider={engine ?? 'claude'} size={16} />}
+      </span>
     </button>
-    {showAccounts && !sidebar && engine && <AccountProfiles provider={engine} compact sessionProfile={controlled?.accountProfile} />}
+    {accountsOpen && engine && <ProfileDialog provider={engine} sessionProfile={controlled?.accountProfile} close={() => { setAccountsOpen(false); trigger.current?.focus() }} />}
     {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label={'Provider and model'} data-testid={sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
       <>
       <div className="provider-picker-heading">{controlled ? 'This session' : scope === 'filing' ? 'Filing provider' : scope ? 'This conversation' : 'New conversations'}</div>
@@ -242,6 +253,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>Models unavailable · Retry</button>}
       {!sidebar && efforts.length > 0 && <><div className="provider-picker-divider" role="separator" /><div className="provider-picker-heading">Reasoning effort</div><div className="dev-effort-scale">{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled?.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
       <div className="provider-picker-divider" role="separator" />
+      {showAccounts && engine && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={() => { setOpen(false); setAccountsOpen(true) }} aria-label={`Manage ${providerName} accounts`}><Users size={16} aria-hidden /><span className="model-picker-name">{accountName}<small className="model-picker-detail">{remaining === undefined ? account?.loading ? 'Checking limits…' : 'Limits unavailable' : `${Math.round(remaining)}% left`} · Accounts</small></span></button>}
       <button type="button" className="model-picker-item provider-picker-settings" role="menuitem" tabIndex={-1} onClick={setup}><Settings size={14} aria-hidden />AI settings</button>
       </>
       {saveError && <div className="model-picker-note" role="alert">{saveError}</div>}

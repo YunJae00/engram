@@ -71,7 +71,7 @@ test('remember said to a comet → ✓ Remembered receipt, plumbing never shown'
     await page.keyboard.press('ControlOrMeta+l')
     await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const composer = page.getByTestId('welcome-input')
   await composer.fill('Please keep this decision for me')

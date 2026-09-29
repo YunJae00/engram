@@ -1,14 +1,14 @@
 .provider-icon { display: block; flex: none; fill: currentColor; }
 .provider-icon[data-provider="claude"] { color: #c57655; }
-.provider-picker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.provider-picker-chevron { flex: none; margin-left: auto; color: var(--fg-faint); }
 .provider-picker-sidebar { min-width: 0; width: 100%; }
 .provider-picker-sidebar .sidebar-engine-status { width: 100%; gap: 9px; }
-.provider-picker-status { display: flex; align-items: center; flex: 1; gap: 7px; min-width: 0; }
-.provider-picker-status small { overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-micro); color: var(--fg-faint); white-space: nowrap; }
 .model-picker-menu.provider-picker-menu { position: fixed; z-index: 180; box-sizing: border-box; overscroll-behavior: contain; border: 1px solid var(--border); }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .model-picker > .model-picker-btn { min-width: 0; }
+.model-picker > .model-picker-btn, .provider-picker-sidebar .sidebar-engine-status { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 50%; flex: none; }
+.provider-usage-icon { position: relative; display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
+.provider-usage-icon > .account-limit-ring { position: absolute; inset: 0; stroke-width: 1.2; }
+.provider-usage-icon > .account-limit-ring[data-unknown='true'] > circle:first-child { stroke-dasharray: 2 2; }
 .model-loading-skeleton { display: grid; gap: 14px; padding: 12px; min-height: 100px; }
 .model-loading-skeleton .skeleton-line { width: 75%; }
 .effort-picker-btn { flex: none; gap: 5px; color: var(--fg-dim); font-size: var(--fs-small); }

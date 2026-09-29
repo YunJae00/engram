@@ -151,7 +151,6 @@
 .dev-folder-context > span:first-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-folder-badge { border: 1px solid var(--border-soft); border-radius: 4px; padding: 1px 5px; font-size: var(--fs-micro); }
 .dev-model-controls { display: flex; border: 0; margin: 0 0 0 auto; padding: 0; min-width: 0; }
-.dev-model-controls .provider-picker-label { max-width: 160px; }
 .dev-composer .dev-send { margin-left: 4px; }
 .dev-popover { position: fixed; z-index: 180; box-sizing: border-box; overflow: auto; padding: 12px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-float); font-size: var(--fs-small); }
 .dev-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
@@ -192,5 +191,5 @@
 .dev-history-dialog > footer { padding-top: 16px; }
 .dev-history-dialog > footer .setting-hint { margin: 0; }
 @container (max-width: 800px) { .dev-panes-2 { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); } .dev-panes-4 { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(4, minmax(360px, 1fr)); overflow: auto; } }
-@container (max-width: 550px) { .dev-composer { margin: 8px var(--composer-gutter) 12px; padding: 8px; } .dev-header { padding: 6px 10px; } .dev-panes:not(.dev-panes-1) .dev-pane.active > .dev-header::before { left: 2px; top: 17px; } .dev-composer-tools .dev-control > span { display: none; } .dev-model-controls .provider-picker-label { max-width: 110px; } }
+@container (max-width: 550px) { .dev-composer { margin: 8px var(--composer-gutter) 12px; padding: 8px; } .dev-header { padding: 6px 10px; } .dev-panes:not(.dev-panes-1) .dev-pane.active > .dev-header::before { left: 2px; top: 17px; } .dev-composer-tools .dev-control > span { display: none; } }
 @media (max-width: 650px) { .dev-history-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 35% minmax(0, 1fr); } .dev-history-body > nav { border-right: 0; border-bottom: 1px solid var(--border-soft); } .dev-history-dialog > footer { flex-wrap: wrap; } }

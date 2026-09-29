@@ -106,7 +106,7 @@ test('bookmark import selects a browser profile in a readable modal', async () =
     ipcMain.handle('bookmarks:import', (_event, id) => { if (id !== 'edge:Default') throw new Error('Wrong profile'); if (++attempts === 1) throw new Error('Profile is temporarily unavailable'); imported = true; return items })
   })
   await openActivity(page, 'bots')
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await page.getByTestId('welcome-web').click()
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click()
   await page.getByRole('button', { name: 'Import bookmarks…' }).click()

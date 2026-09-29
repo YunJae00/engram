@@ -2,10 +2,7 @@ import { app, screen, type BrowserWindow, type Rectangle } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-// The main window opens over most of the desk the first time - a window
-// with a page mirrored inside it wants the room, and a window that fills
-// the screen stops feeling like one - and after that comes back where the
-// person last left it, at the size they chose.
+// Start compact, then remember the size and position the person chooses.
 
 interface WindowState {
   bounds?: Rectangle
@@ -14,7 +11,7 @@ interface WindowState {
 
 const SAVE_AFTER_MS = 500
 // The share of the work area a first window takes, centred on it.
-const FIRST_SHARE = { width: 0.86, height: 0.9 }
+const FIRST_SIZE = { width: 1040, height: 760 }
 
 function file(): string {
   return join(app.getPath('userData'), 'window-state.json')
@@ -43,8 +40,8 @@ export function placeWindow(win: BrowserWindow, state: WindowState): void {
   if (remembered) win.setBounds(remembered)
   else {
     const area = screen.getPrimaryDisplay().workArea
-    const width = Math.max(win.getMinimumSize()[0] ?? 0, Math.round(area.width * FIRST_SHARE.width))
-    const height = Math.max(win.getMinimumSize()[1] ?? 0, Math.round(area.height * FIRST_SHARE.height))
+    const width = Math.max(win.getMinimumSize()[0] ?? 0, Math.min(FIRST_SIZE.width, Math.round(area.width * 0.86)))
+    const height = Math.max(win.getMinimumSize()[1] ?? 0, Math.min(FIRST_SIZE.height, Math.round(area.height * 0.9)))
     win.setBounds({ x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2), width, height })
   }
   if (state.maximized) win.maximize()

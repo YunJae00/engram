@@ -222,7 +222,7 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await page.getByTestId('app-sidebar-open').click()
   await expect(page.getByTestId('app-sidebar')).toBeVisible()
 
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.getByTestId('bots-suggestion')).toHaveCount(0)
   await page.reload()
@@ -266,7 +266,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
       for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
       return result
     }, kind)
-    await page.getByRole('button', { name: kind === 'chat' ? 'New chat folder' : 'New routine folder' }).click()
+    await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: kind === 'chat' ? 'New chat folder' : 'New routine folder' }).click()
     const input = page.getByTestId(`sidebar-${kind}-folder-name`)
     await input.fill(`${kind} Work`)
     await input.press('Enter')

@@ -73,8 +73,8 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   await expect(menu.getByRole('button', { name: 'Search Cosmos' })).toHaveCount(0)
   await expect(sidebar.locator('.recent-web')).toHaveCount(0)
   const searchBox = await sidebar.getByRole('textbox', { name: 'Search conversations' }).boundingBox()
-  const newBox = await sidebar.getByTestId('bots-new').boundingBox()
-  expect(newBox!.y).toBeGreaterThan(searchBox!.y + searchBox!.height)
+  const newBox = await sidebar.getByTestId('sidebar-create').boundingBox()
+  expect(Math.abs(newBox!.y + newBox!.height / 2 - searchBox!.y - searchBox!.height / 2)).toBeLessThanOrEqual(1)
   const positions = await menu.locator('.sidebar-nav-row').evaluateAll((rows) => {
     return rows.map((row) => {
       const icon = row.firstElementChild!.getBoundingClientRect()
@@ -102,9 +102,9 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
       const [engineBox, settingsBox, workBox] = await Promise.all([engine.boundingBox(), settings.boundingBox(), withWork ? work.boundingBox() : Promise.resolve(null)])
       return {
         settingsAligned: Boolean(engineBox && settingsBox && Math.abs(engineBox.y + engineBox.height / 2 - settingsBox.y - settingsBox.height / 2) <= 1),
-        workAbove: withWork ? Boolean(engineBox && workBox && workBox.y + workBox.height <= engineBox.y + 1) : workBox === null,
+        workBeside: withWork ? Boolean(engineBox && workBox && workBox.x >= engineBox.x + engineBox.width && Math.abs(workBox.y + workBox.height / 2 - engineBox.y - engineBox.height / 2) <= 1) : workBox === null,
       }
-    }).toEqual({ settingsAligned: true, workAbove: true })
+    }).toEqual({ settingsAligned: true, workBeside: true })
   }
   await expect(work).toHaveText('Filing ready')
   await expectFooterAlignment(true)

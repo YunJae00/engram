@@ -156,10 +156,35 @@ test('Engram navigation is inside its menu and the menu stays within the window'
   await openActivity(page, 'bots')
 })
 
-test('New comet stays visible while long conversations scroll', async () => {
+test('one create menu is keyboard accessible, dismissible, and compact in both themes', async () => {
+  for (const [width, theme] of [[1280, 'light'], [620, 'dark']] as const) {
+    await page.setViewportSize({ width, height: 840 })
+    await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
+    await showSidebar()
+    const trigger = page.getByTestId('sidebar-create')
+    const menu = page.locator('.sidebar-create-menu')
+    await expect(page.getByTestId('bots-new')).toBeHidden()
+    await trigger.focus(); await page.keyboard.press('Enter')
+    await expect(menu).toBeVisible()
+    await expect(menu.getByTestId('bots-new')).toBeVisible()
+    await expect(menu.getByRole('button', { name: 'New chat folder' })).toBeVisible()
+    await expect.poll(() => menu.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
+    await capture(`minimal-create-${theme}.png`)
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeHidden()
+    await expect(trigger).toBeFocused()
+    await trigger.click()
+    await page.getByRole('textbox', { name: 'Search conversations' }).click()
+    await expect(menu).toBeHidden()
+  }
+  await page.setViewportSize({ width: 1280, height: 940 })
+  await page.evaluate(async () => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme: 'light' }))
+})
+
+test('Create stays visible while long conversations scroll', async () => {
   await showSidebar()
-  const button = page.getByTestId('bots-new')
-  await expect(button).toHaveText('New comet')
+  const button = page.getByTestId('sidebar-create')
+  await expect(button).toHaveAttribute('aria-label', 'Create')
   const before = await button.boundingBox()
   const scroll = page.locator('.sidebar-scroll')
   expect(await scroll.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true)
@@ -169,6 +194,7 @@ test('New comet stays visible while long conversations scroll', async () => {
   const after = await button.boundingBox()
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1)
   await button.click()
+  await page.getByTestId('bots-new').click()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   expect(await page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(bots.length)
 })
@@ -211,7 +237,7 @@ test('sidebar fits light, dark and narrow layouts with captured examples', async
     await page.evaluate(async value => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme: value }), theme)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await showSidebar()
-    await expect(page.getByTestId('bots-new')).toBeInViewport()
+    await expect(page.getByTestId('sidebar-create')).toBeInViewport()
     expect(await page.getByTestId('app-sidebar').evaluate(node => {
       const box = node.getBoundingClientRect()
       return box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight + 1 && node.scrollWidth <= node.clientWidth
@@ -256,7 +282,7 @@ test('conversation menus replace dates on interaction and pin without losing fol
 
 test('welcome Web opens a new selected chat and transfers its draft without sending', async () => {
   await showSidebar()
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const draft = 'Check the release checklist on the project website.'
   await page.getByTestId('welcome-input').fill(draft)

@@ -85,7 +85,7 @@ test('ChatGPT models can be selected in the composer without changing the Claude
   await expect(picker).toBeEnabled()
   await picker.click()
   await page.getByTestId('model-pick-codex-fast').click()
-  await expect(picker).toContainText('Quick')
+  await expect(picker).toHaveAttribute('title', /Quick/)
   expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.claudeModel, settings.codexModel] })).toEqual(['claude-deep', 'codex-fast'])
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
@@ -107,7 +107,7 @@ test('composer and filing sidebar select providers independently', async () => {
   await expect(page.getByTestId('model-pick-claude-deep')).toHaveAttribute('aria-checked', 'true')
   await page.getByTestId('model-pick-claude-fast').click()
   await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
-  await expect(page.getByTestId('engine-status')).toContainText('Claude')
+  await expect(page.getByTestId('engine-status')).toHaveAttribute('aria-label', /Claude/)
   await page.getByTestId('engine-status').click()
   await expect(page.getByTestId('provider-pick-codex').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
   await page.getByTestId('provider-pick-codex').click()
@@ -171,7 +171,7 @@ test('welcome and conversation footer controls align and keep long model names i
   }, label)
   await page.evaluate(async () => window.engram.settingsSet({ ...await window.engram.settingsGet(), defaultEngine: 'codex', codexModel: 'codex-fast' }))
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   for (const surface of ['welcome', 'conversation']) {
     if (surface === 'conversation') {
       await page.setViewportSize({ width: 1280, height: 880 })
@@ -187,7 +187,7 @@ test('welcome and conversation footer controls align and keep long model names i
       await expect(sidebar).toBeHidden()
       await expect(input).toBeVisible()
       const composer = page.locator('.chat-write').filter({ has: input })
-      await expect(composer.getByTestId('model-picker')).toContainText(label)
+      await expect(composer.getByTestId('model-picker')).toHaveAttribute('title', new RegExp(label))
       if (surface === 'conversation') {
         const memory = composer.getByTestId('bots-memory-toggle')
         await expect(memory).toHaveText('')
@@ -204,7 +204,7 @@ test('welcome and conversation footer controls align and keep long model names i
         const buttons = [...node.querySelectorAll('.chat-write-footer button')].map(button => button.getBoundingClientRect())
         const icons = [...node.querySelectorAll('.chat-write-footer button > svg')].map(icon => icon.getBoundingClientRect())
         const picker = node.querySelector('.model-picker-btn')!.getBoundingClientRect()
-        const name = node.querySelector('.provider-picker-label')!
+        const name = node.querySelector('.provider-usage-icon')!
         const labelBox = name.getBoundingClientRect()
         const children = [...tools.children].filter(child => child.tagName !== 'INPUT').map(child => child.getBoundingClientRect())
         const centers = [...icons, labelBox].map(box => box.top + box.height / 2)
@@ -229,8 +229,6 @@ test('welcome and conversation footer controls align and keep long model names i
       expect(geometry.gaps.at(-1), diagnostic).toBeGreaterThanOrEqual(4)
       expect(geometry.contained && geometry.labelContained, diagnostic).toBe(true)
       expect(geometry.toolsOverflow, diagnostic).toBeLessThanOrEqual(1)
-      expect(geometry.ellipsis, diagnostic).toBe('ellipsis')
-      if (width === 380) expect(geometry.truncated, diagnostic).toBe(true)
       if (surface === 'conversation' && width === 620) {
         const png = await app.evaluate(async ({ BrowserWindow }) => {
           const window = BrowserWindow.getAllWindows()[0]!
@@ -267,7 +265,7 @@ test('conversation and filing selections persist without changing each other', a
   await picker.click()
   await page.getByTestId('effort-pick-high').click()
   await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
-  await expect(picker).toContainText('High')
+  await expect(picker).toHaveAttribute('title', /High/)
   await expect(page.getByTestId('effort-picker')).toHaveCount(0)
   await page.reload()
   const choices = await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))
@@ -287,7 +285,7 @@ test('a cached model menu remains usable after reload while the catalog request 
     ipcMain.handle('models:list', () => new Promise(() => undefined))
   })
   await page.reload()
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   const picker = page.getByTestId('model-picker')
   await picker.click()
   await expect(page.getByTestId('model-pick-claude-deep')).toBeVisible({ timeout: 1000 })

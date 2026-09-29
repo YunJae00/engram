@@ -66,7 +66,7 @@ test('a quiet conversation leaves the list but stays reachable', async () => {
 })
 
 test('a new conversation runs as a task to the end', async () => {
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await page.getByTestId('welcome-input').fill('Summarize the deploy procedure for the team')
   await page.getByTestId('welcome-input-send').click()
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept', { timeout: 30_000 })
