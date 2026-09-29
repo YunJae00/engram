@@ -1247,11 +1247,11 @@ body.bubble-host { background: transparent; }
 .chat-engine-pill:hover { background: var(--hover-bg); }
 .chat-engine-chevron { position: absolute; right: 5px; color: var(--fg-faint); pointer-events: none; }
 /* ── Composer: one look wherever a message is typed ───────────────── */
-/* Footer controls share a fixed height; the draft grows above them. */
+/* One line at rest; long drafts grow without moving the controls. */
 .chat-write {
   --write-control: 32px;
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px;
-  padding: var(--space-3);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 6px;
+  padding: 8px;
   border: 1px solid var(--border-soft); border-radius: var(--radius-composer);
   background: var(--editor-bg); box-shadow: var(--shadow-card-rest);
   font-size: var(--fs-chat);
@@ -1259,13 +1259,24 @@ body.bubble-host { background: transparent; }
 }
 .chat-write:focus-within { border-color: var(--accent-line); box-shadow: var(--shadow-card-rest); }
 .chat-write textarea {
+  grid-column: 2;
   width: 100%; min-width: 0; box-sizing: border-box; min-height: 30px; max-height: 180px;
-  field-sizing: content; padding: 2px var(--space-1); border-radius: 0; line-height: 22px; font-size: inherit; font-family: inherit;
+  field-sizing: content; padding: 5px var(--space-1); border-radius: 0; line-height: 22px; font-size: inherit; font-family: inherit;
   border: none; background: transparent; color: var(--fg); box-shadow: none;
   resize: none; overflow-y: auto;
 }
 .chat-write textarea:focus { border: none; box-shadow: none; outline: none; }
-.chat-write-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--write-control); }
+.chat-write-footer { grid-column: 3; display: flex; align-items: center; gap: 6px; min-height: var(--write-control); }
+.chat-write > .chat-file-list, .chat-write > .chat-attachment-error, .chat-write > .chat-attachment-status { grid-column: 1 / -1; }
+.chat-add-button { grid-column: 1; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 50%; color: var(--fg-dim); }
+.chat-add-button:hover { background: var(--hover-bg); color: var(--fg); }
+.chat-add-menu { position: fixed; inset: auto; margin: 0; width: 220px; max-width: calc(100vw - 16px); padding: 5px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px; background: var(--editor-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); overflow-y: auto; }
+.chat-add-menu:popover-open { display: grid; gap: 2px; animation: composer-menu-in 140ms ease-out; }
+.chat-add-menu > button { display: flex; justify-content: flex-start; gap: 10px; width: 100%; height: auto; min-height: 36px; padding: 8px 10px; border-radius: 9px; font-size: var(--fs-small); text-align: left; }
+.chat-add-menu > button:hover:not(:disabled) { background: var(--hover-bg); }
+.chat-add-menu > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@keyframes composer-menu-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .chat-add-menu:popover-open { animation: none; } }
 .chat-write-tools { display: flex; align-items: center; flex: 1; gap: 4px; min-width: 0; }
 .chat-write-tools > .model-picker { margin-left: auto; }
 .chat-write-tools > button > svg { display: block; flex: none; width: 16px; height: 16px; }

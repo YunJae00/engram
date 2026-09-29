@@ -54,7 +54,7 @@ export function CometWelcome() {
     <RoutineSkillHint value={draft} select={() => setDraft('/routine')} />
     <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} onStop={() => undefined}
       placeholder="Ask Engram…" maxLength={2000} busy={false} disabled={creating} testId="welcome-input" attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching}
-      tools={<><button className="composer-web" data-testid="welcome-web" aria-label="Open the page panel" title="Open the page panel" disabled={creating || attaching} onClick={() => void openWeb()}><Globe size={15} strokeWidth={1.9} aria-hidden /></button><ModelPicker /></>} />
+      actions={<button className="composer-web" data-testid="welcome-web" aria-label="Open the page panel" title="Open the page panel" disabled={creating || attaching} onClick={() => void openWeb()}><Globe size={15} strokeWidth={1.9} aria-hidden /><span>Open the page panel</span></button>} tools={<ModelPicker />} />
     {error && <p role="alert">{error}</p>}
   </section>
 }

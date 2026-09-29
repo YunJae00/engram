@@ -157,6 +157,7 @@ test('tiles show requested pages without adding a computer picker', async () => 
   for (const index of [0, 1]) {
     const tile = page.getByTestId(`mission-tile-${index}`)
     await expect(tile.getByTestId('orbit-surface')).toBeHidden()
+    await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
     await tile.getByRole('button', { name: 'Show website', exact: true }).click()
     await expect(tile.getByTestId('orbit-surface')).toBeVisible()
     await expect(tile.getByRole('button', { name: 'Computer', exact: true })).toHaveCount(0)

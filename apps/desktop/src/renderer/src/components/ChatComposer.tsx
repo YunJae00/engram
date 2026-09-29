@@ -1,6 +1,6 @@
-import { ArrowUp, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, Paperclip, Plus, Square } from 'lucide-react'
 import { ChatAttachment } from './ChatAttachment.js'
-import { forwardRef, memo, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, memo, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { attachmentError, ATTACHMENT_ACCEPT, ATTACHMENT_MAX_COUNT } from '../../../shared/attachments.js'
 import { t } from '../i18n.js'
@@ -15,6 +15,7 @@ interface Props {
   testId?: string
   autoFocus?: boolean
   tools?: ReactNode
+  actions?: ReactNode
   attachments?: ChatAttachmentDto[]
   onAttachmentsChange?(next: ChatAttachmentDto[]): void
   onAttachingChange?(attaching: boolean): void
@@ -25,16 +26,34 @@ interface Props {
 
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
-    { value, placeholder, maxLength, busy, disabled = false, testId, autoFocus = false, tools, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
+    { value, placeholder, maxLength, busy, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
     const fileRef = useRef<HTMLInputElement>(null)
+    const menuRef = useRef<HTMLDivElement>(null)
+    const addRef = useRef<HTMLButtonElement>(null)
+    const menuId = useId()
     const attachingRef = useRef(false)
     const [attaching, setAttaching] = useState(false)
     const [error, setError] = useState('')
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
+
+    const placeMenu = () => {
+      const anchor = addRef.current?.getBoundingClientRect()
+      if (anchor && menuRef.current) Object.assign(menuRef.current.style, { left: `${Math.max(8, Math.min(anchor.left, innerWidth - 228))}px`, bottom: `${innerHeight - anchor.top + 6}px`, maxHeight: `${Math.max(0, anchor.top - 14)}px` })
+    }
+    useEffect(() => {
+      const place = () => { if (menuRef.current?.matches(':popover-open')) placeMenu() }
+      const observer = new ResizeObserver(place)
+      if (inputRef.current?.parentElement) observer.observe(inputRef.current.parentElement)
+      const host = inputRef.current?.closest('.bots-main, .mini-chat, .cosmos-chat, .app-main')
+      if (host) observer.observe(host)
+      window.addEventListener('resize', place)
+      window.addEventListener('scroll', place, true)
+      return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+    }, [])
 
     const attach = async (files: File[]) => {
       if (!onAttachmentsChange || busy || disabled || attachingRef.current || !files.length) return
@@ -77,6 +96,13 @@ export const ChatComposer = memo(
         void attach(Array.from(event.dataTransfer.files))
       }}>
         {attachments.length > 0 && <div className="chat-file-list" aria-label="Attached files">{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || busy || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
+        {(onAttachmentsChange || actions) && <>
+          <button type="button" ref={addRef} className="chat-add-button" aria-label="Add to conversation" data-testid={testId ? `${testId}-add` : undefined} {...{ popovertarget: menuId }} onClick={placeMenu}><Plus size={18} aria-hidden /></button>
+          <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label="Conversation actions" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
+            {onAttachmentsChange && <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || busy || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} aria-hidden /><span>Attach files</span></button>}
+            {actions}
+          </div>
+        </>}
         <textarea
           ref={inputRef}
           data-testid={testId}
@@ -96,12 +122,9 @@ export const ChatComposer = memo(
             void attach(files.length ? files : [new File([text], 'Pasted text.txt', { type: 'text/plain' })])
           }}
         />
-        {error && <p className="chat-attachment-error" role="alert">{error}</p>}
-        {attaching && <span className="chat-attachment-status" role="status">Attaching files…</span>}
         <div className="chat-write-footer">
           <div className="chat-write-tools">{onAttachmentsChange && <>
             <input ref={fileRef} type="file" hidden multiple accept={ATTACHMENT_ACCEPT} data-testid={testId ? `${testId}-files` : undefined} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void attach(files) }} />
-            <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || busy || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} strokeWidth={1.9} aria-hidden /></button>
           </>}{tools}</div>
           {busy ? (
             <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={onStop}>
@@ -119,6 +142,8 @@ export const ChatComposer = memo(
             </button>
           )}
         </div>
+        {error && <p className="chat-attachment-error" role="alert">{error}</p>}
+        {attaching && <span className="chat-attachment-status" role="status">Attaching files…</span>}
       </div>
     )
   }),

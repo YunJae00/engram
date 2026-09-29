@@ -456,6 +456,7 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(pane).toHaveCount(0)
   await step(first, 'scroll')
   await expect(pane).toHaveCount(0)
+  await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
   await expect(pane).toBeVisible()
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)

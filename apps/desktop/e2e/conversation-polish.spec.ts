@@ -107,6 +107,7 @@ test('bookmark import selects a browser profile in a readable modal', async () =
   })
   await openActivity(page, 'bots')
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('welcome-input-add').click()
   await page.getByTestId('welcome-web').click()
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click()
   await page.getByRole('button', { name: 'Import bookmarks…' }).click()

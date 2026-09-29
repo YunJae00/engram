@@ -26,6 +26,7 @@ export function WebPaneButton({ busy, lane }: { busy: boolean; lane: string }) {
       onClick={() => { if (showing) webPane.fold(lane); else { selectDesktopSurface(lane, 'browser'); webPane.open(lane) } }}
     >
       <Globe size={15} strokeWidth={1.9} aria-hidden />
+      <span>{t(showing ? 'web.hide' : 'web.show')}</span>
       {(on || phase === 'working') && <span className="composer-web-dot" aria-hidden />}
     </button>
   )

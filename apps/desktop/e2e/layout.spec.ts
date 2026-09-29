@@ -80,6 +80,7 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
       const content = thread.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
       return node.querySelector('.bots-write')!.getBoundingClientRect().width - content
     })).toBeGreaterThanOrEqual(30)
+    await page.getByTestId('bots-input-add').click()
     await page.getByTestId('composer-web').click()
     await expect(page.getByTestId('web-pane')).toBeVisible()
     await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')
@@ -121,10 +122,12 @@ test('two conversations stack in narrow panes and keep their web toggle in the c
     const tile = page.getByTestId('mission-tile-0')
     await expect(tile.locator('.mission-tile-head .mission-web-toggle')).toHaveCount(0)
     const button = tile.locator('.mini-chat-write .composer-web')
+    await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
     await expect(button).toBeVisible()
     if (await button.getAttribute('aria-pressed') !== 'true') await button.click()
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
     await screenshot(`split-two-${width}.png`)
+    await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
     await button.click()
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
   }
@@ -204,7 +207,10 @@ test('tile conversations and chat pickers unfold without losing the draft', asyn
     const tile = page.getByTestId('mission-tile-0')
     const toggle = page.getByTestId('mission-chat-toggle-0')
     const input = tile.locator('.mini-chat-write textarea')
-    if (await toggle.isDisabled()) await tile.getByRole('button', { name: 'Show website', exact: true }).click()
+    if (await toggle.isDisabled()) {
+      await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
+      await tile.getByRole('button', { name: 'Show website', exact: true }).click()
+    }
     await input.fill('Keep this draft 한글')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')

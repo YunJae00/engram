@@ -240,6 +240,7 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   await page.getByTestId('web-pane-fold').click()
   await expect(page.getByTestId('web-pane')).toHaveCount(0)
   await expectRoutineControlReachable('routine-wall-done-live')
+  await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
   await expect(page.getByTestId('web-pane')).toBeVisible()
   await expectRoutineControlReachable('routine-wall-done-live')

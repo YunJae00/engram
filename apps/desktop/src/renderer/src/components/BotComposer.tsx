@@ -102,7 +102,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         onChange={change}
         onSend={send}
         onStop={onStop}
-        tools={
+        tools={<ModelPicker scope={cometChannel(botId)} />}
+        actions={
           <>
             <button
               className={`composer-cosmos${memoryOpen ? ' armed' : ''}`}
@@ -113,9 +114,9 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
               onClick={onToggleMemory}
             >
               <Orbit size={16} strokeWidth={1.8} aria-hidden />
+              <span>{t('bots.memory')}</span>
             </button>
             <WebPaneButton busy={busy} lane={cometChannel(botId)} />
-            <ModelPicker scope={cometChannel(botId)} />
           </>
         }
       />

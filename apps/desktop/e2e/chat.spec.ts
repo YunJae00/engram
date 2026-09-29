@@ -191,8 +191,9 @@ test('the conversation survives leaving and re-entering the tab', async () => {
 test('composer tools stay in the chat surface and open away from the sidebar', async () => {
   await expect(page.locator('.bots-head button')).toHaveCount(0)
   const memory = page.getByTestId('bots-memory-toggle')
+  await page.getByTestId('bots-input-add').click()
   await expect(memory).toBeVisible()
-  await expect(memory).toHaveText('')
+  await expect(memory).toHaveText('Memory')
   await expect(memory).toHaveAttribute('aria-label', 'Memory')
   await expect(memory).toHaveAttribute('title', 'Memory')
   await expect(memory.locator('svg')).toHaveAttribute('aria-hidden', 'true')
@@ -201,6 +202,7 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
   await expect(memoryPanel).toBeVisible()
   const [memoryBox, composerBox] = await Promise.all([memoryPanel.boundingBox(), page.locator('.bots-write > .chat-write').boundingBox()])
   expect(memoryBox!.y + memoryBox!.height).toBeLessThanOrEqual(composerBox!.y)
+  await page.getByTestId('bots-input-add').click()
   await memory.click()
 
   const picker = page.getByTestId('model-picker')
@@ -322,6 +324,7 @@ test('conversation keeps narration between compact activity groups and shows vis
   await expect(page.locator('.bubble-msg.assistant').last().locator('.bubble-msg-body a')).toHaveCount(0)
   await expect(page.locator('.bubble-msg.assistant').last().locator('.answer-sites a')).toHaveAttribute('href', 'https://example.com/research')
   expect(await page.locator('.bubble-msg-body h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize) / parseFloat(getComputedStyle(node.parentElement!).fontSize))).toBeCloseTo(1.12)
+  await page.getByTestId('bots-input-add').click()
   await page.getByRole('button', { name: 'Hide the page panel', exact: true }).click()
   await expect(page.locator('.web-pane')).toBeHidden()
   await screenshot('ui-conversation-activity.png')

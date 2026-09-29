@@ -190,11 +190,13 @@ test('welcome and conversation footer controls align and keep long model names i
       await expect(composer.getByTestId('model-picker')).toHaveAttribute('title', new RegExp(label))
       if (surface === 'conversation') {
         const memory = composer.getByTestId('bots-memory-toggle')
-        await expect(memory).toHaveText('')
+        await composer.getByRole('button', { name: 'Add to conversation', exact: true }).click()
+        await expect(memory).toHaveText('Memory')
         await expect(memory).toHaveAttribute('title', /\S/)
         await expect(memory).toHaveAttribute('aria-label', /\S/)
         await memory.click()
         await expect(memory).toHaveAttribute('aria-pressed', 'true')
+        await composer.getByRole('button', { name: 'Add to conversation', exact: true }).click()
         await memory.click()
         await expect(memory).toHaveAttribute('aria-pressed', 'false')
       }
@@ -209,6 +211,9 @@ test('welcome and conversation footer controls align and keep long model names i
         const children = [...tools.children].filter(child => child.tagName !== 'INPUT').map(child => child.getBoundingClientRect())
         const centers = [...icons, labelBox].map(box => box.top + box.height / 2)
         return {
+          height: node.getBoundingClientRect().height,
+          inputCenter: node.querySelector('textarea')!.getBoundingClientRect().top + node.querySelector('textarea')!.getBoundingClientRect().height / 2,
+          footerCenter: footer.top + footer.height / 2,
           buttons: buttons.map(box => box.height), icons: icons.map(box => [box.width, box.height]),
           iconButtons: [...tools.querySelectorAll(':scope > button')].map(button => button.getBoundingClientRect().width),
           centerSpread: Math.max(...centers) - Math.min(...centers),
@@ -221,12 +226,14 @@ test('welcome and conversation footer controls align and keep long model names i
         }
       })
       const diagnostic = JSON.stringify({ surface, width, ...geometry })
+      expect(geometry.height, diagnostic).toBeLessThanOrEqual(54)
+      expect(Math.abs(geometry.inputCenter - geometry.footerCenter), diagnostic).toBeLessThanOrEqual(1)
       expect(geometry.buttons, diagnostic).toEqual(geometry.buttons.map(() => 32))
       expect(geometry.iconButtons, diagnostic).toEqual(geometry.iconButtons.map(() => 32))
       expect(geometry.icons, diagnostic).toEqual(geometry.icons.map(() => [16, 16]))
       expect(geometry.centerSpread, diagnostic).toBeLessThanOrEqual(0.5)
       expect(geometry.gaps.slice(0, -1), diagnostic).toEqual(geometry.gaps.slice(0, -1).map(() => 4))
-      expect(geometry.gaps.at(-1), diagnostic).toBeGreaterThanOrEqual(4)
+      if (geometry.gaps.length) expect(geometry.gaps.at(-1), diagnostic).toBeGreaterThanOrEqual(4)
       expect(geometry.contained && geometry.labelContained, diagnostic).toBe(true)
       expect(geometry.toolsOverflow, diagnostic).toBeLessThanOrEqual(1)
       if (surface === 'conversation' && width === 620) {

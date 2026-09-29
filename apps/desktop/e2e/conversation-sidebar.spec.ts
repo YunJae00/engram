@@ -287,6 +287,7 @@ test('welcome Web opens a new selected chat and transfers its draft without send
   const draft = 'Check the release checklist on the project website.'
   await page.getByTestId('welcome-input').fill(draft)
   const before = await page.evaluate(() => window.engram.botsList())
+  await page.getByTestId('welcome-input-add').click()
   await page.getByTestId('welcome-web').click()
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
   await expect(page.getByTestId('bots-input')).toHaveValue(draft)
