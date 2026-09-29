@@ -478,6 +478,7 @@ export type EngramEvent =
   // A comet was renamed or otherwise changed outside the person's own hand.
   | { type: 'bots:changed' }
   | { type: 'tasks:changed' }
+  | { type: 'task:notice'; message: string }
   // A comet's task goes on in a turn the person did not type.
   | { type: 'comet:continue'; channel: string; botId: string }
   | { type: 'comet:working'; channel: string; working: boolean }

@@ -452,17 +452,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .topbar-status.live .status-label { overflow: hidden; text-overflow: ellipsis; }
 @keyframes engram-spin { to { transform: rotate(360deg); } }
 .spin { animation: engram-spin 1s linear infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .spin, .absorb-ring, .chat-warming-dot { animation: none; }
-  .cosmos-chat, .cosmos-chat.closing, .app-sidebar, .sidebar-nav-row, .sidebar-item { transition: none; animation: none; }
-  .bots-chat, .canvas-slot, .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
-  .bots-memory, .comet-keep, .routine-submit, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
-  .web-pane, .web-pane.closing, .bots-working, .comet-work-toggle, .settings-loaded, .topbar-status.live { animation: none; }
-  .toast, .vault-opening { animation: none; }
-  .composer-web.working .composer-web-dot { animation: none; opacity: 1; }
-  .tour-highlight { transition: none; }
-  .mirror-screen { transition: none; }
-}
 
 /* ── Motion: what changes on screen arrives, rather than appearing ────────
    One vocabulary, short and eased: a name fades to its new words, a thread
@@ -1278,6 +1267,7 @@ body.bubble-host { background: transparent; }
 .chat-write textarea:focus { border: none; box-shadow: none; outline: none; }
 .chat-write-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--write-control); }
 .chat-write-tools { display: flex; align-items: center; flex: 1; gap: 4px; min-width: 0; }
+.chat-write-tools > .model-picker { margin-left: auto; }
 .chat-write-tools > button > svg { display: block; flex: none; width: 16px; height: 16px; }
 /* Which model answers, beside the composer: quiet until wanted, and a plain
    menu when it is. */
@@ -1763,8 +1753,13 @@ button.comet-keep-name:hover { background: var(--hover-bg); }
 input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--accent-line); min-width: 220px; }
 .comet-keep-does { font-size: var(--fs-small); color: var(--fg-dim); }
 .comet-keep-acts { display: flex; align-items: center; gap: 8px; }
-.bots-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 0; }
-.bots-choices .bots-offer-text { flex: 0 0 100%; min-width: 0; }
+.bots-choices { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; padding: 14px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--bg); }
+.bots-question-heading { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
+.bots-choices .bots-offer-text { min-width: 0; font-size: var(--fs-small); }
+.bots-choices .bots-choice { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; white-space: normal; padding: 10px; border: 0; border-radius: 10px; }
+.bots-choice > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bots-choice-number { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border-radius: 50%; background: var(--hover-bg); color: var(--fg-dim); font-size: var(--fs-small); }
+.bots-choice > svg { flex: none; color: var(--fg-dim); }
 .bots-choice { max-width: 100%; white-space: normal; text-align: left; }
 /* One pick among three, as a segmented control: the chosen one is lifted
    onto the page's white, the others rest on the strip. */
@@ -1909,6 +1904,9 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .routine-submit-head { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
 .chat-approval { flex: none; margin: 8px var(--panel-gutter); padding: 14px 16px; background: var(--bg); max-height: 35vh; overflow: auto; }
 .chat-approval > strong { font-size: var(--fs-small); color: var(--clay); }
+.chat-approval { border-radius: 16px; border-color: var(--border-soft); }
+.chat-approval p { margin: 8px 0; line-height: 1.6; overflow-wrap: anywhere; }
+.chat-approval small { color: var(--fg-dim); }
 .chat-approval .dialog-actions { flex-wrap: wrap; align-items: center; gap: 8px; }
 .chat-approval details { margin-right: auto; font-size: var(--fs-small); }
 .chat-approval summary { cursor: pointer; padding: 8px 0; }
@@ -2209,3 +2207,15 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .evidence-recording { flex: none; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--canvas-bg); color: var(--fg); font-size: var(--fs-small); }
 .evidence-recording > div { display: flex; align-items: center; gap: 16px; }
 .evidence-recording button { margin-left: 8px; }
+
+/* Keep these overrides after the motion rules, including visible split panes. */
+@media (prefers-reduced-motion: reduce) {
+  .spin, .absorb-ring, .chat-warming-dot { animation: none; }
+  .cosmos-chat, .cosmos-chat.closing, .app-sidebar, .sidebar-nav-row, .sidebar-item { transition: none; animation: none; }
+  .bots-chat, .canvas-slot:not([hidden]), .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
+  .bots-memory, .comet-keep, .routine-submit, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
+  .web-pane, .web-pane.closing, .bots-working, .comet-work-toggle, .settings-loaded, .topbar-status.live { animation: none; }
+  .toast, .vault-opening { animation: none; }
+  .composer-web.working .composer-web-dot { animation: none; opacity: 1; }
+  .tour-highlight, .mirror-screen { transition: none; }
+}

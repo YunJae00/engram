@@ -1,6 +1,11 @@
 import { expect, type Page } from '@playwright/test'
 
 export async function openActivity(page: Page, activity: string): Promise<void> {
+  if (activity === 'routines') {
+    await page.keyboard.press('Control+Shift+P')
+    await page.getByRole('option', { name: 'Run a routine…', exact: true }).click()
+    return
+  }
   if (activity === 'mission') {
     if (!await page.getByTestId('mission-layout-4').isVisible()) await openActivity(page, 'bots')
     if (await page.evaluate(() => innerWidth <= 900) && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()

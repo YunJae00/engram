@@ -24,6 +24,10 @@
   transition: grid-template-rows 220ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms ease, visibility 0s 220ms;
 }
 .sidebar-disclosure-content { min-width: 0; min-height: 0; overflow: hidden; }
+.sidebar-conversations { view-transition-name: conversation-list; }
+::view-transition-group(conversation-list) { animation-duration: 200ms; animation-timing-function: ease-out; }
+::view-transition-old(conversation-list), ::view-transition-new(conversation-list) { animation-duration: 160ms; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 .sidebar-disclosure[data-open='true'][data-settled='true'] > .sidebar-disclosure-content { overflow: visible; }
 .comet-activity-icon { flex: none; width: 14px; height: 14px; }
 .comet-activity-icon[data-state='running'] { color: var(--work-running); animation: comet-working 1.2s linear infinite; }
@@ -41,6 +45,7 @@
 .mission-tile[data-state]:not([data-state='ready']) .mission-status { color: var(--work-color); }
 @keyframes comet-working { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(conversation-list), ::view-transition-old(conversation-list), ::view-transition-new(conversation-list) { animation: none; }
   .sidebar-section-toggle > svg, .sidebar-disclosure, .sidebar-disclosure[data-open='false'], .mission-tile[data-state] { transition: none; }
   .comet-activity-icon[data-state='running'] { animation: none; }
 }

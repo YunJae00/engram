@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, List, Orbit, Repeat, Search, User, Users } from 'lucide-react'
+import { Check, ChevronDown, List, Orbit, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -13,11 +13,9 @@ type DialogMode = 'none' | 'new' | 'join'
 
 type Registry = { current: string | null; vaults: WorkspaceInfoDto[] }
 
-export function WorkspaceSwitcher({ activity, onNavigate, onOpenRoutines, onOpenPalette }: {
+export function WorkspaceSwitcher({ activity, onNavigate }: {
   activity: string
   onNavigate(activity: 'bots' | 'sky' | 'list' | 'mission'): void
-  onOpenRoutines(): void
-  onOpenPalette(): void
 }) {
   // Empty registry is a valid state (e2e/onboarding run with ENGRAM_VAULT and no
   // registered workspaces) — the switcher still renders with the New/Join rows.
@@ -143,8 +141,6 @@ export function WorkspaceSwitcher({ activity, onNavigate, onOpenRoutines, onOpen
               ['sky', t('topbar.tabSky'), <Orbit key="sky" size={17} aria-hidden />],
               ['list', t('activity.list'), <List key="list" size={17} aria-hidden />],
             ] as const).map(([key, label, icon]) => <button key={key} className={`sidebar-nav-row${activity === key ? ' active' : ''}`} aria-current={activity === key ? 'page' : undefined} data-testid={`activity-${key}`} onClick={() => { setOpen(false); onNavigate(key) }}>{icon}<span>{label}</span></button>)}
-            <button className={`sidebar-nav-row${activity === 'routines' ? ' active' : ''}`} aria-current={activity === 'routines' ? 'page' : undefined} data-testid="activity-routines" onClick={() => { setOpen(false); onOpenRoutines() }}><Repeat size={17} aria-hidden /><span>Routines</span></button>
-            <button className="sidebar-nav-row" onClick={() => { setOpen(false); onOpenPalette() }}><Search size={17} aria-hidden /><span>{t('sidebar.search')}</span></button>
           </nav>
           <div className="workspace-divider" />
           <details className="workspace-management"><summary>Workspaces<ChevronDown size={13} aria-hidden /></summary>

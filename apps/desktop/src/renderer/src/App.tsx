@@ -42,7 +42,7 @@ const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: 
 const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) => ({ default: m.DevelopersView })))
 
 function Shell() {
-  const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote } = useShellState()
+  const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote, showToast } = useShellState()
   const { startRoutine } = useCometState()
   const [workspace, setWorkspace] = useState<'developers' | 'bots'>('bots')
   const developerSidebar = activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers')
@@ -98,13 +98,14 @@ function Shell() {
       // A citation clicked in another window: the main process already
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
+      else if (e.type === 'task:notice') showToast(e.message)
       else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
       else if (e.type === 'routine:chat' || e.type === 'comet:open') {
         selectComet(e.botId); setActivity('bots')
         if (window.innerWidth <= 900) setSidebarOpen(false)
       }
     })
-  }, [openNote])
+  }, [openNote, showToast])
 
   // First-run coach marks: once, after the first vault opens, real installs
   // only (the main process gates it so e2e clicks are never intercepted).
@@ -218,8 +219,6 @@ function Shell() {
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
         onOpenSettings={() => { setSettingsSection(developerSidebar ? 'developers' : 'general'); setSettingsOpen(true) }}
-        onOpenPalette={() => setPalette('search')}
-        onOpenRoutines={() => setActivity('routines')}
         selectedRoutineId={selectedRoutineId}
         onSelectRoutine={setSelectedRoutineId}
       />

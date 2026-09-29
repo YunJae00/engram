@@ -142,7 +142,8 @@ test('Engram navigation is inside its menu and the menu stays within the window'
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
   await expect(menu).toBeVisible()
-  for (const activity of ['sky', 'list', 'routines']) await expect(menu.getByTestId(`activity-${activity}`)).toBeVisible()
+  for (const activity of ['sky', 'list']) await expect(menu.getByTestId(`activity-${activity}`)).toBeVisible()
+  await expect(menu.getByTestId('activity-routines')).toHaveCount(0)
   await expect(menu.getByTestId('activity-bots')).toHaveCount(0)
   await expect(menu.getByTestId('activity-mission')).toHaveCount(0)
   expect(await menu.evaluate(node => {

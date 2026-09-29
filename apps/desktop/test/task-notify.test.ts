@@ -35,3 +35,11 @@ it.each(['focused', 'hidden', 'unsupported'])('does not interrupt the user for %
   notifyTask({ state: 'waiting', goal: 'A task', botId: 'bot-1' } as DelegatedTask, vi.fn())
   expect(mocks.show).not.toHaveBeenCalled()
 })
+
+it('uses an in-app notice when Engram is focused without exposing task contents', () => {
+  mocks.focused = true
+  const broadcast = vi.fn()
+  notifyTask({ state: 'done', goal: 'Private report', botId: 'bot-42' } as DelegatedTask, broadcast)
+  expect(broadcast).toHaveBeenCalledWith({ type: 'task:notice', message: 'Task done' })
+  expect(mocks.show).not.toHaveBeenCalled()
+})

@@ -211,7 +211,7 @@ export const BotsView = memo(function BotsView() {
               )}
             </div>
             <PressGate channel={cometChannel(selected.id)} />
-            <TaskApprovals botId={selected.id} />
+            <TaskApprovals botId={selected.id} questionShown={offer?.kind === 'asked' && offer.options.length > 0 && !routine.running ? offer.question : undefined} />
             <BotComposer
               key={selected.id}
               botId={selected.id}

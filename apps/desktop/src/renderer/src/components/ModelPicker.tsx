@@ -67,12 +67,10 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
   const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<'model' | 'effort'>('model')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const box = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
-  const effortTrigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const focusLast = useRef(false)
   const menuId = useId()
@@ -115,12 +113,12 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
     if (!open) return
     const place = () => {
       if (!box.current || !menu.current) return
-      const anchor = (mode === 'effort' ? effortTrigger.current : trigger.current)?.getBoundingClientRect() ?? box.current.getBoundingClientRect()
+      const anchor = trigger.current?.getBoundingClientRect() ?? box.current.getBoundingClientRect()
       if (!anchor.width) { setOpen(false); return }
       const host = box.current.closest('.dev-pane, .mini-chat, .bots-chat, .cosmos-chat, .bots-main')?.getBoundingClientRect()
       const left = Math.max(0, host?.left ?? 0) + 8
       const right = Math.min(innerWidth, host?.right ?? innerWidth) - 8
-      const width = Math.max(0, Math.min(mode === 'effort' && !controlled ? 172 : 264, right - left))
+      const width = Math.max(0, Math.min(264, right - left))
       const above = Math.max(0, anchor.top - Math.max(8, host?.top ?? 8) - 6)
       const below = Math.max(0, Math.min(innerHeight - 8, host?.bottom ?? innerHeight - 8) - anchor.bottom - 6)
       const down = below > above
@@ -137,7 +135,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
-  }, [open, mode])
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -151,7 +149,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       if (event.key === 'Escape' || event.key === 'Tab') {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation() }
         setOpen(false)
-        ;(mode === 'effort' ? effortTrigger.current : trigger.current)?.focus()
+        ;trigger.current?.focus()
       } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault()
         const choices = items()
@@ -163,7 +161,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
     window.addEventListener('mousedown', away)
     window.addEventListener('keydown', key, true)
     return () => { window.removeEventListener('mousedown', away); window.removeEventListener('keydown', key, true) }
-  }, [open, mode])
+  }, [open])
 
   const setup = () => {
     setOpen(false)
@@ -177,7 +175,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       if (controlled) {
         const chosen: ModelSelection = { engine: change.defaultEngine ?? controlled.value.engine, model: change.defaultEngine ? '' : change.codexModel ?? change.claudeModel ?? model, effort: change.defaultEngine || 'codexModel' in change || 'claudeModel' in change ? undefined : 'codexEffort' in change ? change.codexEffort : 'claudeEffort' in change ? change.claudeEffort : effort }
         await controlled.onChange(chosen)
-        if (close) { setOpen(false); (mode === 'effort' ? effortTrigger.current : trigger.current)?.focus() }
+        if (close) { setOpen(false); trigger.current?.focus() }
         return
       }
       const current = settings ?? await api.settingsGet()
@@ -190,7 +188,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
         await api.aiSelectionSet(scope, chosen)
         setSettings(value => value ? { ...value, aiSelections: { ...value.aiSelections, [scope]: chosen } } : value)
       } else { await api.settingsSet(next); setSettings(next) }
-      if (close) { setOpen(false); (mode === 'effort' ? effortTrigger.current : trigger.current)?.focus() }
+      if (close) { setOpen(false); trigger.current?.focus() }
     } catch { setSaveError('Could not save your selection. Try again.') }
     finally { setSaving(false) }
   }
@@ -210,17 +208,16 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
     <button type="button" ref={trigger} disabled={controlled?.disabled} aria-disabled={saving || undefined} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
       data-testid={sidebar ? 'engine-status' : 'model-picker'} title={`${providerName} · ${sidebar ? status : label} · Choose provider and model`}
-      aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open && mode === 'model'} aria-haspopup="menu" aria-controls={open && mode === 'model' ? menuId : undefined}
-      onClick={() => { if (saving) return; focusLast.current = false; setMode('model'); setOpen(!open || mode !== 'model') }}
-      onKeyDown={(event) => { if (saving) return; if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setMode('model'); setOpen(true) } }}>
+      aria-label={`${providerName} · ${sidebar ? status : label} · Choose provider and model`} aria-expanded={open} aria-haspopup="menu" aria-controls={open ? menuId : undefined}
+      onClick={() => { if (saving) return; focusLast.current = false; setOpen(!open) }}
+      onKeyDown={(event) => { if (saving) return; if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true) } }}>
       {saving ? <LoaderCircle size={16} className="computer-spinner" aria-hidden /> : <ProviderIcon provider={engine ?? 'claude'} size={16} />}
-      {sidebar ? <span className="provider-picker-status"><span>{providerName}</span><small>{scope === 'filing' ? `Filing · ${status}` : status}</small></span> : <span className="provider-picker-label">{label}{controlled && effort ? ` · ${effortLabel(effort)}` : ''}</span>}
+      {sidebar ? <span className="provider-picker-status"><span>{providerName}</span><small>{scope === 'filing' ? `Filing · ${status}` : status}</small></span> : <span className="provider-picker-label">{label}{effort ? ` · ${effortLabel(effort)}` : ''}</span>}
       <ChevronDown className="provider-picker-chevron" size={sidebar ? 12 : 16} strokeWidth={1.8} aria-hidden />
     </button>
-    {!sidebar && !controlled && efforts.length > 0 && <button type="button" ref={effortTrigger} className="model-picker-btn effort-picker-btn" data-testid="effort-picker" aria-label={`Reasoning effort: ${effortLabel(effort)}`} title="Reasoning effort" aria-haspopup="menu" aria-controls={open && mode === 'effort' ? menuId : undefined} aria-expanded={open && mode === 'effort'} onClick={() => { focusLast.current = false; setMode('effort'); setOpen(!open || mode !== 'effort') }} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setMode('effort'); setOpen(true) } }}><span>{effortLabel(effort)}</span><ChevronDown size={16} aria-hidden /></button>}
     {showAccounts && !sidebar && engine && <AccountProfiles provider={engine} compact sessionProfile={controlled?.accountProfile} />}
-    {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label={mode === 'effort' ? 'Reasoning effort' : 'Provider and model'} data-testid={mode === 'effort' ? 'effort-picker-menu' : sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
-      {mode === 'model' ? <>
+    {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label={'Provider and model'} data-testid={sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
+      <>
       <div className="provider-picker-heading">{controlled ? 'This session' : scope === 'filing' ? 'Filing provider' : scope ? 'This conversation' : 'New conversations'}</div>
       {PROVIDERS.map(({ id, name }) => {
         const state = stateFor(id)
@@ -243,10 +240,10 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       {loading && <div className="model-picker-note inline-loading" role="status"><LoaderCircle size={14} className="computer-spinner" aria-hidden />{rows.length ? 'Updating models…' : 'Loading models…'}</div>}
       {loading && !rows.length && <div className="model-loading-skeleton" aria-hidden>{[0, 1, 2].map(index => <span key={index} className="skeleton-line" />)}</div>}
       {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>Models unavailable · Retry</button>}
-      {controlled && efforts.length > 0 && <><div className="provider-picker-divider" role="separator" /><div className="provider-picker-heading">Reasoning effort</div><div className="dev-effort-scale">{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
+      {!sidebar && efforts.length > 0 && <><div className="provider-picker-divider" role="separator" /><div className="provider-picker-heading">Reasoning effort</div><div className="dev-effort-scale">{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled?.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
       <div className="provider-picker-divider" role="separator" />
       <button type="button" className="model-picker-item provider-picker-settings" role="menuitem" tabIndex={-1} onClick={setup}><Settings size={14} aria-hidden />AI settings</button>
-      </> : <><div className="provider-picker-heading">Reasoning effort</div>{controlled && <p className="model-picker-note">Choose how much time the model spends reasoning.</p>}<div className={controlled ? 'dev-effort-scale' : undefined}>{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled?.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
+      </>
       {saveError && <div className="model-picker-note" role="alert">{saveError}</div>}
     </div>, document.body)}
   </div>

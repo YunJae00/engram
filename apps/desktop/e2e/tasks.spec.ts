@@ -55,6 +55,14 @@ test('a quiet conversation leaves the list but stays reachable', async () => {
   await expect(quiet).toBeVisible()
   await page.getByTestId('sidebar-earlier').click()
   await expect(quiet).toHaveCount(0)
+  await expect(page.getByTestId('sidebar-earlier')).toHaveAttribute('aria-expanded', 'false')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.getByTestId('sidebar-earlier').click()
+  await expect(quiet).toBeVisible()
+  await expect(page.getByTestId('sidebar-earlier')).toHaveAttribute('aria-expanded', 'true')
+  await page.getByTestId('sidebar-earlier').click()
+  await expect(quiet).toHaveCount(0)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
 })
 
 test('a new conversation runs as a task to the end', async () => {
@@ -123,4 +131,48 @@ test('deferred decisions stay in the conversation and remain readable in narrow 
   }
   await card.getByRole('button', { name: 'Decline', exact: true }).click()
   await expect.poll(async () => (await listTasks(paths)).find(t => t.id === task.id)?.approvals[0]?.answer).toBe('decline')
+})
+
+test('questions offer readable keyboard choices and completion notices without exposing task contents', async () => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+  const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Question fixture' }))
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Which approach?', at: new Date().toISOString() })
+  const task = await createTask(paths, 'Choose an approach', bot.id)
+  await updateTask(paths, task.id, value => { value.state = 'waiting'; value.question = 'Which approach?' })
+  await page.getByTestId(`bot-${bot.id}`).click()
+  await expect(page.getByTestId('bots-input')).toBeVisible()
+  await app.evaluate(({ BrowserWindow }, id) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('engram:event', { type: 'chat:offer', channel: `bot-${id}`, offer: { kind: 'asked', question: 'Which approach?', options: ['Keep the existing workflow and prepare a read-only preview first', 'Allow editing after reviewing the preview'] } })
+      window.webContents.send('engram:event', { type: 'task:notice', message: 'Task done' })
+    }
+  }, bot.id)
+  await expect(page.locator('.toast')).toHaveText('Task done')
+  const card = page.getByTestId('bots-choices')
+  await expect(card).toContainText('Your answer')
+  await expect(page.locator('.bots-view .chat-approval')).toHaveCount(0)
+  await page.getByTestId('bots-choice-0').focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByTestId('bots-choice-1')).toBeFocused()
+  for (const [width, scheme] of [[1280, 'light'], [600, 'dark']] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+    if (width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
+    await expect(card).toBeVisible()
+    await expect(page.locator('.bots-chat')).toHaveCSS('animation-name', 'none')
+    expect(await card.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+    // Hidden windows can pause color transitions between compositor frames.
+    await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
+    const png = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]!
+      await window.webContents.capturePage()
+      await new Promise(resolve => setTimeout(resolve, 300))
+      return (await window.webContents.capturePage()).toPNG().toString('base64')
+    })
+    await writeFile(join(REPO_TMP, `comet-question-${width}-${scheme}.png`), Buffer.from(png, 'base64'))
+  }
+  await page.getByTestId('bots-choice-0').click()
+  await expect(card).toHaveCount(0)
+  await expect(page.locator('.bots-view .bubble-msg.user').last()).toContainText('Keep the existing workflow')
 })

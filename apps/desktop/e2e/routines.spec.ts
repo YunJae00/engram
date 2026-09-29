@@ -135,7 +135,7 @@ async function expectRoutineControlReachable(testId: string): Promise<void> {
     const pane = document.querySelector('.web-pane')?.getBoundingClientRect()
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
     return {
-      reachable: node.contains(hit),
+      reachable: node.contains(hit) || hit?.outerHTML.slice(0, 240) || false,
       insideDock: box.left >= dock.left && box.right <= dock.right,
       insideViewport: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
       clearOfWebPane: !pane || pane.bottom <= dock.top + 1 || pane.top >= dock.bottom - 1 || pane.left >= dock.right - 1 || pane.right <= dock.left + 1,

@@ -74,7 +74,7 @@ test('a fresh workspace can skip AI and browse immediately', async () => {
   await page.getByTestId('onboard-skip-ai').click()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => settings.workMap))).toBe(false)
-  await expect(page.getByTestId('web-new')).toBeEnabled()
+  await expect(page.getByTestId('welcome-web')).toBeEnabled()
   const titled = await page.evaluate(async () => {
     const bot = await window.engram.botCreate({ name: 'New comet', purpose: '' })
     await window.engram.chatSend({ message: 'Review the project plan', history: [], engineId: 'claude', botId: bot.id, channel: `bot-${bot.id}` })
@@ -146,7 +146,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })
   })
   await expect(page.getByTestId('connect-banner')).toHaveCount(0)
-  await expect(page.getByTestId('web-new')).toBeEnabled()
+  await expect(page.getByTestId('welcome-web')).toBeEnabled()
   await screenshot('05-first-screen.png')
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler('sweep:run')
@@ -177,43 +177,13 @@ test('first-run login states, filing retry and direct browser entry', async () =
   const settingsBox = await page.getByTestId('activity-settings').boundingBox()
   expect(Math.abs(retryBox!.x - settingsBox!.x)).toBeLessThan(2)
   const conversationsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
-  await page.getByTestId('web-new').click()
+  await page.getByTestId('bots-new').click()
+  await page.getByTestId('welcome-web').click()
   await expect(page.getByTestId('browser-start-input')).toBeFocused()
+  await page.getByTestId('web-pane-expand').click()
   await expect(page.locator('.bots-chat')).toBeHidden()
   await screenshot('06-browser-start.png')
-  await app.evaluate(({ BrowserWindow, ipcMain, nativeImage }) => {
-    ipcMain.removeHandler('site:icon')
-    ipcMain.handle('site:icon', (_event, origin: string, shortcut: boolean) => {
-      if (!shortcut) return null
-      if (origin === 'https://docs.test') return null
-      const colors = [0x4385d4, 0x34a078, 0xc55e78, 0x9070c5, 0xca9038]
-      const color = colors[origin.length % colors.length]!
-      const pixels = Buffer.alloc(16 * 16 * 4)
-      for (let i = 0; i < 256; i++) {
-        const white = i % 16 >= 5 && i % 16 <= 10 && Math.floor(i / 16) >= 4 && Math.floor(i / 16) <= 11
-        pixels.writeUInt32LE(white ? 0xffffffff : (0xff000000 | color) >>> 0, i * 4)
-      }
-      return nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }).toDataURL()
-    })
-    for (const name of ['notes', 'calendar', 'docs', 'mail', 'projects', 'tasks', 'files']) {
-      for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'agent:live', on: true, lane: `fixture-${name}`, url: `https://${name}.test/private?token=not-stored` })
-    }
-  })
-  const shortcuts = page.getByRole('navigation', { name: 'Website shortcuts' })
-  await expect(shortcuts.getByRole('button')).toHaveCount(8)
-  await expect(shortcuts.locator('img.site-icon')).toHaveCount(5)
-  await expect(shortcuts.getByRole('button', { name: 'Open docs.test', exact: true }).locator('svg.site-icon')).toBeVisible()
-  const boxes = await shortcuts.getByRole('button').evaluateAll(nodes => nodes.map(node => { const rect = node.getBoundingClientRect(); return { y: rect.y, height: rect.height } }))
-  expect(new Set(boxes.map(box => box.y)).size).toBe(2)
-  expect(boxes.every(box => box.height <= 32)).toBe(true)
-  await screenshot('08-recent-sites.png')
-  await expect(page.getByTestId('web-pane-expand')).toHaveAttribute('aria-label', 'Show chat beside browser')
-  await page.getByRole('button', { name: 'Customize website shortcuts' }).click()
-  await page.getByRole('textbox', { name: 'Website to pin' }).fill('https://pinned.example/private?token=excluded')
-  await page.getByRole('button', { name: 'Pin website', exact: true }).click()
-  await page.getByRole('button', { name: 'Save shortcuts' }).click()
-  await expect(shortcuts.getByRole('button').first()).toHaveAttribute('aria-label', 'Open pinned.example')
-  expect(await page.evaluate(() => localStorage.getItem('engram.pinnedWeb'))).toBe('["https://pinned.example"]')
+  await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
   await expect(page.locator('.web-pane-bar .live-address')).toHaveCount(1)
   await expect(page.getByTestId('connect-banner')).toBeHidden()
   await screenshot('07-browser-workspace.png')
@@ -237,7 +207,9 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await page.getByRole('tab', { name: '127.0.0.1', exact: true }).click()
     await expect.poll(() => page.evaluate(() => window.engram.agentState().then(state => state.url))).toBe(url)
     const firstTabs = await page.evaluate(lane => window.engram.browserTabs(lane), lane)
-    await page.getByTestId('web-new').click()
+    await page.getByTestId('bots-new').click()
+    await page.getByTestId('welcome-web').click()
+    await page.getByTestId('web-pane-expand').click()
     await expect(page.getByRole('tab')).toHaveCount(1)
     expect(await page.evaluate(lane => window.engram.browserTabs(lane), lane)).toEqual(firstTabs)
     await page.getByTestId(lane).click()
@@ -246,12 +218,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await expect(page.getByRole('tab')).toHaveCount(1)
     await page.getByRole('button', { name: 'Close 127.0.0.1', exact: true }).click()
     await expect(page.getByTestId('browser-start-input')).toBeVisible()
-    await expect(shortcuts.getByRole('button', { name: 'Open 127.0.0.1', exact: true })).toBeVisible()
-    expect(await page.evaluate(() => localStorage.getItem('engram.recentWeb'))).not.toContain('not-stored')
-    await expect(shortcuts.getByRole('button')).toHaveCount(8)
     await page.reload()
-    await expect(shortcuts.getByRole('button')).toHaveCount(8)
-    await expect(shortcuts.getByRole('button', { name: 'Open pinned.example', exact: true }).locator('img.site-icon')).toBeVisible()
-    await expect(shortcuts.getByRole('button').first()).toHaveAttribute('aria-label', 'Open pinned.example')
+    await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
