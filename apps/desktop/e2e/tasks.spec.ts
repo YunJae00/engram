@@ -149,6 +149,7 @@ test('questions offer readable keyboard choices and completion notices without e
     }
   }, bot.id)
   await expect(page.locator('.toast')).toHaveText('Task done')
+  await expect(page.locator('.toast')).toHaveCSS('pointer-events', 'none')
   const card = page.getByTestId('bots-choices')
   await expect(card).toContainText('Your answer')
   await expect(page.locator('.bots-view .chat-approval')).toHaveCount(0)

@@ -1978,6 +1978,7 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
    help dock (16px inset + 40px button + gap) instead of on top of it. */
 .toast {
   position: fixed; bottom: 16px; right: 16px;
+  pointer-events: none;
   background: color-mix(in srgb, var(--widget-bg) 92%, transparent);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   color: var(--fg);

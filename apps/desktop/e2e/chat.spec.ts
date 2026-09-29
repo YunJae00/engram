@@ -334,6 +334,7 @@ test('conversation keeps narration between compact activity groups and shows vis
 
 test('request errors keep readable padding, expandable details and working copy in both themes', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
+  if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
   await expect.poll(() => page.evaluate(() => window.engram.botsList()).then(() => true, () => false)).toBe(true)
   const bot = await createBot(paths, { name: 'Request error check' })
   await app.evaluate(({ ipcMain }) => {
@@ -344,6 +345,9 @@ test('request errors keep readable padding, expandable details and working copy 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(900, 720))
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
+  // A resized, hidden native window needs a compositor frame before Playwright
+  // can observe two stable frames for a click. Keep normal click hit-testing.
+  await app.evaluate(async ({ BrowserWindow }) => { await BrowserWindow.getAllWindows()[0]!.webContents.capturePage() })
   if (await page.getByTestId('app-sidebar-open').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()
   await page.getByTestId('bots-input').fill('Check the report')
@@ -367,6 +371,7 @@ test('request errors keep readable padding, expandable details and working copy 
   await appendBotTurn(paths, bot.id, { role: 'assistant', text: raw, at: new Date().toISOString() })
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
+  await app.evaluate(async ({ BrowserWindow }) => { await BrowserWindow.getAllWindows()[0]!.webContents.capturePage() })
   if (await page.getByTestId('app-sidebar-open').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()
   await expect(error).toContainText('not a usage limit')

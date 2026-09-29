@@ -149,7 +149,9 @@ async function resizeForRoutine(width: number): Promise<void> {
   const actual = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   console.info(`[routine layout] requested ${width}x720; actual ${actual.width}x${actual.height}`)
   expect(actual.width).toBeLessThanOrEqual(1180)
-  if (actual.width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') {
+  // The command palette restores visible content by removing aria-hidden,
+  // which is equivalent to false. Check visibility, not the attribute string.
+  if (actual.width <= 900 && await page.getByTestId('app-sidebar').isVisible()) {
     await page.getByTestId('app-sidebar-close').click()
     await expect(page.getByTestId('app-sidebar')).toHaveAttribute('aria-hidden', 'true')
   }
