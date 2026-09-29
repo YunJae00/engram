@@ -46,7 +46,10 @@ export async function chatEngine(scope: string, engines: Engine[], explicit?: st
   if (id !== 'claude' && id !== 'codex') throw new Error('Invalid AI provider')
   const signedIn = async (wanted: 'claude' | 'codex') => {
     const engine = createEngine(wanted)
-    if (!(await engine.detect()).loggedIn) return undefined
+    // A status check that timed out on a busy runtime is not a sign-out: the
+    // call goes ahead, and a real sign-out fails it with an auth error.
+    const status = await engine.detect()
+    if (!status.loggedIn && status.conclusive !== false) return undefined
     return wanted === selection.engine
       ? withModel(engine, selection.model, selection.effort)
       : withModel(engine, (wanted === 'claude' ? settings.claudeModel : settings.codexModel) ?? '', wanted === 'claude' ? settings.claudeEffort : settings.codexEffort)

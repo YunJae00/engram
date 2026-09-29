@@ -1388,7 +1388,7 @@ body.bubble-host { background: transparent; }
 .onboard-card h1 { font-family: var(--font); font-size: var(--fs-display); font-weight: 600; color: var(--fg-strong); }
 .onboard-sub { color: var(--fg-dim); font-size: var(--fs-body); line-height: 1.5; margin-top: -4px; margin-bottom: 14px; }
 .onboard-fail { color: var(--clay); font-size: var(--fs-small); line-height: 1.5; }
-.onboard-card input, .onboard-card textarea { width: 100%; font-size: var(--fs-body); padding: 7px 11px; }
+.onboard-card input:not(.switch), .onboard-card textarea { width: 100%; font-size: var(--fs-body); padding: 7px 11px; }
 .onboard-card textarea { resize: none; }
 .onboard-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 .engine-lights { list-style: none; display: flex; flex-direction: column; gap: 8px; }

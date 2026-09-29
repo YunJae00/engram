@@ -21,6 +21,7 @@ const SESSION_FILES = [
   join('Default', 'Network', 'Cookies'),
   join('Default', 'Preferences'),
   join('Default', 'Bookmarks'),
+  join('Default', 'AccountBookmarks'),
 ] as const
 
 export interface BrowserSource {

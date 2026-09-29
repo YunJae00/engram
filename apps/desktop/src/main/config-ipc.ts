@@ -11,6 +11,7 @@ import { getSyncStatus } from './team.js'
 import { binaryProvider, type VaultContext } from './vault.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { aiSelection } from './ai-selection.js'
+import { workMapSettingChanged } from './work-map-job.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
@@ -42,6 +43,7 @@ export function registerSettingsIpc(): void {
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()
+    if (settings.workMap === false) workMapSettingChanged(false)
     if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
     const saved = await updateSettings(latest => ({
       ...latest,
@@ -58,6 +60,7 @@ export function registerSettingsIpc(): void {
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
     // Live surfaces (the agent terminal's colours) restyle immediately.
     broadcast({ type: 'settings:changed', settings: saved })
+    if (saved.workMap && !held.workMap) workMapSettingChanged(true)
   })
 
 }

@@ -688,6 +688,9 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   errandWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   routinesList(): Promise<RoutineDto[]>
   tasksList(): Promise<DelegatedTaskDto[]>
+  // The work map: when it was last built and how many work places it holds.
+  workMapStatus(): Promise<WorkMapStatusDto>
+  workMapRefresh(): Promise<WorkMapStatusDto>
   taskDecide(id: string, approvalId: string, answer: 'approve' | 'decline'): Promise<void>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
@@ -854,10 +857,14 @@ export interface AppSettingsDto {
   // Comets may use the apps on this computer. Off means the desktop tools
   // are never offered.
   computerUse?: boolean
+  // Learn where the person works from browser history and bookmarks.
+  workMap?: boolean
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,
 // and its own line about what the model is for.
+export interface WorkMapStatusDto { builtAt: string | null; places: number }
+
 export interface ModelChoiceDto {
   value: string
   label: string

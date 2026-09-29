@@ -17,6 +17,7 @@ export function Onboarding() {
   const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
   const [installing, setInstalling] = useState(false)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
+  const [learnWork, setLearnWork] = useState(false)
   const revision = useRef(0)
   const signing = useRef(false)
   const completing = useRef(false)
@@ -64,6 +65,8 @@ export function Onboarding() {
         const filingEngine = settings.aiSelections?.filing?.engine ?? settings.defaultEngine
         if (!ready.some(brain => brain.id === filingEngine)) await api.aiSelectionSet('filing', { engine: available.id, model: '' })
       }
+      const latest = await api.settingsGet()
+      if (latest.workMap !== learnWork) await api.settingsSet({ ...latest, workMap: learnWork })
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
     catch (cause) { completing.current = false; setFinishing(false); setError(cause instanceof Error ? cause.message : 'Could not create your workspace. Please try again.') }
@@ -98,6 +101,8 @@ export function Onboarding() {
           </div>
         })}
       </div>
+      <label className="setting-row"><span>Learn where you work</span><input type="checkbox" className="switch" data-testid="onboard-work-map" aria-describedby="work-map-consent" checked={learnWork} onChange={event => setLearnWork(event.target.checked)} /></label>
+      <p className="setting-hint" id="work-map-consent">Use local browser history and bookmarks to find work places. Site names and titles are sent to your AI for labels; pages are not opened. Optional, refreshed daily. Change it in Settings.</p>
       <p className="onboard-note">Choose separate models for conversations and filing later. Only the context needed for an AI request is sent to its provider.</p>
       <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting || installing} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>
     </section>}

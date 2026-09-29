@@ -41,18 +41,39 @@ export function parseBookmarks(text: string): Bookmark[] {
   return [...found.values()]
 }
 
+// A profile signed in to a browser account keeps that account's bookmarks in
+// a file of their own, beside the local ones; one profile reads both.
+const PROFILE_BOOKMARK_FILES = ['Bookmarks', 'AccountBookmarks']
+
 async function profiles() {
-  const found: { id: string; name: string; file?: string; text?: string }[] = []
+  const found: { id: string; name: string; files?: string[]; text?: string }[] = []
   for (const root of browserProfileRoots()) {
     for (const source of await managedBookmarkSources(root.id)) found.push({ ...source, name: `${root.name} · ${source.name}` })
     const state = await readLimited(join(root.userData, 'Local State')).then(text => record(record(JSON.parse(text)).profile).info_cache).catch(() => undefined)
     for (const dir of await readdir(root.userData, { withFileTypes: true }).catch(() => [])) {
       if (!dir.isDirectory() || !/^(Default|Profile \d+)$/.test(dir.name)) continue
-      const file = join(root.userData, dir.name, 'Bookmarks')
+      const files: string[] = []
+      for (const name of PROFILE_BOOKMARK_FILES) {
+        const file = join(root.userData, dir.name, name)
+        if ((await stat(file).catch(() => null))?.isFile()) files.push(file)
+      }
       const profileName = record(record(state)[dir.name]).name
       const label = typeof profileName === 'string' && profileName.trim() ? profileName.slice(0, 100) : dir.name
-      if ((await stat(file).catch(() => null))?.isFile()) found.push({ id: `${root.id}:${dir.name}`, name: `${root.name} · ${label}`, file })
+      if (files.length) found.push({ id: `${root.id}:${dir.name}`, name: `${root.name} · ${label}`, files })
     }
+  }
+  return found
+}
+
+// Every profile's bookmarks, read in place and saved nowhere; one unreadable
+// profile does not hide the others.
+export async function allBookmarks(): Promise<(Bookmark & { managed: boolean })[]> {
+  const found: (Bookmark & { managed: boolean })[] = []
+  for (const source of await profiles()) {
+    try {
+      const texts = source.text !== undefined ? [source.text] : await Promise.all(source.files!.map(readLimited))
+      for (const row of texts.flatMap(parseBookmarks)) found.push({ ...row, managed: source.id.includes(':managed') })
+    } catch { continue }
   }
   return found
 }
@@ -95,7 +116,8 @@ export function importBookmarks(id: string): Promise<Bookmark[]> {
 async function mergeBookmarks(id: string): Promise<Bookmark[]> {
   const source = (await profiles()).find((row) => row.id === id)
   if (!source) throw new Error('Choose an available browser profile')
-  const imported = parseBookmarks(source.text ?? await readLimited(source.file!)).map(row => ({ ...row, sourceId: source.id, sourceName: source.name }))
+  const texts = source.text !== undefined ? [source.text] : await Promise.all(source.files!.map(readLimited))
+  const imported = texts.flatMap(parseBookmarks).map(row => ({ ...row, sourceId: source.id, sourceName: source.name }))
   if (!imported.length) throw new Error('No bookmarks here — this profile is empty. Try another profile or your organization’s managed bookmarks. Only http and https bookmarks are imported.')
   const key = (row: Bookmark) => JSON.stringify([row.sourceId ?? '', row.folderPath ?? [row.folder], row.url])
   const merged = new Map((await savedBookmarks()).map(row => [key(row), row]))

@@ -28,6 +28,9 @@ interface AppSettings {
   codexModel: string
   // Foreground input is opt-in and remains separate from browser access.
   computerUse: boolean
+  // Learn where the person works from their browser history and bookmarks,
+  // once a day. Opt-in: offered at onboarding and in Settings.
+  workMap: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -41,6 +44,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   claudeModel: '',
   codexModel: '',
   computerUse: false,
+  workMap: false,
 }
 
 function settingsPath(): string {
@@ -55,6 +59,7 @@ async function readSettings(): Promise<AppSettings> {
     // this disk is the safe reading.
     if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
     merged.computerUse = merged.computerUse === true
+    merged.workMap = merged.workMap === true
     merged.aiSelections = Object.fromEntries(Object.entries(merged.aiSelections ?? {}).filter(([scope, value]) =>
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'

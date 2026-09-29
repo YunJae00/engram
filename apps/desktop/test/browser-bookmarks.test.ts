@@ -60,6 +60,15 @@ it('rejects malformed or oversized trees and strips executable and credential-be
   expect(() => parseBookmarks(tree([node]))).toThrow('nested')
 })
 
+it('reads the signed-in account\'s bookmarks when the local file is empty or missing', async () => {
+  await writeFile(join(fake.root, 'Default', 'Bookmarks'), tree([]))
+  await writeFile(join(fake.root, 'Default', 'AccountBookmarks'), JSON.stringify({ roots: { bookmark_bar: { name: 'Bar', children: [{ name: 'Dev', children: [{ type: 'url', name: 'Pipelines', url: 'https://dev.example/pipelines' }] }] } } }))
+  expect(await importBookmarks('chrome:Default')).toEqual([{ title: 'Pipelines', url: 'https://dev.example/pipelines', folder: 'Bar / Dev', folderPath: ['Bar', 'Dev'], sourceId: 'chrome:Default', sourceName: 'Chrome · Default' }])
+  await mkdir(join(fake.root, 'Profile 2'), { recursive: true })
+  await writeFile(join(fake.root, 'Profile 2', 'AccountBookmarks'), tree([{ type: 'url', name: 'Wiki', url: 'https://wiki.example' }]))
+  expect(await bookmarkSources()).toContainEqual({ id: 'chrome:Profile 2', name: 'Chrome · Profile 2' })
+})
+
 it('reports an empty profile without claiming an import succeeded or replacing existing bookmarks', async () => {
   await writeFile(join(fake.root, 'Default', 'Bookmarks'), tree([]))
   await expect(importBookmarks('chrome:Default')).rejects.toThrow('this profile is empty')

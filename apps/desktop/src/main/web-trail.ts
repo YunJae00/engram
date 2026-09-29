@@ -22,7 +22,7 @@ export interface WebVisit {
 
 const WEBKIT_EPOCH_MS = Date.UTC(1601, 0, 1)
 
-function historyCandidates(): string[] {
+export function historyCandidates(): string[] {
   if (process.platform === 'darwin') {
     const support = join(homedir(), 'Library', 'Application Support')
     return [

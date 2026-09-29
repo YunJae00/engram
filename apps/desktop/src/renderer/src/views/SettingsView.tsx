@@ -10,6 +10,7 @@ import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
+import { WorkMapSettings } from '../components/WorkMapSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
@@ -154,6 +155,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </section>
         <section className="settings-panel" hidden={section !== 'developers'} aria-label="Workspace"><h2>Workspace</h2>{section === 'developers' && <><ComputerSettings /><DeveloperSettings /></>}</section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
+        {section === 'memory' && <WorkMapSettings />}
         <div data-testid="settings-more">
           <div className="settings-group-head">Files &amp; backup</div>
           <div className="setting-row" data-testid="setting-audit">
