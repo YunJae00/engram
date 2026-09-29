@@ -165,11 +165,18 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         `do several known moves on the open page in order, in one call - fill a form's fields, pick its options, press its tabs or buttons - instead of one call per field. Controls are named by their words or their number from the latest page report; the page is read once at the end, so a move that needs what an earlier one reveals (a list that only opens after a press) goes in a new call. Stops at the first move that fails, changes nothing or waits for approval - args: {"steps": [{"do": "type", "target": "#12", "text": "4"}, {"do": "choose", "target": "Activity", "option": "ChatX"}, {"do": "press", "target": "Add"}, {"do": "key", "key": "Tab"}]}`,
       argsSchema: { type: 'object', properties: { steps: { type: 'array', maxItems: PAGE_STEPS_MAX, items: { type: 'object', properties: { do: { type: 'string', enum: ['type', 'choose', 'press', 'key'] }, target: { type: 'string' }, text: { type: 'string' }, option: { type: 'string' }, key: { type: 'string' } }, required: ['do'] } } }, required: ['steps'] },
       async run(args, context) {
-        const steps = Array.isArray(args['steps']) ? (args['steps'] as Record<string, unknown>[]).slice(0, PAGE_STEPS_MAX) : []
-        if (!steps.length) return `page_steps needs a list of moves (at most ${PAGE_STEPS_MAX})`
+        const steps = args['steps']
+        if (!Array.isArray(steps) || !steps.length || steps.length > PAGE_STEPS_MAX) return `that did not work: page_steps needs a list of moves (at most ${PAGE_STEPS_MAX}); no moves were made`
+        const invalid = steps.findIndex(step => {
+          if (!step || typeof step !== 'object' || Array.isArray(step)) return true
+          const target = str(step, 'target'), kind = str(step, 'do')
+          return !(kind === 'type' && target && str(step, 'text') || kind === 'choose' && target && str(step, 'option') || kind === 'press' && target || kind === 'key' && str(step, 'key'))
+        })
+        if (invalid >= 0) return `that did not work: move ${invalid + 1} is incomplete; no moves were made. type needs target and text, choose needs target and option, press needs target, key needs key`
         const done: string[] = []
         let last: { move: PageMove; what: string } | undefined
         for (const [index, step] of steps.entries()) {
+          context.signal?.throwIfAborted()
           const target = str(step, 'target'), kind = str(step, 'do')
           const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : `press ${str(step, 'key')}`
           const move = kind === 'type' && target && typeof step['text'] === 'string' && step['text'] ? await typeText(target, step['text'], false, context.signal)
@@ -182,7 +189,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
           if (stuck) {
             const outcome = await after(move, what, args, context.signal)
             const text = typeof outcome === 'string' ? outcome : outcome.text
-            return `${done.length ? `Done in order: ${done.join('; ')}.\n` : ''}Stopped at move ${index + 1} of ${steps.length} (${what}); the moves after it were not made:\n${text}`
+            return `that did not work: Stopped at move ${index + 1} of ${steps.length} (${what}); the moves after it were not made.\n${done.length ? `Done in order: ${done.join('; ')}.\n` : ''}${text}`
           }
           done.push(what)
         }

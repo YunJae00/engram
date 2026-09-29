@@ -17,6 +17,26 @@ afterEach(() => { vi.unstubAllEnvs(); fake.workMap = true })
 
 const WEBKIT_EPOCH_MS = Date.UTC(1601, 0, 1)
 
+it.each(['from_visit', 'opener_visit', 'both'])('reads portal relationships from the %s browser schema', async schema => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/work-map-via-'))
+  fake.data = join(root, 'app'); fake.history = join(root, 'History')
+  const SQL = await initSqlJs(), db = new SQL.Database()
+  const columns = schema === 'both' ? ['from_visit', 'opener_visit'] : [schema]
+  db.run(`CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, hidden INTEGER); CREATE TABLE visits (id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER, ${columns.map(name => `${name} INTEGER`).join(', ')})`)
+  db.run("INSERT INTO urls VALUES (1, 'https://portal.example/home', 'Portal', 0), (2, 'https://time.example/report', 'Time Report', 0)")
+  for (const back of [1, 2]) {
+    const at = (Date.now() - back * 86_400_000 - WEBKIT_EPOCH_MS) * 1000
+    db.run('INSERT INTO visits (id, url, visit_time) VALUES (?, 1, ?)', [back * 10, at])
+    db.run(`INSERT INTO visits (url, visit_time, ${columns.join(', ')}) VALUES (2, ?, ${columns.map(() => '?').join(', ')})`, [at + 1000, ...(schema === 'both' ? [0, back * 10] : [back * 10])])
+  }
+  await writeFile(fake.history, Buffer.from(db.export())); db.close()
+  const paths = await initVault(join(root, 'vault'), { git: false })
+  const engine = { id: 'mock', async *run() { yield { type: 'result', text: '[]' } } } as unknown as Engine
+  const map = await refreshWorkMap({ paths, engines: [engine] } as unknown as Parameters<typeof refreshWorkMap>[0])
+  expect(map?.places.find(place => place.host === 'time.example')?.via).toBe('portal.example')
+})
+
 it('maps the places in the browser history, names them once, and writes a note per work place', async () => {
   await mkdir(resolve('tmp'), { recursive: true })
   const root = await mkdtemp(resolve('tmp/work-map-job-'))

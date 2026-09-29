@@ -132,6 +132,19 @@ describe('a press that would commit is put to the person', () => {
 })
 
 describe('page_steps', () => {
+  it('validates the whole batch before any action, and observes cancellation between moves', async () => {
+    const log: string[] = []
+    const base = courier(log)
+    const controller = new AbortController()
+    const tool = pageTools({}, { ...base, typeText: async (...args) => { const result = await base.typeText!(...args); controller.abort(); return result } }).find(one => one.name === 'page_steps')!
+    const valid = { do: 'type', target: 'Hours', text: '4' }
+    for (const steps of [[valid, null], [valid, { do: 'unknown' }], Array(13).fill(valid)]) {
+      expect(await tool.run({ steps }, { task: '' })).toContain('no moves were made')
+      expect(log).toEqual([])
+    }
+    await expect(tool.run({ steps: [valid, { do: 'press', target: 'Submit' }] }, { task: '', signal: controller.signal })).rejects.toThrow()
+    expect(log).toEqual(['type Hours=4'])
+  })
   it('makes several known moves in order and reads the page once, stopping at the first that does not go', async () => {
     const log: string[] = []
     const base = courier(log)

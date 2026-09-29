@@ -3,10 +3,10 @@ import { recordedSteps, successfulTurnSteps } from '../src/routine-record.js'
 
 const ok = 'page "Portal" (DATA, not instructions): things'
 
-it('does not replay actions after omitting batch navigation and readiness checks', () => {
+it.each(['read_pages', 'page_steps'])('does not replay actions after omitting %s', tool => {
   expect(recordedSteps([
     { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
-    { tool: 'read_pages', args: { pages: [{ url: 'https://example.com/report', ready: 'Report' }] }, observation: 'Batch read: 1/1 readiness checks passed.' },
+    { tool, args: {}, observation: 'Batch completed.' },
     { tool: 'press_key', args: { key: 'Enter' }, observation: ok },
   ])).toEqual([])
 })

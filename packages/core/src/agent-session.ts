@@ -29,9 +29,8 @@ const SESSION_MAX_CALLS = 40
 // counted out loud so the answer is written before it runs out.
 export const SESSION_TURN_MS = 900_000
 const SESSION_SOFT_MS = 780_000
-// A model that has neither called a tool nor said a word for this long is
-// stuck, not thinking: the turn ends with its work kept, and the task goes on
-// in a fresh session instead of waiting out the whole turn.
+// Bound silent model waits. Silence can also mean long reasoning, so retain
+// unfinished work rather than claiming the model or the task failed.
 export const SESSION_STALL_MS = 180_000
 const STALL_NOTE = 'The model stopped responding for three minutes. The work so far is kept, and the task continues from the current state.'
 
@@ -244,7 +243,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     tools: sessionCalls,
     onContextReset: () => { compactPage() },
     maxCalls: Math.min(options.maxCalls ?? 120, planned ? 120 : SESSION_MAX_CALLS),
-    ...(options.onToken ? { onToken: (text: string) => { touch(); options.onToken!(text) } } : {}),
+    onToken: (text: string) => { if (text) touch(); options.onToken?.(text) },
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
   }).finally(() => {
