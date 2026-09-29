@@ -150,7 +150,10 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await screenshot('05-first-screen.png')
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler('sweep:run')
+    const fixture = globalThis as typeof globalThis & { filingCalls: number }
+    fixture.filingCalls = 0
     ipcMain.handle('sweep:run', async () => {
+      fixture.filingCalls++
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'sweep:start' })
       await new Promise(resolve => setTimeout(resolve, 1500))
       const report = { executed: 1, skipped: 0, failed: 0, deferred: 0, briefWritten: false }
@@ -170,12 +173,16 @@ test('first-run login states, filing retry and direct browser entry', async () =
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })
   })
   await page.getByTestId('filing-retry').click()
-  await expect(page.getByTestId('filing-retry')).toHaveCount(0)
+  await expect(page.getByTestId('filing-retry')).toBeDisabled()
+  await page.getByTestId('filing-retry').evaluate(button => (button as HTMLButtonElement).click())
   await expect(page.locator('.sidebar-work-status.working .sidebar-status-icon svg')).toBeVisible()
   await expect(page.getByTestId('sweep-status')).toContainText('Filing done')
+  expect(await app.evaluate(() => (globalThis as typeof globalThis & { filingCalls: number }).filingCalls)).toBe(1)
+  await expect(page.getByTestId('filing-retry')).toBeEnabled()
   const retryBox = await page.getByTestId('filing-retry').boundingBox()
   const settingsBox = await page.getByTestId('activity-settings').boundingBox()
-  expect(Math.abs(retryBox!.x - settingsBox!.x)).toBeLessThan(2)
+  expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(settingsBox!.x)
+  expect(Math.abs(retryBox!.y + retryBox!.height / 2 - settingsBox!.y - settingsBox!.height / 2)).toBeLessThan(2)
   const conversationsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await page.getByTestId('welcome-web').click()
