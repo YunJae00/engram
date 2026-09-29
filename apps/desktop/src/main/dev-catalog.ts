@@ -63,7 +63,7 @@ export async function devExternalRead(cwd: string, provider: DevProvider, id: st
   if (!source) throw new Error('This session does not belong to the selected repository.')
   const items: DevItem[] = []
   if (provider === 'claude') {
-    const messages = await claudeHistory<{ uuid: string; type: string; message: { content?: unknown } }[]>(profile, 'read', { dir: source.cwd, limit: 200 }, id)
+    const messages = await claudeHistory<{ uuid: string; type: string; message: { content?: unknown } }[]>(profile, 'read', { dir: source.cwd, tail: 400 }, id)
     for (const message of messages) {
       if (!['user', 'assistant'].includes(message.type)) continue
       const content = message.message?.content

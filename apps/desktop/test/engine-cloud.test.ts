@@ -101,6 +101,18 @@ describe('StatusCache', () => {
     await cache.read(yes, 2001)
     expect(probes).toBe(2)
   })
+  it('knows a sign-in that just finished without probing again, and drops a probe that was in flight', async () => {
+    const cache = new StatusCache()
+    let finish!: (value: { installed: boolean; loggedIn: boolean; conclusive: boolean }) => void
+    const stale = cache.read(() => new Promise((resolve) => { finish = resolve }), 1000)
+    cache.set({ installed: true, loggedIn: true, conclusive: true }, 1000)
+    const probe = vi.fn(async () => ({ installed: true, loggedIn: false, conclusive: true }))
+    expect((await cache.read(probe, 1001)).loggedIn).toBe(true)
+    finish({ installed: true, loggedIn: false, conclusive: true })
+    await stale
+    expect((await cache.read(probe, 1002)).loggedIn).toBe(true)
+    expect(probe).not.toHaveBeenCalled()
+  })
 })
 
 describe('withHelpersOnPath', () => {

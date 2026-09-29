@@ -2,7 +2,7 @@ import { Worker } from 'node:worker_threads'
 import { claudeSdkUrl } from './claude-runtime.js'
 import { accountEnvironment } from './account-profiles.js'
 
-export function claudeHistory<T>(profile: string, method: 'list' | 'read', options: { dir?: string; limit: number }, id?: string): Promise<T> {
+export function claudeHistory<T>(profile: string, method: 'list' | 'read', options: { dir?: string; limit?: number; tail?: number }, id?: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const env = Object.fromEntries(Object.entries(accountEnvironment('claude', profile)).filter((row): row is [string, string] => row[1] !== undefined))
     const worker = new Worker(new URL('./claude-history-worker.js', import.meta.url), { env, workerData: { sdk: claudeSdkUrl(), method, options, id } })

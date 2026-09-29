@@ -1,6 +1,8 @@
 import { dirname, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 const send = vi.hoisted(() => vi.fn())
+const history = vi.hoisted(() => vi.fn())
+vi.mock('../src/main/claude-history.js', () => ({ claudeHistory: history }))
 vi.mock('../src/main/engine-cloud.js', () => ({ codexBinary: () => 'fixture', withHelpersOnPath: () => ({}) }))
 vi.mock('../src/main/claude-runtime.js', () => ({ loadClaudeSdk: vi.fn() }))
 vi.mock('../src/main/dev-rpc.js', () => ({ DevRpc: class { initialize = async () => {}; send = send; shutdown = async () => {} } }))
@@ -41,4 +43,12 @@ it('pages recent conversation text without hydrating the full tool history', asy
   expect(send).toHaveBeenNthCalledWith(2, 'thread/turns/list', { threadId: 'large', limit: 5, sortDirection: 'desc', itemsView: 'summary' }, 30_000)
   expect(send).toHaveBeenNthCalledWith(3, 'thread/turns/list', expect.objectContaining({ cursor: 'older' }), 30_000)
   expect(send.mock.calls.some(call => call[0] === 'thread/read')).toBe(false)
+})
+
+it('previews the latest Claude messages of a long session, not its first ones', async () => {
+  const cwd = resolve('tmp/project')
+  history.mockResolvedValueOnce([{ sessionId: 'long', summary: 'Long run', lastModified: 5, cwd }])
+    .mockResolvedValueOnce([{ uuid: 'u9', type: 'user', message: { content: 'Latest question' } }, { uuid: 'a9', type: 'assistant', message: { content: [{ type: 'text', text: 'Latest answer' }] } }])
+  expect((await devExternalRead(cwd, 'claude', 'long')).map(item => item.text)).toEqual(['Latest question', 'Latest answer'])
+  expect(history.mock.calls[1]!.slice(1)).toEqual(['read', { dir: cwd, tail: 400 }, 'long'])
 })

@@ -2658,7 +2658,9 @@ export function registerEngineIpc(): void {
       else forgetCodexModels()
       broadcast({ type: 'models:changed' })
     }
-    await onEnginesChanged?.()
+    // The person sees "Connected" from the sign-in itself; re-reading every
+    // brain runs behind it and announces itself when done.
+    void onEnginesChanged?.().catch((error) => flog('engines', error))
     return result
   })
   ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {

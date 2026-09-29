@@ -19,14 +19,16 @@ export function Onboarding() {
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   const [learnWork, setLearnWork] = useState(false)
   const revision = useRef(0)
+  // Only the first check shows spinners; later ones refresh behind what is shown.
+  const checked = useRef(false)
   const signing = useRef(false)
   const completing = useRef(false)
   const ready = brains.filter(brain => brain.installed && brain.loggedIn)
 
   const loadBrains = async () => {
     const at = ++revision.current
-    setLoading(true)
-    try { const states = await api.engineStates(); if (at === revision.current) setBrains(states) }
+    if (!checked.current) setLoading(true)
+    try { const states = await api.engineStates(); if (at === revision.current) { setBrains(states); checked.current = true } }
     catch { if (at === revision.current) setError('Could not check AI connections. Retry, or continue without AI.') }
     finally { if (at === revision.current) setLoading(false) }
   }
@@ -91,7 +93,7 @@ export function Onboarding() {
         {(['claude', 'codex'] as const).map(id => {
           const state = brains.find(brain => brain.id === id)
           const login = logins.find(item => item.id === id && (item.profile ?? 'system') === (profiles?.selected[id] ?? 'system'))
-          const connected = state?.installed && state.loggedIn
+          const connected = (state?.installed && state.loggedIn) || login?.phase === 'connected'
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />

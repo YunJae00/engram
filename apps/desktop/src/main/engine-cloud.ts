@@ -181,6 +181,12 @@ export class StatusCache {
     this.probing = null
     this.generation++
   }
+
+  // A sign-in that just succeeded is known without asking the runtime again.
+  set(detection: EngineDetection, now = Date.now()): void {
+    this.forget()
+    this.known = { at: now, detection }
+  }
 }
 
 export interface CloudEngine extends Engine {

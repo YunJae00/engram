@@ -3,7 +3,7 @@ import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
-import { afterFirstClaudeSession, loadClaudeSdk } from './claude-runtime.js'
+import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
@@ -140,9 +140,16 @@ export class ClaudeEngine implements CloudEngine {
     if (!binary) return { ok: false, message: 'Install the Claude runtime in Settings → AI before connecting.' }
     const { code } = await runText(binary, ['auth', 'login'], LOGIN_TIMEOUT_MS, this.env as Record<string, string>, options)
     options?.signal?.throwIfAborted()
-    this.status.forget()
+    // A clean exit is the runtime saying the sign-in finished; asking it again
+    // is another cold start before the person sees "Connected".
+    if (code === 0) this.status.set({ installed: true, loggedIn: true, conclusive: true })
+    else this.status.forget()
     const status = await this.detect()
-    if (status.loggedIn) return { ok: true }
+    if (status.loggedIn) {
+      // Nothing else is starting up now: the model list need not wait its turn.
+      claudeSessionStarted()
+      return { ok: true }
+    }
     flog('engine-claude', `login did not complete (exit ${code ?? 'timeout'})`)
     return { ok: false, message: 'Claude sign-in did not complete. Try again and finish the browser steps.' }
   }

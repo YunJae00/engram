@@ -119,8 +119,10 @@ export class CodexEngine implements CloudEngine {
     const account = new CodexAccount(options?.signal ?? new AbortController().signal, LOGIN_TIMEOUT_MS, this.env)
     try {
       await account.login((url) => options?.onUrl?.(url))
-      this.status.forget()
-      return { ok: (await this.detect()).loggedIn }
+      // The runtime reported the sign-in complete; a second status process
+      // would only add a cold start, and a slow one would report a failure.
+      this.status.set({ installed: true, loggedIn: true, conclusive: true })
+      return { ok: true }
     } finally { account.close() }
   }
 

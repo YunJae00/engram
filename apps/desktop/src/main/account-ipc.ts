@@ -6,6 +6,8 @@ import { desktopOwner } from './desktop-access.js'
 import { broadcast, markEngineOk } from './engine-health.js'
 import type { AccountProfileState, AccountProvider } from '../shared/account-profiles.js'
 
+const STATUS_BATCH = 4
+
 export function registerAccountIpc(changed: () => Promise<void>): void {
   const handle = (name: string, action: (...args: never[]) => unknown) => ipcMain.handle(name, (event, ...args) => {
     if (event.sender !== desktopOwner()?.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Account settings require the main window.')
@@ -18,7 +20,8 @@ export function registerAccountIpc(changed: () => Promise<void>): void {
       { id: 'system', provider: 'codex' as const, name: 'System account' }, ...profiles.profiles,
     ]
     const result: AccountProfileState[] = []
-    for (let at = 0; at < rows.length; at += 2) result.push(...await Promise.all(rows.slice(at, at + 2).map(async row => {
+    // Each check is a runtime process; a few at a time keeps memory bounded.
+    for (let at = 0; at < rows.length; at += STATUS_BATCH) result.push(...await Promise.all(rows.slice(at, at + STATUS_BATCH).map(async row => {
       const detection = await cloudEngine(row.provider, row.id).detect().catch(() => ({ installed: true, loggedIn: false, conclusive: false }))
       return { ...row, ...detection, selected: profiles.selected[row.provider] === row.id }
     })))
