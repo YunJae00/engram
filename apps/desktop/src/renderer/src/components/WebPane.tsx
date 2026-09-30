@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronsRight, Globe, LoaderCircle, Maximize2, PanelLeft, Square } from 'lucide-react'
+import { ChevronsRight, LoaderCircle, Maximize2, PanelLeft, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -28,7 +28,7 @@ const FOLD_MS = 220
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
-export function BrowserAddress({ url, channel, start = false }: { url?: string; channel: string; start?: boolean }) {
+export function BrowserAddress({ url, channel }: { url?: string; channel: string }) {
   const { showToast } = useShellState()
   const [draft, setDraft] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -51,10 +51,10 @@ export function BrowserAddress({ url, channel, start = false }: { url?: string; 
     <div className="browser-address-field" aria-busy={pending}><input
       ref={field}
       className="live-address"
-      data-testid={start ? 'browser-start-input' : 'live-address'}
-      aria-label={start ? 'Search or type a URL' : 'Website address'}
+      data-testid="live-address"
+      aria-label="Website address"
       placeholder="Search or type a URL"
-      autoFocus={start}
+      autoFocus={!url || url === 'about:blank'}
       value={shown}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
@@ -71,12 +71,12 @@ export function BrowserAddress({ url, channel, start = false }: { url?: string; 
         e.stopPropagation()
         go()
       }}
-    />{start ? <button className="browser-start-go" aria-label="Search or open website" disabled={pending || !shown.trim()} onClick={go}>{pending ? <LoaderCircle size={16} className="computer-spinner" aria-label="Opening website" /> : <ArrowRight size={18} aria-hidden />}</button> : pending && <LoaderCircle size={14} className="computer-spinner" aria-label="Opening website" />}</div>
+    />{pending && <LoaderCircle size={14} className="computer-spinner" aria-label="Opening website" />}</div>
   )
 }
 
-export function BrowserStart({ channel }: { channel: string }) {
-  return <div className="web-pane-empty browser-start"><Globe size={42} strokeWidth={1.2} aria-hidden /><h2>Where would you like to go?</h2><BrowserAddress channel={channel} start /><span>Search the web or enter a website. No AI connection needed.</span></div>
+export function BrowserStart() {
+  return <div className="web-pane-empty browser-start" aria-hidden />
 }
 
 export function WebPane({ channel, busy, onStop, children, toolbar }: { channel: string; busy: boolean; onStop(): void; children?: ReactNode; toolbar?: ReactNode }) {
@@ -202,7 +202,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           className="web-pane-stage"
           ref={stage}
         >
-          {(!liveHere && !frameHere) || (mine && url === 'about:blank') ? <BrowserStart channel={channel} /> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing && active} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing && active} hasFrame={frameHere} />}
+          {(!liveHere && !frameHere) || (mine && url === 'about:blank') ? <BrowserStart /> : native ? <NativeSurface key={channel} lane={channel} active={liveHere && !closing && active} /> : <MirrorSurface key={channel} lane={channel} live={liveHere && !closing && active} hasFrame={frameHere} />}
         </div>
         {frozen && <div className="web-pane-note">{t('live.closed')}</div>}
         {children}

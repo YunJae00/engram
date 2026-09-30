@@ -186,6 +186,19 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Scout', purpose: 'finds things out' }))
   await openActivity(page, 'bots')
   await expect(page.getByTestId('sidebar-chats')).toContainText('Scout')
+  const alignment = await sidebar.evaluate(node => {
+    const head = node.querySelector('.app-sidebar-head')!.getBoundingClientRect()
+    const tools = node.querySelector('.sidebar-library-tools')!.getBoundingClientRect()
+    const row = node.querySelector('.sidebar-conversations .sidebar-item')!.getBoundingClientRect()
+    const search = node.querySelector('.sidebar-search')!.getBoundingClientRect()
+    const add = node.querySelector('[data-testid="sidebar-create"]')!.getBoundingClientRect()
+    return { left: Math.abs(tools.left - row.left), right: Math.abs(tools.right - row.right), above: tools.top - head.bottom, below: row.top - tools.bottom, heights: Math.abs(search.height - add.height) }
+  })
+  expect(alignment.left).toBeLessThan(1)
+  expect(alignment.right).toBeLessThan(1)
+  expect(alignment.above).toBeCloseTo(12, 1)
+  expect(alignment.below).toBeCloseTo(12, 1)
+  expect(alignment.heights).toBeLessThan(1)
 
   await page.getByTestId(`sidebar-chat-menu-${bot.id}`).click()
   await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Pin', 'Delete'])

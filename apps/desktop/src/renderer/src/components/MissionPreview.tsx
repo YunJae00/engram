@@ -46,7 +46,7 @@ export function MissionPreview({ lane, name, open, onLiveChange }: { lane: strin
   if (native || (live && url === 'about:blank')) return (
     <div className="mission-preview native-mission-preview">
       <div className="web-pane-bar"><BrowserAddress key={`address-${lane}`} channel={lane} url={url} /><BrowserActions key={`actions-${lane}`} lane={lane} url={url} live={live && url !== 'about:blank'} /></div>
-      {live && url !== 'about:blank' ? <NativeSurface lane={lane} /> : <BrowserStart channel={lane} />}
+      {live && url !== 'about:blank' ? <NativeSurface lane={lane} /> : <BrowserStart />}
     </div>
   )
   return (

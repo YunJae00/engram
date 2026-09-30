@@ -49,8 +49,7 @@ export function CometWelcome() {
     finally { pending.current = false; setCreating(false) }
   }
   return <section className="comet-welcome" data-testid="comet-welcome">
-    <div className="comet-welcome-mark" aria-hidden><span /><Comet size={38} /></div>
-    <div className="comet-welcome-heading"><h1>A spark starts here.</h1><p>Ask, explore, or put a comet to work.</p></div>
+    <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span /><Comet size={38} /></div></div>
     <RoutineSkillHint value={draft} select={() => setDraft('/routine')} />
     <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} onStop={() => undefined}
       placeholder="Ask Engram…" maxLength={2000} busy={false} disabled={creating} testId="welcome-input" attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching}

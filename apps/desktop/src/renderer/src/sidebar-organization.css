@@ -1,5 +1,6 @@
 .sidebar-collection { position: relative; min-width: 0; }
-.sidebar-library-tools { display: flex; align-items: center; gap: 6px; margin: 6px 16px 10px; }
+.sidebar-library-tools { display: flex; align-items: center; gap: 8px; margin: 12px; }
+.sidebar-section.sidebar-conversations { margin-top: 0; }
 .sidebar-library-tools .sidebar-search { flex: 1; min-width: 0; margin: 0; border-radius: 999px; }
 .sidebar-create { border-radius: 50% !important; border: 1px solid var(--border-soft); }
 .sidebar-create-menu { position: fixed; margin: 0; width: 200px; padding: 5px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); }
@@ -106,14 +107,6 @@
 .web-pane.expanded { flex: 1 !important; width: 100% !important; max-width: none !important; height: 100% !important; }
 .web-pane.expanded > .web-pane-grip { display: none; }
 .bots-main:has(> .web-pane.expanded) > .bots-chat { display: none; }
-.browser-start { gap: 16px; padding: 32px !important; }
-.browser-start > h2 { font-size: 20px; font-weight: 500; margin: 0; color: var(--fg-dim); }
-.browser-start > .browser-address-field { flex: none; width: min(640px, 100%); min-height: 52px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--panel-bg); padding: 0 16px; }
-.browser-start .live-address { background: transparent; min-width: 0; width: 100%; border: 0; box-shadow: none; outline: none; }
-.browser-start > .browser-address-field:focus-within { border-color: var(--fg-faint); }
-.browser-start-go { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--fg); color: var(--panel-bg); }
-.browser-start-go:disabled { opacity: 0.35; }
-.browser-start > span { max-width: 360px; text-align: center; line-height: 1.6; }
 .onboard-progress { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; color: var(--fg-dim); font-size: 13px; }
 .onboard-progress > strong { color: var(--fg); font-size: 16px; }
 .onboard-folder-label { display: flex; gap: 8px; align-items: center; font-size: 13px; }

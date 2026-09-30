@@ -11,7 +11,7 @@ interface WindowState {
 
 const SAVE_AFTER_MS = 500
 // The share of the work area a first window takes, centred on it.
-const FIRST_SIZE = { width: 1040, height: 760 }
+const FIRST_WIDTH = 1000
 
 function file(): string {
   return join(app.getPath('userData'), 'window-state.json')
@@ -40,8 +40,10 @@ export function placeWindow(win: BrowserWindow, state: WindowState): void {
   if (remembered) win.setBounds(remembered)
   else {
     const area = screen.getPrimaryDisplay().workArea
-    const width = Math.max(win.getMinimumSize()[0] ?? 0, Math.min(FIRST_SIZE.width, Math.round(area.width * 0.86)))
-    const height = Math.max(win.getMinimumSize()[1] ?? 0, Math.min(FIRST_SIZE.height, Math.round(area.height * 0.9)))
+    const unit = Math.max(1, Math.floor(Math.min(FIRST_WIDTH / 4, area.width * 0.86 / 4, area.height * 0.9 / 3)))
+    const width = unit * 4, height = unit * 3
+    const [minWidth = 0, minHeight = 0] = win.getMinimumSize()
+    if (width < minWidth || height < minHeight) win.setMinimumSize(Math.min(minWidth, width), Math.min(minHeight, height))
     win.setBounds({ x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2), width, height })
   }
   if (state.maximized) win.maximize()

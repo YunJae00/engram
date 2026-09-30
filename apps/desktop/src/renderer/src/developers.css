@@ -27,7 +27,7 @@
 .dev-pane-picker .dev-menu-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-pane-picker .dev-menu-row svg { flex-shrink: 0; }
 .dev-pane-picker [aria-current='true'] { background: var(--selected-soft); }
-.dev-header { min-height: 64px; padding: 10px 24px 14px; background: var(--canvas-bg); flex-shrink: 0; }
+.dev-header { min-height: 64px; padding: 10px 24px 14px; background: var(--canvas-bg); border-bottom: 1px solid var(--border-soft); flex-shrink: 0; }
 .dev-header > div, .dev-actions { display: flex; align-items: center; gap: 8px; }
 .dev-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-header > div:first-child { min-width: 0; }
@@ -72,11 +72,7 @@
 .dev-tool pre, .dev-approval pre, .dev-review pre { overflow: auto; max-height: 360px; padding: 12px; background: var(--rail-bg); border-radius: 8px; font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dev-working { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
 .dev-composer { margin: 12px var(--composer-gutter) 20px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-composer); background: var(--input-bg); }
-.dev-pane-welcome > .dev-log { flex: 0 1 auto; margin-top: auto; padding-top: 32px; padding-bottom: 0; }
-.dev-pane-welcome .dev-empty { min-height: 0; padding: 12px 0 18px; gap: 10px; }
-.dev-pane-welcome .dev-empty h2 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.035em; overflow-wrap: anywhere; }
-.dev-pane-welcome > .dev-composer { flex-shrink: 0; margin-top: 0; margin-bottom: auto; }
-.dev-pane-welcome::after { content: ''; height: 64px; flex-shrink: 1; }
+.dev-composer { flex-shrink: 0; }
 .dev-composer textarea { display: block; width: 100%; min-height: 38px; max-height: 180px; resize: none; border: 0; padding: 6px 8px; background: transparent; color: inherit; font: inherit; outline: none; }
 .dev-composer:focus-within { border-color: var(--accent-line); }
 .dev-send { display: grid; place-items: center; margin-left: auto; width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 50%; background: var(--button-bg); color: var(--selected-fg); }

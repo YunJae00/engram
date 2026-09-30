@@ -419,7 +419,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
   display: flex; align-items: center; gap: 8px;
   height: var(--titlebar-height); padding: 0 var(--page-gutter); flex-shrink: 0;
   background: var(--panel-bg);
-  border-bottom: 1px solid var(--border-soft);
   /* frameless window: the top bar IS the title bar — draggable, with the
      native window controls overlaying its right edge */
   -webkit-app-region: drag;
