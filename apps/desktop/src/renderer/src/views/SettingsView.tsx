@@ -32,19 +32,22 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
-  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [checkingUpdate, setCheckingUpdate] = useState(true)
   const [saving, setSaving] = useState(false)
   const [ready, setReady] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let alive = true
+    setCheckingUpdate(true)
     const loads = [
       api.settingsGet().then((value) => { if (alive) { setSettings(value); setReady(true) } }).catch(() => { if (alive) setReady(true) }),
       api.appVersion().then(setVersion),
       api.activityGet().then(setDeskJournal),
       // Refresh the feed even when an older release is already downloaded.
-      api.updateCheck().then(setUpdate),
+      api.updateCheck().then(value => { if (alive) setUpdate(value) })
+        .catch(() => { if (alive) setUpdate({ state: 'error', message: 'Could not check for updates. Try again.', selfInstalls: false }) })
+        .finally(() => { if (alive) setCheckingUpdate(false) }),
       api.semanticStatus().then(setSemantic).catch(() => setSemantic({ status: 'error', detail: 'Could not check status. Retrying…', model: '' })),
     ]
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })

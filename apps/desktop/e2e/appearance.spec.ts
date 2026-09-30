@@ -38,17 +38,18 @@ test('update checks show progress, recover from failure and allow retry', async 
     let attempts = 0
     ipcMain.removeHandler('update:check')
     ipcMain.handle('update:check', async () => {
-      await new Promise(resolve => setTimeout(resolve, 800))
-      if (++attempts === 1) throw new Error('Isolated update fixture failure')
+      if (++attempts === 1) await new Promise((_resolve, reject) => {
+        ;(globalThis as typeof globalThis & { failUpdate: () => void }).failUpdate = () => reject(new Error('Isolated update fixture failure'))
+      })
       return { state: 'current', selfInstalls: false }
     })
   })
   await openActivity(page, 'settings')
   const check = page.getByTestId('settings-update-check')
-  await check.click()
   await expect(check).toBeDisabled()
   await expect(check.locator('.spin')).toBeVisible()
   await expect(page.getByTestId('settings-update')).toHaveAttribute('aria-busy', 'true')
+  await app.evaluate(() => (globalThis as typeof globalThis & { failUpdate: () => void }).failUpdate())
   await expect(page.getByTestId('settings-update')).toContainText('Could not check for updates. Try again.')
   await expect(check).toBeEnabled()
   await check.click()
