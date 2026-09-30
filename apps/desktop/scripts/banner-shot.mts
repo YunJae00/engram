@@ -26,7 +26,7 @@ const box = page.locator('.bots-write textarea')
 const before = await box.boundingBox()
 // The event the updater sends when a download has landed.
 await app.evaluate(({ BrowserWindow }) => {
-  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'update:ready', version: '9.9.9' })
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'update:changed', update: { state: 'ready', version: '9.9.9', selfInstalls: true } })
 })
 await page.getByTestId('update-banner').waitFor({ state: 'visible', timeout: 5_000 })
 await page.waitForTimeout(300)

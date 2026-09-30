@@ -304,3 +304,47 @@ test('a cached model menu remains usable after reload while the catalog request 
   await expect(page.getByTestId('effort-pick-high')).toBeEnabled({ timeout: 1000 })
   await page.keyboard.press('Escape')
 })
+
+test('Claude keeps its brand color while the usage ring is muted in both themes', async () => {
+  await page.getByTestId('welcome-input').click()
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
+    const icon = page.locator('.provider-usage-icon > .provider-icon[data-provider="claude"]').first()
+    await expect(icon).toBeVisible()
+    await expect(icon).toHaveCSS('color', 'rgb(197, 118, 85)')
+    const ring = page.locator('.provider-usage-icon .account-limit-ring circle').last()
+    await expect(ring).toHaveCSS('stroke', theme === 'light' ? 'rgb(116, 116, 116)' : 'rgb(144, 144, 144)')
+    await page.screenshot({ path: join(TMP, `updater-ring-${theme}.png`) })
+  }
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
+})
+
+test('a newer update replaces stale restart actions in the banner and settings', async () => {
+  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+    let state = { state: 'ready', version: '9.0.1', selfInstalls: true, percent: 100 }
+    for (const name of ['update:check', 'update:state', 'update:install']) ipcMain.removeHandler(name)
+    ipcMain.handle('update:check', () => state)
+    ipcMain.handle('update:state', () => state)
+    ipcMain.handle('update:install', () => {
+      state = { state: 'downloading', version: '9.0.2', selfInstalls: true, percent: 12 }
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'update:changed', update: state })
+      return { started: false, reason: 'downloading' }
+    })
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'update:changed', update: state })
+  })
+  const banner = page.getByTestId('update-banner')
+  await expect(banner).toContainText('9.0.1')
+  await banner.getByRole('button', { name: 'Restart now' }).click()
+  await expect(banner).toContainText('9.0.2')
+  await expect(banner.getByRole('button')).toBeDisabled()
+  await expect(banner.getByText('Restart now')).toHaveCount(0)
+  await openActivity(page, 'settings')
+  await expect(page.getByTestId('settings-update')).toContainText('9.0.2')
+  await expect(page.getByTestId('settings-update').getByRole('progressbar')).toHaveAttribute('value', '12')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'update:changed', update: { state: 'ready', version: '9.0.2', selfInstalls: true } })
+  })
+  await expect(page.getByTestId('settings-update').getByRole('button', { name: 'Restart now' })).toBeEnabled()
+  await page.keyboard.press('Escape')
+  await expect(banner.getByRole('button', { name: 'Restart now' })).toBeEnabled()
+})

@@ -30,47 +30,84 @@ export interface UpdateCheck {
 let latestSeen: string | null = null
 let downloadedVersion: string | null = null
 let downloadPercent = 0
+let downloadError: string | undefined
+let download: Promise<void> | undefined
+let downloadingVersion: string | undefined
+let changed: (state: UpdateCheck) => void = () => {}
 
-export function startUpdater(notify: (version: string, selfInstalls: boolean) => void): void {
+function publish(): void { changed(updateStateNow()) }
+
+function downloadLatest(): void {
+  if (!SELF_INSTALLS || download || !latestSeen || downloadedVersion === latestSeen) return
+  const version = latestSeen
+  downloadingVersion = version
+  downloadPercent = 0
+  downloadError = undefined
+  autoUpdater.autoInstallOnAppQuit = false
+  publish()
+  // electron-updater shares one download promise. Wait for it to settle before
+  // requesting a newer release discovered while the old download was running.
+  download = autoUpdater.downloadUpdate().then(() => {}, (err: unknown) => {
+    if (version === latestSeen) downloadError = err instanceof Error ? err.message.slice(0, 200) : 'Download failed'
+    flog('updater-download-failed', err)
+  }).finally(() => {
+    download = undefined
+    downloadingVersion = undefined
+    publish()
+    if (version !== latestSeen) downloadLatest()
+  })
+}
+
+export function startUpdater(notify: (state: UpdateCheck) => void): void {
   // Packaged only — dev/e2e have no app-update.yml and must never auto-update.
   if (!app.isPackaged) return
   // Downloading what cannot be installed is pure waste of the user's bandwidth.
-  autoUpdater.autoDownload = SELF_INSTALLS
-  autoUpdater.autoInstallOnAppQuit = SELF_INSTALLS
+  changed = notify
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
 
-  // Two different moments mean "tell the user": a platform that installs for
-  // itself waits until the bytes are on disk, one that cannot says so as soon
-  // as it knows there is something to fetch.
+  // Only matching bytes enable installation; an older download can finish
+  // after the feed has already announced its replacement.
   autoUpdater.on('update-downloaded', (info) => {
     if (!SELF_INSTALLS) return
     flog('updater', `downloaded ${info.version}`)
-    latestSeen = info.version
+    if (info.version !== latestSeen) return
     downloadedVersion = info.version
     downloadPercent = 100
-    notify(info.version, true)
+    downloadError = undefined
+    autoUpdater.autoInstallOnAppQuit = true
+    publish()
   })
   autoUpdater.on('download-progress', (p: { percent?: number }) => {
+    if (downloadingVersion !== latestSeen) return
     downloadPercent = Math.round(p.percent ?? 0)
+    publish()
   })
   autoUpdater.on('update-available', (info) => {
     // Recorded on every platform: the state snapshot below reads it, and a
     // self-installing platform used to skip this line — so the Settings row
     // said "up to date" while a download was already running.
-    latestSeen = info.version
-    if (SELF_INSTALLS) return
-    flog('updater', `available ${info.version} (manual download — unsigned build)`)
-    notify(info.version, false)
+    if (latestSeen !== info.version) {
+      latestSeen = info.version
+      downloadedVersion = null
+      downloadPercent = 0
+      downloadError = undefined
+      autoUpdater.autoInstallOnAppQuit = false
+    }
+    publish()
+  })
+  autoUpdater.on('update-not-available', () => {
+    latestSeen = null
+    downloadedVersion = null
+    autoUpdater.autoInstallOnAppQuit = false
+    publish()
   })
   autoUpdater.on('error', (err) => {
     console.error('auto-update error (non-fatal):', err)
     flog('updater-error', err)
   })
 
-  const check = () =>
-    void autoUpdater.checkForUpdates().catch((err) => {
-      console.error('update check failed:', err)
-      flog('updater-check-failed', err)
-    })
+  const check = () => { void checkForUpdatesNow() }
   // A moment after boot so it never competes with first paint, then every 6h
   // for long-running sessions.
   setTimeout(check, 8_000)
@@ -85,16 +122,9 @@ export async function checkForUpdatesNow(): Promise<UpdateCheck> {
   }
   try {
     const result = await autoUpdater.checkForUpdates()
-    const version = result?.updateInfo?.version
-    if (!version || version === app.getVersion()) {
-      return { state: 'current', version: app.getVersion(), selfInstalls: SELF_INSTALLS }
-    }
-    latestSeen = version
-    // A build that cannot install itself is 'available' and nothing more; one
-    // that can is only restartable once the download has landed.
-    if (!SELF_INSTALLS) return { state: 'available', version, selfInstalls: false }
-    if (downloadedVersion === version) return { state: 'ready', version, selfInstalls: true }
-    return { state: 'downloading', version, selfInstalls: true, percent: downloadPercent }
+    if (!result) return { state: 'checking-unavailable', selfInstalls: SELF_INSTALLS }
+    downloadLatest()
+    return updateStateNow()
   } catch (err) {
     flog('updater-check-failed', err)
     return {
@@ -105,9 +135,6 @@ export async function checkForUpdatesNow(): Promise<UpdateCheck> {
   }
 }
 
-// Returns whether the install actually started. quitAndInstall on a version
-// that has not finished downloading is a silent no-op, and a button that does
-// nothing is worse than one that explains itself.
 // What the updater already knows, with no network round-trip — cheap enough
 // for the Settings row to poll while a download runs.
 export function updateStateNow(): UpdateCheck {
@@ -115,11 +142,13 @@ export function updateStateNow(): UpdateCheck {
   if (!latestSeen || latestSeen === app.getVersion())
     return { state: 'current', version: app.getVersion(), selfInstalls: SELF_INSTALLS }
   if (!SELF_INSTALLS) return { state: 'available', version: latestSeen, selfInstalls: false }
+  if (downloadError) return { state: 'error', version: latestSeen, selfInstalls: true, message: downloadError }
   if (downloadedVersion === latestSeen) return { state: 'ready', version: latestSeen, selfInstalls: true }
   return { state: 'downloading', version: latestSeen, selfInstalls: true, percent: downloadPercent }
 }
 
-export function installUpdateNow(): { started: boolean; reason?: string } {
+// Recheck even a downloaded release before letting the window quit.
+export async function installUpdateNow(beforeInstall: () => void): Promise<{ started: boolean; reason?: string }> {
   if (!app.isPackaged) return { started: false, reason: 'not a packaged build' }
   // On macOS quitAndInstall would quit the app and then fail the signature
   // check, so the click has to lead somewhere that actually works.
@@ -127,11 +156,13 @@ export function installUpdateNow(): { started: boolean; reason?: string } {
     void shell.openExternal(RELEASES_URL)
     return { started: true }
   }
-  if (!downloadedVersion) {
+  const fresh = await checkForUpdatesNow()
+  if (fresh.state !== 'ready' || !downloadedVersion || downloadedVersion !== latestSeen) {
     flog('updater', `install requested before the download finished (${downloadPercent}%)`)
-    return { started: false, reason: 'still downloading' }
+    return { started: false, reason: fresh.state }
   }
   // isSilent=false (show the installer), isForceRunAfter=true (reopen after)
+  beforeInstall()
   autoUpdater.quitAndInstall(false, true)
   return { started: true }
 }

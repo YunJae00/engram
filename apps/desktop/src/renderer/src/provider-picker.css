@@ -7,9 +7,9 @@
 .model-picker > .model-picker-btn { min-width: 0; }
 .model-picker > .model-picker-btn, .provider-picker-sidebar .sidebar-engine-status { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 50%; flex: none; }
 .provider-usage-icon { position: relative; display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
-.provider-usage-icon, .provider-usage-icon > .provider-icon { color: var(--fg-dim); }
+.provider-usage-icon { color: var(--fg-dim); }
 .provider-usage-icon > .account-limit-ring { position: absolute; inset: 0; stroke-width: 1.2; }
-.provider-usage-icon > .account-limit-ring circle:last-of-type { stroke: var(--fg-dim); }
+.provider-usage-icon > .account-limit-ring circle:last-of-type { stroke: var(--fg-faint); }
 .provider-usage-icon > .account-limit-ring[data-unknown='true'] > circle:first-child { stroke-dasharray: 2 2; }
 .model-loading-skeleton { display: grid; gap: 14px; padding: 12px; min-height: 100px; }
 .model-loading-skeleton .skeleton-line { width: 75%; }

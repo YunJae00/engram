@@ -43,17 +43,16 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
       api.settingsGet().then((value) => { if (alive) { setSettings(value); setReady(true) } }).catch(() => { if (alive) setReady(true) }),
       api.appVersion().then(setVersion),
       api.activityGet().then(setDeskJournal),
-      // What the updater already knows, shown without a click — a downloaded
-      // update used to hide behind Check now.
-      api.updateState().then(setUpdate),
+      // Refresh the feed even when an older release is already downloaded.
+      api.updateCheck().then(setUpdate),
       api.semanticStatus().then(setSemantic).catch(() => setSemantic({ status: 'error', detail: 'Could not check status. Retrying…', model: '' })),
     ]
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
       if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, computerUse: event.settings.computerUse, defaultEngine: event.settings.defaultEngine, claudeModel: event.settings.claudeModel, codexModel: event.settings.codexModel, claudeEffort: event.settings.claudeEffort, codexEffort: event.settings.codexEffort, aiSelections: event.settings.aiSelections } : event.settings)
-      if (event.type === 'update:ready') {
-        setUpdate({ state: 'ready', version: event.version, selfInstalls: event.selfInstalls })
+      if (event.type === 'update:changed') {
+        setUpdate(event.update)
       }
     })
     return () => {

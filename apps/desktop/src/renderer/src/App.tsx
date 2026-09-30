@@ -13,6 +13,7 @@ import { useCometState, useShellState } from './state-slices.js'
 import { t } from './i18n.js'
 import { selectComet } from './lib/cometThreadsLive.js'
 import type { SettingsSection } from './components/SettingsNavigation.js'
+import type { UpdateCheckDto } from '../../shared/types.js'
 
 // Only what the first screen needs is in the first bundle. An editor, a sky
 // full of stars, a settings sheet and a walkthrough are all real weight, and
@@ -84,16 +85,14 @@ function Shell() {
     if (activity === 'list') setListSeen(true)
   }, [activity])
   // Version of a downloaded update waiting to be applied.
-  const [updateReady, setUpdateReady] = useState<string | null>(null)
-  const [updateSelfInstalls, setUpdateSelfInstalls] = useState(true)
+  const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   useEffect(() => {
     return api.onEvent((e) => {
       // A toast was not enough: closing the window only hides to the tray, so
       // "installs on next quit" never happened and the update sat downloaded
       // forever. This stays on screen with a button that actually applies it.
-      if (e.type === 'update:ready') {
-        setUpdateReady(e.version)
-        setUpdateSelfInstalls(e.selfInstalls)
+      if (e.type === 'update:changed') {
+        setUpdate(e.update)
       }
       // A citation clicked in another window: the main process already
       // surfaced this window; land on the note itself.
@@ -230,8 +229,7 @@ function Shell() {
           engines={engines}
           enginesDetected={enginesDetected}
           pendingWork={pendingWork}
-          updateReady={updateReady}
-          updateSelfInstalls={updateSelfInstalls}
+          update={update}
           vaultReady={vaultReady}
           onOpenSettings={() => { setSettingsSection('ai'); setSettingsOpen(true) }}
         />

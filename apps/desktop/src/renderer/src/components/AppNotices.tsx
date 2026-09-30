@@ -1,5 +1,6 @@
-import { Download, PlugZap } from 'lucide-react'
-import { memo } from 'react'
+import { Download, LoaderCircle, PlugZap } from 'lucide-react'
+import { memo, useEffect, useState } from 'react'
+import type { UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import type { AppState } from '../state.js'
@@ -9,8 +10,7 @@ interface AppNoticesProps {
   engines: AppState['engines']
   enginesDetected: boolean
   pendingWork: AppState['pendingWork']
-  updateReady: string | null
-  updateSelfInstalls: boolean
+  update: UpdateCheckDto | null
   vaultReady: boolean
   onOpenSettings: () => void
 }
@@ -20,11 +20,13 @@ export const AppNotices = memo(function AppNotices({
   engines,
   enginesDetected,
   pendingWork,
-  updateReady,
-  updateSelfInstalls,
+  update,
   vaultReady,
   onOpenSettings,
 }: AppNoticesProps) {
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState(false)
+  useEffect(() => setError(false), [update?.version, update?.state])
   const unhealthy = engines.filter((engine) => engine.healthy === false)
   const unhealthyIds = unhealthy.map((engine) => engine.id).join(', ')
   const reason = unhealthy[0]?.healthReason
@@ -64,16 +66,25 @@ export const AppNotices = memo(function AppNotices({
           </button>
         </div>
       )}
-      {updateReady && (
+      {update?.version && !['current', 'checking-unavailable'].includes(update.state) && (
         <div className="connect-banner update-banner" data-testid="update-banner">
           <Download size={14} strokeWidth={1.8} aria-hidden />
           <span>
-            {updateSelfInstalls
-              ? t('banner.updateReady', { version: updateReady })
-              : t('banner.updateAvailable', { version: updateReady })}
+            {error ? t('settings.updateError', { reason: 'Could not check for updates. Try again.' })
+              : update.state === 'downloading' ? t('settings.updateDownloading', { version: update.version, percent: update.percent ?? 0 })
+              : update.state === 'error' ? t('settings.updateError', { reason: update.message ?? '' })
+              : update.state === 'ready' ? t('banner.updateReady', { version: update.version })
+              : t('banner.updateAvailable', { version: update.version })}
           </span>
-          <button className="connect-banner-btn" onClick={() => void api.updateInstall()}>
-            {updateSelfInstalls ? t('banner.updateRestart') : t('banner.updateDownload')}
+          <button className="connect-banner-btn" disabled={checking || update.state === 'downloading'} onClick={() => {
+            setChecking(true); setError(false)
+            void (update.state === 'error' ? api.updateCheck().then(result => { setError(result.state === 'error') })
+              : api.updateInstall().then(result => { setError(!result.started && result.reason !== 'downloading') }))
+              .catch(() => setError(true)).finally(() => setChecking(false))
+          }}>
+            {checking || update.state === 'downloading' ? <LoaderCircle size={14} className="spin" aria-label="Checking update" />
+              : update.state === 'error' || error ? t('settings.updateCheck')
+              : update.selfInstalls ? t('banner.updateRestart') : t('banner.updateDownload')}
           </button>
         </div>
       )}

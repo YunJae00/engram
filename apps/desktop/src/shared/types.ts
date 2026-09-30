@@ -514,7 +514,7 @@ export type EngramEvent =
   // a newer app version was downloaded and will install on next quit
   // selfInstalls false = the platform cannot swap the app itself (an unsigned
   // macOS build), so the action is a download rather than an install
-  | { type: 'update:ready'; version: string; selfInstalls: boolean }
+  | { type: 'update:changed'; update: UpdateCheckDto }
   // live health verdict for one engine — false means it is present but not
   // usable, and `reason` says which sentence (and which button) the user gets
   | { type: 'engine:health'; id: string; healthy: boolean; reason?: EngineHealthReason }

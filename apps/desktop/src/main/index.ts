@@ -353,8 +353,7 @@ async function startResidency(ctx: VaultContext): Promise<void> {
         // Same contract as the banner button: flip `quitting` first or the
         // main window's own close handler cancels the updater's quit.
         onInstallUpdate: () => {
-          quitting = true
-          installUpdateNow()
+          void installUpdateNow(() => { quitting = true })
         },
       })
       if (updateReadyVersion !== null) tray.setUpdateReady(updateReadyVersion)
@@ -423,14 +422,7 @@ function registerBaseIpc(): void {
   // window's close handler hides to the tray instead of quitting, which would
   // otherwise cancel the updater's own quit and leave the update pending.
   ipcMain.handle('update:install', () => {
-    // Only a self-installing platform is really quitting; on macOS this opens
-    // the download page and the app must stay where it is.
-    if (process.platform !== 'darwin') quitting = true
-    const outcome = installUpdateNow()
-    // An install that never started must not leave the app marked as quitting,
-    // or the next window close would kill it.
-    if (!outcome.started) quitting = false
-    return outcome
+    return installUpdateNow(() => { quitting = true })
   })
 
   ipcMain.handle('update:check', () => checkForUpdatesNow())
@@ -675,12 +667,13 @@ app.whenReady().then(async () => {
   // Auto-update: check the public release feed (packaged only). Where the
   // platform can install for itself it does so on the next quit; where it
   // cannot, the same surfaces offer the download instead.
-  startUpdater((version, selfInstalls) => {
+  startUpdater((state) => {
     // Both surfaces at once: the window banner (visible if it's open) and the
     // tray menu item (visible even when it never is).
-    updateReadyVersion = version
-    broadcast({ type: 'update:ready', version, selfInstalls })
-    tray?.setUpdateReady(version)
+    const ready = state.state === 'ready' || state.state === 'available' ? state.version ?? null : null
+    if (ready !== updateReadyVersion) tray?.setUpdateReady(ready ?? undefined)
+    updateReadyVersion = ready
+    broadcast({ type: 'update:changed', update: state })
   })
   // Semantic model warm-up: needs no vault, so the ~600MB first-run download
   // overlaps the onboarding walk instead of starting after it.

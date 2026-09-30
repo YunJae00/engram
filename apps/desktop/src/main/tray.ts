@@ -123,7 +123,7 @@ interface TrayActions {
 }
 
 export interface TrayHandle {
-  setUpdateReady(version: string): void
+  setUpdateReady(version: string | undefined): void
 }
 
 export function createTray(actions: TrayActions): TrayHandle {
