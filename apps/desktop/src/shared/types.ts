@@ -624,6 +624,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   workspaceCreate(name: string): Promise<void>
   workspaceJoin(name: string, url: string): Promise<void>
   workspaceSwitch(id: string): Promise<void>
+  workspaceDelete(id: string): Promise<boolean>
   listNotes(): Promise<NoteDto[]>
   readNote(id: string): Promise<{ note: NoteDto; body: string }>
   saveNoteBody(id: string, body: string): Promise<void>

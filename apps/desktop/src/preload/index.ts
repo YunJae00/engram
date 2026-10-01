@@ -117,6 +117,7 @@ const api: EngramApi = {
   workspaceCreate: (name: string) => ipcRenderer.invoke('workspace:create', { name }),
   workspaceJoin: (name: string, url: string) => ipcRenderer.invoke('workspace:join', { name, url }),
   workspaceSwitch: (id: string) => ipcRenderer.invoke('workspace:switch', id),
+  workspaceDelete: (id: string) => ipcRenderer.invoke('workspace:delete', id),
   listNotes: () => ipcRenderer.invoke('notes:list'),
   readNote: (id: string) => ipcRenderer.invoke('notes:read', id),
   saveNoteBody: (id: string, body: string) => ipcRenderer.invoke('notes:saveBody', id, body),

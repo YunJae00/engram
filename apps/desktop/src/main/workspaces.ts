@@ -1,9 +1,9 @@
-import { initVault, joinTeam } from 'core'
-import { app, ipcMain } from 'electron'
+import { initVault, joinTeam, renameWithRetry } from 'core'
+import { app, dialog, ipcMain, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { lstat, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import type { WorkspaceInfoDto } from '../shared/types.js'
 import { binaryProvider } from './vault.js'
 
@@ -20,6 +20,7 @@ interface WorkspaceInfo {
 }
 
 interface Registry {
+  pendingDelete?: string
   // current = the id of the active workspace (null = none registered yet).
   current: string | null
   vaults: WorkspaceInfo[]
@@ -78,7 +79,52 @@ async function loadRegistry(): Promise<Registry> {
 }
 
 async function saveRegistry(reg: Registry): Promise<void> {
-  await writeFile(registryPath(), JSON.stringify(reg, null, 2))
+  const pending = `${registryPath()}.${newId()}.tmp`
+  await writeFile(pending, JSON.stringify(reg, null, 2))
+  await renameWithRetry(pending, registryPath())
+}
+
+// Only an app-owned vault container can be recycled, never a broad folder,
+// linked directory or parent of another registered workspace.
+async function deletionRoot(vault: WorkspaceInfo, reg: Registry): Promise<string | null> {
+  if (!isAbsolute(vault.root)) throw new Error('The workspace path must be absolute.')
+  const root = resolve(vault.root)
+  const contains = (parent: string, child: string) => { const path = relative(parent, child); return !path || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`)) }
+  const protectedPaths = [parse(root).root, app.getPath('home'), app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), app.getPath('userData'), app.getAppPath()]
+  if (protectedPaths.some(path => contains(root, resolve(path))) || reg.vaults.some(other => other.id !== vault.id && contains(root, resolve(other.root)))) throw new Error('This folder contains another workspace or protected app data. It cannot be deleted here.')
+  const stat = await lstat(root).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return null; throw error })
+  if (!stat) return null
+  if (!stat.isDirectory() || stat.isSymbolicLink() || relative(root, await realpath(root))) throw new Error('Linked workspace folders cannot be deleted here.')
+  for (const other of reg.vaults.filter(value => value.id !== vault.id)) {
+    if (contains(root, await realpath(other.root).catch(() => resolve(other.root)))) throw new Error('Another workspace points inside this folder. It cannot be deleted here.')
+  }
+  const entries = await readdir(root)
+  if (entries.length !== 2 || !entries.includes('workspace') || !entries.includes('private')) throw new Error('This folder contains files outside Engram. Move them elsewhere before deleting the workspace.')
+  for (const path of ['workspace', 'private', 'workspace/.engram', 'workspace/notes']) {
+    const info = await lstat(join(root, path))
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('This is not a standalone Engram workspace.')
+  }
+  return root
+}
+
+// Run before bootVault: no watchers or model processes can recreate deleted data.
+export async function finishWorkspaceDeletion(): Promise<void> {
+  const reg = await loadRegistry()
+  if (!reg.pendingDelete) return
+  const vault = reg.vaults.find(value => value.id === reg.pendingDelete)
+  try {
+    if (!vault) throw new Error('The workspace no longer exists in the registry.')
+    const root = await deletionRoot(vault, reg)
+    if (root) await shell.trashItem(root)
+    reg.vaults = reg.vaults.filter(value => value.id !== vault.id)
+    if (reg.current === vault.id) reg.current = reg.vaults[0]?.id ?? null
+    delete reg.pendingDelete
+    await saveRegistry(reg)
+  } catch (error) {
+    delete reg.pendingDelete
+    await saveRegistry(reg)
+    dialog.showErrorBox('Workspace deletion did not finish', String(error))
+  }
 }
 
 // Adds a workspace if its (resolved) root is not already registered, sets it
@@ -150,12 +196,31 @@ function gitEnabled(): boolean {
 // ipcMain handlers. Must be registered in registerBaseIpc() so the switcher and
 // onboarding work before any vault is booted.
 export function registerWorkspaceIpc(): void {
+  let deleting = false
+  ipcMain.handle('workspace:delete', async (_event, id: string) => {
+    if (deleting) throw new Error('A workspace deletion is already in progress.')
+    deleting = true
+    try {
+      const reg = await loadRegistry()
+      const vault = reg.vaults.find(value => value.id === id)
+      if (!vault) throw new Error('Unknown workspace.')
+      await deletionRoot(vault, reg)
+      const choice = await dialog.showMessageBox({ type: 'warning', title: 'Delete workspace?', message: `Delete “${vault.name}”?`, detail: `Engram will restart and move this local workspace, including conversations, memories and saved files, to the Recycle Bin or Trash. Running tasks will stop. External project folders and remote team repositories are not deleted.\n\n${vault.root}`, buttons: ['Cancel', 'Delete workspace'], defaultId: 0, cancelId: 0, noLink: true })
+      if (choice.response !== 1) return false
+      reg.pendingDelete = id
+      await saveRegistry(reg)
+      app.relaunch()
+      app.quit()
+      return true
+    } finally { deleting = false }
+  })
   ipcMain.handle('workspace:list', async () => {
     const reg = await loadRegistry()
     return { current: reg.current, vaults: reg.vaults.map(toDto) }
   })
 
   ipcMain.handle('workspace:create', async (_e, payload: { name: string }) => {
+    if (deleting) throw new Error('Finish the workspace deletion first.')
     const root = newVaultDir(payload.name)
     await initVault(root, { git: gitEnabled(), provider: binaryProvider() })
     const info = await registerWorkspace({ name: payload.name, root, kind: 'personal' })
@@ -166,6 +231,7 @@ export function registerWorkspaceIpc(): void {
   })
 
   ipcMain.handle('workspace:join', async (_e, payload: { name: string; url: string }) => {
+    if (deleting) throw new Error('Finish the workspace deletion first.')
     const root = newVaultDir(payload.name)
     await joinTeam(root, payload.url, binaryProvider())
     // joinTeam already lays out the vault; initVault is an idempotent ensure.
@@ -177,6 +243,7 @@ export function registerWorkspaceIpc(): void {
   })
 
   ipcMain.handle('workspace:switch', async (_e, id: string) => {
+    if (deleting) throw new Error('Finish the workspace deletion first.')
     const reg = await loadRegistry()
     if (!reg.vaults.some((v) => v.id === id)) throw new Error('unknown workspace')
     reg.current = id

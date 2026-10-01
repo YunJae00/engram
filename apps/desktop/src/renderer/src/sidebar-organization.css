@@ -129,5 +129,9 @@
 .workspace-management > summary:hover { background: var(--hover-bg); }
 .workspace-management[open] > summary > svg { transform: rotate(180deg); }
 .workspace-management .workspace-row { padding-left: 10px; }
+.workspace-entry { display: flex; align-items: center; min-width: 0; }
+.workspace-entry .workspace-row { flex: 1; min-width: 0; }
+.workspace-delete { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; color: var(--fg-dim); }
+.workspace-delete:hover { background: var(--hover-bg); color: var(--fg); }
 .chat-attachment-error { margin: 6px 0; color: var(--danger); font-size: var(--fs-small); }
 .chat-attachment-status { margin: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }

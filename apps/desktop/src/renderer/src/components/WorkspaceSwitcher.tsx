@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, List, Orbit, User, Users } from 'lucide-react'
+import { Check, ChevronDown, List, Orbit, Trash2, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { DialogHeader } from './DialogHeader.js'
+import { useShellState } from '../state-slices.js'
 
 // Top-bar vault selector: swaps between registered workspaces. Switching,
 // creating, or joining all relaunch the app into the chosen vault, so there is
@@ -17,6 +18,7 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
   activity: string
   onNavigate(activity: 'bots' | 'sky' | 'list' | 'mission'): void
 }) {
+  const { showToast } = useShellState()
   // Empty registry is a valid state (e2e/onboarding run with ENGRAM_VAULT and no
   // registered workspaces) — the switcher still renders with the New/Join rows.
   const [registry, setRegistry] = useState<Registry>({ current: null, vaults: [] })
@@ -79,13 +81,21 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
   const currentName = current ? displayName(current) : 'Engram'
 
   const onSwitch = (id: string) => {
-    if (id === registry.current) return
+    if (busy || id === registry.current) return
     const target = registry.vaults.find((v) => v.id === id)
     setOpen(false)
     setSwitching(target ? displayName(target) : '')
     // Let the notice paint before the main process tears the window down, so the
     // relaunch reads as a deliberate transition instead of a crash.
     window.setTimeout(() => void api.workspaceSwitch(id), 120)
+  }
+
+  const remove = async (id: string) => {
+    if (busy) return
+    setBusy(true)
+    try { if (await api.workspaceDelete(id)) setOpen(false) }
+    catch (error) { showToast(error instanceof Error ? error.message : String(error)) }
+    finally { setBusy(false) }
   }
 
   const openDialog = (mode: DialogMode) => {
@@ -145,7 +155,8 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
           <div className="workspace-divider" />
           <details className="workspace-management"><summary>Workspaces<ChevronDown size={13} aria-hidden /></summary>
           {registry.vaults.map((v) => (
-            <button key={v.id} className="workspace-row" onClick={() => onSwitch(v.id)}>
+            <div key={v.id} className="workspace-entry">
+            <button className="workspace-row" disabled={busy} onClick={() => onSwitch(v.id)}>
               {v.kind === 'team' ? (
                 <Users size={13} strokeWidth={1.8} aria-hidden />
               ) : (
@@ -156,12 +167,14 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
                 <Check className="workspace-check" size={13} strokeWidth={1.8} aria-hidden />
               )}
             </button>
+            <button className="workspace-delete" disabled={busy} aria-label={`Delete workspace ${displayName(v)}`} title="Delete workspace" onClick={() => void remove(v.id)}><Trash2 size={14} aria-hidden /></button>
+            </div>
           ))}
           {registry.vaults.length > 0 && <div className="workspace-divider" />}
-          <button className="workspace-row" onClick={() => openDialog('new')}>
+          <button className="workspace-row" disabled={busy} onClick={() => openDialog('new')}>
             {t('ws.new')}
           </button>
-          <button className="workspace-row" onClick={() => openDialog('join')}>
+          <button className="workspace-row" disabled={busy} onClick={() => openDialog('join')}>
             {t('ws.join')}
           </button>
           </details>

@@ -35,7 +35,7 @@ import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
 import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
 import { configuredVaultRoot, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
-import { registerWorkspaceIpc } from './workspaces.js'
+import { finishWorkspaceDeletion, registerWorkspaceIpc } from './workspaces.js'
 import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
 import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
@@ -601,6 +601,7 @@ app.whenReady().then(async () => {
   // Lost the single-instance race: quit was already requested above, so boot
   // nothing — no window, no vault, no watchers on a vault another process owns.
   if (!singleInstance) return
+  await finishWorkspaceDeletion()
   await (await import('./account-profiles.js')).initializeAccountProfiles(app.getPath('userData'))
   nativeTheme.themeSource = (await loadSettings()).theme
   watchResponsiveness()
