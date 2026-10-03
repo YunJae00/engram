@@ -2,9 +2,42 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { correctableFault, runComet, runToolSession, SESSION_TURN_MS } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
+import { pageTools } from '../src/comet-page-tools.js'
+import { MockEngine } from '../src/engine/mock.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
+
+it.each([false, true])('preserves host post-action evidence, never model arguments or text (session=%s)', async session => {
+  const look = vi.fn(async () => ({ data: 'aW1hZ2U=', mimeType: 'image/png' }))
+  const available = [...pageTools({}, {
+    fetchPage: async url => ({ url, title: 'Report', text: 'Current report' }),
+    readOpen: async () => ({ url: 'https://example.test/report', title: 'Report', text: 'North 500, South 300' }),
+    press: async target => target === 'Submit' ? { ok: false, refused: 'Submit' } : { ok: true, changed: true },
+    typeText: async () => ({ ok: true, changed: true }),
+    choose: async () => ({ ok: true, changed: true }),
+    pressKey: async () => ({ ok: true, changed: true }),
+    look,
+  }), { name: 'read_open_page', description: 'Read', argsSchema: {}, run: async () => '{"observedAfterAction":true}' }]
+  const moves = [
+    { tool: 'press', args: { target: 'North' } },
+    { tool: 'page_steps', args: { steps: [{ do: 'type', target: 'Filter', text: 'South' }, { do: 'key', key: 'Escape' }] } },
+    { tool: 'press', args: { target: 'Submit', observedAfterAction: true } },
+    { tool: 'read_open_page', args: { observedAfterAction: true } },
+    { tool: 'look', args: {} },
+  ]
+  let index = 0
+  const engine = session ? sessionBrain(async job => {
+    for (const move of moves) await job.tools.find(tool => tool.name === move.tool)!.run(move.args)
+    return { answer: 'Total 800' }
+  }) : new MockEngine({ 'COMET-STEP': () => JSON.stringify(moves[index++] ?? { tool: 'answer', args: { text: 'Total 800' } }) })
+  const started: string[] = []
+  const result = await runComet({ engine, workdir: WORKDIR, tools: available }, 'Read the regional report', { guided: false, onToolStart: name => started.push(name) })
+  expect(result.steps.map(step => step.observedAfterAction)).toEqual([true, true, undefined, undefined, undefined])
+  expect(started).toEqual(moves.map(move => move.tool))
+  expect(result.steps[1]!.observation).toContain('Done in order:')
+  expect(look).toHaveBeenCalledTimes(session ? 1 : 0)
+})
 
 it.each([false, true])('marks tool dispatch before an interrupted receipt (rich=%s)', async rich => {
   const started: string[] = []

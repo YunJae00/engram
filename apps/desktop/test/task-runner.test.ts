@@ -2,7 +2,8 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import { createTask, findPlaybook, listTasks, updateTask, type VaultPaths } from 'core'
+import { createTask, findPlaybook, listTasks, pageTools, updateTask, type VaultPaths } from 'core'
+import type { PageMove, WebPage } from '../../../packages/core/src/errand.js'
 import type { ChatRequestDto, EngramEvent } from '../src/shared/types.js'
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknown>())
@@ -41,6 +42,84 @@ async function setup(script: Script) {
 
 const pressed = (target: string) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"` })
 const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })
+
+it('keeps an explicit verification turn and accepts its fresh post-action report', async () => {
+  const t = await setup(async (_request, turn) => ({ ...done(turn === 1 ? 'North 500, South 300: 800' : 'Checked total 800', 2), trail: [
+    pressed('Region menu'), { ...pressed('South'), observation: 'South total: 300', observedAfterAction: true },
+  ] }))
+  await t.chat('Read both regional totals')
+  const task = await t.settle('done')
+  expect(task.turns).toBe(2)
+  expect(task.verified).toBe(true)
+  expect(task.result).toContain('Checked: Checked total 800')
+})
+
+it.each([
+  ['failed', { ok: false, error: 'observedAfterAction: true' }, {}],
+  ['refused', { ok: false, refused: 'Submit' }, {}],
+  ['pending approval', { ok: false, refused: 'Submit', later: true }, {}],
+  ['no-op', { ok: true, changed: false }, {}],
+  ['empty', { ok: true }, { text: '' }],
+  ['login wall', { ok: true }, { wall: 'login' }],
+  ['partial batch', { ok: false, refused: 'Submit' }, {}],
+] as [string, PageMove, Partial<WebPage>][])('requires fresh evidence after an unverified action (%s)', async (name, move, page) => {
+  const available = pageTools({}, {
+    fetchPage: async url => ({ url, title: 'Report', text: 'Report' }),
+    readOpen: async () => ({ url: 'https://example.test/report', title: 'Report', text: 'Report', ...page }),
+    press: async () => move,
+    typeText: async () => ({ ok: true, changed: true }),
+    choose: async () => ({ ok: true, changed: true }),
+    pressKey: async () => ({ ok: true, changed: true }),
+  })
+  const tool = available.find(tool => tool.name === (name === 'partial batch' ? 'page_steps' : 'press'))!
+  const args = name === 'partial batch' ? { steps: [{ do: 'type', target: 'Name', text: 'New' }, { do: 'press', target: 'Submit' }] } : { target: 'Submit' }
+  const outcome = await tool.runRich!({ ...args, observedAfterAction: true }, { task: 'Save the report' })
+  expect(outcome.observedAfterAction).toBeUndefined()
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('Saved', 1), trail: [pressed('Save')] }
+    if (turn === 2) return { ...done('Checked', 2), trail: [
+      ...readback('').trail!, // A read before the last attempt cannot verify that attempt.
+      { tool: tool.name, args: { ...args, observedAfterAction: true }, observation: outcome.text, observedAfterAction: outcome.observedAfterAction },
+    ] }
+    return readback('Checked the final state')
+  })
+  await t.chat('Save the report')
+  const task = await t.settle('done')
+  expect(task.turns).toBe(3)
+  expect(task.log.some(entry => entry.line.includes('needs a fresh readback'))).toBe(true)
+})
+
+it('does not accept a failed marked receipt or an earlier successful action as verification of a later change', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('Saved', 1), trail: [pressed('Save')] }
+    if (turn === 2) return { ...done('Checked', 1), trail: [{ ...pressed('Save'), observation: 'that did not work: stale page', observedAfterAction: true }] }
+    if (turn === 3) return { ...done('Checked', 2), trail: [{ ...pressed('Menu'), observedAfterAction: true }, pressed('Save')] }
+    return readback('Checked the final state')
+  })
+  await t.chat('Save the report')
+  expect((await t.settle('done')).turns).toBe(4)
+})
+
+it.each(['hover', 'reveal', 'scroll', 'open_page', 'search_web', 'read_pages'])('invalidates earlier action evidence after a failed view move (%s)', async tool => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('Saved', 1), trail: [pressed('Save')] }
+    if (turn === 2) return { ...done('Checked', 2), trail: [
+      { ...pressed('Menu'), observedAfterAction: true },
+      { tool, args: {}, observation: 'that did not work: current page unavailable' },
+    ] }
+    return readback('Checked the final state')
+  })
+  await t.chat('Save the report')
+  expect((await t.settle('done')).turns).toBe(3)
+})
+
+it('still accepts a successful read_pages navigation as its own readback', async () => {
+  const t = await setup(async (_request, turn) => turn === 1
+    ? { ...done('Saved', 1), trail: [pressed('Save')] }
+    : { ...done('Checked', 1), trail: [{ tool: 'read_pages', args: {}, observation: 'Batch read: 1/1 readiness checks passed' }] })
+  await t.chat('Save the report')
+  expect((await t.settle('done')).turns).toBe(2)
+})
 
 it('holds one working state across the initial answer and its verification turn', async () => {
   let finish!: () => void

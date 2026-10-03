@@ -41,7 +41,11 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       move.changed === false && !answered
         ? `${what}: nothing on the page changed, so that was probably not the thing meant - press another of the controls below by its number, or look at the page and press the point\n`
         : ''
-    return { text: still + pageReport(page, 1, findOf(args)), ...(!still && !findOf(args) ? { page } : {}) }
+    return {
+      text: still + pageReport(page, 1, findOf(args)),
+      ...(!still && !findOf(args) ? { page } : {}),
+      ...(move.changed !== false && !page.faults?.length && !findOf(args) ? { observedAfterAction: true } : {}),
+    }
   }
   const tools: (Omit<AgentTool, 'run'> & { run(args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> })[] = []
   if (courier.press) {
@@ -174,6 +178,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         })
         if (invalid >= 0) return `that did not work: move ${invalid + 1} is incomplete; no moves were made. type needs target and text, choose needs target and option, press needs target, key needs key`
         const done: string[] = []
+        let allMoved = true
         let last: { move: PageMove; what: string } | undefined
         for (const [index, step] of steps.entries()) {
           context.signal?.throwIfAborted()
@@ -185,6 +190,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
                 : kind === 'key' && str(step, 'key') ? await pressKey(str(step, 'key'), context.signal)
                   : { ok: false, error: `move ${index + 1} is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key` }
           last = { move, what }
+          allMoved &&= move.changed !== false
           const stuck = !move.ok || move.later || move.theirs || move.refused !== undefined || (kind === 'press' && move.changed === false)
           if (stuck) {
             const outcome = await after(move, what, args, context.signal)
@@ -195,7 +201,10 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         }
         const outcome = await after(last!.move, `${done.length} moves`, args, context.signal)
         // The whole report, not a delta: the list of moves made travels with it.
-        return `Done in order: ${done.join('; ')}.\n${typeof outcome === 'string' ? outcome : outcome.text}`
+        return {
+          text: `Done in order: ${done.join('; ')}.\n${typeof outcome === 'string' ? outcome : outcome.text}`,
+          ...(allMoved && typeof outcome !== 'string' && outcome.observedAfterAction === true ? { observedAfterAction: true } : {}),
+        }
       },
     })
   }
@@ -222,6 +231,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     ...tool,
     run: async (args, context) => {
       const result = await tool.run(args, context)
+      if (typeof result !== 'string' && result.observedAfterAction === true) context.onObservedAfterAction?.()
       return typeof result === 'string' ? result : result.text
     },
     runRich: tool.runRich ?? (async (args, context) => {
