@@ -62,8 +62,24 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
   // Both are the page's own words, so both are DATA like the rest.
   const snapshot = page.observation
   const lines = [...frontOf(page), ...(snapshot ? [`Observation ${snapshot.page}/${snapshot.document}/${snapshot.revision}; control numbers belong only to this reading.`] : []), head, page.text.slice((at - 1) * PAGE_TEXT_CAP, at * PAGE_TEXT_CAP)]
-  if (page.controls?.length && at === 1) lines.push('Controls (press by number, e.g. {"target": "#12"}):', ...page.controls.slice(0, CONTROLS_SHOWN))
+  if (page.controls?.length && at === 1) lines.push(`Controls (press by number, e.g. {"target": "#12"}${page.controls.some(line => line.endsWith(NEW_MARK)) ? `; ${NEW_MARK} = appeared since your last reading, such as an opened list or dialog` : ''}):`, ...page.controls.slice(0, CONTROLS_SHOWN))
   return lines.join('\n')
+}
+
+const NEW_MARK = '[new]'
+// Past this share of new controls the page itself is new, and marking every line says nothing.
+const NEW_SHARE = 0.5
+
+// The controls of a reading, with those that were not in the last reading of
+// the same page marked, so an opened list or dialog stands out at a glance.
+// Returns the names to compare the next reading against.
+export function markNewControls(controls: string[], previous?: Set<string>): { controls: string[]; names: Set<string> } {
+  const name = (line: string) => line.replace(/^#\d+ /, '')
+  const names = new Set(controls.map(name))
+  if (!previous?.size) return { controls, names }
+  const fresh = controls.filter(line => !previous.has(name(line)))
+  if (!fresh.length || fresh.length > controls.length * NEW_SHARE) return { controls, names }
+  return { controls: controls.map(line => previous.has(name(line)) ? line : `${line} ${NEW_MARK}`), names }
 }
 
 // A dialog standing open, and the fields the page has marked as wrong: the

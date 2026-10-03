@@ -32,6 +32,11 @@ const SESSION_SOFT_MS = 780_000
 // Bound silent model waits. Silence can also mean long reasoning, so retain
 // unfinished work rather than claiming the model or the task failed.
 export const SESSION_STALL_MS = 180_000
+// Page moves held to account for repeating themselves, and how often the same
+// move may come back the same before the next one is refused.
+const REPEAT_GUARDED = new Set(['press', 'type_text', 'choose', 'press_point', 'page_steps', 'hover', 'reveal'])
+const PAGE_MOVES = new Set([...REPEAT_GUARDED, 'press_key', 'scroll', 'open_page', 'search_web', 'read_pages'])
+const REPEAT_LIMIT = 2
 const STALL_NOTE = 'The model stopped responding for three minutes. The work so far is kept, and the task continues from the current state.'
 
 const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'page_steps', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
@@ -111,6 +116,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let lookedFirst = false
   let exhausted = false
   let toolMs = 0
+  // ponytail: guard identical consecutive moves, not multi-action cycles;
+  // the total call budget bounds cycles. Reads alone do not reset the guard.
+  let repeat: { key: string; result: string; times: number } | undefined
+  const sameResult = (text: string) => text
+    .replace(/^(Observation \S+\/)\d+(; control numbers belong only to this reading\.)$/gm, '$1*$2')
+    .replace(/ \[new\]$/gm, '')
+    .replace('; [new] = appeared since your last reading, such as an opened list or dialog', '')
   let lastActivity = Date.now(), stalled = false
   const touch = (): void => { lastActivity = Date.now() }
   const calls: ToolSessionCall[] = tools.map((tool) => ({
@@ -143,6 +155,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         return `Look before you ask: call search_web with {"query": "${task.slice(0, 80).replace(/"/g, "'")}"} first. Ask only if that comes back with nothing, or if the ask names no job at all.`
       }
       startedCalls += cost
+      const repeatKey = REPEAT_GUARDED.has(tool.name) ? `${tool.name}:${JSON.stringify(args)}` : ''
+      if (PAGE_MOVES.has(tool.name) && repeat?.key !== repeatKey) repeat = undefined
+      const repeated = !!repeatKey && repeat?.key === repeatKey && repeat.times >= REPEAT_LIMIT
       options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, args) ?? summarizeArgs(args)}`)
       let observation: string
       let modelObservation: string | undefined
@@ -152,7 +167,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         const context = { task, read: readSoFar(steps, options.history), signal }
         // A brain in a session can look at a picture; the words are what
         // the turn keeps, the picture goes to the brain and nowhere else.
-        if (tool.runRich) {
+        if (repeated) {
+          observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach, or report what blocks the task.`
+        } else if (tool.runRich) {
           const outcome = await tool.runRich(args, context)
           observation = outcome.text
           image = outcome.image
@@ -170,6 +187,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       signal.throwIfAborted()
       options.onObservation?.(tool.name, observation)
       steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation })
+      if (repeatKey && !repeated) {
+        const result = sameResult(observation)
+        repeat = { key: repeatKey, result, times: repeat?.key === repeatKey && repeat.result === result ? repeat.times + 1 : 1 }
+      }
       const ask = parseAsk(observation)
       if (ask) {
         asked = ask

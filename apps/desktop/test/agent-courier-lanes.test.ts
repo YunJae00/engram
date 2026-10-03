@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCourier } from '../src/main/agent-courier.js'
 import { handOn, pressPoint } from '../src/main/page-actions.js'
+import { readWhenReady } from '../src/main/page-ready.js'
 
 const browser = vi.hoisted(() => ({
   ensureAgentPage: vi.fn(),
@@ -125,5 +126,51 @@ describe('courier legacy action lanes', () => {
     expect(browser.agentPage).toHaveBeenNthCalledWith(2, signal, 'default')
     expect(fallback.fill).toHaveBeenCalledExactlyOnceWith('Value', { timeout: 3000 })
     expect(fallback.click).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('courier new controls', () => {
+  const url = 'https://example.test/form'
+  const initial = { url, title: 'Form', text: 'Form', controls: ['#1 [button] Menu', '#2 [link] Help'] }
+  const opened = { ...initial, controls: [...initial.controls, '#3 [option] Reports'] }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(readWhenReady).mockReset()
+    browser.laneLastUrl.mockReturnValue(undefined)
+    browser.ensureAgentPage.mockResolvedValue({ goto: vi.fn().mockResolvedValue(undefined) })
+  })
+
+  it.each(['open', 'read'] as const)('shares the first open_page baseline with later %s readings', async (next) => {
+    vi.mocked(readWhenReady).mockResolvedValueOnce(initial).mockResolvedValueOnce(opened).mockResolvedValueOnce(opened)
+    const courier = agentCourier()
+    expect((await courier.fetchPage(url)).controls).toEqual(initial.controls)
+    const result = await (next === 'open' ? courier.fetchPage(url) : courier.readOpen!())
+    expect(result.controls).toEqual([...initial.controls, '#3 [option] Reports [new]'])
+    expect((await courier.readOpen!()).controls).toEqual(opened.controls)
+  })
+
+  it('resets the baseline across paths and readings without controls', async () => {
+    const other = { ...opened, url: 'https://example.test/other' }
+    const restored = { ...other, controls: [...other.controls, '#4 [option] Settings'] }
+    vi.mocked(readWhenReady)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(other)
+      .mockResolvedValueOnce({ ...other, controls: [] })
+      .mockResolvedValueOnce(restored)
+    const courier = agentCourier()
+    await courier.fetchPage(url)
+    expect((await courier.readOpen!()).controls).toEqual(opened.controls)
+    await courier.readOpen!()
+    expect((await courier.readOpen!()).controls).toEqual(restored.controls)
+  })
+
+  it('keeps each courier baseline separate', async () => {
+    vi.mocked(readWhenReady).mockResolvedValueOnce(initial).mockResolvedValueOnce(opened).mockResolvedValueOnce(opened)
+    const first = agentCourier({ lane: 'first' })
+    const second = agentCourier({ lane: 'second' })
+    await first.fetchPage(url)
+    expect((await second.readOpen!()).controls).toEqual(opened.controls)
+    expect((await first.readOpen!()).controls).toEqual([...initial.controls, '#3 [option] Reports [new]'])
   })
 })

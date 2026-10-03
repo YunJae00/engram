@@ -1,4 +1,4 @@
-import type { PageMove, WebCourier } from 'core'
+import { markNewControls, type PageMove, type WebCourier, type WebPage } from 'core'
 import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, laneLastUrl, lanePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
 import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
@@ -73,13 +73,24 @@ export function agentCourier(
   const lane = deps.lane ?? DEFAULT_LANE
   const ensurePage = () => ensureAgentPage(lane)
   const aside = (signal?: AbortSignal) => stepAside(lane, signal, deps.onAside)
+  // The controls of the last reading of each page, so the next reading can mark what is new.
+  let seen: { at: string; names: Set<string> } | null = null
+  const placeOf = (url: string) => { try { const parsed = new URL(url); return parsed.origin + parsed.pathname } catch { return url } }
+  const markReading = (read: WebPage): WebPage => {
+    if (!read.controls?.length) { seen = null; return read }
+    const at = placeOf(read.url)
+    const marked = markNewControls(read.controls, seen?.at === at ? seen.names : undefined)
+    seen = { at, names: marked.names }
+    return { ...read, controls: marked.controls }
+  }
   return {
     async readOpen(signal) {
       if (!lanePage(lane) && laneLastUrl(lane))
         throw new Error('This conversation\'s browser has closed. Use open_page to reopen the relevant address, then read_open_page. Do not treat a new blank tab as the previous page or switch to computer use because it closed.')
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
+      const read = await withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
+      return markReading(read)
     },
     async typeInto(field, text, signal) {
       await aside(signal)
@@ -167,7 +178,7 @@ export function agentCourier(
       await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
       const result = await withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
       armIdleClose()
-      return result
+      return markReading(result)
     },
   }
 }

@@ -183,6 +183,9 @@ async function allowed(page: Page, words: string, ask?: Ask): Promise<'yes' | 'n
 }
 
 function missing(target: string): PageMove {
+  // A number names the control as it was when the page was last read; if the
+  // page has moved on since, the number is out of date, not the control gone.
+  if (/^#\d+/.test(target.trim())) return { ok: false, error: `"${target}" no longer matches the page you read - it has changed since, or has no such number. Call read_open_page for the current numbers, then name the control again` }
   return { ok: false, error: `could not find "${target}" on the page` }
 }
 
