@@ -23,6 +23,8 @@ import type { HarnessMetric } from './harness-metrics.js'
 export interface AgentToolContext {
   task: string
   signal?: AbortSignal
+  // Host receipt channel for the text-only loop, never a model argument.
+  onObservedAfterAction?(): void
   // Everything the loop has read so far this turn. A tool that fills in a form
   // needs it: what goes into a website has to come from something that was
   // actually read, never from the model's own head.
@@ -35,6 +37,8 @@ export interface ToolOutcome {
   text: string
   image?: { data: string; mimeType: string }
   page?: WebPage
+  // The host successfully reread the page after this action.
+  observedAfterAction?: boolean
 }
 
 export interface AgentTool {
@@ -110,6 +114,7 @@ export interface AgentLoopStep {
   tool: string
   args: Record<string, unknown>
   observation: string
+  observedAfterAction?: boolean
   // Put there before the model was asked anything, rather than chosen. The
   // difference matters: a seeded fact must not make the opening move look
   // like work already under way.
@@ -447,9 +452,10 @@ async function agentLoop(
     const tool = tools.find((t) => t.name === parsed.tool)!
     options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, parsed.args) ?? summarizeArgs(parsed.args)}`)
     let observation: string
+    let observedAfterAction = false
     const toolStarted = performance.now()
     try {
-      observation = await tool.run(parsed.args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
+      observation = await tool.run(parsed.args, { task, read: readSoFar(steps, options.history), onObservedAfterAction: () => { observedAfterAction = true }, ...(options.signal ? { signal: options.signal } : {}) })
       // A question to the person IS the answer: carrying on would mean
       // guessing at exactly the thing it just said it does not know.
       const ask = parseAsk(observation)
@@ -459,11 +465,12 @@ async function agentLoop(
       }
     } catch (err) {
       if (options.signal?.aborted) throw new Error('canceled')
+      observedAfterAction = false
       observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`.slice(0, OBSERVATION_CAP)
     }
     options.onMetric?.({ kind: 'tool', operation: tool.name, ms: Math.round(performance.now() - toolStarted) })
     options.onObservation?.(parsed.tool, observation)
-    steps.push({ tool: parsed.tool, args: desktopStepArgs(parsed.tool, parsed.args), observation })
+    steps.push({ tool: parsed.tool, args: desktopStepArgs(parsed.tool, parsed.args), observation, ...(observedAfterAction ? { observedAfterAction: true } : {}) })
     await followRead(deps, task, steps, options, followed)
   }
   return wrapUp('calls')

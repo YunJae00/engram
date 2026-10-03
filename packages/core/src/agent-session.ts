@@ -162,6 +162,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       let observation: string
       let modelObservation: string | undefined
       let image: { data: string; mimeType: string } | undefined
+      let observedAfterAction = false
       const toolStarted = performance.now()
       try {
         const context = { task, read: readSoFar(steps, options.history), signal }
@@ -174,6 +175,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
           observation = outcome.text
           image = outcome.image
           modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
+          observedAfterAction = outcome.observedAfterAction === true
         } else observation = await tool.run(args, context)
       } catch (err) {
         if (signal.aborted) throw err
@@ -186,7 +188,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       options.onMetric?.({ kind: 'observation', fullChars: observation.length, sentChars: (modelObservation ?? observation).length })
       signal.throwIfAborted()
       options.onObservation?.(tool.name, observation)
-      steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation })
+      steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation, ...(observedAfterAction ? { observedAfterAction: true } : {}) })
       if (repeatKey && !repeated) {
         const result = sameResult(observation)
         repeat = { key: repeatKey, result, times: repeat?.key === repeatKey && repeat.result === result ? repeat.times + 1 : 1 }

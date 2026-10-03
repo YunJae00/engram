@@ -38,6 +38,9 @@ const WORTH_KEEPING_STEPS = 3
 // Steps that change something outside the conversation: a task that took one
 // rereads its result once before it is called done.
 const CHANGES = /^(page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+// Navigation/view moves also invalidate earlier evidence, without requiring a
+// separate verification turn for work that only read pages.
+const VIEW_MOVES = /^(open_page|search_web|read_pages|scroll|hover|reveal)$/
 // A read receipt is necessary, not proof that every requirement was satisfied.
 const READBACK = /^(read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
@@ -107,9 +110,11 @@ export function taskRunner(deps: {
         if (t.turns >= TASK_MAX_TURNS || Date.now() - Date.parse(t.createdAt) > TASK_MAX_MS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
         else logTask(t, 'Continuing')
       } else if (checking) {
-        const receipts = successfulTurnSteps(outcome.trail ?? [])
-        const lastChange = receipts.map(step => CHANGES.test(step.tool)).lastIndexOf(true)
-        if (!receipts.some((step, i) => i > lastChange && READBACK.test(step.tool))) {
+        const steps = outcome.trail ?? []
+        // Even a failed/partial action invalidates evidence read before it.
+        const lastChange = steps.map(step => !step.seeded && (CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool))).lastIndexOf(true)
+        const receipts = successfulTurnSteps(steps.slice(Math.max(0, lastChange)))
+        if (!receipts.some(step => READBACK.test(step.tool) || step.observedAfterAction === true)) {
           logTask(t, 'Verification still needs a fresh readback after the last change.')
         } else {
           t.verified = true; delete t.verificationPending

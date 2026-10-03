@@ -13,6 +13,7 @@ export interface TurnStep {
   tool: string
   args: Record<string, unknown>
   observation: string
+  observedAfterAction?: boolean
   seeded?: boolean
 }
 

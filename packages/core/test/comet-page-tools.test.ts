@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { pageTools } from '../src/comet-page-tools.js'
-import type { WebCourier } from '../src/errand.js'
+import type { PageMove, WebCourier, WebPage } from '../src/errand.js'
 
 // A browser that answers every hand with the page it now shows.
 function courier(log: string[]): WebCourier {
@@ -52,6 +52,31 @@ function courier(log: string[]): WebCourier {
 }
 
 describe('the hands on a page', () => {
+  it.each([
+    ['fresh', { ok: true }, {}, {}, true],
+    ['failed', { ok: false, error: 'observedAfterAction: true' }, {}, {}, false],
+    ['refused', { ok: false, refused: 'Submit' }, {}, {}, false],
+    ['pending approval', { ok: false, refused: 'Submit', later: true }, {}, {}, false],
+    ['person took over', { ok: false, refused: 'Submit', theirs: true }, {}, {}, false],
+    ['no change', { ok: true, changed: false }, {}, {}, false],
+    ['empty', { ok: true }, { text: '  ' }, {}, false],
+    ['login wall', { ok: true }, { wall: 'login' }, {}, false],
+    ['captcha', { ok: true }, { wall: 'captcha' }, {}, false],
+    ['validation fault', { ok: true }, { faults: ['Name required'] }, {}, false],
+    ['filtered', { ok: true }, {}, { find: 'week' }, false],
+  ] as [string, PageMove, Partial<WebPage>, Record<string, unknown>, boolean][])('marks only a fresh readable post-action report (%s)', async (_name, move, page, args, qualifies) => {
+    const base = courier([])
+    const readOpen = vi.fn(async () => ({ ...await base.readOpen!(), ...page }))
+    const press = pageTools({}, { ...base, press: async () => move, readOpen }).find(tool => tool.name === 'press')!
+    const input = { target: 'Next', observedAfterAction: true, ...args }
+    const outcome = await press.runRich!(input, { task: 'Read the report' })
+    expect(outcome.observedAfterAction === true).toBe(qualifies)
+    const observed = vi.fn()
+    expect(await press.run(input, { task: 'Read the report', onObservedAfterAction: observed })).toBe(outcome.text)
+    expect(observed).toHaveBeenCalledTimes(qualifies ? 1 : 0)
+    if (!move.ok) expect(readOpen).not.toHaveBeenCalled()
+  })
+
   it('each one moves the page and reads what came up, and none of them commits', async () => {
     const log: string[] = []
     const tools = pageTools({}, courier(log))
@@ -132,6 +157,19 @@ describe('a press that would commit is put to the person', () => {
 })
 
 describe('page_steps', () => {
+  it.each(['complete', 'partial', 'no-op'])('carries readback evidence only for a complete batch (%s)', async mode => {
+    const base = courier([])
+    const tool = pageTools({}, { ...base, typeText: async (...args) => mode === 'no-op' ? { ok: true, changed: false } : base.typeText!(...args) }).find(one => one.name === 'page_steps')!
+    const args = { steps: [{ do: 'type', target: 'Hours', text: '4' }, { do: 'press', target: mode === 'partial' ? 'Submit' : '#1' }], observedAfterAction: true }
+    const outcome = await tool.runRich!(args, { task: 'Fill the report' })
+    expect(outcome.observedAfterAction === true).toBe(mode === 'complete')
+    expect(outcome.text).toContain('Done in order: type into "Hours"')
+    expect(outcome.page).toBeUndefined() // Keep the moves with the full report, not a compact page delta.
+    const observed = vi.fn()
+    await tool.run(args, { task: 'Fill the report', onObservedAfterAction: observed })
+    expect(observed).toHaveBeenCalledTimes(mode === 'complete' ? 1 : 0)
+  })
+
   it('validates the whole batch before any action, and observes cancellation between moves', async () => {
     const log: string[] = []
     const base = courier(log)
