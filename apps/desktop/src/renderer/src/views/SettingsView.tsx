@@ -11,6 +11,7 @@ import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { WorkMapSettings } from '../components/WorkMapSettings.js'
+import { TaskRecordingSettings } from '../components/TaskRecordingSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
@@ -53,7 +54,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
-      if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, computerUse: event.settings.computerUse, defaultEngine: event.settings.defaultEngine, claudeModel: event.settings.claudeModel, codexModel: event.settings.codexModel, claudeEffort: event.settings.claudeEffort, codexEffort: event.settings.codexEffort, aiSelections: event.settings.aiSelections } : event.settings)
+      if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, recordTasks: event.settings.recordTasks, computerUse: event.settings.computerUse, defaultEngine: event.settings.defaultEngine, claudeModel: event.settings.claudeModel, codexModel: event.settings.codexModel, claudeEffort: event.settings.claudeEffort, codexEffort: event.settings.codexEffort, aiSelections: event.settings.aiSelections } : event.settings)
       if (event.type === 'update:changed') {
         setUpdate(event.update)
       }
@@ -157,7 +158,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </section>
         <section className="settings-panel" hidden={section !== 'developers'} aria-label="Workspace"><h2>Workspace</h2>{section === 'developers' && <><ComputerSettings /><DeveloperSettings /></>}</section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
-        {section === 'memory' && <WorkMapSettings />}
+        {section === 'memory' && <><WorkMapSettings /><TaskRecordingSettings /></>}
         <div data-testid="settings-more">
           <div className="settings-group-head">Files &amp; backup</div>
           <div className="setting-row" data-testid="setting-audit">

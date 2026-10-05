@@ -20,7 +20,7 @@ import { broadcast, isLibrarianBusy } from './ipc.js'
 import { fabricAfterIndex } from './memory-fabric.js'
 import { EmbeddingClient } from './embedding-client.js'
 import { embeddingAssets } from './embedding-assets.js'
-import { reserveRoom, ROOM_FOR_EMBEDDER, roomNow } from './memory-plan.js'
+import { EMBEDDER_FOOTPRINT, EMBEDDER_MIN_FREE, reserveRoom, ROOM_FOR_EMBEDDER, roomNow } from './memory-plan.js'
 import { serialWork } from './serial-work.js'
 import type { VaultContext } from './vault.js'
 
@@ -113,7 +113,7 @@ async function ensureExtractor(): Promise<boolean> {
   if (state.extractor) return true
   if (!state.loading) {
     if (roomNow() < ROOM_FOR_EMBEDDER) return false
-    const release = reserveRoom(1e9)
+    const release = reserveRoom(EMBEDDER_FOOTPRINT)
     state.loading = loadExtractor(state.model).finally(() => {
       release()
       state.loading = null
@@ -145,7 +145,7 @@ const embeddings = serialWork()
 function embedBatch(texts: string[]): Promise<Float32Array[]> {
   if (embeddings.pending >= 8) return Promise.reject(new Error('Embedding queue is full'))
   return embeddings.run(async () => {
-    if (!state.extractor || roomNow() < 2.5e9) throw new Error('Embedding paused to preserve memory for active work')
+    if (!state.extractor || roomNow() < EMBEDDER_MIN_FREE) throw new Error('Embedding paused to preserve memory for active work')
     state.lastUsed = Date.now()
     const client = state.extractor
     try { return await client.embed(texts) }
@@ -164,7 +164,7 @@ function deferForMemory(): void {
 async function reindex(): Promise<void> {
   const ctx = state.ctx
   if (closed || !ctx || state.busy) return
-  if (roomNow() < ROOM_FOR_EMBEDDER) { deferForMemory(); return }
+  if (roomNow() < (state.extractor ? EMBEDDER_MIN_FREE : ROOM_FOR_EMBEDDER)) { deferForMemory(); return }
   state.busy = true
   try {
     if (!await ensureExtractor()) { deferForMemory(); return }
@@ -180,7 +180,7 @@ async function reindex(): Promise<void> {
       state.status = 'indexing'
       let done = 0
       for (let i = 0; i < stale.length; i += EMBED_BATCH) {
-        if (roomNow() < 3e9) {
+        if (roomNow() < EMBEDDER_MIN_FREE) {
           await saveVectorIndex(ctx.paths, index)
           state.index = index
           state.status = 'ready'
@@ -210,7 +210,7 @@ async function reindex(): Promise<void> {
     await fabricAfterIndex(index, stale.map((n) => n.front.id), liveIds)
   } catch (err) {
     if (closed) return
-    if (roomNow() < 3e9) {
+    if (roomNow() < EMBEDDER_MIN_FREE) {
       state.status = state.index ? 'ready' : 'loading'
       deferForMemory()
       return
@@ -256,7 +256,7 @@ function armIdleWatchdog(): void {
   watchdogArmed = true
   setInterval(() => {
     if (state.extractor && !state.busy && !state.loading && embeddings.pending === 0
-      && (roomNow() < 3.5e9 || Date.now() - state.lastUsed > IDLE_UNLOAD_MS)) unloadModel()
+      && (roomNow() < EMBEDDER_MIN_FREE || Date.now() - state.lastUsed > IDLE_UNLOAD_MS)) unloadModel()
   }, 15_000).unref()
 }
 
@@ -352,7 +352,7 @@ export function semanticNotesChanged(): void {
   state.timer = setTimeout(function fire() {
     if (closed) return
     // Wait for librarian write bursts to finish.
-    if (isLibrarianBusy() || roomNow() < ROOM_FOR_EMBEDDER) {
+    if (isLibrarianBusy() || roomNow() < (state.extractor ? EMBEDDER_MIN_FREE : ROOM_FOR_EMBEDDER)) {
       state.timer = setTimeout(fire, 60_000)
       return
     }

@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, nativeImage, shell } from 'electron'
+import { app, dialog, ipcMain, shell } from 'electron'
 import { basename, extname } from 'node:path'
 import { evidenceRegion, evidenceTools, readArtifact, resolveArtifact, saveArtifact, type VaultPaths } from 'core'
 import type { Page } from 'playwright-core'
@@ -7,8 +7,8 @@ import { artifactDirectory } from './file-work.js'
 import { handOn } from './page-actions.js'
 import { videoEncoder } from './evidence-video.js'
 import { broadcast } from './engine-health.js'
+import { maskedFrame } from './masked-frame.js'
 
-const SECRET = 'input[type="password"], [autocomplete^="cc-"], [autocomplete="one-time-code"], [autocomplete="current-password"], [autocomplete="new-password"]'
 type Recording = { lane: string; started: number; frames: number; stop(reason?: string): Promise<unknown> }
 const recordings = new Map<string, Recording>()
 const completed = new Map<string, unknown>()
@@ -34,30 +34,6 @@ function expected(page: Page, url: unknown): string {
   const parsed = new URL(url)
   if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.href !== page.url()) throw new Error('The current page does not match the approved URL. Observe it again.')
   return parsed.href
-}
-
-// A still is kept lossless; a video frame is re-encoded by the recorder
-// anyway, so it travels as JPEG - a fraction of the bytes crossing into the
-// encoder window per frame.
-async function maskedFrame(page: Page, origin: string, masks: string[], signal?: AbortSignal, region?: unknown, format: 'png' | 'jpeg' = 'png'): Promise<Buffer> {
-  signal?.throwIfAborted()
-  if (page.isClosed() || new URL(page.url()).origin !== origin) throw new Error('The recorded tab closed or left the approved site.')
-  const frames = page.frames()
-  const addresses = frames.map(frame => frame.url())
-  // Failure to inspect any frame must not fall back to an unmasked image.
-  for (const frame of frames) await frame.locator('html').count()
-  for (const selector of masks) {
-    const counts = await Promise.all(frames.map(frame => frame.locator(selector).count()))
-    if (!counts.some(Boolean)) throw new Error('A requested redaction target is missing. Recording stopped before capturing it.')
-  }
-  const data = await page.screenshot({ type: format, ...(format === 'jpeg' ? { quality: 80 } : {}), fullPage: false, scale: 'css', timeout: 8000, mask: frames.flatMap(frame => [frame.locator(SECRET), ...masks.map(selector => frame.locator(selector))]), maskColor: '#202020' })
-  signal?.throwIfAborted()
-  if (new URL(page.url()).origin !== origin || frames.length !== page.frames().length || frames.some((frame, i) => frame.isDetached() || frame.url() !== addresses[i])) throw new Error('The page changed while capturing evidence.')
-  if (!region) return data
-  const image = nativeImage.createFromBuffer(data)
-  const size = image.getSize()
-  const cropped = image.crop(evidenceRegion(region, size.width, size.height)!)
-  return format === 'jpeg' ? cropped.toJPEG(80) : cropped.toPNG()
 }
 
 export function workEvidenceTools(paths: VaultPaths, lane: string) {
@@ -102,15 +78,19 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
         if (stopping) return stopping
         active = false; clearInterval(timer); clearTimeout(limit); signal?.removeEventListener('abort', abort); source.page.off('close', closed)
         stopping = (async () => {
+          let timeout: ReturnType<typeof setTimeout> | undefined
           try {
-            await pending
+            await Promise.race([pending, new Promise<never>((_resolve, reject) => {
+              timeout = setTimeout(() => { encoder.close(); reject(new Error('Recording frame did not finish in time')) }, 10_000)
+            })])
+            clearTimeout(timeout)
             const data = await encoder.finish()
             const result = { recording: reason ? 'interrupted' : 'saved', name: source.name, url: source.url, reason, frames: state.frames, durationMs: Date.now() - state.started, ...await save(`${source.name}.mp4`, data, { ...args, lane, url: source.url, reason, frames: state.frames }) }
             completed.set(lane, result)
             if (completed.size > 50) completed.delete(completed.keys().next().value!)
             return result
           } catch (error) { reason ??= 'The recording could not be saved.'; throw error }
-          finally { encoder.close(); recordings.delete(lane); changed(lane, reason) }
+          finally { clearTimeout(timeout); encoder.close(); recordings.delete(lane); changed(lane, reason) }
         })()
         return stopping
       } }

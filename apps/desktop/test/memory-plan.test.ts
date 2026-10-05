@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reserveRoom, ROOM_FOR_EMBEDDER, roomNow } from '../src/main/memory-plan.js'
+import { EMBEDDER_FOOTPRINT, EMBEDDER_MIN_FREE, reserveRoom, ROOM_FOR_EMBEDDER, roomNow } from '../src/main/memory-plan.js'
 
 // A heavyweight is admitted against the memory it is about to spend, not the
 // memory it has spent; until it is handed back, that room is not there for
@@ -20,6 +20,8 @@ describe('reserveRoom', () => {
   })
 
   it('the embedder is judged by its own small weight', () => {
-    expect(ROOM_FOR_EMBEDDER).toBeLessThan(8e9)
+    expect(ROOM_FOR_EMBEDDER).toBe(2e9)
+    expect(ROOM_FOR_EMBEDDER - EMBEDDER_FOOTPRINT).toBe(EMBEDDER_MIN_FREE)
+    expect(EMBEDDER_MIN_FREE).toBeGreaterThan(0)
   })
 })

@@ -861,6 +861,8 @@ export interface AppSettingsDto {
   computerUse?: boolean
   // Learn where the person works from browser history and bookmarks.
   workMap?: boolean
+  // Keep a video of what comets do in their browser, linked from the answer.
+  recordTasks?: boolean
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,

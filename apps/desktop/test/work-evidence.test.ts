@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { saveArtifact, vaultPaths } from 'core'
 
 const state = vi.hoisted(() => ({ root: '', page: {} as Record<string, unknown>, approve: vi.fn(), input: vi.fn(), screenshot: vi.fn(), close: vi.fn(), url: 'https://example.test/issue', existing: false }))
-vi.mock('electron', () => ({ app: {}, dialog: { showMessageBox: state.approve }, shell: { openPath: vi.fn() } }))
+vi.mock('electron', () => ({ app: {}, nativeImage: {}, dialog: { showMessageBox: state.approve }, shell: { openPath: vi.fn() } }))
 vi.mock('../src/main/agent-browser.js', () => ({ agentPage: async () => state.page, readAgentPage: vi.fn() }))
 vi.mock('../src/main/file-work.js', () => ({ artifactDirectory: () => state.root }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -18,7 +18,7 @@ beforeEach(async () => {
   const input = { count: async () => 1, evaluate: async () => true, setInputFiles: state.input }
   const receipt = { filter: () => receipt, count: async () => Number(state.existing), first: () => receipt, waitFor: async () => {} }
   const frame = { getByLabel: () => ({ and: () => input }), locator: (selector: string) => ({ count: async () => selector === '#missing' ? 0 : 1 }), url: () => state.url, isDetached: () => false }
-  state.page = { url: () => state.url, frames: () => [frame], isClosed: () => false, screenshot: state.screenshot, getByText: () => receipt, once: vi.fn(), off: vi.fn() }
+  state.page = { url: () => state.url, frames: () => [frame], isClosed: () => false, screenshot: state.screenshot, getByText: () => receipt, on: vi.fn(), once: vi.fn(), off: vi.fn() }
 })
 afterEach(async () => { await rm(state.root, { recursive: true, force: true }) })
 const tool = (name: string) => workEvidenceTools(vaultPaths(state.root), 'test').find(tool => tool.name === name)!

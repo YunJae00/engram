@@ -140,6 +140,7 @@ import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { notifyTask } from './task-notify.js'
+import { startTaskRecording } from './task-recording.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
@@ -1040,8 +1041,8 @@ export function registerIpc(ctx: VaultContext): void {
   // can do. Started on a machine with less free than this it ends in thrash,
   // so it is refused with a number instead. Web needs the browser's own slice
   // on top.
-  const ERRAND_MIN_FREE = 2e9
-  const ERRAND_WEB_MIN_FREE = 4e9
+  const ERRAND_MIN_FREE = 1.5e9
+  const ERRAND_WEB_MIN_FREE = 2e9
 
   // One guarded way to start an errand: the Delegate button returns as soon
   // as the run is accepted, while the comet's research tool waits for what
@@ -1311,7 +1312,7 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Recorded-step replay only needs browser memory; saved tasks use the
   // connected comet and its existing resource checks instead.
-  const ROUTINE_MIN_FREE = 4e9
+  const ROUTINE_MIN_FREE = 1.5e9
 
   const approvals = approvalsStore(app.getPath('userData'))
   registerArtifactIpc(ctx.paths)
@@ -2319,6 +2320,8 @@ export function registerIpc(ctx: VaultContext): void {
       let switchTo: string | undefined
       let toolStarted = false
       let answerDelivered = false
+      // What the comet's browser shows while it works, kept for the person to watch.
+      const recording = settings.recordTasks !== false && agentBrowserAvailable() ? startTaskRecording(channel, artifactDirectory(paths), signal) : null
       try {
         assertDesktopChatEngine(channel, engine)
         const resume = resumeState.get(bot.id)
@@ -2409,7 +2412,10 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
-            onToolStart: () => { toolStarted = true },
+            onToolStart: name => {
+              toolStarted = true
+              if (/^(open_page|read_open_page|read_pages|search_web|press|press_key|press_point|type_text|choose|scroll|hover|reveal|page_steps|look|run_procedure|verify|upload_file)$/.test(name)) recording?.observe()
+            },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: relevantSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
@@ -2492,15 +2498,17 @@ export function registerIpc(ctx: VaultContext): void {
         const checkpoint = resumeCheckpoint(request.message, result)
         if (checkpoint) resumeState.set(bot.id, checkpoint)
         else resumeState.delete(bot.id)
-        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps })
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
           for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch { /* Invalid addresses have no icon. */ } }
           broadcast({ type: 'bots:changed' })
         }
+        const recorded = await recording?.stop()
+        signal.throwIfAborted()
+        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps })
         await deliverAnswer(
-          `${result.answer}${note}`,
+          `${result.answer}${note}${recorded ? `\n\nTask recording: ${recorded}` : ''}`,
           result.asked && result.options?.length
             ? { kind: 'asked', question: result.answer, options: result.options }
             : routine
@@ -2570,6 +2578,7 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
+        await recording?.stop({ captureFinal: false })
         await stopEvidenceRecording(channel, 'Task ended without an explicit recording stop').catch(() => {})
         clearApplicationWork(channel)
         endDesktopTurn(channel)

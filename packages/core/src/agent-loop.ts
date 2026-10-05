@@ -308,11 +308,12 @@ async function followRead(
   if (!tool) return false
   followed.count++
   options.onStep?.(`${tool.name}: ${summarizeArgs(next.args)}`)
+  let observedAfterAction = false
   const observation = await tool
-    .run(next.args, { task, read: readSoFar(steps, options.history), ...(options.signal ? { signal: options.signal } : {}) })
-    .catch((err: unknown) => `that did not work: ${err instanceof Error ? err.message : String(err)}`)
+    .run(next.args, { task, read: readSoFar(steps, options.history), onObservedAfterAction: () => { observedAfterAction = true }, ...(options.signal ? { signal: options.signal } : {}) })
+    .catch((err: unknown) => { observedAfterAction = false; return `that did not work: ${err instanceof Error ? err.message : String(err)}` })
   options.onObservation?.(tool.name, observation)
-  steps.push({ tool: tool.name, args: next.args, observation: observation.slice(0, OBSERVATION_CAP) })
+  steps.push({ tool: tool.name, args: next.args, observation: observation.slice(0, OBSERVATION_CAP), ...(observedAfterAction ? { observedAfterAction: true } : {}) })
   return true
 }
 
