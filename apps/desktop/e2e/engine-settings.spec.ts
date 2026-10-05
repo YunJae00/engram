@@ -52,6 +52,21 @@ test('settings stays usable while a runtime probe never answers', async () => {
   await page.keyboard.press('Escape')
 })
 
+test('turning task recordings off survives the main settings save and reopening', async () => {
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-memory').click()
+  const recording = page.getByTestId('setting-record-tasks')
+  await expect(recording).toBeChecked()
+  await recording.uncheck()
+  await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => settings.recordTasks))).toBe(false)
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByTestId('settings-view')).toHaveCount(0)
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-memory').click()
+  await expect(page.getByTestId('setting-record-tasks')).not.toBeChecked()
+  await page.keyboard.press('Escape')
+})
+
 test('both sign-in cards survive reopening settings and offer cancel and browser recovery', async () => {
   await app.evaluate(() => { (globalThis as Global).engineFixture.delayed = false })
   for (const id of ['claude', 'codex']) {

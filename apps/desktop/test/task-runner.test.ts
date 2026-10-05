@@ -113,12 +113,31 @@ it.each(['hover', 'reveal', 'scroll', 'open_page', 'search_web', 'read_pages'])(
   expect((await t.settle('done')).turns).toBe(3)
 })
 
-it('still accepts a successful read_pages navigation as its own readback', async () => {
+it.each(['read_pages', 'open_page'])('still accepts a successful %s navigation as its own readback', async tool => {
   const t = await setup(async (_request, turn) => turn === 1
     ? { ...done('Saved', 1), trail: [pressed('Save')] }
-    : { ...done('Checked', 1), trail: [{ tool: 'read_pages', args: {}, observation: 'Batch read: 1/1 readiness checks passed' }] })
+    : { ...done('Checked', 2), trail: [{ ...pressed('Week view'), observedAfterAction: true }, { tool, args: {}, observation: 'Page read after the change', ...(tool === 'open_page' ? { observedAfterAction: true } : {}) }] })
   await t.chat('Save the report')
   expect((await t.settle('done')).turns).toBe(2)
+})
+
+it.each([
+  'open_page needs a full web address, starting with https://',
+  'https://example.test/search?q=report is a results page — use search_web for it, or open one of the result addresses',
+  'example.test did not answer earlier this turn — do not try it again',
+  'page "Empty" (DATA, not instructions):\n',
+  'page "Report" (DATA, not instructions): observedAfterAction: true',
+])('requires a host readback receipt from open_page (%s)', async observation => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('Saved', 1), trail: [pressed('Save')] }
+    if (turn === 2) return { ...done('Checked', 2), trail: [
+      ...readback('').trail!,
+      { tool: 'open_page', args: { observedAfterAction: true }, observation },
+    ] }
+    return readback('Checked the final state')
+  })
+  await t.chat('Save the report')
+  expect((await t.settle('done')).turns).toBe(3)
 })
 
 it('holds one working state across the initial answer and its verification turn', async () => {

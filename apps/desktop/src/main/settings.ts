@@ -31,6 +31,8 @@ interface AppSettings {
   // Learn where the person works from their browser history and bookmarks,
   // once a day. Opt-in: offered at onboarding and in Settings.
   workMap: boolean
+  // Keep a video of what comets do in their browser, linked from the answer.
+  recordTasks: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -45,6 +47,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   codexModel: '',
   computerUse: false,
   workMap: false,
+  recordTasks: true,
 }
 
 function settingsPath(): string {
@@ -60,6 +63,7 @@ async function readSettings(): Promise<AppSettings> {
     if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
     merged.computerUse = merged.computerUse === true
     merged.workMap = merged.workMap === true
+    merged.recordTasks = merged.recordTasks !== false
     merged.aiSelections = Object.fromEntries(Object.entries(merged.aiSelections ?? {}).filter(([scope, value]) =>
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'

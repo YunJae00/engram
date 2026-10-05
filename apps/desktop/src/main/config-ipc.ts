@@ -12,6 +12,7 @@ import { binaryProvider, type VaultContext } from './vault.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { aiSelection } from './ai-selection.js'
 import { workMapSettingChanged } from './work-map-job.js'
+import { setTaskRecordingsEnabled } from './task-recording.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
@@ -19,6 +20,7 @@ import { workMapSettingChanged } from './work-map-job.js'
 // Choosing another brain must reach the engine list at once, not at the
 // next scheduled detection; the vault owner installs this when it is up.
 let onBrainChoice: (() => void | Promise<void>) | null = null
+let recordingSettingRevision = 0
 export function setBrainChoiceHook(hook: () => void | Promise<void>): void {
   onBrainChoice = hook
 }
@@ -39,7 +41,12 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
     if (!settings || !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
+    if (settings.recordTasks !== undefined && typeof settings.recordTasks !== 'boolean') throw new Error('Invalid recording setting')
     for (const effort of [settings.claudeEffort, settings.codexEffort]) if (effort !== undefined && !REASONING_EFFORTS.includes(effort)) throw new Error('Invalid reasoning effort')
+    const recordingRevision = ++recordingSettingRevision
+    // Stop immediately, including turns holding an older settings snapshot.
+    // A failed Off save stays stopped; a later successful save applies its choice.
+    const stopped = settings.recordTasks === false ? setTaskRecordingsEnabled(false) : undefined
     // The search shape is learned elsewhere and is not the settings screen's
     // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()
@@ -55,6 +62,8 @@ export function registerSettingsIpc(): void {
       claudeModel: settings.claudeModel ?? held.claudeModel,
       codexModel: settings.codexModel ?? held.codexModel,
     }))
+    if (recordingRevision === recordingSettingRevision) await setTaskRecordingsEnabled(saved.recordTasks !== false)
+    await stopped
     nativeTheme.themeSource = settings.theme ?? held.theme ?? 'system'
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).

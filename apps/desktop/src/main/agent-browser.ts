@@ -31,9 +31,11 @@ const PAGE_TEXT_CAP = 64_000
 // that closed under them is the difference between carrying on and starting
 // the job again. Memory pressure still takes it away at any time.
 const IDLE_CLOSE_MS = 15 * 60_000
-// Below this the browser is the memory somebody else needs — it leaves.
-const PRESSURE_CLOSE_FLOOR = 2e9
-const LAUNCH_MIN_FREE = 2.5e9
+// Below this the browser is the memory somebody else needs — it leaves. A
+// page costs a few hundred MB; a busy work PC routinely sits at 2-3GB free,
+// so a higher floor turns the browser away during ordinary work.
+const PRESSURE_CLOSE_FLOOR = 0.8e9
+const LAUNCH_MIN_FREE = 1.2e9
 
 // A page is watched as well as read: an icon, a logo, a photograph is how a
 // person recognises where the work is, and a layout built around pictures

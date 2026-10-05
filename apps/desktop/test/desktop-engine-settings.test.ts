@@ -3,7 +3,7 @@ import type { AppSettingsDto } from '../src/shared/types.js'
 
 const fake = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, settings: AppSettingsDto) => Promise<void>>(),
-  load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), nativeTheme: { themeSource: 'system' },
+  load: vi.fn(), save: vi.fn(), stop: vi.fn(), recording: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), nativeTheme: { themeSource: 'system' },
 }))
 vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [], REASONING_EFFORTS: ['low', 'medium', 'high'] }))
 vi.mock('electron', () => ({ app: { isPackaged: false }, nativeTheme: fake.nativeTheme, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: AppSettingsDto) => Promise<void>) => fake.handlers.set(name, handler) } }))
@@ -13,6 +13,7 @@ vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, updateSetti
 vi.mock('../src/main/team.js', () => ({ getSyncStatus: vi.fn() }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: vi.fn() }))
 vi.mock('../src/main/desktop-control.js', () => ({ stopDesktopControl: fake.stop }))
+vi.mock('../src/main/task-recording.js', () => ({ setTaskRecordingsEnabled: fake.recording }))
 import { registerSettingsIpc, setBrainChoiceHook } from '../src/main/config-ipc.js'
 
 const settings = { defaultEngine: 'claude', autoStart: false, teamSync: 'manual', searchTemplate: '', agentBrowser: '', claudeModel: '', codexModel: '' } as AppSettingsDto
@@ -21,8 +22,56 @@ beforeEach(() => {
   fake.handlers.clear()
   fake.load.mockResolvedValue(settings)
   fake.save.mockResolvedValue(undefined)
+  fake.recording.mockReset().mockResolvedValue(undefined)
   setBrainChoiceHook(fake.changed)
   registerSettingsIpc()
+})
+
+describe('live task recording settings', () => {
+  it('closes recording before saving Off without waiting for cleanup, then enables only after On is saved', async () => {
+    let cleaned!: () => void, savedOn!: () => void
+    const cleanup = new Promise<void>(resolve => { cleaned = resolve })
+    const savingOn = new Promise<void>(resolve => { savedOn = resolve })
+    fake.recording.mockImplementation((enabled: boolean) => enabled ? Promise.resolve() : cleanup)
+    const save = fake.handlers.get('settings:set')!
+    const off = save(null, { ...settings, recordTasks: false })
+    await vi.waitFor(() => expect(fake.save).toHaveBeenCalledWith(expect.objectContaining({ recordTasks: false })))
+    expect(fake.recording).toHaveBeenCalledWith(false)
+    expect(fake.recording.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
+    cleaned()
+    await off
+
+    fake.save.mockImplementationOnce(() => savingOn)
+    const on = save(null, { ...settings, recordTasks: true })
+    await vi.waitFor(() => expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ recordTasks: true })))
+    expect(fake.recording).not.toHaveBeenCalledWith(true)
+    savedOn()
+    await on
+    expect(fake.recording).toHaveBeenLastCalledWith(true)
+  })
+
+  it('does not let an older On completion reopen recording after a newer Off request', async () => {
+    let savedOn!: () => void
+    fake.save.mockImplementationOnce(() => new Promise<void>(resolve => { savedOn = resolve }))
+    const save = fake.handlers.get('settings:set')!
+    const on = save(null, { ...settings, recordTasks: true })
+    await vi.waitFor(() => expect(fake.save).toHaveBeenCalledOnce())
+    const off = save(null, { ...settings, recordTasks: false })
+    await vi.waitFor(() => expect(fake.recording).toHaveBeenCalledWith(false))
+    savedOn()
+    await Promise.all([on, off])
+    expect(fake.recording).not.toHaveBeenCalledWith(true)
+    expect(fake.recording).toHaveBeenLastCalledWith(false)
+  })
+
+  it('keeps recording disabled in memory if persisting Off fails', async () => {
+    fake.save.mockRejectedValueOnce(new Error('disk unavailable'))
+    await expect(fake.handlers.get('settings:set')!(null, { ...settings, recordTasks: false })).rejects.toThrow('disk unavailable')
+    expect(fake.recording).toHaveBeenCalledWith(false)
+    expect(fake.recording.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
+    expect(fake.recording).not.toHaveBeenCalledWith(true)
+    expect(fake.broadcast).not.toHaveBeenCalled()
+  })
 })
 
 describe('desktop grant lifetime when choosing an AI connection', () => {

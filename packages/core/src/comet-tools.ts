@@ -428,7 +428,8 @@ ${note.body.slice(0, 2_000)}`
         argsSchema: { type: 'object', properties: { url: { type: 'string' }, part: { type: 'integer' }, find: { type: 'string' } }, required: ['url'] },
         async run(args, context) {
           const url = str(args, 'url')
-          if (!/^https?:\/\//i.test(url)) return 'open_page needs a full web address, starting with https://'
+          const host = hostOf(url)
+          if (!/^https?:\/\//i.test(url) || !host) return 'open_page needs a full web address, starting with https://'
           // The person's own results page is what search_web reads; opened
           // by hand it is a list of links that leads back to itself.
           const shape = deps.searchTemplate ? await deps.searchTemplate() : null
@@ -436,7 +437,6 @@ ${note.body.slice(0, 2_000)}`
             return `${url} is a results page — use search_web for it, or open one of the result addresses`
           // A host that did not answer a moment ago will not answer now; the
           // second wait cost minutes (measured) and the answer was the same.
-          const host = hostOf(url)
           if (host && dead.has(host))
             return `${host} did not answer earlier this turn — do not try it again; say so and use what you have, or another site`
           let page: Awaited<ReturnType<typeof courier.fetchPage>>
@@ -471,7 +471,15 @@ ${note.body.slice(0, 2_000)}`
           }
           // Untrusted text, and the loop is told so: a page must never be able
           // to issue instructions by being read.
-          return pageReport(page, partOf(args), findOf(args))
+          const report = pageReport(page, partOf(args), findOf(args))
+          if (page.text.trim() && !page.faults?.length && !findOf(args) && !(shape && isResultsPage(page.url, shape)))
+            context.onObservedAfterAction?.()
+          return report
+        },
+        async runRich(args, context) {
+          let observedAfterAction = false
+          const text = await this.run(args, { ...context, onObservedAfterAction: () => { observedAfterAction = true } })
+          return { text, ...(observedAfterAction ? { observedAfterAction: true } : {}) }
         },
       },
       {

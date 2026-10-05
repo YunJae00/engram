@@ -7,12 +7,10 @@ import type { Frame, Page } from 'playwright-core'
 // covered with a black box for as long as the picture takes, in the page
 // and in every frame of it, and uncovered again after.
 
-const SECRET_FIELDS = [
+export const SECRET_FIELDS = [
   'input[type="password"]',
-  '[autocomplete^="cc-"]',
-  '[autocomplete="one-time-code"]',
-  '[autocomplete="current-password"]',
-  '[autocomplete="new-password"]',
+  // Autocomplete is a case-insensitive token list, often prefixed by a section.
+  ...['cc-name', 'cc-given-name', 'cc-additional-name', 'cc-family-name', 'cc-number', 'cc-exp', 'cc-exp-month', 'cc-exp-year', 'cc-csc', 'cc-type', 'one-time-code', 'current-password', 'new-password'].map(token => `[autocomplete~="${token}" i]`),
 ].join(', ')
 
 const MARK = 'data-engram-mask'

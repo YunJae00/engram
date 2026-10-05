@@ -23,7 +23,9 @@ export function roomNow(): number {
   return Math.max(0, os.freemem() - spokenFor)
 }
 
-// The embedder is the small one - a few hundred megabytes - and it is what
-// tells one subject from another, so it is judged by its own weight and not
-// by what a browser would need.
-export const ROOM_FOR_EMBEDDER = 5 * GB
+// Cold admission includes its 1GB load budget. Once loaded, keep 1GB free
+// for other work; using the cold threshold again would unload the model
+// because of its own allocation, then load it again when that memory returns.
+export const EMBEDDER_FOOTPRINT = GB
+export const EMBEDDER_MIN_FREE = GB
+export const ROOM_FOR_EMBEDDER = EMBEDDER_FOOTPRINT + EMBEDDER_MIN_FREE
