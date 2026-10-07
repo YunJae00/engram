@@ -264,6 +264,7 @@ test('preparation shows elapsed time, an honest slow hint, and a working cancel 
     })
   })
   await page.setViewportSize({ width: 600, height: 520 })
+  await page.evaluate(() => document.documentElement.dataset.theme = 'light')
   await openInterview()
   await page.clock.install()
   await page.getByTestId('interview-start').click()
