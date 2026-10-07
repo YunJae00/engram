@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { api } from './api.js'
+import { INTERVIEW_PENDING_KEY, WorkInterviewDialog } from './components/WorkInterview.js'
 import { AppNotices } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
@@ -123,6 +124,20 @@ function Shell() {
       cancelled = true
     }
   }, [vaultReady])
+
+  const [interviewOpen, setInterviewOpen] = useState(false)
+  useEffect(() => {
+    let pending = false
+    try { pending = localStorage.getItem(INTERVIEW_PENDING_KEY) === '1' } catch { /* no first-run prompt */ }
+    if (!vaultReady || !pending) return
+    let cancelled = false
+    void api.tourEligible().then((ok) => { if (ok && !cancelled) setInterviewOpen(true) }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [vaultReady])
+  const closeInterview = () => {
+    try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* shown once per session at most */ }
+    setInterviewOpen(false)
+  }
 
   // useLayoutEffect, not useEffect: the shell paints (and advertises Cmd+L on
   // a button title) before passive effects commit, so a keypress in that gap
@@ -295,7 +310,8 @@ function Shell() {
         {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
         {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
-        {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
+        {tourOpen && !interviewOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
+        {interviewOpen && <WorkInterviewDialog onClose={closeInterview} onSaved={() => showToast('Saved your work preferences.')} />}
       </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
       <ComputerStatus />

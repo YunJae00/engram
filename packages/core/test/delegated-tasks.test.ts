@@ -37,6 +37,7 @@ it('continues with the goal verbatim and says why', async () => {
   task.verificationIssue = 'The output has an unsupported claim.'
   const verify = continuationPrompt(task, 'verify')
   expect(verify).toContain('report_result_check')
+  expect(verify).toContain('its outputs, terms and rules count as part of the request')
   expect(verify).toContain('Do not promote optional inspection methods or extra workflows into new requirements')
   expect(verify).toContain('original sources and user request, not your own outputs')
   expect(verify).toContain('Previous check did not pass: The output has an unsupported claim.')

@@ -15,7 +15,7 @@ type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefine
 const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
 async function setup(script: Script, mockAcceptedCheck = true) {
   const root = await mkdtemp(join(tmpdir(), 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private') } as unknown as VaultPaths
-  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = []
+  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = []
   let last: TurnOutcome | undefined
   const runner: ReturnType<typeof taskRunner> = taskRunner({
     paths,
@@ -30,6 +30,7 @@ async function setup(script: Script, mockAcceptedCheck = true) {
     broadcast: (event) => events.push(event),
     remember: async (text) => { remembered.push(text) },
     notify: (task) => notified.push(`${task.state}: ${task.goal}`),
+    learn: (question, answer) => learned.push([question, answer]),
   })
   handlers.clear()
   runner.register()
@@ -40,7 +41,7 @@ async function setup(script: Script, mockAcceptedCheck = true) {
     expect(task.state).toBe(state)
     return task
   }, { timeout: 5000 })
-  return { paths, runner, sent, events, remembered, notified, call, chat, settle }
+  return { paths, runner, sent, events, remembered, notified, learned, call, chat, settle }
 }
 
 const pressed = (target: string) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"` })
@@ -280,6 +281,7 @@ it('keeps a quick answer out of the notes, and takes the next message as the ans
   expect(task.goal).toBe('Prepare the quarterly numbers')
   expect(t.sent[2]!.request.message).toBe('Calendar Q3')
   expect(t.sent[2]!.extra?.context).toContain('The task, verbatim:\nPrepare the quarterly numbers')
+  expect(t.learned).toEqual([['Which quarter?', 'Calendar Q3']])
   expect((await listTasks(t.paths)).map((x) => x.state)).toEqual(['done', 'done'])
 })
 

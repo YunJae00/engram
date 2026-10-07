@@ -143,6 +143,7 @@ import { checkResult, latestResultOutputs, resultCheckTool } from './result-chec
 import { notifyTask } from './task-notify.js'
 import { startTaskRecording } from './task-recording.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
+import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
@@ -1632,11 +1633,13 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
+    learn: (question, answer) => learnFromAnswer(ctx, question, answer),
     notify: (task) => notifyTask(task, broadcast),
   })
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
+  registerWorkInterviewIpc(ctx)
   startWorkMap(ctx)
   setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
 
@@ -2300,7 +2303,7 @@ export function registerIpc(ctx: VaultContext): void {
       await syncPersonNote(paths).catch((error) => flog('comet-memory', error))
       const botMemory = mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, bot.id))
       const remembered = botMemory.facts.map((f) => f.text)
-      const memory = [renderMemory(botMemory), await workMapShortcuts(ctx), taskRecall(ctx.store, request.message)].filter(Boolean).join('\n\n')
+      const memory = [await workGuide(paths), renderMemory(botMemory), await workMapShortcuts(ctx), taskRecall(ctx.store, request.message)].filter(Boolean).join('\n\n')
       // Everything the comet does on the person's behalf is written down
       // in the vault, one line per event: what was pressed, what picture
       // left for a brain, what was asked and answered, where it was stopped.

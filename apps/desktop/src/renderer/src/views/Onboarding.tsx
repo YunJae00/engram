@@ -2,6 +2,7 @@ import { Check, ExternalLink, Folder, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { INTERVIEW_PENDING_KEY } from '../components/WorkInterview.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { InstallClaude } from '../components/InstallClaude.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
@@ -18,6 +19,7 @@ export function Onboarding() {
   const [installing, setInstalling] = useState(false)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   const [learnWork, setLearnWork] = useState(false)
+  const [interview, setInterview] = useState(true)
   const revision = useRef(0)
   // Only the first check shows spinners; later ones refresh behind what is shown.
   const checked = useRef(false)
@@ -69,6 +71,7 @@ export function Onboarding() {
       }
       const latest = await api.settingsGet()
       if (latest.workMap !== learnWork) await api.settingsSet({ ...latest, workMap: learnWork })
+      try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
     catch (cause) { completing.current = false; setFinishing(false); setError(cause instanceof Error ? cause.message : 'Could not create your workspace. Please try again.') }
@@ -105,6 +108,8 @@ export function Onboarding() {
       </div>
       <label className="setting-row"><span>Learn where you work</span><input type="checkbox" className="switch" data-testid="onboard-work-map" aria-describedby="work-map-consent" checked={learnWork} onChange={event => setLearnWork(event.target.checked)} /></label>
       <p className="setting-hint" id="work-map-consent">Use local browser history and bookmarks to find work places. Site names and titles are sent to your AI for labels; pages are not opened. Optional, refreshed daily. Change it in Settings.</p>
+      <label className="setting-row"><span>Personalize how Engram helps</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label>
+      <p className="setting-hint" id="interview-consent">Optional questions after setup. File and work-site names are shared with your AI, not file contents. You choose what to answer.</p>
       <p className="onboard-note">Choose separate models for conversations and filing later. Only the context needed for an AI request is sent to its provider.</p>
       <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting || installing} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>
     </section>}

@@ -43,6 +43,7 @@ const CHANGES = /^(page_steps|press|press_key|press_point|type_text|choose|uploa
 const VIEW_MOVES = /^(open_page|search_web|read_pages|scroll|hover|reveal)$/
 // A read receipt is necessary, not proof that every requirement was satisfied.
 const READBACK = /^(read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
+const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 // Captures already have consent, provenance and save receipts; this text and
 // document check must not demand a text read of a PNG or retake a recording.
@@ -55,6 +56,8 @@ export function taskRunner(deps: {
   abort(channel: string): void
   broadcast(event: EngramEvent): void
   remember(text: string): Promise<void>
+  // The person answered what a comet asked: what holds beyond this task is kept.
+  learn?(question: string, answer: string): void
   // The task stopped for the person: done, waiting on them, or failed.
   notify(task: DelegatedTask): void
 }) {
@@ -205,6 +208,7 @@ export function taskRunner(deps: {
         const active = (await listTasks(paths)).filter((t) => t.botId === botId && ['queued', 'running', 'waiting'].includes(t.state))
         if (active.some((t) => t.state !== 'waiting')) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
         const asked = active.find((t) => t.question)
+        if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
         for (const t of active) if (t !== asked) await edit(t.id, (x) => { x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task = asked ?? await createTask(paths, request.message, botId)
         owners.set(channel, task.id)
@@ -235,7 +239,7 @@ export function taskRunner(deps: {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
       for (const task of tasksToResume(tasks).filter(t => !channels.has(channelOf(t)))) await edit(task.id, t => {
-        t.state = 'waiting'; t.question = 'The app restarted during this task. Check any external changes before asking me to continue.'
+        t.state = 'waiting'; t.question = RESTARTED
         logTask(t, t.question)
       })
     },
