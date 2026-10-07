@@ -113,15 +113,16 @@
 .interview-leave { display: grid; gap: 18px; padding: 28px; font-size: var(--fs-small); }
 .interview-leave h3 { margin: 0; font-size: var(--fs-title); }
 .interview-leave p { margin: 0; color: var(--fg-dim); }
-.interview-dialog .work-interview h3 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.5; letter-spacing: -0.015em; text-align: center; color: var(--fg-strong); }
+.interview-dialog .work-interview h3 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.5; letter-spacing: -0.015em; text-align: left; color: var(--fg-strong); }
 .work-interview h3:focus { outline: none; }
 .work-interview p { margin: 0; line-height: 1.6; color: var(--fg-dim); font-size: var(--fs-small); }
-.interview-intro { display: grid; justify-items: center; gap: 14px; padding: 4px 0 12px; text-align: center; }
+.interview-intro { display: grid; justify-items: start; gap: 14px; padding: 4px 0 12px; text-align: left; }
 .interview-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 16px; background: var(--hover-bg); }
 .interview-intro .interview-privacy { max-width: 370px; font-size: var(--fs-micro); }
-.interview-intro-actions { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 6px; }
+.interview-intro-actions { display: flex; align-items: center; justify-content: flex-start; gap: 14px; margin-top: 6px; }
 .work-interview button.primary, .work-interview button.secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; }
-.interview-wait, .interview-success { padding-top: 8px; }
+.interview-wait, .interview-success { justify-items: center; padding-top: 8px; text-align: center; }
+.interview-dialog .interview-wait h3, .interview-dialog .interview-success h3 { text-align: center; }
 .interview-wait p { margin-top: 10px; }
 .interview-elapsed { font-size: var(--fs-micro); font-variant-numeric: tabular-nums; color: var(--fg-faint); }
 .interview-step { --step-offset: 8px; animation: interview-step-in 180ms ease-out; }

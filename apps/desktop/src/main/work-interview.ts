@@ -81,7 +81,7 @@ async function ask<T>(ctx: VaultContext, prompt: string, schema: object, signal:
   }
 }
 
-export function registerWorkInterviewIpc(ctx: VaultContext): void {
+export function registerWorkInterviewIpc(ctx: VaultContext, onSaved?: () => void): void {
   let current: AbortController | undefined
   const request = async <T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> => {
     current?.abort()
@@ -95,7 +95,11 @@ export function registerWorkInterviewIpc(ctx: VaultContext): void {
   })
   ipcMain.handle('interview:save', async (_e, answers: unknown): Promise<{ saved: boolean }> => {
     const given = checkedAnswers(answers)
-    return request(async signal => ({ saved: await saveGuide(ctx, given, signal) }))
+    return request(async signal => {
+      const saved = await saveGuide(ctx, given, signal)
+      if (saved) onSaved?.()
+      return { saved }
+    })
   })
   ipcMain.handle('interview:cancel', () => { current?.abort(); current = undefined })
 }
@@ -121,6 +125,7 @@ function saveGuide(ctx: VaultContext, given: InterviewAnswer[], signal: AbortSig
     if (JSON.stringify(latest) !== JSON.stringify(existing)) throw new Error('Your work guide changed. Try saving again to keep those edits.')
     signal.throwIfAborted()
     await writeNote(ctx.paths, guideNote(sections, new Date(), existing, automatic))
+    await ctx.store.applyFile('add', join(ctx.paths.notes, `${WORK_GUIDE_NOTE_ID}.md`))
     broadcast({ type: 'vault:changed' })
     return true
   })

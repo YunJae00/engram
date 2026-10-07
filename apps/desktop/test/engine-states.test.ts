@@ -2,14 +2,16 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 const detect = vi.hoisted(() => vi.fn())
 const send = vi.hoisted(() => vi.fn())
+const prime = vi.hoisted(() => vi.fn(async () => undefined))
 vi.mock('core', async importOriginal => ({ ...await importOriginal<typeof import('core')>(), createEngine: (id: string) => ({ id, detect: () => detect(id) }) }))
 vi.mock('electron', () => ({ app: { getPath: () => `${process.cwd()}/tmp/engine-states` }, BrowserWindow: { getAllWindows: () => [{ webContents: { id: 1, send } }] } }))
 vi.mock('../src/main/desktop-overlay.js', () => ({ overlayWindowIds: () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => ({ defaultEngine: 'codex', aiSelections: { filing: { engine: 'codex', model: 'chosen', effort: 'high' } } }) }))
+vi.mock('../src/main/work-map-job.js', () => ({ primeWorkMap: prime }))
 import { engineStates, refreshEngines, type VaultContext } from '../src/main/vault.js'
 import { revalidateEngines } from '../src/main/engine-health.js'
 
-afterEach(() => { vi.unstubAllEnvs(); detect.mockReset(); send.mockReset() })
+afterEach(() => { vi.unstubAllEnvs(); detect.mockReset(); send.mockReset(); prime.mockReset() })
 
 it('checks only the requested provider without waiting for the other runtime', async () => {
   vi.stubEnv('ENGRAM_ENGINE', 'auto')
@@ -47,4 +49,28 @@ it('does not trigger a picker probe cascade after a model-only save but still br
   await revalidateEngines(ctx)
   expect(send).toHaveBeenCalledTimes(1)
   expect(detect).toHaveBeenCalledExactlyOnceWith('codex')
+})
+
+it('starts initial filing after connection without holding up engine readiness', async () => {
+  vi.stubEnv('ENGRAM_ENGINE', 'auto')
+  detect.mockResolvedValue({ installed: true, loggedIn: true })
+  let finish!: () => void
+  prime.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+  const ctx = { engines: [] } as unknown as VaultContext
+  await revalidateEngines(ctx)
+  expect(ctx.engines).toHaveLength(1)
+  expect(send).toHaveBeenCalledOnce()
+  await vi.waitFor(() => expect(prime).toHaveBeenCalledExactlyOnceWith(ctx))
+  finish()
+  await revalidateEngines(ctx)
+  expect(prime).toHaveBeenCalledOnce()
+})
+
+it('does not prepare personal context before an AI account is connected', async () => {
+  vi.stubEnv('ENGRAM_ENGINE', 'auto')
+  detect.mockResolvedValue({ installed: true, loggedIn: false })
+  const ctx = { engines: [] } as unknown as VaultContext
+  await revalidateEngines(ctx)
+  expect(ctx.engines).toHaveLength(0)
+  expect(prime).not.toHaveBeenCalled()
 })
