@@ -81,17 +81,16 @@ export function Onboarding() {
   return <div className="onboarding" data-testid="onboarding"><div className="onboard-card">
     <div className="onboard-progress" aria-label={`Step ${step} of 2`}><strong>Engram</strong><span>{step} / 2</span></div>
     {step === 1 ? <section data-testid="onboard-step-1">
-      <h1>Your space to think and do.</h1>
-      <p className="onboard-sub">Browse, chat, and keep your work in one place. Your workspace is a folder on this computer.</p>
-      <label className="onboard-folder-label" htmlFor="onboard-root"><Folder size={16} aria-hidden />Workspace folder</label>
-      <input id="onboard-root" data-testid="vault-root-input" value={root} placeholder="Choose a workspace folder" onChange={event => setRoot(event.target.value)} />
-      <button className="onboard-choose-folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose a different folder…</button>
-      <p className="onboard-note">The suggested location is ready to use. You can connect your AI next, or start browsing without one.</p>
-      <p className="onboard-note">The local activity journal records app names and window titles, not screen contents. You can turn it off in Settings.</p>
+      <h1>Choose your workspace</h1>
+      <div className="onboard-folder">
+        <Folder size={18} aria-hidden />
+        <input id="onboard-root" aria-label="Workspace folder" data-testid="vault-root-input" value={root} placeholder="Workspace folder" onChange={event => setRoot(event.target.value)} />
+        <button className="secondary" aria-label="Choose workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose…</button>
+      </div>
+      <p className="onboard-note">Activity journal saves app names and window titles locally, not screen contents. Turn off in Settings.</p>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
     </section> : <section data-testid="onboard-step-2">
-      <h1>Connect your AI.</h1>
-      <p className="onboard-sub">Connect either account, or both. Sign in securely in your browser; no API key or terminal setup needed.</p>
+      <h1>Connect your AI</h1>
       <div className="onboard-providers" aria-busy={loading}>
         {(['claude', 'codex'] as const).map(id => {
           const state = brains.find(brain => brain.id === id)
@@ -100,17 +99,16 @@ export function Onboarding() {
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
-            <div><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong><span data-testid={`onboard-brain-${id}`}>{active ? login?.phase === 'browser' ? 'Finish signing in in your browser' : 'Opening sign-in…' : connected ? 'Connected' : loading ? 'Checking connection…' : state?.installed ? 'Use your existing account' : id === 'claude' ? 'Install once, then connect your account' : 'Runtime unavailable — reinstall Engram to repair'}</span></div>
-            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <Check size={18} aria-label="Connected" /> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
+            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}</div>
+            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className="onboard-connected" data-testid={`onboard-brain-${id}`} role="status"><Check size={15} aria-hidden />Connected</span> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
             {active && <div className="onboard-login-actions">{login?.canOpen && <button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button>}<button className="secondary" onClick={() => loginAction(api.engineCancelLogin(id))}>Cancel sign-in</button></div>}
           </div>
         })}
       </div>
-      <label className="setting-row"><span>Learn where you work</span><input type="checkbox" className="switch" data-testid="onboard-work-map" aria-describedby="work-map-consent" checked={learnWork} onChange={event => setLearnWork(event.target.checked)} /></label>
-      <p className="setting-hint" id="work-map-consent">Use local browser history and bookmarks to find work places. Site names and titles are sent to your AI for labels; pages are not opened. Optional, refreshed daily. Change it in Settings.</p>
-      <label className="setting-row"><span>Personalize how Engram helps</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label>
-      <p className="setting-hint" id="interview-consent">Optional questions after setup. File and work-site names are shared with your AI, not file contents. You choose what to answer.</p>
-      <p className="onboard-note">Choose separate models for conversations and filing later. Only the context needed for an AI request is sent to its provider.</p>
+      <div className="onboard-preferences">
+        <div><label className="setting-row"><span>Learn where you work</span><input type="checkbox" className="switch" data-testid="onboard-work-map" aria-describedby="work-map-consent" checked={learnWork} onChange={event => setLearnWork(event.target.checked)} /></label><p className="setting-hint" id="work-map-consent">Site names and titles from browser history and bookmarks go to your AI daily. No pages opened.</p></div>
+        <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Optional questions. File and site names go to your AI, not contents.</p></div>
+      </div>
       <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting || installing} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
