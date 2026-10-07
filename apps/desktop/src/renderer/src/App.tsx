@@ -311,7 +311,7 @@ function Shell() {
         {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
         {tourOpen && !interviewOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
-        {interviewOpen && <WorkInterviewDialog onClose={closeInterview} onSaved={() => showToast('Saved your work preferences.')} />}
+        {interviewOpen && <WorkInterviewDialog onClose={closeInterview} />}
       </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
       <ComputerStatus />

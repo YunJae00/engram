@@ -1,40 +1,54 @@
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, MessageSquareText, Pencil } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, MessageSquareText, Pencil, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { InterviewQuestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
-import { DialogHeader } from './DialogHeader.js'
 
 export const INTERVIEW_PENDING_KEY = 'engram.interviewPending'
 
 type Reply = { picked: string[]; own: string }
 export const replyText = (reply: Reply): string => [...reply.picked, reply.own.trim()].filter(Boolean).join('; ')
 
-export function WorkInterview({ onDone, onDraftChange }: { onDone?: () => void; onDraftChange?: (dirty: boolean) => void }) {
+export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): void; onSaved(): void; onDraftChange(dirty: boolean): void }) {
   const [questions, setQuestions] = useState<InterviewQuestionDto[] | null>(null)
   const [replies, setReplies] = useState<Reply[]>([])
   const [at, setAt] = useState(0)
+  const [direction, setDirection] = useState<'forward' | 'back'>('forward')
   const [busy, setBusy] = useState<'' | 'asking' | 'saving'>('')
+  const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const revision = useRef(0)
   const heading = useRef<HTMLHeadingElement>(null)
+  const scroll = useRef<HTMLDivElement>(null)
+  const done = useRef<HTMLButtonElement>(null)
   useEffect(() => () => { revision.current++; void api.interviewCancel().catch(() => undefined) }, [])
-  useEffect(() => { if (questions) heading.current?.focus() }, [at, questions])
+  useEffect(() => {
+    if (questions) { scroll.current?.scrollTo(0, 0); heading.current?.focus({ preventScroll: true }) }
+  }, [at, questions])
+  useEffect(() => { if (saved) done.current?.focus() }, [saved])
+  useEffect(() => {
+    if (busy !== 'asking') return
+    const started = performance.now()
+    setElapsed(0)
+    const timer = window.setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 1000)
+    return () => window.clearInterval(timer)
+  }, [busy])
   const answered = replies.filter((reply) => replyText(reply)).length
-  useEffect(() => { onDraftChange?.(answered > 0 && !saved) }, [answered, saved, onDraftChange])
+  useEffect(() => { onDraftChange(answered > 0 && !saved) }, [answered, saved, onDraftChange])
   const current = questions?.[at]
   const review = !!questions && at === questions.length
   const answerLength = replyText(replies[at] ?? { picked: [], own: '' }).length
   const tooLong = replies.some((reply) => replyText(reply).length > 1200)
+  const move = (next: number) => { setError(''); setDirection(next < at ? 'back' : 'forward'); setAt(next) }
   const cancel = () => { revision.current++; setBusy(''); void api.interviewCancel().catch(() => setError('Could not stop the request. Close this window to leave it.')) }
   const start = async () => {
     const request = ++revision.current
-    setBusy('asking'); setError(''); setSaved(false)
+    setElapsed(0); setBusy('asking'); setError('')
     try {
       const next = await api.interviewQuestions()
       if (request !== revision.current) return
       if (!next.length) { setQuestions(null); setError('No questions yet. You can try again later in Settings.'); return }
-      setQuestions(next); setReplies(next.map(() => ({ picked: [], own: '' }))); setAt(0)
+      setQuestions(next); setReplies(next.map(() => ({ picked: [], own: '' }))); setDirection('forward'); setAt(0)
     } catch { if (request === revision.current) setError('Could not prepare questions. Check your AI connection and try again.') }
     finally { if (request === revision.current) setBusy('') }
   }
@@ -46,52 +60,68 @@ export function WorkInterview({ onDone, onDraftChange }: { onDone?: () => void; 
     try {
       const result = await api.interviewSave(questions.map((one, i) => ({ question: one.question, answer: replyText(replies[i] ?? { picked: [], own: '' }) })))
       if (request !== revision.current) return
-      if (result.saved) { setSaved(true); setQuestions(null); onDone?.() }
+      if (result.saved) {
+        try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* The work guide is saved independently of browser storage. */ }
+        setSaved(true); onDraftChange(false); onSaved()
+      }
       else setError('No answers were saved. Add an answer or try again.')
     } catch { if (request === revision.current) setError('Could not save your answers. They are still here; please try again.') }
     finally { if (request === revision.current) setBusy('') }
   }
   return <div className="work-interview" data-testid="work-interview" aria-busy={!!busy}>
-    {!questions && <div className="interview-intro">
-      <span className="interview-mark" aria-hidden>{saved ? <Check size={22} /> : <MessageSquareText size={22} />}</span>
-      <h3>{saved ? 'A little more like you.' : 'Make Engram feel like your coworker.'}</h3>
-      <p>{saved ? 'Your answers are saved in “How I work”. You can edit that note in Cosmos.' : 'A few optional questions help Engram follow your preferences. Answer what matters; skip the rest.'}</p>
-      {!saved && <p className="interview-privacy">Your AI uses recent file and work-site names, plus your existing work guide. Your documents stay unopened. The saved guide can learn recurring preferences from answers you give during tasks.</p>}
-      {busy === 'asking' ? <div className="interview-wait" role="status"><LoaderCircle size={18} className="computer-spinner" aria-hidden /><span>Preparing questions for you…</span><button type="button" className="secondary" onClick={cancel}>Cancel</button></div> : <button type="button" className="primary" data-testid="interview-start" onClick={() => void start()}>{saved ? 'Ask more questions' : 'Get started'}<ArrowRight size={15} aria-hidden /></button>}
-    </div>}
-    {questions && <form onSubmit={(event) => { event.preventDefault(); if (review) void save(); else if (answerLength <= 1200) setAt(at + 1) }}>
-      <div className="interview-progress"><span>{review ? 'Review your answers' : `Question ${at + 1} of ${questions.length}`}</span><span>{answered} answered</span></div>
-      <progress aria-label="Interview progress" max={questions.length} value={review ? questions.length : at} />
-      {current && <fieldset className="interview-question" disabled={!!busy} data-testid={`interview-question-${at}`}>
-        <legend><h3 ref={heading} tabIndex={-1}>{current.question}</h3></legend>
-        {current.basis && <p className="interview-basis">Based on {current.basis}</p>}
-        {!!current.options.length && <p className="interview-hint">Choose any that fit.</p>}
-        <div className="interview-options">{current.options.map((option) => <label key={option} className="interview-option">
-          <input type="checkbox" checked={replies[at]?.picked.includes(option) ?? false} onChange={(event) => update((reply) => ({ ...reply, picked: event.target.checked ? [...reply.picked, option] : reply.picked.filter((one) => one !== option) }))} />
-          <span>{option}</span><Check size={15} className="interview-option-check" aria-hidden />
-        </label>)}</div>
-        <label className="interview-own">{current.options.length ? 'In your own words (optional)' : 'Your answer (optional)'}<textarea rows={2} maxLength={1200} data-testid={`interview-answer-${at}`} value={replies[at]?.own ?? ''} placeholder="Add anything that matters to you…" onChange={(event) => update((reply) => ({ ...reply, own: event.target.value }))} /></label>
-        {answerLength > 1200 && <p className="computer-error" role="alert">Shorten this answer by {answerLength - 1200} characters, including selected choices.</p>}
-      </fieldset>}
-      {review && <div className="interview-review">
-        <h3 ref={heading} tabIndex={-1}>Does this sound like you?</h3>
-        <p>Only your answers will be saved. You can edit the note later in Cosmos.</p>
-        {questions.map((one, i) => <button key={i} type="button" disabled={!!busy} className="interview-review-answer" onClick={() => { setError(''); setAt(i) }} aria-label={`Edit answer ${i + 1}`}><span><strong>{one.question}</strong><span>{replyText(replies[i] ?? { picked: [], own: '' }) || 'Skipped'}</span></span><Pencil size={14} aria-hidden /></button>)}
+    <header className="interview-topbar">
+      {questions && !saved && <div className="interview-progress" data-testid="interview-progress"><span>{review ? 'Review' : `${at + 1} / ${questions.length}`}</span><progress aria-label="Interview progress" max={questions.length} value={review ? questions.length : at + 1} /></div>}
+      <button type="button" className="dialog-close" aria-label="Close work interview" onClick={onClose}><X size={16} strokeWidth={1.8} /></button>
+    </header>
+    {saved ? <div className="interview-scroll" data-testid="interview-scroll"><div className="interview-intro interview-success">
+      <span className="interview-mark" aria-hidden><Check size={24} /></span><h3>Saved</h3>
+      <p>Your preferences are ready for your next task.</p>
+      <button ref={done} type="button" className="primary" data-testid="interview-done" onClick={onClose}>Done</button>
+    </div></div> : !questions ? <div className="interview-scroll" data-testid="interview-scroll">
+      {busy === 'asking' ? <div className="interview-intro interview-wait">
+        <span className="interview-mark" aria-hidden><LoaderCircle size={24} className="computer-spinner" /></span>
+        <div role="status"><h3>Preparing questions…</h3><p>{elapsed >= 20 ? 'Still waiting for your AI. You can cancel and retry.' : 'This can take a minute or more.'}</p></div>
+        <span className="interview-elapsed" role="timer" aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
+        <button type="button" className="secondary" onClick={cancel}>Cancel</button>
+      </div> : <div className="interview-intro">
+        <span className="interview-mark" aria-hidden><MessageSquareText size={22} /></span>
+        <h3>Make Engram feel like your coworker.</h3>
+        <p>A few questions about the way you work.</p>
+        <p className="interview-privacy">Your AI uses file and work-site names and your work guide, not document contents. Answers can update your preferences during tasks.</p>
+        <div className="interview-intro-actions"><button type="button" className="primary" data-testid="interview-start" onClick={() => void start()}>Get started<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>Not now</button></div>
       </div>}
       {error && <p className="computer-error" role="alert">{error}</p>}
+    </div> : <form onSubmit={(event) => { event.preventDefault(); if (review) void save(); else if (answerLength <= 1200) move(at + 1) }}>
+      <div ref={scroll} className="interview-scroll" data-testid="interview-scroll">
+        <div key={at} className="interview-step" data-direction={direction}>
+          {current && <fieldset className="interview-question" disabled={!!busy} data-testid={`interview-question-${at}`}>
+            <legend><h3 ref={heading} tabIndex={-1}>{current.question}</h3></legend>
+            {current.basis && <p className="interview-basis">Based on {current.basis}</p>}
+            <div className="interview-options">{current.options.map((option) => <label key={option} className="interview-option">
+              <span>{option}</span><input type="checkbox" checked={replies[at]?.picked.includes(option) ?? false} onChange={(event) => update((reply) => ({ ...reply, picked: event.target.checked ? [...reply.picked, option] : reply.picked.filter((one) => one !== option) }))} />
+            </label>)}</div>
+            <textarea className="interview-own" rows={2} maxLength={1200} aria-label="Your answer" data-testid={`interview-answer-${at}`} value={replies[at]?.own ?? ''} placeholder={current.options.length ? 'Add your own…' : 'Your answer…'} onChange={(event) => update((reply) => ({ ...reply, own: event.target.value }))} />
+            {answerLength > 1200 && <p className="computer-error" role="alert">Shorten this answer by {answerLength - 1200} characters, including selected choices.</p>}
+          </fieldset>}
+          {review && <div className="interview-review">
+            <h3 ref={heading} tabIndex={-1}>Does this sound like you?</h3>
+            {questions.map((one, i) => <button key={i} type="button" disabled={!!busy} className="interview-review-answer" onClick={() => move(i)} aria-label={`Edit answer ${i + 1}`}><span><strong>{one.question}</strong><span>{replyText(replies[i] ?? { picked: [], own: '' }) || 'Skipped'}</span></span><Pencil size={14} aria-hidden /></button>)}
+          </div>}
+        </div>
+        {error && <p className="computer-error" role="alert">{error}</p>}
+      </div>
       <div className="interview-actions">
-        <button type="button" className="secondary" disabled={at === 0 || !!busy} onClick={() => { setError(''); setAt(at - 1) }}><ArrowLeft size={14} aria-hidden />Back</button>
-        <div>{!review && <button type="button" className="interview-skip" onClick={() => { update(() => ({ picked: [], own: '' })); setAt(at + 1) }}>Skip</button>}
+        <button type="button" className="secondary" disabled={at === 0 || !!busy} onClick={() => move(at - 1)}><ArrowLeft size={14} aria-hidden />Back</button>
+        <div>{!review && <button type="button" className="interview-skip" onClick={() => { update(() => ({ picked: [], own: '' })); move(at + 1) }}>Skip</button>}
           {busy === 'saving' && <button type="button" className="secondary" onClick={cancel}>Cancel</button>}
           <button type="submit" className="primary" data-testid={review ? 'interview-save' : 'interview-next'} disabled={!!busy || (review ? !answered || tooLong : answerLength > 1200)}>{busy === 'saving' ? <><LoaderCircle size={15} className="computer-spinner" aria-hidden />Saving…</> : review ? 'Save answers' : at === questions.length - 1 ? 'Review answers' : 'Continue'}{!review && <ArrowRight size={14} aria-hidden />}</button>
         </div>
       </div>
     </form>}
-    {!questions && error && <p className="computer-error" role="alert">{error}</p>}
   </div>
 }
 
-export function WorkInterviewDialog({ onClose, onSaved }: { onClose(): void; onSaved?: () => void }) {
+export function WorkInterviewDialog({ onClose }: { onClose(): void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [dirty, setDirty] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -102,12 +132,13 @@ export function WorkInterviewDialog({ onClose, onSaved }: { onClose(): void; onS
     element?.showModal()
     return () => { element?.close(); if (opener?.isConnected) opener.focus({ preventScroll: true }) }
   }, [])
-  useEffect(() => { if (leaving) keep.current?.focus() }, [leaving])
+  useEffect(() => {
+    if (leaving) keep.current?.focus()
+    else dialog.current?.querySelector<HTMLButtonElement | HTMLHeadingElement>('[data-testid="interview-done"], .interview-step h3')?.focus({ preventScroll: true })
+  }, [leaving])
   const dismiss = () => { if (dirty) setLeaving(true); else onClose() }
   return <dialog ref={dialog} className="interview-dialog" aria-label="How you work" data-testid="interview-dialog" onKeyDown={(event) => { if (event.key === 'Escape') event.stopPropagation() }} onCancel={(event) => { event.preventDefault(); if (leaving) setLeaving(false); else dismiss() }}>
-    <DialogHeader closeLabel="Close work interview" onClose={dismiss}>How you work</DialogHeader>
-    <div className="interview-dialog-body" hidden={leaving}><WorkInterview onDraftChange={setDirty} onDone={() => { onSaved?.(); onClose() }} /></div>
-    {leaving && <div className="interview-dialog-body interview-leave"><h3>Leave without saving?</h3><p>Your answers will be discarded.</p><div className="interview-actions"><button type="button" className="secondary" onClick={onClose}>Discard answers</button><button ref={keep} type="button" className="primary" onClick={() => setLeaving(false)}>Keep answering</button></div></div>}
-    <div className="interview-dialog-footer" hidden={leaving}><button type="button" data-testid="interview-later" onClick={dismiss}>Not now</button><span>Always available in Settings → Memory &amp; data</span></div>
+    <div className="interview-dialog-body" hidden={leaving}><WorkInterview onDraftChange={setDirty} onSaved={() => setLeaving(false)} onClose={dismiss} /></div>
+    {leaving && <div className="interview-leave"><h3>Leave without saving?</h3><p>Your unsaved answers will be discarded.</p><div className="interview-actions"><button type="button" className="secondary" onClick={onClose}>Discard answers</button><button ref={keep} type="button" className="primary" onClick={() => setLeaving(false)}>Keep answering</button></div></div>}
   </dialog>
 }

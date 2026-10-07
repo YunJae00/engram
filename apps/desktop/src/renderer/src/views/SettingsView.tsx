@@ -184,7 +184,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
           </div>
         </div>
         {section === 'memory' && <section aria-label="How you work"><div className="setting-row"><span>How you work</span><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></div><p className="setting-hint">A few optional questions about your preferences. Saved as an editable note in Cosmos.</p></section>}
-        {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} onSaved={() => showToast('Saved your work preferences.')} />}
+        {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} />}
         </section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="About">
         <h2>About Engram</h2>
