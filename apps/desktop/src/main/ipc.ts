@@ -347,6 +347,7 @@ function runPipelineSoon(ctx: VaultContext, message: string): void {
 
 export function runPipelineAsync(ctx: VaultContext, message: string): void {
   if (ctx.engines.length === 0) return
+  if (draining || manualSweepInFlight) { scheduleAutoTidy(ctx); return }
   if (pipelineRunning) {
     pipelineQueued = true
     return
@@ -554,16 +555,16 @@ async function autoTidy(ctx: VaultContext): Promise<void> {
     scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
     return
   }
-  if (draining || manualSweepInFlight || stopRequested) {
-    scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
-    return
-  }
   const cooling = engineBackoff.blockedMs()
   if (cooling > 0) {
     scheduleAutoTidy(ctx, Math.max(cooling, AUTO_TIDY_RETRY_MS))
     return
   }
   const pending = await pendingWork(ctx)
+  if (isLibrarianBusy() || stopRequested) {
+    scheduleAutoTidy(ctx, AUTO_TIDY_RETRY_MS)
+    return
+  }
   // Unlinked notes don't show in the badge (they're "swept, not yet wired"),
   // but they ARE auto-tidy work: the J2 backfill + J9 need sweeps to run.
   const unlinked = ctx.store
@@ -1639,8 +1640,8 @@ export function registerIpc(ctx: VaultContext): void {
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
-  registerWorkInterviewIpc(ctx)
-  startWorkMap(ctx)
+  registerWorkInterviewIpc(ctx, () => scheduleAutoTidy(ctx, 0))
+  startWorkMap(ctx, () => scheduleAutoTidy(ctx, 0))
   setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
 
   ipcMain.handle('routines:wallDone', (_e, routineId: string, verdict: 'resolved' | 'skip') => {

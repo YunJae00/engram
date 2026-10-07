@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { guideNote, initVault, readNote, writeNote, type Engine, type EngineJobInput } from 'core'
+import { guideNote, initVault, NoteStore, readNote, writeNote, type Engine, type EngineJobInput } from 'core'
 
 const fake = vi.hoisted(() => ({
   roots: {} as Record<string, string>,
@@ -32,9 +32,10 @@ async function setup(reply: (job: EngineJobInput, index: number) => string | Pro
   fake.roots = Object.fromEntries(['documents', 'desktop', 'downloads'].map(name => [name, join(root, name)]))
   const jobs: EngineJobInput[] = []
   const engine = { id: 'mock', async *run(job: EngineJobInput) { jobs.push(job); yield { type: 'result', text: await reply(job, jobs.length) } } } as unknown as Engine
-  const ctx = { paths, engines: [engine] } as Parameters<typeof registerWorkInterviewIpc>[0]
-  registerWorkInterviewIpc(ctx)
-  return { root, ctx, paths, jobs }
+  const ctx = { paths, engines: [engine], store: await NoteStore.open(paths) } as Parameters<typeof registerWorkInterviewIpc>[0]
+  const onSaved = vi.fn(() => expect(ctx.store.get('n-work-guide')).not.toBeNull())
+  registerWorkInterviewIpc(ctx, onSaved)
+  return { root, ctx, paths, jobs, onSaved }
 }
 
 it('shares bounded file names and hostname metadata only, using the selected isolated engine', async () => {
@@ -66,6 +67,7 @@ it('validates the IPC boundary before spending any model usage', async () => {
   for (const invalid of [null, {}, Array(11).fill(answers[0]), [{ question: 'Q', answer: 'x'.repeat(1201) }], [{ question: 'Q', answer: 'x\0' }]]) await expect(call('save', invalid)).rejects.toThrow()
   expect(await call('save', [])).toEqual({ saved: false })
   expect(t.jobs).toHaveLength(0)
+  expect(t.onSaved).not.toHaveBeenCalled()
 })
 
 it('retries parsing once but never retries a model or authentication failure', async () => {
@@ -88,6 +90,7 @@ it.each(['questions', 'save'])('cancels %s and discards even a late successful m
   expect(t.jobs).toHaveLength(1)
   await expect(readNote(t.paths, 'n-work-guide')).rejects.toThrow()
   expect(fake.broadcast).not.toHaveBeenCalled()
+  expect(t.onSaved).not.toHaveBeenCalled()
 })
 
 it('writes only the canonical guide note, not the id in existing frontmatter', async () => {
@@ -97,6 +100,8 @@ it('writes only the canonical guide note, not the id in existing frontmatter', a
   await writeFile(path, (await readFile(path, 'utf8')).replace('id: n-work-guide', 'id: n-somewhere-else'))
   expect(await call('save', answers)).toEqual({ saved: true })
   expect((await readNote(t.paths, 'n-work-guide')).front.id).toBe('n-work-guide')
+  expect(t.onSaved).toHaveBeenCalledOnce()
+  expect(t.ctx.store.get('n-work-guide')?.body).toContain('Every send needs approval')
   await expect(readNote(t.paths, 'n-somewhere-else')).rejects.toThrow()
 })
 
@@ -112,6 +117,7 @@ it('preserves edits or retirement made while the model is writing', async () => 
   release.finish(); await rejected
   expect((await readNote(t.paths, 'n-work-guide')).body).toContain('manual edit')
   expect(await workGuide(t.paths)).toBe('')
+  expect(t.onSaved).not.toHaveBeenCalled()
 })
 
 it('learns only with a current opted-in guide and preserves its user-edit timestamp', async () => {

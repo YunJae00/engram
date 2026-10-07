@@ -9,6 +9,7 @@ import type { EngineHealthDto, EngineHealthReason, EngineStatusDto, EngramEvent 
 import type { VaultContext } from './vault.js'
 import { overlayWindowIds } from './desktop-overlay.js'
 import { activeAccountProfile } from './account-profiles.js'
+import { flog } from './flog.js'
 
 function selectedAccount(engine: Engine | undefined): boolean {
   if (!engine || (engine.id !== 'claude' && engine.id !== 'codex')) return true
@@ -184,8 +185,10 @@ export function refreshHealthFromDetection(ctx: VaultContext): void {
 export async function revalidateEngines(ctx: VaultContext, selectionOnly = false): Promise<void> {
   try {
     const previous = selectionOnly ? JSON.stringify(ctx.engines.map(engineDto)) : null
+    const wasReady = ctx.engines.length > 0
     const { refreshEngines } = await import('./vault.js')
     const engines = await refreshEngines(ctx, selectionOnly)
+    if (!wasReady && engines.length) void import('./work-map-job.js').then(({ primeWorkMap }) => primeWorkMap(ctx)).catch(error => flog('work-map', error))
     const next = engines.map(engineDto)
     if (selectionOnly && previous === JSON.stringify(next)) return
     broadcast({ type: 'engines:changed', engines: next })

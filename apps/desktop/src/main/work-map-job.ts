@@ -71,6 +71,15 @@ async function readVisits(sinceMs: number, signal: AbortSignal): Promise<TraceVi
 let current: VaultContext | null = null
 let running: Promise<WorkMap | null> | null = null
 let controller: AbortController | null = null
+let filed: (() => void) | undefined
+
+export async function primeWorkMap(ctx: VaultContext): Promise<void> {
+  if (process.env['ENGRAM_USERDATA'] || !ctx.engines.length || engineBackoff.blockedMs() > 0 || !(await loadSettings()).workMap) return
+  if (running) { await running; return }
+  const map = await readWorkMap(ctx.paths)
+  if (map && !map.places.some(place => place.work === undefined)) return
+  await refreshWorkMap(ctx)
+}
 
 export function refreshWorkMap(ctx: VaultContext): Promise<WorkMap | null> {
   if (running) return running
@@ -96,11 +105,15 @@ export function refreshWorkMap(ctx: VaultContext): Promise<WorkMap | null> {
       }
       if (!(await allowed())) return null
       await writeWorkMap(ctx.paths, map, abort.signal)
-      for (const place of map.places.filter((one) => one.work === true)) {
+      const work = map.places.filter(one => one.work === true)
+      for (const place of work) {
         const existing = await readNote(ctx.paths, placeNoteId(place.host)).catch(() => null)
         if (!(await allowed())) return null
-        await writeNote(ctx.paths, placeNote(place, now, existing))
+        const note = placeNote(place, now, existing)
+        await writeNote(ctx.paths, note)
+        await ctx.store.applyFile('add', join(ctx.paths.notes, `${note.front.id}.md`))
       }
+      if (work.length && current === ctx) filed?.()
       flog('work-map', `mapped ${map.places.length} places from ${visits.length} visits and ${bookmarks.length} bookmarks`)
       broadcast({ type: 'vault:changed' })
       return map
@@ -126,8 +139,9 @@ export async function workMapShortcuts(ctx: VaultContext): Promise<string> {
 }
 
 let timer: NodeJS.Timeout | null = null
-export function startWorkMap(ctx: VaultContext): void {
+export function startWorkMap(ctx: VaultContext, onFiled?: () => void): void {
   current = ctx
+  filed = onFiled
   if (timer) return
   // A probe or test profile never reads the person's real browser.
   if (process.env['ENGRAM_USERDATA']) return
