@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
-import { fileWorkTools, resolveArtifact } from '../src/file-work.js'
+import { fileWorkTools, resolveArtifact, saveArtifact } from '../src/file-work.js'
 import { workbookTool } from '../src/file-workbook.js'
 import { workCapabilities } from '../src/work-capabilities.js'
 
@@ -143,12 +143,66 @@ it('creates multiple sheets with local cross-sheet formulas while rejecting unkn
 
 it('rejects CSV formula injection while preserving numeric negatives and quoted multiline values', async () => {
   const call = tools()
-  for (const content of ['name,value\nitem,=1+2', 'name,value\nitem,"\t=HYPERLINK(A1)"', 'name,value\nitem,@SUM(A1)']) {
+  for (const content of ['name,value\nitem,=1+2', 'name,value\nitem,"\t=HYPERLINK(A1)"', 'name,value\nitem,@SUM(A1)', 'sep=;\nname;value\nitem;=1+2', 'name;value\nitem;=1+2']) {
     await expect(call('file_create_copy', { name: 'unsafe.csv', content })).rejects.toThrow('formula-like')
   }
   const content = 'name,value\n"two\nlines",-123.45\n"a,b",+2'
   const result = await call('file_create_copy', { name: 'safe.csv', content })
   expect(result.content).toBe(content)
+})
+
+it.each(['table.csv', 'table.CSV', 'table.tsv', 'table.TSV'])('preserves quoted delimiters, quotes, multiline cells, BOM and CRLF in %s', async (name) => {
+  const delimiter = name.toLowerCase().endsWith('.tsv') ? '\t' : ','
+  const content = `\uFEFFname${delimiter}note${delimiter}value\r\n한글${delimiter}"contains${delimiter}separator ""quoted""\r\nnext line"${delimiter}-12.5\r\nempty${delimiter}${delimiter}\r\n`
+  const call = tools()
+  const output = await call('file_create_copy', { name, content })
+  expect(await readFile(output.path, 'utf8')).toBe(content)
+  expect(output.tableValidation).toEqual({ valid: true, format: name.slice(-3).toLowerCase(), rows: 3, columns: 3 })
+  expect((await call('file_read', { path: output.path })).tableValidation).toEqual(output.tableValidation)
+})
+
+it.each([
+  ['table.csv', 'id,reason,status\nA1,Waiting,verified\nA2,Still waiting, incoming tomorrow,verified\n', 3, 4, 'Expected 3 columns but found 4'],
+  ['table.csv', 'a,b,c\n1,2\n', 2, 3, 'Expected 3 columns but found 2'],
+  ['table.tsv', 'a\tb\n1\t2\t\n', 2, 3, 'Expected 2 columns but found 3'],
+  ['table.csv', 'a,b\n1,un"quoted\n', 2, 2, 'Unexpected quote'],
+  ['table.tsv', 'a\tb\n1\t"unterminated\nnext line', 2, 2, 'Unclosed quoted cell'],
+  ['table.csv', 'a,b\n1,"quoted"suffix\n', 2, 2, 'Unexpected text after a closing quote'],
+  ['table.csv', 'a,b\n1,"first\nsecond"\n\n', 3, 2, 'Expected 2 columns but found 1'],
+])('rejects malformed %s before saving and identifies the logical row and column', async (name, content, row, column, reason) => {
+  const call = tools()
+  await expect(call('file_create_copy', { name, content })).rejects.toThrow(`row ${row}, column ${column}: ${reason}`)
+  expect(await readdir(root)).toEqual([])
+})
+
+it('also validates direct artifact saves, without creating an artifact or receipt for malformed tables', async () => {
+  await expect(saveArtifact(join(root, 'outputs'), 'bad.csv', Buffer.from('a,b\n1,2,3'))).rejects.toThrow('row 2, column 3')
+  await expect(saveArtifact(join(root, 'outputs'), 'unsafe.TSV', Buffer.from('a\tb\n1\t"\t=1+2"'))).rejects.toThrow('formula-like')
+  expect(await readdir(root)).toEqual([])
+})
+
+it('keeps malformed input readable for repair and validates beyond the displayed page', async () => {
+  const path = join(root, 'source.csv')
+  const content = 'id,note\n' + 'item,waiting\n'.repeat(3000) + 'last,waiting, incoming tomorrow\n'
+  await writeFile(path, content)
+  const call = tools()
+  const source = await call('file_read', { path })
+  expect(source.truncated).toBe(true)
+  expect(source.content).not.toContain('incoming tomorrow')
+  expect(source.tableValidation).toMatchObject({ valid: false, columns: 2, error: { row: 3002, column: 3, message: expect.stringContaining('found 3') } })
+  const corrected = content.replace('last,waiting, incoming tomorrow', 'last,"waiting, incoming tomorrow"')
+  const output = await call('file_create_copy', { name: 'repaired.csv', content: corrected, sourcePath: path, expectedSha256: source.sha256 })
+  expect(output.tableValidation).toEqual({ format: 'csv', valid: true, rows: 3002, columns: 2 })
+  expect(await readFile(path, 'utf8')).toBe(content)
+})
+
+it('reports invalid quotes on read without hiding or silently changing the source', async () => {
+  const path = join(root, 'source.tsv')
+  const content = 'id\tnote\n1\t"unfinished'
+  await writeFile(path, content)
+  const source = await tools()('file_read', { path })
+  expect(source.content).toBe(content)
+  expect(source.tableValidation).toMatchObject({ valid: false, error: { row: 2, column: 2, message: expect.stringContaining('Unclosed') } })
 })
 
 it('checks control again before saving and verifies all rows beyond the preview limit', async () => {

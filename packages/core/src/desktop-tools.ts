@@ -152,7 +152,7 @@ export function desktopScopeTools(tools: AgentTool[]): AgentTool[] { return tool
 export function desktopStepArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
   if (name === 'edit_live_document') return { snapshot: args['snapshot'], edits: '[redacted]' }
   if (name === 'compose_live_document') return { snapshot: args['snapshot'], composition: '[redacted]' }
-  if (name.startsWith('file_')) return Object.fromEntries(Object.entries(args).filter(([key]) => ['path', 'name', 'sheet', 'offset', 'sourcePath', 'expectedSha256'].includes(key)))
+  if (name.startsWith('file_')) return Object.fromEntries(Object.entries(args).filter(([key]) => ['path', 'name', 'sheet', 'range', 'offset', 'sourcePath', 'expectedSha256'].includes(key)))
   if (name === 'desktop_sequence') return { snapshot: args['snapshot'], actions: '[redacted]' }
   if (name !== 'desktop_action') return args
   // Invalid input must be redacted too: narration happens before validation.

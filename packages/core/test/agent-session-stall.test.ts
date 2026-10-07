@@ -55,6 +55,29 @@ it('ends a turn whose model has gone silent, keeping it unfinished so the task c
   expect(result.steps).toHaveLength(1)
 })
 
+it('counts host-only progress without visible tokens, but still stops when that progress goes silent', async () => {
+  vi.useFakeTimers()
+  let job!: ToolSessionJob
+  const onToken = vi.fn()
+  const engine = { id: 'claude', runTools: (next: ToolSessionJob) => new Promise(resolve => {
+    job = next
+    job.signal?.addEventListener('abort', () => resolve({ answer: '', error: 'canceled' }), { once: true })
+  }) } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Read', { onToken })
+  for (let i = 0; i < 3; i++) {
+    await vi.advanceTimersByTimeAsync(SESSION_STALL_MS - 10_000)
+    job.onProgress?.()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(job.signal?.aborted).toBe(false)
+  }
+  expect(onToken).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS + 10_000)
+  const result = await pending
+  expect(job.signal?.aborted).toBe(true)
+  expect(result.incomplete).toContain('stopped responding')
+  expect(vi.getTimerCount()).toBe(0)
+})
+
 it('refuses a page move made a third time after it came back the same twice, and lets a different move through', async () => {
   let presses = 0
   const said: string[] = []
@@ -172,4 +195,23 @@ it('counts a refused repeat toward the call budget and reports the turn unfinish
   expect(successfulTurnSteps(result.steps)).toEqual([])
   expect(result.stopped).toBe('calls')
   expect(result.answer).toContain('Not verified as complete')
+})
+
+it('stops repeated unreadable-page actions across changed key arguments and intervening screenshots', async () => {
+  const failure = new Error('The page has not exposed readable content after waiting.')
+  const pressKey = vi.fn(async () => { throw failure })
+  const readOpen = vi.fn(async () => { throw failure })
+  const said: string[] = []
+  await pageSession({ fetchPage: readOpen, readOpen, pressKey, look: async () => ({ data: 'image', mimeType: 'image/jpeg' }) }, async job => {
+    const call = (name: string, args: Record<string, unknown>) => job.tools.find(tool => tool.name === name)!.run(args)
+    for (const key of ['Escape', 'Tab', 'Space']) {
+      said.push(String(await call('press_key', { key })))
+      await call('look', {})
+    }
+    for (const find of ['Hours', 'Access', 'Schedule']) said.push(String(await call('read_open_page', { find })))
+  })
+  expect(pressKey).toHaveBeenCalledTimes(2)
+  expect(readOpen).toHaveBeenCalledTimes(2)
+  expect(said[2]).toContain('was not run again')
+  expect(said[5]).toContain('was not run again')
 })

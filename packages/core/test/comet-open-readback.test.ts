@@ -28,6 +28,7 @@ it.each([
   ['login wall', {}, { wall: 'login' }, false],
   ['captcha', {}, { wall: 'captcha' }, false],
   ['validation fault', {}, { faults: ['Report not saved'] }, false],
+  ['incomplete frame', {}, { faults: ['A frame could not be read. This extract is incomplete; reobserve before claiming all requested fields were checked.'] }, false],
   ['filtered extract', { find: 'North' }, {}, false],
 ] as [string, Record<string, unknown>, Partial<WebPage>, boolean][])('issues a host receipt only for an actual page report (%s)', async (_name, args, page, qualifies) => {
   const open = openTool(page)

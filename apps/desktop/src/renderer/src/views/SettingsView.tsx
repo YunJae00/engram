@@ -11,6 +11,7 @@ import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { WorkMapSettings } from '../components/WorkMapSettings.js'
+import { WorkInterviewDialog } from '../components/WorkInterview.js'
 import { TaskRecordingSettings } from '../components/TaskRecordingSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
@@ -30,6 +31,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [interviewOpen, setInterviewOpen] = useState(false)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
@@ -83,7 +85,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
 
   // Escape closes settings — but yields while the diagnostics overlay is
   // stacked on top (that one handles its own Escape).
-  useEscape(onClose, !showDiagnostics)
+  useEscape(onClose, !showDiagnostics && !interviewOpen)
 
   if (!settings || !ready)
     return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
@@ -181,6 +183,8 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
               </button>
           </div>
         </div>
+        {section === 'memory' && <section aria-label="How you work"><div className="setting-row"><span>How you work</span><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></div><p className="setting-hint">A few optional questions about your preferences. Saved as an editable note in Cosmos.</p></section>}
+        {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} onSaved={() => showToast('Saved your work preferences.')} />}
         </section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="About">
         <h2>About Engram</h2>

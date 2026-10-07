@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, ToolSessionJob } from 'core'
+import { SESSION_TURN_MS } from 'core'
 const timingLog = vi.hoisted(() => vi.fn())
 vi.mock('../src/main/flog.js', () => ({ flog: timingLog }))
 import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
@@ -256,7 +257,7 @@ export type { SdkUserMessage }
 
 // A runtime that writes its reply a few words at a time: thinking aloud,
 // then a tool call, then the answer - the pieces a person watches arrive.
-function streamingSdk(): SessionSdk {
+function streamingSdk(beforeReply?: () => AsyncIterable<{ type: string; [key: string]: unknown }>): SessionSdk {
   return {
     createSdkMcpServer: (options) => options,
     tool: (name, description, shape, handler) => ({ name, description, shape, handler }),
@@ -266,6 +267,7 @@ function streamingSdk(): SessionSdk {
         for await (const message of prompt) {
           void message
           if (partial) {
+            if (beforeReply) yield* beforeReply()
             yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Let me look. ' } } }
             yield { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use' } } }
             for (const word of ['The ', 'answer ', 'is 42.']) yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: word } } }
@@ -282,6 +284,50 @@ function streamingSdk(): SessionSdk {
 }
 
 describe('the reply streams as it is written', () => {
+  it('reports useful hidden progress without exposing content or accepting empty events and pings', async () => {
+    const pool = new SessionPool(), onProgress = vi.fn(), onToken = vi.fn()
+    timingLog.mockClear()
+    async function* events() {
+      yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'private reasoning fixture' } } }
+      yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: 'private arguments fixture' } } }
+      yield { type: 'system', subtype: 'thinking_tokens', estimated_tokens_delta: 3 }
+      for (const value of ['', undefined, 42]) {
+        yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: value } } }
+        yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: value } } }
+      }
+      for (const value of [0, -1, NaN, Infinity, '3', undefined]) yield { type: 'system', subtype: 'thinking_tokens', estimated_tokens_delta: value }
+      yield { type: 'stream_event', event: { type: 'ping' } }
+      yield { type: 'system', subtype: 'keep_alive', estimated_tokens_delta: 3 }
+    }
+    try {
+      const result = await pool.run(job('Task', { onProgress, onToken }), { sdk: streamingSdk(events), binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+      expect(onProgress.mock.calls).toEqual([[], [], []])
+      expect(onToken.mock.calls.flat()).toEqual(['Let me look. ', 'The ', 'answer ', 'is 42.'])
+      expect(result).toEqual({ answer: 'The answer is 42.' })
+      expect(JSON.stringify([result, onProgress.mock.calls, onToken.mock.calls, timingLog.mock.calls])).not.toContain('private')
+    } finally { pool.closeAll() }
+  })
+
+  it('keeps the absolute turn deadline even while hidden progress continues', async () => {
+    vi.useFakeTimers()
+    const pool = new SessionPool(), onProgress = vi.fn()
+    async function* events() {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 60_000))
+        yield { type: 'system', subtype: 'thinking_tokens', estimated_tokens_delta: 1 }
+      }
+    }
+    try {
+      const pending = pool.run(job('Task', { onProgress }), { sdk: streamingSdk(events), binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+      await vi.advanceTimersByTimeAsync(SESSION_TURN_MS - 1)
+      expect(onProgress).toHaveBeenCalledTimes(14)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await pending).toEqual({ answer: '', error: `timed out after ${SESSION_TURN_MS}ms` })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(onProgress).toHaveBeenCalledTimes(14)
+    } finally { pool.closeAll(); vi.useRealTimers() }
+  })
+
   it('hands each piece over as it comes, and starts over after a tool call', async () => {
     const pool = new SessionPool()
     const spec = { sdk: streamingSdk(), binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }

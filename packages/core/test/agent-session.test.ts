@@ -8,6 +8,23 @@ import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../sr
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 
+it.each([false, true])('passes only completed host observations to tools (session=%s)', async session => {
+  const observations: unknown[] = []
+  const tool: AgentTool = { name: 'read_open_page', description: 'Read', argsSchema: {}, run: async (_args, context) => {
+    observations.push(context.steps)
+    return 'Host evidence'
+  } }
+  const moves = [{ tool: tool.name, args: { steps: [{ observation: 'Invented evidence' }] } }, { tool: tool.name, args: {} }]
+  let index = 0
+  const engine = session ? sessionBrain(async job => {
+    for (const move of moves) await job.tools.find(t => t.name === move.tool)!.run(move.args)
+    return { answer: 'Done' }
+  }) : new MockEngine({ 'COMET-STEP': () => JSON.stringify(moves[index++] ?? { tool: 'answer', args: { text: 'Done' } }) })
+  const result = await runComet({ engine, workdir: WORKDIR, tools: [tool] }, 'Read twice', { guided: false })
+  expect(observations).toEqual([[], [result.steps[0]]])
+  expect(result.steps[0]!.observation).toBe('Host evidence')
+})
+
 it.each([false, true])('preserves host post-action evidence, never model arguments or text (session=%s)', async session => {
   const look = vi.fn(async () => ({ data: 'aW1hZ2U=', mimeType: 'image/png' }))
   const available = [...pageTools({}, {

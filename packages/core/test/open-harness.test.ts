@@ -106,10 +106,12 @@ describe('a long page is read in parts', () => {
     const { tmpVaultRoot } = await import('./helpers.js')
     const paths = await initVault(await tmpVaultRoot('tools-find'), { git: false })
     const text = 'A'.repeat(3_000) + 'B'.repeat(3_000) + 'price 12 won'
+    const current = { url: 'https://x.example/long', title: 'Long', text, dialog: 'Delivery details',
+      controls: ['#29 [button] Close [new]'], observation: { page: 'page-1', document: 2, revision: 12 } }
     const read = cometTools({
       paths,
       retrieve: async () => [],
-      courier: { fetchPage: async (url) => ({ url, title: 'Long', text }), readOpen: async () => ({ url: 'https://x.example/long', title: 'Long', text }) },
+      courier: { fetchPage: async (url) => ({ ...current, url }), readOpen: async () => current },
     }).find((t) => t.name === 'read_open_page')!
     const found = await read.run({ find: 'Price' }, { task: 'read it' })
     expect(found).toContain('part 3 of 3')
@@ -118,7 +120,12 @@ describe('a long page is read in parts', () => {
     const missing = await read.run({ find: 'shipping' }, { task: 'read it' })
     expect(missing).toContain('current readable extract (3 parts)')
     expect(missing).toContain('does not establish that the page or saved record lacks it')
-    expect(missing).not.toContain('AAAA')
+    expect(missing).toContain('part 1 of 3')
+    expect(missing).toContain('AAAA')
+    expect(missing).not.toContain('BBBB')
+    expect(missing).toContain('Delivery details')
+    expect(missing).toContain('Observation page-1/2/12')
+    expect(missing).toContain('#29 [button] Close [new]')
   })
 })
 

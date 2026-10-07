@@ -693,6 +693,10 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   // The work map: when it was last built and how many work places it holds.
   workMapStatus(): Promise<WorkMapStatusDto>
   workMapRefresh(): Promise<WorkMapStatusDto>
+  // The first-day interview: questions from the names of the person's files and work sites, answers kept as their work guide.
+  interviewQuestions(): Promise<InterviewQuestionDto[]>
+  interviewSave(answers: { question: string; answer: string }[]): Promise<{ saved: boolean }>
+  interviewCancel(): Promise<void>
   taskDecide(id: string, approvalId: string, answer: 'approve' | 'decline'): Promise<void>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
@@ -868,6 +872,7 @@ export interface AppSettingsDto {
 // One model the plan offers: the id the runtime takes, the name it shows,
 // and its own line about what the model is for.
 export interface WorkMapStatusDto { builtAt: string | null; places: number }
+export interface InterviewQuestionDto { topic: string; question: string; basis: string; options: string[] }
 
 export interface ModelChoiceDto {
   value: string

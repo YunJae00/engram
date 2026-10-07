@@ -43,6 +43,7 @@ it('keeps attached bytes in chat cache, includes their content in context, and l
   expect(await readdir(paths.notes)).toEqual([])
   expect(await readdir(paths.sources)).toEqual([])
   expect(read.imagePaths).toEqual([])
+  expect(read.evidencePaths).toEqual(read.paths)
 })
 
 it('previews only bounded saved attachments and does not invent video analysis', async () => {
@@ -101,6 +102,52 @@ it('marks per-file and aggregate text limits explicitly', async () => {
   expect(read.context).toContain('Partial extraction')
   expect(read.context).toContain('120,000 characters per turn')
   expect(read.context).toContain('Text omitted because this turn reached its attachment limit')
+  expect(read.evidencePaths).toEqual([])
+})
+
+it.each(['input.csv', 'input.TSV'])('accepts a fully provided quoted %s as evidence without another read', async name => {
+  const paths = vaultPaths(root)
+  const delimiter = name.endsWith('.TSV') ? '\t' : ','
+  const text = `name${delimiter}note\r\nexample${delimiter}"comma, tab\t and ""quotes""\r\nnext line"\r\n`
+  const file = await saveChatAttachment(paths, name, Buffer.from(text))
+  const read = await readChatAttachments(paths, [file.id])
+  expect(read.evidencePaths).toEqual(read.paths)
+  expect(read.context).toContain(text)
+  expect(read.context).toContain('"valid":true,"rows":2,"columns":2')
+  expect(read.context).not.toContain('Partial extraction')
+})
+
+it.each([
+  ['broken.csv', 'id,reason,status\nA1,waiting, incoming tomorrow,verified\n', 'Expected 3 columns but found 4'],
+  ['broken.tsv', 'id\tnote\nA1\t"unfinished', 'Unclosed quoted cell'],
+])('keeps malformed %s visible with its validation error but excludes direct source evidence', async (name, text, error) => {
+  const paths = vaultPaths(root)
+  const file = await saveChatAttachment(paths, name, Buffer.from(text))
+  const read = await readChatAttachments(paths, [file.id])
+  expect(read.paths).toHaveLength(1)
+  expect(await readFile(read.paths[0]!, 'utf8')).toBe(text)
+  expect(read.context).toContain(text)
+  expect(read.context).toContain('"valid":false')
+  expect(read.context).toContain('"row":2')
+  expect(read.context).toContain(error)
+  expect(read.context).not.toContain('Partial extraction')
+  expect(read.evidencePaths).toEqual([])
+})
+
+it('rejects NUL-containing text as evidence without changing its bytes or blocking other attachments', async () => {
+  const paths = vaultPaths(root)
+  const original = 'id,note\n1,\0"x"'
+  const binary = await saveChatAttachment(paths, 'binary.csv', Buffer.from(original))
+  const valid = await saveChatAttachment(paths, 'valid.txt', Buffer.from('Complete reference.'))
+  const read = await readChatAttachments(paths, [binary.id, valid.id])
+  expect(read.paths).toHaveLength(2)
+  expect(await readFile(read.paths[0]!, 'utf8')).toBe(original)
+  expect(read.evidencePaths).toEqual([read.paths[1]])
+  expect(read.context).toContain('Unsupported text: this file contains NUL bytes')
+  expect(read.context).not.toContain('id,note')
+  expect(read.context).toContain('Complete reference.')
+  expect(read.context).not.toContain('Partial extraction')
+  expect(await previewChatAttachment(paths, binary.id)).toMatchObject({ text: 'Unsupported text: this file contains NUL bytes. No text preview is available.', truncated: false })
 })
 
 it.each(['rejection', 'event'] as const)('restores an exact draft and attachments after a send %s and retries without duplicate labels', async (mode) => {

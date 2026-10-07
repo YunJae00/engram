@@ -23,6 +23,8 @@ import type { HarnessMetric } from './harness-metrics.js'
 export interface AgentToolContext {
   task: string
   signal?: AbortSignal
+  // Host observations only; model arguments cannot supply verification evidence.
+  steps?: readonly AgentLoopStep[]
   // Host receipt channel for the text-only loop, never a model argument.
   onObservedAfterAction?(): void
   // Everything the loop has read so far this turn. A tool that fills in a form
@@ -456,7 +458,7 @@ async function agentLoop(
     let observedAfterAction = false
     const toolStarted = performance.now()
     try {
-      observation = await tool.run(parsed.args, { task, read: readSoFar(steps, options.history), onObservedAfterAction: () => { observedAfterAction = true }, ...(options.signal ? { signal: options.signal } : {}) })
+      observation = await tool.run(parsed.args, { task, steps: steps.slice(), read: readSoFar(steps, options.history), onObservedAfterAction: () => { observedAfterAction = true }, ...(options.signal ? { signal: options.signal } : {}) })
       // A question to the person IS the answer: carrying on would mean
       // guessing at exactly the thing it just said it does not know.
       const ask = parseAsk(observation)

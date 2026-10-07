@@ -11,6 +11,19 @@ it('marks unreadable frames as incomplete instead of silently claiming a full pa
   expect((await readFrames(page)).faults).toEqual([expect.stringContaining('extract is incomplete')])
 })
 
+it.each([undefined, null, {}])('keeps other frames and an incomplete fault when a frame returns %j', async value => {
+  const missing = { evaluate: vi.fn().mockResolvedValue(value) }
+  const reading: FrameReading = { text: 'Available frame', hidden: '', dialog: '', hasPasswordField: false,
+    controls: [{ kind: 'button', name: 'Details', state: '' }], links: [], faults: [],
+  }
+  const present = { evaluate: vi.fn().mockResolvedValue(reading), name: () => 'Available', url: () => 'https://example.test' }
+  const page = { on: vi.fn(), mainFrame: () => missing, frames: () => [missing, present] } as unknown as Page
+  const result = await readFrames(page)
+  expect(result.text).toBe('Available frame')
+  expect(result.faults).toEqual([expect.stringContaining('extract is incomplete')])
+  expect(placeOf(page, 1)?.control).toContain('Details')
+})
+
 it('does not let a canceled frame read overwrite newer control references', async () => {
   const snapshot = (name: string): FrameReading => ({ text: name, hidden: '', hasPasswordField: false, links: [], controls: [{ kind: 'button', name, state: '' }], dialog: '', faults: [] })
   let finish!: (value: FrameReading) => void

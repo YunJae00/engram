@@ -13,6 +13,7 @@ import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
 import { resumeCheckpoint } from './agent-resume.js'
 import { pageDelta } from './page-delta.js'
+import { pageRecovery } from './page-recovery.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
 // the whole turn in one session: every step then costs one exchange instead
@@ -100,6 +101,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
   const compactPage = pageDelta()
+  const recovery = pageRecovery()
   const plan = taskPlan(steps)
   // File/browser work uses direct result checks. Desktop sequences retain
   // phase checkpoints for their control rules and bounded call allowance.
@@ -158,6 +160,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const repeatKey = REPEAT_GUARDED.has(tool.name) ? `${tool.name}:${JSON.stringify(args)}` : ''
       if (PAGE_MOVES.has(tool.name) && repeat?.key !== repeatKey) repeat = undefined
       const repeated = !!repeatKey && repeat?.key === repeatKey && repeat.times >= REPEAT_LIMIT
+      const recoveryBlock = recovery.before(tool.name, args)
       options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, args) ?? summarizeArgs(args)}`)
       let observation: string
       let modelObservation: string | undefined
@@ -165,11 +168,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       let observedAfterAction = false
       const toolStarted = performance.now()
       try {
-        const context = { task, read: readSoFar(steps, options.history), signal }
+        const context = { task, steps: steps.slice(), read: readSoFar(steps, options.history), signal }
         // A brain in a session can look at a picture; the words are what
         // the turn keeps, the picture goes to the brain and nowhere else.
         if (repeated) {
           observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach, or report what blocks the task.`
+        } else if (recoveryBlock) {
+          observation = recoveryBlock
         } else if (tool.runRich) {
           const outcome = await tool.runRich(args, context)
           observation = outcome.text
@@ -189,6 +194,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       signal.throwIfAborted()
       options.onObservation?.(tool.name, observation)
       steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation, ...(observedAfterAction ? { observedAfterAction: true } : {}) })
+      if (!repeated && !recoveryBlock) recovery.after(tool.name, args, observation)
       if (repeatKey && !repeated) {
         const result = sameResult(observation)
         repeat = { key: repeatKey, result, times: repeat?.key === repeatKey && repeat.result === result ? repeat.times + 1 : 1 }
@@ -267,6 +273,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     onContextReset: () => { compactPage() },
     maxCalls: Math.min(options.maxCalls ?? 120, planned ? 120 : SESSION_MAX_CALLS),
     onToken: (text: string) => { if (text) touch(); options.onToken?.(text) },
+    onProgress: touch,
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
   }).finally(() => {
@@ -301,6 +308,24 @@ export function correctableFault(result: AgentLoopResult): string | undefined {
   })) return
   const fault = officeWriteUnverified(result.steps) ?? officeArithmeticFault(result.steps)
   return fault === result.incomplete ? fault : undefined
+}
+
+// A correction observes its own segment. Rebase only host report receipts when
+// joining trails; prior observations never become fresh correction evidence.
+function correctionCheckSteps(steps: AgentLoopStep[], offset: number): AgentLoopStep[] {
+  const rebase = (value: unknown) => JSON.parse(JSON.stringify(value), (key: string, item: unknown) =>
+    key === 'refs' && Array.isArray(item) ? item.map(ref => {
+      const match = typeof ref === 'string' && /^step:([1-9]\d*)$/.exec(ref)
+      return match && Number.isSafeInteger(Number(match[1])) ? `step:${Number(match[1]) + offset}` : ref
+    }) : item)
+  return steps.map(step => {
+    if (step.seeded || step.tool !== 'report_result_check') return step
+    try {
+      const value = JSON.parse(step.observation)
+      if (!value?.resultCheck || value.error) return step
+      return { ...step, args: rebase(step.args), observation: JSON.stringify({ ...value, resultCheck: rebase(value.resultCheck) }) }
+    } catch { return step }
+  })
 }
 
 // Preserve evidence across one bounded correction; a new session is not a clean bill of health.
@@ -344,7 +369,7 @@ export async function runComet(deps: AgentLoopDeps, task: string, options: Agent
       signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline,
       resume: [options.resume, resumeCheckpoint(task, first), 'Recheck the affected targets and correct only unfinished work within the original request. Do not recreate outputs or repeat successful actions. If permission or user input is needed, ask and stop.'].filter(Boolean).join('\n\n'),
     })
-    const steps = [...first.steps, ...corrected.steps]
+    const steps = [...first.steps, ...correctionCheckSteps(corrected.steps, first.steps.length)]
     const incomplete = corrected.incomplete ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
     const answer = incomplete && !corrected.incomplete && !corrected.asked
       ? `Not verified as complete.\n\n${incomplete}\n\nUnverified response:\n${corrected.answer}` : corrected.answer

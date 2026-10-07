@@ -333,6 +333,9 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
         frame.evaluate(readDocument, undefined),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('frame read timed out')), FRAME_READ_MS) }),
       ])
+      if (!reading || typeof reading.text !== 'string' || typeof reading.hidden !== 'string' || typeof reading.dialog !== 'string' || typeof reading.hasPasswordField !== 'boolean'
+        || !Array.isArray(reading.controls) || !Array.isArray(reading.links) || !Array.isArray(reading.faults))
+        throw new Error('The frame returned no readable snapshot')
     } catch {
       signal?.throwIfAborted()
       whole.faults.push('A frame could not be read. This extract is incomplete; reobserve before claiming all requested fields were checked.')

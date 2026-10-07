@@ -43,15 +43,20 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
   const parts = Math.max(1, Math.ceil(page.text.length / PAGE_TEXT_CAP))
   let at = Math.min(Math.max(1, part), parts)
   let where = ''
+  let search = ''
   if (find) {
     const hits = partsWith(page.text, find, parts)
     if (hits.length === 0) {
-      if (page.hidden && page.hidden.toLowerCase().includes(find.toLowerCase()))
-        return `page "${page.title}": "${find}" is not in what the page shows - it is in a part the page keeps folded; call reveal with {"find": "${find}"} to open that part, or press one of the controls below\nControls (press by number, e.g. {"target": "#12"}):\n${(page.controls ?? []).slice(0, CONTROLS_SHOWN).join('\n')}`
-      return `page "${page.title}": "${find}" was not found in the current readable extract (${parts} part${parts === 1 ? '' : 's'}). This does not establish that the page or saved record lacks it. Check another field label, reveal folded content, scroll the relevant panel, or inspect with look before reporting it missing.`
+      // A search miss is not a failed action. Keep the new dialog and current
+      // control numbers, or the next move may reuse the preceding reading.
+      at = 1
+      search = page.hidden?.toLowerCase().includes(find.toLowerCase())
+        ? `"${find}" is in a part the page keeps folded; call reveal with {"find": "${find}"} or use the current controls below.`
+        : `"${find}" was not found in the current readable extract (${parts} part${parts === 1 ? '' : 's'}). This does not establish that the page or saved record lacks it, or that the preceding action failed. Check another field label, reveal folded content, scroll the relevant panel, or inspect with look before reporting it missing.`
+    } else {
+      at = hits.find((hit) => hit >= at) ?? hits[0]!
+      where = ` ("${find}" is in part${hits.length === 1 ? '' : 's'} ${hits.join(', ')})`
     }
-    at = hits.find((hit) => hit >= at) ?? hits[0]!
-    where = ` ("${find}" is in part${hits.length === 1 ? '' : 's'} ${hits.join(', ')})`
   }
   const head =
     parts > 1
@@ -61,7 +66,7 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
   // that is open, and whatever the page says is wrong with what was entered.
   // Both are the page's own words, so both are DATA like the rest.
   const snapshot = page.observation
-  const lines = [...frontOf(page), ...(snapshot ? [`Observation ${snapshot.page}/${snapshot.document}/${snapshot.revision}; control numbers belong only to this reading.`] : []), head, page.text.slice((at - 1) * PAGE_TEXT_CAP, at * PAGE_TEXT_CAP)]
+  const lines = [...frontOf(page), ...(snapshot ? [`Observation ${snapshot.page}/${snapshot.document}/${snapshot.revision}; control numbers belong only to this reading.`] : []), ...(search ? [search] : []), head, page.text.slice((at - 1) * PAGE_TEXT_CAP, at * PAGE_TEXT_CAP)]
   if (page.controls?.length && at === 1) lines.push(`Controls (press by number, e.g. {"target": "#12"}${page.controls.some(line => line.endsWith(NEW_MARK)) ? `; ${NEW_MARK} = appeared since your last reading, such as an opened list or dialog` : ''}):`, ...page.controls.slice(0, CONTROLS_SHOWN))
   return lines.join('\n')
 }
