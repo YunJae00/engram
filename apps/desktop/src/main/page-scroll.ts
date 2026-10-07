@@ -57,7 +57,7 @@ export async function scrollDirection(page: Page, direction: string): Promise<bo
       }
       return dialogs.length ? false : null
     }, direction).catch(() => null)
-    if (moved !== null) return moved
+    if (typeof moved === 'boolean') return moved
   }
   return null
 }

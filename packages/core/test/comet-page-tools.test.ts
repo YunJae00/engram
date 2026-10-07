@@ -103,6 +103,24 @@ describe('the hands on a page', () => {
     expect(report).toContain('#2 [tab] International')
   })
 
+  it.each(['Accessibility information', ''])('keeps a dialog after a successful press with missing search text (body: %j)', async text => {
+    const base = courier([])
+    const press = pageTools({}, { ...base, press: async () => ({ ok: true, changed: true }),
+      readOpen: async () => ({ url: 'https://example.test', title: 'Hotel', text,
+        dialog: 'Accessibility dialog', controls: ['#30 [button] Close [new]'],
+        observation: { page: 'page-1', document: 2, revision: 12 },
+      }),
+    }).find(tool => tool.name === 'press')!
+    const outcome = await press.runRich!({ target: 'Accessibility', find: 'lift' }, { task: 'Read accessibility' })
+    expect(outcome.text).toContain('press "Accessibility": action completed')
+    expect(outcome.text).toContain('was not found in the current readable extract')
+    expect(outcome.text).toContain('Accessibility dialog')
+    expect(outcome.text).toContain('Observation page-1/2/12')
+    expect(outcome.text).toContain('#30 [button] Close [new]')
+    expect(outcome.observedAfterAction).toBeUndefined()
+    expect(outcome.page).toBeUndefined()
+  })
+
   it('a point on the picture is pressed, and a commit under it is refused', async () => {
     const log: string[] = []
     const point = pageTools({}, courier(log)).find((t) => t.name === 'press_point')!

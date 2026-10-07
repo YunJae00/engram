@@ -71,6 +71,7 @@ interface Turn {
   timer: ReturnType<typeof setTimeout>
   detachAbort(): void
   onToken?: (text: string) => void
+  onProgress?: () => void
   onReset?: () => void
   onContextReset?: () => void
 }
@@ -78,7 +79,7 @@ interface Turn {
 // The pieces of a reply as the runtime writes it.
 interface PartialEvent {
   type?: string
-  delta?: { type?: string; text?: string }
+  delta?: { type?: string; text?: string; thinking?: unknown; partial_json?: unknown }
   content_block?: { type?: string }
 }
 
@@ -187,9 +188,18 @@ export class WarmSession {
   private async pump(stream: AsyncIterable<SdkMessage>): Promise<void> {
     try {
       for await (const message of stream) {
-        if (message.type === 'system' && (message as { subtype?: string }).subtype === 'compact_boundary') this.turn?.onContextReset?.()
+        if (message.type === 'system') {
+          const system = message as { subtype?: string; estimated_tokens_delta?: unknown }
+          if (system.subtype === 'compact_boundary') this.turn?.onContextReset?.()
+          if (system.subtype === 'thinking_tokens' && typeof system.estimated_tokens_delta === 'number' && Number.isFinite(system.estimated_tokens_delta) && system.estimated_tokens_delta > 0) this.turn?.onProgress?.()
+        }
         if (message.type === 'stream_event') {
           const event = (message as { event?: PartialEvent }).event
+          if (event?.type === 'content_block_delta') {
+            const delta = event.delta
+            const progress = delta?.type === 'thinking_delta' ? delta.thinking : delta?.type === 'input_json_delta' ? delta.partial_json : undefined
+            if (typeof progress === 'string' && progress.length > 0) this.turn?.onProgress?.()
+          }
           if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.turn?.onToken?.(event.delta.text)
           // Words written before a tool call were thinking aloud; the reply
           // starts over after the call.
@@ -259,7 +269,7 @@ export class WarmSession {
       const onAbort = (): void => cut('canceled')
       const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
       const now = performance.now()
-      const turn: Turn = { resolve, answer: '', timer, detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
+      const turn: Turn = { resolve, answer: '', timer, detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
       job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })

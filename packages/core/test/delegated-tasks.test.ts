@@ -34,4 +34,10 @@ it('continues with the goal verbatim and says why', async () => {
   expect(restart).toContain('The app restarted')
   expect(restart.endsWith('The delegated task, verbatim:\nFile the expense report\nKeep receipts attached.')).toBe(true)
   expect(continuationPrompt(task, 'answer', 'Their answer: use the team card')).toContain('Their answer: use the team card')
+  task.verificationIssue = 'The output has an unsupported claim.'
+  const verify = continuationPrompt(task, 'verify')
+  expect(verify).toContain('report_result_check')
+  expect(verify).toContain('Do not promote optional inspection methods or extra workflows into new requirements')
+  expect(verify).toContain('original sources and user request, not your own outputs')
+  expect(verify).toContain('Previous check did not pass: The output has an unsupported claim.')
 })

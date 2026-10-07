@@ -234,6 +234,7 @@ describe('desktop observations and private step records', () => {
     expect(desktopStepSummary('desktop_action', { kind: args.text })).toBe('invalid desktop action')
     expect(args.text).toBe('private document content')
     expect(desktopStepArgs('type_text', args)).toBe(args)
+    expect(desktopStepArgs('file_read_workbook', { path: 'book.xlsx', sheet: 'Summary', range: 'A1', content: 'private' })).toEqual({ path: 'book.xlsx', sheet: 'Summary', range: 'A1' })
     expect(desktopStepSummary('search_memory', args)).toBeNull()
   })
 

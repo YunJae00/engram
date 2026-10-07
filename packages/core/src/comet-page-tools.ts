@@ -25,13 +25,14 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       return `the person read what "${move.refused || what}" would do and chose to do it themselves - the page is open in front of them; say what is left for them and wait for their word`
     if (move.refused !== undefined)
       return `"${move.refused || what}" was not pressed: it would submit or commit something and the person did not allow it. Say what is left undone, in one line`
-    if (!move.ok) return `${move.error ?? `could not ${what}`} - read_open_page lists the page's controls with their numbers; a control is named by its words or its number (#12)`
+    if (!move.ok) return `that did not work: ${move.error ?? `could not ${what}`} - read_open_page lists the page's controls with their numbers; a control is named by its words or its number (#12)`
     const page = await readOpen(signal)
     if (page.wall) {
       deps.wallMet?.(page.url)
       return 'the page now needs a person - say so, and that it stays open in the thread for them to do it; ask them to tell you when it is done'
     }
-    if (!page.text.trim()) return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`
+    if (!page.text.trim() && !page.dialog && !page.controls?.length && !page.faults?.length)
+      return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`
     // A move that seemed to change nothing is only a dead end when the page
     // did not answer it either. A dialog that opened, or a field the page has
     // marked as wrong, IS the answer: that is what to deal with next, and the
@@ -42,9 +43,9 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         ? `${what}: nothing on the page changed, so that was probably not the thing meant - press another of the controls below by its number, or look at the page and press the point\n`
         : ''
     return {
-      text: still + pageReport(page, 1, findOf(args)),
+      text: (still || (findOf(args) ? `${what}: action completed; the text search below is not an action result.\n` : '')) + pageReport(page, 1, findOf(args)),
       ...(!still && !findOf(args) ? { page } : {}),
-      ...(move.changed !== false && !page.faults?.length && !findOf(args) ? { observedAfterAction: true } : {}),
+      ...(page.text.trim() && move.changed !== false && !page.faults?.length && !findOf(args) ? { observedAfterAction: true } : {}),
     }
   }
   const tools: (Omit<AgentTool, 'run'> & { run(args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> })[] = []

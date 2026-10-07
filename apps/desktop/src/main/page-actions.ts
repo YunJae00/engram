@@ -1,7 +1,9 @@
-import type { Frame, Locator, Page } from 'playwright-core'
-import { pressCommits, type PageMove, type PressTarget } from 'core'
-import { HAND_MARK, placeOf, readDocument, readFrames } from './page-reader.js'
+import type { Locator, Page } from 'playwright-core'
+import { pressCommits, type PageMove } from 'core'
+import { readFrames } from './page-reader.js'
 import { scrollDirection } from './page-scroll.js'
+import { handOn, inspectControl, unmark } from './page-target.js'
+export { handOn, unmark } from './page-target.js'
 
 // The hands a reader has on a page: press, type into a search box, choose
 // from a list, scroll, hover, a key. Each moves around the page the way a
@@ -13,143 +15,6 @@ export const FIND_TIMEOUT_MS = 3_000
 const SETTLE_LOAD_MS = 900
 const SETTLE_MS = 300
 const KEYS = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Space'])
-
-// What a control is, read off the page before it is touched. Runs inside
-// the page; nothing from outside is in scope.
-function inspectControl(node: Element): PressTarget & { field: boolean; secret: boolean; posts: boolean; select: boolean } {
-  const STATE_ROLES = ['tab', 'switch', 'radio', 'checkbox', 'option', 'menuitemradio', 'menuitemcheckbox', 'treeitem']
-  const el = node.closest('a,button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"],[contenteditable="true"]') ?? node
-  const tag = el.tagName.toLowerCase()
-  const type = (el.getAttribute('type') ?? '').toLowerCase()
-  const form = (el as HTMLInputElement | HTMLButtonElement).form ?? el.closest('form')
-  const submits = (tag === 'button' && form !== null && type !== 'button' && type !== 'reset') || (tag === 'input' && (type === 'submit' || type === 'image'))
-  const words = [(el as HTMLElement).innerText ?? el.textContent ?? '', el.getAttribute('aria-label') ?? '', el.getAttribute('value') ?? '', el.getAttribute('title') ?? '']
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  const field =
-    tag === 'textarea' ||
-    (el as HTMLElement).isContentEditable ||
-    ['textbox', 'searchbox', 'combobox'].includes(el.getAttribute('role') ?? '') ||
-    (tag === 'input' && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'hidden', 'image', 'range', 'color'].includes(type))
-  const role = el.getAttribute('role') ?? ''
-  // Passage: something that takes the person somewhere or opens something,
-  // rather than acting for them.
-  const navigates =
-    (tag === 'a' && el.hasAttribute('href')) ||
-    ['link', 'menuitem', 'tab', 'treeitem'].includes(role) ||
-    el.hasAttribute('aria-haspopup') ||
-    el.closest('nav,[role="navigation"],[role="menu"],[role="menubar"],[role="tablist"]') !== null
-  const shows =
-    !submits &&
-    (STATE_ROLES.includes(role) ||
-      el.hasAttribute('aria-pressed') ||
-      el.hasAttribute('aria-selected') ||
-      el.hasAttribute('aria-expanded') ||
-      (tag === 'input' && (type === 'radio' || type === 'checkbox')) ||
-      (tag === 'label' && el.querySelector('input[type="radio"], input[type="checkbox"]') !== null) ||
-      tag === 'option' ||
-      tag === 'summary')
-  return {
-    submits,
-    words,
-    shows,
-    navigates,
-    field,
-    secret: tag === 'input' && type === 'password',
-    posts: form !== null && (form.getAttribute('method') ?? 'get').toLowerCase() === 'post',
-    select: tag === 'select',
-  }
-}
-
-// Every way a page can name a control, in the order a person would look;
-// only what is on screen counts, and frames count as the page.
-function locators(root: Page | Frame, text: string): Locator[] {
-  const exact = { name: text, exact: true }
-  const attr = text.replace(/["\\]/g, (char) => `\\${char}`)
-  return [
-    root.getByRole('button', exact),
-    root.getByRole('tab', exact),
-    root.getByRole('link', exact),
-    root.getByRole('menuitem', exact),
-    root.getByRole('option', exact),
-    root.getByRole('textbox', exact),
-    root.getByRole('combobox', exact),
-    root.getByRole('button', { name: text }),
-    root.getByRole('link', { name: text }),
-    root.getByLabel(text),
-    root.getByPlaceholder(text),
-    root.getByTitle(text),
-    root.getByAltText(text),
-    root.getByText(text, { exact: true }),
-    root.getByText(text, { exact: false }),
-    root.locator(`[name="${attr}"], [value="${attr}"], [data-title="${attr}"], [data-tooltip="${attr}"]`),
-  ].map((one) => one.filter({ visible: true }))
-}
-
-// A hand on what the target names - by number from the last reading ("#12"),
-// or by the words on it, or the reason there is none: nothing of
-// that name, or several things of it.
-type Aim = { hand: Locator } | { none: true } | { many: true }
-
-export async function handOn(page: Page, target: string, signal?: AbortSignal, selectors: string[] = []): Promise<Aim> {
-  for (const selector of selectors.map(value => value.trim()).filter(Boolean)) {
-    const matches = []
-    for (const frame of page.frames()) {
-      if (signal?.aborted) throw new Error('canceled')
-      const hand = frame.locator(selector).filter({ visible: true })
-      const count = await hand.count().catch(() => 0)
-      if (count > 1) return { many: true }
-      if (count === 1) matches.push(hand)
-    }
-    if (matches.length > 1) return { many: true }
-    if (matches.length === 1) return { hand: matches[0]! }
-  }
-  if (!target.trim()) return { none: true }
-  const numbered = /^#(\d+)/.exec(target.trim())
-  if (numbered) {
-    const place = placeOf(page, Number(numbered[1]))
-    if (!place) return { none: true }
-    // The control is tagged in the page so a locator can hold it; the tag
-    // comes off with the next reading, which re-numbers everything.
-    const fresh = await place.frame.evaluate(readDocument, place.local).catch(() => null)
-    if (!fresh || JSON.stringify(fresh.controls[place.local - 1]) !== place.control) {
-      await unmark(page)
-      return { none: true }
-    }
-    const hand = place.frame.locator(`[${HAND_MARK}]`).first()
-    return (await hand.count().catch(() => 0)) > 0 ? { hand } : { none: true }
-  }
-  const roots: (Page | Frame)[] = [page, ...page.frames().filter((frame) => frame !== page.mainFrame())]
-  for (const root of roots) {
-    for (const hand of locators(root, target)) {
-      if (signal?.aborted) throw new Error('canceled')
-      const found = await hand.count().catch(() => 0)
-      if (found === 1) return { hand: hand.first() }
-      if (found > 1) {
-        // A cell and the words inside it are one thing, not two: matches
-        // that nest are the same control, read at different depths.
-        const nested = await hand
-          .evaluateAll((els) => els.every((el) => el === els[0] || els[0]!.contains(el) || el.contains(els[0]!)))
-          .catch(() => false)
-        if (nested) return { hand: hand.first() }
-        // The same words in several places: the first one down the page is a
-        // guess, and a guess here presses the wrong thing.
-        return { many: true }
-      }
-    }
-  }
-  return { none: true }
-}
-
-export async function unmark(page: Page): Promise<void> {
-  for (const frame of page.frames())
-    await frame
-      .evaluate((mark) => {
-        for (const el of Array.from(document.querySelectorAll(`[${mark}]`))) el.removeAttribute(mark)
-      }, HAND_MARK)
-      .catch(() => undefined)
-}
 
 // A page is given its moment after a move: the navigation it may have
 // started, the requests that fill in what was pressed for, and a breath.
@@ -333,27 +198,37 @@ export async function chooseOption(page: Page, target: string, option: string, s
   return pressOn(page, option, signal)
 }
 
+// Never guess the picture's dimensions when its frame is unavailable.
+async function viewport(page: Page): Promise<{ width: number; height: number } | null> {
+  try {
+    const size = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    return size && Number.isFinite(size.width) && size.width > 0 && Number.isFinite(size.height) && size.height > 0 ? size : null
+  } catch { return null }
+}
+
+const NO_VIEWPORT: PageMove = { ok: false, error: 'The page viewport is unavailable; no pointer action was made. Call read_open_page or look to re-observe it before trying again; if it stays unavailable, use another source or report the blocker.' }
+
 // Further down (or up) the page, or to where some words are, so a long or
 // endless list brings the next of itself in.
 export async function scrollPage(page: Page, to: string, signal?: AbortSignal): Promise<PageMove> {
-  const size = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
-  const step = Math.round(size.height * 0.8)
   try {
+    signal?.throwIfAborted()
     const where = to.trim().toLowerCase()
-    const moved = ['down', 'up', 'left', 'right', 'bottom', 'top'].includes(where) ? await scrollDirection(page, where) : null
+    const direction = ['down', 'up', 'left', 'right', 'bottom', 'top'].includes(where)
+    const moved = direction ? await scrollDirection(page, where) : null
     if (moved !== null) {
       await settle(page)
       return { ok: true, changed: moved }
-    } else if (where === 'left' || where === 'right') {
+    } else if (direction) {
+      const size = await viewport(page)
+      if (!size) return NO_VIEWPORT
+      signal?.throwIfAborted()
+      const step = Math.round(size.height * 0.8)
+      if (where === 'bottom' || where === 'top')
+        await page.evaluate((end) => window.scrollTo({ top: end ? document.documentElement.scrollHeight : 0 }), where === 'bottom')
       await page.mouse.move(Math.round(size.width / 2), Math.round(size.height / 2))
-      await page.mouse.wheel(where === 'right' ? size.width * 0.8 : -size.width * 0.8, 0)
-    } else if (where === 'down' || where === 'up') {
-      await page.mouse.move(Math.round(size.width / 2), Math.round(size.height / 2))
-      await page.mouse.wheel(0, where === 'down' ? step : -step)
-    } else if (where === 'bottom' || where === 'top') {
-      await page.evaluate((end) => window.scrollTo({ top: end ? document.documentElement.scrollHeight : 0 }), where === 'bottom')
-      await page.mouse.move(Math.round(size.width / 2), Math.round(size.height / 2))
-      await page.mouse.wheel(0, where === 'bottom' ? step : -step)
+      if (where === 'left' || where === 'right') await page.mouse.wheel(where === 'right' ? size.width * 0.8 : -size.width * 0.8, 0)
+      else await page.mouse.wheel(0, where === 'down' || where === 'bottom' ? step : -step)
     } else {
       const aim = await handOn(page, to, signal)
       if ('many' in aim) return ambiguity(page, to)
@@ -372,22 +247,26 @@ export async function scrollPage(page: Page, to: string, signal?: AbortSignal): 
 // sits there is inspected exactly as a named control would be - so this is
 // a way to reach a thing, never a way around the guard.
 export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, signal?: AbortSignal): Promise<PageMove> {
-  const size = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return { ok: false, error: 'a point is given in fractions of the picture, between 0 and 1' }
-  const at = { x: Math.round(x * size.width), y: Math.round(y * size.height) }
   try {
-    const there = await page.evaluate((point) => {
-      const el = document.elementFromPoint(point.x, point.y)
-      if (!el) return null
-      const words = ((el as HTMLElement).innerText ?? el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
-      const form = el.closest('form')
-      const tag = el.tagName.toLowerCase()
-      const type = (el.getAttribute('type') ?? '').toLowerCase()
-      return {
-        words,
-        submits: (tag === 'button' && form !== null && type !== 'button' && type !== 'reset') || (tag === 'input' && (type === 'submit' || type === 'image')),
+    signal?.throwIfAborted()
+    const size = await viewport(page)
+    if (!size) return NO_VIEWPORT
+    const at = { x: Math.round(x * size.width), y: Math.round(y * size.height) }
+    const target = await page.evaluateHandle((point) => {
+      let el = document.elementFromPoint(point.x, point.y)
+      while (el?.shadowRoot) {
+        const child = el.shadowRoot.elementFromPoint(point.x, point.y)
+        if (!child || child === el) break
+        el = child
       }
+      return el?.matches('iframe,frame') ? null : el
     }, at)
+    let there: ReturnType<typeof inspectControl> | null
+    try {
+      const hand = target.asElement()
+      there = hand ? await hand.evaluate(inspectControl) : null
+    } finally { await target.dispose() }
     if (!there) return { ok: false, error: 'nothing is at that point of the picture' }
     if (pressCommits(there)) {
       const said = await allowed(page, there.words, ask)

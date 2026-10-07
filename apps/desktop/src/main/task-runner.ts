@@ -28,10 +28,10 @@ import { flog } from './flog.js'
 // approval, or reaches its limits. A press that would commit something is not
 // made unattended: it waits in the task, and the rest of the work goes on.
 
-export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[] }
+export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[] } }
 // How the host runs one of the task's turns: extra context, and whether the
 // message is the task's own continuation rather than words the person said.
-export interface TaskTurn { context?: string; quiet?: boolean }
+export interface TaskTurn { context?: string; quiet?: boolean; verification?: { result: string } }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // Work worth writing down: several tool steps, or a saved file.
 const WORTH_KEEPING_STEPS = 3
@@ -44,6 +44,9 @@ const VIEW_MOVES = /^(open_page|search_web|read_pages|scroll|hover|reveal)$/
 // A read receipt is necessary, not proof that every requirement was satisfied.
 const READBACK = /^(read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
+// Captures already have consent, provenance and save receipts; this text and
+// document check must not demand a text read of a PNG or retake a recording.
+const savedWorkFile = (text = '') => /\]\(engram-artifact:[^\s)]+\.(?:txt|md|json|csv|tsv|xlsx|docx|pptx)\)/i.test(text)
 
 export function taskRunner(deps: {
   paths: VaultPaths
@@ -94,19 +97,21 @@ export function taskRunner(deps: {
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const checking = started.verificationPending === true
     if (checking) deps.broadcast({ type: 'comet:step', channel: channelOf(started), line: 'note: Checking the result against your request' })
-    await deps.send(request, checking ? { ...extra, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : extra)
+    await deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : extra)
     const outcome = deps.outcome(request.channel ?? '')
     const trail = [...(trails.get(id) ?? []), ...(outcome?.trail ?? [])]
     trails.set(id, trail)
     return edit(id, (t) => {
       if (t.state !== 'running') return
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
-      if (outcome && !checking) t.result = outcome.answer
+      if (outcome && (!checking || outcome.answer && !outcome.asked)) t.result = outcome.answer
       const pending = t.approvals.filter((a) => !a.answer)
+      if (checking && outcome && !outcome.asked && !pending.length) t.verificationAttempts = (t.verificationAttempts ?? 0) + 1
       if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (outcome.unfinished) {
+        if (checking) t.verificationIssue = outcome.check?.issues.join('; ') || 'Verification ended before the results were confirmed. Read the latest saved results and finish report_result_check.'
         if (t.turns >= TASK_MAX_TURNS || Date.now() - Date.parse(t.createdAt) > TASK_MAX_MS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
         else logTask(t, 'Continuing')
       } else if (checking) {
@@ -115,15 +120,29 @@ export function taskRunner(deps: {
         const lastChange = steps.map(step => !step.seeded && (CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool))).lastIndexOf(true)
         const receipts = successfulTurnSteps(steps.slice(Math.max(0, lastChange)))
         if (!receipts.some(step => READBACK.test(step.tool) || step.observedAfterAction === true)) {
-          logTask(t, 'Verification still needs a fresh readback after the last change.')
+          t.verificationIssue = 'Verification still needs a fresh readback after the last change.'
+        } else if (outcome.check?.accepted !== true) {
+          t.verificationIssue = outcome.check?.issues.join('; ') || 'A structured requirement and grounding check is missing. Call report_result_check after checking the actual sources and final results.'
         } else {
-          t.verified = true; delete t.verificationPending
-          t.result = [t.result, `Checked: ${outcome.answer}`].filter(Boolean).join('\n\n')
+          t.verified = true; delete t.verificationPending; delete t.verificationIssue
+          t.result = outcome.answer
           t.state = 'done'; logTask(t, 'Done')
         }
-      } else if (!t.verified && (savedFile(outcome.answer) || successfulTurnSteps(trail).some((step) => CHANGES.test(step.tool)))) {
+        if (t.verificationIssue) {
+          logTask(t, t.verificationIssue)
+        }
+      } else if (!t.verified && (savedWorkFile(outcome.answer) || successfulTurnSteps(trail).some((step) => CHANGES.test(step.tool)))) {
         t.verificationPending = true; logTask(t, 'Checking the result')
       } else { t.state = 'done'; logTask(t, 'Done') }
+      // Count interrupted checks too. Only a real question or approval waits
+      // for the person without spending the targeted repair allowance.
+      if (checking && t.state === 'running' && (t.verificationAttempts ?? 0) >= 2) {
+        t.state = 'failed'; t.verificationIssue ??= 'Verification ended before the results were confirmed.'
+        const links = [...(outcome?.answer ?? '').matchAll(/\[[^\]\r\n]*\]\(engram-artifact:[^\s)]+\)/g)].map(match => match[0])
+        t.result = [`Not verified as complete. ${t.verificationIssue}`, ...links].join('\n\n')
+        logTask(t, 'Stopped after a repair and recheck; saved work is kept.')
+        deps.broadcast({ type: 'chat:done', channel: channelOf(t), text: t.result })
+      }
     })
   }
 

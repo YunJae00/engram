@@ -115,3 +115,59 @@ it('corrects through the step engine without resetting its model-call budget', a
   expect(result.incomplete).toBeUndefined()
   expect(result.steps.map(s => s.tool)).toEqual(['excel_write', 'excel_read'])
 })
+
+it('keeps correction report references on the same observations after joining session segments', async () => {
+  let pass = 0
+  const freshRead = { ...read, run: async () => JSON.stringify({ workbook: 'B.xlsx', sheet: 'S', range: 'A1', rows: [[pass === 1 ? 0 : 1]] }) }
+  const payload = { checks: [{ requirement: 'Read changed cell', status: 'pass', basis: 'Read A1.', refs: ['step:1'] }],
+    grounding: { status: 'pass', basis: 'Compare with supplied source.', refs: ['source:1', 'C:/source.md'] } }
+  let immediateReceipt = ''
+  const report: AgentTool = { name: 'report_result_check', description: 'report', argsSchema: {}, run: async (args, context) => {
+    expect(context.steps?.map(step => step.tool)).toEqual(['excel_read'])
+    immediateReceipt = JSON.stringify({ resultCheck: args, validation: { accepted: context.steps?.[0]?.tool === 'excel_read', issues: [] } })
+    return immediateReceipt
+  } }
+  const engine = brain(async job => {
+    if (++pass === 1) {
+      await job.tools.find(tool => tool.name === 'excel_read')!.run({})
+      await writeCell(job)
+    }
+    else {
+      await job.tools.find(tool => tool.name === 'excel_read')!.run({})
+      await job.tools.find(tool => tool.name === 'report_result_check')!.run(payload)
+    }
+    return { answer: 'Checked' }
+  })
+  const result = await runComet({ engine, workdir, tools: [write, freshRead, report] }, 'Update A1', { guided: false })
+  expect(pass).toBe(2)
+  expect(result.incomplete).toBeUndefined()
+  const final = JSON.parse(result.steps.at(-1)!.observation)
+  expect(JSON.parse(immediateReceipt).resultCheck.checks[0].refs).toEqual(['step:1'])
+  expect(final.resultCheck.checks[0].refs).toEqual(['step:3'])
+  expect(result.steps[Number(final.resultCheck.checks[0].refs[0].slice(5)) - 1]!.observation).toBe(await read.run({}, { task: 'Read' }))
+  expect(JSON.parse(result.steps[0]!.observation).rows).toEqual([[0]])
+  expect(final.resultCheck.grounding.refs).toEqual(payload.grounding.refs)
+  expect(final.validation.accepted).toBe(true)
+  expect(result.steps.at(-1)!.args).toEqual(final.resultCheck)
+  expect(payload.checks[0]!.refs).toEqual(['step:1'])
+})
+
+it('does not rebase report-shaped data from another tool or failed report arguments', async () => {
+  let pass = 0
+  const fake = { checks: [{ refs: ['step:1'] }] }
+  const data: AgentTool = { name: 'read_open_page', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ resultCheck: fake }) }
+  const failed: AgentTool = { name: 'report_result_check', description: 'report', argsSchema: {}, run: async () => 'that did not work: invalid report' }
+  const engine = brain(async job => {
+    if (++pass === 1) await writeCell(job)
+    else {
+      await job.tools.find(tool => tool.name === 'excel_read')!.run({})
+      await job.tools.find(tool => tool.name === data.name)!.run({})
+      await job.tools.find(tool => tool.name === failed.name)!.run(fake)
+    }
+    return { answer: 'Not verified' }
+  })
+  const result = await runComet({ engine, workdir, tools: [write, read, data, failed] }, 'Update A1', { guided: false })
+  expect(JSON.parse(result.steps[2]!.observation).resultCheck).toEqual(fake)
+  expect(result.steps[3]!.args).toEqual(fake)
+  expect(result.steps[3]!.observation).toBe('that did not work: invalid report')
+})

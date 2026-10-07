@@ -323,7 +323,7 @@ test('the same words in two places are refused with the numbers to choose from, 
 test('a point on the picture is pressed where a name cannot reach, and a commit under the point is still refused', async () => {
   await page.setContent(`<html><body style="margin:0"><main>
     <canvas id="board" width="600" height="300" style="display:block"></canvas>
-    <form action="/post" method="post"><button type="submit" style="width:200px;height:60px">Send</button></form>
+    <form action="/post" method="post"><button aria-label="Send" style="width:200px;height:60px"><span id="send-icon" style="display:block;width:100%;height:100%"></span></button></form>
     <p id="picked">picked: none</p></main>
     <script>
       document.getElementById('board').addEventListener('click', (e) => {
@@ -338,7 +338,7 @@ test('a point on the picture is pressed where a name cannot reach, and a commit 
   expect(drawn).toMatchObject({ ok: true, changed: true })
   expect(await page.textContent('#picked')).toMatch(/^canvas at 30[0-9],1[45][0-9]$/)
 
-  const send = (await page.locator('button[type="submit"]').boundingBox())!
+  const send = (await page.locator('#send-icon').boundingBox())!
   const refused = await pressPoint(page, (send.x + send.width / 2) / size.width, (send.y + send.height / 2) / size.height)
   expect(refused.ok).toBe(false)
   expect(refused.refused).toBe('Send')

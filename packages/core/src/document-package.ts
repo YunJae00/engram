@@ -11,6 +11,10 @@ const PART_BYTES = 2_000_000
 const PACKAGE_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const CONTENT_TYPES = 'http://schemas.openxmlformats.org/package/2006/content-types'
 const OFFICE_RELS = ['http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'http://purl.oclc.org/ooxml/officeDocument/relationships']
+const TEXT_NAMESPACES = new Set([
+  ...['wordprocessingml/2006/main', 'drawingml/2006/main', 'drawingml/2006/chart', 'officeDocument/2006/math'].map(name => `http://schemas.openxmlformats.org/${name}`),
+  ...['wordprocessingml/main', 'drawingml/main', 'drawingml/chart', 'officeDocument/math'].map(name => `http://purl.oclc.org/ooxml/${name}`),
+])
 export const hashBytes = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex')
 export type DocumentPackage = Map<string, Buffer>
 export type XmlEdit = { part: string; expectedSha256: string; before: string; after: string }
@@ -101,7 +105,7 @@ function internalTarget(owner: string, target: string): string {
   return partName(name)
 }
 
-export function validatePackage(parts: DocumentPackage, extension: string): void {
+export function validatePackage(parts: DocumentPackage, extension: string): { textParts: string[] } {
   const main = extension === '.docx' ? ['word/document.xml', 'document', 'wordprocessingml']
     : extension === '.pptx' ? ['ppt/presentation.xml', 'presentation', 'presentationml'] : ['xl/workbook.xml', 'workbook', 'spreadsheetml']
   if (!DOCUMENT_EXTENSIONS.includes(extension) || !parts.has(main[0]!) || !parts.has('[Content_Types].xml') || !parts.has('_rels/.rels')) throw new Error('The document package does not match its extension.')
@@ -123,7 +127,7 @@ export function validatePackage(parts: DocumentPackage, extension: string): void
     if (element.namespaceURI !== CONTENT_TYPES) throw new Error('Unknown content type namespace.')
     if (element.localName === 'Override') {
       const name = partName((element.getAttribute('PartName') ?? '').replace(/^\//, ''))
-      if (!parts.has(name) || overrides.has(name)) throw new Error('Content type refers to a missing or duplicate part.')
+      if (!parts.has(name) || overrides.has(name)) throw new Error(`Content type refers to a missing or duplicate part: ${name}.`)
       overrides.set(name, contentType)
     } else if (element.localName === 'Default') {
       const extension = element.getAttribute('Extension') ?? ''
@@ -167,14 +171,22 @@ export function validatePackage(parts: DocumentPackage, extension: string): void
     relationships.set(owner, ids)
   }
   if (!rootMain) throw new Error('The package root does not reference its main document.')
+  const textParts = new Set<string>()
   for (const [name, document] of documents) {
     if (name.endsWith('.rels')) continue
+    const root = document.documentElement!
+    if (root.localName === 'document' && TEXT_NAMESPACES.has(root.namespaceURI ?? '')
+      || ['sld', 'notes'].includes(root.localName ?? '') && ['http://schemas.openxmlformats.org/presentationml/2006/main', 'http://purl.oclc.org/ooxml/presentationml/main'].includes(root.namespaceURI ?? '')) textParts.add(name)
     for (const element of Array.from(document.getElementsByTagName('*'))) {
+      // Content-bearing parts only: metadata, styles, themes and image bytes
+      // do not establish that the document's words and values were read.
+      if (TEXT_NAMESPACES.has(element.namespaceURI ?? '') && ['t', 'delText', 'instrText', 'v', 'f'].includes(element.localName ?? '') && element.textContent?.trim()) textParts.add(name)
       for (const attr of Array.from(element.attributes)) {
         if (OFFICE_RELS.includes(attr.namespaceURI ?? '') && !relationships.get(name)?.has(attr.value)) throw new Error(`Missing relationship ${attr.value} in ${name}.`)
       }
     }
   }
+  return { textParts: [...textParts] }
 }
 
 function activeContent(document: Document): Set<string> {

@@ -36,6 +36,8 @@ export interface DelegatedTask {
   verified?: boolean
   // Persists until a check turn finishes, including across questions and restarts.
   verificationPending?: boolean
+  verificationAttempts?: number
+  verificationIssue?: string
   createdAt: string
   updatedAt: string
   finishedAt?: string
@@ -127,7 +129,7 @@ export function continuationPrompt(task: DelegatedTask, reason: 'limit' | 'resta
     restart: 'The app restarted while this delegated task was running. Re-observe the current state before acting, do not repeat confirmed effects, and continue the unfinished work.',
     answer: 'The person answered your question. Continue the delegated task with their answer.',
     approved: 'The person decided on the presses you left for them. Where they approved, make exactly that press now; where they declined, leave it. Then finish the unfinished work.',
-    verify: 'Before this task is reported done, check the result against the request below, requirement by requirement: reopen each file you wrote and read back each page you changed rather than trusting your earlier answer, and compare names, numbers, dates, counts, formats and limits. Correct only what does not match; do not redo correct work and do not press anything new that commits. Then answer in one or two sentences: what you checked and what, if anything, you corrected.',
+    verify: 'Before this task is reported done, check the result against the request below, requirement by requirement. Then reopen each final file and read back each page you changed rather than trusting your earlier answer. Compare names, numbers, dates, counts, formats and limits. Separately audit material factual claims against the original sources and user request, not your own outputs. A request or wish does not establish the current situation or the absence of an existing process; do not strengthen an uncertain status. Remove unsupported claims or clearly mark them as assumptions, proposals or unverified. Fully supplied attachments are already source evidence; partial extraction is not a full read. Correct only mismatches and reread the corrected results; do not redo correct work or press anything new that commits. Finally call report_result_check with requirement checks and a grounding assessment; the host checks the reads itself. Reading a file alone is not a pass. If unresolved, report fail or unknown honestly. Then briefly describe what was checked or remains unverified, with only the final file links.',
   }[reason]
-  return [lead, ...(detail ? [detail] : []), '', 'The delegated task, verbatim:', task.goal].join('\n')
+  return [lead, ...(reason === 'verify' ? ['Derive acceptance checks only from the original requested outcomes and constraints, plus correctness or safety conditions necessary to satisfy them. Do not promote optional inspection methods or extra workflows into new requirements; report unperformed scope limitations separately. Keep each check concise.'] : []), ...(detail ? [detail] : []), ...(reason === 'verify' && task.verificationIssue ? [`Previous check did not pass: ${task.verificationIssue}`] : []), '', 'The delegated task, verbatim:', task.goal].join('\n')
 }

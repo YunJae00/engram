@@ -153,6 +153,8 @@ export interface ToolSessionJob {
   // said before a tool call and is not the reply.
   onToken?(text: string): void
   onReset?(): void
+  // Host-only activity, without private reasoning or unfinished tool arguments.
+  onProgress?(): void
 }
 
 export interface ToolSessionResult {

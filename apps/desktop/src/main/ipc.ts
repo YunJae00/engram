@@ -139,6 +139,7 @@ import { registerAccountIpc } from './account-ipc.js'
 import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
+import { checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { notifyTask } from './task-notify.js'
 import { startTaskRecording } from './task-recording.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
@@ -2407,7 +2408,12 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)]) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(turn?.verification ? [resultCheckTool({
+              outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
+              sources: attachments.evidencePaths,
+              requireSourceEvidence: attachments.paths.length > 0,
+              generatedDirectory: artifactDirectory(paths),
+            })] : []), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)]) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2458,6 +2464,20 @@ export function registerIpc(ctx: VaultContext): void {
         }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
+        let check: TurnOutcome['check']
+        if (turn?.verification) {
+          const outputs = latestResultOutputs(result.steps, await priorOutputs(artifactDirectory(paths), [
+            { role: 'assistant', text: turn.verification.result },
+            { role: 'assistant', text: result.answer },
+          ]))
+          check = checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths))
+          // A rejected check is not a completed answer. Keep useful files and
+          // replace superseded links instead of appending another confident claim.
+          const links = outputs.map(output => `[${output.name}](engram-artifact:${encodeURIComponent(output.path.split(/[\\/]/).at(-1)!)})`)
+          if (!result.asked) result.answer = [check.accepted
+            ? result.answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:[^\s)]+\)/g, '').trim()
+            : `Not verified as complete.\n${check.issues.join('\n')}`, ...links].filter(Boolean).join('\n\n')
+        }
         // A model that was pushed to act may announce that it acted. The
         // record is corrected here, in the same breath as the answer, so the
         // person is never told a chore was done when it was not — and when the
@@ -2486,7 +2506,7 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete
+        const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete && (!check || check.accepted)
         await learning.record(bot.id, learningId, request.message, result.steps, finished)
         learningRecorded = true
         await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
@@ -2506,7 +2526,7 @@ export function registerIpc(ctx: VaultContext): void {
         }
         const recorded = await recording?.stop()
         signal.throwIfAborted()
-        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps })
+        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}) })
         await deliverAnswer(
           `${result.answer}${note}${recorded ? `\n\nTask recording: ${recorded}` : ''}`,
           result.asked && result.options?.length

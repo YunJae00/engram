@@ -14,3 +14,16 @@ it('marks only the controls that appeared since the last reading of the same pag
   const report = pageReport({ title: 'Form', text: 'Hours', controls: opened.controls })
   expect(report).toContain('[new] = appeared since your last reading')
 })
+
+it.each(['unmatched', 'folded'])('keeps the fresh dialog, faults and controls when a search is %s', mode => {
+  const report = pageReport({ title: 'Hotel', text: 'Accessibility details',
+    hidden: mode === 'folded' ? 'lift' : '', dialog: 'Accessibility dialog', faults: ['Choose a date'],
+    observation: { page: 'page-1', document: 2, revision: 12 }, controls: ['#29 [button] Close [new]'],
+  }, 3, 'lift')
+  expect(report).toContain('Accessibility dialog')
+  expect(report).toContain('Choose a date')
+  expect(report).toContain('Observation page-1/2/12')
+  expect(report).toContain('#29 [button] Close [new]')
+  expect(report).toContain('Accessibility details')
+  expect(report).toContain(mode === 'folded' ? 'keeps folded' : 'or that the preceding action failed')
+})
