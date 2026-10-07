@@ -15,7 +15,7 @@ export function InstallClaude({ onInstalled, onBusy }: { onInstalled(): void; on
   }
   return <div className="claude-install">
     <button className="secondary" disabled={busy} onClick={() => void install()}>{busy && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{busy ? 'Downloading and verifying…' : 'Install Claude runtime'}</button>
-    <p className="setting-note">Downloads the official runtime separately. Anthropic’s terms apply. You sign in directly with your own account after installation.</p>
+    <p className="setting-note">Official runtime download. Anthropic’s terms apply.</p>
     {error && <p role="alert">{error} <button className="secondary" onClick={() => void api.claudeInstallHelp().catch(() => setError('Could not open the guide. Visit code.claude.com/docs/en/setup in your browser.'))}>Official installation guide</button></p>}
   </div>
 }

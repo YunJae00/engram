@@ -61,6 +61,16 @@ test('a fresh workspace can skip AI and browse immediately', async () => {
   await expect(page.getByTestId('onboarding')).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
+  await expect(page.getByRole('heading', { name: 'Choose your workspace', exact: true })).toBeVisible()
+  await expect(page.getByText('Activity journal saves app names and window titles locally, not screen contents. Turn off in Settings.')).toBeVisible()
+  await page.getByTestId('vault-root-input').fill(' ')
+  await expect(page.getByTestId('onboard-next')).toBeDisabled()
+  await app.evaluate(({ ipcMain }, root) => {
+    ipcMain.removeHandler('import:pick')
+    ipcMain.handle('import:pick', () => root)
+  }, vaultRoot)
+  await page.getByRole('button', { name: 'Choose workspace folder', exact: true }).click()
+  await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
   await page.getByTestId('onboard-next').click()
   await expect(page.getByTestId('onboard-skip-ai')).toBeEnabled()
   await expect(page.getByTestId('onboard-work-map')).not.toBeChecked()
@@ -68,6 +78,7 @@ test('a fresh workspace can skip AI and browse immediately', async () => {
   await expect(page.locator('#work-map-consent')).toBeVisible()
   expect((await page.getByTestId('onboard-work-map').boundingBox())!.width).toBeLessThan(50)
   await expect(page.getByRole('button', { name: 'Install Claude runtime' })).toBeVisible()
+  await expect(page.getByText('Official runtime download. Anthropic’s terms apply.')).toBeVisible()
   await page.getByRole('button', { name: 'Back', exact: true }).click()
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
   await page.getByTestId('onboard-next').click()
@@ -81,6 +92,41 @@ test('a fresh workspace can skip AI and browse immediately', async () => {
     return (await window.engram.botsList()).find(row => row.id === bot.id)?.name
   })
   expect(titled).toBe('Review the project plan')
+})
+
+test('compact setup keeps consent readable in narrow light and dark windows', async () => {
+  test.setTimeout(120000)
+  await expect(page.getByTestId('onboarding')).toBeVisible()
+  await app.evaluate(({ BrowserWindow, ipcMain }) => {
+    const window = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('index.html'))!
+    window.setMinimumSize(0, 0); window.setContentSize(600, 800)
+    ipcMain.removeHandler('engines:states')
+    ipcMain.handle('engines:states', () => [
+      { id: 'claude', installed: true, loggedIn: false },
+      { id: 'codex', installed: true, loggedIn: true },
+    ])
+    window.webContents.send('engram:event', { type: 'engines:detected' })
+  })
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value }, theme)
+    await expect(page.getByRole('heading', { name: 'Choose your workspace', exact: true })).toBeVisible()
+    await expect(page.locator('.onboard-sub')).toHaveCount(0)
+    expect((await page.getByTestId('vault-root-input').boundingBox())!.width).toBeGreaterThan(200)
+    await screenshot(`compact-workspace-${theme}.png`)
+    await page.getByTestId('onboard-next').click()
+    await expect(page.getByRole('heading', { name: 'Connect your AI', exact: true })).toBeVisible()
+    await expect(page.getByTestId('onboard-connect-claude')).toBeEnabled()
+    await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Connected')
+    await expect(page.getByText('Connected', { exact: true })).toHaveCount(1)
+    await expect(page.getByTestId('onboard-work-map')).not.toBeChecked()
+    await expect(page.getByTestId('onboard-interview')).toBeChecked()
+    await expect(page.locator('#work-map-consent')).toContainText('go to your AI daily. No pages opened.')
+    await expect(page.locator('#interview-consent')).toContainText('not contents')
+    for (const selector of ['#work-map-consent', '#interview-consent', '[data-testid="onboard-finish"]']) await expect(page.locator(selector)).toBeInViewport()
+    expect(await page.locator('.onboard-card').evaluate(card => ({ overflowX: card.scrollWidth > card.clientWidth, overflowY: card.scrollHeight > card.clientHeight }))).toEqual({ overflowX: false, overflowY: false })
+    await screenshot(`compact-connect-${theme}.png`)
+    await page.getByRole('button', { name: 'Back', exact: true }).click()
+  }
 })
 
 test('first-run login states, filing retry and direct browser entry', async () => {
