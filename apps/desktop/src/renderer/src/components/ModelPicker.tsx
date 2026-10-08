@@ -188,15 +188,14 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
         return
       }
       const current = settings ?? await api.settingsGet()
-      const next = { ...current, ...change }
-      if ('claudeModel' in change) next.claudeEffort = undefined
-      if ('codexModel' in change) next.codexEffort = undefined
+      if ('claudeModel' in change) change = { ...change, claudeEffort: undefined }
+      if ('codexModel' in change) change = { ...change, codexEffort: undefined }
       if (scope) {
         const provider = change.defaultEngine ?? engine ?? current.defaultEngine
         const chosen = { engine: provider, model: change.defaultEngine ? '' : (change.codexModel ?? change.claudeModel ?? model), effort: change.defaultEngine || 'codexModel' in change || 'claudeModel' in change ? undefined : 'codexEffort' in change ? change.codexEffort : 'claudeEffort' in change ? change.claudeEffort : effort }
         await api.aiSelectionSet(scope, chosen)
         setSettings(value => value ? { ...value, aiSelections: { ...value.aiSelections, [scope]: chosen } } : value)
-      } else { await api.settingsSet(next); setSettings(next) }
+      } else { await api.settingsSet(change); setSettings(value => ({ ...(value ?? current), ...change })) }
       if (close) { setOpen(false); trigger.current?.focus() }
     } catch { setSaveError('Could not save your selection. Try again.') }
     finally { setSaving(false) }

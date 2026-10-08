@@ -36,8 +36,7 @@ export function GithubConnect({ onClose }: { onClose(): void }) {
 
   const setAutoSync = async (next: boolean) => {
     setAuto(next)
-    const current = await api.settingsGet()
-    await api.settingsSet({ ...current, teamSync: next ? 'auto' : 'manual' })
+    await api.settingsSet({ teamSync: next ? 'auto' : 'manual' })
   }
 
   const syncNow = async () => {

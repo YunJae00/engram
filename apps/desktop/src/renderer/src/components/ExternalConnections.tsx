@@ -40,9 +40,12 @@ export function ExternalConnections() {
     finally { working.current = false; setBusy('') }
   }
   return <section className="external-connections" aria-label="External connections">
-    <h3>Connect other AI apps</h3>
-    <div className="external-access"><div><strong>Allow local connections</strong><small>Off again when Engram restarts</small></div><input aria-label="Allow local connections for this app session" type="checkbox" role="switch" checked={status?.enabled ?? false} disabled={!!busy || !status} onChange={event => { const enabled = event.target.checked; setStatus(value => value ? { ...value, enabled } : value); void act('toggle', async () => { try { setStatus(await api.mcpEnable(enabled)) } catch (cause) { setStatus(await api.mcpStatus()); throw cause } }) }} /></div>
+    <h3>Other AI apps</h3>
+    <p className="setting-hint">Let other AI apps use Engram’s memory, browser and file tools.</p>
+    <div className="external-access"><div><strong>Share Engram tools</strong><small>This computer only · Off after restart</small></div><input aria-label="Share Engram tools for this app session" type="checkbox" role="switch" checked={status?.enabled ?? false} disabled={!!busy || !status} onChange={event => { const enabled = event.target.checked; setStatus(value => value ? { ...value, enabled } : value); void act('toggle', async () => { try { setStatus(await api.mcpEnable(enabled)) } catch (cause) { setStatus(await api.mcpStatus()); throw cause } }) }} /></div>
     <div className="external-session" role="status">{(!status || busy === 'toggle') && <LoaderCircle size={15} className="computer-spinner" aria-hidden />}{!status ? 'Checking…' : !status.enabled ? 'Off' : status.active ? 'Working' : status.connected ? `${status.connected} live ${status.connected === 1 ? 'session' : 'sessions'}` : 'Ready to connect'}</div>
+    <p className="external-privacy"><ShieldCheck size={17} aria-hidden /><span>Each request needs your approval. Returned content is shared with that AI app. Its other tools and legacy memory connections are not controlled here.</span></p>
+    <details className="settings-disclosure" open={status?.enabled ?? false}><summary>Apps and configuration</summary>
     <div className="external-client-list">{CLIENTS.map(({ id, name }) => {
       const state = clients.find(client => client.id === id)?.state
       const configured = state === 'configured'
@@ -57,8 +60,8 @@ export function ExternalConnections() {
         })}>{busy === id ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Connecting…</> : configured ? <><Check size={14} aria-hidden />Configured</> : 'Connect'}</button>
       </div>
     })}</div>
-    <p className="external-privacy"><ShieldCheck size={17} aria-hidden /><span>Each tool request needs your approval. Returned content is shared with the requesting AI client. This does not control its other tools or legacy direct-memory connections.</span></p>
     <div className="external-actions"><button className="secondary" disabled={!!busy || checking} onClick={() => void act('refresh', refresh)}><RefreshCw size={14} className={checking ? 'computer-spinner' : ''} aria-hidden />Check status</button><button className="secondary" disabled={!!busy} onClick={() => void act('copy', async () => { await api.copyText((await api.mcpInfo()).configJson); setMessage('MCP configuration copied.') })}><Copy size={14} aria-hidden />Copy configuration</button>{!!status?.connected && <button className="secondary" disabled={!!busy} onClick={() => void act('stop', async () => { await api.mcpStop(); setStatus(await api.mcpStatus()); setMessage('Sessions stopped. Check any partial changes before retrying.') })}>Stop sessions</button>}</div>
+    </details>
     {message && <p className="external-feedback" role="status">{message}</p>}
     {error && <p className="external-feedback" role="alert">{error}</p>}
   </section>

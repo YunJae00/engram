@@ -817,7 +817,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   browsersInstalled(): Promise<InstalledBrowserDto[]>
   browserChoose(path: string): Promise<void>
   settingsGet(): Promise<AppSettingsDto>
-  settingsSet(settings: AppSettingsDto): Promise<void>
+  settingsSet(settings: Partial<AppSettingsDto>): Promise<void>
   aiSelectionSet(scope: string, selection: { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }): Promise<void>
   mcpInfo(): Promise<McpInfoDto>
   mcpClients(): Promise<McpClientDto[]>

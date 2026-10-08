@@ -145,10 +145,10 @@ test('help lives in Settings without duplicate quick actions', async () => {
   await page.getByTestId('settings-nav-help').click()
   const panel = page.getByTestId('help-panel')
   await expect(panel).toBeVisible()
-  await expect(panel).toContainText('A small guide to Engram')
+  await expect(panel.getByRole('heading', { name: 'Help', exact: true })).toBeVisible()
   await expect(panel).toContainText('Keyboard shortcuts')
   await expect(panel.getByRole('button', { name: 'Remember' })).toHaveCount(0)
-  await page.keyboard.press('Escape')
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
 })
 
 

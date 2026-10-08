@@ -12,6 +12,7 @@ export function ComputerSettings() {
   const { available, control } = useDesktopSession()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   const active = control && control.state !== 'idle'
   const dismiss = control?.state === 'paused' && !control.resumable
   useEffect(() => {
@@ -22,18 +23,18 @@ export function ComputerSettings() {
   }, [])
   const enabled = settings?.computerUse === true
   const toggle = async (on: boolean) => {
-    if (!settings) return
-    setError('')
+    if (!settings || saving) return
+    setSaving(true); setError('')
     const next = { ...settings, computerUse: on }
     setSettings(next)
-    try { await api.settingsSet(next) } catch (cause) { setError(desktopError(cause)); setSettings(settings) }
+    try { await api.settingsSet({ computerUse: on }) } catch (cause) { setError(desktopError(cause)); setSettings(settings) } finally { setSaving(false) }
   }
   const value = available === null ? 'Checking…' : available === false ? 'Unavailable on this build' : !enabled ? 'Off' : active && control ? computerStateLabel(control) : 'Ready'
   return <section className="computer-settings" aria-label="Computer use" data-testid="computer-settings">
     <div className="settings-group-head">Computer use</div>
     <label className="setting-row">
       <span className="computer-settings-label"><Monitor size={18} aria-hidden /><span>Control apps<small>{value}</small></span></span>
-      <input type="checkbox" className="switch" data-testid="setting-computer-use" checked={enabled} disabled={!settings || available === false} onChange={(event) => void toggle(event.target.checked)} />
+      <input type="checkbox" className="switch" data-testid="setting-computer-use" checked={enabled} disabled={!settings || saving || available === false} onChange={(event) => void toggle(event.target.checked)} />
     </label>
     <p className="computer-settings-description">Move the mouse or type to pause. <kbd>Esc</kbd> stops control. Passwords, sign-in pages and security settings stay off limits.</p>
     {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? 'Dismiss' : 'Stop computer control'}{!dismiss && <kbd>Esc</kbd>}</button>}

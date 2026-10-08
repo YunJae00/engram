@@ -76,6 +76,7 @@ test('external connections are explicitly enabled and can be disabled without al
   const panel = page.getByRole('region', { name: 'External connections', exact: true })
   const toggle = panel.getByRole('switch')
   await expect(toggle).not.toBeChecked()
+  await panel.locator('summary').filter({ hasText: /^Apps and configuration$/ }).click()
   await expect(panel.getByRole('button', { name: 'Connect', exact: true }).first()).toBeDisabled()
   await toggle.check()
   await expect(panel.getByRole('button', { name: 'Connect', exact: true }).first()).toBeEnabled()
