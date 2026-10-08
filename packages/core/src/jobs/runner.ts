@@ -69,6 +69,8 @@ export interface RunnerOptions {
   // runAll; `total` is jobs.length. Journal-skipped jobs never fire the hook,
   // so displayed indices can jump (that is honest). Pure: never changes runs.
   onJobStart?(job: string, index: number, total: number): void
+  onJobDone?(job: string, index: number, total: number): void
+  signal?: AbortSignal
   // Cooperative stop, checked before each job (after its journal-skip check).
   // When it returns true, the current job and every remaining job are counted
   // as deferred and the loop stops — the caller can re-queue them.
@@ -85,6 +87,8 @@ export class JobRunner {
   private timeoutMs: number
   private now: () => Date
   private onJobStart?: (job: string, index: number, total: number) => void
+  private onJobDone?: (job: string, index: number, total: number) => void
+  private signal?: AbortSignal
   private shouldStop?: () => boolean
   private concurrency: number
   private modelHint?: 'fast'
@@ -98,6 +102,8 @@ export class JobRunner {
     this.timeoutMs = options.timeoutMs ?? 300_000
     this.now = options.now ?? (() => new Date())
     this.onJobStart = options.onJobStart
+    this.onJobDone = options.onJobDone
+    this.signal = options.signal
     this.shouldStop = options.shouldStop
     this.retryDelayMs = options.retryDelayMs ?? 2_000
     this.concurrency = Math.max(1, options.concurrency ?? 1)
@@ -169,6 +175,7 @@ export class JobRunner {
       disallowTools: job.disallowTools,
       timeoutMs: this.timeoutMs,
       idleTimeoutMs: 120_000,
+      signal: this.signal,
       // Judgment jobs ('default') pin the SMART tier (e.g. sonnet), never
       // the subscription's default model — that stays reserved for chat.
       // Mechanical jobs inherit the run hint (fast tier).
@@ -200,6 +207,7 @@ export class JobRunner {
       // one retry on ordinary failure
       for (let attempt = 0; attempt <= 1 && !done; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, this.retryDelayMs))
+        if (this.signal?.aborted) { report.deferred++; return }
         const engine = this.engines[engineIdx]
         if (!engine) {
           report.deferred++
@@ -207,12 +215,15 @@ export class JobRunner {
         }
         try {
           const result = await this.runJob(engine, job)
+          this.signal?.throwIfAborted()
           const effects = await job.apply(result)
           journal[hash] = { kind: job.kind, at: this.now().toISOString() }
           report.executed++
           await this.writeLog(job, `done (${engine.id})`, effects.map((e) => `- ${e}`).join('\n') || '- no effects')
           done = true
+          this.onJobDone?.(job.kind, index + 1, jobs.length)
         } catch (err) {
+          if (this.signal?.aborted) { report.deferred++; return }
           // Quota and auth share one shape: retrying the SAME engine cannot
           // help (a limit is not lifted in 0ms, an expired login does not
           // refresh itself), so both substitute or halt instead of burning the
@@ -260,12 +271,13 @@ export class JobRunner {
         const job = jobs[i]!
         if (journal[jobHash(job)]) {
           report.skipped++
+          this.onJobDone?.(job.kind, i + 1, jobs.length)
           continue
         }
         // Cooperative stop / engine exhaustion (checked after the journal
         // skip): this job and everything still undispatched count as deferred;
         // in-flight jobs on other workers finish and are journaled normally.
-        if (halted || this.shouldStop?.()) {
+        if (halted || this.signal?.aborted || this.shouldStop?.()) {
           report.deferred++
           continue
         }
@@ -274,8 +286,8 @@ export class JobRunner {
     }
 
     const width = Math.min(this.concurrency, Math.max(1, jobs.length))
-    await Promise.all(Array.from({ length: width }, () => worker()))
-    await this.saveJournal(journal)
+    try { await Promise.all(Array.from({ length: width }, () => worker())) }
+    finally { await this.saveJournal(journal) }
     if (report.executed > 0) await this.pruneLogs()
     return report
   }

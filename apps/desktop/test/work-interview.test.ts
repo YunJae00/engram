@@ -1,19 +1,18 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { guideNote, initVault, NoteStore, readNote, selectInterviewEvidence, writeNote, type Engine, type EngineJobInput, type WorkMap } from 'core'
+import { guideNote, initVault, NoteStore, placeNote, readNote, selectInterviewEvidence, writeNote, type Engine, type EngineJobInput, type WorkMap } from 'core'
 
 const fake = vi.hoisted(() => ({
   roots: {} as Record<string, string>,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
-  files: vi.fn(), map: vi.fn(), playbooks: vi.fn(), settings: vi.fn(), prime: vi.fn(), broadcast: vi.fn(),
+  files: vi.fn(), map: vi.fn(), playbooks: vi.fn(), settings: vi.fn(), prepare: vi.fn(), broadcast: vi.fn(),
 }))
 vi.mock('electron', () => ({ app: { getPath: (name: string) => fake.roots[name] }, ipcMain: { handle: (name: string, handler: (...args: unknown[]) => unknown) => fake.handlers.set(name, handler) } }))
 vi.mock('core', async original => ({ ...await original<typeof import('core')>(), findLocalFiles: fake.files, readWorkMap: fake.map, readPlaybooks: fake.playbooks }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.settings }))
-vi.mock('../src/main/work-map-job.js', () => ({ primeWorkMap: fake.prime }))
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from '../src/main/work-interview.js'
 
 const map: WorkMap = { builtAt: new Date().toISOString(), windowDays: 90, places: [{ host: 'work.example', entry: 'https://work.example/path?token=SECRET', title: 'Client updates', purpose: 'Client reporting', work: true, days: 18, lastSeen: new Date().toISOString().slice(0, 10), pages: [], bookmarks: [], managed: false }] }
@@ -27,7 +26,7 @@ const deferred = () => { let finish!: () => void; const promise = new Promise<vo
 beforeEach(() => {
   vi.unstubAllEnvs(); fake.handlers.clear(); fake.broadcast.mockClear()
   fake.files.mockReset().mockResolvedValue({ matches: [] }); fake.map.mockReset().mockResolvedValue(map)
-  fake.playbooks.mockReset().mockResolvedValue([]); fake.settings.mockReset().mockResolvedValue({ workMap: true }); fake.prime.mockReset().mockResolvedValue(undefined)
+  fake.playbooks.mockReset().mockResolvedValue([]); fake.settings.mockReset().mockResolvedValue({ workMap: true }); fake.prepare.mockReset().mockResolvedValue([])
 })
 
 async function setup(reply: (job: EngineJobInput, index: number) => string | Promise<string> = () => guide('Every send needs approval')) {
@@ -39,7 +38,7 @@ async function setup(reply: (job: EngineJobInput, index: number) => string | Pro
   const engine = { id: 'mock', async *run(job: EngineJobInput) { jobs.push(job); yield { type: 'result', text: await reply(job, jobs.length) } } } as unknown as Engine
   const ctx = { paths, engines: [engine], store: await NoteStore.open(paths) } as Parameters<typeof registerWorkInterviewIpc>[0]
   const onSaved = vi.fn(() => expect(ctx.store.get('n-work-guide')).not.toBeNull())
-  registerWorkInterviewIpc(ctx, onSaved)
+  registerWorkInterviewIpc(ctx, fake.prepare, onSaved)
   return { root, ctx, paths, jobs, onSaved }
 }
 
@@ -74,12 +73,65 @@ it('does not spend model usage or invent questions when there is no eligible evi
   expect(t.jobs).toHaveLength(0)
 })
 
+it('waits for initial Cosmos filing and reads prepared notes from disk before asking', async () => {
+  const t = await setup(() => questions)
+  const waiting = deferred(), started = deferred()
+  const note = placeNote(map.places[0]!, new Date())
+  note.body += '\nConfirmed delivery format: a short table.\n'
+  fake.prepare.mockImplementationOnce(async (_signal, progress) => {
+    progress({ phase: 'filing', stage: 'organize', completed: 0, total: 1 })
+    started.finish(); await waiting.promise
+    await writeNote(t.paths, note)
+    progress({ phase: 'filing', stage: 'organize', completed: 1, total: 1 })
+    return [note.front.id]
+  })
+  const pending = call('questions', { requestId: 'initial-pass' })
+  await started.promise; expect(t.jobs).toHaveLength(0)
+  waiting.finish(); expect(await pending).toHaveLength(1)
+  expect(t.jobs[0]!.prompt).toContain('Confirmed delivery format: a short table.')
+  expect(fake.broadcast).toHaveBeenLastCalledWith({ type: 'interview:progress', requestId: 'initial-pass', phase: 'questions' })
+})
+
+it('does not feed notes arriving outside the prepared snapshot into questions', async () => {
+  const t = await setup(() => questions)
+  const note = placeNote(map.places[0]!, new Date())
+  note.body += '\nOUTSIDE_INITIAL_SNAPSHOT\n'
+  await writeNote(t.paths, note)
+  fake.prepare.mockResolvedValueOnce([])
+  await call('questions')
+  expect(t.jobs[0]!.prompt).not.toContain('OUTSIDE_INITIAL_SNAPSHOT')
+})
+
+it('does not ask or report empty success after incomplete preparation', async () => {
+  const t = await setup(() => questions)
+  fake.prepare.mockRejectedValueOnce(new Error('Preparation is incomplete'))
+  await expect(call('questions', { requestId: 'failed-pass' })).rejects.toThrow('incomplete')
+  expect(t.jobs).toHaveLength(0)
+  for (const invalid of [null, [], 'bad', { requestId: '../bad' }, { requestId: 'x'.repeat(81) }]) await expect(call('questions', invalid)).rejects.toThrow('Invalid interview')
+  expect(fake.prepare).toHaveBeenCalledOnce()
+})
+
+it('suppresses progress and model calls after cancellation during preparation', async () => {
+  const t = await setup(() => questions)
+  const waiting = deferred(), started = deferred()
+  fake.prepare.mockImplementationOnce(async (_signal, progress) => {
+    started.finish(); await waiting.promise
+    progress({ phase: 'filing', stage: 'organize', completed: 1, total: 1 })
+    return []
+  })
+  const pending = call('questions', { requestId: 'canceled-pass' })
+  const rejected = expect(pending).rejects.toThrow()
+  await started.promise; await call('cancel'); waiting.finish(); await rejected
+  expect(fake.broadcast).not.toHaveBeenCalled()
+  expect(t.jobs).toHaveLength(0)
+})
+
 it('does not use a retained work map after the person turns learning off', async () => {
   const t = await setup(() => questions)
   fake.settings.mockResolvedValue({ workMap: false })
   expect(await call('questions')).toEqual([])
   expect(fake.map).not.toHaveBeenCalled()
-  expect(fake.prime).not.toHaveBeenCalled()
+  expect(fake.prepare).toHaveBeenCalledOnce()
   expect(t.jobs).toHaveLength(0)
 })
 
@@ -90,7 +142,7 @@ it('remembers a rejected source without treating it as a work rule or spending A
   expect(t.jobs).toHaveLength(1)
   expect(JSON.parse(await readFile(join(t.paths.cache, 'interview-exclusions.json'), 'utf8'))).toEqual([source])
   await expect(readNote(t.paths, 'n-work-guide')).rejects.toThrow()
-  registerWorkInterviewIpc(t.ctx)
+  registerWorkInterviewIpc(t.ctx, fake.prepare)
   expect(await call('questions')).toEqual([])
   expect(t.jobs).toHaveLength(1)
 })
@@ -136,7 +188,7 @@ it('retries parsing once but never retries a model or authentication failure', a
 it.each(['questions', 'save'])('cancels %s and discards even a late successful model reply', async operation => {
   const started = deferred(), release = deferred()
   const t = await setup(async () => { started.finish(); await release.promise; return operation === 'save' ? guide('Never save this') : questions })
-  const pending = call(operation, answers)
+  const pending = call(operation, ...(operation === 'save' ? [answers] : []))
   const rejected = expect(pending).rejects.toThrow()
   await started.promise
   await call('cancel'); expect(t.jobs[0]!.signal?.aborted).toBe(true)

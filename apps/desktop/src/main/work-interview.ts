@@ -12,6 +12,7 @@ import {
   INTERVIEW_SCHEMA,
   INTERVIEW_SOURCE_ID,
   interviewPrompt,
+  loadNotes,
   parseInterviewQuestions,
   readNote,
   readPlaybooks,
@@ -28,7 +29,7 @@ import {
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
-import { primeWorkMap } from './work-map-job.js'
+import type { PrepareInterview } from './interview-preparation.js'
 import type { VaultContext } from './vault.js'
 
 const INTERVIEW_TIMEOUT_MS = 180_000
@@ -78,19 +79,20 @@ export async function workGuide(paths: VaultPaths): Promise<string> {
   return guideForPrompt(await readGuide(paths).catch(() => null))
 }
 
-async function evidence(ctx: VaultContext, signal: AbortSignal) {
+async function evidence(ctx: VaultContext, signal: AbortSignal, preparedIds: readonly string[]) {
   const settings = await loadSettings()
-  if (settings.workMap) await primeWorkMap(ctx).catch(() => undefined)
   signal.throwIfAborted()
-  const [map, playbooks, excludedIds] = await Promise.all([
+  const [map, playbooks, excludedIds, notes] = await Promise.all([
     settings.workMap ? readWorkMap(ctx.paths).catch(() => null) : null,
     readPlaybooks(ctx.paths).catch(() => []),
     readExclusions(ctx.paths),
+    loadNotes(ctx.paths),
   ])
   const existing = await readGuide(ctx.paths)
   const guide = existing?.front.status === 'current' ? existing.body : ''
   signal.throwIfAborted()
-  return selectInterviewEvidence({ map, playbooks, guide, excludedIds })
+  const prepared = new Set(preparedIds)
+  return selectInterviewEvidence({ map, playbooks, guide, excludedIds, notes: notes.filter(note => prepared.has(note.front.id)) })
 }
 
 // One retry when the reply cannot be used: a model sometimes answers in prose.
@@ -108,26 +110,41 @@ async function ask<T>(ctx: VaultContext, prompt: string, schema: object, signal:
   }
 }
 
-export function registerWorkInterviewIpc(ctx: VaultContext, onSaved?: () => void): void {
-  let current: AbortController | undefined
+let current: AbortController | undefined
+export function cancelWorkInterview(): void {
+  current?.abort()
+  current = undefined
+}
+
+export function registerWorkInterviewIpc(ctx: VaultContext, prepare: PrepareInterview, onSaved?: () => void): void {
+  cancelWorkInterview()
   let issued: InterviewQuestion[] = []
-  const request = async <T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+  const request = async <T>(run: (signal: AbortSignal) => Promise<T>, bounded = true): Promise<T> => {
     current?.abort()
     const controller = new AbortController()
     current = controller
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(INTERVIEW_TIMEOUT_MS * 2)])
+    const signal = bounded ? AbortSignal.any([controller.signal, AbortSignal.timeout(INTERVIEW_TIMEOUT_MS * 2)]) : controller.signal
     try { return await run(signal) } finally { if (current === controller) current = undefined }
   }
-  ipcMain.handle('interview:questions', async (): Promise<InterviewQuestion[]> => {
+  ipcMain.handle('interview:questions', async (_e, options?: unknown): Promise<InterviewQuestion[]> => {
+    if (options !== undefined && (!options || typeof options !== 'object' || Array.isArray(options))) throw new Error('Invalid interview request.')
+    const requestId = (options as { requestId?: unknown } | undefined)?.requestId
+    if (requestId !== undefined && (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(requestId))) throw new Error('Invalid interview request id.')
     return request(async signal => {
       issued = []
-      const known = await evidence(ctx, signal)
+      const progress: Parameters<PrepareInterview>[1] = state => {
+        if (!signal.aborted && typeof requestId === 'string') broadcast({ type: 'interview:progress', requestId, ...state })
+      }
+      const preparedIds = await prepare(signal, progress)
+      signal.throwIfAborted()
+      const known = await evidence(ctx, signal, preparedIds)
       if (!known.sources.length) return []
+      progress({ phase: 'questions' })
       const questions = await ask(ctx, interviewPrompt(known), INTERVIEW_SCHEMA, signal, raw => parseInterviewQuestions(raw, known))
       signal.throwIfAborted()
       issued = questions
       return questions
-    })
+    }, false)
   })
   ipcMain.handle('interview:save', async (_e, answers: unknown): Promise<{ saved: boolean }> => {
     const given = checkedAnswers(answers)
@@ -139,7 +156,7 @@ export function registerWorkInterviewIpc(ctx: VaultContext, onSaved?: () => void
       return { saved }
     })
   })
-  ipcMain.handle('interview:cancel', () => { current?.abort(); current = undefined })
+  ipcMain.handle('interview:cancel', cancelWorkInterview)
 }
 
 function checkedAnswers(value: unknown): InterviewAnswer[] {

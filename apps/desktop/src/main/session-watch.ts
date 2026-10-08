@@ -3,7 +3,7 @@ import { app, ipcMain } from 'electron'
 import { open, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { LIBRARIAN_RUN_OPTS, noteRunOutcome, runPipelineAsync } from './ipc.js'
+import { isLibrarianBusy, LIBRARIAN_RUN_OPTS, noteRunOutcome, runExclusiveFiling, runPipelineAsync } from './ipc.js'
 import type { VaultContext } from './vault.js'
 import { readSessionCursors, writeSessionCursors, type SessionCursor as Cursor } from './session-cursor.js'
 import { accountEnvironment, accountProfiles } from './account-profiles.js'
@@ -257,15 +257,15 @@ export async function readNewSpan(
 // span to a halted engine once a minute, drop it, and lose every conclusion the
 // user reached during the window — silently, since the offset had already moved.
 async function harvest(ctx: VaultContext, project: string, cursor: Cursor): Promise<boolean> {
-  if (ctx.engines.length === 0) return false
+  if (ctx.engines.length === 0 || isLibrarianBusy()) return false
   const runEngine = ctx.engines[0]
   const runner = new JobRunner(ctx.paths, ctx.engines, LIBRARIAN_RUN_OPTS)
-  const report = await runner.runAll([
+  const report = await runExclusiveFiling(ctx, async () => runner.runAll([
     buildJ11(ctx.paths, await readAgentsMd(ctx.paths), project, cursor.held.slice(0, MAX_TURNS_HELD), cursor.kept, (title) => {
       cursor.kept.push(title)
       if (cursor.kept.length > MAX_KEPT_TITLES) cursor.kept = cursor.kept.slice(-MAX_KEPT_TITLES)
     }),
-  ])
+  ]))
   // Feed the shared health verdict, so a quota or auth halt raises the same
   // banner the rest of the librarian does instead of failing invisibly here.
   noteRunOutcome(ctx, report, runEngine)

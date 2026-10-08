@@ -130,6 +130,8 @@
 .interview-wait, .interview-success { justify-items: center; padding-top: 8px; text-align: center; }
 .interview-dialog .interview-wait h3, .interview-dialog .interview-success h3 { text-align: center; }
 .interview-wait p { margin-top: 10px; }
+.interview-wait .interview-count { font-variant-numeric: tabular-nums; color: var(--fg); }
+.interview-wait .interview-intro-actions { justify-content: center; margin-top: 0; }
 .interview-elapsed { font-size: var(--fs-micro); font-variant-numeric: tabular-nums; color: var(--fg-faint); }
 .interview-step { --step-offset: 8px; animation: interview-step-in 180ms ease-out; }
 .interview-step[data-direction='back'] { --step-offset: -8px; }

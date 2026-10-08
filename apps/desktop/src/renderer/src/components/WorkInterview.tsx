@@ -1,29 +1,39 @@
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, MessageSquareText, Pencil, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import type { InterviewQuestionDto } from '../../../shared/types.js'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { EngramEvent, InterviewQuestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 
 export const INTERVIEW_PENDING_KEY = 'engram.interviewPending'
 
 type Reply = { picked: string[]; own: string; notMine?: boolean }
+type PreparationProgress = Extract<EngramEvent, { type: 'interview:progress' }>
 export const replyText = (reply: Reply): string => [...reply.picked, reply.own.trim()].filter(Boolean).join('; ')
 
-export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): void; onSaved(): void; onDraftChange(dirty: boolean): void }) {
+export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = false }: { onClose(): void; onSaved(): void; onDraftChange(dirty: boolean): void; autoStart?: boolean }) {
   const [questions, setQuestions] = useState<InterviewQuestionDto[] | null>(null)
   const [replies, setReplies] = useState<Reply[]>([])
   const [at, setAt] = useState(0)
   const [direction, setDirection] = useState<'forward' | 'back'>('forward')
-  const [busy, setBusy] = useState<'' | 'asking' | 'saving'>('')
+  const [busy, setBusy] = useState<'' | 'asking' | 'saving'>(autoStart ? 'asking' : '')
+  const [progress, setProgress] = useState<PreparationProgress | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const finished = saved || questions?.length === 0
   const intro = !questions && !busy && !saved
   const revision = useRef(0)
+  const requestId = useRef<string | null>(null)
+  const latestProgress = useRef<PreparationProgress | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const done = useRef<HTMLButtonElement>(null)
-  useEffect(() => () => { revision.current++; void api.interviewCancel().catch(() => undefined) }, [])
+  useEffect(() => {
+    const off = api.onEvent(event => {
+      if (event.type !== 'interview:progress' || event.requestId !== requestId.current) return
+      latestProgress.current = event; setProgress(event)
+    })
+    return () => { off(); revision.current++; requestId.current = null; void api.interviewCancel().catch(() => undefined) }
+  }, [])
   useEffect(() => {
     if (!finished) { scroll.current?.scrollTo(0, 0); heading.current?.focus({ preventScroll: true }) }
   }, [at, questions, busy, finished])
@@ -44,22 +54,35 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
   const move = (next: number) => { setError(''); setDirection(next < at ? 'back' : 'forward'); setAt(next) }
   const cancel = () => {
     const request = ++revision.current
+    requestId.current = null
     setBusy(''); setError('')
     void api.interviewCancel().catch(() => { if (request === revision.current) setError('Could not stop the request. Close this window to leave it.') })
   }
-  const start = async () => {
+  const start = useCallback(async () => {
     const request = ++revision.current
+    const id = crypto.randomUUID()
+    requestId.current = id; latestProgress.current = null; setProgress(null)
     setElapsed(0); setBusy('asking'); setError('')
     try {
-      const next = await api.interviewQuestions()
+      const next = await api.interviewQuestions({ requestId: id })
       if (request !== revision.current) return
       setQuestions(next); setReplies(next.map(() => ({ picked: [], own: '' }))); setDirection('forward'); setAt(0)
       if (!next.length) {
         try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* This completed prompt can still be dismissed. */ }
       }
-    } catch { if (request === revision.current) setError('Could not prepare questions. Check your AI connection and try again.') }
-    finally { if (request === revision.current) setBusy('') }
-  }
+    } catch {
+      if (request === revision.current) {
+        const phase = (latestProgress.current as PreparationProgress | null)?.phase
+        setError(phase === 'mapping' ? 'Could not finish mapping your work places. Retry, or finish setup later in Settings.' : phase === 'filing' ? 'Cosmos preparation paused before it finished. Retry, or finish setup later in Settings.' : 'Could not prepare questions. Check your AI connection and try again.')
+      }
+    } finally { if (request === revision.current) { requestId.current = null; setBusy('') } }
+  }, [])
+  useEffect(() => {
+    if (!autoStart) return
+    const timer = window.setTimeout(() => void start(), 0)
+    return () => window.clearTimeout(timer)
+  }, [autoStart, start])
+  const startNow = () => { cancel(); onClose() }
   const update = (change: (reply: Reply) => Reply) => setReplies((all) => all.map((reply, i) => i === at ? change(reply) : reply))
   const save = async () => {
     if (!questions || !answered || tooLong || busy) return
@@ -89,17 +112,19 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
     </div></div> : busy ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro interview-wait" data-testid="interview-wait">
         <span className="interview-mark" aria-hidden><LoaderCircle size={24} className="computer-spinner" /></span>
-        <div role="status"><h3 ref={heading} tabIndex={-1}>{busy === 'saving' ? 'Saving your preferences…' : 'Preparing questions…'}</h3><p>{elapsed >= 20 ? 'Still waiting for your AI. You can cancel and retry.' : 'This can take a minute or more.'}</p></div>
+        <div role="status"><h3 ref={heading} tabIndex={-1} data-testid="interview-phase">{busy === 'saving' ? 'Saving your preferences…' : progress?.phase === 'mapping' ? 'Finding your work places…' : progress?.phase === 'filing' ? progress.stage === 'capture' ? 'Filing your first captures…' : progress.stage === 'organize' ? 'Organizing Cosmos…' : 'Preparing Cosmos…' : progress?.phase === 'questions' ? 'Preparing questions…' : 'Starting setup…'}</h3>
+          {busy === 'asking' && progress?.phase === 'filing' && progress.completed !== undefined && progress.total !== undefined && <p className="interview-count" data-testid="interview-file-count">{progress.completed} / {progress.total} completed</p>}
+          <p>{busy === 'saving' ? elapsed >= 20 ? 'Still waiting for your AI. You can cancel and retry.' : 'This can take a minute or more.' : elapsed >= 20 ? 'Still working. You can start now and return in Settings.' : 'Preparing Cosmos before your questions. You can start now.'}</p></div>
         <span className="interview-elapsed" role="timer" aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
-        <button type="button" className="secondary" onClick={cancel}>Cancel</button>
+        <div className="interview-intro-actions"><button type="button" className={busy === 'asking' ? 'interview-skip' : 'secondary'} onClick={cancel}>Cancel</button>{busy === 'asking' && <button type="button" className="primary" data-testid="interview-start-now" onClick={startNow}>Start now<ArrowRight size={15} aria-hidden /></button>}</div>
       </div>
     </div> : !questions ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro">
-        <p>Optional questions about your work.</p>
-        <details className="interview-privacy"><summary>What your AI sees</summary><p>Site names and visit patterns, completed task requests, and your work guide. No file contents. Task replies can update your preferences.</p></details>
-        <div className="interview-intro-actions"><button type="button" className="primary" data-testid="interview-start" onClick={() => void start()}>Get started<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>Not now</button></div>
+        <p>{error ? 'You can continue without finishing setup.' : 'Prepare Cosmos, then answer a few optional questions.'}</p>
+        <details className="interview-privacy"><summary>What your AI sees</summary><p>Selected Cosmos note excerpts, site names and visit patterns, completed task requests, and your work guide. No new scan of your original documents. Task replies can update your preferences.</p></details>
+        {error && <p className="computer-error" role="alert">{error}</p>}
+        <div className="interview-intro-actions"><button type="button" className="primary" data-testid="interview-start" onClick={() => void start()}>{error ? 'Retry' : 'Get started'}<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>{error ? 'Start now' : 'Not now'}</button></div>
       </div>
-      {error && <p className="computer-error" role="alert">{error}</p>}
     </div> : <form onSubmit={(event) => { event.preventDefault(); if (review) void save(); else if (answerLength <= 1200) move(at + 1) }}>
       <div ref={scroll} className="interview-scroll" data-testid="interview-scroll">
         <div key={at} className="interview-step" data-direction={direction}>
@@ -129,7 +154,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
   </div>
 }
 
-export function WorkInterviewDialog({ onClose }: { onClose(): void }) {
+export function WorkInterviewDialog({ onClose, autoStart = false }: { onClose(): void; autoStart?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [dirty, setDirty] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -146,7 +171,7 @@ export function WorkInterviewDialog({ onClose }: { onClose(): void }) {
   }, [leaving])
   const dismiss = () => { if (dirty) setLeaving(true); else onClose() }
   return <dialog ref={dialog} className="interview-dialog" aria-label="How you work" data-testid="interview-dialog" onKeyDown={(event) => { if (event.key === 'Escape') event.stopPropagation() }} onCancel={(event) => { event.preventDefault(); if (leaving) setLeaving(false); else dismiss() }}>
-    <div className="interview-dialog-body" hidden={leaving}><WorkInterview onDraftChange={setDirty} onSaved={() => setLeaving(false)} onClose={dismiss} /></div>
+    <div className="interview-dialog-body" hidden={leaving}><WorkInterview autoStart={autoStart} onDraftChange={setDirty} onSaved={() => setLeaving(false)} onClose={dismiss} /></div>
     {leaving && <div className="interview-leave"><h3>Leave without saving?</h3><p>Your unsaved answers will be discarded.</p><div className="interview-actions"><button type="button" className="secondary" onClick={onClose}>Discard answers</button><button ref={keep} type="button" className="primary" onClick={() => setLeaving(false)}>Keep answering</button></div></div>}
   </dialog>
 }
