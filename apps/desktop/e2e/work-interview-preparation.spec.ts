@@ -112,7 +112,7 @@ test('unfinished preparation offers retry and ignores old request progress', asy
   await expect(page.getByTestId('interview-file-count')).toHaveCount(0)
   await progress(1, 'filing', 'capture', 1, 3)
   await expect(page.getByTestId('interview-file-count')).toHaveText('1 / 3 completed')
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByTestId('interview-wait').getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(page.getByTestId('interview-start')).toBeVisible()
   await progress(1, 'questions')
   await app.evaluate((_electron, questions) => (globalThis as typeof globalThis & Fixture).setupRequests[1]!.resolve(questions), QUESTIONS)
