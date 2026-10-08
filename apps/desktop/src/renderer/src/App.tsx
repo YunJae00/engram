@@ -126,14 +126,15 @@ function Shell() {
   }, [vaultReady])
 
   const [interviewOpen, setInterviewOpen] = useState(false)
+  const interviewReady = enginesDetected && engines.some(engine => engine.installed && engine.loggedIn)
   useEffect(() => {
     let pending = false
     try { pending = localStorage.getItem(INTERVIEW_PENDING_KEY) === '1' } catch { /* no first-run prompt */ }
-    if (!vaultReady || !pending) return
+    if (!vaultReady || !pending || !interviewReady) return
     let cancelled = false
     void api.tourEligible().then((ok) => { if (ok && !cancelled) setInterviewOpen(true) }).catch(() => undefined)
     return () => { cancelled = true }
-  }, [vaultReady])
+  }, [vaultReady, interviewReady])
   const closeInterview = () => {
     try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* shown once per session at most */ }
     setInterviewOpen(false)
@@ -311,7 +312,7 @@ function Shell() {
         {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
         {tourOpen && !interviewOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
-        {interviewOpen && <WorkInterviewDialog onClose={closeInterview} />}
+        {interviewOpen && <WorkInterviewDialog autoStart onClose={closeInterview} />}
       </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
       <ComputerStatus />

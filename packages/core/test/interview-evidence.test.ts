@@ -3,6 +3,8 @@ import { INTERVIEW_SOURCE_ID, selectInterviewEvidence, type InterviewEvidence } 
 import { INTERVIEW_SCHEMA, interviewPrompt, parseInterviewQuestions } from '../src/work-guide.js'
 import type { WorkMap, WorkPlace } from '../src/work-map.js'
 import type { Playbook } from '../src/task-playbooks.js'
+import type { Note } from '../src/schema.js'
+import { placeNoteId } from '../src/work-map.js'
 
 const now = new Date('2026-10-08T12:00:00Z')
 const place = (host: string, overrides: Partial<WorkPlace> = {}): WorkPlace => ({
@@ -11,6 +13,9 @@ const place = (host: string, overrides: Partial<WorkPlace> = {}): WorkPlace => (
 const map = (...places: WorkPlace[]): WorkMap => ({ builtAt: now.toISOString(), windowDays: 90, places })
 const task = (goal: string, overrides: Partial<Playbook> = {}): Playbook => ({ goal, urls: [], method: [], at: '2026-10-07T10:00:00Z', count: 1, ...overrides })
 const question = (source: string, text = 'Which result should I prepare next time?') => ({ source, topic: 'outputs', question: text, basis: 'A previous completed task', options: ['A short summary', 'The full report'] })
+const note = (id: string, body: string, front: Partial<Note['front']> = {}): Note => ({
+  front: { id, type: 'note', status: 'current', supersedes: [], derived_from: [], decay: 'slow', timeline: 'ignore', created: now.toISOString(), updated: now.toISOString(), ...front }, body,
+})
 
 it('cannot make questions eligible from unrelated files, bookmarks alone, or ambiguous sites', () => {
   const evidence = selectInterviewEvidence({ now, map: map(
@@ -153,4 +158,71 @@ it('allows only eligible source IDs, one concise question per source, and no pat
   expect(parseInterviewQuestions(raw, evidence).map(one => one.source)).toEqual([a, c])
   expect(INTERVIEW_SCHEMA.properties.questions.maxItems).toBe(5)
   expect(INTERVIEW_SCHEMA.properties.questions.items.required).toContain('source')
+})
+
+it('uses Cosmos only as context for independently eligible work', () => {
+  const notes = [note('n-summary', 'I am probably responsible for all renewals at https://work.example/private')]
+  const unrelated = selectInterviewEvidence({ now, notes, map: map(place('work.example', { days: 0, bookmarks: ['Company tools'], managed: true })) })
+  expect(unrelated.sources).toEqual([])
+  expect(unrelated.context).toBeUndefined()
+  const evidence = selectInterviewEvidence({ now, notes, map: map(place('work.example')) })
+  expect(evidence.sources).toHaveLength(1)
+  expect(evidence.context).toEqual([{
+    source: evidence.sources[0]!.id, note: 'n-summary', updated: now.toISOString(), relation: 'host', provenance: 'observed-reference',
+    excerpt: 'I am probably responsible for all renewals at work.example',
+  }])
+  const rejected = selectInterviewEvidence({ now, notes, map: map(place('work.example')), excludedIds: [evidence.sources[0]!.id] })
+  expect(rejected.context).toBeUndefined()
+})
+
+it('matches exact parsed hosts or explicit task references, never repeated task words', () => {
+  const playbooks = [task('Review requests', { urls: ['https://work.example/reviews'] })]
+  const source = selectInterviewEvidence({ now, playbooks }).sources[0]!.id
+  const evidence = selectInterviewEvidence({ now, playbooks, notes: [
+    note('n-same-title', 'Review requests'),
+    note('n-substring', 'https://work.example.attacker.test/private https://other.example/work.example'),
+    note('n-credentials', 'https://password:secret@work.example/private'),
+    note('n-explicit-task', 'Use the original request ID; approval status is unknown.', { source }),
+    note('n-source-url', 'Keep unresolved discrepancies visible.', { source: 'https://work.example/reviews?token=hidden' }),
+  ] })
+  expect(evidence.context?.map(one => one.note)).toEqual(['n-explicit-task', 'n-source-url'])
+  expect(evidence.context?.map(one => one.relation)).toEqual(['task', 'host'])
+  expect(evidence.context?.[0]?.excerpt).toContain('unknown')
+})
+
+it('takes one grounded Cosmos link, not unrelated or recursive neighbors', () => {
+  const anchor = placeNoteId('work.example')
+  const evidence = selectInterviewEvidence({ now, map: map(place('work.example')), notes: [
+    note(anchor, 'Review work here.', { type: 'place' }),
+    note('n-linked', 'A draft normally includes unresolved cases.', { derived_from: [anchor] }),
+    note('n-second-hop', 'Unrelated team policy.', { derived_from: ['n-linked'] }),
+    note('n-unrelated', 'A report for another team.'),
+  ] })
+  expect(evidence.context?.map(one => one.note)).toEqual([anchor, 'n-linked'])
+  expect(evidence.context?.[1]).toMatchObject({ relation: 'link', provenance: 'inferred-link' })
+  expect(interviewPrompt(evidence)).not.toContain('Unrelated team policy')
+})
+
+it('does not carry retired, disputed, stale or invalid-dated Cosmos notes', () => {
+  const body = 'Use https://work.example/reviews'
+  const evidence = selectInterviewEvidence({ now, map: map(place('work.example')), notes: [
+    ...(['superseded', 'archived', 'disputed', 'draft'] as const).map(status => note(`n-${status}`, body, { status })),
+    note('n-expired', body, { verified_until: '2026-10-01T00:00:00Z' }),
+    note('n-old', body, { created: '2025-01-01T00:00:00Z' }),
+    note('n-future', body, { updated: '2027-01-01T00:00:00Z' }),
+    note('n-invalid', body, { updated: 'unknown' }),
+    note('n-current', body),
+  ] })
+  expect(evidence.context?.map(one => one.note)).toEqual(['n-current'])
+})
+
+it('bounds Cosmos context and sanitizes its paths, URL secrets and labelled credentials', () => {
+  const places = Array.from({ length: 8 }, (_, i) => place(`work${i}.example`))
+  const notes = places.flatMap((one, i) => Array.from({ length: 4 }, (_, j) => note(`n-${i}-${j}`, `Review at https://${one.host}/private?token=secret#secret. From "C:\\Team Files\\Review.xlsx" and /home/user/report.csv. password: hidden123. ${'Useful detail. '.repeat(100)}`)))
+  const evidence = selectInterviewEvidence({ now, notes, map: map(...places) })
+  expect(evidence.context).toHaveLength(6)
+  for (const source of evidence.sources) expect(evidence.context!.filter(one => one.source === source.id).length).toBeLessThanOrEqual(2)
+  expect(evidence.context!.every(one => one.excerpt.length <= 600)).toBe(true)
+  const prompt = interviewPrompt(evidence)
+  for (const text of ['?token=', '#secret', 'Team Files', 'Review.xlsx', '/home/user', 'hidden123']) expect(prompt).not.toContain(text)
 })

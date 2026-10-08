@@ -69,7 +69,7 @@ test('the compact introduction keeps privacy details accessible in narrow light 
     await screenshot(`intro-${theme}-600.png`)
     await details.locator('summary').focus()
     await page.keyboard.press('Enter')
-    await expect(details.locator('p')).toContainText('Site names and visit patterns, completed task requests, and your work guide. No file contents.')
+    await expect(details.locator('p')).toContainText('Selected Cosmos note excerpts, site names and visit patterns, completed task requests, and your work guide. No new scan of your original documents.')
     await screenshot(`privacy-${theme}-600.png`)
     await page.keyboard.press('Enter')
   }

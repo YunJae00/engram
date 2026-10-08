@@ -7,7 +7,7 @@ import { parseCodexSpan } from 'core'
 const state = vi.hoisted(() => ({ root: '', fail: true, prompts: [] as string[] }))
 vi.mock('node:os', () => ({ homedir: () => state.root }))
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => state.root }, ipcMain: { handle: vi.fn() } }))
-vi.mock('../src/main/ipc.js', () => ({ LIBRARIAN_RUN_OPTS: {}, noteRunOutcome: vi.fn(), runPipelineAsync: vi.fn() }))
+vi.mock('../src/main/ipc.js', () => ({ LIBRARIAN_RUN_OPTS: {}, noteRunOutcome: vi.fn(), runPipelineAsync: vi.fn(), isLibrarianBusy: () => false, runExclusiveFiling: (_ctx: unknown, run: () => Promise<unknown>) => run() }))
 vi.mock('core', async importOriginal => ({
   ...await importOriginal<typeof import('core')>(), readAgentsMd: async () => '',
   JobRunner: class {

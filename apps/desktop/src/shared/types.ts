@@ -416,6 +416,7 @@ export type EngramEvent =
   // top bar can say "filing your capture" while it runs
   | { type: 'filing:start' }
   | { type: 'filing:done' }
+  | { type: 'interview:progress'; requestId: string; phase: 'mapping' | 'filing' | 'questions'; stage?: 'capture' | 'organize'; completed?: number; total?: number }
   // zero-click MCP hookup refreshed a client's registration on boot
   | { type: 'mcp:autoconnected'; targets: string[] }
   // the semantic layer fell over (model download/load failed) — said once per
@@ -693,8 +694,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   // The work map: when it was last built and how many work places it holds.
   workMapStatus(): Promise<WorkMapStatusDto>
   workMapRefresh(): Promise<WorkMapStatusDto>
-  // The first-day interview: questions from the names of the person's files and work sites, answers kept as their work guide.
-  interviewQuestions(): Promise<InterviewQuestionDto[]>
+  // A finite Cosmos preparation pass precedes questions; answers become the work guide.
+  interviewQuestions(options?: { requestId?: string }): Promise<InterviewQuestionDto[]>
   interviewSave(answers: { question: string; answer: string; source?: string; rejected?: boolean }[]): Promise<{ saved: boolean }>
   interviewCancel(): Promise<void>
   taskDecide(id: string, approvalId: string, answer: 'approve' | 'decline'): Promise<void>

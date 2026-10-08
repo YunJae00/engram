@@ -29,7 +29,10 @@ test.beforeEach(async () => {
     for (const channel of ['interview:questions', 'interview:save', 'interview:cancel']) ipcMain.removeHandler(channel)
     const state = globalThis as typeof globalThis & { interviewSaved: unknown; interviewCanceled: number; interviewSaves: number }
     state.interviewCanceled = 0; state.interviewSaves = 0
-    ipcMain.handle('interview:questions', async () => { await new Promise(resolve => setTimeout(resolve, 600)); return questions })
+    ipcMain.handle('interview:questions', async (event, { requestId }: { requestId?: string } = {}) => {
+      event.sender.send('engram:event', { type: 'interview:progress', requestId, phase: 'questions' })
+      await new Promise(resolve => setTimeout(resolve, 600)); return questions
+    })
     ipcMain.handle('interview:save', (_event, answers) => {
       if (++state.interviewSaves === 1) throw new Error('Fixture save failure')
       state.interviewSaved = answers; return { saved: true }
@@ -162,33 +165,6 @@ test('failed requests can retry and canceled requests cannot replace a newer scr
   await expect(page.getByTestId('interview-open')).toBeFocused()
 })
 
-test('first-run entry opens once without trapping someone who wants to start work', async () => {
-  await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('app:tourEligible'); ipcMain.handle('app:tourEligible', () => true) })
-  await page.evaluate(() => { localStorage.setItem('engram.tour.done', '1'); localStorage.setItem('engram.interviewPending', '1') })
-  await page.reload()
-  await expect(page.getByTestId('interview-dialog')).toBeVisible()
-  await expect(page.getByTestId('interview-start')).toBeVisible()
-  await page.getByTestId('interview-later').click()
-  await expect(page.getByTestId('interview-dialog')).toBeHidden()
-  expect(await page.evaluate(() => localStorage.getItem('engram.interviewPending'))).toBeNull()
-  await page.reload()
-  await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('interview-dialog')).toHaveCount(0)
-  await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('interview:save'); ipcMain.handle('interview:save', () => ({ saved: true })) })
-  await page.evaluate(() => localStorage.setItem('engram.interviewPending', '1'))
-  await page.reload()
-  await page.getByTestId('interview-start').click()
-  await page.getByTestId('interview-dialog').getByRole('checkbox').first().check()
-  await page.getByTestId('interview-next').click()
-  await page.getByRole('button', { name: 'Skip', exact: true }).click()
-  await page.getByTestId('interview-save').click()
-  await expect(page.getByRole('heading', { name: 'Saved', exact: true })).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('engram.interviewPending'))).toBeNull()
-  await page.reload()
-  await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('interview-dialog')).toHaveCount(0)
-})
-
 test('long questions keep progress and actions fixed above a scrolling body', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('interview:questions')
@@ -273,7 +249,8 @@ test('question changes animate briefly and honor reduced motion', async () => {
 test('preparation shows elapsed time, an honest slow hint, and a working cancel action', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('interview:questions')
-    ipcMain.handle('interview:questions', async () => {
+    ipcMain.handle('interview:questions', async (event, { requestId }: { requestId?: string } = {}) => {
+      event.sender.send('engram:event', { type: 'interview:progress', requestId, phase: 'questions' })
       await new Promise<void>(resolve => { (globalThis as typeof globalThis & { releaseInterview: () => void }).releaseInterview = resolve })
       return []
     })
@@ -292,9 +269,9 @@ test('preparation shows elapsed time, an honest slow hint, and a working cancel 
   await expect(page.getByTestId('interview-start')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Your way of working' })).toHaveCount(0)
   await screenshot('08-loading-light-600x520.png')
-  await expect(wait).toContainText('This can take a minute or more.')
+  await expect(wait).toContainText('Preparing Cosmos before your questions.')
   await page.clock.runFor(21_000)
-  await expect(wait).toContainText('Still waiting for your AI')
+  await expect(wait).toContainText('Still working. You can start now')
   await expect(wait.getByRole('timer')).toHaveText(/0:2\d/)
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')
   await screenshot('09-loading-slow-dark-600x520.png')

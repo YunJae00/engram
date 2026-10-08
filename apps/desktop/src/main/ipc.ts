@@ -144,6 +144,8 @@ import { notifyTask } from './task-notify.js'
 import { startTaskRecording } from './task-recording.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
+import { prepareInterviewContext } from './interview-preparation.js'
+import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
@@ -275,6 +277,7 @@ let lastFailures: JobFailure[] = []
 // manual sweep (sweep:run) so the "one sweep at a time" invariant holds.
 let draining = false
 let manualSweepInFlight = false
+let initialFilingWaiters = 0
 // Cooperative stop for the librarian (absorb:stop). Set by the widget, read by
 // the sweep's shouldStop; cleared whenever a drain/sweep next starts so a fresh
 // run is never born already-stopped.
@@ -316,7 +319,20 @@ let pipelineRunning = false
 let pipelineQueued = false
 
 export function isLibrarianBusy(): boolean {
-  return pipelineRunning || draining || manualSweepInFlight
+  return pipelineRunning || draining || manualSweepInFlight || initialFilingWaiters > 0
+}
+
+export async function runExclusiveFiling<T>(ctx: VaultContext, run: () => Promise<T>): Promise<T> {
+  if (isLibrarianBusy()) throw new Error('Filing is already running. Please wait for the current pass to finish.')
+  manualSweepInFlight = true
+  broadcast({ type: 'filing:start' })
+  try { return await run() }
+  finally {
+    manualSweepInFlight = false
+    broadcast({ type: 'filing:done' })
+    broadcast({ type: 'vault:changed' })
+    scheduleAutoTidy(ctx)
+  }
 }
 
 // A capture is not handed to the librarian for this long.
@@ -347,7 +363,7 @@ function runPipelineSoon(ctx: VaultContext, message: string): void {
 
 export function runPipelineAsync(ctx: VaultContext, message: string): void {
   if (ctx.engines.length === 0) return
-  if (draining || manualSweepInFlight) { scheduleAutoTidy(ctx); return }
+  if (draining || manualSweepInFlight || initialFilingWaiters > 0) { scheduleAutoTidy(ctx); return }
   if (pipelineRunning) {
     pipelineQueued = true
     return
@@ -426,13 +442,14 @@ function autoCommit(ctx: VaultContext, message: string): void {
 const ABSORB_DRAIN_BATCH = 20
 
 export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
-  if (draining || manualSweepInFlight) return
+  if (isLibrarianBusy()) return
   if (ctx.engines.length === 0) return
   draining = true
   // A drain start clears any earlier stop so the backlog can resume.
   stopRequested = false
   try {
     for (;;) {
+      if (initialFilingWaiters > 0) return
       const state = await loadAbsorbState(ctx.paths)
       if (state.pending.length === 0) {
         // Queue clear — a final progress event so the UI dismisses the bar.
@@ -1640,7 +1657,17 @@ export function registerIpc(ctx: VaultContext): void {
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
-  registerWorkInterviewIpc(ctx, () => scheduleAutoTidy(ctx, 0))
+  registerWorkInterviewIpc(ctx, async (signal, progress) => {
+    progress({ phase: 'filing' })
+    initialFilingWaiters++
+    let waiting = true
+    try {
+      while (pipelineRunning || draining || manualSweepInFlight || initialFilingWaiters > 1) await delay(250, undefined, { signal })
+      signal.throwIfAborted()
+      initialFilingWaiters--; waiting = false
+      return await runExclusiveFiling(ctx, () => prepareInterviewContext(ctx, signal, progress))
+    } finally { if (waiting) initialFilingWaiters-- }
+  }, () => scheduleAutoTidy(ctx, 0))
   startWorkMap(ctx, () => scheduleAutoTidy(ctx, 0))
   setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
 
@@ -1901,7 +1928,7 @@ export function registerIpc(ctx: VaultContext): void {
 
   ipcMain.handle('inbox:retry', async () => {
     if (ctx.engines.length === 0) return toReport({ executed: 0, skipped: 0, failed: [], deferred: 0 })
-    const report = await processCapture(paths, ctx.engines, LIBRARIAN_RUN_OPTS)
+    const report = await runExclusiveFiling(ctx, () => processCapture(paths, ctx.engines, LIBRARIAN_RUN_OPTS))
     lastFailures = report.failed
     void autoCommit(ctx, 'librarian: retry inbox')
     broadcast({ type: 'vault:changed' })
@@ -1909,7 +1936,7 @@ export function registerIpc(ctx: VaultContext): void {
   })
 
   ipcMain.handle('sweep:run', async () => {
-    if (pipelineRunning || draining || manualSweepInFlight) throw new Error('Filing is already running. Please wait for the current pass to finish.')
+    if (isLibrarianBusy()) throw new Error('Filing is already running. Please wait for the current pass to finish.')
     broadcast({ type: 'sweep:start' })
     manualSweepInFlight = true
     // A fresh manual sweep clears any earlier stop; the Resume button reaches
@@ -1990,9 +2017,9 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('brief:latest', latestBrief)
 
   ipcMain.handle('brief:refresh', async () => {
-    if (ctx.engines.length > 0 && !manualSweepInFlight && !draining) {
+    if (ctx.engines.length > 0 && !isLibrarianBusy()) {
       try {
-        await refreshBrief(paths, ctx.engines, LIBRARIAN_RUN_OPTS)
+        await runExclusiveFiling(ctx, () => refreshBrief(paths, ctx.engines, LIBRARIAN_RUN_OPTS))
       } catch (err) {
         // A re-brief that fails must still leave the last good one on screen.
         console.error('brief refresh failed:', err)

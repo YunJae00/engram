@@ -209,3 +209,38 @@ describe('job runner (concurrent pool)', () => {
     expect(report.deferred).toBeGreaterThanOrEqual(2)
   })
 })
+
+describe('job runner cancellation and progress', () => {
+  it('counts journal-skipped jobs as completed progress without another model call', async () => {
+    const applied: string[] = [], progress: number[] = []
+    const runner = new JobRunner(paths, [engineOf('mock', () => ok('r'))], { onJobDone: (_job, index) => progress.push(index) })
+    const jobs = [job('J1', 'a', applied), job('J5', 'b', applied)]
+    await runner.runAll(jobs)
+    expect((await runner.runAll(jobs)).skipped).toBe(2)
+    expect(progress).toEqual([1, 2, 1, 2])
+    expect(applied).toHaveLength(2)
+  })
+
+  it('passes cancellation to the engine and does not apply or retry its late answer', async () => {
+    const abort = new AbortController(), applied: string[] = []
+    let calls = 0
+    const late: Engine = {
+      id: 'mock', detect: async () => ({ installed: true, loggedIn: true }),
+      async *run(input) {
+        expect(input.signal).toBe(abort.signal)
+        if (++calls === 2) abort.abort()
+        yield { type: 'result', text: 'late' }
+      },
+    }
+    const jobs = [job('J1', 'a', applied), job('J5', 'b', applied)]
+    const report = await new JobRunner(paths, [late], { signal: abort.signal, retryDelayMs: 0 }).runAll(jobs)
+    expect(report.executed).toBe(1)
+    expect(report.deferred).toBe(1)
+    expect(report.failed).toEqual([])
+    expect(calls).toBe(2)
+    expect(applied).toEqual(['a:late'])
+    const resumed = await new JobRunner(paths, [engineOf('mock', () => ok('resumed'))]).runAll(jobs)
+    expect(resumed.skipped).toBe(1)
+    expect(resumed.executed).toBe(1)
+  })
+})

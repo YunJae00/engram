@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
+import { freshnessOf } from './freshness.js'
+import type { Note } from './schema.js'
+import { withoutSecrets } from './secrets.js'
 import type { Playbook } from './task-playbooks.js'
-import type { WorkMap } from './work-map.js'
+import { placeNoteId, type WorkMap } from './work-map.js'
 
 export interface InterviewSource {
   id: string
@@ -20,6 +23,14 @@ export interface InterviewSource {
 export interface InterviewEvidence {
   sources?: InterviewSource[]
   guide?: string
+  context?: {
+    source: string
+    note: string
+    updated: string
+    relation: 'place' | 'host' | 'task' | 'link'
+    provenance: 'observed-reference' | 'inferred-link'
+    excerpt: string
+  }[]
   // Legacy metadata is accepted, but it cannot make a question eligible.
   files?: string[]
   places?: string[]
@@ -52,10 +63,11 @@ function host(raw: string): string | undefined {
   } catch { return undefined }
 }
 
-export function selectInterviewEvidence({ map, playbooks = [], guide = '', excludedIds = [], now = new Date() }: {
+export function selectInterviewEvidence({ map, playbooks = [], guide = '', notes = [], excludedIds = [], now = new Date() }: {
   map?: WorkMap | null
   playbooks?: Playbook[]
   guide?: string
+  notes?: readonly Note[]
   excludedIds?: readonly string[]
   now?: Date
 }): InterviewEvidence & { sources: InterviewSource[] } {
@@ -109,5 +121,49 @@ export function selectInterviewEvidence({ map, playbooks = [], guide = '', exclu
   // Explicitly listed rare work must not disappear behind frequent task history.
   const known = ordered.find(one => one.source.kind === 'guide')?.source
   if (known && !sources.some(one => one.id === known.id)) sources[sources.length - 1] = known
-  return { sources, ...(guide.trim() ? { guide: interviewText(guide, 12000) } : {}) }
+  const context = relatedNotes(sources, notes, now)
+  return { sources, ...(guide.trim() ? { guide: interviewText(guide, 12000) } : {}), ...(context.length ? { context } : {}) }
+}
+
+// Notes enrich existing evidence; neither a filename nor a summary can establish a person's work.
+function relatedNotes(sources: InterviewSource[], notes: readonly Note[], now: Date): NonNullable<InterviewEvidence['context']> {
+  const current = notes.filter(note => note.front.status === 'current'
+    && !['guide', 'profile'].includes(note.front.type)
+    && /^[\p{L}\p{N}_-]{1,100}$/u.test(note.front.id)
+    && Number.isFinite(Date.parse(note.front.updated)) && Date.parse(note.front.updated) <= now.getTime() + 86_400_000
+    && freshnessOf(note, now) !== 'stale')
+  const result: NonNullable<InterviewEvidence['context']> = []
+  const used = new Set<string>()
+  for (const source of sources) {
+    const hosts = new Set(source.grounding.hosts ?? [])
+    const places = new Set([...hosts].map(placeNoteId))
+    const direct = new Map<string, 'place' | 'host' | 'task'>()
+    for (const note of current) {
+      if (note.front.type === 'place' && places.has(note.front.id)) direct.set(note.front.id, 'place')
+      else if (source.kind === 'task' && (note.front.source === source.id || note.front.derived_from.includes(source.id))) direct.set(note.front.id, 'task')
+      else {
+        const urls = `${note.front.source ?? ''}\n${note.body.slice(0, 16000)}`.match(/https?:\/\/[^\s<>"'\])]+/gi) ?? []
+        if (urls.some(url => { const name = host(url); return !!name && hosts.has(name) })) direct.set(note.front.id, 'host')
+      }
+    }
+    // A single stored graph edge may add context, not certainty; never expand links recursively.
+    const anchors = new Set([...places, ...direct.keys()])
+    const outward = new Set(current.filter(note => direct.has(note.front.id)).flatMap(note => note.front.derived_from))
+    const matched = current.flatMap(note => {
+      const relation = direct.get(note.front.id) ?? (note.front.derived_from.some(id => anchors.has(id)) || outward.has(note.front.id) ? 'link' as const : undefined)
+      return relation ? [{ note, relation }] : []
+    }).sort((a, b) => Number(a.relation === 'link') - Number(b.relation === 'link') || Date.parse(b.note.front.updated) - Date.parse(a.note.front.updated) || a.note.front.id.localeCompare(b.note.front.id))
+    let count = 0
+    for (const { note, relation } of matched) {
+      if (used.has(note.front.id)) continue
+      const excerpt = interviewText(withoutSecrets(note.body.slice(0, 16000), note.body.slice(0, 16000)), 600)
+      if (!excerpt) continue
+      used.add(note.front.id)
+      result.push({ source: source.id, note: note.front.id, updated: note.front.updated, relation,
+        provenance: relation === 'link' ? 'inferred-link' : 'observed-reference', excerpt })
+      if (result.length === 6) return result
+      if (++count === 2) break
+    }
+  }
+  return result
 }

@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../src/main/session-context.js', () => ({ syncSessionContext: vi.fn(async () => undefined) }))
 import { engineBackoff, guideNote, type RunReport } from 'core'
-import { isLibrarianBusy, runPipelineAsync, scheduleAutoTidy } from '../src/main/ipc.js'
+import { drainAbsorbQueue, isLibrarianBusy, runExclusiveFiling, runPipelineAsync, scheduleAutoTidy } from '../src/main/ipc.js'
 import type { VaultContext } from '../src/main/vault.js'
 
 const report: RunReport = { executed: 0, skipped: 0, deferred: 0, failed: [] }
@@ -99,4 +99,22 @@ it('checks filing ownership again after reading pending work', async () => {
   state.finish()
   await vi.waitFor(() => expect(setTimeout).toHaveBeenCalledWith(expect.any(Function), 600_000))
   expect(fake.sweep).not.toHaveBeenCalled()
+})
+
+it('keeps background captures and absorb drains out of an initial preparation pass', async () => {
+  const held = hold(undefined)
+  const pending = runExclusiveFiling(ctx, () => held.promise)
+  expect(isLibrarianBusy()).toBe(true)
+  runPipelineAsync(ctx, 'capture during initial preparation')
+  await drainAbsorbQueue(ctx)
+  await expect(runExclusiveFiling(ctx, async () => undefined)).rejects.toThrow('already running')
+  expect(fake.capture).not.toHaveBeenCalled(); expect(fake.sweep).not.toHaveBeenCalled()
+  held.finish(); await pending
+  expect(isLibrarianBusy()).toBe(false)
+})
+
+it('releases filing ownership on preparation failure', async () => {
+  await expect(runExclusiveFiling(ctx, async () => { throw new Error('Canceled') })).rejects.toThrow('Canceled')
+  expect(isLibrarianBusy()).toBe(false)
+  await runExclusiveFiling(ctx, async () => undefined)
 })
