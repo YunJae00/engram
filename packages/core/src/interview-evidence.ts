@@ -80,8 +80,13 @@ export function selectInterviewEvidence({ map, playbooks = [], guide = '', exclu
       hosts: [...new Set((Array.isArray(one.urls) ? one.urls : []).filter((url): url is string => typeof url === 'string').map(host).filter((one): one is string => !!one))].slice(0, 3),
     } }, 0, count / (1 + Math.max(0, daysAgo) / 30))
   }
-  // The guide is the person's own statements, including rare work and standing rules.
-  const statements = guide.split('\n').filter(line => line.trim() && !/^\s*#/.test(line) && !line.trim().startsWith('My own answers about my work.')).map(line => interviewText(line.replace(/^\s*[-*]\s+/, ''), 400))
+  // Most guide sections are settled constraints. Only explicitly listed work can suggest a task to ask about.
+  let recurring = false
+  const statements = guide.split('\n').flatMap(line => {
+    const heading = /^\s*#{1,6}\s+(.+?)\s*#*\s*$/.exec(line)
+    if (heading) { recurring = heading[1]!.trim() === 'Recurring work'; return [] }
+    return recurring && line.trim() ? [interviewText(line.replace(/^\s*[-*]\s+/, ''), 400)] : []
+  })
   for (const statement of statements.filter(Boolean)) add({
     id: sourceId('guide', statement), kind: 'guide', label: statement.slice(0, 180), grounding: { guideStatement: statement },
   }, 1, 0)
@@ -101,7 +106,7 @@ export function selectInterviewEvidence({ map, playbooks = [], guide = '', exclu
   }
   const ordered = [...candidates.values()].sort((a, b) => a.tier - b.tier || b.score - a.score || a.source.id.localeCompare(b.source.id))
   const sources = ordered.slice(0, SOURCE_LIMIT).map(one => one.source)
-  // A known rule or explicitly important rare task must not disappear behind frequent task history.
+  // Explicitly listed rare work must not disappear behind frequent task history.
   const known = ordered.find(one => one.source.kind === 'guide')?.source
   if (known && !sources.some(one => one.id === known.id)) sources[sources.length - 1] = known
   return { sources, ...(guide.trim() ? { guide: interviewText(guide, 12000) } : {}) }

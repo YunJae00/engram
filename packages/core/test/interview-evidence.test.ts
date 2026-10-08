@@ -55,7 +55,7 @@ it('keeps rare completed work above browsing and preserves known work even when 
   expect(evidence.sources![0]!.label).toBe('Prepare the weekly handover')
   expect(evidence.sources![1]!.grounding.completedCount).toBe(1)
   expect(evidence.sources![2]!.grounding.guideStatement).toContain('once a year')
-  const crowded = selectInterviewEvidence({ now, playbooks: Array.from({ length: 15 }, (_, i) => task(`Completed task ${i}`)), guide: '## Rules\n- Keep the original identifiers.' })
+  const crowded = selectInterviewEvidence({ now, playbooks: Array.from({ length: 15 }, (_, i) => task(`Completed task ${i}`)), guide: '## Recurring work\n- Review the annual renewal.' })
   expect(crowded.sources).toHaveLength(8)
   expect(crowded.sources!.some(one => one.kind === 'guide')).toBe(true)
 })
@@ -106,19 +106,35 @@ it('removes quoted and spaced paths while keeping ordinary slash choices readabl
   }
 })
 
-it('handles weakly validated map fields and a manually edited guide without invented work', () => {
+it('handles weakly validated map fields without turning unstructured notes into work', () => {
   expect(selectInterviewEvidence({ map: { places: null } as unknown as WorkMap, guide: null as unknown as string }).sources).toEqual([])
   const malformed = map(null as unknown as WorkPlace, place('empty.example', { title: null as unknown as string, purpose: null as unknown as string }), place('valid.example', { bookmarks: null as unknown as string[] }))
   expect(selectInterviewEvidence({ now, map: malformed }).sources.map(one => one.grounding.hosts![0])).toEqual(['valid.example'])
   const manual = selectInterviewEvidence({ guide: '## Important work\nAnnual renewals need careful review even though they are rare.' })
-  expect(manual.sources[0]?.grounding.guideStatement).toContain('Annual renewals')
-  const long = selectInterviewEvidence({ guide: `## Rules\n- ${'Long rule. '.repeat(2000)}` })
+  expect(manual.sources).toEqual([])
+  expect(manual.guide).toContain('Annual renewals')
+  expect(selectInterviewEvidence({ guide: 'I prepare the annual renewal.' }).sources).toEqual([])
+  const long = selectInterviewEvidence({ guide: `## Recurring work\n- ${'A recurring task. '.repeat(2000)}` })
   expect(long.guide!.length).toBeLessThanOrEqual(12000)
   expect(long.sources[0]!.grounding.guideStatement!.length).toBeLessThanOrEqual(400)
 })
 
+it('keeps known rules as constraints, not new question sources', () => {
+  const guide = '## Rules\n- Do not share until approved.\n## People\n- Send the finished report to the team lead.\n## Outputs\n- A one-page PDF.\n## Where things are\n- The shared library.\n## Terms (use exactly)\n- Preserve the original ID.\n## Examples\n- Use last month\'s approved report.'
+  const onlyRules = selectInterviewEvidence({ now, guide })
+  expect(onlyRules.sources).toEqual([])
+  expect(parseInterviewQuestions(JSON.stringify({ questions: [question(`guide-${'a'.repeat(24)}`)] }), onlyRules)).toEqual([])
+  const withTask = selectInterviewEvidence({ now, guide, playbooks: [task('Prepare the monthly report')] })
+  expect(withTask.sources.map(one => one.kind)).toEqual(['task'])
+  const prompt = interviewPrompt(withTask)
+  expect(prompt).toContain('Do not share until approved.')
+  expect(prompt).toContain('Send the finished report to the team lead.')
+  expect(prompt).toContain('Never reopen or expand settled recipients')
+  expect(prompt).toContain('If the guide already answers it, skip')
+})
+
 it('allows only eligible source IDs, one concise question per source, and no path-heavy response', () => {
-  const evidence = selectInterviewEvidence({ now, playbooks: [task('Prepare the review'), task('Review request exceptions')], guide: '- Keep identifiers unchanged.' })
+  const evidence = selectInterviewEvidence({ now, playbooks: [task('Prepare the review'), task('Review request exceptions')], guide: '## Recurring work\n- Prepare an annual renewal.' })
   const [a, b, c] = evidence.sources!.map(one => one.id) as [string, string, string]
   const raw = JSON.stringify({ questions: [
     question(`task-${'0'.repeat(24)}`, 'An invented task?'),
