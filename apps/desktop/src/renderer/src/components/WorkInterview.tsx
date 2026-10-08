@@ -5,7 +5,7 @@ import { api } from '../api.js'
 
 export const INTERVIEW_PENDING_KEY = 'engram.interviewPending'
 
-type Reply = { picked: string[]; own: string }
+type Reply = { picked: string[]; own: string; notMine?: boolean }
 export const replyText = (reply: Reply): string => [...reply.picked, reply.own.trim()].filter(Boolean).join('; ')
 
 export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): void; onSaved(): void; onDraftChange(dirty: boolean): void }) {
@@ -17,15 +17,17 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const finished = saved || questions?.length === 0
+  const intro = !questions && !busy && !saved
   const revision = useRef(0)
   const heading = useRef<HTMLHeadingElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const done = useRef<HTMLButtonElement>(null)
   useEffect(() => () => { revision.current++; void api.interviewCancel().catch(() => undefined) }, [])
   useEffect(() => {
-    if (!saved) { scroll.current?.scrollTo(0, 0); heading.current?.focus({ preventScroll: true }) }
-  }, [at, questions, busy, saved])
-  useEffect(() => { if (saved) done.current?.focus() }, [saved])
+    if (!finished) { scroll.current?.scrollTo(0, 0); heading.current?.focus({ preventScroll: true }) }
+  }, [at, questions, busy, finished])
+  useEffect(() => { if (finished) done.current?.focus() }, [finished])
   useEffect(() => {
     if (!busy) return
     const started = performance.now()
@@ -33,7 +35,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
     const timer = window.setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 1000)
     return () => window.clearInterval(timer)
   }, [busy])
-  const answered = replies.filter((reply) => replyText(reply)).length
+  const answered = replies.filter((reply) => reply.notMine || replyText(reply)).length
   useEffect(() => { onDraftChange(answered > 0 && !saved) }, [answered, saved, onDraftChange])
   const current = questions?.[at]
   const review = !!questions && at === questions.length
@@ -51,8 +53,10 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
     try {
       const next = await api.interviewQuestions()
       if (request !== revision.current) return
-      if (!next.length) { setQuestions(null); setError('No questions yet. You can try again later in Settings.'); return }
       setQuestions(next); setReplies(next.map(() => ({ picked: [], own: '' }))); setDirection('forward'); setAt(0)
+      if (!next.length) {
+        try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* This completed prompt can still be dismissed. */ }
+      }
     } catch { if (request === revision.current) setError('Could not prepare questions. Check your AI connection and try again.') }
     finally { if (request === revision.current) setBusy('') }
   }
@@ -62,7 +66,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
     const request = ++revision.current
     setElapsed(0); setBusy('saving'); setError('')
     try {
-      const result = await api.interviewSave(questions.map((one, i) => ({ question: one.question, answer: replyText(replies[i] ?? { picked: [], own: '' }) })))
+      const result = await api.interviewSave(questions.map((one, i) => ({ question: one.question, answer: replyText(replies[i] ?? { picked: [], own: '' }), ...(one.source ? { source: one.source } : {}), ...(replies[i]?.notMine ? { rejected: true } : {}) })))
       if (request !== revision.current) return
       if (result.saved) {
         try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* The work guide is saved independently of browser storage. */ }
@@ -73,13 +77,14 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
     finally { if (request === revision.current) setBusy('') }
   }
   return <div className="work-interview" data-testid="work-interview" aria-busy={!!busy}>
-    <header className="interview-topbar">
-      {questions && !saved && !busy && <div className="interview-progress" data-testid="interview-progress"><span>{review ? 'Review' : `${at + 1} / ${questions.length}`}</span><progress aria-label="Interview progress" max={questions.length} value={review ? questions.length : at + 1} /></div>}
+    <header className={`interview-topbar${intro ? ' interview-topbar-intro' : ''}`}>
+      {intro && <><span className="interview-mark" aria-hidden><MessageSquareText size={20} /></span><h3 ref={heading} tabIndex={-1} data-testid="interview-intro-heading">Your way of working</h3></>}
+      {questions && !finished && !busy && <div className="interview-progress" data-testid="interview-progress"><span>{review ? 'Review' : `${at + 1} / ${questions.length}`}</span><progress aria-label="Interview progress" max={questions.length} value={review ? questions.length : at + 1} /></div>}
       <button type="button" className="dialog-close" aria-label="Close work interview" onClick={onClose}><X size={16} strokeWidth={1.8} /></button>
     </header>
-    {saved ? <div className="interview-scroll" data-testid="interview-scroll"><div className="interview-intro interview-success">
-      <span className="interview-mark" aria-hidden><Check size={24} /></span><h3>Saved</h3>
-      <p>Your preferences are ready for your next task.</p>
+    {finished ? <div className="interview-scroll" data-testid="interview-scroll"><div className="interview-intro interview-success">
+      <span className="interview-mark" aria-hidden>{saved ? <Check size={24} /> : <MessageSquareText size={24} />}</span><h3>{saved ? 'Saved' : 'Nothing to ask yet'}</h3>
+      <p>{saved ? 'Your preferences are ready for your next task.' : 'You can start working and come back later.'}</p>
       <button ref={done} type="button" className="primary" data-testid="interview-done" onClick={onClose}>Done</button>
     </div></div> : busy ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro interview-wait" data-testid="interview-wait">
@@ -90,10 +95,8 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
       </div>
     </div> : !questions ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro">
-        <span className="interview-mark" aria-hidden><MessageSquareText size={22} /></span>
-        <h3>Your way of working</h3>
-        <p>A few optional questions. Skip any you like.</p>
-        <p className="interview-privacy">Your AI sees file and site names and your work guide, not file contents. Task replies can update your preferences.</p>
+        <p>Optional questions about your work.</p>
+        <details className="interview-privacy"><summary>What your AI sees</summary><p>Site names and visit patterns, completed task requests, and your work guide. No file contents. Task replies can update your preferences.</p></details>
         <div className="interview-intro-actions"><button type="button" className="primary" data-testid="interview-start" onClick={() => void start()}>Get started<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>Not now</button></div>
       </div>
       {error && <p className="computer-error" role="alert">{error}</p>}
@@ -103,20 +106,21 @@ export function WorkInterview({ onClose, onSaved, onDraftChange }: { onClose(): 
           {current && <fieldset className="interview-question" disabled={!!busy} data-testid={`interview-question-${at}`}>
             <legend><h3 ref={heading} tabIndex={-1}>{current.question}</h3></legend>
             <div className="interview-options">{current.options.map((option) => <label key={option} className="interview-option">
-              <span>{option}</span><input type="checkbox" checked={replies[at]?.picked.includes(option) ?? false} onChange={(event) => update((reply) => ({ ...reply, picked: event.target.checked ? [...reply.picked, option] : reply.picked.filter((one) => one !== option) }))} />
+              <span>{option}</span><input type="checkbox" checked={replies[at]?.picked.includes(option) ?? false} onChange={(event) => update((reply) => ({ ...reply, notMine: false, picked: event.target.checked ? [...reply.picked, option] : reply.picked.filter((one) => one !== option) }))} />
             </label>)}</div>
-            <textarea className="interview-own" rows={2} maxLength={1200} aria-label="Your answer" data-testid={`interview-answer-${at}`} value={replies[at]?.own ?? ''} placeholder={current.options.length ? 'Add your own…' : 'Your answer…'} onChange={(event) => update((reply) => ({ ...reply, own: event.target.value }))} />
+            <textarea className="interview-own" rows={2} maxLength={1200} aria-label="Your answer" data-testid={`interview-answer-${at}`} value={replies[at]?.own ?? ''} placeholder={current.options.length ? 'Add your own…' : 'Your answer…'} onChange={(event) => update((reply) => ({ ...reply, notMine: false, own: event.target.value }))} />
             {answerLength > 1200 && <p className="computer-error" role="alert">Shorten this answer by {answerLength - 1200} characters, including selected choices.</p>}
           </fieldset>}
           {review && <div className="interview-review">
             <h3 ref={heading} tabIndex={-1}>Does this sound like you?</h3>
-            {questions.map((one, i) => <button key={i} type="button" disabled={!!busy} className="interview-review-answer" onClick={() => move(i)} aria-label={`Edit answer ${i + 1}`}><span><strong>{one.question}</strong><span>{replyText(replies[i] ?? { picked: [], own: '' }) || 'Skipped'}</span></span><Pencil size={14} aria-hidden /></button>)}
+            {questions.map((one, i) => <button key={i} type="button" disabled={!!busy} className="interview-review-answer" onClick={() => move(i)} aria-label={`Edit answer ${i + 1}`}><span><strong>{one.question}</strong><span>{replies[i]?.notMine ? 'Not my work' : replyText(replies[i] ?? { picked: [], own: '' }) || 'Skipped'}</span></span><Pencil size={14} aria-hidden /></button>)}
           </div>}
         </div>
         {error && <p className="computer-error" role="alert">{error}</p>}
       </div>
       <div className="interview-actions">
-        <button type="button" className="secondary" disabled={at === 0 || !!busy} onClick={() => move(at - 1)}><ArrowLeft size={14} aria-hidden />Back</button>
+        <div><button type="button" className="secondary" disabled={at === 0 || !!busy} onClick={() => move(at - 1)}><ArrowLeft size={14} aria-hidden />Back</button>
+          {!review && <button type="button" className="interview-skip" data-testid="interview-not-mine" aria-pressed={!!replies[at]?.notMine} onClick={() => { update(() => ({ picked: [], own: '', notMine: true })); move(at + 1) }}>Not my work</button>}</div>
         <div>{!review && <button type="button" className="interview-skip" onClick={() => { update(() => ({ picked: [], own: '' })); move(at + 1) }}>Skip</button>}
           <button type="submit" className="primary" data-testid={review ? 'interview-save' : 'interview-next'} disabled={review ? !answered || tooLong : answerLength > 1200}>{review ? 'Save answers' : at === questions.length - 1 ? 'Review answers' : 'Continue'}{!review && <ArrowRight size={14} aria-hidden />}</button>
         </div>
@@ -138,7 +142,7 @@ export function WorkInterviewDialog({ onClose }: { onClose(): void }) {
   }, [])
   useEffect(() => {
     if (leaving) keep.current?.focus()
-    else dialog.current?.querySelector<HTMLButtonElement | HTMLHeadingElement>('[data-testid="interview-done"], .interview-step h3')?.focus({ preventScroll: true })
+    else dialog.current?.querySelector<HTMLButtonElement | HTMLHeadingElement>('[data-testid="interview-done"], [data-testid="interview-intro-heading"], .interview-step h3')?.focus({ preventScroll: true })
   }, [leaving])
   const dismiss = () => { if (dirty) setLeaving(true); else onClose() }
   return <dialog ref={dialog} className="interview-dialog" aria-label="How you work" data-testid="interview-dialog" onKeyDown={(event) => { if (event.key === 'Escape') event.stopPropagation() }} onCancel={(event) => { event.preventDefault(); if (leaving) setLeaving(false); else dismiss() }}>

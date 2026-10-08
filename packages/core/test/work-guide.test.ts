@@ -1,10 +1,13 @@
 import { expect, it } from 'vitest'
 import { guideBody, guideForPrompt, guideNote, guidePrompt, interviewPrompt, parseInterviewQuestions, WORK_GUIDE_NOTE_ID, WORK_GUIDE_TYPE } from '../src/work-guide.js'
+import { selectInterviewEvidence } from '../src/interview-evidence.js'
 
-it('grounds the interview in names the person already has, never contents', () => {
-  const prompt = interviewPrompt({ files: ['Downloads/Finance/2026-10-06_접수청구서.csv'], places: ['tms.example.test: time report'], facts: ['Works in finance ops'], guide: '## Rules\n- Never pay a changed account' })
-  expect(prompt).toContain('2026-10-06_접수청구서.csv')
-  expect(prompt).toContain('tms.example.test')
+it('grounds the interview in eligible work and ignores incidental file metadata', () => {
+  const evidence = selectInterviewEvidence({ guide: '## Rules\n- Never pay a changed account' })
+  const prompt = interviewPrompt({ ...evidence, files: ['Downloads/Finance/2026-10-06_접수청구서.csv'], places: ['tms.example.test: time report'], facts: ['Works in finance ops'] })
+  expect(prompt).not.toContain('2026-10-06_접수청구서.csv')
+  expect(prompt).not.toContain('tms.example.test')
+  expect(prompt).toContain(evidence.sources![0]!.id)
   expect(prompt).toContain('ask only about what it leaves open')
   expect(prompt).toContain('exact terms and identifiers to keep unchanged')
   expect(prompt).toContain('not file logistics')
@@ -21,20 +24,22 @@ it('keeps distinct, bounded questions and repairs unknown topics', () => {
     ...Array.from({ length: 12 }, (_, i) => ({ topic: 'routine', question: `Q${i}` })),
   ] })
   const questions = parseInterviewQuestions(`Here:\n\`\`\`json\n${raw}\n\`\`\``)
-  expect(questions).toHaveLength(10)
+  expect(questions).toHaveLength(5)
   expect(questions[0]).toEqual({ topic: 'terms', question: '청구일과 접수일은 어떻게 구분하나요?', basis: '접수청구서.csv', options: ['청구일 그대로', '접수일로 통일', 'a', 'b', 'c'] })
   expect(questions[1]).toMatchObject({ topic: 'routine', options: [] })
   expect(() => parseInterviewQuestions('{"questions": "none"}')).toThrow()
 })
 
 it('asks for exact terms and drops skipped answers when writing the guide', () => {
-  const prompt = guidePrompt([{ question: 'What columns?', answer: '접수ID, 청구번호' }, { question: 'Skipped?', answer: '  ' }], '## Rules\n- old')
+  const prompt = guidePrompt([{ question: 'What columns?', answer: '접수ID, 청구번호' }, { question: 'Skipped?', answer: '  ' }, { question: 'Rejected?', answer: 'Not my work', rejected: true }], '## Rules\n- old')
   expect(prompt).toContain('A1: 접수ID, 청구번호')
   expect(prompt).not.toContain('Skipped?')
+  expect(prompt).not.toContain('Rejected?')
   expect(prompt).toContain('never paraphrase a term')
   expect(prompt).toContain('an unknown is not a rule')
   expect(prompt).toContain('one file per person, not one file')
   expect(prompt).toContain('Current guide:\n## Rules\n- old')
+  expect(guidePrompt(Array.from({ length: 10 }, (_, i) => ({ question: `Question ${i}`, answer: `Answer ${i}` })))).toContain('A10: Answer 9')
 })
 
 it('stores the guide as an editable note and carries it into a turn, bounded', () => {

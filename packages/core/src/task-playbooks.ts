@@ -29,7 +29,7 @@ function similarity(a: string, b: string): number {
   return shared / (x.size + y.size - shared || 1)
 }
 
-async function readPlaybooks(paths: VaultPaths): Promise<Playbook[]> {
+export async function readPlaybooks(paths: VaultPaths): Promise<Playbook[]> {
   try {
     const raw = JSON.parse(await readFile(file(paths), 'utf8')) as unknown
     if (!Array.isArray(raw) || raw.some(one => typeof one?.goal !== 'string' || typeof one?.at !== 'string' || !Number.isFinite(Date.parse(one.at)) || !Array.isArray(one.urls) || !one.urls.every((url: unknown) => typeof url === 'string') || !Array.isArray(one.method) || !one.method.every((step: unknown) => typeof step === 'string') || (one.count !== undefined && !(Number.isInteger(one.count) && one.count > 0)))) throw new Error('Invalid saved methods; the file was preserved.')

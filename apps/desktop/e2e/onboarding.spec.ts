@@ -121,7 +121,7 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     await expect(page.getByTestId('onboard-work-map')).not.toBeChecked()
     await expect(page.getByTestId('onboard-interview')).toBeChecked()
     await expect(page.locator('#work-map-consent')).toContainText('go to your AI daily. No pages opened.')
-    await expect(page.locator('#interview-consent')).toContainText('not contents')
+    await expect(page.locator('#interview-consent')).toContainText('No file contents')
     for (const selector of ['#work-map-consent', '#interview-consent', '[data-testid="onboard-finish"]']) await expect(page.locator(selector)).toBeInViewport()
     expect(await page.locator('.onboard-card').evaluate(card => ({ overflowX: card.scrollWidth > card.clientWidth, overflowY: card.scrollHeight > card.clientHeight }))).toEqual({ overflowX: false, overflowY: false })
     await screenshot(`compact-connect-${theme}.png`)
