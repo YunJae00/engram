@@ -3,7 +3,7 @@ import { guideBody, guideForPrompt, guideNote, guidePrompt, interviewPrompt, par
 import { selectInterviewEvidence } from '../src/interview-evidence.js'
 
 it('grounds the interview in eligible work and ignores incidental file metadata', () => {
-  const evidence = selectInterviewEvidence({ guide: '## Rules\n- Never pay a changed account' })
+  const evidence = selectInterviewEvidence({ guide: '## Recurring work\n- Review monthly settlements\n## Rules\n- Never pay a changed account' })
   const prompt = interviewPrompt({ ...evidence, files: ['Downloads/Finance/2026-10-06_접수청구서.csv'], places: ['tms.example.test: time report'], facts: ['Works in finance ops'] })
   expect(prompt).not.toContain('2026-10-06_접수청구서.csv')
   expect(prompt).not.toContain('tms.example.test')
