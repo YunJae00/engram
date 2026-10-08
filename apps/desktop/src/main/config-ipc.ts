@@ -39,38 +39,36 @@ export function registerSettingsIpc(): void {
     if (scope === 'filing') await onBrainChoice?.()
   })
 
-  ipcMain.handle('settings:set', async (_e, settings: AppSettingsDto) => {
-    if (!settings || !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
+  ipcMain.handle('settings:set', async (_e, settings: Partial<AppSettingsDto>) => {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Invalid settings')
+    if (settings.defaultEngine !== undefined && !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
     if (settings.recordTasks !== undefined && typeof settings.recordTasks !== 'boolean') throw new Error('Invalid recording setting')
+    for (const key of ['autoStart', 'computerUse', 'workMap'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') throw new Error('Invalid setting: ' + key)
+    for (const key of ['searchTemplate', 'agentBrowser', 'claudeModel', 'codexModel', 'semanticModel'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'string') throw new Error('Invalid setting: ' + key)
+    if (settings.teamSync !== undefined && !['auto', 'manual'].includes(settings.teamSync)) throw new Error('Invalid sync setting')
     for (const effort of [settings.claudeEffort, settings.codexEffort]) if (effort !== undefined && !REASONING_EFFORTS.includes(effort)) throw new Error('Invalid reasoning effort')
-    const recordingRevision = ++recordingSettingRevision
+    const change = Object.fromEntries(Object.entries(settings).filter(([key, value]) => value !== undefined || key === 'claudeEffort' || key === 'codexEffort')) as Partial<AppSettingsDto>
+    const recordingRevision = settings.recordTasks !== undefined ? ++recordingSettingRevision : undefined
     // Stop immediately, including turns holding an older settings snapshot.
     // A failed Off save stays stopped; a later successful save applies its choice.
     const stopped = settings.recordTasks === false ? setTaskRecordingsEnabled(false) : undefined
-    // The search shape is learned elsewhere and is not the settings screen's
-    // to clear: a save from a form that never showed it must not wipe it.
     const held = await loadSettings()
     if (settings.workMap === false) { workMapSettingChanged(false); if (held.workMap) cancelWorkInterview() }
     if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
     const saved = await updateSettings(latest => ({
       ...latest,
-      ...settings,
+      ...change,
       aiSelections: { ...latest.aiSelections, filing: aiSelection(latest, 'filing') },
-      theme: settings.theme ?? held.theme,
-      searchTemplate: settings.searchTemplate ?? held.searchTemplate,
-      agentBrowser: settings.agentBrowser ?? held.agentBrowser,
-      claudeModel: settings.claudeModel ?? held.claudeModel,
-      codexModel: settings.codexModel ?? held.codexModel,
     }))
-    if (recordingRevision === recordingSettingRevision) await setTaskRecordingsEnabled(saved.recordTasks !== false)
+    if (recordingRevision !== undefined && recordingRevision === recordingSettingRevision) await setTaskRecordingsEnabled(saved.recordTasks !== false)
     await stopped
-    nativeTheme.themeSource = settings.theme ?? held.theme ?? 'system'
-    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.autoStart })
+    if (settings.theme !== undefined) nativeTheme.themeSource = saved.theme
+    if (settings.autoStart !== undefined && app.isPackaged) app.setLoginItemSettings({ openAtLogin: saved.autoStart })
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
     // Live surfaces (the agent terminal's colours) restyle immediately.
     broadcast({ type: 'settings:changed', settings: saved })
-    if (saved.workMap && !held.workMap) workMapSettingChanged(true)
+    if (settings.workMap === true && !held.workMap) workMapSettingChanged(true)
   })
 
 }

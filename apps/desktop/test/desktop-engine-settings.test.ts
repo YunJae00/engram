@@ -2,14 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettingsDto } from '../src/shared/types.js'
 
 const fake = vi.hoisted(() => ({
-  handlers: new Map<string, (event: unknown, settings: AppSettingsDto) => Promise<void>>(),
+  handlers: new Map<string, (event: unknown, settings: Partial<AppSettingsDto>) => Promise<void>>(),
   load: vi.fn(), save: vi.fn(), stop: vi.fn(), recording: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), cancelInterview: vi.fn(), nativeTheme: { themeSource: 'system' },
+  app: { isPackaged: false, setLoginItemSettings: vi.fn() }, queue: Promise.resolve(),
 }))
 vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [], REASONING_EFFORTS: ['low', 'medium', 'high'] }))
-vi.mock('electron', () => ({ app: { isPackaged: false }, nativeTheme: fake.nativeTheme, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: AppSettingsDto) => Promise<void>) => fake.handlers.set(name, handler) } }))
+vi.mock('electron', () => ({ app: fake.app, nativeTheme: fake.nativeTheme, dialog: {}, shell: {}, ipcMain: { handle: (name: string, handler: (event: unknown, settings: Partial<AppSettingsDto>) => Promise<void>) => fake.handlers.set(name, handler) } }))
 vi.mock('../src/main/ipc.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/installer.js', () => ({ detectApiKeyEnv: vi.fn() }))
-vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, updateSettings: async (change: (settings: AppSettingsDto) => AppSettingsDto) => { const next = change(await fake.load()); await fake.save(next); return next } }))
+vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, updateSettings: (change: (settings: AppSettingsDto) => AppSettingsDto) => {
+  const next = fake.queue.then(async () => { const value = change(await fake.load()); await fake.save(value); return value })
+  fake.queue = next.then(() => undefined, () => undefined)
+  return next
+} }))
 vi.mock('../src/main/team.js', () => ({ getSyncStatus: vi.fn() }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: vi.fn() }))
 vi.mock('../src/main/desktop-control.js', () => ({ stopDesktopControl: fake.stop }))
@@ -21,11 +26,67 @@ const settings = { defaultEngine: 'claude', autoStart: false, teamSync: 'manual'
 beforeEach(() => {
   vi.clearAllMocks()
   fake.handlers.clear()
+  fake.queue = Promise.resolve()
+  fake.app.isPackaged = false
+  fake.nativeTheme.themeSource = 'system'
   fake.load.mockResolvedValue(settings)
   fake.save.mockResolvedValue(undefined)
   fake.recording.mockReset().mockResolvedValue(undefined)
   setBrainChoiceHook(fake.changed)
   registerSettingsIpc()
+})
+
+describe('partial settings updates', () => {
+  it('preserves omitted reasoning efforts and clears explicitly undefined efforts', async () => {
+    fake.load.mockResolvedValue({ ...settings, claudeEffort: 'high', codexEffort: 'medium' })
+    const save = fake.handlers.get('settings:set')!
+    await save(null, { theme: 'dark' })
+    expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ claudeEffort: 'high', codexEffort: 'medium' }))
+    await save(null, { claudeEffort: undefined, codexEffort: undefined })
+    expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ claudeEffort: undefined, codexEffort: undefined }))
+    expect(JSON.stringify(fake.save.mock.lastCall![0])).not.toMatch(/claudeEffort|codexEffort/)
+  })
+
+  it('preserves newer settings from the write queue rather than restoring the earlier read', async () => {
+    fake.load.mockResolvedValueOnce({ ...settings, computerUse: true, searchTemplate: 'old', claudeModel: 'old' })
+      .mockResolvedValue({ ...settings, computerUse: false, searchTemplate: 'new', claudeModel: 'new' })
+    await fake.handlers.get('settings:set')!(null, { theme: 'dark', searchTemplate: undefined })
+    expect(fake.save).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark', computerUse: false, searchTemplate: 'new', claudeModel: 'new' }))
+    expect(fake.recording).not.toHaveBeenCalled()
+    expect(fake.stop).not.toHaveBeenCalled()
+  })
+
+  it('merges simultaneous privacy and appearance updates without restoring withdrawn permissions', async () => {
+    let current = { ...settings, computerUse: true, workMap: true, recordTasks: true, theme: 'light' } as AppSettingsDto
+    fake.load.mockImplementation(async () => current)
+    fake.save.mockImplementation(async (next: AppSettingsDto) => { current = next })
+    const save = fake.handlers.get('settings:set')!
+    await Promise.all([save(null, { computerUse: false }), save(null, { workMap: false }), save(null, { theme: 'dark' }), save(null, { recordTasks: false })])
+    expect(current).toEqual(expect.objectContaining({ computerUse: false, workMap: false, recordTasks: false, theme: 'dark' }))
+    expect(fake.stop).toHaveBeenCalledOnce()
+    expect(fake.cancelInterview).toHaveBeenCalledOnce()
+    expect(fake.recording).not.toHaveBeenCalledWith(true)
+  })
+
+  it('does not change native appearance or login settings for an unrelated update', async () => {
+    fake.app.isPackaged = true
+    fake.nativeTheme.themeSource = 'dark'
+    fake.load.mockResolvedValue({ ...settings, theme: 'light' })
+    await fake.handlers.get('settings:set')!(null, { recordTasks: false })
+    expect(fake.nativeTheme.themeSource).toBe('dark')
+    expect(fake.app.setLoginItemSettings).not.toHaveBeenCalled()
+    await fake.handlers.get('settings:set')!(null, { autoStart: true })
+    expect(fake.app.setLoginItemSettings).toHaveBeenCalledExactlyOnceWith({ openAtLogin: true })
+  })
+
+  it('rejects malformed partial updates before saving or changing permissions', async () => {
+    for (const value of [null, [], 'dark', { defaultEngine: 'invalid' }, { theme: null }, { autoStart: 1 }, { computerUse: 'yes' }, { workMap: null }, { recordTasks: 0 }, { claudeModel: [] }, { agentBrowser: 42 }, { teamSync: 'invalid' }]) {
+      await expect(fake.handlers.get('settings:set')!(null, value as Partial<AppSettingsDto>)).rejects.toThrow('Invalid')
+    }
+    expect(fake.save).not.toHaveBeenCalled()
+    expect(fake.stop).not.toHaveBeenCalled()
+    expect(fake.recording).not.toHaveBeenCalled()
+  })
 })
 
 describe('live task recording settings', () => {
@@ -72,6 +133,9 @@ describe('live task recording settings', () => {
     expect(fake.recording.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
     expect(fake.recording).not.toHaveBeenCalledWith(true)
     expect(fake.broadcast).not.toHaveBeenCalled()
+    fake.save.mockResolvedValue(undefined)
+    await fake.handlers.get('settings:set')!(null, { theme: 'dark' })
+    expect(fake.recording).not.toHaveBeenCalledWith(true)
   })
 })
 

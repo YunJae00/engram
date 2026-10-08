@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, CloudUpload, ScrollText, LoaderCircle } from 'lucide-react'
+import { FolderOpen, CloudUpload, ScrollText, LoaderCircle, Activity, Check } from 'lucide-react'
 import type { AppSettingsDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
@@ -37,6 +37,10 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(true)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [journalSaving, setJournalSaving] = useState(false)
   const [ready, setReady] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
@@ -56,7 +60,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
-      if (event.type === 'settings:changed') setSettings((current) => current ? { ...current, recordTasks: event.settings.recordTasks, computerUse: event.settings.computerUse, defaultEngine: event.settings.defaultEngine, claudeModel: event.settings.claudeModel, codexModel: event.settings.codexModel, claudeEffort: event.settings.claudeEffort, codexEffort: event.settings.codexEffort, aiSelections: event.settings.aiSelections } : event.settings)
+      if (event.type === 'settings:changed') setSettings(event.settings)
       if (event.type === 'update:changed') {
         setUpdate(event.update)
       }
@@ -85,33 +89,39 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
 
   // Escape closes settings — but yields while the diagnostics overlay is
   // stacked on top (that one handles its own Escape).
-  useEscape(onClose, !showDiagnostics && !interviewOpen)
+  useEscape(onClose, !showDiagnostics && !interviewOpen && !saving)
 
   if (!settings || !ready)
     return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
-  const patch = (p: Partial<AppSettingsDto>) => setSettings((current) => current ? { ...current, ...p } : current)
-
-  const save = async () => {
-    if (saving) return
+  const patch = async (change: Partial<AppSettingsDto>) => {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
+    setSaved(false)
+    setSaveError('')
+    const previous = Object.fromEntries(Object.keys(change).map(key => [key, settings[key as keyof AppSettingsDto]]))
+    setSettings(value => value && { ...value, ...change })
     try {
-      await api.settingsSet(settings)
+      await api.settingsSet(change)
+      setSettings(value => value && { ...value, ...change })
+      setSaved(true)
     } catch (err) {
-      showToast(t('toast.settingsFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
-      return
+      setSettings(value => value && { ...value, ...previous })
+      const message = t('toast.settingsFailed', { reason: String((err as Error).message ?? err).slice(0, 120) })
+      setSaveError(message)
+      showToast(message)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
-    showToast(t('toast.settingsSaved'))
-    onClose()
   }
 
   return (
-    <div className="brief-overlay" onClick={onClose}>
+    <div className="brief-overlay" onClick={() => { if (!saving) onClose() }}>
       {/* settings-loaded: the skeleton gives way with a short rise instead
           of the rows swapping between two frames. */}
       <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view" role="dialog" aria-label={t('settings.title')} aria-modal="true">
-        <DialogHeader closeLabel={t('settings.cancel')} onClose={onClose}>{t('settings.title')}</DialogHeader>
+        <DialogHeader closeLabel="Close settings" disabled={saving} onClose={onClose}>{t('settings.title')}</DialogHeader>
 
         <div className="settings-body">
         <SettingsNavigation selected={section} onSelect={setSection} />
@@ -119,7 +129,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <section className="settings-panel" hidden={section !== 'help'} aria-label="Help"><HelpPanel /></section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="General">
         <h2>General</h2>
-        <AppearanceSettings value={settings.theme} onChange={(theme) => patch({ theme })} />
+        <AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} />
         <div className="settings-group">
           <label className="setting-row">
             <span>{t('settings.autoStart')}</span>
@@ -128,49 +138,48 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
               className="switch"
               data-testid="setting-autostart"
               checked={settings.autoStart}
-              onChange={(e) => patch({ autoStart: e.target.checked })}
+              disabled={saving}
+              onChange={(e) => void patch({ autoStart: e.target.checked })}
             />
           </label>
         </div>
+        {section === 'general' && <ComputerSettings />}
         </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
         <h2>Memory &amp; data</h2>
         <div className="settings-group">
           <label className="setting-row">
-            <span>{t('settings.deskJournal')}</span>
+            <span className="settings-row-label"><Activity size={18} aria-hidden /><span>App activity<small>App names and window titles only.</small></span></span>
             <input
               type="checkbox"
               className="switch"
               data-testid="setting-desk-journal"
               checked={deskJournal ?? false}
-              onChange={(e) =>
+              disabled={deskJournal === null || journalSaving}
+              aria-busy={journalSaving}
+              onChange={(e) => {
+                setJournalSaving(true)
                 void api
                   .activitySet(e.target.checked)
                   .then(setDeskJournal)
-                  .catch(() => void api.activityGet().then(setDeskJournal))
-              }
+                  .catch(() => showToast('Could not save app activity. Try again.'))
+                  .finally(() => setJournalSaving(false))
+              }}
             />
           </label>
         </div>
-        <p className="setting-hint">Records foreground app names and window titles.</p>
-        </section>
-        <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
-        <h2>AI &amp; accounts</h2>
-        {section === 'ai' && <EngineSettings />}
-        </section>
-        <section className="settings-panel" hidden={section !== 'developers'} aria-label="Workspace"><h2>Workspace</h2>{section === 'developers' && <><ComputerSettings /><DeveloperSettings /></>}</section>
-        <section className="settings-panel" hidden={section !== 'memory'} aria-label="Data connections">
         {section === 'memory' && <><WorkMapSettings /><TaskRecordingSettings /></>}
-        <div data-testid="settings-more">
-          <div className="settings-group-head">Files &amp; backup</div>
+        <section aria-label="How you work"><div className="setting-row"><span>How you work</span><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></div></section>
+        <details className="settings-disclosure" data-testid="settings-more">
+          <summary>Files &amp; backup</summary>
           <div className="setting-row" data-testid="setting-audit">
-            <span className="settings-row-label"><ScrollText size={18} aria-hidden /><span>{t('settings.auditTitle')}<small>Actions and approvals, saved locally.</small></span></span>
+            <span className="settings-row-label"><ScrollText size={18} aria-hidden /><span>{t('settings.auditTitle')}<small>Local actions and approvals.</small></span></span>
             <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast('Could not open the activity log.'))}>
               <FolderOpen size={15} aria-hidden />Open folder
             </button>
           </div>
           <div className="setting-row">
-            <span className="settings-row-label"><CloudUpload size={18} aria-hidden /><span>{t('settings.githubTitle')}<small>Sync to your private repository.</small></span></span>
+            <span className="settings-row-label"><CloudUpload size={18} aria-hidden /><span>{t('settings.githubTitle')}<small>Private repository.</small></span></span>
               <button
                 className="secondary"
                 data-testid="settings-github-backup"
@@ -182,10 +191,13 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
                 Set up
               </button>
           </div>
-        </div>
-        {section === 'memory' && <section aria-label="How you work"><div className="setting-row"><span>How you work</span><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></div><p className="setting-hint">A few optional questions about your preferences. Saved as an editable note in Cosmos.</p></section>}
-        {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} />}
+        </details>
         </section>
+        <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
+        <h2>AI &amp; accounts</h2>
+        {section === 'ai' && <EngineSettings />}
+        </section>
+        <section className="settings-panel" hidden={section !== 'developers'} aria-label="Advanced"><h2>Advanced</h2>{section === 'developers' && <DeveloperSettings />}</section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="About">
         <h2>About Engram</h2>
         <div className="settings-app-section">
@@ -211,15 +223,10 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </div>
 
         <div className="dialog-actions">
-          {section === 'developers' ? <button className="primary" onClick={onClose}>Done</button> : <>
-          <button className="secondary" onClick={onClose}>
-            {t('settings.cancel')}
-          </button>
-          <button className="primary" disabled={saving} aria-busy={saving} onClick={() => void save()}>
-            {saving ? <><LoaderCircle size={14} className="spin" aria-hidden /> Saving…</> : t('settings.save')}
-          </button>
-          </>}
+          {saveError ? <span className="settings-save-status" role="alert">{saveError}</span> : <span className="settings-save-status" role="status">{saving ? <><LoaderCircle size={14} className="spin" aria-hidden />Saving…</> : saved ? <><Check size={14} aria-hidden />Saved</> : null}</span>}
+          <button className="primary" disabled={saving} onClick={onClose}>Done</button>
         </div>
+        {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} />}
       </div>
       {showDiagnostics && <DiagnosticsView onClose={() => setShowDiagnostics(false)} />}
     </div>

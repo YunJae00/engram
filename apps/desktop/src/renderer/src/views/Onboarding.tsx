@@ -51,8 +51,7 @@ export function Onboarding() {
       const result = await api.engineConnect(id)
       if (!result.ok) setError(result.message || 'Sign-in was cancelled. You can try again or continue without AI.')
       else {
-        const settings = await api.settingsGet()
-        await api.settingsSet({ ...settings, defaultEngine: id })
+        await api.settingsSet({ defaultEngine: id })
         await api.aiSelectionSet('filing', { engine: id, model: '' })
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign-in did not finish. Please try again.') }
@@ -65,12 +64,12 @@ export function Onboarding() {
       const settings = await api.settingsGet()
       const available = ready.find(brain => brain.id === settings.defaultEngine) ?? ready[0]
       if (available && (available.id === 'claude' || available.id === 'codex')) {
-        if (settings.defaultEngine !== available.id) await api.settingsSet({ ...settings, defaultEngine: available.id })
+        if (settings.defaultEngine !== available.id) await api.settingsSet({ defaultEngine: available.id })
         const filingEngine = settings.aiSelections?.filing?.engine ?? settings.defaultEngine
         if (!ready.some(brain => brain.id === filingEngine)) await api.aiSelectionSet('filing', { engine: available.id, model: '' })
       }
       const latest = await api.settingsGet()
-      if (latest.workMap !== learnWork) await api.settingsSet({ ...latest, workMap: learnWork })
+      if (latest.workMap !== learnWork) await api.settingsSet({ workMap: learnWork })
       try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }

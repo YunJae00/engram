@@ -52,14 +52,14 @@ test('settings stays usable while a runtime probe never answers', async () => {
   await page.keyboard.press('Escape')
 })
 
-test('turning task recordings off survives the main settings save and reopening', async () => {
+test('turning task recordings off survives closing and reopening settings', async () => {
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-memory').click()
   const recording = page.getByTestId('setting-record-tasks')
   await expect(recording).toBeChecked()
   await recording.uncheck()
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => settings.recordTasks))).toBe(false)
-  await page.getByTestId('settings-view').getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByTestId('settings-view')).toHaveCount(0)
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-memory').click()

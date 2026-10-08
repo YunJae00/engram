@@ -1,8 +1,8 @@
 import { Check } from 'lucide-react'
 import type { AppSettingsDto } from '../../../shared/types.js'
 
-export function AppearanceSettings({ value, onChange }: { value: AppSettingsDto['theme']; onChange: (theme: NonNullable<AppSettingsDto['theme']>) => void }) {
-  return <fieldset className="appearance-settings">
+export function AppearanceSettings({ value, onChange, disabled = false }: { value: AppSettingsDto['theme']; onChange: (theme: NonNullable<AppSettingsDto['theme']>) => void; disabled?: boolean }) {
+  return <fieldset className="appearance-settings" disabled={disabled}>
     <legend>Appearance</legend>
     <div className="appearance-options">{(['system', 'light', 'dark'] as const).map((theme) => <label key={theme} className="appearance-option">
       <input type="radio" name="appearance" value={theme} checked={(value ?? 'system') === theme} onChange={() => onChange(theme)} />
