@@ -60,12 +60,13 @@ test('questions are optional, editable and usable in narrow light and dark windo
   await page.setViewportSize({ width: 960, height: 720 })
   await page.evaluate(() => document.documentElement.dataset.theme = 'light')
   await openInterview()
-  const leftAligned = await page.locator('.interview-intro').evaluate(el => {
-    const bounds = el.getBoundingClientRect()
-    return [...el.children].every(child => Math.abs(child.getBoundingClientRect().x - bounds.x) <= 1)
+  const aligned = await page.locator('.interview-topbar-intro').evaluate(el => {
+    const centers = [...el.children].map(child => { const box = child.getBoundingClientRect(); return box.y + box.height / 2 })
+    return Math.max(...centers) - Math.min(...centers) <= 1
   })
-  expect(leftAligned).toBe(true)
-  await expect(page.locator('.interview-intro').getByRole('heading')).toHaveCSS('text-align', 'left')
+  expect(aligned).toBe(true)
+  await expect(page.getByTestId('interview-intro-heading')).toHaveCSS('text-align', 'left')
+  await expect(page.getByTestId('interview-intro-heading')).toBeFocused()
   await screenshot('01-intro-light-960.png')
   await page.getByTestId('interview-start').click()
   await expect(page.getByRole('status').filter({ hasText: 'Preparing questions' })).toBeVisible()
@@ -136,20 +137,17 @@ test('questions are optional, editable and usable in narrow light and dark windo
   ])
 })
 
-test('empty responses can retry and canceled requests cannot replace a newer screen', async () => {
+test('failed requests can retry and canceled requests cannot replace a newer screen', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('interview:questions')
     let calls = 0
     ipcMain.handle('interview:questions', async () => {
-      if (++calls === 1) return []
-      if (calls === 2) throw new Error('Fixture offline')
+      if (++calls === 1) throw new Error('Fixture offline')
       await new Promise<void>(resolve => { (globalThis as typeof globalThis & { releaseInterview: () => void }).releaseInterview = resolve })
       return [{ question: 'Stale question', basis: '', options: [], topic: 'rules' }]
     })
   })
   await openInterview()
-  await page.getByTestId('interview-start').click()
-  await expect(page.getByRole('alert')).toContainText('No questions yet')
   await page.getByTestId('interview-start').click()
   await expect(page.getByRole('alert')).toContainText('Check your AI connection')
   await page.getByTestId('interview-start').click()

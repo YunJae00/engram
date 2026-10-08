@@ -103,6 +103,9 @@
 .interview-dialog [hidden] { display: none; }
 .interview-topbar { display: flex; align-items: center; justify-content: flex-end; flex: none; gap: 20px; padding: 12px 28px 8px; }
 .interview-topbar .dialog-close { margin: 0; flex: none; }
+.interview-topbar-intro { gap: 12px; padding-top: 24px; padding-bottom: 12px; }
+.interview-topbar-intro h3 { flex: 1; min-width: 0; }
+.interview-topbar-intro .interview-mark { width: 32px; height: 32px; border-radius: 10px; flex: none; }
 .interview-progress { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; font-size: var(--fs-micro); color: var(--fg-dim); }
 .interview-progress > span { flex: none; font-variant-numeric: tabular-nums; }
 .work-interview progress { appearance: none; flex: 1; min-width: 0; height: 3px; border: 0; border-radius: 9px; overflow: hidden; }
@@ -118,7 +121,10 @@
 .work-interview p { margin: 0; line-height: 1.6; color: var(--fg-dim); font-size: var(--fs-small); }
 .interview-intro { display: grid; justify-items: start; gap: 14px; padding: 4px 0 12px; text-align: left; }
 .interview-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 16px; background: var(--hover-bg); }
-.interview-intro .interview-privacy { max-width: 370px; font-size: var(--fs-micro); }
+.interview-privacy { width: 100%; font-size: var(--fs-micro); color: var(--fg-dim); }
+.interview-privacy summary { width: fit-content; cursor: pointer; }
+.interview-privacy summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.interview-privacy p { margin-top: 8px; font-size: var(--fs-micro); }
 .interview-intro-actions { display: flex; align-items: center; justify-content: flex-start; gap: 14px; margin-top: 6px; }
 .work-interview button.primary, .work-interview button.secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; }
 .interview-wait, .interview-success { justify-items: center; padding-top: 8px; text-align: center; }
@@ -139,7 +145,7 @@
 .interview-option > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .interview-own { width: 100%; min-height: 70px; max-height: 160px; resize: vertical; padding: 11px 13px; border-radius: 12px; font: inherit; font-size: var(--fs-small); line-height: 1.5; }
 .interview-actions, .interview-actions > div { display: flex; align-items: center; gap: 10px; }
-.interview-actions { justify-content: space-between; }
+.interview-actions { justify-content: space-between; flex-wrap: wrap; }
 .work-interview form > .interview-actions { flex: none; padding: 12px 28px 20px; background: var(--widget-bg); }
 .interview-skip { padding: 8px 6px; color: var(--fg-dim); font-size: var(--fs-small); }
 .interview-review { display: grid; gap: 14px; }
