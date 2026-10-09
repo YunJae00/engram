@@ -13,7 +13,6 @@ import { stopDesktopControl } from './desktop-control.js'
 import { aiSelection } from './ai-selection.js'
 import { workMapSettingChanged } from './work-map-job.js'
 import { cancelWorkInterview } from './work-interview.js'
-import { setTaskRecordingsEnabled } from './task-recording.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
@@ -21,7 +20,6 @@ import { setTaskRecordingsEnabled } from './task-recording.js'
 // Choosing another brain must reach the engine list at once, not at the
 // next scheduled detection; the vault owner installs this when it is up.
 let onBrainChoice: (() => void | Promise<void>) | null = null
-let recordingSettingRevision = 0
 export function setBrainChoiceHook(hook: () => void | Promise<void>): void {
   onBrainChoice = hook
 }
@@ -43,16 +41,11 @@ export function registerSettingsIpc(): void {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Invalid settings')
     if (settings.defaultEngine !== undefined && !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
-    if (settings.recordTasks !== undefined && typeof settings.recordTasks !== 'boolean') throw new Error('Invalid recording setting')
     for (const key of ['autoStart', 'computerUse', 'workMap'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') throw new Error('Invalid setting: ' + key)
     for (const key of ['searchTemplate', 'agentBrowser', 'claudeModel', 'codexModel', 'semanticModel'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'string') throw new Error('Invalid setting: ' + key)
     if (settings.teamSync !== undefined && !['auto', 'manual'].includes(settings.teamSync)) throw new Error('Invalid sync setting')
     for (const effort of [settings.claudeEffort, settings.codexEffort]) if (effort !== undefined && !REASONING_EFFORTS.includes(effort)) throw new Error('Invalid reasoning effort')
-    const change = Object.fromEntries(Object.entries(settings).filter(([key, value]) => value !== undefined || key === 'claudeEffort' || key === 'codexEffort')) as Partial<AppSettingsDto>
-    const recordingRevision = settings.recordTasks !== undefined ? ++recordingSettingRevision : undefined
-    // Stop immediately, including turns holding an older settings snapshot.
-    // A failed Off save stays stopped; a later successful save applies its choice.
-    const stopped = settings.recordTasks === false ? setTaskRecordingsEnabled(false) : undefined
+    const change = Object.fromEntries(Object.entries(settings).filter(([key, value]) => key !== 'recordTasks' && (value !== undefined || key === 'claudeEffort' || key === 'codexEffort'))) as Partial<AppSettingsDto>
     const held = await loadSettings()
     if (settings.workMap === false) { workMapSettingChanged(false); if (held.workMap) cancelWorkInterview() }
     if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
@@ -61,8 +54,6 @@ export function registerSettingsIpc(): void {
       ...change,
       aiSelections: { ...latest.aiSelections, filing: aiSelection(latest, 'filing') },
     }))
-    if (recordingRevision !== undefined && recordingRevision === recordingSettingRevision) await setTaskRecordingsEnabled(saved.recordTasks !== false)
-    await stopped
     if (settings.theme !== undefined) nativeTheme.themeSource = saved.theme
     if (settings.autoStart !== undefined && app.isPackaged) app.setLoginItemSettings({ openAtLogin: saved.autoStart })
     // Watch folders / shortcut / schedule re-arm on next launch (kept simple).

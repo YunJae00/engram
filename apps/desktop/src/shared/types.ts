@@ -401,7 +401,6 @@ export type EngramEvent =
   | { type: 'routine:learning'; botId: string; error?: string }
   | { type: 'dev:changed'; update: DevUpdate | null }
   | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
-  | { type: 'evidence:recording'; lane: string; recording: { lane: string; started: number; frames: number } | null; reason?: string }
   | { type: 'desktop:changed' }
   | { type: 'desktop:visibility'; visible: boolean }
   // The computer changed hands: the on-screen overlay and the in-app banner
@@ -581,8 +580,6 @@ export interface NativeSurfaceDto { lane: string; x: number; y: number; width: n
 
 export interface EngramApi extends DesktopApi, DevelopersApi {
   artifactReveal(id: string): Promise<void>
-  evidenceStatus(): Promise<{ lane: string; started: number; frames: number }[]>
-  evidenceStop(lane: string): Promise<unknown>
   nativeEnabled(): Promise<boolean>
   nativeFocusShell(): void
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
@@ -866,8 +863,6 @@ export interface AppSettingsDto {
   computerUse?: boolean
   // Learn where the person works from browser history and bookmarks.
   workMap?: boolean
-  // Keep a video of what comets do in their browser, linked from the answer.
-  recordTasks?: boolean
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,

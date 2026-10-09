@@ -1,6 +1,6 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createBot, initVault } from 'core'
@@ -16,11 +16,11 @@ for (const engine of ['codex', 'claude'] as const) test(`live ${engine} chat com
   const bot = await createBot(paths, { name: 'Evidence test', purpose: '' })
   const model = process.env.ENGRAM_LIVE_MODEL ?? (engine === 'codex' ? 'gpt-5.5' : 'sonnet')
   await writeFile(join(data, 'settings.json'), JSON.stringify({ defaultEngine: engine, [`${engine}Model`]: model, searchTemplate: 'https://www.google.com/search?q={q}', computerUse: false }))
-  let uploaded = 0
+  let uploaded = Buffer.alloc(0)
   const server = createServer((req, res) => {
-    if (req.method === 'POST') { req.on('data', chunk => { uploaded += chunk.length }); req.on('end', () => res.end('saved')); return }
+    if (req.method === 'POST') { const chunks: Buffer[] = []; req.on('data', chunk => { chunks.push(chunk) }); req.on('end', () => { uploaded = Buffer.concat(chunks); res.end('saved') }); return }
     res.setHeader('content-type', 'text/html')
-    res.end('<!doctype html><title>Example Domain</title><h1>Example Domain</h1><p>Owned evidence test.</p><label>Attach evidence<input type="file" onchange="fetch(\'/upload\',{method:\'POST\',body:this.files[0]}).then(r=>{if(r.ok)document.querySelector(\'#receipt\').textContent=\'Attachment saved\'})"></label><p id="receipt"></p>')
+    res.end('<!doctype html><title>Example Domain</title><style>#private{position:absolute;top:0;left:0;width:100px;height:100px;background:red}main{margin-top:120px}</style><input id="private" autocomplete="cc-number" value="4111111111111111"><main><h1>Example Domain</h1><p>Owned evidence test.</p><label>Attach evidence<input type="file" onchange="fetch(\'/upload\',{method:\'POST\',body:this.files[0]}).then(r=>{if(r.ok)document.querySelector(\'#receipt\').textContent=\'Attachment saved\'})"></label><p id="receipt"></p></main>')
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('No fixture address')
@@ -32,7 +32,7 @@ for (const engine of ['codex', 'claude'] as const) test(`live ${engine} chat com
     await expect(page.getByTestId('shell')).toBeVisible()
     await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 90000 }).toBe(true)
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (options: { buttons: string[] }) => ({ response: options.buttons.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
-    const message = `${url} 열고, 녹화 시작해. 페이지에 "Example Domain"이 뜰 때까지 기다렸다가 그 문구가 실제로 보이는지 확인하고, 스크린샷도 저장해. 녹화를 멈춘 다음 저장된 영상 파일을 이 페이지의 "Attach evidence"에 첨부하고 "Attachment saved" 표시를 확인해. 저장된 파일 링크와 경로를 알려줘. 브라우저만 사용해.`
+    const message = `Open ${url}. Wait for "Example Domain" and verify that text is visible. Save a screenshot, with the private field masked, then upload that screenshot to "Attach evidence". Verify "Attachment saved" appears. Return the saved file link and path. Use only the browser.`
     const result = await page.evaluate(async ({ engine, botId, message }) => {
       const events: unknown[] = []
       const off = window.engram.onEvent(event => { if ('channel' in event && event.channel === `bot-${botId}`) { events.push(event); if (event.type === 'comet:step') console.log('EVIDENCE_STEP', event.line) } })
@@ -42,12 +42,19 @@ for (const engine of ['codex', 'claude'] as const) test(`live ${engine} chat com
     await writeFile(join(data, 'result.json'), JSON.stringify(result, null, 2))
     console.log(`LIVE_EVIDENCE_RESULT ${join(data, 'result.json')}`)
     const audit = await readFile(join(paths.cache, 'audit', `${new Date().toISOString().slice(0, 10)}.jsonl`), 'utf8')
-    for (const tool of ['open_page', 'record_start', 'wait_for', 'verify', 'capture_evidence', 'record_stop', 'upload_file']) expect(audit, tool).toContain(`"tool":"${tool}"`)
+    for (const tool of ['open_page', 'wait_for', 'verify', 'capture_evidence', 'upload_file']) expect(audit, tool).toContain(`"tool":"${tool}"`)
+    for (const tool of ['record_start', 'record_stop']) expect(audit, tool).not.toContain(`"tool":"${tool}"`)
     const done = result.events.find(event => (event as { type: string }).type === 'chat:done') as { text: string } | undefined
     expect(done?.text).toContain('engram-artifact:')
     expect(done?.text).not.toContain('Not verified as complete')
     expect(result.events.some(event => (event as { type: string }).type === 'chat:error')).toBe(false)
-    expect(uploaded).toBeGreaterThan(0)
-    expect(await page.evaluate(() => window.engram.evidenceStatus())).toEqual([])
+    expect(uploaded.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    const pixel = await app.evaluate(({ nativeImage }, base64) => {
+      const image = nativeImage.createFromBuffer(Buffer.from(base64, 'base64'))
+      const offset = (10 * image.getSize().width + 10) * 4
+      return [...image.toBitmap().subarray(offset, offset + 3)]
+    }, uploaded.toString('base64'))
+    expect(pixel).toEqual([32, 32, 32])
+    expect((await readdir(join(paths.cache, 'artifacts'))).some(name => /\.(mp4|webm)$/i.test(name))).toBe(false)
   } finally { await app.close(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })

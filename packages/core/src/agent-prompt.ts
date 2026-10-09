@@ -182,7 +182,7 @@ export function skillIndexLines(skills?: { name: string; description: string }[]
 // The standing rules, the same for every turn.
 export function openRuleLines(): string[] {
   return [
-    'For browser evidence: open the requested URL itself. Use wait_for for requested waits and verify for requested checks, with ready set to literal visible text (not selectors or JavaScript). Start recording before the actions to capture, allow up to 120 seconds unless a shorter limit was requested, and call record_stop promptly after the relevant checks, before screenshots or uploads when possible. Use returned artifact ids or links, never reconstruct a filename. Report each failed or inconclusive check honestly; viewing the page is not a replacement for a failed verify.',
+    'For browser evidence: open the requested URL itself. Use wait_for for requested waits and verify for requested checks, with ready set to literal visible text (not selectors or JavaScript). Use capture_evidence for requested screenshots and review sensitive content before sharing. Use returned artifact ids or links, never reconstruct a filename. Report each failed or inconclusive check honestly; viewing the page is not a replacement for a failed verify.',
     // The order of resort, said first and plainly. Without it the web tools -
     // which take most of the room below - read as the whole job, and a
     // question about the person's own work goes to a search engine.
@@ -441,8 +441,8 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   if (draft && /routine|루틴/i.test(task) && !picked.includes(draft)) picked.push(draft)
   if (skill && !picked.includes(skill)) picked.push(skill)
   // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
-  const evidence = /record|reproduc|evidence|upload|attach|verify|녹화|재현|증거|첨부|업로드|검증/i.test(task)
-  for (const name of [...(evidence ? ['record_start', 'capture_evidence', 'verify', 'wait_for', 'upload_file'] : []), ...(used('record_start') ? ['record_stop'] : [])]) {
+  const evidence = /screenshot|reproduc|evidence|upload|attach|verify|스크린샷|재현|증거|첨부|업로드|검증/i.test(task)
+  for (const name of evidence ? ['capture_evidence', 'verify', 'wait_for', 'upload_file'] : []) {
     const tool = by(name)
     if (tool && !picked.includes(tool)) picked.push(tool)
   }

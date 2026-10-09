@@ -1,22 +1,11 @@
-import { app, dialog, ipcMain, shell } from 'electron'
+import { dialog, shell } from 'electron'
 import { basename, extname } from 'node:path'
 import { evidenceRegion, evidenceTools, readArtifact, resolveArtifact, saveArtifact, type VaultPaths } from 'core'
 import type { Page } from 'playwright-core'
 import { agentPage, readAgentPage } from './agent-browser.js'
 import { artifactDirectory } from './file-work.js'
 import { handOn } from './page-actions.js'
-import { videoEncoder } from './evidence-video.js'
-import { broadcast } from './engine-health.js'
 import { maskedFrame } from './masked-frame.js'
-
-type Recording = { lane: string; started: number; frames: number; stop(reason?: string): Promise<unknown> }
-const recordings = new Map<string, Recording>()
-const completed = new Map<string, unknown>()
-export const evidenceStatus = (lane: string) => { const value = recordings.get(lane); return value ? { lane, started: value.started, frames: value.frames } : null }
-const changed = (lane: string, reason?: string) => broadcast({ type: 'evidence:recording', lane, recording: evidenceStatus(lane), ...(reason ? { reason: reason.slice(0, 300) } : {}) })
-export async function stopEvidenceRecording(lane: string, reason?: string): Promise<unknown> {
-  return recordings.get(lane)?.stop(reason) ?? completed.get(lane) ?? { recording: 'not-started' }
-}
 
 async function approve(message: string, detail: string, signal?: AbortSignal, preview?: string): Promise<void> {
   signal?.throwIfAborted()
@@ -66,56 +55,6 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       expected(source.page, source.url)
       return save(`${source.name}.png`, await maskedFrame(source.page, source.origin, source.masks, signal, source.region), { ...args, lane, url: source.url }, signal)
     },
-    async start(args, signal) {
-      if (recordings.has(lane)) throw new Error('A recording is already active in this chat. Stop it first.')
-      completed.delete(lane)
-      const source = await prepare(args, signal)
-      await consent('Record this browser tab?', `${source.url}\n\n${source.region ? `Fixed region: ${JSON.stringify(source.region)} (viewport pixels). It does not follow elements when scrolling.` : 'Whole visible tab.'}\nSilent recording, up to 120 seconds. Only this tab; other windows and new tabs are excluded. Declared secret fields are masked, but other sensitive content requires review.`, signal)
-      expected(source.page, source.url)
-      const encoder = await videoEncoder(source.region)
-      let active = true, stopping: Promise<unknown> | undefined, pending = Promise.resolve()
-      const state: Recording = { lane, started: Date.now(), frames: 0, stop: reason => {
-        if (stopping) return stopping
-        active = false; clearInterval(timer); clearTimeout(limit); signal?.removeEventListener('abort', abort); source.page.off('close', closed)
-        stopping = (async () => {
-          let timeout: ReturnType<typeof setTimeout> | undefined
-          try {
-            await Promise.race([pending, new Promise<never>((_resolve, reject) => {
-              timeout = setTimeout(() => { encoder.close(); reject(new Error('Recording frame did not finish in time')) }, 10_000)
-            })])
-            clearTimeout(timeout)
-            const data = await encoder.finish()
-            const result = { recording: reason ? 'interrupted' : 'saved', name: source.name, url: source.url, reason, frames: state.frames, durationMs: Date.now() - state.started, ...await save(`${source.name}.mp4`, data, { ...args, lane, url: source.url, reason, frames: state.frames }) }
-            completed.set(lane, result)
-            if (completed.size > 50) completed.delete(completed.keys().next().value!)
-            return result
-          } catch (error) { reason ??= 'The recording could not be saved.'; throw error }
-          finally { clearTimeout(timeout); encoder.close(); recordings.delete(lane); changed(lane, reason) }
-        })()
-        return stopping
-      } }
-      const capture = async () => { const data = await maskedFrame(source.page, source.origin, source.masks, signal, source.region, 'jpeg'); if (active) { await encoder.frame(data, 'image/jpeg'); state.frames++ } }
-      const tick = () => {
-        if (!active || capturing) return
-        capturing = true
-        pending = capture().catch(error => { void state.stop(error instanceof Error ? error.message : 'Capture failed').catch(() => {}) }).finally(() => { capturing = false })
-      }
-      let capturing = false
-      const timer = setInterval(tick, 250)
-      const limit = setTimeout(() => { void state.stop('Recording time limit reached').catch(() => {}) }, Math.min(120, Math.max(1, Number(args.maxSeconds) || 120)) * 1000)
-      const abort = () => { void state.stop('Task stopped').catch(() => {}) }
-      const closed = () => { void state.stop('Recorded tab closed').catch(() => {}) }
-      recordings.set(lane, state); changed(lane)
-      signal?.addEventListener('abort', abort, { once: true }); source.page.once('close', closed)
-      capturing = true
-      pending = capture().finally(() => { capturing = false })
-      try { await pending } catch (error) { await state.stop('Initial capture failed').catch(() => {}); throw error }
-      if (!active) throw new Error('Recording stopped before it was ready.')
-      if (signal?.aborted) abort()
-      signal?.throwIfAborted()
-      return { recording: 'started', url: source.url, maxSeconds: Math.min(120, Math.max(1, Number(args.maxSeconds) || 120)), message: 'Recording this tab only. Call record_stop before finishing; inspect the saved video before uploading.' }
-    },
-    stop: signal => { signal?.throwIfAborted(); return stopEvidenceRecording(lane) },
     async upload(args, signal) {
       const page = await agentPage(signal, lane)
       const url = expected(page, args.url)
@@ -142,10 +81,4 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       return { upload: { status: confirmed ? 'confirmed' : 'unconfirmed', artifact: args.artifact, url, confirmation, bytes: data.length }, message: confirmed ? 'The specified confirmation appeared. Verify that it identifies the saved attachment, not a pending preview.' : 'File selection was dispatched, but completion is unconfirmed. Inspect before any retry.' }
     },
   })
-}
-
-export function registerEvidenceIpc() {
-  ipcMain.handle('evidence:status', () => [...recordings.keys()].map(lane => evidenceStatus(lane)!))
-  ipcMain.handle('evidence:stop', (_event, lane: string) => stopEvidenceRecording(lane))
-  app.on('before-quit', () => { for (const value of recordings.values()) void value.stop('App closing').catch(() => {}) })
 }

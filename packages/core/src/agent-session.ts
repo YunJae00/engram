@@ -57,7 +57,7 @@ function outputLinks(steps: AgentLoopStep[], answer: string): string {
   const outputs: { link: string; id: string; name: string }[] = []
   const links = new Set<string>()
   for (const step of steps) {
-    if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', 'record_stop'].includes(step.tool)) continue
+    if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence'].includes(step.tool)) continue
     try {
       const result = JSON.parse(step.observation) as { markdownLink?: unknown }
       const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)

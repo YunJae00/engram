@@ -29,7 +29,7 @@ it.each(['none', 'navigation', 'same-url reload', 'attach', 'replace frame', 'ab
   const result = maskedFrame(page, 'https://example.test', [], controller.signal)
   if (change === 'none') {
     await expect(result).resolves.toEqual(Buffer.from('masked image'))
-    expect(screenshot.mock.calls[0]?.[0]).toMatchObject({ mask: [{ selector: SECRET_FIELDS }] })
+    expect(screenshot.mock.calls[0]?.[0]).toMatchObject({ type: 'png', mask: [{ selector: SECRET_FIELDS }] })
   } else await expect(result).rejects.toThrow()
   expect(events.eventNames()).toEqual([])
 })

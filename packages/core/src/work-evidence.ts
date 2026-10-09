@@ -34,22 +34,7 @@ export function checkPage(page: WebPage, check: PageCheck) {
 
 export function evidenceFault(steps: AgentLoopStep[]): string | undefined {
   const checks = new Map<string, boolean>()
-  const recordings = new Set<string>()
-  const recordingKey = (name: unknown, url: unknown) => {
-    try { return JSON.stringify([name, new URL(String(url)).href]) }
-    catch { return JSON.stringify([name, url]) }
-  }
   for (const step of steps) {
-    if (!step.seeded && step.tool === 'record_start') recordings.add(recordingKey(step.args.name, step.args.url))
-    if (!step.seeded && step.tool === 'record_stop') {
-      let saved = false
-      try {
-        const receipt = JSON.parse(step.observation)
-        saved = receipt.recording === 'saved' && typeof receipt.name === 'string' && typeof receipt.url === 'string' && typeof receipt.artifact === 'string' && receipt.frames > 0
-        if (saved) recordings.delete(recordingKey(receipt.name, receipt.url))
-      } catch { /* Unconfirmed recording remains outstanding. */ }
-      checks.set('record_stop', saved)
-    }
     if (!['verify', 'wait_for', 'upload_file', 'capture_evidence'].includes(step.tool) || step.seeded) continue
     let artifact = step.args.artifact
     if (step.tool === 'upload_file') { try { artifact = artifactId(artifact) } catch { /* Invalid references never establish success. */ } }
@@ -57,14 +42,12 @@ export function evidenceFault(steps: AgentLoopStep[]): string | undefined {
     try { const receipt = JSON.parse(step.observation); checks.set(key, step.tool === 'capture_evidence' ? typeof receipt.artifact === 'string' && typeof receipt.sha256 === 'string' : step.tool === 'upload_file' ? receipt.upload?.status === 'confirmed' : receipt.verification?.status === 'passed') }
     catch { checks.set(key, false) }
   }
-  return recordings.size ? 'A requested recording has not been saved successfully. Stop it and report any interruption before claiming completion.' : [...checks.values()].some(passed => !passed) ? 'A requested evidence capture, page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.' : undefined
+  return [...checks.values()].some(passed => !passed) ? 'A requested evidence capture, page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.' : undefined
 }
 
 export interface EvidenceHost {
   read(signal?: AbortSignal): Promise<WebPage>
   capture(args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>
-  start(args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>
-  stop(signal?: AbortSignal): Promise<unknown>
   upload(args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>
 }
 
@@ -88,13 +71,11 @@ export function evidenceTools(host: EvidenceHost): AgentTool[] {
   }
   const coordinate = { type: 'integer', minimum: 0, maximum: 16384 }
   const region = { ...schema({ x: coordinate, y: coordinate, width: { ...coordinate, minimum: 1 }, height: { ...coordinate, minimum: 1 } }, ['x', 'y', 'width', 'height']), description: 'Optional fixed rectangle in visible viewport CSS pixels, from a fresh look. Capture only this area; it does not follow an element when scrolling. Omit for the whole tab viewport.' }
-  const captureSchema = schema({ name: { ...text, maxLength: 80, description: 'Plain output name without a directory or extension, e.g. before-fix.' }, url: pageUrl, region, masks: { type: 'array', items: { ...text, maxLength: 300 }, maxItems: 12 }, issue: text, build: text, role: text, testData: text, maxSeconds: { type: 'integer', minimum: 1, maximum: 120, description: 'Maximum recording lifetime, including time spent thinking between tools. Default 120 seconds.' } }, ['name', 'url'])
+  const captureSchema = schema({ name: { ...text, maxLength: 80, description: 'Plain output name without a directory or extension, e.g. before-fix.' }, url: pageUrl, region, masks: { type: 'array', items: { ...text, maxLength: 300 }, maxItems: 12 }, issue: text, build: text, role: text, testData: text }, ['name', 'url'])
   return [
     { name: 'wait_for', description: 'Wait up to 30 seconds for an exact page URL, positive ready text and optional present/absent text. Returns passed, failed or inconclusive. Loading, login and truncated extracts are not proof of absence.', argsSchema: checkSchema, run: (args, context) => inspect({ ...args, timeoutMs: args.timeoutMs ?? 15000 }, context.signal) },
     { name: 'verify', description: 'Check a fresh page against an explicit ready state and expected present/absent text. Use stable check ids; repeat failed checks after correction. Record build, account role and test data with evidence. Absence alone never proves a fix.', argsSchema: checkSchema, run: (args, context) => inspect(args, context.signal) },
     { name: 'capture_evidence', description: 'Save a reviewed, masked PNG of the current Engram browser page with source metadata. Supply optional CSS selectors for additional redaction. Content is not automatically proven safe; requires human review before sharing. Returns an artifact link.', argsSchema: captureSchema, run: async (args, context) => JSON.stringify(await host.capture(args, context.signal)) },
-    { name: 'record_start', description: 'Ask to record this exact browser tab before reproduction actions. Saves a bounded silent MP4/H.264 (max 120 seconds) with masked frames and source/build metadata. Does not record other windows or follow new tabs. Call record_stop before finishing. Review evidence before uploading.', argsSchema: captureSchema, run: async (args, context) => JSON.stringify(await host.start(args, context.signal)) },
-    { name: 'record_stop', description: 'Stop and save the current browser recording. Returns its artifact, provenance and any interruption. A recording is evidence, not a pass/fail verdict.', argsSchema: schema({}, []), run: async (_args, context) => JSON.stringify(await host.stop(context.signal)) },
-    { name: 'upload_file', description: 'Upload an Engram-generated artifact to one exact page and file input, only after file/destination approval. Use the returned artifact field (not its filesystem path). File selection may immediately transmit data. Supply visible confirmation text expected only after upload; inspect the returned confirmation and never blindly retry an uncertain upload.', argsSchema: schema({ artifact: { ...text, description: 'Copy the artifact field or engram-artifact link returned by capture_evidence or record_stop. Never a filesystem path.' }, url: pageUrl, target: text, confirmation: text }, ['artifact', 'url', 'target', 'confirmation']), run: async (args, context) => JSON.stringify(await host.upload(args, context.signal)) },
+    { name: 'upload_file', description: 'Upload an Engram-generated artifact to one exact page and file input, only after file/destination approval. Use the returned artifact field (not its filesystem path). File selection may immediately transmit data. Supply visible confirmation text expected only after upload; inspect the returned confirmation and never blindly retry an uncertain upload.', argsSchema: schema({ artifact: { ...text, description: 'Copy the artifact field or engram-artifact link returned by an artifact-producing tool. Never a filesystem path.' }, url: pageUrl, target: text, confirmation: text }, ['artifact', 'url', 'target', 'confirmation']), run: async (args, context) => JSON.stringify(await host.upload(args, context.signal)) },
   ]
 }

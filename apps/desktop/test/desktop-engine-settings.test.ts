@@ -3,7 +3,7 @@ import type { AppSettingsDto } from '../src/shared/types.js'
 
 const fake = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, settings: Partial<AppSettingsDto>) => Promise<void>>(),
-  load: vi.fn(), save: vi.fn(), stop: vi.fn(), recording: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), cancelInterview: vi.fn(), nativeTheme: { themeSource: 'system' },
+  load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), cancelInterview: vi.fn(), nativeTheme: { themeSource: 'system' },
   app: { isPackaged: false, setLoginItemSettings: vi.fn() }, queue: Promise.resolve(),
 }))
 vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [], REASONING_EFFORTS: ['low', 'medium', 'high'] }))
@@ -18,7 +18,6 @@ vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, updateSetti
 vi.mock('../src/main/team.js', () => ({ getSyncStatus: vi.fn() }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: vi.fn() }))
 vi.mock('../src/main/desktop-control.js', () => ({ stopDesktopControl: fake.stop }))
-vi.mock('../src/main/task-recording.js', () => ({ setTaskRecordingsEnabled: fake.recording }))
 vi.mock('../src/main/work-interview.js', () => ({ cancelWorkInterview: fake.cancelInterview }))
 import { registerSettingsIpc, setBrainChoiceHook } from '../src/main/config-ipc.js'
 
@@ -31,7 +30,6 @@ beforeEach(() => {
   fake.nativeTheme.themeSource = 'system'
   fake.load.mockResolvedValue(settings)
   fake.save.mockResolvedValue(undefined)
-  fake.recording.mockReset().mockResolvedValue(undefined)
   setBrainChoiceHook(fake.changed)
   registerSettingsIpc()
 })
@@ -52,27 +50,25 @@ describe('partial settings updates', () => {
       .mockResolvedValue({ ...settings, computerUse: false, searchTemplate: 'new', claudeModel: 'new' })
     await fake.handlers.get('settings:set')!(null, { theme: 'dark', searchTemplate: undefined })
     expect(fake.save).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark', computerUse: false, searchTemplate: 'new', claudeModel: 'new' }))
-    expect(fake.recording).not.toHaveBeenCalled()
     expect(fake.stop).not.toHaveBeenCalled()
   })
 
   it('merges simultaneous privacy and appearance updates without restoring withdrawn permissions', async () => {
-    let current = { ...settings, computerUse: true, workMap: true, recordTasks: true, theme: 'light' } as AppSettingsDto
+    let current = { ...settings, computerUse: true, workMap: true, theme: 'light' } as AppSettingsDto
     fake.load.mockImplementation(async () => current)
     fake.save.mockImplementation(async (next: AppSettingsDto) => { current = next })
     const save = fake.handlers.get('settings:set')!
-    await Promise.all([save(null, { computerUse: false }), save(null, { workMap: false }), save(null, { theme: 'dark' }), save(null, { recordTasks: false })])
-    expect(current).toEqual(expect.objectContaining({ computerUse: false, workMap: false, recordTasks: false, theme: 'dark' }))
+    await Promise.all([save(null, { computerUse: false }), save(null, { workMap: false }), save(null, { theme: 'dark' })])
+    expect(current).toEqual(expect.objectContaining({ computerUse: false, workMap: false, theme: 'dark' }))
     expect(fake.stop).toHaveBeenCalledOnce()
     expect(fake.cancelInterview).toHaveBeenCalledOnce()
-    expect(fake.recording).not.toHaveBeenCalledWith(true)
   })
 
   it('does not change native appearance or login settings for an unrelated update', async () => {
     fake.app.isPackaged = true
     fake.nativeTheme.themeSource = 'dark'
     fake.load.mockResolvedValue({ ...settings, theme: 'light' })
-    await fake.handlers.get('settings:set')!(null, { recordTasks: false })
+    await fake.handlers.get('settings:set')!(null, { workMap: false })
     expect(fake.nativeTheme.themeSource).toBe('dark')
     expect(fake.app.setLoginItemSettings).not.toHaveBeenCalled()
     await fake.handlers.get('settings:set')!(null, { autoStart: true })
@@ -80,63 +76,18 @@ describe('partial settings updates', () => {
   })
 
   it('rejects malformed partial updates before saving or changing permissions', async () => {
-    for (const value of [null, [], 'dark', { defaultEngine: 'invalid' }, { theme: null }, { autoStart: 1 }, { computerUse: 'yes' }, { workMap: null }, { recordTasks: 0 }, { claudeModel: [] }, { agentBrowser: 42 }, { teamSync: 'invalid' }]) {
+    for (const value of [null, [], 'dark', { defaultEngine: 'invalid' }, { theme: null }, { autoStart: 1 }, { computerUse: 'yes' }, { workMap: null }, { claudeModel: [] }, { agentBrowser: 42 }, { teamSync: 'invalid' }]) {
       await expect(fake.handlers.get('settings:set')!(null, value as Partial<AppSettingsDto>)).rejects.toThrow('Invalid')
     }
     expect(fake.save).not.toHaveBeenCalled()
     expect(fake.stop).not.toHaveBeenCalled()
-    expect(fake.recording).not.toHaveBeenCalled()
   })
 })
 
-describe('live task recording settings', () => {
-  it('closes recording before saving Off without waiting for cleanup, then enables only after On is saved', async () => {
-    let cleaned!: () => void, savedOn!: () => void
-    const cleanup = new Promise<void>(resolve => { cleaned = resolve })
-    const savingOn = new Promise<void>(resolve => { savedOn = resolve })
-    fake.recording.mockImplementation((enabled: boolean) => enabled ? Promise.resolve() : cleanup)
-    const save = fake.handlers.get('settings:set')!
-    const off = save(null, { ...settings, recordTasks: false })
-    await vi.waitFor(() => expect(fake.save).toHaveBeenCalledWith(expect.objectContaining({ recordTasks: false })))
-    expect(fake.recording).toHaveBeenCalledWith(false)
-    expect(fake.recording.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
-    cleaned()
-    await off
-
-    fake.save.mockImplementationOnce(() => savingOn)
-    const on = save(null, { ...settings, recordTasks: true })
-    await vi.waitFor(() => expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ recordTasks: true })))
-    expect(fake.recording).not.toHaveBeenCalledWith(true)
-    savedOn()
-    await on
-    expect(fake.recording).toHaveBeenLastCalledWith(true)
-  })
-
-  it('does not let an older On completion reopen recording after a newer Off request', async () => {
-    let savedOn!: () => void
-    fake.save.mockImplementationOnce(() => new Promise<void>(resolve => { savedOn = resolve }))
-    const save = fake.handlers.get('settings:set')!
-    const on = save(null, { ...settings, recordTasks: true })
-    await vi.waitFor(() => expect(fake.save).toHaveBeenCalledOnce())
-    const off = save(null, { ...settings, recordTasks: false })
-    await vi.waitFor(() => expect(fake.recording).toHaveBeenCalledWith(false))
-    savedOn()
-    await Promise.all([on, off])
-    expect(fake.recording).not.toHaveBeenCalledWith(true)
-    expect(fake.recording).toHaveBeenLastCalledWith(false)
-  })
-
-  it('keeps recording disabled in memory if persisting Off fails', async () => {
-    fake.save.mockRejectedValueOnce(new Error('disk unavailable'))
-    await expect(fake.handlers.get('settings:set')!(null, { ...settings, recordTasks: false })).rejects.toThrow('disk unavailable')
-    expect(fake.recording).toHaveBeenCalledWith(false)
-    expect(fake.recording.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
-    expect(fake.recording).not.toHaveBeenCalledWith(true)
-    expect(fake.broadcast).not.toHaveBeenCalled()
-    fake.save.mockResolvedValue(undefined)
-    await fake.handlers.get('settings:set')!(null, { theme: 'dark' })
-    expect(fake.recording).not.toHaveBeenCalledWith(true)
-  })
+it('ignores the removed recording preference from an older settings client', async () => {
+  await fake.handlers.get('settings:set')!(null, { theme: 'dark', recordTasks: true } as Partial<AppSettingsDto>)
+  expect(fake.save).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'dark' }))
+  expect(fake.save.mock.lastCall![0]).not.toHaveProperty('recordTasks')
 })
 
 describe('desktop grant lifetime when choosing an AI connection', () => {

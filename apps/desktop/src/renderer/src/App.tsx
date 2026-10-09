@@ -6,7 +6,6 @@ import { AppSidebar } from './components/AppSidebar.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
-import { EvidenceRecording } from './components/EvidenceRecording.js'
 import { TOUR_DONE_KEY } from './lib/tour.js'
 import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
@@ -240,7 +239,6 @@ function Shell() {
       {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
       <main className="app-main">
         <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
-        <EvidenceRecording />
         <AppNotices
           engines={engines}
           enginesDetected={enginesDetected}
