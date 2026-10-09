@@ -7,7 +7,7 @@ import { app, dialog } from 'electron'
 import { fromJSONSchema } from 'zod'
 import { addRoutine, appendBotTurn, callMemoryTool, cometTools, createBot, listRoutines, MEMORY_MCP_TOOLS, officeArithmeticFault, officeWriteUnverified, routineTask, routineTaskPrompt, type AgentLoopStep, type AgentTool } from 'core'
 import { agentCourier } from './agent-courier.js'
-import { workEvidenceTools, stopEvidenceRecording } from './work-evidence.js'
+import { workEvidenceTools } from './work-evidence.js'
 import { evidenceFault } from 'core'
 import { resetLane } from './agent-browser.js'
 import { officeAgentTools } from './office-agent.js'
@@ -101,7 +101,6 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
     socket.setTimeout(15 * 60_000, () => socket.destroy())
     socket.on('error', () => socket.destroy())
     socket.on('close', () => {
-      void stopEvidenceRecording(lane, 'External client disconnected').catch(() => {})
       running?.abort(); sockets.delete(socket); authenticatedSockets.delete(socket)
       if (lanes.get(lane) === socket) { lanes.delete(lane); clearApplicationWork(lane); void resetLane(lane).catch(() => {}) }
     })
@@ -165,7 +164,6 @@ async function changeEnabled(value: boolean): Promise<ReturnType<typeof external
           if (typeof input.summary !== 'string' || !input.summary.trim() || input.summary.length > 8000) throw new Error('Provide a concise summary and any unverified parts.')
           clearApplicationWork(lane)
           const fault = evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps)
-          await stopEvidenceRecording(lane, 'Task finished without an explicit recording stop')
           checkedSummary = fault ? '' : input.summary
           text = `${fault ? `Not verified as complete. ${fault}` : 'Automated checks found no outstanding fault. Task and visual correctness remain the caller’s responsibility.'}\n\n${input.summary}`
           await appendBotTurn(bound.paths, botId, { role: 'assistant', text, at: new Date().toISOString() })

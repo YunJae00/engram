@@ -50,7 +50,7 @@ export function EngineSettings() {
         const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : !states ? 'Checking connection…' : connected ? 'Connected' : state?.installed ? 'Not connected' : id === 'claude' ? 'Not installed' : 'Runtime unavailable'
         return (
           <section key={id} className="engine-card engine-connection" aria-label={`${name} connection`}>
-            <div className="engine-card-heading"><strong><ProviderIcon provider={id} size={16} /> {name}</strong>{profileName && <small>{profileName}</small>}<span className="engine-status" data-connected={connected && !pending} data-testid={`brain-${id}-status`} role="status">{(pending || !states) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</span></div>
+            <div className="engine-card-heading"><div className="engine-identity"><strong><ProviderIcon provider={id} size={16} /> {name}</strong>{profileName && <small>{profileName}</small>}</div><span className="engine-status" data-connected={status === 'Connected'} data-testid={`brain-${id}-status`} role="status">{(pending || !states) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</span></div>
             <div className="engine-actions">
               {!pending && <AccountProfiles provider={id} />}
               {pending ? <>

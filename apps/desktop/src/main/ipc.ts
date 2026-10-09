@@ -141,7 +141,6 @@ import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { notifyTask } from './task-notify.js'
-import { startTaskRecording } from './task-recording.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
 import { prepareInterviewContext } from './interview-preparation.js'
@@ -150,7 +149,7 @@ import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, h
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
 import { artifactDirectory, cometFileTools, registerArtifactIpc } from './file-work.js'
-import { workEvidenceTools, stopEvidenceRecording } from './work-evidence.js'
+import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, noteLimited, rememberSelections } from './ai-selection.js'
@@ -2352,8 +2351,6 @@ export function registerIpc(ctx: VaultContext): void {
       let switchTo: string | undefined
       let toolStarted = false
       let answerDelivered = false
-      // What the comet's browser shows while it works, kept for the person to watch.
-      const recording = settings.recordTasks !== false && agentBrowserAvailable() ? startTaskRecording(channel, artifactDirectory(paths), signal) : null
       try {
         assertDesktopChatEngine(channel, engine)
         const resume = resumeState.get(bot.id)
@@ -2449,10 +2446,7 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
-            onToolStart: name => {
-              toolStarted = true
-              if (/^(open_page|read_open_page|read_pages|search_web|press|press_key|press_point|type_text|choose|scroll|hover|reveal|page_steps|look|run_procedure|verify|upload_file)$/.test(name)) recording?.observe()
-            },
+            onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: relevantSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
@@ -2555,11 +2549,10 @@ export function registerIpc(ctx: VaultContext): void {
           for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch { /* Invalid addresses have no icon. */ } }
           broadcast({ type: 'bots:changed' })
         }
-        const recorded = await recording?.stop()
         signal.throwIfAborted()
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}) })
         await deliverAnswer(
-          `${result.answer}${note}${recorded ? `\n\nTask recording: ${recorded}` : ''}`,
+          `${result.answer}${note}`,
           result.asked && result.options?.length
             ? { kind: 'asked', question: result.answer, options: result.options }
             : routine
@@ -2629,8 +2622,6 @@ export function registerIpc(ctx: VaultContext): void {
           revalidateEngines(ctx),
         )
       } finally {
-        await recording?.stop({ captureFinal: false })
-        await stopEvidenceRecording(channel, 'Task ended without an explicit recording stop').catch(() => {})
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         // The window stays where the work left it: the page a comet worked on

@@ -70,6 +70,8 @@ describe('saved task routines', () => {
     expect((await listRoutines(paths))[0]).toMatchObject({ name: 'Details', task })
     expect(routineTaskPrompt(saved)).toContain('not desktop mouse/keyboard')
     expect(routineTaskPrompt(saved)).toContain('verify every requested result')
+    expect(routineTaskPrompt(saved)).toContain('Capture requested screenshots')
+    expect(routineTaskPrompt(saved)).not.toMatch(/record_start|record_stop|record before|Recording alone/)
   })
 
   it('keeps mixed work generic and rejects invalid saved addresses', async () => {

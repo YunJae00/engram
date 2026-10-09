@@ -1,14 +1,14 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { connect, type Socket } from 'node:net'
 import { createInterface } from 'node:readline'
 import { createHash } from 'node:crypto'
 import { initVault } from 'core'
 
-test('external browser tools record masked playable evidence and upload only approved unchanged artifacts', async () => {
+test('external browser tools capture masked screenshots and upload only approved unchanged artifacts', async () => {
   test.setTimeout(240000)
   const root = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(root, { recursive: true })
@@ -23,7 +23,8 @@ test('external browser tools record masked playable evidence and upload only app
       return
     }
     res.setHeader('content-type', 'text/html')
-    res.end('<!doctype html><title>Evidence fixture</title><style>body{margin:0;background:white}#private{position:absolute;left:0;top:0;width:100px;height:100px;background:red}main{margin:120px}</style><div id="private">Private account</div><main><h1>Ready</h1><button onclick="this.textContent=\'Fixed\'">Reproduce</button><label>Attach evidence<input hidden type="file" onchange="fetch(\'/upload\',{method:\'POST\',body:this.files[0]}).then(r=>{if(r.ok)document.querySelector(\'#receipt\').textContent=\'Attachment saved\'})"></label><p id="receipt"></p></main>')
+    if (req.url === '/code') { res.end('<!doctype html><style>body{margin:0}input{width:100px;height:100px;background:red;border:0;box-sizing:border-box}</style><input autocomplete="section-login one-time-code" value="123456">'); return }
+    res.end('<!doctype html><title>Evidence fixture</title><style>body{margin:0;background:white}.patch{position:absolute;top:0;width:100px;height:100px;background:red;border:0;box-sizing:border-box}main{margin:140px 120px}#private{left:0}#public{left:480px;background:#00ff00}</style><div id="private" class="patch">Private account</div><input class="patch" style="left:120px" autocomplete="current-password" value="synthetic-secret"><input class="patch" style="left:240px" autocomplete="section-billing CC-NUMBER" value="4111111111111111"><iframe class="patch" style="left:360px" src="/code"></iframe><div id="public" class="patch"></div><main><h1>Ready</h1><button onclick="this.textContent=\'Fixed\'">Reproduce</button><label>Attach evidence<input hidden type="file" onchange="fetch(\'/upload\',{method:\'POST\',body:this.files[0]}).then(r=>{if(r.ok)document.querySelector(\'#receipt\').textContent=\'Attachment saved\'})"></label><p id="receipt"></p></main>')
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('No fixture address')
@@ -53,7 +54,9 @@ test('external browser tools record masked playable evidence and upload only app
       if (reply.error) throw new Error(reply.error)
       return reply.result!.content[0]!.text
     }
-    await call('engram_begin', { goal: 'Record and verify the localhost reproduction fixture, then attach the reviewed evidence.' })
+    await call('engram_begin', { goal: 'Verify the localhost reproduction fixture, then attach the reviewed screenshot.' })
+    for (const tool of ['record_start', 'record_stop']) await expect(call(tool, {})).rejects.toThrow('Unknown or unavailable tool')
+    expect(await shell.evaluate(() => 'evidenceStatus' in window.engram || 'evidenceStop' in window.engram)).toBe(false)
     await call('open_page', { url })
     const check = { id: 'fixed', url, ready: 'Ready', present: ['Fixed'] }
     expect(JSON.parse(await call('verify', check)).verification.status).toBe('failed')
@@ -62,58 +65,55 @@ test('external browser tools record masked playable evidence and upload only app
     const screenshot = JSON.parse(await call('capture_evidence', capture))
     const png = await readFile(screenshot.path)
     expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
-    const pixel = await app.evaluate(({ nativeImage }, base64) => {
+    const pixels = await app.evaluate(({ nativeImage }, base64) => {
       const image = nativeImage.createFromBuffer(Buffer.from(base64, 'base64')); const bitmap = image.toBitmap()
-      const offset = (10 * image.getSize().width + 10) * 4
-      return [...bitmap.subarray(offset, offset + 3)]
+      return [10, 130, 250, 370, 490].map(x => {
+        const offset = (10 * image.getSize().width + x) * 4
+        return [...bitmap.subarray(offset, offset + 3)]
+      })
     }, png.toString('base64'))
-    expect(pixel).toEqual([32, 32, 32])
+    expect(pixels.slice(0, 4)).toEqual(Array.from({ length: 4 }, () => [32, 32, 32]))
+    // Color-managed decoding may shift RGB; the public patch must remain green, not masked.
+    expect(pixels[4]![1]).toBeGreaterThan(200)
+    expect(pixels[4]![0]).toBeLessThan(128)
+    expect(pixels[4]![2]).toBeLessThan(128)
+    const provenanceId = /\(engram-artifact:([^)]+)\)/.exec(screenshot.provenance)?.[1]
+    expect(provenanceId).toBeTruthy()
+    const provenance = JSON.parse(await readFile(join(dirname(screenshot.path), decodeURIComponent(provenanceId!)), 'utf8'))
+    expect(provenance).toMatchObject({ url, build: 'fixture-before', role: 'test', sha256: screenshot.sha256 })
+    await expect(call('capture_evidence', { ...capture, masks: ['#missing'] })).rejects.toThrow('redaction target')
+    await expect(call('capture_evidence', { ...capture, region: { x: 0, y: 0, width: 16384, height: 16384 } })).rejects.toThrow('outside the current viewport')
     const region = { x: 0, y: 0, width: 100, height: 100 }
     const cropped = JSON.parse(await call('capture_evidence', { ...capture, name: 'region', region }))
     const cropSize = await app.evaluate(({ nativeImage }, base64) => nativeImage.createFromBuffer(Buffer.from(base64, 'base64')).getSize(), (await readFile(cropped.path)).toString('base64'))
     expect(cropSize).toEqual({ width: 100, height: 100 })
-    expect(JSON.parse(await call('record_start', { ...capture, region, maxSeconds: 30 })).recording).toBe('started')
-    await expect(shell.getByRole('button', { name: 'Stop recording' })).toBeVisible()
-    await shell.screenshot({ path: join(data, 'recording-ui.png') })
     await call('press', { target: 'Reproduce' })
     expect(JSON.parse(await call('wait_for', { ...check, timeoutMs: 2000 })).verification.status).toBe('passed')
     expect(JSON.parse(await call('verify', check)).verification.status).toBe('passed')
-    const video = JSON.parse(await call('record_stop', {}))
-    expect(video.recording).toBe('saved'); expect(video.frames).toBeGreaterThan(1)
-    await expect(shell.getByRole('button', { name: 'Stop recording' })).toHaveCount(0)
-    const bytes = await readFile(video.path)
-    expect(video.path).toMatch(/\.mp4$/)
-    expect(bytes.subarray(4, 8).toString('ascii')).toBe('ftyp')
-    const playback = await shell.evaluate(async base64 => {
-      const video = document.createElement('video'); video.muted = true
-      video.src = URL.createObjectURL(new Blob([Uint8Array.from(atob(base64), char => char.charCodeAt(0))], { type: 'video/mp4' }))
-      try {
-        await video.play()
-        await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(new Error('No decoded video frame')), 10000); video.requestVideoFrameCallback(() => { clearTimeout(timer); resolve() }) })
-        const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight
-        const context = canvas.getContext('2d')!; context.drawImage(video, 0, 0)
-        return { width: video.videoWidth, height: video.videoHeight, pixel: [...context.getImageData(10, 10, 1, 1).data].slice(0, 3) }
-      } finally { video.pause(); URL.revokeObjectURL(video.src) }
-    }, bytes.toString('base64'))
-    expect(playback).toMatchObject({ width: 100, height: 100 })
-    expect(playback.pixel.every(value => Math.abs(value - 32) < 4)).toBe(true)
-    const upload = { artifact: video.link, url, target: 'Attach evidence', confirmation: 'Attachment saved' }
+    const after = JSON.parse(await call('capture_evidence', { ...capture, name: 'after', build: 'fixture-after' }))
+    const bytes = await readFile(after.path)
+    expect(after.path).toMatch(/\.png$/)
+    expect(after.sha256).not.toBe(screenshot.sha256)
+    await writeFile(cropped.path, Buffer.concat([await readFile(cropped.path), Buffer.from('changed')]))
+    const upload = { artifact: after.link, url, target: 'Attach evidence', confirmation: 'Attachment saved' }
+    await expect(call('upload_file', { ...upload, artifact: cropped.link })).rejects.toThrow('changed')
+    expect(uploaded.length).toBe(0)
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async () => ({ response: 0, checkboxChecked: false })) as typeof dialog.showMessageBox })
     await expect(call('upload_file', upload)).rejects.toThrow('declined')
     expect(uploaded.length).toBe(0)
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (options: { buttons: string[] }) => ({ response: options.buttons.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
     expect(JSON.parse(await call('upload_file', upload)).upload.status).toBe('confirmed')
-    expect(createHash('sha256').update(uploaded).digest('hex')).toBe(video.sha256)
+    expect(createHash('sha256').update(uploaded).digest('hex')).toBe(after.sha256)
     await expect(call('upload_file', upload)).rejects.toThrow('duplicate')
     await expect(shell.getByRole('button', { name: 'Stop recording' })).toHaveCount(0)
-    const previewChat = await shell.evaluate(() => window.engram.botCreate({ name: 'Recorded evidence preview' }))
+    expect((await readdir(dirname(after.path))).some(name => /\.(mp4|webm)$/i.test(name))).toBe(false)
+    const previewChat = await shell.evaluate(() => window.engram.botCreate({ name: 'Screenshot evidence preview' }))
     await shell.getByTestId(`bot-${previewChat.id}`).click()
-    await shell.getByTestId('bots-input-files').setInputFiles({ name: 'recording.mp4', mimeType: 'video/mp4', buffer: bytes })
-    const player = shell.getByLabel('Attached files').locator('video')
-    await expect(player).toBeVisible()
-    await expect.poll(() => player.evaluate(node => (node as HTMLVideoElement).readyState)).toBeGreaterThan(0)
-    expect(await player.evaluate(async node => { const video = node as HTMLVideoElement; await video.play(); video.pause(); return video.videoWidth })).toBe(100)
-    await shell.screenshot({ path: join(data, 'video-attachment-ui.png') })
+    await shell.getByTestId('bots-input-files').setInputFiles({ name: 'after.png', mimeType: 'image/png', buffer: bytes })
+    const preview = shell.getByLabel('Attached files').getByRole('img', { name: 'after.png' })
+    await expect(preview).toBeVisible()
+    await expect.poll(() => preview.evaluate(node => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+    await shell.screenshot({ path: join(data, 'screenshot-attachment-ui.png') })
   } finally {
     socket?.destroy()
     await app?.close()

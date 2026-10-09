@@ -52,19 +52,19 @@ test('settings stays usable while a runtime probe never answers', async () => {
   await page.keyboard.press('Escape')
 })
 
-test('turning task recordings off survives closing and reopening settings', async () => {
-  await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-memory').click()
-  const recording = page.getByTestId('setting-record-tasks')
-  await expect(recording).toBeChecked()
-  await recording.uncheck()
-  await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => settings.recordTasks))).toBe(false)
-  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
-  await expect(page.getByTestId('settings-view')).toHaveCount(0)
-  await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-memory').click()
-  await expect(page.getByTestId('setting-record-tasks')).not.toBeChecked()
-  await page.keyboard.press('Escape')
+test('memory settings and the app expose no browser video recording controls', async () => {
+  for (let visit = 0; visit < 2; visit++) {
+    await openActivity(page, 'settings')
+    await page.getByTestId('settings-nav-memory').click()
+    await expect(page.getByTestId('setting-work-map')).toBeVisible()
+    await expect(page.getByTestId('task-recording-settings')).toHaveCount(0)
+    await expect(page.getByTestId('setting-record-tasks')).toHaveCount(0)
+    await expect(page.getByRole('complementary', { name: 'Browser recording' })).toHaveCount(0)
+    expect(await page.evaluate(() => ['evidenceStatus' in window.engram, 'evidenceStop' in window.engram])).toEqual([false, false])
+    expect(await page.evaluate(async () => 'recordTasks' in await window.engram.settingsGet())).toBe(false)
+    await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
+    await expect(page.getByTestId('settings-view')).toHaveCount(0)
+  }
 })
 
 test('both sign-in cards survive reopening settings and offer cancel and browser recovery', async () => {

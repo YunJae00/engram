@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { AgentLoopStep } from '../src/agent-loop.js'
 import { routineTask } from '../src/routine-task.js'
-import { pickTools } from '../src/agent-prompt.js'
+import { openRuleLines, pickTools } from '../src/agent-prompt.js'
+import { workCapabilities } from '../src/work-capabilities.js'
 
 const page = { url: 'https://example.test/app', title: 'App', text: 'Ready Saved', links: [] }
 const check = { id: 'save', url: page.url, ready: 'Ready', present: ['Saved'], absent: ['Failed'] }
@@ -15,10 +16,20 @@ it('retains fresh check criteria and web scope without saving reusable upload ar
   const task = routineTask('Verify a fix and attach evidence', [step('verify', { verification: { status: 'passed' } }, check), step('upload_file', { upload: { status: 'confirmed' } }, { artifact: 'old-private-id', url: page.url, target: 'File' })])
   expect(task.surface).toBe('web'); expect(task.urls).toContain(page.url)
   expect(task.checks?.[0]).toContain('Ready'); expect(JSON.stringify(task)).not.toContain('old-private-id')
-  const host = { read: vi.fn(), start: vi.fn(), stop: vi.fn(), capture: vi.fn(), upload: vi.fn() }
+  const host = { read: vi.fn(), capture: vi.fn(), upload: vi.fn() }
   const tools = [...['open_page', 'read_open_page', 'press'].map(name => ({ name, description: name, argsSchema: {}, run: vi.fn() })), ...evidenceTools(host)]
-  const menu = pickTools(tools, 'Record reproduction evidence', [step('open_page', { url: page.url })]).map(tool => tool.name)
-  expect(menu).toContain('open_page'); expect(menu).toContain('press'); expect(menu).toContain('record_start')
+  const menu = pickTools(tools, 'Capture reproduction evidence', [step('open_page', { url: page.url })]).map(tool => tool.name)
+  expect(menu).toContain('open_page'); expect(menu).toContain('press'); expect(menu).toContain('capture_evidence')
+  expect(menu).not.toContain('record_start'); expect(menu).not.toContain('record_stop')
+  expect(openRuleLines().join('\n')).not.toMatch(/record_start|record_stop|Start recording/)
+})
+
+it('advertises only screenshot, verification and upload evidence tools', async () => {
+  const tools = evidenceTools({ read: vi.fn(), capture: vi.fn(), upload: vi.fn() })
+  expect(tools.map(tool => tool.name)).toEqual(['wait_for', 'verify', 'capture_evidence', 'upload_file'])
+  expect(JSON.stringify(tools)).not.toMatch(/record_start|record_stop|maxSeconds/)
+  const capability = JSON.parse(await workCapabilities(tools).run({}, { task: 'Inspect available tools' }))
+  expect(capability.evidence.map((tool: { name: string }) => tool.name)).toEqual(tools.map(tool => tool.name))
 })
 
 it('requires the expected URL and positive readiness, and never infers absence from truncated text', () => {
@@ -31,34 +42,28 @@ it('requires the expected URL and positive readiness, and never infers absence f
 
 it('waits for a fresh successful read and stops on cancellation', async () => {
   const read = vi.fn().mockResolvedValueOnce({ ...page, text: 'Loading' }).mockResolvedValue(page)
-  const tools = evidenceTools({ read, start: vi.fn(), stop: vi.fn(), capture: vi.fn(), upload: vi.fn() })
+  const tools = evidenceTools({ read, capture: vi.fn(), upload: vi.fn() })
   expect(JSON.parse(await tools[0]!.run({ ...check, timeoutMs: 1000 }, { task: 'Wait' })).verification.status).toBe('passed')
   expect(read).toHaveBeenCalledTimes(2)
   const controller = new AbortController(); controller.abort()
   await expect(tools[0]!.run(check, { task: 'Wait', signal: controller.signal })).rejects.toThrow()
 })
 
-it('keeps failed checks, interrupted recordings and uncertain uploads unverified', () => {
+it('keeps failed checks and uncertain uploads unverified', () => {
   const failed = step('verify', { verification: { status: 'failed' } }, check)
   const passed = step('verify', { verification: { status: 'passed' } }, check)
   expect(evidenceFault([failed, { ...passed, args: { ...check, ready: 'Other' } }])).toBeDefined()
   expect(evidenceFault([failed, { ...passed, seeded: true }])).toBeDefined()
   expect(evidenceFault([failed, passed])).toBeUndefined()
-  const started = step('record_start', { recording: 'started' }, { name: 'before', url: page.url })
-  expect(evidenceFault([started, step('record_stop', { recording: 'interrupted' })])).toBeDefined()
-  const saved = { recording: 'saved', name: 'before', url: page.url, artifact: 'before.webm', frames: 1 }
-  expect(evidenceFault([started, step('record_stop', saved)])).toBeUndefined()
-  expect(evidenceFault([started, step('record_stop', { ...saved, frames: 0 })])).toBeDefined()
   expect(evidenceFault([step('upload_file', { upload: { status: 'unconfirmed' } })])).toBeDefined()
 })
 
-it('keeps before and after recordings independent and accepts only matching fresh completion receipts', () => {
-  const start = (name: string, url = page.url) => step('record_start', { recording: 'started' }, { name, url })
-  const stop = (name: string) => step('record_stop', { recording: 'saved', name, url: page.url, artifact: `${name}.webm`, frames: 2 })
-  const steps = [start('before'), step('record_stop', { recording: 'interrupted' }), start('after'), stop('after')]
+it('keeps before and after screenshots independent and accepts only fresh capture receipts', () => {
+  const capture = (name: string) => step('capture_evidence', { artifact: `${name}.png`, sha256: 'a'.repeat(64) }, { name, url: page.url })
+  const steps = [{ ...capture('before'), observation: 'Capture failed' }, capture('after')]
   expect(evidenceFault(steps)).toBeDefined()
-  expect(evidenceFault([...steps, start('before'), stop('before')])).toBeUndefined()
-  expect(evidenceFault([start('before', 'https://example.test:443/app'), stop('before')])).toBeUndefined()
+  expect(evidenceFault([...steps, { ...capture('before'), seeded: true }])).toBeDefined()
+  expect(evidenceFault([...steps, capture('before')])).toBeUndefined()
 })
 
 it('saves media with content identity and rejects changed evidence and invalid media', async () => {

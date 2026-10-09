@@ -12,7 +12,6 @@ import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { WorkMapSettings } from '../components/WorkMapSettings.js'
 import { WorkInterviewDialog } from '../components/WorkInterview.js'
-import { TaskRecordingSettings } from '../components/TaskRecordingSettings.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
@@ -168,7 +167,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
             />
           </label>
         </div>
-        {section === 'memory' && <><WorkMapSettings /><TaskRecordingSettings /></>}
+        {section === 'memory' && <WorkMapSettings />}
         <section aria-label="How you work"><div className="setting-row"><span>How you work</span><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></div></section>
         <details className="settings-disclosure" data-testid="settings-more">
           <summary>Files &amp; backup</summary>
