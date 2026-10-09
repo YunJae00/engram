@@ -73,7 +73,10 @@ test('external browser tools capture masked screenshots and upload only approved
       })
     }, png.toString('base64'))
     expect(pixels.slice(0, 4)).toEqual(Array.from({ length: 4 }, () => [32, 32, 32]))
-    expect(pixels[4]).toEqual([0, 255, 0])
+    // Color-managed decoding may shift RGB; the public patch must remain green, not masked.
+    expect(pixels[4]![1]).toBeGreaterThan(200)
+    expect(pixels[4]![0]).toBeLessThan(128)
+    expect(pixels[4]![2]).toBeLessThan(128)
     const provenanceId = /\(engram-artifact:([^)]+)\)/.exec(screenshot.provenance)?.[1]
     expect(provenanceId).toBeTruthy()
     const provenance = JSON.parse(await readFile(join(dirname(screenshot.path), decodeURIComponent(provenanceId!)), 'utf8'))
