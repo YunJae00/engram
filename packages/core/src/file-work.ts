@@ -103,6 +103,9 @@ function nameOf(value: unknown, document = false, media = false): string {
   return value
 }
 
+// A link target a markdown reader cannot cut short: parentheses in a name are escaped too.
+export const artifactHref = (id: string): string => encodeURIComponent(id).replace(/\(/g, '%28').replace(/\)/g, '%29')
+
 export async function saveArtifact(directory: string, name: string, data: Buffer, signal?: AbortSignal, media = false) {
   nameOf(name, true, media)
   if (data.length > (media ? 32_000_000 : DOCUMENT_EXTENSIONS.includes(extname(name).toLowerCase()) ? DOCUMENT_BYTES : CONTENT_BYTES)) throw new Error('Generated output exceeds its size limit.')
@@ -141,7 +144,7 @@ export async function saveArtifact(directory: string, name: string, data: Buffer
   const actual = await boundedRead(path, signal, data.length)
   if (!actual.equals(data)) throw new Error('Output readback did not match. Do not retry the write; inspect the output first.')
   signal?.throwIfAborted()
-  return { artifact: basename(path), path, link: `engram-artifact:${basename(path)}`, markdownLink: `[${name}](engram-artifact:${encodeURIComponent(basename(path))})`, sha256: digest(actual), bytes: actual.length, originalUnchanged: true, completeReadback: true, ...(tableValidation ? { tableValidation } : {}) }
+  return { artifact: basename(path), path, link: `engram-artifact:${basename(path)}`, markdownLink: `[${name}](engram-artifact:${artifactHref(basename(path))})`, sha256: digest(actual), bytes: actual.length, originalUnchanged: true, completeReadback: true, ...(tableValidation ? { tableValidation } : {}) }
 }
 
 export async function readArtifact(directory: string, id: string, signal?: AbortSignal): Promise<Buffer> {

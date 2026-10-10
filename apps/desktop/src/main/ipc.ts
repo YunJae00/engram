@@ -121,7 +121,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -144,13 +144,13 @@ import { canLearnTurn } from './task-result-state.js'
 import { notifyTask } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
-import { cometNativeTools } from './native-tools.js'
+import { cometNativeTools, mentionedOutputs } from './native-tools.js'
 import { prepareInterviewContext } from './interview-preparation.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
-import { artifactDirectory, cometFileTools, registerArtifactIpc } from './file-work.js'
+import { artifactDirectory, cometFileTools, newestRevisions, registerArtifactIpc } from './file-work.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -1651,8 +1651,8 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
-    deliver: async (channel, text) => {
-      const cleaned = extractChatCaptures(text).text
+    deliver: async (channel, text, since) => {
+      const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(text).text, since)
       await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, at: new Date().toISOString() })
       broadcast({ type: 'chat:done', channel, text: cleaned })
     },
@@ -2158,7 +2158,8 @@ export function registerIpc(ctx: VaultContext): void {
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     // What this conversation already saved, so a later day can reopen it.
-    const earlierOutputs = bot ? await priorOutputs(artifactDirectory(paths), savedHistory) : []
+    // A check turn's draft is held back from the thread; its outputs are this task's own.
+    const earlierOutputs = bot ? await priorOutputs(artifactDirectory(paths), [...savedHistory, ...(turn?.verification ? [{ role: 'assistant' as const, text: turn.verification.result }] : [])]) : []
     const rules: string[] = [
       ...(recovery ? [recovery] : []),
       // A bot is the librarian wearing a charter: same grounding, same
@@ -2365,10 +2366,11 @@ export function registerIpc(ctx: VaultContext): void {
         const skillLedger = await readSkillsLedger(paths)
         // The runtime's own tools, governed here: reads where the person
         // already lets it look, a work folder of its own, commands once allowed.
-        const native = engine.id === 'claude' && settings.nativeTools !== false
+        const native = (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
           ? await cometNativeTools({ paths, channel, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
+        const nativeSince = Date.now()
         const result = await runComet(
           {
             engine,
@@ -2449,12 +2451,14 @@ export function registerIpc(ctx: VaultContext): void {
                   .slice(0, limit)
                   .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
               },
-            }), ...workEvidenceTools(paths, channel), ...attachments.tools, ...(turn?.verification ? [resultCheckTool({
+            }), ...workEvidenceTools(paths, channel), ...attachments.tools,
+            // Offered every turn so a check runs in the same session as the work it checks.
+            resultCheckTool(turn?.verification ? {
               outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
               sources: attachments.evidencePaths,
               requireSourceEvidence: attachments.paths.length > 0,
               generatedDirectory: artifactDirectory(paths),
-            })] : []), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2503,6 +2507,16 @@ export function registerIpc(ctx: VaultContext): void {
         }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
+        if (native && !result.asked && !result.stopped) {
+          const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [native.cwd] }).find((tool) => tool.name === 'file_create_copy')!
+          for (const path of await mentionedOutputs(native.cwd, result.answer, nativeSince)) {
+            try {
+              const observation = await handIn.run({ name: path.split(/[\\/]/).at(-1)!, fromPath: path }, { task: request.message })
+              result.steps.push({ tool: 'file_create_copy', args: { name: path.split(/[\\/]/).at(-1)!, fromPath: path }, observation })
+              result.answer = `${result.answer}\n\n${(JSON.parse(observation) as { markdownLink: string }).markdownLink}`
+            } catch (error) { flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`) }
+          }
+        }
         let check: TurnOutcome['check']
         if (turn?.verification) {
           const outputs = latestResultOutputs(result.steps, await priorOutputs(artifactDirectory(paths), [
@@ -2512,7 +2526,10 @@ export function registerIpc(ctx: VaultContext): void {
           check = checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths))
           // A confirmed answer carries the latest file links once. A rejected
           // check delivers nothing from here: the task runner answers with the draft.
-          const links = outputs.map(output => `[${output.name}](engram-artifact:${encodeURIComponent(output.path.split(/[\\/]/).at(-1)!)})`)
+          // Only the files the answer itself hands over, at their latest revision; all of them if it named none.
+          const named = new Set([...result.answer.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')] } catch { return [] } }))
+          const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs
+          const links = delivered.map(output => `[${output.name}](engram-artifact:${artifactHref(output.path.split(/[\\/]/).at(-1)!)})`)
           if (!result.asked && check.accepted) result.answer = [result.answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:[^\s)]+\)/g, '').trim(), ...links].filter(Boolean).join('\n\n')
         }
         // A model that was pushed to act may announce that it acted. The

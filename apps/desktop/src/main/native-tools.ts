@@ -1,8 +1,8 @@
 import { app } from 'electron'
-import { mkdir, realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { NativeDecision, NativeTools, VaultPaths } from 'core'
+import { artifactHref, type NativeDecision, type NativeTools, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { artifactDirectory } from './file-work.js'
 
@@ -80,6 +80,23 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
   if (name === 'AskUserQuestion') return deny('Ask with ask_person instead.')
   if (name === 'WebFetch' || name === 'WebSearch') return deny('Use Engram\'s web tools so its connection and approval checks still apply.')
   return deny(`${name} is not available in this chat.`)
+}
+
+const DELIVERABLES = new Set(['.xlsx', '.docx', '.pptx', '.csv', '.tsv', '.md', '.txt', '.json'])
+
+// A file the comet built in its task folder this turn and named in its answer,
+// but never handed in: the person was told about it, so it becomes an output.
+export async function mentionedOutputs(cwd: string, answer: string, since: number): Promise<string[]> {
+  const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
+  const found: string[] = []
+  for (const entry of entries) {
+    const path = join(cwd, entry), name = basename(entry)
+    if (!DELIVERABLES.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
+    if (answer.includes(`-${artifactHref(name)})`) || answer.includes(`-${encodeURIComponent(name)})`)) continue
+    const info = await stat(path).catch(() => null)
+    if (info?.isFile() && info.mtimeMs >= since) found.push(path)
+  }
+  return found
 }
 
 const consent = new Map<string, { allowed: boolean }>()

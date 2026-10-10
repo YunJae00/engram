@@ -41,4 +41,7 @@ it('continues with the goal verbatim and says why', async () => {
   expect(verify).toContain('Do not promote optional inspection methods or extra workflows into new requirements')
   expect(verify).toContain('original sources and user request, not your own outputs')
   expect(verify).toContain('Previous check did not pass: The output has an unsupported claim.')
+  expect(continuationPrompt({ ...task, result: '[Report](engram-artifact:report.md)' }, 'verify')).toContain('Check this result and correct only what is wrong; do not redo the task:\n[Report](engram-artifact:report.md)')
+  expect(continuationPrompt({ ...task, result: 'draft' }, 'limit')).not.toContain('draft')
+  expect(verify).toContain('do not keep adding exploratory checks')
 })
