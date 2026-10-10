@@ -6,8 +6,8 @@ import { DOMParser, type Document } from '@xmldom/xmldom'
 import { validateWorkbookFormula } from './file-workbook.js'
 import { DOCUMENT_BYTES, DOCUMENT_EXTENSIONS } from './document-tools.js'
 
-const EXPANDED_BYTES = 32_000_000
-const PART_BYTES = 2_000_000
+const EXPANDED_BYTES = 128_000_000
+const PART_BYTES = 20_000_000
 const PACKAGE_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const CONTENT_TYPES = 'http://schemas.openxmlformats.org/package/2006/content-types'
 const OFFICE_RELS = ['http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'http://purl.oclc.org/ooxml/officeDocument/relationships']
@@ -25,7 +25,7 @@ export function partName(name: unknown): string {
 }
 
 export function xmlText(bytes: Buffer): string {
-  if (bytes.length > PART_BYTES) throw new Error('XML part exceeds 2 MB.')
+  if (bytes.length > PART_BYTES) throw new Error(`XML part exceeds ${PART_BYTES / 1_000_000} MB.`)
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
 }
 
@@ -41,7 +41,7 @@ function parseXml(text: string): Document {
 // Read sequentially, checking declared and streamed sizes before allocating a
 // complete part. Archive paths never become host filesystem paths.
 export async function readPackage(bytes: Buffer, signal?: AbortSignal): Promise<DocumentPackage> {
-  if (bytes.length > DOCUMENT_BYTES) throw new Error('Document exceeds 8 MB.')
+  if (bytes.length > DOCUMENT_BYTES) throw new Error(`Document exceeds ${DOCUMENT_BYTES / 1_000_000} MB.`)
   signal?.throwIfAborted()
   const parts = new Map<string, Buffer>()
   await new Promise<void>((resolve, reject) => {
@@ -64,7 +64,8 @@ export async function readPackage(bytes: Buffer, signal?: AbortSignal): Promise<
           const mode = entry.externalFileAttributes >>> 16
           if ((entry.generalPurposeBitFlag & 1) || (mode & 0xf000) === 0xa000) throw new Error('Encrypted and linked archive entries are not supported.')
           expanded += entry.uncompressedSize
-          if (entry.uncompressedSize > EXPANDED_BYTES || expanded > EXPANDED_BYTES) throw new Error('Expanded document exceeds 32 MB.')
+          if (entry.uncompressedSize > EXPANDED_BYTES || expanded > EXPANDED_BYTES) throw new Error(`Expanded document exceeds ${EXPANDED_BYTES / 1_000_000} MB.`)
+          if (entry.uncompressedSize > PART_BYTES) throw new Error(`Document part exceeds ${PART_BYTES / 1_000_000} MB.`)
           if (entry.fileName.endsWith('/')) { zip.readEntry(); return }
           zip.openReadStream(entry, (error, stream) => {
             if (error || !stream) { fail(error ?? new Error('Cannot read part.')); return }
@@ -73,7 +74,7 @@ export async function readPackage(bytes: Buffer, signal?: AbortSignal): Promise<
             stream.on('error', fail)
             stream.on('data', (chunk: Buffer) => {
               size += chunk.length
-              if (signal?.aborted || size > entry.uncompressedSize || size > EXPANDED_BYTES) { stream.destroy(new Error('Document read cancelled or size changed.')); return }
+              if (signal?.aborted || size > entry.uncompressedSize || size > PART_BYTES) { stream.destroy(new Error('Document read cancelled or size changed.')); return }
               chunks.push(chunk)
             })
             stream.on('end', () => {
@@ -234,7 +235,7 @@ export async function editPackage(parts: DocumentPackage, edits: XmlEdit[], exte
       length += chunk.length
       if (length > DOCUMENT_BYTES || signal?.aborted) {
         stream.pause()
-        reject(new Error('Output cancelled or exceeds 8 MB.'))
+        reject(new Error(`Output cancelled or exceeds ${DOCUMENT_BYTES / 1_000_000} MB.`))
         return
       }
       chunks.push(chunk)

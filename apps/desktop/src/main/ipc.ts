@@ -140,9 +140,11 @@ import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
+import { canLearnTurn } from './task-result-state.js'
 import { notifyTask } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
+import { cometNativeTools } from './native-tools.js'
 import { prepareInterviewContext } from './interview-preparation.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -715,7 +717,6 @@ export function abortAllChat(channel?: string): void {
   for (const entry of chatAborts) {
     if (channel !== undefined && entry.channel !== channel) continue
     entry.controller.abort()
-    chatAborts.delete(entry)
   }
 }
 
@@ -1650,6 +1651,11 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
+    deliver: async (channel, text) => {
+      const cleaned = extractChatCaptures(text).text
+      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, at: new Date().toISOString() })
+      broadcast({ type: 'chat:done', channel, text: cleaned })
+    },
     learn: (question, answer) => learnFromAnswer(ctx, question, answer),
     notify: (task) => notifyTask(task, broadcast),
   })
@@ -2079,6 +2085,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => request.botId && !request.message.trim().startsWith('/') ? tasks.chat(request) : sendChat(request))
 
   async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
+    if ([...chatAborts].some(entry => entry.channel === (request.channel ?? 'panel'))) throw new Error('The previous turn is still stopping. Please try again shortly.')
     if (externalOwns(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))) throw new Error('An external client is working in this conversation. Stop its session in Settings → External connections before sending here.')
     if (request.botId && learning.pending(request.botId)) throw new Error('Wait for the routine draft to finish preparing.')
     const command = /^\/routine(?:\s+(start|finish|cancel))?$/i.exec(request.message.trim())
@@ -2356,6 +2363,12 @@ export function registerIpc(ctx: VaultContext): void {
         const resume = resumeState.get(bot.id)
         resumeState.delete(bot.id)
         const skillLedger = await readSkillsLedger(paths)
+        // The runtime's own tools, governed here: reads where the person
+        // already lets it look, a work folder of its own, commands once allowed.
+        const native = engine.id === 'claude' && settings.nativeTools !== false
+          // An approved card is the whole consent for commands; there is no page to reconfirm on.
+          ? await cometNativeTools({ paths, channel, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          : undefined
         const result = await runComet(
           {
             engine,
@@ -2441,7 +2454,7 @@ export function registerIpc(ctx: VaultContext): void {
               sources: attachments.evidencePaths,
               requireSourceEvidence: attachments.paths.length > 0,
               generatedDirectory: artifactDirectory(paths),
-            })] : []), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)]) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            })] : []), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2466,13 +2479,14 @@ export function registerIpc(ctx: VaultContext): void {
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
+            ...(native ? { native } : {}),
             onStep: (line) => {
               broadcast({ type: 'comet:step', channel, line })
               const said = /^([a-z_]+): ([^]*)$/.exec(line)
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => broadcast({ type: 'chat:token', channel, text }),
+            onToken: (text) => { if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
             onReset: () => broadcast({ type: 'chat:token', channel, text: '', reset: true }),
             onObservation: (tool: string, observation: string) => {
               if (process.env['ENGRAM_STEP_DETAIL'] === '1')
@@ -2496,12 +2510,10 @@ export function registerIpc(ctx: VaultContext): void {
             { role: 'assistant', text: result.answer },
           ]))
           check = checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths))
-          // A rejected check is not a completed answer. Keep useful files and
-          // replace superseded links instead of appending another confident claim.
+          // A confirmed answer carries the latest file links once. A rejected
+          // check delivers nothing from here: the task runner answers with the draft.
           const links = outputs.map(output => `[${output.name}](engram-artifact:${encodeURIComponent(output.path.split(/[\\/]/).at(-1)!)})`)
-          if (!result.asked) result.answer = [check.accepted
-            ? result.answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:[^\s)]+\)/g, '').trim()
-            : `Not verified as complete.\n${check.issues.join('\n')}`, ...links].filter(Boolean).join('\n\n')
+          if (!result.asked && check.accepted) result.answer = [result.answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:[^\s)]+\)/g, '').trim(), ...links].filter(Boolean).join('\n\n')
         }
         // A model that was pushed to act may announce that it acted. The
         // record is corrected here, in the same breath as the answer, so the
@@ -2531,10 +2543,11 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        const finished = !result.asked && !result.stopped && !result.pending && !result.incomplete && (!check || check.accepted)
+        const held = !result.asked && !result.stopped && !result.pending && (!!turn?.verification || (!result.incomplete && !!turn?.holdIf?.(result.answer, result.steps)))
+        const finished = canLearnTurn(result, held, check)
         await learning.record(bot.id, learningId, request.message, result.steps, finished)
         learningRecorded = true
-        await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
+        if (finished) await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
         if (savedRoutine?.task) {
           await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
           broadcast({ type: 'vault:changed' })
@@ -2550,15 +2563,21 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'bots:changed' })
         }
         signal.throwIfAborted()
-        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}) })
-        await deliverAnswer(
-          `${result.answer}${note}`,
-          result.asked && result.options?.length
-            ? { kind: 'asked', question: result.answer, options: result.options }
-            : routine
-                ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
-                : undefined,
-        )
+        // Work that will be checked, and the check itself, stay out of the
+        // thread: the task runner delivers one answer when the check is done.
+        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
+        if (held) {
+          if (bot && !recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at: new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
+        } else {
+          await deliverAnswer(
+            `${result.answer}${note}`,
+            result.asked && result.options?.length
+              ? { kind: 'asked', question: result.answer, options: result.options }
+              : routine
+                  ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
+                  : undefined,
+          )
+        }
         answerDelivered = true
         // What this turn did, held the moment the answer is out: a keep that
         // follows right away must find the path to record, not wait out the
@@ -2575,7 +2594,7 @@ export function registerIpc(ctx: VaultContext): void {
         const previousAnswer = [...request.history].reverse().find((turn) => turn.role === 'assistant')?.text
         // After the answer is out, while the model is still held: what of
         // this turn is worth keeping about the person.
-        if (!turn?.quiet && !result.asked && filingEngine) {
+        if (!turn?.quiet && finished && filingEngine) {
           broadcast({ type: 'comet:step', channel, line: 'note: Saving useful context from this turn' })
           await rememberTurn({
             engine: filingEngine,
@@ -2592,12 +2611,14 @@ export function registerIpc(ctx: VaultContext): void {
       } catch (err) {
         if (!learningRecorded) await learning.record(bot.id, learningId, request.message, [], false)
         if (signal.aborted) {
-          broadcast({ type: 'chat:done', channel, text: '' })
+          // A check cut short by its budget is answered by the task runner; its seat stays open for that.
+          if (!turn?.verification) broadcast({ type: 'chat:done', channel, text: '' })
           return
         }
         // Post-answer learning may use a different provider. Its failure must
         // neither replay completed work nor mark this conversation's AI limited.
         if (answerDelivered) { flog('chat-after-answer', err); return }
+        if (turn?.verification) throw err
         const said = err instanceof Error ? err.message : String(err)
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
         // A brain at its usage limit hands the turn to the other signed-in one.
@@ -2653,7 +2674,7 @@ export function registerIpc(ctx: VaultContext): void {
       // A cancel is the user's own hand — never an error banner. (The engine
       // ends silently on abort, but a throw can still race the abort in.)
       if (signal.aborted) {
-        broadcast({ type: 'chat:done', channel, text: '' })
+        if (!turn?.verification) broadcast({ type: 'chat:done', channel, text: '' })
         return
       }
       broadcast({ type: 'chat:error', channel, message: err instanceof Error ? err.message : String(err) })

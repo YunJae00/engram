@@ -1,79 +1,57 @@
 import { Menu, Tray, nativeImage } from 'electron'
 
-// The tray wears the app's own mark: the same little star, drawn at the two
-// sizes a system tray asks for. It is one silhouette with the face cut out of
-// it, so it reads as a character at 16px and stays a solid shape at 32.
-// Geometry in the 24 grid the mark was drawn on, scaled to the icon.
-const GRID = 24
-const STAR = { cx: 12, cy: 12.6, R: 10.6, rIn: 7.0, puff: 0.58, tilt: (10 * Math.PI) / 180 }
-const FACE = { cy: 12.0, gap: 3.0, r: 0.95, rSmall: 1.25 }
-const SMILE = { cy: 11.5, rm: 2.1, t: 0.9, span: 0.62 }
-// A mouth is a smudge on a 16px tray; the eyes alone carry it there.
-const SMILE_MIN_PX = 32
+// The tray wears the app's own mark: the comet, drawn at the two sizes a
+// system tray asks for. One silhouette, so it reads at 16px and stays a solid
+// shape at 32. Same numbers as the app icon (scripts/gen-icon.mjs) and the
+// in-app mark (Icon.tsx), in the 24 grid they were drawn on.
+const STAR = { cx: 13.9, cy: 10.1, R: 5.25, r: 3.2, sw: 2.25, tilt: (12 * Math.PI) / 180 }
+const TRAIL: readonly (readonly [number, number, number])[] = [
+  [8.6, 15.4, 1.6],
+  [5.8, 18.0, 1.15],
+  [3.75, 20.05, 0.75],
+]
+// The mark's bounding box in grid units, used to fit it to the tray square.
+const MARK_BOX = { cx: 11.65, cy: 12.25, size: 17.3 }
 
-// The body is star-convex about its centre, so "inside" is one radius per
-// direction: the outline is sampled once into a direction -> radius table.
-const LUT_BINS = 1024
-const rimAt = (() => {
-  const pol = (r: number, a: number) => ({ x: r * Math.sin(a), y: -r * Math.cos(a) })
-  const q = (p0: { x: number; y: number }, p1: { x: number; y: number }, p2: { x: number; y: number }, t: number) => ({
-    x: (1 - t) ** 2 * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x,
-    y: (1 - t) ** 2 * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y,
-  })
-  const lut = new Float64Array(LUT_BINS)
-  const step = (2 * Math.PI) / 5
-  const { R, rIn, puff, tilt } = STAR
-  const bulge = rIn + (R - rIn) * puff
-  for (let i = 0; i < 5; i++) {
-    const a = tilt + i * step
-    const b = a + step / 2
-    const tip = pol(R * 0.98, a)
-    const inP = pol(rIn, b)
-    const tip2 = pol(R * 0.98, a + step)
-    for (let t = 0; t <= 300; t++) {
-      for (const p of [q(tip, pol(bulge, a + step / 4), inP, t / 300), q(inP, pol(bulge, b + step / 4), tip2, t / 300)]) {
-        const bin = Math.round(((Math.atan2(p.y, p.x) + Math.PI) / (2 * Math.PI)) * (LUT_BINS - 1))
-        const r = Math.hypot(p.x, p.y)
-        if (r > lut[bin]!) lut[bin] = r
-      }
-    }
-  }
-  for (let pass = 0; pass < 2; pass++) {
-    for (let k = 0; k < LUT_BINS; k++) {
-      if (lut[k] === 0) lut[k] = Math.max(lut[(k - 1 + LUT_BINS) % LUT_BINS]!, lut[(k + 1) % LUT_BINS]!)
-    }
-  }
-  return (theta: number): number => {
-    const at = ((theta + Math.PI) / (2 * Math.PI)) * LUT_BINS
-    const k = Math.floor(at) % LUT_BINS
-    const frac = at - Math.floor(at)
-    return lut[k]! * (1 - frac) + lut[(k + 1) % LUT_BINS]! * frac
-  }
-})()
+const VERTS: readonly (readonly [number, number])[] = Array.from({ length: 10 }, (_, k) => {
+  const a = -Math.PI / 2 + (k * Math.PI) / 5 + STAR.tilt
+  const rad = k % 2 === 0 ? STAR.R : STAR.r
+  return [STAR.cx + rad * Math.cos(a), STAR.cy + rad * Math.sin(a)] as const
+})
 
-// The mark's coverage at one point, in grid units, face holes included.
+function inPoly(x: number, y: number): boolean {
+  let inside = false
+  for (let i = 0, j = VERTS.length - 1; i < VERTS.length; j = i++) {
+    const [xi, yi] = VERTS[i]!
+    const [xj, yj] = VERTS[j]!
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+function edgeDist(x: number, y: number): number {
+  let best = Infinity
+  for (let i = 0, j = VERTS.length - 1; i < VERTS.length; j = i++) {
+    const [ax, ay] = VERTS[j]!
+    const [bx, by] = VERTS[i]!
+    const dx = bx - ax
+    const dy = by - ay
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+    best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+  }
+  return best
+}
+
+// 1 inside the comet, else 0: the star polygon plus half the stroke that
+// rounds its tips, and the trail. Below 32px the third dot is sub-pixel.
 function markAlpha(gx: number, gy: number, px: number): number {
-  const dx = gx - STAR.cx
-  const dy = gy - STAR.cy
-  if (Math.hypot(dx, dy) > rimAt(Math.atan2(dy, dx))) return 0
-  const detailed = px >= SMILE_MIN_PX
-  const eyeR = detailed ? FACE.r : FACE.rSmall
-  for (const side of [-1, 1]) {
-    const ex = STAR.cx + side * FACE.gap
-    if ((gx - ex) ** 2 + (gy - FACE.cy) ** 2 <= eyeR * eyeR) return 0
+  if (inPoly(gx, gy) || edgeDist(gx, gy) <= STAR.sw / 2) return 1
+  const dots = px < 32 ? 2 : 3
+  for (let i = 0; i < dots; i++) {
+    const [x, y, r] = TRAIL[i]!
+    if ((gx - x) ** 2 + (gy - y) ** 2 <= r * r) return 1
   }
-  if (detailed) {
-    const sr = Math.hypot(gx - STAR.cx, gy - SMILE.cy)
-    const sa = Math.atan2(gx - STAR.cx, -(gy - SMILE.cy))
-    if (Math.abs(sr - SMILE.rm) <= SMILE.t / 2 && Math.abs(sa) >= Math.PI - SMILE.span) return 0
-    for (const side of [-1, 1]) {
-      const capA = Math.PI + side * SMILE.span
-      const capX = STAR.cx + SMILE.rm * Math.sin(capA)
-      const capY = SMILE.cy - SMILE.rm * Math.cos(capA)
-      if ((gx - capX) ** 2 + (gy - capY) ** 2 <= (SMILE.t / 2) ** 2) return 0
-    }
-  }
-  return 1
+  return 0
 }
 
 function paintGlyph(scale: number): Buffer {
@@ -83,9 +61,9 @@ function paintGlyph(scale: number): Buffer {
   const SS = 4
   const buffer = Buffer.alloc(size * size * 4)
   // The mark fills the tray square, a hair inside it so nothing is clipped.
-  const unit = size / GRID / 0.94
-  const offX = size / 2 - STAR.cx * unit
-  const offY = size / 2 - STAR.cy * unit
+  const unit = (size * 0.94) / MARK_BOX.size
+  const offX = size / 2 - MARK_BOX.cx * unit
+  const offY = size / 2 - MARK_BOX.cy * unit
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let acc = 0

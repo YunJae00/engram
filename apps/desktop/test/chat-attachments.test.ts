@@ -11,7 +11,7 @@ import { appendBotTurn, readBotTranscript, engineCwd, runComet, type Engine, typ
 const state = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => unknown>(), clipboard: vi.fn(), owner: { webContents: { mainFrame: {} } } }))
 vi.mock('electron', () => ({
   clipboard: { writeText: state.clipboard },
-  nativeImage: { createFromBuffer: (data: Buffer) => ({ isEmpty: () => data.toString() !== 'valid image' }) },
+  nativeImage: { createFromBuffer: (data: Buffer) => ({ isEmpty: () => data.toString() !== 'valid image', getSize: () => ({ width: 8, height: 8 }) }) },
   ipcMain: { removeHandler: vi.fn(), handle: (name: string, handler: (...args: unknown[]) => unknown) => state.handlers.set(name, handler) },
 }))
 vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => state.owner }))

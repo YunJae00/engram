@@ -100,6 +100,14 @@
 .interview-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 .interview-dialog::backdrop { background: rgba(22, 22, 27, 0.38); backdrop-filter: blur(4px); }
 .interview-dialog-body, .work-interview, .work-interview form { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.artifact-sheet { box-sizing: border-box; width: min(92vw, 820px); max-height: 85dvh; margin: auto; padding: var(--space-6) var(--dialog-gutter); overflow: hidden; color: var(--fg); background: var(--widget-bg); border: 1px solid var(--border-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow-sheet); }
+.artifact-sheet[open] { display: flex; flex-direction: column; gap: 14px; }
+.artifact-sheet::backdrop { background: rgba(22, 22, 27, 0.38); backdrop-filter: blur(3px); }
+.artifact-sheet-head { display: flex; flex: none; align-items: center; gap: 8px; }
+.artifact-sheet-head h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-sheet-head button { flex: none; }
+.artifact-sheet-body { min-height: 0; overflow: auto; overflow-wrap: anywhere; }
+.artifact-sheet pre { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-small); }
 .interview-dialog [hidden] { display: none; }
 .interview-topbar { display: flex; align-items: center; justify-content: flex-end; flex: none; gap: 20px; padding: 12px 28px 8px; }
 .interview-topbar .dialog-close { margin: 0; flex: none; }

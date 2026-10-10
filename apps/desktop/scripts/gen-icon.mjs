@@ -5,129 +5,75 @@ import { fileURLToPath } from 'node:url'
 
 const SS = 4 // supersampling factor for smooth edges
 
-const STARLIGHT = [0xf4, 0xf6, 0xff]
-// Night-sky tile: a shallow vertical gradient rather than a flat block, so the
-// square reads as sky instead of as a generic dark app chip.
-const TILE_TOP = [0x1b, 0x1e, 0x33]
-const TILE_BOTTOM = [0x0d, 0x0f, 0x1c]
-const TILE_RADIUS = 0.225 // corner radius as a fraction of the side
+// A round plate in the app's own ink, the comet on it in white.
+const PLATE = [0x2b, 0x2b, 0x33]
+const MARK = [0xff, 0xff, 0xff]
 
-// The app's own character wears the icon: the pillowy five-point star from
-// the comets, leaning into flight, with its face cut out so the sky shows
-// through. The same proportions as the in-app mark, in fractions of the
-// 24 grid it was drawn on.
-const GRID = 24
-const STAR = { cx: 12, cy: 12.6, R: 10.6, rIn: 7.0, puff: 0.58, tilt: (10 * Math.PI) / 180 }
-const FACE = { cy: 12.0, eyeGap: 3.0, eyeR: 0.95, eyeRSmall: 1.25 }
-const SMILE = { cy: 11.5, rm: 2.1, t: 0.9, span: 0.62 }
-// Icons small enough that a smile would be a smudge keep the eyes alone,
-// grown a touch - the same rule the in-app mark follows.
-const FACE_DETAIL_MIN = 48
-const GLOW = 1.1
+// The comet: a five-point star leaning into flight, its tips rounded by a
+// thick round-joined stroke, and three fading dots trailing down-left. Same
+// numbers as the in-app mark (Icon.tsx) and the tray glyph (tray.ts), in the
+// 24 grid they were drawn on.
+const STAR = { cx: 13.9, cy: 10.1, R: 5.25, r: 3.2, sw: 2.25, tilt: (12 * Math.PI) / 180 }
+const TRAIL = [
+  [8.6, 15.4, 1.6],
+  [5.8, 18.0, 1.15],
+  [3.75, 20.05, 0.75],
+]
+// The mark's bounding box in grid units, used to centre it on the plate.
+const MARK_BOX = { cx: 11.65, cy: 12.25, size: 17.3 }
 
-// The silhouette is star-convex about its centre, so "inside" is one radius
-// per direction: the outline (the same two quadratics per limb as the app
-// mark) is sampled once into a direction -> radius table.
-const LUT_BINS = 2048
-const radiusAt = (() => {
-  const pol = (r, a) => ({ x: r * Math.sin(a), y: -r * Math.cos(a) })
-  const pts = []
-  const step = (2 * Math.PI) / 5
-  const { R, rIn, puff, tilt } = STAR
-  const q = (p0, p1, p2, t) => ({
-    x: (1 - t) ** 2 * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x,
-    y: (1 - t) ** 2 * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y,
-  })
-  for (let i = 0; i < 5; i++) {
-    const a = tilt + i * step
-    const b = a + step / 2
-    const bulge = rIn + (R - rIn) * puff
-    const tip = pol(R * 0.98, a)
-    const inP = pol(rIn, b)
-    const tip2 = pol(R * 0.98, a + step)
-    for (let t = 0; t <= 400; t++) pts.push(q(tip, pol(bulge, a + step / 4), inP, t / 400))
-    for (let t = 0; t <= 400; t++) pts.push(q(inP, pol(bulge, b + step / 4), tip2, t / 400))
-  }
-  const lut = new Float64Array(LUT_BINS)
-  for (const p of pts) {
-    const theta = Math.atan2(p.y, p.x)
-    const bin = Math.round(((theta + Math.PI) / (2 * Math.PI)) * (LUT_BINS - 1))
-    const r = Math.hypot(p.x, p.y)
-    if (r > lut[bin]) lut[bin] = r
-  }
-  // Fill any bin the sampling skipped from its neighbours - twice around,
-  // so a run of empty bins at the seam is covered from either side.
-  for (let pass = 0; pass < 2; pass++) {
-    for (let k = 0; k < LUT_BINS; k++) {
-      if (lut[k] === 0) lut[k] = Math.max(lut[(k - 1 + LUT_BINS) % LUT_BINS], lut[(k + 1) % LUT_BINS])
-    }
-  }
-  // Read between bins, so the rim is a curve rather than a staircase.
-  return (theta) => {
-    const at = ((theta + Math.PI) / (2 * Math.PI)) * LUT_BINS
-    const k = Math.floor(at) % LUT_BINS
-    const frac = at - Math.floor(at)
-    return lut[k] * (1 - frac) + lut[(k + 1) % LUT_BINS] * frac
-  }
-})()
+const VERTS = Array.from({ length: 10 }, (_, k) => {
+  const a = -Math.PI / 2 + (k * Math.PI) / 5 + STAR.tilt
+  const rad = k % 2 === 0 ? STAR.R : STAR.r
+  return [STAR.cx + rad * Math.cos(a), STAR.cy + rad * Math.sin(a)]
+})
 
-// Inside the full-bleed rounded tile?
-function inTile(x, y, W) {
-  const half = W / 2
-  const r = TILE_RADIUS * W
-  const dx = Math.abs(x - half)
-  const dy = Math.abs(y - half)
-  if (dx > half || dy > half) return false
-  if (dx <= half - r || dy <= half - r) return true
-  return (dx - (half - r)) ** 2 + (dy - (half - r)) ** 2 <= r * r
+function inPoly(x, y) {
+  let inside = false
+  for (let i = 0, j = VERTS.length - 1; i < VERTS.length; j = i++) {
+    const [xi, yi] = VERTS[i]
+    const [xj, yj] = VERTS[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
 }
 
-// The star's coverage at one sample point, face holes and a soft halo
-// included. Everything works in grid units about the star's centre.
-function starAlpha(gx, gy, px) {
-  const dx = gx - STAR.cx
-  const dy = gy - STAR.cy
-  const d = Math.hypot(dx, dy)
-  const rim = radiusAt(Math.atan2(dy, dx))
-  if (d <= rim) {
-    const detailed = px >= FACE_DETAIL_MIN
-    const eyeR = detailed ? FACE.eyeR : FACE.eyeRSmall
-    for (const side of [-1, 1]) {
-      const ex = STAR.cx + side * FACE.eyeGap
-      if ((gx - ex) ** 2 + (gy - FACE.cy) ** 2 <= eyeR * eyeR) return 0
-    }
-    if (detailed) {
-      const sdx = gx - STAR.cx
-      const sdy = gy - SMILE.cy
-      const sr = Math.hypot(sdx, sdy)
-      const sa = Math.atan2(sdx, -sdy)
-      const inBand = Math.abs(sr - SMILE.rm) <= SMILE.t / 2
-      if (inBand && Math.abs(sa) >= Math.PI - SMILE.span) return 0
-      for (const side of [-1, 1]) {
-        const capA = Math.PI + side * SMILE.span
-        const capX = STAR.cx + SMILE.rm * Math.sin(capA)
-        const capY = SMILE.cy - SMILE.rm * Math.cos(capA)
-        if ((gx - capX) ** 2 + (gy - capY) ** 2 <= (SMILE.t / 2) ** 2) return 0
-      }
-    }
-    return 1
+function edgeDist(x, y) {
+  let best = Infinity
+  for (let i = 0, j = VERTS.length - 1; i < VERTS.length; j = i++) {
+    const [ax, ay] = VERTS[j]
+    const [bx, by] = VERTS[i]
+    const dx = bx - ax
+    const dy = by - ay
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+    best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
   }
-  // A whisper of light just beyond the body, so the star sits IN the sky
-  // rather than stamped on it.
-  const outer = rim * GLOW
-  if (d < outer) return ((1 - (d - rim) / (outer - rim)) ** 3) * 0.25
+  return best
+}
+
+// 1 inside the comet, else 0. The body is the star polygon plus half the
+// stroke around it, which is what rounds the tips. Below 32px the third dot
+// is sub-pixel, so only two trail.
+function cometAlpha(gx, gy, px) {
+  if (inPoly(gx, gy) || edgeDist(gx, gy) <= STAR.sw / 2) return 1
+  const dots = px < 32 ? 2 : 3
+  for (let i = 0; i < dots; i++) {
+    const [x, y, r] = TRAIL[i]
+    if ((gx - x) ** 2 + (gy - y) ** 2 <= r * r) return 1
+  }
   return 0
 }
 
-// Renders the dark tile with the star at `px` pixels; straight-alpha RGBA.
+// Renders the round plate with the comet at `px` pixels; straight-alpha RGBA.
 export function renderIcon(px) {
   const W = px * SS
+  const half = W / 2
   const out = Buffer.alloc(px * px * 4)
-  // The glyph fills most of the tile, its centre a touch high so the tilt
-  // does not read as a slide toward the corner.
-  const scale = (W * 0.86) / GRID
-  const offX = W / 2 - STAR.cx * scale
-  const offY = W * 0.485 - STAR.cy * scale
+  // Small icons get a bigger comet: at 16 and 24px the plate would swallow it.
+  const fill = px <= 32 ? 0.7 : 0.56
+  const scale = (W * fill) / MARK_BOX.size
+  const offX = half - MARK_BOX.cx * scale
+  const offY = half - MARK_BOX.cy * scale
   for (let oy = 0; oy < px; oy++) {
     for (let ox = 0; ox < px; ox++) {
       let sumR = 0
@@ -136,36 +82,22 @@ export function renderIcon(px) {
       let sumA = 0
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const x = ox * SS + sx
-          const y = oy * SS + sy
-          let cr = 0
-          let cg = 0
-          let cb = 0
-          let ca = 0
-          if (inTile(x, y, W)) {
-            const glyphAlpha = starAlpha((x - offX) / scale, (y - offY) / scale, px)
-            const g = y / W
-            const tr = TILE_TOP[0] * (1 - g) + TILE_BOTTOM[0] * g
-            const tg = TILE_TOP[1] * (1 - g) + TILE_BOTTOM[1] * g
-            const tb = TILE_TOP[2] * (1 - g) + TILE_BOTTOM[2] * g
-            cr = STARLIGHT[0] * glyphAlpha + tr * (1 - glyphAlpha)
-            cg = STARLIGHT[1] * glyphAlpha + tg * (1 - glyphAlpha)
-            cb = STARLIGHT[2] * glyphAlpha + tb * (1 - glyphAlpha)
-            ca = 1
-          }
-          sumR += cr * ca
-          sumG += cg * ca
-          sumB += cb * ca
-          sumA += ca
+          const x = ox * SS + sx + 0.5
+          const y = oy * SS + sy + 0.5
+          if ((x - half) ** 2 + (y - half) ** 2 > half * half) continue
+          const a = cometAlpha((x - offX) / scale, (y - offY) / scale, px)
+          sumR += MARK[0] * a + PLATE[0] * (1 - a)
+          sumG += MARK[1] * a + PLATE[1] * (1 - a)
+          sumB += MARK[2] * a + PLATE[2] * (1 - a)
+          sumA += 1
         }
       }
       const n = SS * SS
       const i = (oy * px + ox) * 4
-      const alpha = sumA / n
-      out[i] = alpha > 0 ? Math.round(sumR / sumA) : 0
-      out[i + 1] = alpha > 0 ? Math.round(sumG / sumA) : 0
-      out[i + 2] = alpha > 0 ? Math.round(sumB / sumA) : 0
-      out[i + 3] = Math.round(alpha * 255)
+      out[i] = sumA > 0 ? Math.round(sumR / sumA) : 0
+      out[i + 1] = sumA > 0 ? Math.round(sumG / sumA) : 0
+      out[i + 2] = sumA > 0 ? Math.round(sumB / sumA) : 0
+      out[i + 3] = Math.round((sumA / n) * 255)
     }
   }
   return out
@@ -236,9 +168,9 @@ function encodeIco(entries) {
 }
 
 // macOS sizes every app icon to the same grid and draws the system shadow in
-// the space around it, so a full-bleed tile — correct on Windows — renders
-// visibly larger than its neighbours in the Dock. Apple's grid: the rounded
-// square covers 824 of a 1024 canvas (80.47%), centred, the rest transparent.
+// the space around it, so a full-bleed plate — correct on Windows — renders
+// visibly larger than its neighbours in the Dock. Apple's grid: the icon body
+// covers 824 of a 1024 canvas (80.47%), centred, the rest transparent.
 const MAC_CANVAS = 1024
 const MAC_BODY = 824
 
@@ -261,13 +193,12 @@ writeFileSync(join(dir, 'icon.png'), master)
 // The same artwork, delivered the way macOS has expected since Big Sur: an
 // asset catalog named by CFBundleIconName. A bundle carrying only the legacy
 // CFBundleIconFile + .icns is treated as an app that never adopted the modern
-// icon pipeline, and recent macOS composites it onto a default light tile —
-// which is the white frame around Engram's icon that no amount of redrawing
-// the PNG could remove. actool compiles this set at package time
-// (scripts/adhoc-sign.mjs); these are the sources it reads.
+// icon pipeline, and recent macOS composites it onto a default light tile.
+// actool compiles this set at package time (scripts/adhoc-sign.mjs); these
+// are the sources it reads.
 //
-// Each size is RENDERED, never downscaled: at 16px the constellation has to
-// be redrawn to stay legible, not resampled into mush.
+// Each size is RENDERED, never downscaled: at 16px the comet has to be
+// redrawn to stay legible, not resampled into mush.
 const APPICON_SIZES = [16, 32, 128, 256, 512]
 
 function writeAppIconSet(root) {

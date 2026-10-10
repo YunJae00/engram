@@ -1,4 +1,5 @@
-import { SESSION_TURN_MS, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { SESSION_TURN_MS, type NativeTools, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { nativeOptions } from './engine-claude-native.js'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
 import { claudeSessionStarted } from './claude-runtime.js'
 import { flog } from './flog.js'
@@ -59,7 +60,7 @@ function textOf(content: unknown): string {
 }
 
 export function signatureOf(job: ToolSessionJob): string {
-  return `${job.system}\n${job.tools.map((tool) => tool.name).join(',')}\n${job.effort ?? ''}`
+  return `${job.system}\n${job.tools.map((tool) => tool.name).join(',')}\n${job.effort ?? ''}\n${job.native?.cwd ?? ''}`
 }
 
 interface Turn {
@@ -97,6 +98,7 @@ export class WarmSession {
   private closed = false
   private turn: Turn | null = null
   private tools = new Map<string, ToolSessionCall>()
+  private native: NativeTools | undefined
   private query: { interrupt(): Promise<unknown> } | null = null
   private readonly abort = new AbortController()
 
@@ -141,17 +143,17 @@ export class WarmSession {
     const stream = spec.sdk.query({
       prompt: this.input(),
       options: {
-        cwd: spec.workdir,
+        cwd: job.native?.cwd ?? spec.workdir,
         env: spec.env,
         pathToClaudeCodeExecutable: spec.binary,
         spawnClaudeCodeProcess: spawnRuntime,
         abortController: this.abort,
         systemPrompt: job.system,
-        tools: [],
+        // The runtime's own tools stay off unless the host hands them over.
+        ...(job.native ? { additionalDirectories: job.native.readRoots, ...nativeOptions(() => this.native) } : { tools: [], permissionMode: 'dontAsk' }),
         mcpServers: { [TOOL_SERVER]: server },
         strictMcpConfig: true,
         allowedTools: allowedToolNames(job.tools),
-        permissionMode: 'dontAsk',
         includePartialMessages: true,
         maxTurns: 400,
         persistSession: false,
@@ -242,6 +244,7 @@ export class WarmSession {
     const turn = this.turn
     if (!turn) return
     this.turn = null
+    this.native = undefined
     clearTimeout(turn.timer)
     turn.detachAbort()
     turn.resolve(result)
@@ -251,6 +254,7 @@ export class WarmSession {
     if (job.signal?.aborted) return Promise.resolve({ answer: '', error: 'canceled' })
     if (this.closed) return Promise.resolve({ answer: '', error: 'the session ended' })
     this.tools = new Map(job.tools.map((tool) => [tool.name, tool]))
+    this.native = job.native ? { ...job.native } : undefined
     this.turns++
     this.lastUsed = Date.now()
     // The conversation so far is given once, when the session opens; after

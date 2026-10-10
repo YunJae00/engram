@@ -150,7 +150,7 @@ test('native window activation fades only the sidebar tint, without recoloring c
 test('compact navigation and settings retain clear actions, safety guidance and narrow layouts', async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
   const comets = page.getByRole('button', { name: 'Comets mode', exact: true })
-  await expect(comets.locator('svg path[fill-rule="evenodd"]')).toHaveCount(1)
+  await expect(comets.locator('svg path[stroke-linejoin="round"]')).toHaveCount(1)
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
   await expect(menu.getByTestId('activity-bots')).toHaveCount(0)

@@ -26,6 +26,18 @@ it('preserves fenced code indentation, streaming fences and escapes HTML', () =>
   expect(html('```\n<script>alert(1)</script>')).not.toContain('<script>')
 })
 
+it('keeps artifact HTML, styles and non-web destinations inert', () => {
+  const text = '<style>body { display: none }</style>\n\n<iframe src="file:///secret"></iframe>\n\n<a href="javascript:alert(1)">Run</a>\n\n'
+    + '[Script](JaVaScRiPt:alert%281%29) [Encoded](javascript&#58;alert%281%29) [File](file:///secret) [Data](data:text/html,hello) [Relative](../secret) [Remote](//example.com)\n\n'
+    + '![Tracking image](https://example.com/track)\n\n[Docs](https://example.com/docs)'
+  const html = renderToStaticMarkup(createElement('div', null, renderMarkdown(text)))
+  expect(html).not.toMatch(/<(?:style|iframe|img|script)\b/)
+  expect(html).toContain('&lt;style&gt;')
+  expect(html).toContain('&lt;a href=')
+  expect([...html.matchAll(/ href="([^"]+)"/g)].map(match => match[1])).toEqual(['https://example.com/docs'])
+  expect(html).toContain('Tracking image')
+})
+
 it('highlights supported code without interpreting markup and leaves large blocks plain', () => {
   const render = (text: string, language: string) => renderToStaticMarkup(createElement(DeveloperCode, { text, language }))
   expect(render('const x = "<script>"', 'ts')).toContain('tok-keyword')

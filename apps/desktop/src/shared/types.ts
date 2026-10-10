@@ -580,6 +580,8 @@ export interface NativeSurfaceDto { lane: string; x: number; y: number; width: n
 
 export interface EngramApi extends DesktopApi, DevelopersApi {
   artifactReveal(id: string): Promise<void>
+  // An output file as the thread can show it: text, or null when it is not text or too large.
+  artifactRead(id: string): Promise<ArtifactViewDto>
   nativeEnabled(): Promise<boolean>
   nativeFocusShell(): void
   nativeLayout(surfaces: NativeSurfaceDto[]): Promise<void>
@@ -863,11 +865,13 @@ export interface AppSettingsDto {
   computerUse?: boolean
   // Learn where the person works from browser history and bookmarks.
   workMap?: boolean
+  nativeTools?: boolean
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,
 // and its own line about what the model is for.
 export interface WorkMapStatusDto { builtAt: string | null; places: number }
+export interface ArtifactViewDto { name: string; text: string | null }
 export interface InterviewQuestionDto { topic: string; question: string; basis: string; options: string[]; source?: string }
 
 export interface ModelChoiceDto {
