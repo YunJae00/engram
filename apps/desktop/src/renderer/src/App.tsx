@@ -13,6 +13,7 @@ import { useCometState, useShellState } from './state-slices.js'
 import { t } from './i18n.js'
 import { selectComet } from './lib/cometThreadsLive.js'
 import type { SettingsSection } from './components/SettingsNavigation.js'
+import { ArtifactSheet } from './components/ArtifactSheet.js'
 import type { UpdateCheckDto } from '../../shared/types.js'
 
 // Only what the first screen needs is in the first bundle. An editor, a sky
@@ -108,6 +109,8 @@ function Shell() {
 
   // First-run coach marks: once, after the first vault opens, real installs
   // only (the main process gates it so e2e clicks are never intercepted).
+  // An output file a comet linked, opened in the thread rather than in a folder.
+  const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
   useEffect(() => {
     if (!vaultReady || localStorage.getItem(TOUR_DONE_KEY)) return
@@ -198,6 +201,8 @@ function Shell() {
     window.addEventListener('engram:open-help', openHelp)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
+    const openArtifact = (event: Event) => setArtifactId(String((event as CustomEvent<string>).detail))
+    window.addEventListener('engram:open-artifact', openArtifact)
     window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:open-digest', openDigest)
     window.addEventListener('engram:open-errand', openErrand)
@@ -211,6 +216,7 @@ function Shell() {
       window.removeEventListener('engram:open-brain-setup', openBrainSetup)
       window.removeEventListener('engram:open-help', openHelp)
       window.removeEventListener('engram:open-diagnostics', openDiag)
+      window.removeEventListener('engram:open-artifact', openArtifact)
       window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:open-digest', openDigest)
       window.removeEventListener('engram:open-errand', openErrand)
@@ -307,6 +313,7 @@ function Shell() {
         {palette && <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />}
         {action && <ActionDialog action={action} onClose={() => setAction(null)} />}
         {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
+        {artifactId && <ArtifactSheet id={artifactId} onClose={() => setArtifactId(null)} />}
         {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
         {tourOpen && !interviewOpen && <TourOverlay onClose={() => setTourOpen(false)} />}

@@ -25,9 +25,7 @@ export const Answer = memo(function Answer({ text, compact = false, citations = 
     event.preventDefault()
     event.stopPropagation()
     setError('')
-    try {
-      void window.engram.artifactReveal(decodeURIComponent(link.slice('engram-artifact:'.length)))
-        .catch(() => setError('This output file is unavailable. Ask the comet to check it.'))
-    } catch { setError('This output link is invalid.') }
+    try { window.dispatchEvent(new CustomEvent('engram:open-artifact', { detail: decodeURIComponent(link.slice('engram-artifact:'.length)) })) }
+    catch { setError('This output link is invalid.') }
   }} dangerouslySetInnerHTML={{ __html: answerHtml(text, sites.map(site => site.url), notes.map(note => note.url)) }} />{!streaming && notes.length > 0 && <details className="answer-memory-sources"><summary>{notes.length} memory {notes.length === 1 ? 'source' : 'sources'}</summary><ol>{notes.map(note => <li key={note.url}><a href={note.url}>{note.label}</a></li>)}</ol></details>}{!streaming && sites.length > 0 && <div className="answer-sites" aria-label="Websites in this answer">{sites.map(site => <a className="answer-site" key={site.origin} href={site.url} title={site.url}><SiteIcon origin={site.origin} /><span>{site.label}</span></a>)}</div>}{!compact && !streaming && <div className="answer-actions"><button onClick={() => copy(text)} aria-label="Copy answer" title="Copy answer">{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}</button>{copied && <span role="status">Copied</span>}</div>}{error && <p role="alert">{error}</p>}</>
 })
