@@ -14,6 +14,29 @@ function tools(approveRead = async () => true) {
   return async (name: string, args: Record<string, unknown>, signal?: AbortSignal) => JSON.parse(await all.find((tool) => tool.name === name)!.run(args, { ...context, signal }))
 }
 
+it('hands in a file a script built in the task folder, and nothing from elsewhere', async () => {
+  const work = join(root, 'work')
+  await mkdir(work)
+  await writeFile(join(work, 'summary.csv'), 'id,total\nA,1\n')
+  await writeFile(join(root, 'elsewhere.csv'), 'id\nB\n')
+  const all = fileWorkTools({ directory: join(root, 'outputs'), approveRead: async () => false, handInRoots: [work] })
+  const call = async (args: Record<string, unknown>) => JSON.parse(await all.find((tool) => tool.name === 'file_create_copy')!.run(args, context))
+  const output = await call({ name: 'summary.csv', fromPath: join(work, 'summary.csv') })
+  expect(output.completeReadback).toBe(true)
+  expect(output.content).toBe('id,total\nA,1\n')
+  expect(await readFile(output.path, 'utf8')).toBe('id,total\nA,1\n')
+  await expect(call({ name: 'other.csv', fromPath: join(root, 'elsewhere.csv') })).rejects.toThrow('task folder')
+  await expect(call({ name: 'summary.csv', fromPath: join(work, 'summary.csv'), content: 'x' })).rejects.toThrow('name and fromPath only')
+  const XLSX = await import('xlsx')
+  const book = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['a', 1]]), 'First')
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['b', 2]]), 'Second')
+  await writeFile(join(work, 'book.xlsx'), XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }))
+  const handed = await call({ name: 'book.xlsx', fromPath: join(work, 'book.xlsx') })
+  expect(handed.sheets).toEqual([{ sheet: 'First' }, { sheet: 'Second' }])
+  expect(handed.completeReadback).toBe(true)
+})
+
 it('reports measured words, characters and lines for a saved text file', async () => {
   const output = await tools()('file_create_copy', { name: 'email.txt', content: 'UNSENT\nTo: the team\n\nThree  more\twords here.\n' })
   expect(output).toMatchObject({ words: 8, characters: 45, lines: 5 })
@@ -85,8 +108,8 @@ it('rejects binary, oversized and path-escaping reads or artifact links', async 
   const path = join(root, 'data.txt')
   await writeFile(path, Buffer.from([0xff, 0xfe, 0]))
   await expect(call('file_read', { path })).rejects.toThrow()
-  await writeFile(path, 'x'.repeat(512001))
-  await expect(call('file_read', { path })).rejects.toThrow('512 KB')
+  await writeFile(path, 'x'.repeat(20_000_001))
+  await expect(call('file_read', { path })).rejects.toThrow('20 MB')
   await expect(resolveArtifact(join(root, 'outputs'), '../secret.txt')).rejects.toThrow()
 })
 

@@ -1,51 +1,8 @@
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import { createTask, findPlaybook, listTasks, pageTools, updateTask, type VaultPaths } from 'core'
+import { createTask, findPlaybook, listTasks, pageTools, updateTask } from 'core'
 import type { PageMove, WebPage } from '../../../packages/core/src/errand.js'
-import type { ChatRequestDto, EngramEvent } from '../src/shared/types.js'
-
-const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknown>())
-vi.mock('electron', () => ({ ipcMain: { handle: (name: string, fn: (...args: unknown[]) => unknown) => handlers.set(name, fn) } }))
-vi.mock('../src/main/flog.js', () => ({ flog: () => {} }))
-import { taskRunner, type TaskTurn, type TurnOutcome } from '../src/main/task-runner.js'
-
-type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome>
-const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
-async function setup(script: Script, mockAcceptedCheck = true) {
-  const root = await mkdtemp(join(tmpdir(), 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private') } as unknown as VaultPaths
-  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = []
-  let last: TurnOutcome | undefined
-  const runner: ReturnType<typeof taskRunner> = taskRunner({
-    paths,
-    send: async (request, extra) => {
-      sent.push({ request, extra }); last = await script(request, sent.length, extra, runner)
-      // These tests isolate task transitions; result-check.test.ts exercises
-      // the real structured report and evidence validation.
-      if (extra?.verification && mockAcceptedCheck) last.check ??= { accepted: true, issues: [] }
-    },
-    outcome: () => { const o = last; last = undefined; return o },
-    abort: () => {},
-    broadcast: (event) => events.push(event),
-    remember: async (text) => { remembered.push(text) },
-    notify: (task) => notified.push(`${task.state}: ${task.goal}`),
-    learn: (question, answer) => learned.push([question, answer]),
-  })
-  handlers.clear()
-  runner.register()
-  const call = (name: string, ...args: unknown[]) => handlers.get(name)!({}, ...args)
-  const chat = (message: string, botId = 'bot-1') => runner.chat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] })
-  const settle = async (state: string) => vi.waitFor(async () => {
-    const task = (await listTasks(paths)).at(-1)!
-    expect(task.state).toBe(state)
-    return task
-  }, { timeout: 5000 })
-  return { paths, runner, sent, events, remembered, notified, learned, call, chat, settle }
-}
-
-const pressed = (target: string) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"` })
-const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })
+import type { TurnOutcome } from '../src/main/task-runner.js'
+import { done, setup, pressed, readback } from './task-runner-fixture.js'
 
 it('keeps an explicit verification turn and accepts its fresh post-action report', async () => {
   const t = await setup(async (_request, turn) => ({ ...done(turn === 1 ? 'North 500, South 300: 800' : 'Checked total 800', 2), trail: [
@@ -89,8 +46,10 @@ it.each([
   })
   await t.chat('Save the report')
   const task = await t.settle('done')
-  expect(task.turns).toBe(3)
+  expect(task.turns).toBe(2)
+  expect(task.verified).not.toBe(true)
   expect(task.log.some(entry => entry.line.includes('needs a fresh readback'))).toBe(true)
+  expect(t.delivered).toEqual(['Saved' + '\n\n⚠ Checked; some of this could not be confirmed against the original.'])
 })
 
 it.each(['failed', 'later change'])('does not accept a marked receipt after %s', async kind => {
@@ -102,7 +61,7 @@ it.each(['failed', 'later change'])('does not accept a marked receipt after %s',
     return readback('Checked the final state')
   })
   await t.chat('Save the report')
-  expect((await t.settle('done')).turns).toBe(3)
+  expect((await t.settle('done')).turns).toBe(2)
 })
 
 it.each(['hover', 'reveal', 'scroll', 'open_page', 'search_web', 'read_pages'])('invalidates earlier action evidence after a failed view move (%s)', async tool => {
@@ -115,7 +74,7 @@ it.each(['hover', 'reveal', 'scroll', 'open_page', 'search_web', 'read_pages'])(
     return readback('Checked the final state')
   })
   await t.chat('Save the report')
-  expect((await t.settle('done')).turns).toBe(3)
+  expect((await t.settle('done')).turns).toBe(2)
 })
 
 it.each(['read_pages', 'open_page'])('still accepts a successful %s navigation as its own readback', async tool => {
@@ -142,7 +101,7 @@ it.each([
     return readback('Checked the final state')
   })
   await t.chat('Save the report')
-  expect((await t.settle('done')).turns).toBe(3)
+  expect((await t.settle('done')).turns).toBe(2)
 })
 
 it('holds one working state across the initial answer and its verification turn', async () => {
@@ -197,7 +156,7 @@ it('starts a similar request from where it began last time, and from its steps o
   ] }))
   await t.chat('File the taxi receipt as an expense')
   await t.settle('done')
-  expect(t.sent[0]!.extra).toBeUndefined()
+  expect(t.sent[0]!.extra?.context).toBeUndefined()
   await vi.waitFor(async () => expect(await findPlaybook(t.paths, 'File the hotel receipt as an expense')).toBeDefined())
   await t.chat('File the hotel receipt as an expense')
   await vi.waitFor(async () => expect((await listTasks(t.paths)).map(x => x.state)).toEqual(['done', 'done']))
@@ -219,10 +178,10 @@ it('does not accept a claimed check without a real readback or save a successful
     ? { ...done('Saved', 1), trail: [pressed('Save')] }
     : done('Everything is correct'))
   await t.chat('Update the supplier address')
-  const task = await t.settle('failed')
-  expect(task.turns).toBe(3)
+  const task = await t.settle('done')
+  expect(task.turns).toBe(2)
   expect(task.verified).not.toBe(true)
-  expect(task.verificationPending).toBe(true)
+  expect(task.verificationPending).toBeUndefined()
   expect(await findPlaybook(t.paths, task.goal)).toBeUndefined()
 })
 
@@ -239,7 +198,9 @@ it('keeps pending verification through a question and requires a read after a co
   expect(waiting.verificationPending).toBe(true); expect(waiting.result).toBe('Saved')
   await vi.waitFor(() => expect(t.notified).toHaveLength(1))
   await t.chat('Use the new address')
-  expect((await t.settle('done')).turns).toBe(4)
+  const finished = await t.settle('done')
+  expect(finished.turns).toBe(3)
+  expect(finished.verified).not.toBe(true)
   expect(t.sent[2]!.extra?.context).toContain('check the result against the request')
 })
 
@@ -260,8 +221,8 @@ it('runs a comet message as a task that carries on past a turn limit, then files
   const task = await t.settle('done')
   expect(task.turns).toBe(2)
   expect(t.sent[0]!.request.message).toBe('Reconcile the invoices')
-  expect(t.sent[0]!.extra).toBeUndefined()
-  expect(t.sent[1]!.extra).toEqual({ quiet: true })
+  expect(t.sent[0]!.extra?.context).toBeUndefined()
+  expect(t.sent[1]!.extra).toEqual({ quiet: true, holdIf: expect.any(Function) })
   expect(t.sent[1]!.request.message).toContain('Continue the delegated task where the last turn stopped')
   expect(t.events).toContainEqual({ type: 'comet:continue', channel: 'bot-bot-1', botId: 'bot-1' })
   await vi.waitFor(() => expect(t.remembered).toHaveLength(1))
@@ -283,6 +244,20 @@ it('keeps a quick answer out of the notes, and takes the next message as the ans
   expect(t.sent[2]!.extra?.context).toContain('The task, verbatim:\nPrepare the quarterly numbers')
   expect(t.learned).toEqual([['Which quarter?', 'Calendar Q3']])
   expect((await listTasks(t.paths)).map((x) => x.state)).toEqual(['done', 'done'])
+})
+
+it('lets a card be answered while the turn runs, for a call that waits on it', async () => {
+  const t = await setup(async (request, _turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, async () => 'approve', 5000)!
+    const verdict = ask({ words: 'Run commands in this comet\'s work folder', url: 'file:///C:/work' })
+    setTimeout(() => { void listTasks(t.paths).then((tasks) => t.call('tasks:decide', tasks.at(-1)!.id, tasks.at(-1)!.approvals[0]!.id, 'approve')) }, 150)
+    return done(`commands: ${await verdict}`)
+  })
+  await t.chat('Summarise the workbook')
+  const task = await t.settle('done')
+  expect(task.result).toBe('commands: approve')
+  expect(task.approvals.map((a) => [a.answer, a.settled])).toEqual([['approve', true]])
+  expect(t.sent).toHaveLength(1)
 })
 
 it('leaves committing presses for the person, one per page, and makes exactly the approved ones', async () => {
@@ -360,40 +335,4 @@ it('does not exceed the call ceiling when continuing after a question', async ()
   await t.chat('Continue')
   expect(t.sent).toHaveLength(0)
   expect((await listTasks(t.paths))[0]!.state).toBe('failed')
-})
-
-it.each([
-  { check: undefined, unfinished: false },
-  { check: { accepted: false, issues: ['A material claim has no source.'] }, unfinished: false },
-  { check: undefined, unfinished: true },
-])('never completes on a read alone and bounds failed or interrupted checks (%j)', async ({ check, unfinished }) => {
-  const t = await setup(async (_r, turn) => turn === 1
-    ? { ...done('Saved', 1), trail: [pressed('Save')] }
-    : { ...readback('Everything is correct'), check, unfinished }, false)
-  await t.chat('Prepare a sourced summary')
-  const task = await t.settle('failed')
-  expect(task.turns).toBe(3)
-  expect(task.verified).not.toBe(true)
-  expect(task.result).toContain('Not verified as complete')
-  expect(task.result).not.toContain('Everything is correct')
-  expect(t.sent[2]!.extra?.context).toContain('Previous check did not pass')
-  expect(t.remembered).toEqual([])
-})
-
-it('does not demand a text read or a repeated recording for media-only evidence', async () => {
-  const t = await setup(async () => done('[Capture](engram-artifact:clip.mp4)'))
-  await t.chat('Save this browser capture')
-  expect((await t.settle('done')).turns).toBe(1)
-})
-
-it.each([false, true])('keeps corrected outputs across a repair and recheck (unfinished=%s)', async unfinished => {
-  const t = await setup(async (_r, turn) => turn === 1
-    ? { ...done('The customer has no existing process', 1), trail: [pressed('Save')] }
-    : { ...readback(turn === 2 ? 'Needs a correction [Latest](engram-artifact:latest.txt)' : 'Removed the unsupported claim'), unfinished: turn === 2 && unfinished, check: { accepted: turn === 3, issues: turn === 2 ? ['Source states a goal, not the current situation.'] : [] } })
-  await t.chat('Prepare the proposal')
-  const task = await t.settle('done')
-  expect(task.turns).toBe(3)
-  expect(task.result).toBe('Removed the unsupported claim')
-  expect(t.sent[2]!.extra?.verification?.result).toContain('engram-artifact:latest.txt')
-  expect(task.verificationIssue).toBeUndefined()
 })

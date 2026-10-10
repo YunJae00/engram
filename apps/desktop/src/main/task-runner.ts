@@ -21,6 +21,7 @@ import {
 import type { ChatRequestDto, EngramEvent } from '../shared/types.js'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
+import { freshResultReadback, RESULT_CHANGES as CHANGES } from './task-result-state.js'
 
 // Every comet message is a task: its first turn is the ordinary chat turn the
 // person watches, and when that turn stops short of the goal the work goes on
@@ -28,23 +29,19 @@ import { flog } from './flog.js'
 // approval, or reaches its limits. A press that would commit something is not
 // made unattended: it waits in the task, and the rest of the work goes on.
 
-export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[] } }
+export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[] }; held?: boolean }
 // How the host runs one of the task's turns: extra context, and whether the
 // message is the task's own continuation rather than words the person said.
-export interface TaskTurn { context?: string; quiet?: boolean; verification?: { result: string } }
+// holdIf: the host keeps this turn's answer out of the thread when it says so (work that will be checked first).
+export interface TaskTurn { context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // Work worth writing down: several tool steps, or a saved file.
 const WORTH_KEEPING_STEPS = 3
-// Steps that change something outside the conversation: a task that took one
-// rereads its result once before it is called done.
-const CHANGES = /^(page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
-// Navigation/view moves also invalidate earlier evidence, without requiring a
-// separate verification turn for work that only read pages.
-const VIEW_MOVES = /^(open_page|search_web|read_pages|scroll|hover|reveal)$/
-// A read receipt is necessary, not proof that every requirement was satisfied.
-const READBACK = /^(read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
 const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
+const UNCONFIRMED = '\n\n⚠ Checked; some of this could not be confirmed against the original.'
+const CHECK_BUDGET_MS = 10 * 60_000
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
+const artifactLinks = (text = '') => [...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map((match) => match[1]!)
 // Captures already have consent, provenance and save receipts; this text and
 // document check must not demand a text read of a PNG or retake a recording.
 const savedWorkFile = (text = '') => /\]\(engram-artifact:[^\s)]+\.(?:txt|md|json|csv|tsv|xlsx|docx|pptx)\)/i.test(text)
@@ -56,6 +53,10 @@ export function taskRunner(deps: {
   abort(channel: string): void
   broadcast(event: EngramEvent): void
   remember(text: string): Promise<void>
+  // A held answer, put in the thread once: after its check, or when the task stops for the person.
+  deliver(channel: string, text: string): Promise<void>
+  // How long a check may hold the answer back before the draft goes out as it is.
+  checkBudgetMs?: number
   // The person answered what a comet asked: what holds beyond this task is kept.
   learn?(question: string, answer: string): void
   // The task stopped for the person: done, waiting on them, or failed.
@@ -99,58 +100,83 @@ export function taskRunner(deps: {
     }
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const checking = started.verificationPending === true
-    if (checking) deps.broadcast({ type: 'comet:step', channel: channelOf(started), line: 'note: Checking the result against your request' })
-    await deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : extra)
-    const outcome = deps.outcome(request.channel ?? '')
-    const trail = [...(trails.get(id) ?? []), ...(outcome?.trail ?? [])]
+    if (checking) {
+      deps.broadcast({ type: 'comet:step', channel: channelOf(started), line: 'note: Checking the result against your request' })
+      // The draft stays out of the thread while it is checked: one answer, once it is done.
+      deps.broadcast({ type: 'chat:token', channel: channelOf(started), text: '', reset: true })
+    }
+    const earlier = trails.get(id) ?? []
+    const holdIf = (answer: string, steps: TurnStep[]) => !started.verified && (savedWorkFile(answer) || successfulTurnSteps([...earlier, ...steps]).some((step) => CHANGES.test(step.tool)))
+    // A check that overruns its budget is cut short: the draft is the answer then.
+    let overran = false, checkError: unknown
+    let budget: ReturnType<typeof setTimeout> | undefined
+    const deadline = checking ? new Promise<void>(resolve => {
+      budget = setTimeout(() => { overran = true; deps.abort(channelOf(started)); resolve() }, deps.checkBudgetMs ?? CHECK_BUDGET_MS)
+    }) : undefined
+    try {
+      const sending = deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : { ...extra, holdIf })
+      await (deadline ? Promise.race([sending, deadline]) : sending)
+    } catch (error) {
+      if (!checking) throw error
+      checkError = error
+    } finally { clearTimeout(budget) }
+    const outcome = overran || checkError ? undefined : deps.outcome(request.channel ?? '')
+    const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
-    return edit(id, (t) => {
+    const after = await edit(id, (t) => {
       if (t.state !== 'running') return
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
-      if (outcome && (!checking || outcome.answer && !outcome.asked)) t.result = outcome.answer
+      const draft = t.result
+      if (outcome && !checking) t.result = outcome.answer
       const pending = t.approvals.filter((a) => !a.answer)
-      if (checking && outcome && !outcome.asked && !pending.length) t.verificationAttempts = (t.verificationAttempts ?? 0) + 1
-      if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
+      if (!outcome && checking) {
+        delete t.verificationPending
+        t.verificationIssue = overran ? 'The check ran out of time.' : 'The check could not finish.'
+        t.result = `${draft ?? ''}${UNCONFIRMED}`
+        t.state = 'done'; logTask(t, `Done, not fully confirmed: ${t.verificationIssue}`)
+      }
+      else if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
-      else if (outcome.unfinished) {
-        if (checking) t.verificationIssue = outcome.check?.issues.join('; ') || 'Verification ended before the results were confirmed. Read the latest saved results and finish report_result_check.'
-        if (t.turns >= TASK_MAX_TURNS || Date.now() - Date.parse(t.createdAt) > TASK_MAX_MS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
-        else logTask(t, 'Continuing')
-      } else if (checking) {
+      else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
+      else if (checking) {
         const steps = outcome.trail ?? []
-        // Even a failed/partial action invalidates evidence read before it.
-        const lastChange = steps.map(step => !step.seeded && (CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool))).lastIndexOf(true)
-        const receipts = successfulTurnSteps(steps.slice(Math.max(0, lastChange)))
-        if (!receipts.some(step => READBACK.test(step.tool) || step.observedAfterAction === true)) {
-          t.verificationIssue = 'Verification still needs a fresh readback after the last change.'
-        } else if (outcome.check?.accepted !== true) {
-          t.verificationIssue = outcome.check?.issues.join('; ') || 'A structured requirement and grounding check is missing. Call report_result_check after checking the actual sources and final results.'
-        } else {
-          t.verified = true; delete t.verificationPending; delete t.verificationIssue
+        const reread = freshResultReadback(steps)
+        delete t.verificationPending
+        if (!outcome.unfinished && reread && outcome.check?.accepted === true) {
+          t.verified = true; delete t.verificationIssue
           t.result = outcome.answer
           t.state = 'done'; logTask(t, 'Done')
+        } else {
+          // One check, and the person gets the answer either way: what the
+          // check corrected if it saved anything new, else the draft, with what
+          // could not be confirmed kept here rather than in the thread.
+          t.verificationIssue = outcome.check?.issues.join('; ') || (outcome.unfinished ? 'The check ended before the results were confirmed.' : reread ? 'The check reported no structured result.' : 'The check needs a fresh readback after the last change.')
+          const corrected = artifactLinks(outcome.answer).some((link) => !artifactLinks(draft).includes(link))
+          t.result = `${corrected || !draft ? outcome.answer : draft}${UNCONFIRMED}`
+          t.state = 'done'; logTask(t, `Done, not fully confirmed: ${t.verificationIssue}`)
         }
-        if (t.verificationIssue) {
-          logTask(t, t.verificationIssue)
-        }
+      } else if (outcome.unfinished) {
+        if (t.turns >= TASK_MAX_TURNS || Date.now() - Date.parse(t.createdAt) > TASK_MAX_MS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
+        else logTask(t, 'Continuing')
       } else if (!t.verified && (savedWorkFile(outcome.answer) || successfulTurnSteps(trail).some((step) => CHANGES.test(step.tool)))) {
         t.verificationPending = true; logTask(t, 'Checking the result')
       } else { t.state = 'done'; logTask(t, 'Done') }
-      // Count interrupted checks too. Only a real question or approval waits
-      // for the person without spending the targeted repair allowance.
-      if (checking && t.state === 'running' && (t.verificationAttempts ?? 0) >= 2) {
-        t.state = 'failed'; t.verificationIssue ??= 'Verification ended before the results were confirmed.'
-        const links = [...(outcome?.answer ?? '').matchAll(/\[[^\]\r\n]*\]\(engram-artifact:[^\s)]+\)/g)].map(match => match[0])
-        t.result = [`Not verified as complete. ${t.verificationIssue}`, ...links].join('\n\n')
-        logTask(t, 'Stopped after a repair and recheck; saved work is kept.')
-        deps.broadcast({ type: 'chat:done', channel: channelOf(t), text: t.result })
-      }
     })
+    if (after && (outcome?.held || (checking && !outcome)) && ['done', 'waiting', 'failed'].includes(after.state) && after.result) await deps.deliver(channelOf(after), after.result)
+    return after
   }
 
   // Why the next unattended turn runs.
-  const nextReason = (task: DelegatedTask): Reason => task.verificationPending ? 'verify' : 'limit'
+  const nextReason = (task: DelegatedTask): Reason => task.approvals.some(a => a.answer && !a.settled) ? 'approved' : task.verificationPending ? 'verify' : 'limit'
+
+  async function takeDecisions(task: DelegatedTask): Promise<string> {
+    const decided = task.approvals.filter(a => a.answer && !a.settled)
+    approved.set(task.id, decided.filter(a => a.answer === 'approve').map(a => ({ url: a.url, words: a.words })))
+    for (const a of decided) if (a.answer === 'decline') declined.set(task.id, (declined.get(task.id) ?? new Set()).add(`${a.url}\n${a.words}`))
+    await edit(task.id, t => { for (const a of t.approvals) if (decided.some(d => d.id === a.id)) a.settled = true })
+    return decided.map(a => `- ${a.answer === 'approve' ? 'Approved' : 'Declined'}: "${a.words}" on ${a.host} (${a.url})`).join('\n')
+  }
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
@@ -160,7 +186,8 @@ export function taskRunner(deps: {
     if (['done', 'waiting', 'failed'].includes(task.state)) {
       try { deps.notify(task) } catch (error) { flog('task-notify', error) }
     }
-    if (task.state !== 'done' || !task.result) return
+    // A result the check could not confirm is kept for the person, not learned from.
+    if (task.state !== 'done' || !task.result || task.verificationIssue) return
     await recordPlaybook(paths, task.goal, trail).catch((error) => flog('tasks', error))
     if ((task.work ?? 0) < WORTH_KEEPING_STEPS && !savedFile(task.result)) return
     await deps.remember([`Task finished ${task.updatedAt.slice(0, 10)}: ${task.goal.slice(0, 400)}`, '', 'Result:', task.result.slice(0, 2000)].join('\n'))
@@ -182,6 +209,7 @@ export function taskRunner(deps: {
         if (channels.has(channel) && owners.get(channel) !== id) return
         acquire(channel)
         owners.set(channel, id)
+        if (why === 'approved' && task.approvals.some(a => a.answer && !a.settled)) note = await takeDecisions(task)
         const history = (await readBotTranscript(paths, task.botId)).map((one) => ({ role: one.role, text: one.text }))
         const after = await turn(id, { engineId: '', botId: task.botId, channel, message: continuationPrompt(task, why, note), history }, { quiet: true })
         if (after?.state !== 'running') { await finished(after); return }
@@ -245,23 +273,39 @@ export function taskRunner(deps: {
     },
     // The question a press would put to the person becomes an approval
     // waiting in the task, one per page and control; the turn goes on.
-    askFor(channel: string, confirm: Ask): Ask | undefined {
+    // waitMs: how long a call may hold for the card's answer before taking 'later'.
+    askFor(channel: string, confirm: Ask, waitMs = 0): Ask | undefined {
       const id = owners.get(channel)
       if (!id || !channels.has(channel)) return undefined
       return async ({ words, url }) => {
+        const cardWords = words.slice(0, 120)
         if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
         const current = (await listTasks(paths)).find(t => t.id === id)
         if (current?.state !== 'running') return 'cancel'
         const granted = approved.get(id) ?? []
-        const index = granted.findIndex((g) => g.url === url && g.words === words)
+        const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
         // The form may have changed since the card was created. Reconfirm on
         // the live page rather than authorizing arbitrary data at the same URL.
         if (index >= 0) { granted.splice(index, 1); return confirm({ words, url }) }
-        if (declined.get(id)?.has(`${url}\n${words}`)) return 'cancel'
+        if (declined.get(id)?.has(`${url}\n${cardWords}`)) return 'cancel'
         await edit(id, (t) => {
-          if (t.approvals.some((a) => !a.answer && a.url === url && a.words === words)) return
-          t.approvals.push({ id: `a-${Date.now().toString(36)}-${t.approvals.length}`, words: words.slice(0, 120), host: hostOf(url) ?? '', url, at: new Date().toISOString() })
+          if (t.state !== 'running' || stopped.has(channel) || t.approvals.some((a) => !a.settled && a.url === url && a.words === cardWords)) return
+          t.approvals.push({ id: `a-${Date.now().toString(36)}-${t.approvals.length}`, words: cardWords, host: hostOf(url) ?? '', url, at: new Date().toISOString() })
         })
+        // The person may be right there: the card can be answered while the turn runs.
+        for (const until = Date.now() + waitMs; Date.now() < until;) {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+          if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
+          let answer: 'approve' | 'decline' | undefined
+          await edit(id, t => {
+            if (t.state !== 'running' || stopped.has(channel)) return
+            const card = t.approvals.find(a => a.url === url && a.words === cardWords && a.answer && !a.settled)
+            if (card) { answer = card.answer; card.settled = true }
+          })
+          if (!answer) continue
+          if (answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
+          return answer === 'approve' ? confirm({ words, url }) : 'cancel'
+        }
         return 'later'
       }
     },
@@ -271,20 +315,16 @@ export function taskRunner(deps: {
         if (answer !== 'approve' && answer !== 'decline') throw new Error('Approve or decline.')
         let ready = false
         const task = await edit(id, (t) => {
-          if (t.state !== 'waiting' || t.question || stopped.has(channelOf(t))) return
+          if (!['waiting', 'running'].includes(t.state) || t.question || stopped.has(channelOf(t))) return
           const a = t.approvals.find((one) => one.id === approvalId && !one.answer)
           if (!a) return
           a.answer = answer; logTask(t, `${answer === 'approve' ? 'Approved' : 'Declined'}: "${a.words}"`)
+          if (t.state !== 'waiting') return
           ready = t.approvals.every(one => !!one.answer)
           if (ready) t.state = 'queued'
         })
         if (!task || !ready) return
-        const decided = task.approvals.filter((a) => a.answer && !a.settled)
-        approved.set(id, decided.filter((a) => a.answer === 'approve').map((a) => ({ url: a.url, words: a.words })))
-        for (const a of decided) if (a.answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${a.url}\n${a.words}`))
-        const summary = decided.map((a) => `- ${a.answer === 'approve' ? 'Approved' : 'Declined'}: "${a.words}" on ${a.host} (${a.url})`).join('\n')
-        await edit(id, (t) => { for (const a of t.approvals) if (a.answer) a.settled = true })
-        void carryOn(id, 'approved', summary).catch(error => flog('tasks', error))
+        void carryOn(id, 'approved').catch(error => flog('tasks', error))
       })
     },
   }
