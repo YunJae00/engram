@@ -5,6 +5,7 @@ import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { startToolServer } from './codex-tool-server.js'
+import { appServer, runCodexNative } from './codex-native.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow. Every turn runs
@@ -26,6 +27,12 @@ export const RUNTIME_TOOLS_OFF = [
 const TOOL_SERVER = 'engram_comet'
 const TOOL_REACH = `Work only through the ${TOOL_SERVER} tools. The read-only sandbox applies to this runtime's own commands, not to those tools: they can read the approved files, save outputs and act in the browser and applications as their descriptions say.`
 const TOKEN_ENV = 'ENGRAM_COMET_TOOL_TOKEN'
+// With the runtime's own hands handed over: its shell and file edits stay on,
+// everything else that acts on its own stays off.
+const NATIVE_KEEP = new Set(['shell_tool', 'unified_exec', 'shell_snapshot', 'shell_snapshot_v2'])
+export const NATIVE_TOOLS_OFF = RUNTIME_TOOLS_OFF.filter(entry => entry !== 'include_apply_patch_tool=false' && !NATIVE_KEEP.has(entry.slice('features.'.length, -'=false'.length)))
+  .concat('web_search="disabled"', 'notify=[]')
+const NATIVE_REACH = `Engram's tools are the ${TOOL_SERVER} tools: use them for the web, notes, approvals and every deliverable. Your own shell and file edits work in the task folder; the sandbox keeps writes there and the network off.`
 
 export function disableMcpOverrides(catalog: string, extra: Record<string, string> = {}): string[] {
   const servers: unknown = JSON.parse(catalog)
@@ -199,10 +206,18 @@ export class CodexEngine implements CloudEngine {
     try {
       server = await startToolServer(job.tools, abort.signal)
       const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
-      const catalog = await runText(binary, ['-C', job.workdir, 'mcp', 'list', '--json'], 60_000, env, { signal: abort.signal })
+      const catalog = await runText(binary, ['-C', job.native?.cwd ?? job.workdir, 'mcp', 'list', '--json'], 60_000, env, { signal: abort.signal })
       if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
       const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
       const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
+      if (job.native) {
+        const result = await runCodexNative({ ...job, native: job.native, signal: abort.signal }, {
+          rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
+          instructions: [job.system, NATIVE_REACH].join('\n\n'), budgetMs: SESSION_TURN_MS, ...(codexModel ? { model: codexModel } : {}),
+        })
+        if (job.signal?.aborted) return { answer: '', error: 'canceled' }
+        return result
+      }
       const answer = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF] },
         thread: {
