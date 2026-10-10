@@ -144,6 +144,7 @@ import { canLearnTurn } from './task-result-state.js'
 import { notifyTask } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
+import { cometNativeTools } from './native-tools.js'
 import { prepareInterviewContext } from './interview-preparation.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2362,6 +2363,12 @@ export function registerIpc(ctx: VaultContext): void {
         const resume = resumeState.get(bot.id)
         resumeState.delete(bot.id)
         const skillLedger = await readSkillsLedger(paths)
+        // The runtime's own tools, governed here: reads where the person
+        // already lets it look, a work folder of its own, commands once allowed.
+        const native = engine.id === 'claude' && settings.nativeTools !== false
+          // An approved card is the whole consent for commands; there is no page to reconfirm on.
+          ? await cometNativeTools({ paths, channel, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          : undefined
         const result = await runComet(
           {
             engine,
@@ -2447,7 +2454,7 @@ export function registerIpc(ctx: VaultContext): void {
               sources: attachments.evidencePaths,
               requireSourceEvidence: attachments.paths.length > 0,
               generatedDirectory: artifactDirectory(paths),
-            })] : []), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)]) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            })] : []), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
           },
           request.message,
           {
@@ -2472,6 +2479,7 @@ export function registerIpc(ctx: VaultContext): void {
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
+            ...(native ? { native } : {}),
             onStep: (line) => {
               broadcast({ type: 'comet:step', channel, line })
               const said = /^([a-z_]+): ([^]*)$/.exec(line)

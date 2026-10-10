@@ -865,6 +865,7 @@ export interface AppSettingsDto {
   computerUse?: boolean
   // Learn where the person works from browser history and bookmarks.
   workMap?: boolean
+  nativeTools?: boolean
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,

@@ -133,7 +133,22 @@ export interface ToolSessionCall {
   run(args: Record<string, unknown>): Promise<string | { text: string; image?: { data: string; mimeType: string } }>
 }
 
+export interface NativeDecision { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
+
+// The runtime's own hands (read, write, shell, web), with the host deciding
+// each move and hearing of each one.
+export interface NativeTools {
+  cwd: string
+  // Folders the runtime may also read from.
+  readRoots: string[]
+  decide(name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<NativeDecision>
+  onCall?(name: string, input: Record<string, unknown>): void
+  onResult?(name: string, ok: boolean): void
+}
+
 export interface ToolSessionJob {
+  // The runtime's own tools, when the host hands them over.
+  native?: NativeTools
   onContextReset?(): void
   model?: string
   effort?: ReasoningEffort

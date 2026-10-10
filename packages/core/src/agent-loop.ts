@@ -1,4 +1,5 @@
 import { OBSERVATION_CAP, carriedSteps, pickTools, stepPrompt, stepSchema, suggestedMove, wrapUpPrompt, openStepSchema } from './agent-prompt.js'
+import type { NativeTools } from './engine/types.js'
 import { choiceQuestion, parseAsk } from './ask.js'
 import { asksForNote, noteTitleFor } from './search-template.js'
 import { withoutSecrets } from './secrets.js'
@@ -98,6 +99,8 @@ export interface AgentLoopOptions {
   // begins a turn looking at their screen; without this the loop begins with
   // its eyes shut and goes looking for a page it already has open.
   onScreen?: string
+  // The runtime's own tools, governed by the host.
+  native?: NativeTools
   // One narration line per step ("search_memory: deploy decisions") — the
   // chat thread relays these while the loop works.
   onStep?(line: string): void

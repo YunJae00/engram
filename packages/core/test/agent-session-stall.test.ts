@@ -8,6 +8,31 @@ import { successfulTurnSteps } from '../src/routine-record.js'
 
 afterEach(() => { vi.useRealTimers() })
 
+it.each([true, false])('counts native tool activity without treating it as verified evidence (success=%s)', async ok => {
+  vi.useFakeTimers()
+  let job!: ToolSessionJob
+  let finish!: (result: { answer: string }) => void
+  const engine = { id: 'claude', runTools: (next: ToolSessionJob) => { job = next; return new Promise(resolve => { finish = resolve }) } } as unknown as Engine
+  const onCall = vi.fn(), onResult = vi.fn()
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Read', {
+    native: { cwd: process.cwd(), readRoots: [], decide: async () => ({ behavior: 'allow' }), onCall, onResult },
+  })
+  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS - 10_000)
+  job.native!.onCall!('Bash', { command: 'python report.py' })
+  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS + 10_000)
+  expect(job.signal?.aborted).toBe(false)
+  job.native!.onResult!('Bash', ok)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(job.signal?.aborted).toBe(false)
+  expect(onCall).toHaveBeenCalledWith('Bash', { command: 'python report.py' })
+  expect(onResult).toHaveBeenCalledWith('Bash', ok)
+  finish({ answer: 'Read' })
+  const result = await pending
+  expect(result.steps).toEqual([])
+  expect(result.incomplete).toBeUndefined()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
 it('counts model tokens without a UI subscriber and does not interrupt an active tool', async () => {
   vi.useFakeTimers()
   let job!: ToolSessionJob
