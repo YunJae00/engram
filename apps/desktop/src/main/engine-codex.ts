@@ -216,7 +216,7 @@ export class CodexEngine implements CloudEngine {
           instructions: [job.system, NATIVE_REACH].join('\n\n'), budgetMs: SESSION_TURN_MS, ...(codexModel ? { model: codexModel } : {}),
         })
         if (job.signal?.aborted) return { answer: '', error: 'canceled' }
-        return result
+        if (!result.commandsDenied) return result
       }
       const answer = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF] },

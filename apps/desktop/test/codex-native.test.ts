@@ -76,6 +76,7 @@ describe('ChatGPT with its own tools', () => {
     const hands = native(async () => ({ behavior: 'deny', message: 'The person declined.' }))
     const result = await runCodexNative(job(hands), spec(fakeServer(async () => {}, sent)))
     expect(result.error).toBe('The person declined.')
+    expect(result.commandsDenied).toBe(true)
     expect(sent).toEqual([])
     expect(hands.calls).toEqual([])
   })

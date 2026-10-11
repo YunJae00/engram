@@ -3,8 +3,9 @@ import type { EngineCwd, EngineEvent } from 'core'
 import { SESSION_TURN_MS } from 'core'
 
 const fixture = vi.hoisted(() => ({
-  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(),
+  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(),
 }))
+vi.mock('../src/main/codex-native.js', () => ({ appServer: () => 'fixture-rpc', runCodexNative: fixture.native }))
 vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: fixture.ready, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('../src/main/codex-turn.js', () => ({
   runCodexTurn: async (request: import('../src/main/codex-turn.js').CodexTurn, signal: AbortSignal) => {
@@ -132,6 +133,24 @@ describe('text runtime desktop isolation boundary', () => {
     fixture.catalog.mockResolvedValue({ code: null, out: '' })
     const events = await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, disallowTools: true }))
     expect(events).toEqual([{ type: 'error', kind: 'unknown', message: expect.stringContaining('Could not read the ChatGPT tool configuration') }])
+    expect(fixture.run).not.toHaveBeenCalled()
+  })
+
+  it('continues with isolated comet tools when native commands are declined', async () => {
+    fixture.native.mockResolvedValueOnce({ answer: '', error: 'Declined', commandsDenied: true })
+    const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: 'Rules', prompt: 'Read a page', tools: [], maxCalls: 1,
+      native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'deny' }) } })
+    expect(result).toEqual({ answer: 'fixture answer' })
+    expect(fixture.native).toHaveBeenCalledOnce()
+    expect(fixture.options.mock.lastCall![0].configOverrides.slice(1)).toEqual(RUNTIME_TOOLS_OFF)
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', networkAccessEnabled: false }))
+  })
+
+  it('does not replay native work after a runtime failure', async () => {
+    fixture.native.mockResolvedValueOnce({ answer: 'Partial work', error: 'Runtime failed' })
+    const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: '', prompt: 'Do it', tools: [], maxCalls: 1,
+      native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'allow' }) } })
+    expect(result).toEqual({ answer: 'Partial work', error: 'Runtime failed' })
     expect(fixture.run).not.toHaveBeenCalled()
   })
 
