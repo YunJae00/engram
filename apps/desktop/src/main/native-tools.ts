@@ -121,6 +121,7 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
     cwd,
     readRoots: roots,
     ...(options.mode ? { mode: options.mode } : {}),
+    ready: () => policy.mode === 'auto' || ((policy.mode ?? 'once') === 'once' && policy.commands.allowed),
     decide: (name, input, signal) => nativeDecision(policy, name, input, signal),
     onCall(name, input) {
       const line = nativeSummary(name, input)

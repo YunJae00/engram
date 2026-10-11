@@ -35,50 +35,76 @@ const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions
 const completed = (item: Data) => ['item/completed', { item }] as const
 
 describe('ChatGPT with its own tools', () => {
-  it('gets host consent before starting, refuses sandbox elevation and returns the final message', async () => {
+  it('asks nothing before a command is wanted and answers a turn that needs none', async () => {
+    const sent: { method: string; params: Data }[] = []
+    const decide = vi.fn<NativeTools['decide']>(async () => ({ behavior: 'allow' }))
+    const result = await runCodexNative(job(native(decide)), spec(fakeServer(async (server) => {
+      server.notify(...completed({ id: 'm1', type: 'agentMessage', text: '28 hours' }))
+      server.notify('turn/completed', { turn: { status: 'completed' } })
+    }, sent)))
+    expect(result).toEqual({ answer: '28 hours' })
+    expect(decide).not.toHaveBeenCalled()
+    const thread = sent.find(one => one.method === 'thread/start')!.params, turn = sent.find(one => one.method === 'turn/start')!.params
+    expect(thread).toMatchObject({ cwd: 'C:/work/bot-1', approvalPolicy: 'untrusted', sandbox: 'workspace-write', developerInstructions: 'rules' })
+    expect(turn).toMatchObject({ approvalPolicy: 'untrusted' })
+    expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true })
+  })
+
+  it('puts the first wanted command to the person, then restarts where approval is never widened', async () => {
     const answers: unknown[] = [], sent: { method: string; params: Data }[] = []
-    const hands = native(async (name) => ({ behavior: name === 'Bash' ? 'allow' : 'deny' }))
-    const result = await runCodexNative(job(hands), spec(fakeServer(async (server) => {
-      server.notify('item/started', { item: { id: 'c1', type: 'commandExecution', command: 'python sum.py' } })
-      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', command: 'python sum.py' }))
-      server.notify(...completed({ id: 'c1', type: 'commandExecution', command: 'python sum.py', status: 'completed', exitCode: 0 }))
+    const decide = vi.fn<NativeTools['decide']>(async () => ({ behavior: 'allow' }))
+    let turns = 0
+    const result = await runCodexNative(job(native(decide)), spec(fakeServer(async (server) => {
+      if (++turns === 1) {
+        answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', kind: 'command', command: 'powershell.exe -Command "python sum.py"', commandActions: [{ type: 'unknown', command: 'python sum.py' }] }))
+        server.notify('turn/completed', { turn: { status: 'interrupted' } })
+        return
+      }
+      server.notify(...completed({ id: 'c2', type: 'commandExecution', command: 'python sum.py', status: 'completed', exitCode: 0 }))
       server.notify(...completed({ id: 'm1', type: 'agentMessage', text: '42' }))
       server.notify('turn/completed', { turn: { status: 'completed' } })
     }, sent)))
     expect(result).toEqual({ answer: '42' })
     expect(answers).toEqual([{ decision: 'decline' }])
-    expect(hands.calls).toEqual(['Bash python sum.py'])
-    expect(hands.results).toEqual(['Bash true'])
-    const thread = sent.find(one => one.method === 'thread/start')!.params, turn = sent.find(one => one.method === 'turn/start')!.params
-    expect(thread).toMatchObject({ cwd: 'C:/work/bot-1', approvalPolicy: 'never', sandbox: 'workspace-write', developerInstructions: 'rules' })
-    expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true })
+    expect(decide).toHaveBeenCalledTimes(1)
+    expect(decide.mock.calls[0]!.slice(0, 2)).toEqual(['Bash', { command: 'python sum.py' }])
+    expect(sent.map(one => one.method)).toEqual(['thread/start', 'turn/start', 'turn/interrupt', 'turn/start'])
+    expect(sent.filter(one => one.method === 'turn/start').map(one => one.params['approvalPolicy'])).toEqual(['untrusted', 'never'])
   })
 
-  it('declines runtime elevation and records sandboxed command results', async () => {
-    const answers: unknown[] = []
+  it('runs where approval is never asked once commands are already allowed', async () => {
+    const sent: { method: string; params: Data }[] = []
     const hands = native(async () => ({ behavior: 'allow' }))
+    hands.ready = () => true
+    const answers: unknown[] = []
     await runCodexNative(job(hands), spec(fakeServer(async (server) => {
-      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', command: 'del report.xlsx' }))
-      server.notify('item/started', { item: { id: 'f1', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }] } })
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', kind: 'command', command: 'python sum.py', reason: 'retry without sandbox?' }))
+      server.notify('turn/completed', { turn: { status: 'completed' } })
+    }, sent)))
+    expect(answers).toEqual([{ decision: 'decline' }])
+    expect(sent.find(one => one.method === 'thread/start')!.params['approvalPolicy']).toBe('never')
+  })
+
+  it('asks once per turn: a refusal holds, escalations are never put to the person, and patches stay in the task folder', async () => {
+    const answers: unknown[] = []
+    const decide = vi.fn<NativeTools['decide']>(async (name, input) => ({ behavior: name === 'Write' && !String(input['file_path']).includes('Documents') ? 'allow' : 'deny' }))
+    const hands = native(decide)
+    await runCodexNative(job(hands), spec(fakeServer(async (server) => {
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c0', kind: 'command', command: 'curl x', networkApprovalContext: { host: 'x' } }))
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', kind: 'command', command: 'del report.xlsx' }))
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c2', kind: 'command', command: 'dir' }))
+      server.notify('item/started', { item: { id: 'f1', type: 'fileChange', changes: [{ path: 'C:/work/bot-1/out.md' }] } })
       answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'f1' }))
+      server.notify('item/started', { item: { id: 'f2', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }] } })
+      answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'f2' }))
       answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'unknown' }))
-      server.notify(...completed({ id: 'f1', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }], status: 'failed' }))
-      server.notify(...completed({ id: 'c2', type: 'commandExecution', command: 'dir', status: 'completed', exitCode: 0 }))
+      server.notify(...completed({ id: 'f2', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }], status: 'failed' }))
       server.notify('turn/completed', { turn: { status: 'completed' } })
     })))
-    expect(answers).toEqual([{ decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }])
-    expect(hands.calls).toEqual(['Write C:/Users/me/Documents/x.md', 'Bash dir'])
-    expect(hands.results).toEqual(['Write false', 'Bash true'])
-  })
-
-  it('never starts the runtime turn without host consent', async () => {
-    const sent: { method: string; params: Data }[] = []
-    const hands = native(async () => ({ behavior: 'deny', message: 'The person declined.' }))
-    const result = await runCodexNative(job(hands), spec(fakeServer(async () => {}, sent)))
-    expect(result.error).toBe('The person declined.')
-    expect(result.commandsDenied).toBe(true)
-    expect(sent).toEqual([])
-    expect(hands.calls).toEqual([])
+    expect(answers).toEqual([{ decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }, { decision: 'accept' }, { decision: 'decline' }, { decision: 'decline' }])
+    expect(decide.mock.calls.map(([name, input]) => `${name} ${String(input['command'] ?? input['file_path'])}`)).toEqual(['Bash del report.xlsx', 'Write C:/work/bot-1/out.md', 'Write C:/Users/me/Documents/x.md'])
+    expect(hands.calls).toEqual(['Write C:/work/bot-1/out.md', 'Write C:/Users/me/Documents/x.md'])
+    expect(hands.results).toEqual(['Write false'])
   })
 
   it('sends questions back to ask_person and reports a failed or interrupted turn', async () => {

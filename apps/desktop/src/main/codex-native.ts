@@ -43,6 +43,13 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
   return new Promise<NativeResult>((resolve) => {
     let answer = '', settled = false, threadId = '', turnId = ''
     const recorded = new Set<string>()
+    // Until command use is approved, the turn runs where the runtime asks
+    // before each command, and the first one asked for is put to the person.
+    // An approved command there may be retried outside the sandbox without a
+    // second ask, so it is declined, and the turn restarts where approval
+    // is never asked and never widened.
+    let ready = native.ready?.() ?? false, restart = false, refused = false
+    const changes = new Map<string, string[]>()
     const controller = new AbortController()
     const finish = (result: NativeResult): void => {
       if (settled) return
@@ -75,6 +82,7 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
       if (method === 'item/started') {
         // Words before an action were thinking aloud, not the reply.
         if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.()
+        if (type === 'fileChange') changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])))
         if (type === 'commandExecution' || type === 'fileChange') {
           recorded.add(id)
           native.onCall?.(type === 'commandExecution' ? 'Bash' : 'Write', type === 'commandExecution' ? { command: commandOf(item) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
@@ -93,6 +101,14 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
       }
       if (method === 'turn/completed') {
         const turn = object(params['turn']), status = text(turn['status'])
+        if (status === 'interrupted' && restart) {
+          restart = false
+          answer = ''
+          job.onReset?.()
+          void startTurn('The person allowed commands for this comet. Continue the task, running the command you were about to run.')
+            .catch((error: unknown) => finish({ answer, error: error instanceof Error ? error.message : String(error) }))
+          return
+        }
         if (status === 'completed') finish({ answer })
         else finish({ answer, error: status === 'interrupted' ? 'canceled' : text(object(turn['error'])['message']) || 'The ChatGPT turn failed.' })
         return
@@ -101,7 +117,22 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     }
     const request = async (method: string, params: Data): Promise<unknown> => {
       if (settled || params['threadId'] !== threadId) throw new Error('This request does not belong to the active turn.')
-      if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: 'decline' }
+      if (method === 'item/commandExecution/requestApproval') {
+        const command = commandOf(params)
+        if (ready || restart || refused || params['kind'] !== 'command' || params['reason'] || params['networkApprovalContext'] || !command) return { decision: 'decline' }
+        // One question per turn: a refusal or no answer holds for the rest of it.
+        if ((await decide('Bash', { command })).behavior !== 'allow' || settled) { refused = true; return { decision: 'decline' } }
+        ready = restart = true
+        void rpc.send('turn/interrupt', { threadId, turnId }, 5_000).catch(() => undefined)
+        return { decision: 'decline' }
+      }
+      // A patch inside the task folder is never denied by the sandbox, so accepting it widens nothing.
+      if (method === 'item/fileChange/requestApproval') {
+        const paths = changes.get(text(params['itemId']))
+        if (params['grantRoot'] || !paths?.length) return { decision: 'decline' }
+        for (const path of paths) if ((await decide('Write', { file_path: path })).behavior !== 'allow') return { decision: 'decline' }
+        return { decision: 'accept' }
+      }
       if (method === 'item/tool/requestUserInput') throw new Error('Ask with ask_person instead.')
       throw new Error('This permission request is not supported; nothing was granted.')
     }
@@ -112,23 +143,23 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     }
     if (job.signal?.aborted) { cancel(); return }
     job.signal?.addEventListener('abort', cancel, { once: true })
-    void (async () => {
-      const decision = await decide('Bash', { command: 'Use sandboxed commands for this task' })
-      if (settled) return
-      if (decision.behavior !== 'allow') { finish({ answer, error: decision.message || 'Commands were not approved.', commandsDenied: true }); return }
-      await rpc.initialize()
-      const thread = await rpc.send('thread/start', {
-        cwd: native.cwd, approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
-        developerInstructions: spec.instructions, ...(spec.model ? { model: spec.model } : {}),
-      })
-      threadId = text(object(thread['thread'])['id'])
-      if (!threadId) throw new Error('The ChatGPT runtime did not open a session.')
+    const startTurn = async (words: string): Promise<void> => {
       const turn = await rpc.send('turn/start', {
-        threadId, input: [{ type: 'text', text: [job.opening, job.prompt].filter(Boolean).join('\n\n'), text_elements: [] }],
+        threadId, input: [{ type: 'text', text: words, text_elements: [] }], approvalPolicy: ready ? 'never' : 'untrusted',
         sandboxPolicy: { type: 'workspaceWrite', writableRoots: [native.cwd], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true },
         ...(job.effort ? { effort: job.effort } : {}),
       })
       turnId = text(object(turn['turn'])['id'])
+    }
+    void (async () => {
+      await rpc.initialize()
+      const thread = await rpc.send('thread/start', {
+        cwd: native.cwd, approvalPolicy: ready ? 'never' : 'untrusted', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
+        developerInstructions: spec.instructions, ...(spec.model ? { model: spec.model } : {}),
+      })
+      threadId = text(object(thread['thread'])['id'])
+      if (!threadId) throw new Error('The ChatGPT runtime did not open a session.')
+      await startTurn([job.opening, job.prompt].filter(Boolean).join('\n\n'))
     })().catch((error: unknown) => finish({ answer, error: error instanceof Error ? error.message : String(error) }))
   })
 }
