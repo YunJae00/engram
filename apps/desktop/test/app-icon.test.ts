@@ -40,7 +40,7 @@ function png(buffer: Buffer) {
   return { width, height }
 }
 
-it('ships transparent round artwork at every declared desktop size', () => {
+it('ships transparent rounded-square artwork at every declared desktop size', () => {
   const build = new URL('../build/', import.meta.url)
   expect(png(readFileSync(new URL('icon.png', build)))).toEqual({ width: 512, height: 512 })
   expect(png(readFileSync(new URL('icon-mac.png', build)))).toEqual({ width: 1024, height: 1024 })
