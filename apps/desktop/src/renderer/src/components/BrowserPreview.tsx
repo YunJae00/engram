@@ -51,9 +51,9 @@ export function BrowserPreview({ channel, url, native, live, visible, minimized,
       } else setUnavailable(true)
       if (live) timer = setTimeout(() => void refresh(), 1000)
     }
-    if (visible && !minimized) void refresh()
+    if (visible && !minimized && url && url !== 'about:blank') void refresh()
     return () => { alive = false; clearTimeout(timer) }
-  }, [channel, live, visible, minimized])
+  }, [channel, live, visible, minimized, url])
   const drag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as Element).closest('button')) return
     const rect = card.current?.getBoundingClientRect(), parent = card.current?.offsetParent?.getBoundingClientRect()

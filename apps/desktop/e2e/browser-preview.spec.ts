@@ -47,6 +47,13 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   await expect(preview).toBeVisible()
   await expect(page.getByTestId('native-browser-surface')).toHaveCount(0)
   await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '', { timeout: 60000 })
+  await expect.poll(() => preview.locator('canvas').evaluate(element => {
+    const canvas = element as HTMLCanvasElement
+    const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    let ink = 0
+    for (let i = 0; i < pixels.length; i += 4) if (pixels[i]! < 90 && pixels[i + 1]! < 110 && pixels[i + 2]! < 140) ink++
+    return ink
+  }), { timeout: 15000 }).toBeGreaterThan(100)
   await expect(page.getByTestId('live-address')).toHaveCount(0)
   const main = await page.locator('.bots-main').boundingBox(), chat = await page.locator('.bots-chat').boundingBox()
   expect(Math.abs(main!.width - chat!.width)).toBeLessThan(2)
