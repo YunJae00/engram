@@ -2613,11 +2613,10 @@ export function registerIpc(ctx: VaultContext): void {
         const filingEngine = ctx.engines[0]
         // The answer this message may be correcting.
         const previousAnswer = [...request.history].reverse().find((turn) => turn.role === 'assistant')?.text
-        // After the answer is out, while the model is still held: what of
-        // this turn is worth keeping about the person.
+        // After the answer is out: what of this turn is worth keeping about
+        // the person. It runs on its own, so the turn ends with the answer.
         if (!turn?.quiet && finished && filingEngine) {
-          broadcast({ type: 'comet:step', channel, line: 'note: Saving useful context from this turn' })
-          await rememberTurn({
+          void rememberTurn({
             engine: filingEngine,
             workdir: engineCwd(paths),
             paths,
@@ -2626,8 +2625,7 @@ export function registerIpc(ctx: VaultContext): void {
             message: request.message,
             answer: result.answer,
             ...(previousAnswer ? { previous: previousAnswer } : {}),
-            signal,
-          })
+          }).catch(error => flog('comet-memory', error))
         }
       } catch (err) {
         if (!learningRecorded) await learning.record(bot.id, learningId, request.message, [], false)

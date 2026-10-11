@@ -35,7 +35,7 @@ const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions
 const completed = (item: Data) => ['item/completed', { item }] as const
 
 describe('ChatGPT with its own tools', () => {
-  it('gets host consent before starting, refuses sandbox elevation and returns the final message', async () => {
+  it('asks nothing up front, declines requests without a plain command and returns the final message', async () => {
     const answers: unknown[] = [], sent: { method: string; params: Data }[] = []
     const hands = native(async (name) => ({ behavior: name === 'Bash' ? 'allow' : 'deny' }))
     const result = await runCodexNative(job(hands), spec(fakeServer(async (server) => {
@@ -50,13 +50,13 @@ describe('ChatGPT with its own tools', () => {
     expect(hands.calls).toEqual(['Bash python sum.py'])
     expect(hands.results).toEqual(['Bash true'])
     const thread = sent.find(one => one.method === 'thread/start')!.params, turn = sent.find(one => one.method === 'turn/start')!.params
-    expect(thread).toMatchObject({ cwd: 'C:/work/bot-1', approvalPolicy: 'never', sandbox: 'workspace-write', developerInstructions: 'rules' })
+    expect(thread).toMatchObject({ cwd: 'C:/work/bot-1', approvalPolicy: 'untrusted', sandbox: 'workspace-write', developerInstructions: 'rules' })
     expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true })
   })
 
-  it('declines runtime elevation and records sandboxed command results', async () => {
+  it('declines runtime elevation and patches the host refuses, and records sandboxed command results', async () => {
     const answers: unknown[] = []
-    const hands = native(async () => ({ behavior: 'allow' }))
+    const hands = native(async (name, input) => ({ behavior: String(input['file_path']).includes('Documents') ? 'deny' : 'allow' }))
     await runCodexNative(job(hands), spec(fakeServer(async (server) => {
       answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', command: 'del report.xlsx' }))
       server.notify('item/started', { item: { id: 'f1', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }] } })
@@ -71,14 +71,14 @@ describe('ChatGPT with its own tools', () => {
     expect(hands.results).toEqual(['Write false', 'Bash true'])
   })
 
-  it('never starts the runtime turn without host consent', async () => {
-    const sent: { method: string; params: Data }[] = []
-    const hands = native(async () => ({ behavior: 'deny', message: 'The person declined.' }))
-    const result = await runCodexNative(job(hands), spec(fakeServer(async () => {}, sent)))
-    expect(result.error).toBe('The person declined.')
-    expect(result.commandsDenied).toBe(true)
-    expect(sent).toEqual([])
-    expect(hands.calls).toEqual([])
+  it('answers a turn that needs no command without asking the person anything', async () => {
+    const decide = vi.fn<NativeTools['decide']>(async () => ({ behavior: 'deny' }))
+    const result = await runCodexNative(job(native(decide)), spec(fakeServer(async (server) => {
+      server.notify(...completed({ id: 'm1', type: 'agentMessage', text: '28 hours' }))
+      server.notify('turn/completed', { turn: { status: 'completed' } })
+    })))
+    expect(result).toEqual({ answer: '28 hours' })
+    expect(decide).not.toHaveBeenCalled()
   })
 
   it('sends questions back to ask_person and reports a failed or interrupted turn', async () => {
