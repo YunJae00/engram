@@ -31,7 +31,7 @@ function native(decide: NativeTools['decide']): NativeTools & { calls: string[];
 }
 
 const job = (hands: NativeTools): ToolSessionJob & { native: NativeTools } => ({ workdir: 'C:/vault' as ToolSessionJob['workdir'], system: 'system', prompt: 'Sum the column', tools: [], maxCalls: 10, native: hands })
-const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions: 'rules', budgetMs: 5_000 })
+const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions: 'rules' })
 const completed = (item: Data) => ['item/completed', { item }] as const
 
 describe('ChatGPT with its own tools', () => {
@@ -93,14 +93,24 @@ describe('ChatGPT with its own tools', () => {
     expect(failed).toEqual({ answer: 'partial', error: 'usage limit' })
   })
 
-  it('ends a turn that runs past its budget or is canceled', async () => {
+  it('ends a canceled turn', async () => {
     const hands = native(async () => ({ behavior: 'allow' }))
-    const slow = await runCodexNative(job(hands), { ...spec(fakeServer(async () => {})), budgetMs: 30 })
-    expect(slow.error).toBe('timed out after 30ms')
     const abort = new AbortController()
     const pending = runCodexNative({ ...job(hands), signal: abort.signal }, spec(fakeServer(async () => {})))
     abort.abort()
     expect((await pending).error).toBe('canceled')
+  })
+
+  it('falls back to Engram tools instead of using approval that can bypass the sandbox', async () => {
+    const sent: { method: string; params: Data }[] = []
+    const decide = vi.fn(async () => ({ behavior: 'allow' as const }))
+    const hands = native(decide)
+    hands.mode = 'each'
+    const result = await runCodexNative(job(hands), spec(fakeServer(async () => {}, sent)))
+    expect(result.commandsDenied).toBe(true)
+    expect(result.error).toContain('native commands are disabled')
+    expect(sent).toEqual([])
+    expect(decide).not.toHaveBeenCalled()
   })
 
   it('keeps the shell and file edits on and everything else that acts on its own off', () => {

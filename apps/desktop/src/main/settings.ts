@@ -4,7 +4,7 @@ import { renameWithRetry, REASONING_EFFORTS } from 'core'
 import { join } from 'node:path'
 
 interface AppSettings {
-  aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }>
+  aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort; permission?: import('core').PermissionMode }>
   claudeEffort?: import('core').ReasoningEffort
   codexEffort?: import('core').ReasoningEffort
   theme: 'system' | 'light' | 'dark'

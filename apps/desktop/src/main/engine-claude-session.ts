@@ -1,4 +1,4 @@
-import { SESSION_TURN_MS, type NativeTools, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { type NativeTools, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { nativeOptions } from './engine-claude-native.js'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
 import { claudeSessionStarted } from './claude-runtime.js'
@@ -49,7 +49,6 @@ export interface SessionSpec {
 
 const IDLE_MS = 10 * 60_000
 const TURNS_MAX = 12
-const TURN_BUDGET_MS = SESSION_TURN_MS
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -69,7 +68,6 @@ interface Turn {
   firstTool: boolean
   resolve(result: ToolSessionResult): void
   answer: string
-  timer: ReturnType<typeof setTimeout>
   detachAbort(): void
   onToken?: (text: string) => void
   onProgress?: () => void
@@ -245,7 +243,6 @@ export class WarmSession {
     if (!turn) return
     this.turn = null
     this.native = undefined
-    clearTimeout(turn.timer)
     turn.detachAbort()
     turn.resolve(result)
   }
@@ -271,9 +268,8 @@ export class WarmSession {
         this.close()
       }
       const onAbort = (): void => cut('canceled')
-      const timer = setTimeout(() => cut(`timed out after ${TURN_BUDGET_MS}ms`), TURN_BUDGET_MS)
       const now = performance.now()
-      const turn: Turn = { resolve, answer: '', timer, detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
+      const turn: Turn = { resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
       job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })

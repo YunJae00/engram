@@ -86,6 +86,31 @@ test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 
+test('a floating mirror watches automatic work without changing the website viewport', async () => {
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await openActivity(page, 'bots')
+  await page.locator('.bots-row', { hasText: 'Watching' }).click()
+  const lane = await page.evaluate(async () => `bot-${(await window.engram.botsList()).find(bot => bot.name === 'Watching')!.id}`)
+  await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'read_open_page: Form' }), lane)
+  await page.evaluate(async ({ lane, url }) => window.engram.agentGo(url, lane), { lane, url: siteUrl })
+  const preview = page.locator('.browser-preview')
+  await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '', { timeout: 60000 })
+  await expect(page.locator('.mirror-surface')).toHaveCount(0)
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${browserPort}`)
+  try {
+    const website = browser.contexts()[0]!.pages().find(item => item.url() === siteUrl)!
+    const viewport = await website.evaluate(() => [innerWidth, innerHeight])
+    expect(viewport[0]).toBeGreaterThan(800)
+    await preview.getByRole('button', { name: 'Minimize preview' }).click()
+    await preview.getByRole('button', { name: 'Show browser preview' }).click()
+    expect(await website.evaluate(() => [innerWidth, innerHeight])).toEqual(viewport)
+    await preview.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
+    await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
+    await expect(website.getByRole('textbox', { name: 'Query' })).toHaveValue('')
+    await page.screenshot({ path: join(REPO_TMP, 'floating-mirror.png') })
+  } finally { await browser.close() }
+})
+
 test('browser controls navigate history, reload the website and open imported bookmarks', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await openActivity(page, 'bots')
@@ -437,6 +462,7 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(pane).toHaveCount(0)
   await step(first, 'open_page')
   await expect(pane).toBeVisible()
+  await pane.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
   await expect(pane.getByTestId('web-work-status')).toHaveAttribute('aria-hidden', 'false')
   await expect(pane).toHaveAttribute('data-work', 'working')
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
@@ -449,6 +475,7 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(pane).toHaveCount(0)
   await page.locator('.bots-row', { hasText: 'Parallel watch' }).click()
   await expect(pane).toBeVisible()
+  await pane.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
   await expect(pane.getByTestId('web-work-status')).toContainText('Comets at work')
   await page.screenshot({ path: join(REPO_TMP, 'web-work-visibility.png') })

@@ -1,5 +1,6 @@
 @import './assets/fonts/fonts.css';
 @import './native-browser.css';
+@import './browser-preview.css';
 @import './activity-motion.css';
 @import './orbit.css';
 @import './conversation.css';
