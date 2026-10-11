@@ -78,6 +78,7 @@ test.beforeAll(async () => {
     },
   })
   page = await app.firstWindow()
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
@@ -101,8 +102,7 @@ test('a floating mirror watches automatic work without changing the website view
     const website = browser.contexts()[0]!.pages().find(item => item.url() === siteUrl)!
     const viewport = await website.evaluate(() => [innerWidth, innerHeight])
     expect(viewport[0]).toBeGreaterThan(800)
-    await preview.getByRole('button', { name: 'Minimize preview' }).click()
-    await preview.getByRole('button', { name: 'Show browser preview' }).click()
+    await expect(preview.locator('.browser-preview-bar button')).toHaveCount(1)
     expect(await website.evaluate(() => [innerWidth, innerHeight])).toEqual(viewport)
     await preview.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
     await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
