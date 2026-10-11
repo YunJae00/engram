@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url'
 
 const SS = 4 // supersampling factor for smooth edges
 
-// A round plate in the app's own ink, the comet on it in white.
+// A rounded square plate in the app's own ink, the comet on it in white.
 const PLATE = [0x2b, 0x2b, 0x33]
 const MARK = [0xff, 0xff, 0xff]
+const CORNER = 0.225 // corner radius as a fraction of the side
 
 // The comet: a five-point star leaning into flight, its tips rounded by a
 // thick round-joined stroke, and three fading dots trailing down-left. Same
@@ -64,7 +65,16 @@ function cometAlpha(gx, gy, px) {
   return 0
 }
 
-// Renders the round plate with the comet at `px` pixels; straight-alpha RGBA.
+// Inside the full-bleed rounded square?
+function onPlate(x, y, W) {
+  const half = W / 2, r = CORNER * W
+  const dx = Math.abs(x - half), dy = Math.abs(y - half)
+  if (dx > half || dy > half) return false
+  if (dx <= half - r || dy <= half - r) return true
+  return (dx - (half - r)) ** 2 + (dy - (half - r)) ** 2 <= r * r
+}
+
+// Renders the plate with the comet at `px` pixels; straight-alpha RGBA.
 export function renderIcon(px) {
   const W = px * SS
   const half = W / 2
@@ -84,7 +94,7 @@ export function renderIcon(px) {
         for (let sx = 0; sx < SS; sx++) {
           const x = ox * SS + sx + 0.5
           const y = oy * SS + sy + 0.5
-          if ((x - half) ** 2 + (y - half) ** 2 > half * half) continue
+          if (!onPlate(x, y, W)) continue
           const a = cometAlpha((x - offX) / scale, (y - offY) / scale, px)
           sumR += MARK[0] * a + PLATE[0] * (1 - a)
           sumG += MARK[1] * a + PLATE[1] * (1 - a)
