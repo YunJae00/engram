@@ -2,6 +2,7 @@ import { AlertTriangle, CircleHelp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DelegatedTaskDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { webPane } from '../lib/webPane.js'
 
 // Presses the comet's task left for the person while it went on with the
 // rest: each is decided here, and once all are decided the task continues.
@@ -19,6 +20,9 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
     const off = api.onEvent((event) => { if (event.type === 'tasks:changed') load() })
     return () => { live = false; off() }
   }, [botId])
+  useEffect(() => {
+    if (task?.state === 'waiting') webPane.attention(`bot-${botId}`)
+  }, [task, botId])
   if (!task || !['waiting', 'failed'].includes(task.state)) return null
   if (task.question && task.question === questionShown) return null
   const pending = task.approvals.filter((a) => !a.answer)

@@ -5,16 +5,17 @@ interface WebPaneState {
   folded: boolean
   wanted: boolean
   expanded: boolean
+  floating: boolean
   phase: 'idle' | 'working' | 'aside'
 }
-const EMPTY: WebPaneState = { folded: false, wanted: false, expanded: false, phase: 'idle' }
+const EMPTY: WebPaneState = { folded: false, wanted: false, expanded: false, floating: false, phase: 'idle' }
 const lanes = new Map<string, WebPaneState>()
 const listeners = new Set<() => void>()
 function state(lane: string): WebPaneState { return lanes.get(lane) ?? EMPTY }
 function set(lane: string, change: Partial<WebPaneState>): void {
   const before = state(lane)
   const next = { ...before, ...change }
-  if (next.folded === before.folded && next.wanted === before.wanted && next.phase === before.phase && next.expanded === before.expanded) return
+  if (next.folded === before.folded && next.wanted === before.wanted && next.phase === before.phase && next.expanded === before.expanded && next.floating === before.floating) return
   lanes.set(lane, next)
   for (const listener of listeners) listener()
 }
@@ -27,24 +28,27 @@ export const webPane = {
     }
   },
   getSnapshot: state,
-  open(lane: string): void { set(lane, { folded: false, wanted: true }) },
+  open(lane: string): void { set(lane, { folded: false, wanted: true, floating: false, expanded: false }) },
+  preview(lane: string): void { set(lane, { folded: false, wanted: true, floating: true, expanded: false }) },
   fold(lane: string): void { set(lane, { folded: true, expanded: false }) },
-  expand(lane: string, expanded: boolean): void { set(lane, { expanded }) },
+  expand(lane: string, expanded: boolean): void { set(lane, { folded: false, wanted: true, floating: false, expanded }) },
+  attention(lane: string): void { if (state(lane).expanded) set(lane, { expanded: false, floating: true }) },
   // Tool names are the protocol, not the human-readable step summary.
   handleEvent(event: EngramEvent): boolean {
     if (!('channel' in event) || !event.channel) return false
     const lane = event.channel
+    if (event.type === 'press:ask' || event.type === 'routine:submit' || ((event.type === 'chat:done' || event.type === 'chat:offer') && event.offer?.kind === 'asked')) webPane.attention(lane)
     if (event.type === 'chat:done' || event.type === 'chat:error') set(lane, { phase: 'idle' })
     if (event.type === 'routine:step') {
       const entering = state(lane).phase === 'idle'
-      set(lane, { phase: 'working', ...(entering ? { folded: false, wanted: true } : {}) })
+      set(lane, { phase: 'working', ...(entering ? { folded: false, wanted: true, floating: true, expanded: false } : {}) })
       return entering
     }
     if (event.type !== 'comet:step') return false
     const tool = /^([a-z_]+):/.exec(event.line)?.[1] ?? ''
     if (/^(open_page|search_web|read_open_page|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal|click_on|type_into)$/.test(tool)) {
       const entering = state(lane).phase === 'idle'
-      set(lane, { phase: 'working', ...(entering ? { folded: false, wanted: true } : {}) })
+      set(lane, { phase: 'working', ...(entering ? { folded: false, wanted: true, floating: true, expanded: false } : {}) })
       return entering
     }
     if (tool === 'aside' || tool === 'resume') {

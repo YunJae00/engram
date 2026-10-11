@@ -1,4 +1,4 @@
-import { ChevronsRight, LoaderCircle, Maximize2, PanelLeft, Square } from 'lucide-react'
+import { ChevronsRight, LoaderCircle, Maximize2, PanelLeft, PictureInPicture2, Square } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { api } from '../api.js'
 import { agentMirror } from '../lib/agentMirrorLive.js'
@@ -12,13 +12,7 @@ import { useShellState } from '../state-slices.js'
 import { BrowserActions } from './BrowserActions.js'
 import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 import { browserAddress } from '../lib/browser-start.js'
-
-// The page the comet works on, standing beside the conversation as its own
-// half of the screen. Trust comes from being able to SEE the work and stop
-// it: the page is always in view, always live to the person's own clicks and
-// keys, and the stop is on the pane itself. The divider drags; the pane folds
-// to a sliver and comes back; a closed browser leaves its last picture up,
-// dimmed, so the answer can still be read against it.
+import { BrowserPreview } from './BrowserPreview.js'
 
 const WIDTH_KEY = 'engram.webpane.width'
 const MIN_W = 380
@@ -91,10 +85,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   }, [])
   // Folding plays the pane out to the right edge before the tab takes its
   // place, so the fold reads as the pane leaving, not vanishing.
-  const { folded, wanted, phase, expanded } = useWebPane(channel)
-  useEffect(() => {
-    if (busy && expanded) webPane.expand(channel, false)
-  }, [busy, expanded, channel])
+  const { folded, wanted, phase, expanded, floating } = useWebPane(channel)
   const [present, setPresent] = useState(!folded)
   const closing = folded && present
   const fold = () => webPane.fold(channel)
@@ -109,7 +100,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     void api.agentLane(channel).catch(() => {})
     void agentMirror.ask()
   }, [channel, active])
-  const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame, lane, width: frameWidth, height: frameHeight } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   // What the store holds is whoever was mirrored last; it belongs on this
   // pane only when it is this comet's own. Another comet's page must never
   // stand in for an empty one here.
@@ -155,12 +146,13 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   const stage = useRef<HTMLDivElement>(null)
   const frozen = !on && frameHere
   const paneShown = (liveHere || frozen) && !folded
-  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active)
+  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active && !floating)
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
   // by the composer is where it comes back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
+  if (floating) return <BrowserPreview key={channel} channel={channel} url={mine ? url : undefined} native={native} live={liveHere} visible={visible && active} minimized={folded} busy={busy} onStop={onStop} width={frameWidth} height={frameHeight} />
   if (folded && !present) return null
   return (
     <aside
@@ -185,7 +177,8 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           </button>
           <BrowserAddress key={`address-${channel}`} channel={channel} url={mine ? url : ''} />
           <BrowserActions key={`actions-${channel}`} lane={channel} url={mine ? url : undefined} live={liveHere} />
-          <button className="live-dock-act" data-testid="web-pane-expand" disabled={busy} aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={busy ? 'Chat stays visible while the AI is working' : expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
+          <button className="live-dock-act" aria-label="Return to small preview" title="Return to small preview" onClick={() => webPane.preview(channel)}><PictureInPicture2 size={15} aria-hidden /></button>
+          <button className="live-dock-act" data-testid="web-pane-expand" aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>
               <Square size={10} strokeWidth={2.5} aria-hidden /> {t('bubble.stop')}
