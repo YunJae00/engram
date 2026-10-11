@@ -1,4 +1,4 @@
-import { ENGINE_BUDGETS, SESSION_TURN_MS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
@@ -199,7 +199,6 @@ export class CodexEngine implements CloudEngine {
     const binary = codexBinary()
     if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
     const abort = new AbortController()
-    const timer = setTimeout(() => abort.abort(new Error(`timed out after ${SESSION_TURN_MS}ms`)), SESSION_TURN_MS)
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
     let server: Awaited<ReturnType<typeof startToolServer>> | undefined
@@ -213,7 +212,7 @@ export class CodexEngine implements CloudEngine {
       if (job.native) {
         const result = await runCodexNative({ ...job, native: job.native, signal: abort.signal }, {
           rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
-          instructions: [job.system, NATIVE_REACH].join('\n\n'), budgetMs: SESSION_TURN_MS, ...(codexModel ? { model: codexModel } : {}),
+          instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
         })
         if (job.signal?.aborted) return { answer: '', error: 'canceled' }
         if (!result.commandsDenied) return result
@@ -239,10 +238,8 @@ export class CodexEngine implements CloudEngine {
       return { answer }
     } catch (err) {
       if (job.signal?.aborted) return { answer: '', error: 'canceled' }
-      if (abort.signal.aborted) return { answer: '', error: `timed out after ${SESSION_TURN_MS}ms` }
       return { answer: '', error: err instanceof Error ? err.message : String(err) }
     } finally {
-      clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
       await server?.close()
     }

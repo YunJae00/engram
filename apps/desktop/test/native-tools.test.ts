@@ -122,6 +122,32 @@ describe('native tool policy', () => {
   })
 })
 
+describe('permission modes', () => {
+  it('runs commands without asking in auto, asks for each command in each, and allows nothing in plan', async () => {
+    const ask = vi.fn<NonNullable<NativePolicy['ask']>>(async () => 'approve')
+    const auto = { ...policy(ask), mode: 'auto' as const }
+    expect((await nativeDecision(auto, 'Bash', { command: 'python a.py' })).behavior).toBe('allow')
+    expect(ask).not.toHaveBeenCalled()
+    const each = { ...policy(ask), mode: 'each' as const }
+    expect((await nativeDecision(each, 'Bash', { command: 'python  a.py' })).behavior).toBe('allow')
+    expect((await nativeDecision(each, 'Bash', { command: 'python b.py' })).behavior).toBe('allow')
+    expect(ask.mock.calls.map(([what]) => what.words)).toEqual(['Run this command? python a.py', 'Run this command? python b.py'])
+    expect(each.commands.allowed).toBe(false)
+    ask.mockResolvedValueOnce('cancel')
+    expect((await nativeDecision(each, 'Bash', { command: 'del x' })).message).toContain('this command')
+    const plan = { ...policy(ask), mode: 'plan' as const, commands: { allowed: true } }
+    expect((await nativeDecision(plan, 'Bash', { command: 'dir' })).message).toContain('Plan mode')
+    expect((await nativeDecision(plan, 'Write', { file_path: 'notes.md', content: '' })).message).toContain('Plan mode')
+    expect((await nativeDecision(plan, 'Read', { file_path: join(documents, 'report.xlsx') })).behavior).toBe('allow')
+    expect(ask).toHaveBeenCalledTimes(3)
+  })
+
+  it('carries the mode to the runtime', async () => {
+    const tools = await cometNativeTools({ paths: vaultPaths(join(root, 'one')), channel: 'bot-1', mode: 'each', onStep: vi.fn(), audit: vi.fn() })
+    expect(tools.mode).toBe('each')
+  })
+})
+
 describe('outputs left in the task folder', () => {
   it('hands in only deliverables built this turn and named in the answer, not scripts or ones already linked', async () => {
     const since = Date.now() - 1000

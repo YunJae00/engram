@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, ToolSessionJob } from 'core'
-import { SESSION_TURN_MS } from 'core'
 const timingLog = vi.hoisted(() => vi.fn())
 vi.mock('../src/main/flog.js', () => ({ flog: timingLog }))
 import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
@@ -306,26 +305,6 @@ describe('the reply streams as it is written', () => {
       expect(result).toEqual({ answer: 'The answer is 42.' })
       expect(JSON.stringify([result, onProgress.mock.calls, onToken.mock.calls, timingLog.mock.calls])).not.toContain('private')
     } finally { pool.closeAll() }
-  })
-
-  it('keeps the absolute turn deadline even while hidden progress continues', async () => {
-    vi.useFakeTimers()
-    const pool = new SessionPool(), onProgress = vi.fn()
-    async function* events() {
-      for (let i = 0; i < 20; i++) {
-        await new Promise(resolve => setTimeout(resolve, 60_000))
-        yield { type: 'system', subtype: 'thinking_tokens', estimated_tokens_delta: 1 }
-      }
-    }
-    try {
-      const pending = pool.run(job('Task', { onProgress }), { sdk: streamingSdk(events), binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
-      await vi.advanceTimersByTimeAsync(SESSION_TURN_MS - 1)
-      expect(onProgress).toHaveBeenCalledTimes(14)
-      await vi.advanceTimersByTimeAsync(1)
-      expect(await pending).toEqual({ answer: '', error: `timed out after ${SESSION_TURN_MS}ms` })
-      await vi.advanceTimersByTimeAsync(60_000)
-      expect(onProgress).toHaveBeenCalledTimes(14)
-    } finally { pool.closeAll(); vi.useRealTimers() }
   })
 
   it('hands each piece over as it comes, and starts over after a tool call', async () => {

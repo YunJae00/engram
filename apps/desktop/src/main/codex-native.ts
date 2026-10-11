@@ -11,6 +11,8 @@ import { flog } from './flog.js'
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
+// The runtime wraps each command in its shell; the person reads the command itself.
+const commandOf = (data: Data): string => (Array.isArray(data['commandActions']) ? data['commandActions'] : []).map(action => text(object(action)['command'])).filter(Boolean).join('; ') || text(data['command'])
 const DECISION_MS = 120_000
 
 export interface CodexRpc {
@@ -34,7 +36,6 @@ export interface CodexNativeSpec {
   config: string[]
   instructions: string
   model?: string
-  budgetMs: number
 }
 
 type NativeResult = ToolSessionResult & { commandsDenied?: true }
@@ -44,12 +45,15 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
   return new Promise<NativeResult>((resolve) => {
     let answer = '', settled = false, threadId = '', turnId = ''
     const recorded = new Set<string>()
+    // Asking per command: the runtime asks before each untrusted command and
+    // patch, and the host answers from the same policy as Claude's tools.
+    const each = native.mode === 'each'
+    const changes = new Map<string, string[]>()
     const controller = new AbortController()
     const finish = (result: NativeResult): void => {
       if (settled) return
       settled = true
       controller.abort()
-      clearTimeout(budget)
       job.signal?.removeEventListener('abort', cancel)
       void rpc.shutdown().catch(() => undefined)
       resolve(result)
@@ -77,9 +81,10 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
       if (method === 'item/started') {
         // Words before an action were thinking aloud, not the reply.
         if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.()
+        if (type === 'fileChange') changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])))
         if (type === 'commandExecution' || type === 'fileChange') {
           recorded.add(id)
-          native.onCall?.(type === 'commandExecution' ? 'Bash' : 'Write', type === 'commandExecution' ? { command: text(item['command']) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
+          native.onCall?.(type === 'commandExecution' ? 'Bash' : 'Write', type === 'commandExecution' ? { command: commandOf(item) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
         }
         return
       }
@@ -87,7 +92,7 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
         if (type === 'agentMessage') answer = text(item['text']) || answer
         if (type === 'commandExecution' || type === 'fileChange') {
           const name = type === 'commandExecution' ? 'Bash' : 'Write'
-          if (!recorded.has(id)) native.onCall?.(name, type === 'commandExecution' ? { command: text(item['command']) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
+          if (!recorded.has(id)) native.onCall?.(name, type === 'commandExecution' ? { command: commandOf(item) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
           recorded.delete(id)
           native.onResult?.(name, text(item['status']) === 'completed' && (type !== 'commandExecution' || item['exitCode'] === 0))
         }
@@ -103,8 +108,19 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     }
     const request = async (method: string, params: Data): Promise<unknown> => {
       if (settled || params['threadId'] !== threadId) throw new Error('This request does not belong to the active turn.')
-      // The host approves command use before starting; runtime approvals could bypass the sandbox.
-      if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: 'decline' }
+      // Requests to widen the sandbox are never granted; command use was settled
+      // before starting unless each command is put to the person.
+      if (method === 'item/commandExecution/requestApproval') {
+        const command = commandOf(params)
+        if (!each || params['kind'] !== 'command' || params['reason'] || params['networkApprovalContext'] || !command) return { decision: 'decline' }
+        return { decision: (await decide('Bash', { command })).behavior === 'allow' ? 'accept' : 'decline' }
+      }
+      if (method === 'item/fileChange/requestApproval') {
+        const paths = changes.get(text(params['itemId']))
+        if (!each || params['grantRoot'] || !paths?.length) return { decision: 'decline' }
+        for (const path of paths) if ((await decide('Write', { file_path: path })).behavior !== 'allow') return { decision: 'decline' }
+        return { decision: 'accept' }
+      }
       if (method === 'item/tool/requestUserInput') throw new Error('Ask with ask_person instead.')
       throw new Error('This permission request is not supported; nothing was granted.')
     }
@@ -113,16 +129,15 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
       if (threadId && turnId) void rpc.send('turn/interrupt', { threadId, turnId }, 5_000).catch(() => undefined)
       finish({ answer, error: 'canceled' })
     }
-    const budget = setTimeout(() => finish({ answer, error: `timed out after ${spec.budgetMs}ms` }), spec.budgetMs)
     if (job.signal?.aborted) { cancel(); return }
     job.signal?.addEventListener('abort', cancel, { once: true })
     void (async () => {
-      const decision = await decide('Bash', { command: 'Use sandboxed commands for this task' })
+      const decision: NativeDecision = each ? { behavior: 'allow' } : await decide('Bash', { command: 'Use sandboxed commands for this task' })
       if (settled) return
       if (decision.behavior !== 'allow') { finish({ answer, error: decision.message || 'Commands were not approved.', commandsDenied: true }); return }
       await rpc.initialize()
       const thread = await rpc.send('thread/start', {
-        cwd: native.cwd, approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
+        cwd: native.cwd, approvalPolicy: each ? 'untrusted' : 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
         developerInstructions: spec.instructions, ...(spec.model ? { model: spec.model } : {}),
       })
       threadId = text(object(thread['thread'])['id'])

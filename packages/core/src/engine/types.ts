@@ -5,6 +5,10 @@ export { classifyEngineError, type EngineErrorKind } from './classify.js'
 export type EngineId = 'claude' | 'codex' | 'mock'
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
 export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+// How far a comet may act on its own: commands without asking, after one
+// approval, after each approval, or only reading and planning.
+export type PermissionMode = 'auto' | 'once' | 'each' | 'plan'
+export const PERMISSION_MODES: readonly PermissionMode[] = ['auto', 'once', 'each', 'plan']
 export const DESKTOP_TOOL_ISOLATION_MESSAGE = 'This connection cannot safely run selected-app tools yet. Use a connection with an isolated tool session, or turn off Computer access for this chat.'
 
 export interface EngineDetection {
@@ -141,6 +145,7 @@ export interface NativeTools {
   cwd: string
   // Folders the runtime may also read from.
   readRoots: string[]
+  mode?: PermissionMode
   decide(name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<NativeDecision>
   onCall?(name: string, input: Record<string, unknown>): void
   onResult?(name: string, ok: boolean): void

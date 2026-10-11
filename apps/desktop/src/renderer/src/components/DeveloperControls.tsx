@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Check, Folder, GitBranch, LoaderCircle, ShieldCheck, ShieldOff, X } from 'lucide-react'
 import type { DevMode, DevSession } from '../../../shared/developers.js'
 
-export function DeveloperPopover({ label, trigger, disabled, children }: { label: string; trigger: ReactNode; disabled?: boolean; children(close: () => void): ReactNode }) {
+export function DeveloperPopover({ label, trigger, disabled, children, className = 'dev-control', hint }: { label: string; trigger: ReactNode; disabled?: boolean; className?: string; hint?: string; children(close: () => void): ReactNode }) {
   const [open, setOpen] = useState(false), anchor = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null), id = useId()
   const close = () => { setOpen(false); anchor.current?.focus() }
   useLayoutEffect(() => {
@@ -25,7 +25,7 @@ export function DeveloperPopover({ label, trigger, disabled, children }: { label
     window.addEventListener('pointerdown', away); window.addEventListener('keydown', key, true)
     return () => { window.removeEventListener('pointerdown', away); window.removeEventListener('keydown', key, true) }
   }, [open])
-  return <><button className="dev-control" ref={anchor} disabled={disabled} aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(value => !value)}>{trigger}</button>{open && createPortal(<div className="dev-popover" ref={panel} id={id} role="dialog" aria-label={label}><header><strong>{label}</strong><button className="dev-control" aria-label={`Close ${label}`} onClick={close}><X size={14} /></button></header>{children(close)}</div>, document.body)}</>
+  return <><button className={className} ref={anchor} disabled={disabled} aria-label={label} title={hint} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(value => !value)}>{trigger}</button>{open && createPortal(<div className="dev-popover" ref={panel} id={id} role="dialog" aria-label={label}><header><strong>{label}</strong><button className="dev-control" aria-label={`Close ${label}`} onClick={close}><X size={14} /></button></header>{children(close)}</div>, document.body)}</>
 }
 
 export const ACCESS: { id: DevMode; name: string; detail: string }[] = [

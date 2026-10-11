@@ -240,3 +240,24 @@ it('stops repeated unreadable-page actions across changed key arguments and inte
   expect(said[2]).toContain('was not run again')
   expect(said[5]).toContain('was not run again')
 })
+
+it('does not count a permission card waiting on the person as a stall', async () => {
+  vi.useFakeTimers()
+  let job!: ToolSessionJob
+  let finish!: (result: { answer: string }) => void
+  let answer!: (decision: { behavior: 'allow' }) => void
+  const engine = { id: 'claude', runTools: (next: ToolSessionJob) => { job = next; return new Promise(resolve => { finish = resolve }) } } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Run it', {
+    native: { cwd: process.cwd(), readRoots: [], decide: () => new Promise(resolve => { answer = resolve }) },
+  })
+  await vi.advanceTimersByTimeAsync(10_000)
+  const decided = job.native!.decide('Bash', { command: 'python report.py' }, new AbortController().signal)
+  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS * 3)
+  expect(job.signal?.aborted).toBe(false)
+  answer({ behavior: 'allow' })
+  expect(await decided).toEqual({ behavior: 'allow' })
+  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS + 10_000)
+  expect(job.signal?.aborted).toBe(true)
+  finish({ answer: '' })
+  await pending
+})

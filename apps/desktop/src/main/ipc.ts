@@ -121,7 +121,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref, PLAN_RULE } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -301,6 +301,8 @@ export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 // per channel: a comet parked at a wall keeps the window for itself, and
 // another comet finishing does not let go of it.
 const WALL_HOLD_MS = 10 * 60_000
+// Tools that change files or applications; plan mode leaves them off.
+const PLAN_BLOCKED = /^(file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence)/
 const wallHolds = new Map<string, () => void>()
 function releaseWallHold(channel: string): void {
   const release = wallHolds.get(channel)
@@ -2366,9 +2368,11 @@ export function registerIpc(ctx: VaultContext): void {
         const skillLedger = await readSkillsLedger(paths)
         // The runtime's own tools, governed here: reads where the person
         // already lets it look, a work folder of its own, commands once allowed.
-        const native = (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
+        // Plan mode on ChatGPT is its runtime without a shell: reading goes through Engram's file tools.
+        const permission = aiSelection(settings, channel).permission ?? 'once'
+        const native = (engine.id === 'claude' || (engine.id === 'codex' && permission !== 'plan')) && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, sandboxed: engine.id === 'codex', attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const result = await runComet(
@@ -2458,7 +2462,7 @@ export function registerIpc(ctx: VaultContext): void {
               sources: attachments.evidencePaths,
               requireSourceEvidence: attachments.paths.length > 0,
               generatedDirectory: artifactDirectory(paths),
-            } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])],
+            } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)),
           },
           request.message,
           {
@@ -2474,7 +2478,7 @@ export function registerIpc(ctx: VaultContext): void {
               ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
               : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context) ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs)].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan') ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes

@@ -5,6 +5,7 @@ import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
+import { CometPermission } from './CometPermission.js'
 import { WebPaneButton } from './WebPaneButton.js'
 import { RoutineProgress } from './RoutineProgress.js'
 import { SubmitGate } from './SubmitGate.js'
@@ -102,7 +103,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         onChange={change}
         onSend={send}
         onStop={onStop}
-        tools={<ModelPicker scope={cometChannel(botId)} />}
+        tools={<><CometPermission scope={cometChannel(botId)} /><ModelPicker scope={cometChannel(botId)} /></>}
         actions={
           <>
             <button

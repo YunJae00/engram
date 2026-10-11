@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { correctableFault, runComet, runToolSession, SESSION_TURN_MS } from '../src/agent-session.js'
+import { correctableFault, runComet, runToolSession } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { MockEngine } from '../src/engine/mock.js'
@@ -315,27 +315,23 @@ it('accepts the fresh phase checkpoint at the execution allowance boundary', asy
   expect(result.incomplete).toBeUndefined()
 })
 
-it.each(['failed-observation', 'reused-evidence', 'expired'] as const)('does not replenish the boundary allowance from %s', async (cause) => {
+it.each(['failed-observation', 'reused-evidence'] as const)('does not replenish the boundary allowance from %s', async (cause) => {
   let reads = 0
-  const clock = vi.spyOn(Date, 'now')
   const engine = sessionBrain(async (job) => {
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!
     const read = job.tools.find((tool) => tool.name === 'read_desktop')!
     await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
     for (let index = 0; index < 39; index++) await read.run({})
-    if (cause === 'expired') clock.mockReturnValue(Date.now() + SESSION_TURN_MS + 1)
     const checkpoint = { evidenceStep: cause === 'reused-evidence' ? 2 : 40, finding: 'Ready' }
     expect(await plan.run(checkpoint)).not.toContain('"completed":1')
     expect(await plan.run(checkpoint)).toContain('No more calls')
     expect(await read.run({})).toContain('No more calls')
     return { answer: 'Incomplete' }
   })
-  try {
-    const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return cause === 'failed-observation' ? 'that did not work: scan failed' : 'Observed workspace' } }] }, 'Perform requested changes')
-    expect(reads).toBe(39)
-    expect(result.stopped).toBe('calls')
-    expect(result.incomplete).toContain('Prepare workspace')
-  } finally { clock.mockRestore() }
+  const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return cause === 'failed-observation' ? 'that did not work: scan failed' : 'Observed workspace' } }] }, 'Perform requested changes')
+  expect(reads).toBe(39)
+  expect(result.stopped).toBe('calls')
+  expect(result.incomplete).toContain('Prepare workspace')
 })
 
 it('keeps the total 120-call ceiling even when a fresh phase checkpoint is available', async () => {
