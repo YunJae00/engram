@@ -37,13 +37,15 @@ export interface CodexNativeSpec {
   budgetMs: number
 }
 
-export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, spec: CodexNativeSpec): Promise<ToolSessionResult> {
+type NativeResult = ToolSessionResult & { commandsDenied?: true }
+
+export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, spec: CodexNativeSpec): Promise<NativeResult> {
   const native = job.native
-  return new Promise<ToolSessionResult>((resolve) => {
+  return new Promise<NativeResult>((resolve) => {
     let answer = '', settled = false, threadId = '', turnId = ''
     const recorded = new Set<string>()
     const controller = new AbortController()
-    const finish = (result: ToolSessionResult): void => {
+    const finish = (result: NativeResult): void => {
       if (settled) return
       settled = true
       controller.abort()
@@ -117,7 +119,7 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     void (async () => {
       const decision = await decide('Bash', { command: 'Use sandboxed commands for this task' })
       if (settled) return
-      if (decision.behavior !== 'allow') { finish({ answer, error: decision.message || 'Commands were not approved.' }); return }
+      if (decision.behavior !== 'allow') { finish({ answer, error: decision.message || 'Commands were not approved.', commandsDenied: true }); return }
       await rpc.initialize()
       const thread = await rpc.send('thread/start', {
         cwd: native.cwd, approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
