@@ -335,7 +335,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
 })
 
-test('a saved wide page panel stays inside the conversation on a compact window', async () => {
+test('a saved wide page panel becomes a preview on a compact window', async () => {
   await page.evaluate(() => localStorage.setItem('engram.webpane.width', '1200'))
   await page.reload()
   await page.setViewportSize({ width: 948, height: 760 })
@@ -346,16 +346,18 @@ test('a saved wide page panel stays inside the conversation on a compact window'
   await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 30_000 })
 
   await expect(page.getByTestId('web-pane')).toHaveCSS('transform', 'none')
-  const [mainBox, paneBox, foldBox, addressBox] = await Promise.all([
+  await expect(page.locator('.browser-preview')).toBeVisible()
+  await expect(page.getByTestId('live-address')).toHaveCount(0)
+  const [mainBox, paneBox, chatBox] = await Promise.all([
     page.locator('.bots-main').boundingBox(),
     page.getByTestId('web-pane').boundingBox(),
-    page.getByTestId('web-pane-fold').boundingBox(),
-    page.getByTestId('live-address').boundingBox(),
+    page.locator('.bots-chat').boundingBox(),
   ])
   expect(paneBox!.x).toBeGreaterThanOrEqual(mainBox!.x)
   expect(paneBox!.x + paneBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1)
-  expect(foldBox!.x).toBeGreaterThanOrEqual(paneBox!.x)
-  expect(addressBox!.x).toBeGreaterThan(foldBox!.x + foldBox!.width)
+  expect(Math.abs(chatBox!.width - mainBox!.width)).toBeLessThan(2)
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await expect(page.getByTestId('live-address')).toBeVisible()
 })
 
 test('window and chat handoffs preserve independent input, composition and monitoring', async () => {
