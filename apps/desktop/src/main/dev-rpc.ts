@@ -10,13 +10,13 @@ export class DevRpc {
   private readonly pending = new Map<number, Pending>()
   private serial = 0
   private failure?: Error
-  constructor(binary: string, options: { cwd: string; env: NodeJS.ProcessEnv; trustedProject?: boolean },
+  constructor(binary: string, options: { cwd: string; env: NodeJS.ProcessEnv; trustedProject?: boolean; config?: string[] },
     private readonly notify: (method: string, params: Payload) => void,
     private readonly request: (method: string, params: Payload) => Promise<unknown>,
     private readonly ended: (error: Error) => void) {
     const trust = `projects.${JSON.stringify(options.cwd)}.trust_level=${JSON.stringify(options.trustedProject ? 'trusted' : 'untrusted')}`
     const extensions = options.trustedProject ? ['-c', 'features.hooks=true'] : ['-c', 'features.hooks=false', '-c', 'notify=[]']
-    this.child = new ProcessClient(binary, ['app-server', '-c', trust, ...extensions], { cwd: options.cwd, env: options.env, killTree: true })
+    this.child = new ProcessClient(binary, ['app-server', '-c', trust, ...extensions, ...(options.config ?? []).flatMap(value => ['-c', value])], { cwd: options.cwd, env: options.env, killTree: true })
     this.child.stderr.resume()
     this.child.on('error', error => this.close(error))
     this.child.on('exit', () => this.close(new Error('The development runtime disconnected.')))

@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain, shell } from 'electron'
-import { realpath } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative } from 'node:path'
-import { fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
+import { artifactHref, fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { fitImage } from './image-fit.js'
 import type { ArtifactViewDto } from '../shared/types.js'
@@ -11,6 +11,29 @@ const within = (root: string, path: string) => {
   return tail === '' || (!tail.startsWith('..') && !isAbsolute(tail))
 }
 export const artifactDirectory = (paths: VaultPaths) => join(paths.cache, 'artifacts')
+
+const REVISION = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
+
+// A check that revised a file but ran out of time still answers with the
+// draft's links: each one is pointed at the newest revision of its name saved
+// since the task began.
+export async function newestRevisions(directory: string, text: string, since: number, outputs: string[]): Promise<string> {
+  const files = outputs.map(path => basename(path))
+  let out = text
+  for (const match of text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)) {
+    let id: string
+    try { id = decodeURIComponent(match[1]!) } catch { continue }
+    const name = id.replace(REVISION, '')
+    let best = { id, at: (await stat(join(directory, id)).catch(() => null))?.mtimeMs ?? 0 }
+    for (const file of files) {
+      if (file === id || file.replace(REVISION, '') !== name || !REVISION.test(file)) continue
+      const info = await stat(join(directory, file)).catch(() => null)
+      if (info && info.mtimeMs > best.at && info.mtimeMs >= since) best = { id: file, at: info.mtimeMs }
+    }
+    if (best.id !== id) out = out.split(`engram-artifact:${match[1]})`).join(`engram-artifact:${artifactHref(best.id)})`)
+  }
+  return out
+}
 
 export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = []) {
   const approved = new Set(attachedPaths)

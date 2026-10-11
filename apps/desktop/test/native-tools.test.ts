@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { vaultPaths } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: (name: string) => join('C:/home', name) } }))
-import { cometNativeTools, nativeDecision, nativeSummary, type NativePolicy } from '../src/main/native-tools.js'
+import { cometNativeTools, mentionedOutputs, nativeDecision, nativeSummary, type NativePolicy } from '../src/main/native-tools.js'
 
 let root: string, cwd: string, documents: string, cache: string, privateDir: string
 const policy = (ask?: NativePolicy['ask']): NativePolicy => ({ cwd, roots: [cwd, join(cache, 'artifacts'), documents], cacheDir: cache, privateDir, commands: { allowed: false }, ...(ask ? { ask } : {}) })
@@ -106,5 +106,33 @@ describe('native tool policy', () => {
     expect((await one.decide('Bash', { command: 'echo one' }, signal)).behavior).toBe('allow')
     expect((await two.decide('Bash', { command: 'echo two' }, signal)).behavior).toBe('allow')
     expect(ask).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not reuse sandboxed consent for unsandboxed commands in the same comet', async () => {
+    const ask = vi.fn<NonNullable<NativePolicy['ask']>>(async () => 'approve')
+    const options = { paths: vaultPaths(join(root, 'one')), channel: 'same-chat', ask, onStep: vi.fn(), audit: vi.fn() }
+    const bounded = await cometNativeTools({ ...options, sandboxed: true })
+    const full = await cometNativeTools(options)
+    const signal = new AbortController().signal
+    await bounded.decide('Bash', { command: 'python report.py' }, signal)
+    await full.decide('Bash', { command: 'python report.py' }, signal)
+    expect(ask).toHaveBeenCalledTimes(2)
+    expect(ask.mock.calls[0]![0].words).toContain('network access is blocked')
+    expect(ask.mock.calls[1]![0].words).toContain('not sandboxed')
+  })
+})
+
+describe('outputs left in the task folder', () => {
+  it('hands in only deliverables built this turn and named in the answer, not scripts or ones already linked', async () => {
+    const since = Date.now() - 1000
+    await mkdir(join(cwd, 'out'), { recursive: true })
+    for (const name of ['report(2026.10.11.).xlsx', 'parse.py', 'notes.md', 'linked.csv']) await writeFile(join(cwd, name), 'x')
+    await writeFile(join(cwd, 'out', 'summary.md'), 'x')
+    await writeFile(join(cwd, 'old.csv'), 'x')
+    await utimes(join(cwd, 'old.csv'), new Date(since - 60_000), new Date(since - 60_000))
+    const answer = 'Built `C:\\work\\report(2026.10.11.).xlsx`, ran parse.py, wrote out/summary.md and old.csv. [linked.csv](engram-artifact:abc-linked.csv)'
+    const found = (await mentionedOutputs(cwd, answer, since)).map(path => path.slice(cwd.length + 1).replace(/\\/g, '/')).sort()
+    expect(found).toEqual(['out/summary.md', 'report(2026.10.11.).xlsx'])
+    expect(await mentionedOutputs(join(root, 'missing'), answer, since)).toEqual([])
   })
 })
