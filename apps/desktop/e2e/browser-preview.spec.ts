@@ -84,6 +84,13 @@ test('automatic work keeps chat wide and switches between preview, split and ful
 })
 
 test('preview stays within a narrow window, is draggable and supports dark and reduced-motion modes', async () => {
+  const tabs = await page.evaluate(lane => window.engram.browserTabs(lane), lane)
+  await page.evaluate(lane => window.engram.browserTab(lane, 'add'), lane)
+  const picture = page.locator('.browser-preview canvas')
+  await expect(picture).not.toHaveAttribute('data-painted', '')
+  await expect(page.locator('.browser-preview-wait')).toHaveText('Open browser to enter a website')
+  await page.evaluate(async ({ lane, id }) => window.engram.browserTab(lane, 'select', id), { lane, id: tabs.find(tab => tab.active)!.id })
+  await expect(picture).toHaveAttribute('data-painted', '')
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
   await page.screenshot({ path: join(shots, 'preview-dark.png') })
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 600); win.setSize(620, 800) })

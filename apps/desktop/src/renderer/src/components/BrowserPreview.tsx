@@ -12,7 +12,7 @@ export function BrowserPreview({ channel, url, native, live, visible, minimized,
   const [position, setPosition] = useState<{ right: number; top: number } | null>(null)
   const [shape, setShape] = useState<{ width: number; height: number } | null>(null)
   const [unavailable, setUnavailable] = useState(false)
-  const cached = useRef<string | null>(null)
+  const cached = useRef<{ data: string; url?: string } | null>(null)
   const dragFrom = useRef<{ x: number; y: number; right: number; top: number } | null>(null)
   const keepInside = useCallback((next: { right: number; top: number }) => {
     const parent = card.current?.offsetParent
@@ -36,13 +36,13 @@ export function BrowserPreview({ channel, url, native, live, visible, minimized,
   }, [])
   const source = useCallback<FrameSource>((paint) => {
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined
-    if (cached.current) paint(cached.current)
+    if (cached.current && cached.current.url === url) paint(cached.current.data)
     const refresh = async () => {
       const data = await api.nativeSnapshot(channel).catch(() => null)
       if (!alive) return
       if (data) {
         const base64 = data.slice(data.indexOf(',') + 1)
-        cached.current = base64
+        cached.current = { data: base64, url }
         paint(base64)
         setUnavailable(false)
         const image = new Image()
@@ -81,7 +81,7 @@ export function BrowserPreview({ channel, url, native, live, visible, minimized,
     </div>
     {!minimized && <button className="browser-preview-picture" aria-label="Open browser beside chat" onClick={() => webPane.open(channel)} style={{ aspectRatio: `${size.width} / ${size.height}` } as CSSProperties}>
       <FrameScreen key={channel} lane={channel} source={native ? source : undefined} />
-      <span className="browser-preview-wait">{unavailable ? 'Preview unavailable · click to open' : 'Opening preview…'}</span>
+      <span className="browser-preview-wait">{url === 'about:blank' && !busy ? 'Open browser to enter a website' : unavailable ? 'Preview unavailable · click to open' : 'Opening preview…'}</span>
       <span className="browser-preview-open"><PanelLeft size={13} aria-hidden /> Open browser</span>
     </button>}
   </aside>
