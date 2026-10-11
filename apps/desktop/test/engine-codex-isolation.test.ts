@@ -135,6 +135,16 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.run).not.toHaveBeenCalled()
   })
 
+  it('continues with isolated comet tools when native commands are declined', async () => {
+    fixture.native.mockResolvedValueOnce({ answer: '', error: 'Declined', commandsDenied: true })
+    const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: 'Rules', prompt: 'Read a page', tools: [], maxCalls: 1,
+      native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'deny' }) } })
+    expect(result).toEqual({ answer: 'fixture answer' })
+    expect(fixture.native).toHaveBeenCalledOnce()
+    expect(fixture.options.mock.lastCall![0].configOverrides.slice(1)).toEqual(RUNTIME_TOOLS_OFF)
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', networkAccessEnabled: false }))
+  })
+
   it('does not replay native work after a runtime failure', async () => {
     fixture.native.mockResolvedValueOnce({ answer: 'Partial work', error: 'Runtime failed' })
     const result = await new CodexEngine().runTools({ workdir: WORKDIR, system: '', prompt: 'Do it', tools: [], maxCalls: 1,

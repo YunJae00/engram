@@ -31,7 +31,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
   const valid = Number.isFinite(date.getTime())
   const time = valid ? (date.toDateString() === new Date().toDateString() ? clock : calendar).format(date) : ''
   return <>
-    <span className="sidebar-conversation-avatar"><CometAvatar id={bot.id} /><CometActivityIndicator state={state} /></span>
+    <span className="sidebar-conversation-avatar"><CometAvatar id={bot.id} face /><CometActivityIndicator state={state} /></span>
     <span className="sidebar-conversation-content">
       <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span>{time && <time dateTime={date.toISOString()} title={date.toLocaleString('en-US')}>{time}</time>}</span>
       <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>

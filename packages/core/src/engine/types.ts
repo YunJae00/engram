@@ -146,6 +146,8 @@ export interface NativeTools {
   // Folders the runtime may also read from.
   readRoots: string[]
   mode?: PermissionMode
+  // Commands may already run without asking: chosen, or approved for this comet.
+  ready?(): boolean
   decide(name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<NativeDecision>
   onCall?(name: string, input: Record<string, unknown>): void
   onResult?(name: string, ok: boolean): void

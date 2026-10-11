@@ -214,7 +214,8 @@ export class CodexEngine implements CloudEngine {
           rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
           instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
         })
-        return job.signal?.aborted ? { answer: '', error: 'canceled' } : result
+        if (job.signal?.aborted) return { answer: '', error: 'canceled' }
+        if (!result.commandsDenied) return result
       }
       const answer = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF] },

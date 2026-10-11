@@ -145,6 +145,17 @@ describe('permission modes', () => {
   it('carries the mode to the runtime', async () => {
     const tools = await cometNativeTools({ paths: vaultPaths(join(root, 'one')), channel: 'bot-1', mode: 'each', onStep: vi.fn(), audit: vi.fn() })
     expect(tools.mode).toBe('each')
+    expect(tools.ready!()).toBe(false)
+  })
+
+  it('reports commands ready only when chosen or already approved for this comet', async () => {
+    const options = { channel: 'bot-2', onStep: vi.fn(), audit: vi.fn(), ask: async () => 'approve' as const }
+    expect((await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'a')), mode: 'auto' })).ready!()).toBe(true)
+    const once = await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'b')) })
+    expect(once.ready!()).toBe(false)
+    await once.decide('Bash', { command: 'dir' }, new AbortController().signal)
+    expect(once.ready!()).toBe(true)
+    expect((await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'b')), mode: 'each' })).ready!()).toBe(false)
   })
 })
 

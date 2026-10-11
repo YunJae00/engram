@@ -5,7 +5,7 @@ import { cometThreads, selectComet } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
 import { t } from '../i18n.js'
-import { Comet } from './Icon.js'
+import { CometFace } from './Icon.js'
 import { Globe } from 'lucide-react'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { chatMessage, sendCometMessage } from '../lib/attachments.js'
@@ -49,7 +49,7 @@ export function CometWelcome() {
     finally { pending.current = false; setCreating(false) }
   }
   return <section className="comet-welcome" data-testid="comet-welcome">
-    <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span /><Comet size={38} /></div></div>
+    <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span /><CometFace size={38} /></div></div>
     <RoutineSkillHint value={draft} select={() => setDraft('/routine')} />
     <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} onStop={() => undefined}
       placeholder="Ask Engram…" maxLength={2000} busy={false} disabled={creating} testId="welcome-input" attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching}
