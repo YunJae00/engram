@@ -232,13 +232,16 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   // The preview opens beside chat when the person is ready to sign in.
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
   await page.locator('.browser-preview').getByRole('button', { name: 'Expand browser', exact: true }).click()
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}gate`)
+  await page.getByRole('button', { name: 'Return to small preview' }).click()
 
   for (const width of [1180, 1050, 948, 620, 360]) {
     await resizeForRoutine(width)
     await expectRoutineControlReachable('routine-wall-done-live')
   }
   await capture('routine-login-compact.png')
-  await page.getByTestId('web-pane-fold').click()
+  await page.getByTestId('bots-input-add').click()
+  await page.getByTestId('composer-web').click()
   await expect(page.getByTestId('web-pane')).toHaveCount(0)
   await expectRoutineControlReachable('routine-wall-done-live')
   await page.getByTestId('bots-input-add').click()
