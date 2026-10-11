@@ -49,10 +49,9 @@ export interface DelegatedTask {
   log: { at: string; line: string }[]
 }
 
-// Limits of one delegated task: enough turns for hours of work, never an
-// unbounded loop.
+// A delegated task takes as long as its work does; only the number of
+// turns is bounded, so it can never loop forever.
 export const TASK_MAX_TURNS = 8
-export const TASK_MAX_MS = 3 * 60 * 60 * 1000
 const LOG_LINES = 60
 const KEEP_FINISHED = 100
 

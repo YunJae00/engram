@@ -31,7 +31,7 @@ function native(decide: NativeTools['decide']): NativeTools & { calls: string[];
 }
 
 const job = (hands: NativeTools): ToolSessionJob & { native: NativeTools } => ({ workdir: 'C:/vault' as ToolSessionJob['workdir'], system: 'system', prompt: 'Sum the column', tools: [], maxCalls: 10, native: hands })
-const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions: 'rules', budgetMs: 5_000 })
+const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions: 'rules' })
 const completed = (item: Data) => ['item/completed', { item }] as const
 
 describe('ChatGPT with its own tools', () => {
@@ -93,14 +93,36 @@ describe('ChatGPT with its own tools', () => {
     expect(failed).toEqual({ answer: 'partial', error: 'usage limit' })
   })
 
-  it('ends a turn that runs past its budget or is canceled', async () => {
+  it('ends a canceled turn', async () => {
     const hands = native(async () => ({ behavior: 'allow' }))
-    const slow = await runCodexNative(job(hands), { ...spec(fakeServer(async () => {})), budgetMs: 30 })
-    expect(slow.error).toBe('timed out after 30ms')
     const abort = new AbortController()
     const pending = runCodexNative({ ...job(hands), signal: abort.signal }, spec(fakeServer(async () => {})))
     abort.abort()
     expect((await pending).error).toBe('canceled')
+  })
+
+  it('puts each command and patch to the host when asking every time, and never widens the sandbox', async () => {
+    const answers: unknown[] = [], sent: { method: string; params: Data }[] = [], asked: string[] = []
+    const hands = native(async (name, input) => {
+      asked.push(`${name} ${String(input['command'] ?? input['file_path'])}`)
+      return { behavior: String(input['command'] ?? input['file_path']).includes('del') || String(input['file_path']).includes('Documents') ? 'deny' : 'allow' }
+    })
+    hands.mode = 'each'
+    await runCodexNative(job(hands), spec(fakeServer(async (server) => {
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', kind: 'command', command: 'powershell.exe -Command "python sum.py"', commandActions: [{ type: 'unknown', command: 'python sum.py' }] }))
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c2', kind: 'command', command: 'del report.xlsx' }))
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c3', kind: 'command', command: 'python sum.py', reason: 'retry without sandbox?' }))
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c4', kind: 'command', command: 'curl x', networkApprovalContext: { host: 'x' } }))
+      server.notify('item/started', { item: { id: 'f1', type: 'fileChange', changes: [{ path: 'C:/work/bot-1/out.md' }] } })
+      answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'f1' }))
+      server.notify('item/started', { item: { id: 'f2', type: 'fileChange', changes: [{ path: 'C:/work/bot-1/a.md' }, { path: 'C:/Users/me/Documents/b.md' }] } })
+      answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'f2' }))
+      answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'f1', grantRoot: 'C:/' }))
+      server.notify('turn/completed', { turn: { status: 'completed' } })
+    }, sent)))
+    expect(answers).toEqual([{ decision: 'accept' }, { decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }, { decision: 'accept' }, { decision: 'decline' }, { decision: 'decline' }])
+    expect(asked).toEqual(['Bash python sum.py', 'Bash del report.xlsx', 'Write C:/work/bot-1/out.md', 'Write C:/work/bot-1/a.md', 'Write C:/Users/me/Documents/b.md'])
+    expect(sent.find(one => one.method === 'thread/start')!.params).toMatchObject({ approvalPolicy: 'untrusted', sandbox: 'workspace-write' })
   })
 
   it('keeps the shell and file edits on and everything else that acts on its own off', () => {

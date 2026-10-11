@@ -818,6 +818,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   settingsGet(): Promise<AppSettingsDto>
   settingsSet(settings: Partial<AppSettingsDto>): Promise<void>
   aiSelectionSet(scope: string, selection: { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }): Promise<void>
+  aiPermissionSet(scope: string, mode: import('core').PermissionMode): Promise<void>
   mcpInfo(): Promise<McpInfoDto>
   mcpClients(): Promise<McpClientDto[]>
   mcpConnectDesktop(): Promise<McpConnectResultDto>
@@ -841,7 +842,7 @@ export interface OnboardPayload {
 }
 
 export interface AppSettingsDto {
-  aiSelections?: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort }>
+  aiSelections?: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort; permission?: import('core').PermissionMode }>
   claudeEffort?: import('core').ReasoningEffort
   codexEffort?: import('core').ReasoningEffort
   theme?: 'system' | 'light' | 'dark'

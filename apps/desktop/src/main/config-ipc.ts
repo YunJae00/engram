@@ -1,4 +1,4 @@
-import { createEngine, ENGINE_ORDER, REASONING_EFFORTS, type ReasoningEffort } from 'core'
+import { createEngine, ENGINE_ORDER, PERMISSION_MODES, REASONING_EFFORTS, type PermissionMode, type ReasoningEffort } from 'core'
 import { app, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { cp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -32,9 +32,15 @@ export function registerSettingsIpc(): void {
     if (!value || !['claude', 'codex'].includes(String(value.engine)) || typeof value.model !== 'string' || value.model.length > 200) throw new Error('Invalid AI selection')
     if (value.effort !== undefined && !REASONING_EFFORTS.includes(value.effort as ReasoningEffort)) throw new Error('Invalid reasoning effort')
     const chosen = { engine: value.engine as 'claude' | 'codex', model: value.model.trim(), ...(value.effort ? { effort: value.effort as ReasoningEffort } : {}) }
-    const settings = await updateSettings(held => ({ ...held, aiSelections: { ...held.aiSelections, filing: aiSelection(held, 'filing'), [scope]: chosen } }))
+    const settings = await updateSettings(held => ({ ...held, aiSelections: { ...held.aiSelections, filing: aiSelection(held, 'filing'), [scope]: { ...(held.aiSelections[scope]?.permission ? { permission: held.aiSelections[scope].permission } : {}), ...chosen } } }))
     broadcast({ type: 'settings:changed', settings })
     if (scope === 'filing') await onBrainChoice?.()
+  })
+  ipcMain.handle('ai:permission', async (_event, scope: unknown, mode: unknown) => {
+    if (typeof scope !== 'string' || !/^bot-[a-zA-Z0-9_-]{1,100}$/.test(scope)) throw new Error('Invalid comet')
+    if (!PERMISSION_MODES.includes(mode as PermissionMode)) throw new Error('Invalid permission mode')
+    const settings = await updateSettings(held => ({ ...held, aiSelections: { ...held.aiSelections, [scope]: { ...aiSelection(held, scope), permission: mode as PermissionMode } } }))
+    broadcast({ type: 'settings:changed', settings })
   })
 
   ipcMain.handle('settings:set', async (_e, settings: Partial<AppSettingsDto>) => {

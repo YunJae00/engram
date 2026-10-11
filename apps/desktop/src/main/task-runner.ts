@@ -10,7 +10,6 @@ import {
   readBotTranscript,
   recordPlaybook,
   successfulTurnSteps,
-  TASK_MAX_MS,
   TASK_MAX_TURNS,
   tasksToResume,
   updateTask,
@@ -39,7 +38,6 @@ type Reason = Parameters<typeof continuationPrompt>[1]
 const WORTH_KEEPING_STEPS = 3
 const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const UNCONFIRMED = '\n\n⚠ Checked; some of this could not be confirmed against the original.'
-const CHECK_BUDGET_MS = 10 * 60_000
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const artifactLinks = (text = '') => [...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map((match) => match[1]!)
 // Captures already have consent, provenance and save receipts; this text and
@@ -90,7 +88,7 @@ export function taskRunner(deps: {
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
       if (stopped.has(channelOf(t)) || !['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; return }
-      if (t.turns >= TASK_MAX_TURNS || Date.now() - Date.parse(t.createdAt) > TASK_MAX_MS) {
+      if (t.turns >= TASK_MAX_TURNS) {
         t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.'); return
       }
       t.state = 'running'; delete t.question; t.turns++
@@ -108,11 +106,11 @@ export function taskRunner(deps: {
     }
     const earlier = trails.get(id) ?? []
     const holdIf = (answer: string, steps: TurnStep[]) => !started.verified && (savedWorkFile(answer) || successfulTurnSteps([...earlier, ...steps]).some((step) => CHANGES.test(step.tool)))
-    // A check that overruns its budget is cut short: the draft is the answer then.
+    // A check runs as long as it takes, unless a budget is set: past it, the draft is the answer.
     let overran = false, checkError: unknown
     let budget: ReturnType<typeof setTimeout> | undefined
-    const deadline = checking ? new Promise<void>(resolve => {
-      budget = setTimeout(() => { overran = true; deps.abort(channelOf(started)); resolve() }, deps.checkBudgetMs ?? CHECK_BUDGET_MS)
+    const deadline = checking && deps.checkBudgetMs ? new Promise<void>(resolve => {
+      budget = setTimeout(() => { overran = true; deps.abort(channelOf(started)); resolve() }, deps.checkBudgetMs)
     }) : undefined
     try {
       const sending = deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : { ...extra, holdIf })
@@ -158,7 +156,7 @@ export function taskRunner(deps: {
           t.state = 'done'; logTask(t, `Done, not fully confirmed: ${t.verificationIssue}`)
         }
       } else if (outcome.unfinished) {
-        if (t.turns >= TASK_MAX_TURNS || Date.now() - Date.parse(t.createdAt) > TASK_MAX_MS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
+        if (t.turns >= TASK_MAX_TURNS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
         else logTask(t, 'Continuing')
       } else if (!t.verified && (savedWorkFile(outcome.answer) || successfulTurnSteps(trail).some((step) => CHANGES.test(step.tool)))) {
         t.verificationPending = true; logTask(t, 'Checking the result')

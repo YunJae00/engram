@@ -225,6 +225,17 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
     expect(menuBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
     await page.keyboard.press('Escape')
   }
+
+  const permission = page.locator('.bots-write').getByRole('button', { name: 'Permissions' })
+  await expect(permission).toHaveAttribute('title', 'Permissions: Ask once')
+  await permission.click()
+  await page.getByTestId('permission-pick-plan').click()
+  await expect(permission).toHaveAttribute('title', 'Permissions: Plan only')
+  const modes = await page.evaluate(async () => Object.values((await (window as unknown as { engram: { settingsGet(): Promise<{ aiSelections?: Record<string, { permission?: string }> }> } }).engram.settingsGet()).aiSelections ?? {}).map(one => one.permission))
+  expect(modes).toContain('plan')
+  await permission.click()
+  await page.getByTestId('permission-pick-once').click()
+  await expect(permission).toHaveAttribute('title', 'Permissions: Ask once')
 })
 
 test('the selected comet is remembered across tabs', async () => {

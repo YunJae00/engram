@@ -100,6 +100,7 @@ const api: EngramApi = {
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (settings: Partial<AppSettingsDto>) => ipcRenderer.invoke('settings:set', settings),
   aiSelectionSet: (scope, selection) => ipcRenderer.invoke('ai:selection', scope, selection),
+  aiPermissionSet: (scope, mode) => ipcRenderer.invoke('ai:permission', scope, mode),
   mcpInfo: () => ipcRenderer.invoke('mcp:info'),
   mcpClients: () => ipcRenderer.invoke('mcp:clients'),
   mcpConnectDesktop: () => ipcRenderer.invoke('mcp:connectDesktop'),
