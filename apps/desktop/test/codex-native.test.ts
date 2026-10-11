@@ -35,7 +35,7 @@ const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions
 const completed = (item: Data) => ['item/completed', { item }] as const
 
 describe('ChatGPT with its own tools', () => {
-  it('asks Engram before a command, sandboxes writes to the task folder and returns the final message', async () => {
+  it('gets host consent before starting, refuses sandbox elevation and returns the final message', async () => {
     const answers: unknown[] = [], sent: { method: string; params: Data }[] = []
     const hands = native(async (name) => ({ behavior: name === 'Bash' ? 'allow' : 'deny' }))
     const result = await runCodexNative(job(hands), spec(fakeServer(async (server) => {
@@ -46,28 +46,38 @@ describe('ChatGPT with its own tools', () => {
       server.notify('turn/completed', { turn: { status: 'completed' } })
     }, sent)))
     expect(result).toEqual({ answer: '42' })
-    expect(answers).toEqual([{ decision: 'accept' }])
+    expect(answers).toEqual([{ decision: 'decline' }])
     expect(hands.calls).toEqual(['Bash python sum.py'])
     expect(hands.results).toEqual(['Bash true'])
     const thread = sent.find(one => one.method === 'thread/start')!.params, turn = sent.find(one => one.method === 'turn/start')!.params
-    expect(thread).toMatchObject({ cwd: 'C:/work/bot-1', approvalPolicy: 'untrusted', sandbox: 'workspace-write', developerInstructions: 'rules' })
-    expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false })
+    expect(thread).toMatchObject({ cwd: 'C:/work/bot-1', approvalPolicy: 'never', sandbox: 'workspace-write', developerInstructions: 'rules' })
+    expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true })
   })
 
-  it('declines a command or file change Engram refuses, and writes down commands that ran without asking', async () => {
+  it('declines runtime elevation and records sandboxed command results', async () => {
     const answers: unknown[] = []
-    const hands = native(async () => ({ behavior: 'deny', message: 'no' }))
+    const hands = native(async () => ({ behavior: 'allow' }))
     await runCodexNative(job(hands), spec(fakeServer(async (server) => {
       answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'c1', command: 'del report.xlsx' }))
       server.notify('item/started', { item: { id: 'f1', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }] } })
       answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'f1' }))
       answers.push(await server.request('item/fileChange/requestApproval', { itemId: 'unknown' }))
+      server.notify(...completed({ id: 'f1', type: 'fileChange', changes: [{ path: 'C:/Users/me/Documents/x.md' }], status: 'failed' }))
       server.notify(...completed({ id: 'c2', type: 'commandExecution', command: 'dir', status: 'completed', exitCode: 0 }))
       server.notify('turn/completed', { turn: { status: 'completed' } })
     })))
     expect(answers).toEqual([{ decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }])
-    expect(hands.calls).toEqual(['Bash dir'])
-    expect(hands.results).toEqual(['Bash true'])
+    expect(hands.calls).toEqual(['Write C:/Users/me/Documents/x.md', 'Bash dir'])
+    expect(hands.results).toEqual(['Write false', 'Bash true'])
+  })
+
+  it('never starts the runtime turn without host consent', async () => {
+    const sent: { method: string; params: Data }[] = []
+    const hands = native(async () => ({ behavior: 'deny', message: 'The person declined.' }))
+    const result = await runCodexNative(job(hands), spec(fakeServer(async () => {}, sent)))
+    expect(result.error).toBe('The person declined.')
+    expect(sent).toEqual([])
+    expect(hands.calls).toEqual([])
   })
 
   it('sends questions back to ask_person and reports a failed or interrupted turn', async () => {

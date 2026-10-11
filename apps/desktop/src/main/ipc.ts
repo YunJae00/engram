@@ -1651,8 +1651,8 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
-    deliver: async (channel, text, since) => {
-      const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(text).text, since)
+    deliver: async (channel, text, since, trail) => {
+      const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(text).text, since, latestResultOutputs(trail, []).map(output => output.path))
       await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, at: new Date().toISOString() })
       broadcast({ type: 'chat:done', channel, text: cleaned })
     },
@@ -2368,7 +2368,7 @@ export function registerIpc(ctx: VaultContext): void {
         // already lets it look, a work folder of its own, commands once allowed.
         const native = (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, sandboxed: engine.id === 'codex', attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const result = await runComet(

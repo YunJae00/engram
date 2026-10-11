@@ -37,6 +37,10 @@ it('points an answer at the newest revision of each linked file saved during the
   const fixed = await saveArtifact(directory, '인계(1).csv', Buffer.from('a\n2\n'))
   const other = await saveArtifact(directory, 'other.csv', Buffer.from('b\n1\n'))
   const answer = `See ${draft.markdownLink} and ${other.markdownLink}`
-  expect(await newestRevisions(directory, answer, since)).toBe(`See ${fixed.markdownLink} and ${other.markdownLink}`)
-  expect(await newestRevisions(directory, answer, Date.now() + 60_000)).toBe(answer)
+  expect(await newestRevisions(directory, answer, since, [draft.path, fixed.path, other.path])).toBe(`See ${fixed.markdownLink} and ${other.markdownLink}`)
+  expect(await newestRevisions(directory, answer, Date.now() + 60_000, [fixed.path])).toBe(answer)
+  await new Promise(done => setTimeout(done, 20))
+  await saveArtifact(directory, '인계(1).csv', Buffer.from('a\nforeign conversation\n'))
+  expect(await newestRevisions(directory, answer, since, [draft.path, fixed.path])).toBe(`See ${fixed.markdownLink} and ${other.markdownLink}`)
+  expect(await newestRevisions(directory, answer, since, [])).toBe(answer)
 })

@@ -1,5 +1,5 @@
 import { app, dialog, ipcMain, shell } from 'electron'
-import { readdir, realpath, stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative } from 'node:path'
 import { artifactHref, fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
@@ -17,8 +17,8 @@ const REVISION = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
 // A check that revised a file but ran out of time still answers with the
 // draft's links: each one is pointed at the newest revision of its name saved
 // since the task began.
-export async function newestRevisions(directory: string, text: string, since: number): Promise<string> {
-  const files = await readdir(directory).catch(() => [] as string[])
+export async function newestRevisions(directory: string, text: string, since: number, outputs: string[]): Promise<string> {
+  const files = outputs.map(path => basename(path))
   let out = text
   for (const match of text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)) {
     let id: string

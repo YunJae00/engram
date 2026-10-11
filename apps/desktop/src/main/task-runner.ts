@@ -55,7 +55,7 @@ export function taskRunner(deps: {
   remember(text: string): Promise<void>
   // A held answer, put in the thread once: after its check, or when the task stops for the person.
   // since: when the task began, for finding revisions saved during it.
-  deliver(channel: string, text: string, since: number): Promise<void>
+  deliver(channel: string, text: string, since: number, trail: TurnStep[]): Promise<void>
   // How long a check may hold the answer back before the draft goes out as it is.
   checkBudgetMs?: number
   // The person answered what a comet asked: what holds beyond this task is kept.
@@ -164,7 +164,7 @@ export function taskRunner(deps: {
         t.verificationPending = true; logTask(t, 'Checking the result')
       } else { t.state = 'done'; logTask(t, 'Done') }
     })
-    if (after && (outcome?.held || (checking && !outcome)) && ['done', 'waiting', 'failed'].includes(after.state) && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt))
+    if (after && (outcome?.held || (checking && !outcome)) && ['done', 'waiting', 'failed'].includes(after.state) && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     return after
   }
 

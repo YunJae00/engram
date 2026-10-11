@@ -24,6 +24,7 @@ export interface NativePolicy {
   cacheDir?: string
   attachedPaths?: string[]
   commands: { allowed: boolean }
+  sandboxed?: boolean
   ask?: Ask
 }
 
@@ -70,7 +71,7 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
     if (!command) return deny('Supply a command.')
     if (policy.commands.allowed) return allow
     if (!policy.ask) return deny('Commands are not available in this chat.')
-    const verdict = await policy.ask({ words: 'Allow commands for this comet? They can read or change any accessible file and use the network; not sandboxed.', url: pathToFileURL(policy.cwd).href })
+    const verdict = await policy.ask({ words: policy.sandboxed ? 'Allow commands for this comet? They can read files; writes stay in the task folder and network access is blocked.' : 'Allow commands for this comet? They can read or change any accessible file and use the network; not sandboxed.', url: pathToFileURL(policy.cwd).href })
     if (signal?.aborted) return deny('The call was canceled.')
     if (verdict === 'approve' || verdict === 'always') { policy.commands.allowed = true; return allow }
     if (verdict === 'later') return deny('Running commands waits for the person\'s approval. Continue with other work, or report what remains.')
@@ -101,14 +102,14 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
 
 const consent = new Map<string, { allowed: boolean }>()
 
-export async function cometNativeTools(options: { paths: VaultPaths; channel: string; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools> {
+export async function cometNativeTools(options: { paths: VaultPaths; channel: string; sandboxed?: boolean; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools> {
   const cwd = join(options.paths.cache, 'work', options.channel.replace(/[^A-Za-z0-9_-]+/g, '-'))
   await mkdir(cwd, { recursive: true })
   const roots = [cwd, artifactDirectory(options.paths), ...(['documents', 'desktop', 'downloads'] as const).map((name) => app.getPath(name))]
-  const consentKey = await realpath(cwd)
+  const consentKey = `${await realpath(cwd)}:${options.sandboxed ? 'sandboxed' : 'full'}`
   let commands = consent.get(consentKey)
   if (!commands) consent.set(consentKey, commands = { allowed: false })
-  const policy: NativePolicy = { cwd, roots, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, ...(options.ask ? { ask: options.ask } : {}) }
+  const policy: NativePolicy = { cwd, roots, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, sandboxed: options.sandboxed, ...(options.ask ? { ask: options.ask } : {}) }
   return {
     cwd,
     readRoots: roots,

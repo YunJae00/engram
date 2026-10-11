@@ -41,7 +41,6 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
   const native = job.native
   return new Promise<ToolSessionResult>((resolve) => {
     let answer = '', settled = false, threadId = '', turnId = ''
-    const changes = new Map<string, string[]>()
     const recorded = new Set<string>()
     const controller = new AbortController()
     const finish = (result: ToolSessionResult): void => {
@@ -76,16 +75,18 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
       if (method === 'item/started') {
         // Words before an action were thinking aloud, not the reply.
         if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.()
-        if (type === 'fileChange') changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map((change) => text(object(change)['path'])).filter(Boolean))
+        if (type === 'commandExecution' || type === 'fileChange') {
+          recorded.add(id)
+          native.onCall?.(type === 'commandExecution' ? 'Bash' : 'Write', type === 'commandExecution' ? { command: text(item['command']) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
+        }
         return
       }
       if (method === 'item/completed') {
         if (type === 'agentMessage') answer = text(item['text']) || answer
         if (type === 'commandExecution' || type === 'fileChange') {
           const name = type === 'commandExecution' ? 'Bash' : 'Write'
-          // Commands the runtime knows to be read-only run without asking; they are still written down.
-          if (!recorded.has(id)) native.onCall?.(name, type === 'commandExecution' ? { command: text(item['command']) } : { file_path: (changes.get(id) ?? []).join(', ') })
-          recorded.delete(id); changes.delete(id)
+          if (!recorded.has(id)) native.onCall?.(name, type === 'commandExecution' ? { command: text(item['command']) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
+          recorded.delete(id)
           native.onResult?.(name, text(item['status']) === 'completed' && (type !== 'commandExecution' || item['exitCode'] === 0))
         }
         return
@@ -100,21 +101,8 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     }
     const request = async (method: string, params: Data): Promise<unknown> => {
       if (settled || params['threadId'] !== threadId) throw new Error('This request does not belong to the active turn.')
-      const id = text(params['itemId'])
-      if (method === 'item/commandExecution/requestApproval') {
-        const command = text(params['command'])
-        const decision = command ? await decide('Bash', { command }) : { behavior: 'deny' as const }
-        if (decision.behavior !== 'allow') return { decision: 'decline' }
-        recorded.add(id); native.onCall?.('Bash', { command })
-        return { decision: 'accept' }
-      }
-      if (method === 'item/fileChange/requestApproval') {
-        const paths = changes.get(id) ?? []
-        if (!paths.length) return { decision: 'decline' }
-        for (const path of paths) if ((await decide('Write', { file_path: path })).behavior !== 'allow') return { decision: 'decline' }
-        recorded.add(id); native.onCall?.('Write', { file_path: paths.join(', ') })
-        return { decision: 'accept' }
-      }
+      // The host approves command use before starting; runtime approvals could bypass the sandbox.
+      if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: 'decline' }
       if (method === 'item/tool/requestUserInput') throw new Error('Ask with ask_person instead.')
       throw new Error('This permission request is not supported; nothing was granted.')
     }
@@ -127,16 +115,19 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     if (job.signal?.aborted) { cancel(); return }
     job.signal?.addEventListener('abort', cancel, { once: true })
     void (async () => {
+      const decision = await decide('Bash', { command: 'Use sandboxed commands for this task' })
+      if (settled) return
+      if (decision.behavior !== 'allow') { finish({ answer, error: decision.message || 'Commands were not approved.' }); return }
       await rpc.initialize()
       const thread = await rpc.send('thread/start', {
-        cwd: native.cwd, approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
+        cwd: native.cwd, approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
         developerInstructions: spec.instructions, ...(spec.model ? { model: spec.model } : {}),
       })
       threadId = text(object(thread['thread'])['id'])
       if (!threadId) throw new Error('The ChatGPT runtime did not open a session.')
       const turn = await rpc.send('turn/start', {
         threadId, input: [{ type: 'text', text: [job.opening, job.prompt].filter(Boolean).join('\n\n'), text_elements: [] }],
-        sandboxPolicy: { type: 'workspaceWrite', writableRoots: [native.cwd], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+        sandboxPolicy: { type: 'workspaceWrite', writableRoots: [native.cwd], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true },
         ...(job.effort ? { effort: job.effort } : {}),
       })
       turnId = text(object(turn['turn'])['id'])

@@ -107,6 +107,19 @@ describe('native tool policy', () => {
     expect((await two.decide('Bash', { command: 'echo two' }, signal)).behavior).toBe('allow')
     expect(ask).toHaveBeenCalledTimes(2)
   })
+
+  it('does not reuse sandboxed consent for unsandboxed commands in the same comet', async () => {
+    const ask = vi.fn<NonNullable<NativePolicy['ask']>>(async () => 'approve')
+    const options = { paths: vaultPaths(join(root, 'one')), channel: 'same-chat', ask, onStep: vi.fn(), audit: vi.fn() }
+    const bounded = await cometNativeTools({ ...options, sandboxed: true })
+    const full = await cometNativeTools(options)
+    const signal = new AbortController().signal
+    await bounded.decide('Bash', { command: 'python report.py' }, signal)
+    await full.decide('Bash', { command: 'python report.py' }, signal)
+    expect(ask).toHaveBeenCalledTimes(2)
+    expect(ask.mock.calls[0]![0].words).toContain('network access is blocked')
+    expect(ask.mock.calls[1]![0].words).toContain('not sandboxed')
+  })
 })
 
 describe('outputs left in the task folder', () => {
