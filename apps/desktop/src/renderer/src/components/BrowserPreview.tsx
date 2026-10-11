@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Poin
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
 import { FrameScreen, type FrameSource } from './FrameScreen.js'
-import '../browser-preview.css'
 
 export function BrowserPreview({ channel, url, native, live, visible, minimized, busy, onStop, width, height }: {
   channel: string; url?: string; native: boolean; live: boolean; visible: boolean; minimized: boolean
