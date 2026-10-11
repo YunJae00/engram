@@ -2,11 +2,7 @@ import type { NativeDecision, NativeTools, ToolSessionJob, ToolSessionResult } f
 import { DevRpc } from './dev-rpc.js'
 import { flog } from './flog.js'
 
-// ChatGPT with its own shell and patch tools, through the runtime's app
-// server: every command it wants to run and every file it wants to change is
-// put to Engram first, writes stay in the comet's task folder, and the
-// network stays off inside the sandbox. Engram's own tools ride along on the
-// loopback tool server.
+// Native commands stay sandboxed; Engram tools use the loopback tool server.
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -42,13 +38,11 @@ type NativeResult = ToolSessionResult & { commandsDenied?: true }
 
 export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, spec: CodexNativeSpec): Promise<NativeResult> {
   const native = job.native
+  // Untrusted approval can retry an accepted command outside the sandbox.
+  if (native.mode === 'each') return Promise.resolve({ answer: '', error: 'ChatGPT uses Engram tools in Ask every time mode; native commands are disabled.', commandsDenied: true })
   return new Promise<NativeResult>((resolve) => {
     let answer = '', settled = false, threadId = '', turnId = ''
     const recorded = new Set<string>()
-    // Asking per command: the runtime asks before each untrusted command and
-    // patch, and the host answers from the same policy as Claude's tools.
-    const each = native.mode === 'each'
-    const changes = new Map<string, string[]>()
     const controller = new AbortController()
     const finish = (result: NativeResult): void => {
       if (settled) return
@@ -81,7 +75,6 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
       if (method === 'item/started') {
         // Words before an action were thinking aloud, not the reply.
         if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.()
-        if (type === 'fileChange') changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])))
         if (type === 'commandExecution' || type === 'fileChange') {
           recorded.add(id)
           native.onCall?.(type === 'commandExecution' ? 'Bash' : 'Write', type === 'commandExecution' ? { command: commandOf(item) } : { file_path: (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ') })
@@ -108,19 +101,7 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     }
     const request = async (method: string, params: Data): Promise<unknown> => {
       if (settled || params['threadId'] !== threadId) throw new Error('This request does not belong to the active turn.')
-      // Requests to widen the sandbox are never granted; command use was settled
-      // before starting unless each command is put to the person.
-      if (method === 'item/commandExecution/requestApproval') {
-        const command = commandOf(params)
-        if (!each || params['kind'] !== 'command' || params['reason'] || params['networkApprovalContext'] || !command) return { decision: 'decline' }
-        return { decision: (await decide('Bash', { command })).behavior === 'allow' ? 'accept' : 'decline' }
-      }
-      if (method === 'item/fileChange/requestApproval') {
-        const paths = changes.get(text(params['itemId']))
-        if (!each || params['grantRoot'] || !paths?.length) return { decision: 'decline' }
-        for (const path of paths) if ((await decide('Write', { file_path: path })).behavior !== 'allow') return { decision: 'decline' }
-        return { decision: 'accept' }
-      }
+      if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: 'decline' }
       if (method === 'item/tool/requestUserInput') throw new Error('Ask with ask_person instead.')
       throw new Error('This permission request is not supported; nothing was granted.')
     }
@@ -132,12 +113,12 @@ export function runCodexNative(job: ToolSessionJob & { native: NativeTools }, sp
     if (job.signal?.aborted) { cancel(); return }
     job.signal?.addEventListener('abort', cancel, { once: true })
     void (async () => {
-      const decision: NativeDecision = each ? { behavior: 'allow' } : await decide('Bash', { command: 'Use sandboxed commands for this task' })
+      const decision = await decide('Bash', { command: 'Use sandboxed commands for this task' })
       if (settled) return
       if (decision.behavior !== 'allow') { finish({ answer, error: decision.message || 'Commands were not approved.', commandsDenied: true }); return }
       await rpc.initialize()
       const thread = await rpc.send('thread/start', {
-        cwd: native.cwd, approvalPolicy: each ? 'untrusted' : 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
+        cwd: native.cwd, approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'workspace-write', ephemeral: true,
         developerInstructions: spec.instructions, ...(spec.model ? { model: spec.model } : {}),
       })
       threadId = text(object(thread['thread'])['id'])

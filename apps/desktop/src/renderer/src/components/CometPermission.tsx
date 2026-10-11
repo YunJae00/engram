@@ -4,10 +4,9 @@ import type { PermissionMode } from 'core'
 import { api } from '../api.js'
 import { DeveloperPopover } from './DeveloperControls.js'
 
-// The same four modes on Claude and ChatGPT; the host enforces them on both.
 export const PERMISSION_CHOICES: { id: PermissionMode; name: string; detail: string }[] = [
   { id: 'once', name: 'Ask once', detail: 'The first command asks; later ones run. Edits stay in the task folder.' },
-  { id: 'each', name: 'Ask every time', detail: 'Each command asks before it runs. Edits stay in the task folder.' },
+  { id: 'each', name: 'Ask every time', detail: 'Claude asks before each command. ChatGPT uses Engram tools without native commands.' },
   { id: 'auto', name: 'Automatic', detail: 'Commands run without asking. ChatGPT runs them sandboxed; Claude does not.' },
   { id: 'plan', name: 'Plan only', detail: 'Reads and plans. No commands, file changes or office edits.' },
 ]
