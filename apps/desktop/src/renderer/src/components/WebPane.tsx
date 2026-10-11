@@ -13,6 +13,7 @@ import { BrowserActions } from './BrowserActions.js'
 import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 import { browserAddress } from '../lib/browser-start.js'
 import { BrowserPreview } from './BrowserPreview.js'
+import { useCompactBrowser } from '../lib/useCompactBrowser.js'
 
 const WIDTH_KEY = 'engram.webpane.width'
 const MIN_W = 380
@@ -86,6 +87,8 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   // Folding plays the pane out to the right edge before the tab takes its
   // place, so the fold reads as the pane leaving, not vanishing.
   const { folded, wanted, phase, expanded, floating } = useWebPane(channel)
+  const { compact, elementRef } = useCompactBrowser()
+  const preview = floating || (compact && !expanded)
   const [present, setPresent] = useState(!folded)
   const closing = folded && present
   const fold = () => webPane.fold(channel)
@@ -146,20 +149,20 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   const stage = useRef<HTMLDivElement>(null)
   const frozen = !on && frameHere
   const paneShown = (liveHere || frozen) && !folded
-  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active && !floating)
+  useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active && !preview)
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
   // browser opens on a blank tab - and folded it is simply gone; the globe
   // by the composer is where it comes back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
-  if (floating) return <BrowserPreview key={channel} channel={channel} url={mine ? url : undefined} native={native} live={liveHere} visible={visible && active} minimized={folded} busy={busy} onStop={onStop} width={frameWidth} height={frameHeight} />
+  if (preview) return folded ? null : <BrowserPreview key={channel} channel={channel} url={mine ? url : undefined} native={native} live={liveHere} visible={visible && active} busy={busy} width={frameWidth} height={frameHeight} compact={compact} elementRef={elementRef} />
   if (folded && !present) return null
   return (
     <aside
       className={`web-pane${frozen ? ' frozen' : ''}${closing ? ' closing' : ''}${expanded ? ' expanded' : ''}`}
       data-testid="web-pane"
       data-work={busy ? phase : 'idle'}
-      ref={(element) => { if (element) element.inert = closing }}
+      ref={(element) => { elementRef(element); if (element) element.inert = closing }}
       style={width ? ({ '--web-pane-width': `${width}px` } as CSSProperties) : undefined}
     >
       <div className="web-pane-grip" onMouseDown={drag} aria-hidden />

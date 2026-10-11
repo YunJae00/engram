@@ -10,9 +10,9 @@
   border-radius: 14px;
   background: var(--panel-bg);
   box-shadow: 0 6px 28px #00000016;
-  animation: browser-preview-in 160ms ease-out;
+  transform-origin: top right;
+  animation: browser-preview-in 240ms var(--ease-out);
 }
-.browser-preview.minimized { width: min(220px, calc(100% - 24px)); }
 .browser-preview-bar { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 4px 8px; cursor: grab; touch-action: none; user-select: none; }
 .browser-preview-bar:active { cursor: grabbing; }
 .browser-preview-grip { opacity: .4; flex-shrink: 0; }
@@ -20,12 +20,10 @@
 .browser-preview-bar button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); cursor: pointer; }
 .browser-preview-bar button:hover { background: var(--hover-bg); color: var(--fg); }
 .browser-preview-bar button:focus-visible, .browser-preview-picture:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-.browser-preview-bar .browser-preview-stop { color: var(--fg); background: var(--hover-bg); }
 .browser-preview-picture { position: relative; display: block; width: 100%; max-height: min(240px, 35vh); padding: 0; border: 0; background: var(--panel-bg); overflow: hidden; cursor: pointer; }
 .browser-preview-picture canvas { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .browser-preview-picture canvas:not([data-painted]) { visibility: hidden; }
 .browser-preview-wait { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: var(--fg-dim); }
 .browser-preview-picture:has(canvas[data-painted]) .browser-preview-wait { display: none; }
-.browser-preview-open { position: absolute; bottom: 8px; right: 8px; display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 7px; background: var(--panel-bg); color: var(--fg); font-size: 10px; box-shadow: 0 1px 5px #00000015; }
 @keyframes browser-preview-in { from { opacity: 0; transform: translateY(-5px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .browser-preview { animation: none; } }

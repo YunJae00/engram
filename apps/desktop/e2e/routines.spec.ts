@@ -231,14 +231,17 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   // The wall surfaces as a question in the live block, not as a failure.
   // The preview opens beside chat when the person is ready to sign in.
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
-  await page.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
+  await page.locator('.browser-preview').getByRole('button', { name: 'Expand browser', exact: true }).click()
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}gate`)
+  await page.getByRole('button', { name: 'Return to small preview' }).click()
 
   for (const width of [1180, 1050, 948, 620, 360]) {
     await resizeForRoutine(width)
     await expectRoutineControlReachable('routine-wall-done-live')
   }
   await capture('routine-login-compact.png')
-  await page.getByTestId('web-pane-fold').click()
+  await page.getByTestId('bots-input-add').click()
+  await page.getByTestId('composer-web').click()
   await expect(page.getByTestId('web-pane')).toHaveCount(0)
   await expectRoutineControlReachable('routine-wall-done-live')
   await page.getByTestId('bots-input-add').click()
@@ -264,7 +267,7 @@ test('stopping a routine from its chat releases a waiting login gate', async () 
   await openRoutines(gated.id)
   await page.getByTestId(`routine-run-${gated.id}`).click()
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
-  await page.locator('.browser-preview').getByRole('button', { name: 'Stop task', exact: true }).click()
+  await page.locator('.bots-write .bubble-stop').click()
   await expect(page.getByTestId('routine-wall-done-live')).toHaveCount(0, { timeout: 60_000 })
   await expect.poll(async () => (await listRoutines(paths)).find((routine) => routine.id === gated.id)?.lastOutcome).toBe('aborted')
   gateUnlocked = true

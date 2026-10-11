@@ -83,23 +83,29 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     await page.getByTestId('bots-input-add').click()
     await page.getByTestId('composer-web').click()
     await expect(page.getByTestId('web-pane')).toBeVisible()
-    await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')
-    await expect(page.locator('.web-pane-inner')).toHaveCSS('border-top-width', '0px')
-    await expect(page.locator('.web-pane-inner')).toHaveCSS('box-shadow', 'none')
-    await expect(page.getByTestId('web-pane')).toHaveCSS('margin', '0px')
-    await expect(page.getByTestId('web-pane')).toHaveCSS('box-shadow', 'none')
-    await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')
+    if (width > 1180) {
+      await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')
+      await expect(page.locator('.web-pane-inner')).toHaveCSS('border-top-width', '0px')
+      await expect(page.locator('.web-pane-inner')).toHaveCSS('box-shadow', 'none')
+      await expect(page.getByTestId('web-pane')).toHaveCSS('margin', '0px')
+      await expect(page.getByTestId('web-pane')).toHaveCSS('box-shadow', 'none')
+      await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')
+    } else {
+      await expect(page.locator('.browser-preview')).toBeVisible()
+      await expect(page.getByTestId('live-address')).toHaveCount(0)
+    }
     await screenshot(`release-112-web-flat-${width}.png`)
     if (width <= 1180) {
       await expect.poll(() => page.getByTestId('web-pane').evaluate((node) => {
         const pane = node.getBoundingClientRect()
         const host = node.closest('.bots-main')!
-        const input = host.querySelector('.bots-write')!.getBoundingClientRect()
         const head = host.getBoundingClientRect()
-        return pane.bottom <= input.top && pane.top >= head.top && pane.width > 300
+        const chat = host.querySelector('.bots-chat')!.getBoundingClientRect()
+        return pane.top >= head.top && pane.right <= head.right && Math.abs(chat.width - head.width) < 2
       })).toBe(true)
     }
-    await page.getByTestId('web-pane-fold').click()
+    await page.getByTestId('bots-input-add').click()
+    await page.getByTestId('composer-web').click()
     await expect(page.getByTestId('web-pane')).toHaveCount(0)
     await input.fill('')
     await navigate('sky')

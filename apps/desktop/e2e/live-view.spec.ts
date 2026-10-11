@@ -78,6 +78,7 @@ test.beforeAll(async () => {
     },
   })
   page = await app.firstWindow()
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
@@ -101,8 +102,7 @@ test('a floating mirror watches automatic work without changing the website view
     const website = browser.contexts()[0]!.pages().find(item => item.url() === siteUrl)!
     const viewport = await website.evaluate(() => [innerWidth, innerHeight])
     expect(viewport[0]).toBeGreaterThan(800)
-    await preview.getByRole('button', { name: 'Minimize preview' }).click()
-    await preview.getByRole('button', { name: 'Show browser preview' }).click()
+    await expect(preview.locator('.browser-preview-bar button')).toHaveCount(1)
     expect(await website.evaluate(() => [innerWidth, innerHeight])).toEqual(viewport)
     await preview.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
     await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
@@ -335,7 +335,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
 })
 
-test('a saved wide page panel stays inside the conversation on a compact window', async () => {
+test('a saved wide page panel becomes a preview on a compact window', async () => {
   await page.evaluate(() => localStorage.setItem('engram.webpane.width', '1200'))
   await page.reload()
   await page.setViewportSize({ width: 948, height: 760 })
@@ -346,16 +346,18 @@ test('a saved wide page panel stays inside the conversation on a compact window'
   await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 30_000 })
 
   await expect(page.getByTestId('web-pane')).toHaveCSS('transform', 'none')
-  const [mainBox, paneBox, foldBox, addressBox] = await Promise.all([
+  await expect(page.locator('.browser-preview')).toBeVisible()
+  await expect(page.getByTestId('live-address')).toHaveCount(0)
+  const [mainBox, paneBox, chatBox] = await Promise.all([
     page.locator('.bots-main').boundingBox(),
     page.getByTestId('web-pane').boundingBox(),
-    page.getByTestId('web-pane-fold').boundingBox(),
-    page.getByTestId('live-address').boundingBox(),
+    page.locator('.bots-chat').boundingBox(),
   ])
   expect(paneBox!.x).toBeGreaterThanOrEqual(mainBox!.x)
   expect(paneBox!.x + paneBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1)
-  expect(foldBox!.x).toBeGreaterThanOrEqual(paneBox!.x)
-  expect(addressBox!.x).toBeGreaterThan(foldBox!.x + foldBox!.width)
+  expect(Math.abs(chatBox!.width - mainBox!.width)).toBeLessThan(2)
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await expect(page.getByTestId('live-address')).toBeVisible()
 })
 
 test('window and chat handoffs preserve independent input, composition and monitoring', async () => {
