@@ -33,7 +33,6 @@ test.beforeAll(async () => {
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setSize(1100, 825); win.show() })
   await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Browser preview' }).click()
-  await page.evaluate(async ({ lane, url }) => window.engram.agentGo(url, lane), { lane, url })
 })
 test.afterAll(async () => { await app?.close(); server?.closeAllConnections(); await new Promise<void>(resolve => server?.close(() => resolve())) })
 
@@ -43,8 +42,10 @@ test('automatic work keeps chat wide and switches between preview, split and ful
     send({ type: 'comet:working', channel: lane, working: true })
     send({ type: 'comet:step', channel: lane, line: 'read_open_page: Weekly summary' })
   }, lane)
+  await page.evaluate(async ({ lane, url }) => window.engram.agentGo(url, lane), { lane, url })
   const preview = page.locator('.browser-preview')
   await expect(preview).toBeVisible()
+  await expect(page.getByTestId('native-browser-surface')).toHaveCount(0)
   await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '', { timeout: 60000 })
   await expect(page.getByTestId('live-address')).toHaveCount(0)
   const main = await page.locator('.bots-main').boundingBox(), chat = await page.locator('.bots-chat').boundingBox()
@@ -78,7 +79,8 @@ test('automatic work keeps chat wide and switches between preview, split and ful
 test('preview stays within a narrow window, is draggable and supports dark and reduced-motion modes', async () => {
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
   await page.screenshot({ path: join(shots, 'preview-dark.png') })
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(620, 800))
+  await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 600); win.setSize(620, 800) })
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
   const preview = page.locator('.browser-preview'), bar = page.locator('.browser-preview-bar')
   const before = (await bar.boundingBox())!
   await page.mouse.move(before.x + 16, before.y + 18)

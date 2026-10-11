@@ -27,10 +27,12 @@ export function BrowserPreview({ channel, url, native, live, visible, minimized,
     const observer = new ResizeObserver(() => {
       setPosition(before => {
         if (!before || !card.current) return before
-        return { right: Math.max(12, Math.min(before.right, parent.clientWidth - card.current.offsetWidth - 12)), top: Math.max(12, Math.min(before.top, parent.clientHeight - card.current.offsetHeight - 100)) }
+        const next = { right: Math.max(12, Math.min(before.right, parent.clientWidth - card.current.offsetWidth - 12)), top: Math.max(12, Math.min(before.top, parent.clientHeight - card.current.offsetHeight - 100)) }
+        return next.right === before.right && next.top === before.top ? before : next
       })
     })
     observer.observe(parent)
+    if (card.current) observer.observe(card.current)
     return () => observer.disconnect()
   }, [])
   const source = useCallback<FrameSource>((paint) => {
@@ -45,7 +47,7 @@ export function BrowserPreview({ channel, url, native, live, visible, minimized,
         paint(base64)
         setUnavailable(false)
         const image = new Image()
-        image.onload = () => { if (alive) setShape({ width: image.naturalWidth, height: image.naturalHeight }) }
+        image.onload = () => { if (alive) setShape(before => before?.width === image.naturalWidth && before.height === image.naturalHeight ? before : { width: image.naturalWidth, height: image.naturalHeight }) }
         image.src = data
       } else setUnavailable(true)
       if (live) timer = setTimeout(() => void refresh(), 1000)
