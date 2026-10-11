@@ -77,7 +77,7 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
     </div>
     <button className="browser-preview-picture" aria-label={compact ? 'Open full browser' : 'Open browser beside chat'} onClick={open} style={{ aspectRatio: `${size.width} / ${size.height}` } as CSSProperties}>
       <FrameScreen key={channel} lane={channel} source={native ? source : undefined} />
-      <span className="browser-preview-wait">{url === 'about:blank' && !busy ? 'Open browser to enter a website' : unavailable ? 'Preview unavailable · click to open' : 'Opening preview…'}</span>
+      <span className="browser-preview-wait">{(!url || url === 'about:blank') && !busy ? 'Click to enter a website' : unavailable ? 'Preview unavailable · click to open' : 'Opening preview…'}</span>
     </button>
   </aside>
 }

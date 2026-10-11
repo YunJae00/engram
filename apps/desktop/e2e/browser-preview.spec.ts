@@ -36,6 +36,19 @@ test.beforeAll(async () => {
 })
 test.afterAll(async () => { await app?.close(); server?.closeAllConnections(); await new Promise<void>(resolve => server?.close(() => resolve())) })
 
+test('a manual empty browser offers address entry instead of indefinite loading', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
+  await page.getByTestId('bots-input-add').click()
+  await page.getByTestId('composer-web').click()
+  await expect(page.locator('.browser-preview-wait')).toHaveText('Click to enter a website')
+  await page.getByRole('button', { name: 'Open full browser', exact: true }).click()
+  await expect(page.getByTestId('live-address')).toBeFocused()
+  await expect(page.getByTestId('live-address')).toHaveValue('')
+  await page.getByTestId('web-pane-fold').click()
+  await expect(page.getByTestId('web-pane')).toHaveCount(0)
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
+})
+
 test('automatic work keeps chat wide and switches between preview, split and full without navigation', async () => {
   await app.evaluate(({ BrowserWindow }, lane) => {
     const send = (event: unknown) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', event)
@@ -119,7 +132,7 @@ test('preview stays within a narrow window, is draggable and supports dark and r
   await page.evaluate(lane => window.engram.browserTab(lane, 'add'), lane)
   const picture = page.locator('.browser-preview canvas')
   await expect(picture).not.toHaveAttribute('data-painted', '')
-  await expect(page.locator('.browser-preview-wait')).toHaveText('Open browser to enter a website')
+  await expect(page.locator('.browser-preview-wait')).toHaveText('Click to enter a website')
   await page.evaluate(async ({ lane, id }) => window.engram.browserTab(lane, 'select', id), { lane, id: tabs.find(tab => tab.active)!.id })
   await expect(picture).toHaveAttribute('data-painted', '')
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
