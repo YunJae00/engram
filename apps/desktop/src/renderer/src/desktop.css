@@ -140,6 +140,8 @@
 .interview-wait p { margin-top: 10px; }
 .interview-wait .interview-count { font-variant-numeric: tabular-nums; color: var(--fg); }
 .interview-wait .interview-intro-actions { justify-content: center; margin-top: 0; }
+.interview-wait .interview-intro-actions > button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 8px 12px; border-radius: 9px; }
+.interview-wait .interview-intro-actions > button:hover { background: var(--hover-bg); }
 .interview-elapsed { font-size: var(--fs-micro); font-variant-numeric: tabular-nums; color: var(--fg-faint); }
 .interview-step { --step-offset: 8px; animation: interview-step-in 180ms ease-out; }
 .interview-step[data-direction='back'] { --step-offset: -8px; }

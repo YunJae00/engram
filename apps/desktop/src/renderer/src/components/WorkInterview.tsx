@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, Check, LoaderCircle, MessageSquareText, Pencil, 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EngramEvent, InterviewQuestionDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { timeLeft } from '../lib/pace.js'
 
 export const INTERVIEW_PENDING_KEY = 'engram.interviewPending'
 
@@ -27,10 +28,13 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
   const heading = useRef<HTMLHeadingElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const done = useRef<HTMLButtonElement>(null)
+  const pace = useRef<{ at: number; from: number; stage?: PreparationProgress['stage'] } | null>(null)
   useEffect(() => {
     const off = api.onEvent(event => {
       if (event.type !== 'interview:progress' || event.requestId !== requestId.current) return
       latestProgress.current = event; setProgress(event)
+      // The pace is measured from the first count seen, so time spent before it does not skew it.
+      if (event.phase === 'filing' && event.completed !== undefined && (!pace.current || event.stage !== pace.current.stage || event.completed < pace.current.from)) pace.current = { at: performance.now(), from: event.completed, stage: event.stage }
     })
     return () => { off(); revision.current++; requestId.current = null; void api.interviewCancel().catch(() => undefined) }
   }, [])
@@ -62,6 +66,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
     const request = ++revision.current
     const id = crypto.randomUUID()
     requestId.current = id; latestProgress.current = null; setProgress(null)
+    pace.current = null
     setElapsed(0); setBusy('asking'); setError('')
     try {
       const next = await api.interviewQuestions({ requestId: id })
@@ -113,10 +118,10 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
       <div className="interview-intro interview-wait" data-testid="interview-wait">
         <span className="interview-mark" aria-hidden><LoaderCircle size={24} className="computer-spinner" /></span>
         <div role="status"><h3 ref={heading} tabIndex={-1} data-testid="interview-phase">{busy === 'saving' ? 'Saving your preferences…' : progress?.phase === 'mapping' ? 'Finding your work places…' : progress?.phase === 'filing' ? progress.stage === 'capture' ? 'Filing your first captures…' : progress.stage === 'organize' ? 'Organizing Cosmos…' : 'Preparing Cosmos…' : progress?.phase === 'questions' ? 'Preparing questions…' : 'Starting setup…'}</h3>
-          {busy === 'asking' && progress?.phase === 'filing' && progress.completed !== undefined && progress.total !== undefined && <p className="interview-count" data-testid="interview-file-count">{progress.completed} / {progress.total} completed</p>}
-          <p>{busy === 'saving' ? elapsed >= 20 ? 'Still waiting for your AI. You can cancel and retry.' : 'This can take a minute or more.' : elapsed >= 20 ? 'Still working. You can start now and return in Settings.' : 'Preparing Cosmos before your questions. You can start now.'}</p></div>
+          {busy === 'asking' && progress?.phase === 'filing' && progress.completed !== undefined && progress.total !== undefined && <p className="interview-count" data-testid="interview-file-count">{progress.completed} / {progress.total} completed{timeLeft(progress.completed, progress.total, pace.current)}</p>}
+          <p>{busy === 'saving' ? elapsed >= 20 ? 'Still waiting for your AI. You can cancel and retry.' : 'This can take a minute or more.' : elapsed >= 20 ? 'First-time preparation can take several minutes. Questions will open automatically.' : 'Questions will open automatically when Cosmos is ready.'}</p></div>
         <span className="interview-elapsed" role="timer" aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
-        <div className="interview-intro-actions"><button type="button" className={busy === 'asking' ? 'interview-skip' : 'secondary'} onClick={cancel}>Cancel</button>{busy === 'asking' && <button type="button" className="primary" data-testid="interview-start-now" onClick={startNow}>Start now<ArrowRight size={15} aria-hidden /></button>}</div>
+        <div className="interview-intro-actions"><button type="button" className="interview-skip" onClick={cancel}>Cancel</button>{busy === 'asking' && <button type="button" className="interview-skip" data-testid="interview-start-now" onClick={startNow}>Set up later</button>}</div>
       </div>
     </div> : !questions ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro">

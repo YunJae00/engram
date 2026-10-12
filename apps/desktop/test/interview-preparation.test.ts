@@ -4,6 +4,7 @@ import type { VaultContext } from '../src/main/vault.js'
 const fake = vi.hoisted(() => ({ map: vi.fn(), prime: vi.fn(), settings: vi.fn(), filing: vi.fn(), outcome: vi.fn(), blocked: vi.fn() }))
 vi.mock('core', async original => ({ ...await original<typeof import('core')>(), readWorkMap: fake.map, prepareInitialFiling: fake.filing, engineBackoff: { blockedMs: fake.blocked } }))
 vi.mock('../src/main/work-map-job.js', () => ({ primeWorkMap: fake.prime }))
+vi.mock('../src/main/desk-sources.js', () => ({ refreshDeskNotes: async () => undefined, withheldDeskNotes: async () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.settings }))
 vi.mock('../src/main/engine-health.js', () => ({ noteRunOutcome: fake.outcome }))
 import { prepareInterviewContext } from '../src/main/interview-preparation.js'
@@ -23,7 +24,7 @@ it('prepares the map then a finite pass with real progress and returns its membe
   const progress = vi.fn(), abort = new AbortController()
   fake.filing.mockImplementationOnce(async (_paths, _engines, options) => {
     expect(fake.prime).toHaveBeenCalledOnce()
-    expect(options).toMatchObject({ signal: abort.signal, includeWorkMap: true, concurrency: 1 })
+    expect(options).toMatchObject({ signal: abort.signal, includeWorkMap: true, concurrency: 4, withheld: [] })
     options.onProgress(1, 2, 'organize')
     return report
   })

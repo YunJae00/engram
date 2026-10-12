@@ -35,6 +35,8 @@ export async function newestRevisions(directory: string, text: string, since: nu
   return out
 }
 
+const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
+
 export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = []) {
   const approved = new Set(attachedPaths)
   const assertReadable = async (path: string) => {
@@ -45,11 +47,15 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     handInRoots,
     assertActive: () => assertDesktopTurnNotStopped(lane),
     assertReadable,
-    findFiles: (query, signal) => findLocalFiles(['documents', 'desktop', 'downloads'].map((dir) => app.getPath(dir as 'documents' | 'desktop' | 'downloads')), paths.privateDir, query, signal),
+    findFiles: (query, signal) => findLocalFiles(USER_FOLDERS.map((dir) => app.getPath(dir)), paths.privateDir, query, signal),
     approveRead: async (path, signal) => {
       signal?.throwIfAborted()
       await assertReadable(path)
       if (approved.has(path) && await realpath(path) === path) return true
+      // The folders the comet's own file tools already read without asking.
+      const real = await realpath(path)
+      const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
+      if (roots.some(root => root && within(root, real))) return true
       const result = await dialog.showMessageBox({
         type: 'question', buttons: ['Cancel', 'Read file'], defaultId: 0, cancelId: 0,
         message: 'Allow this chat to read this saved file?',

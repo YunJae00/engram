@@ -4,6 +4,11 @@ import { noteRunOutcome } from './engine-health.js'
 import { loadSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
 import { primeWorkMap } from './work-map-job.js'
+import { refreshDeskNotes, withheldDeskNotes } from './desk-sources.js'
+
+// Each filing call is mostly a runtime starting up and waiting on the model,
+// so a few at once cut the first wait several times without crowding memory.
+const COSMOS_PARALLEL = 4
 
 export type InterviewProgress = Omit<Extract<EngramEvent, { type: 'interview:progress' }>, 'type' | 'requestId'>
 export type PrepareInterview = (signal: AbortSignal, progress: (state: InterviewProgress) => void) => Promise<readonly string[]>
@@ -33,10 +38,11 @@ export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSi
       if (!map || (map.places.length > 0 && map.places.every(place => place.work === undefined))) throw new Error('Your work map is not ready yet. Retry or start now.')
     }
   }
+  await refreshDeskNotes(ctx)
   signal.throwIfAborted()
   const engine = ctx.engines[0]
   const report = await prepareInitialFiling(ctx.paths, ctx.engines, {
-    signal, concurrency: 1, modelHint: 'fast', includeWorkMap: (await loadSettings()).workMap,
+    signal, concurrency: COSMOS_PARALLEL, modelHint: 'fast', includeWorkMap: (await loadSettings()).workMap, withheld: await withheldDeskNotes(),
     onProgress: (completed, total, stage) => progress({ phase: 'filing', stage, completed, total }),
   })
   signal.throwIfAborted()

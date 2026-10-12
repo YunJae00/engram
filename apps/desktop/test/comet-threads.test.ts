@@ -289,3 +289,19 @@ describe('an offer that follows its answer', () => {
     expect(store.thread(BOT).offer).toBeNull()
   })
 })
+
+describe('a draft held for its check', () => {
+  it('leaves the thread while the check runs, and the checked answer arrives once', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'Summarize last week')
+    store.handleEvent({ type: 'comet:working', channel, working: true })
+    store.handleEvent({ type: 'chat:token', channel, text: 'Draft total: 58 hr' })
+    store.carryOn(BOT)
+    store.handleEvent({ type: 'comet:step', channel, line: 'note: Checking the result against your request' })
+    store.handleEvent({ type: 'chat:token', channel, text: '', reset: true, drop: true })
+    expect(store.thread(BOT).messages.at(-1)).toEqual({ role: 'assistant', text: '', streaming: true })
+    expect(store.thread(BOT).workLines).toEqual(['note: Checking the result against your request'])
+    store.handleEvent({ type: 'chat:done', channel, text: 'Checked total: 58 hr' })
+    expect(store.thread(BOT).messages.filter(m => m.role === 'assistant').map(m => m.text)).toEqual(['Checked total: 58 hr'])
+  })
+})

@@ -435,7 +435,8 @@ export type EngramEvent =
   // so the others can ignore them.
   // reset: what streamed so far was said before a tool call and is not the
   // reply; the thread starts the reply again from nothing.
-  | { type: 'chat:token'; channel: string; text: string; reset?: boolean }
+  // `drop` clears an unconfirmed draft outright rather than keeping it as a note.
+  | { type: 'chat:token'; channel: string; text: string; reset?: boolean; drop?: boolean }
   // `offer` rides along when the comet identified a saved procedure for this
   // request but did not run it: the thread shows a one-tap Run instead of
   // leaving the person to go find it.
@@ -866,6 +867,9 @@ export interface AppSettingsDto {
   computerUse?: boolean
   // Learn where the person works from browser history and bookmarks.
   workMap?: boolean
+  // Recently opened file names and app usage on this computer.
+  workFiles?: boolean
+  workApps?: boolean
   nativeTools?: boolean
 }
 

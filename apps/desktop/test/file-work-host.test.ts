@@ -13,9 +13,11 @@ beforeEach(async () => {
   await mkdir('tmp', { recursive: true })
   root = await mkdtemp(resolve('tmp/file-host-'))
   await mkdir(join(root, 'private'))
+  // Documents, Desktop and Downloads: read without asking. Files elsewhere ask.
+  await mkdir(join(root, 'home'))
   state.stopped = false
   state.confirm.mockReset().mockResolvedValue({ response: 1 })
-  state.getPath.mockReset().mockImplementation(() => root)
+  state.getPath.mockReset().mockImplementation(() => join(root, 'home'))
 })
 afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
@@ -81,7 +83,7 @@ it('does not bypass a cancelled desktop turn by switching to file creation', asy
   for (const name of ['file_create_copy', 'file_create_workbook']) {
     await expect(tools.find((tool) => tool.name === name)!.run({}, { task: 'Keep working.' })).rejects.toThrow('Stopped')
   }
-  expect(await readdir(root)).toEqual(['private'])
+  expect(await readdir(root)).toEqual(['home', 'private'])
 })
 
 it('can inspect a workbook it just created without asking again, but does not trust another chat output', async () => {
@@ -99,11 +101,19 @@ it('can inspect a workbook it just created without asking again, but does not tr
 })
 
 it('uses operating-system document folders for discovery without approving or reading content', async () => {
-  await writeFile(join(root, 'budget.pdf'), 'content stays local')
+  await writeFile(join(root, 'home', 'budget.pdf'), 'content stays local')
   const tool = cometFileTools(vaultPaths(root), 'lane').find(tool => tool.name === 'find_files')!
   const result = JSON.parse(await tool.run({ query: 'budget' }, { task: 'Find the budget file' }))
-  expect(result.matches[0].path).toBe(join(root, 'budget.pdf'))
+  expect(result.matches[0].path).toBe(join(root, 'home', 'budget.pdf'))
   expect(state.getPath.mock.calls.map(call => call[0])).toEqual(['documents', 'desktop', 'downloads'])
   expect(state.confirm).not.toHaveBeenCalled()
   expect(JSON.stringify(result)).not.toContain('content stays local')
+})
+
+it('reads a file in Documents, Desktop or Downloads without asking, as the runtime file tools do', async () => {
+  const path = join(root, 'home', 'issues.json')
+  await writeFile(path, '{"open":3}')
+  const tool = cometFileTools(vaultPaths(root), 'lane').find((tool) => tool.name === 'file_read')!
+  expect(JSON.parse(await tool.run({ path }, { task: 'Read the issue list.' })).content).toBe('{"open":3}')
+  expect(state.confirm).not.toHaveBeenCalled()
 })

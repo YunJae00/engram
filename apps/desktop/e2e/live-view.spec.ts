@@ -220,6 +220,13 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Parallel watch' }).click()
   await page.getByTestId('mission-add-1').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Third watch' }).click()
+  // Each tile shows its page as a corner preview until it is opened there.
+  const openTile = async (index: number) => {
+    const tile = page.getByTestId(`mission-tile-${index}`)
+    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
+  }
+  for (const index of [0, 1]) await openTile(index)
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2, { timeout: 15000 })
   const previewWidths = () => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width))
   const expectedWidths = () => page.locator('.mission-preview').evaluateAll((nodes) => nodes.map((node) => Math.max(360, Math.min(1920, Math.round(node.getBoundingClientRect().width / 8) * 8)) * 2))
@@ -229,6 +236,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Watching', exact: true }).click()
   await page.getByTestId('mission-add-3').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
+  for (const index of [2, 3]) await openTile(index)
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(4, { timeout: 20000 })
   await expect.poll(previewWidths, { timeout: 20000 }).toEqual(await expectedWidths())
   const simultaneous = await page.evaluate(async ({ url, ids }) => {
@@ -498,6 +506,8 @@ test('web phases auto-open only their own conversation and folds never leak acro
     await web.goto('about:blank')
     await openActivity(page, 'mission')
     const tile = page.getByTestId('mission-tile-0')
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
     await expect(tile.locator('.browser-start')).toBeVisible()
     await expect(tile.locator('.mission-preview canvas')).toBeHidden()
