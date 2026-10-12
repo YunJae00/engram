@@ -102,6 +102,22 @@ test('settings prepare only on request and show measured stages before questions
   await expect(page.getByTestId('interview-wait')).toHaveCount(0)
 })
 
+test('remaining time starts fresh when filing changes stage', async () => {
+  await openInterview()
+  await page.clock.install()
+  await page.getByTestId('interview-start').click()
+  await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests.length)).toBe(1)
+  await progress(0, 'filing', 'capture', 0, 10)
+  await page.clock.runFor(120_000)
+  await progress(0, 'filing', 'capture', 2, 10)
+  await expect(page.getByTestId('interview-file-count')).toHaveText('2 / 10 completed · about 8 min left')
+  await progress(0, 'filing', 'organize', 0, 10)
+  await expect(page.getByTestId('interview-file-count')).toHaveText('0 / 10 completed')
+  await page.clock.runFor(60_000)
+  await progress(0, 'filing', 'organize', 2, 10)
+  await expect(page.getByTestId('interview-file-count')).toHaveText('2 / 10 completed · about 4 min left')
+})
+
 test('unfinished preparation offers retry and ignores old request progress', async () => {
   await openInterview()
   await page.getByTestId('interview-start').click()
