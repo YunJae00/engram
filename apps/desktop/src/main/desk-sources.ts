@@ -2,7 +2,7 @@ import { app, shell } from 'electron'
 import { execFile } from 'node:child_process'
 import { copyFile, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, extname, isAbsolute, join, relative } from 'node:path'
+import { basename, extname, isAbsolute, join, relative, win32 } from 'node:path'
 import { promisify } from 'node:util'
 import { appsNote, DESK_NOTES, DESK_WINDOW_DAYS, downloadsNote, filesNote, parseUserAssist, readNote, writeNote, type AppUse, type Download, type Note, type RecentFile } from 'core'
 import { broadcast } from './engine-health.js'
@@ -75,7 +75,7 @@ async function readDownloads(sinceMs: number): Promise<Download[]> {
       const rows = origin ? db.exec(`SELECT target_path, start_time / 1000, ${origin} FROM downloads WHERE start_time > ${since}`) : []
       db.close()
       for (const [target, at, origin] of (rows[0]?.values ?? []) as [string, number, string | null][]) {
-        try { if (target && origin) found.push({ file: basename(target), host: new URL(origin).hostname, at: WEBKIT_EPOCH_MS + at }) } catch { continue }
+        try { if (target && origin) found.push({ file: /^(?:[a-z]:[\\/]|\\\\)/i.test(target) ? win32.basename(target) : basename(target), host: new URL(origin).hostname, at: WEBKIT_EPOCH_MS + at }) } catch { continue }
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') flog('desk-map', error)

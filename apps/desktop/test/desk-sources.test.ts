@@ -46,8 +46,10 @@ afterEach(() => { vi.unstubAllEnvs() })
 it('writes a note only for each source the person allowed, and withholds the rest from filing', async () => {
   fake.settings = { workMap: true, workFiles: false, workApps: true }
   await refreshDeskNotes(ctx)
-  expect((await readNote(paths, DESK_NOTES.apps)).body).toContain('- EXCEL: opened 12 times')
-  expect((await readNote(paths, DESK_NOTES.apps)).body).not.toContain('Setup')
+  if (process.platform === 'win32') {
+    expect((await readNote(paths, DESK_NOTES.apps)).body).toContain('- EXCEL: opened 12 times')
+    expect((await readNote(paths, DESK_NOTES.apps)).body).not.toContain('Setup')
+  } else await expect(readNote(paths, DESK_NOTES.apps)).rejects.toThrow()
   expect((await readNote(paths, DESK_NOTES.downloads)).body).toContain('- hr.example: 1 file, such as timesheet.xlsx')
   await expect(readNote(paths, DESK_NOTES.files)).rejects.toThrow()
   expect(await withheldDeskNotes()).toEqual([DESK_NOTES.files])
@@ -55,7 +57,7 @@ it('writes a note only for each source the person allowed, and withholds the res
   expect(await withheldDeskNotes()).toEqual(Object.values(DESK_NOTES))
 })
 
-it('rereads a source at most daily unless it was just allowed', async () => {
+it.runIf(process.platform === 'win32')('rereads app usage at most daily unless it was just allowed', async () => {
   fake.settings = { workMap: false, workFiles: false, workApps: true }
   await refreshDeskNotes(ctx)
   fake.reg = usage('C:\\Program Files\\Office\\WINWORD.EXE', 3)
