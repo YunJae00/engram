@@ -1,5 +1,5 @@
 import { ArrowUpRight, ChevronDown, PanelRight, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -12,8 +12,14 @@ import { useCometActivity } from '../lib/useCometActivity.js'
 import { fillSeats, readSeats, replaceSeat } from '../lib/missionSeats.js'
 import { useShellState } from '../state-slices.js'
 import { SidebarDisclosure } from '../components/SidebarDisclosure.js'
+import { BrowserPreview } from '../components/BrowserPreview.js'
+import type { FrameSource } from '../components/FrameScreen.js'
+import { useNativeBrowser } from '../lib/nativeSurfaces.js'
+import { onMissionFrame } from '../lib/missionFramesLive.js'
 
 const SEATS_KEY = 'engram.mission.slots'
+// Tiles whose page the person opened; they stay open while the app is.
+const openTiles = new Set<string>()
 const FOLDED_KEY = 'engram.mission.folded-chats'
 
 function readFoldedChats(): Set<string> {
@@ -25,6 +31,14 @@ function readFoldedChats(): Set<string> {
 
 export function MissionControl({ layout }: { layout: 2 | 4 }) {
   const { setActivity } = useShellState()
+  const native = useNativeBrowser()
+  // One picture source per lane, kept across renders so its preview is not resubscribed.
+  const frameSources = useRef(new Map<string, FrameSource>())
+  const framesOf = (lane: string): FrameSource => {
+    let source = frameSources.current.get(lane)
+    if (!source) frameSources.current.set(lane, source = paint => onMissionFrame(lane, frame => { if (frame.data) paint(frame.data) }))
+    return source
+  }
   const activityOf = useCometActivity()
   const [bots, setBots] = useState<BotDto[]>([])
   const [active, setActive] = useState<string[]>([])
@@ -37,9 +51,13 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
   const [adding, setAdding] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [foldedChats, setFoldedChats] = useState(readFoldedChats)
-  const [pages, setPages] = useState<Set<string>>(() => new Set())
-  const [openedPages, setOpenedPages] = useState<Set<string>>(() => new Set())
-  const [hiddenPages, setHiddenPages] = useState<Set<string>>(() => new Set())
+  // The address each tile's comet has open; the page itself opens in the tile only when asked.
+  const [pages, setPages] = useState<Map<string, string>>(() => new Map())
+  const [openedPages, setOpenedPages] = useState<Set<string>>(() => new Set(openTiles))
+  const showPage = (botId: string, open: boolean) => {
+    if (open) openTiles.add(botId); else openTiles.delete(botId)
+    setOpenedPages(new Set(openTiles))
+  }
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -125,7 +143,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
       <div className={`mission-grid mission-grid-${layout}`}>
         {seats.slice(0, layout).map((id, index) => {
           const bot = bots.find((item) => item.id === id)
-          const webOpen = Boolean(id && !hiddenPages.has(id) && (pages.has(id) || openedPages.has(id)))
+          const webOpen = Boolean(id && openedPages.has(id))
           const chatFolded = Boolean(id && webOpen && foldedChats.has(id))
           if (!bot) return (
             <article className="mission-tile mission-open-seat" key={index} data-testid={`mission-tile-${index}`}>
@@ -148,11 +166,10 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
               </header>
               {chooser(index)}
               <div className="mission-tile-body" key={bot.id} data-chat-open={!chatFolded} data-web-open={webOpen}>
-                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} busy={['running', 'waiting'].includes(statusOf(bot))} open={() => open(bot.id)} onLiveChange={live => setPages(previous => { if (previous.has(bot.id) === live) return previous; const next = new Set(previous); if (live) next.add(bot.id); else next.delete(bot.id); return next })} />
-                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} webOpen={webOpen} onToggleWeb={() => {
-                  setHiddenPages(previous => { const next = new Set(previous); if (webOpen) next.add(bot.id); else next.delete(bot.id); return next })
-                  if (!webOpen) setOpenedPages(previous => new Set(previous).add(bot.id))
-                }} /></div>
+                <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} busy={['running', 'waiting'].includes(statusOf(bot))} open={() => open(bot.id)} onLiveChange={(live, url) => setPages(previous => { if (live ? previous.get(bot.id) === url : !previous.has(bot.id)) return previous; const next = new Map(previous); if (live) next.set(bot.id, url); else next.delete(bot.id); return next })} />
+                {/* A small tile keeps its conversation readable: the page floats at the corner, as in a small window. */}
+                {!webOpen && pages.has(bot.id) && <BrowserPreview channel={cometChannel(bot.id)} url={pages.get(bot.id)} native={native} live visible busy={['running', 'waiting'].includes(statusOf(bot))} width={1280} height={800} compact elementRef={() => undefined} onOpen={() => showPage(bot.id, true)} frames={framesOf(cometChannel(bot.id))} />}
+                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} webOpen={webOpen} onToggleWeb={() => showPage(bot.id, !webOpen)} /></div>
               </div>
             </article>
           )

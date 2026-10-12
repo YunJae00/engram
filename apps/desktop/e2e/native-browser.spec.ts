@@ -70,6 +70,13 @@ test('four native pages share the agent connection and keep independent input', 
   const context = browser.contexts()[0]!
   await expect.poll(() => context.pages().filter((page) => page.url().startsWith(url)).length).toBe(4)
   await openActivity(shell, 'mission')
+  // A tile shows its page as a corner preview until the person opens it there.
+  for (let i = 0; i < 4; i++) {
+    const tile = shell.getByTestId(`mission-tile-${i}`)
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
+  }
   await expect(shell.locator('.mission-preview').getByTestId('native-browser-surface')).toHaveCount(4)
   for (let i = 0; i < 4; i++) {
     const page = context.pages().find((page) => page.url() === `${url}/?pane=${i}`)!

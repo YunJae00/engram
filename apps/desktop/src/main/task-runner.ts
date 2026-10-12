@@ -102,7 +102,7 @@ export function taskRunner(deps: {
     if (checking) {
       deps.broadcast({ type: 'comet:step', channel: channelOf(started), line: 'note: Checking the result against your request' })
       // The draft stays out of the thread while it is checked: one answer, once it is done.
-      deps.broadcast({ type: 'chat:token', channel: channelOf(started), text: '', reset: true })
+      deps.broadcast({ type: 'chat:token', channel: channelOf(started), text: '', reset: true, drop: true })
     }
     const earlier = trails.get(id) ?? []
     const holdIf = (answer: string, steps: TurnStep[]) => !started.verified && (savedWorkFile(answer) || successfulTurnSteps([...earlier, ...steps]).some((step) => CHANGES.test(step.tool)))

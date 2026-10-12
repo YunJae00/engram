@@ -16,6 +16,8 @@
 .browser-preview-bar { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 4px 8px; cursor: grab; touch-action: none; user-select: none; }
 .browser-preview-bar:active { cursor: grabbing; }
 .browser-preview-grip { opacity: .4; flex-shrink: 0; }
+/* Its own layer: the turn keeps spinning evenly while the page thread is busy. */
+.browser-preview-bar .computer-spinner { display: block; flex-shrink: 0; transform-origin: 50% 50%; will-change: transform; }
 .browser-preview-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .browser-preview-bar button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); cursor: pointer; }
 .browser-preview-bar button:hover { background: var(--hover-bg); color: var(--fg); }

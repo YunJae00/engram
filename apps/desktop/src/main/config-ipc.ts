@@ -11,7 +11,7 @@ import { getSyncStatus } from './team.js'
 import { binaryProvider, type VaultContext } from './vault.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { aiSelection } from './ai-selection.js'
-import { workMapSettingChanged } from './work-map-job.js'
+import { deskSettingChanged, workMapSettingChanged } from './work-map-job.js'
 import { cancelWorkInterview } from './work-interview.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
@@ -47,13 +47,14 @@ export function registerSettingsIpc(): void {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Invalid settings')
     if (settings.defaultEngine !== undefined && !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
-    for (const key of ['autoStart', 'computerUse', 'workMap'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') throw new Error('Invalid setting: ' + key)
+    for (const key of ['autoStart', 'computerUse', 'workMap', 'workFiles', 'workApps'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') throw new Error('Invalid setting: ' + key)
     for (const key of ['searchTemplate', 'agentBrowser', 'claudeModel', 'codexModel', 'semanticModel'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'string') throw new Error('Invalid setting: ' + key)
     if (settings.teamSync !== undefined && !['auto', 'manual'].includes(settings.teamSync)) throw new Error('Invalid sync setting')
     for (const effort of [settings.claudeEffort, settings.codexEffort]) if (effort !== undefined && !REASONING_EFFORTS.includes(effort)) throw new Error('Invalid reasoning effort')
     const change = Object.fromEntries(Object.entries(settings).filter(([key, value]) => key !== 'recordTasks' && (value !== undefined || key === 'claudeEffort' || key === 'codexEffort'))) as Partial<AppSettingsDto>
     const held = await loadSettings()
-    if (settings.workMap === false) { workMapSettingChanged(false); if (held.workMap) cancelWorkInterview() }
+    if (settings.workMap === false) workMapSettingChanged(false)
+    if ((['workMap', 'workFiles', 'workApps'] as const).some(key => settings[key] === false && held[key])) cancelWorkInterview()
     if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
     const saved = await updateSettings(latest => ({
       ...latest,
@@ -66,6 +67,7 @@ export function registerSettingsIpc(): void {
     // Live surfaces (the agent terminal's colours) restyle immediately.
     broadcast({ type: 'settings:changed', settings: saved })
     if (settings.workMap === true && !held.workMap) workMapSettingChanged(true)
+    if ((settings.workFiles === true && !held.workFiles) || (settings.workApps === true && !held.workApps)) deskSettingChanged()
   })
 
 }

@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, expect, it } from 'vitest'
 import { writeCapture } from '../src/capture.js'
+import { listCards } from '../src/cards.js'
 import type { Engine, EngineJobInput } from '../src/engine/types.js'
 import { loadAbsorbState, saveAbsorbState } from '../src/import.js'
 import { prepareInitialFiling, type InitialFilingStage } from '../src/jobs/initial-filing.js'
@@ -214,4 +215,47 @@ it('bounds reconciliation batches and candidate context without expanding the sn
     expect(input.corpus.length).toBeLessThanOrEqual(60)
     expect(input.corpus.length).toBeGreaterThan(0)
   }
+})
+
+it('overlaps model calls within a pass and finishes every link before dates or cards begin', async () => {
+  for (let index = 0; index < 6; index++) await createNote(paths, { id: `n-parallel-000${index}`, body: `# Parallel work ${index}` })
+  let inFlight = 0, widest = 0
+  const order: string[] = []
+  const report = await prepareInitialFiling(paths, [engine(async job => {
+    order.push(`start ${kind(job.prompt)}`)
+    widest = Math.max(widest, ++inFlight)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    inFlight--
+    order.push(`end ${kind(job.prompt)}`)
+    return undefined
+  })], { concurrency: 4, retryDelayMs: 0 })
+  expect(report.failed).toEqual([])
+  expect(widest).toBeGreaterThan(1)
+  expect(widest).toBeLessThanOrEqual(4)
+  const lastLink = order.lastIndexOf('end J2'), firstOther = order.findIndex(step => step.startsWith('start') && !step.endsWith('J2'))
+  expect(firstOther).toBeGreaterThan(lastLink)
+})
+
+it('does not start reconciliation after a failed link pass', async () => {
+  await createNote(paths, { id: 'n-stop-0001', body: '# Original work' })
+  await createNote(paths, { id: 'n-stop-0002', body: '# Related work' })
+  const report = await prepareInitialFiling(paths, [engine(async job => {
+    if (kind(job.prompt) === 'J2') return 'not JSON'
+    return undefined
+  })], { concurrency: 4, retryDelayMs: 0 })
+  expect(report.failed).toHaveLength(2)
+  expect(prompts.every(prompt => kind(prompt) === 'J2')).toBe(true)
+})
+
+it('keeps concurrent reconciliation proposals to one card per target pair', async () => {
+  for (let index = 0; index < 21; index++) await createNote(paths, { id: `n-dedupe-${String(index).padStart(4, '0')}`, body: `# Work ${index}`, happened_at: '2026-10-01' })
+  let proposal = 0
+  const report = await prepareInitialFiling(paths, [engine(async job => {
+    if (kind(job.prompt) === 'J3') return JSON.stringify({ cards: [{ cardType: 'conflict', targets: ['n-dedupe-0000', 'n-dedupe-0001'], rationale: `Conflicting finding ${++proposal}` }] })
+    return undefined
+  })], { concurrency: 4, retryDelayMs: 0 })
+  expect(report.failed).toEqual([])
+  expect(proposal).toBe(2)
+  expect(await listCards(paths, 'proposed')).toHaveLength(1)
+  expect((await readNote(paths, 'n-dedupe-0000')).front.status).toBe('disputed')
 })

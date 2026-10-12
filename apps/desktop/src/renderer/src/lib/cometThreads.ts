@@ -274,7 +274,9 @@ export function createCometThreads(initialSelected: string | null = null) {
           // answer. They leave the bubble, but not the screen: what it said
           // stays in the work as a note, so nothing a person has read
           // simply vanishes.
-          const said = next[at]!.text.trim()
+          // A draft held for its check is not an answer yet: it leaves
+          // altogether, and the checked answer arrives once.
+          const said = event.drop ? '' : next[at]!.text.trim()
           next[at] = { ...next[at]!, text: '' }
           const lines = said ? [...current.workLines.slice(1 - WORK_LINES_KEPT), `said: ${said}`] : current.workLines
           patch(id, { messages: next, workLines: lines }, true)

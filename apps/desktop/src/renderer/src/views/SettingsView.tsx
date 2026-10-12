@@ -11,11 +11,14 @@ import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { WorkMapSettings } from '../components/WorkMapSettings.js'
+import { LEARNING_SOURCES } from '../components/LearningSources.js'
 import { WorkInterviewDialog } from '../components/WorkInterview.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
+
+const ACTIVITY = LEARNING_SOURCES.find(source => source.key === 'activity')!
 
 // Only local settings gate the sheet. Network and runtime probes fill their
 // own sections without blocking navigation.
@@ -148,7 +151,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <h2>Memory &amp; data</h2>
         <div className="settings-group">
           <label className="setting-row">
-            <span className="settings-row-label"><Activity size={18} aria-hidden /><span>App activity<small>App names and window titles only.</small></span></span>
+            <span className="settings-row-label"><Activity size={18} aria-hidden /><span>{ACTIVITY.name}<small>{ACTIVITY.detail}</small></span></span>
             <input
               type="checkbox"
               className="switch"

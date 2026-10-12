@@ -25,6 +25,7 @@ import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
 import { historyCandidates } from './web-trail.js'
+import { refreshDeskNotes } from './desk-sources.js'
 
 // The work map, kept the way the librarian keeps the vault: in the background,
 // once a day, only when the person turned it on. It reads the browser's own
@@ -145,7 +146,10 @@ export function startWorkMap(ctx: VaultContext, onFiled?: () => void): void {
   if (timer) return
   // A probe or test profile never reads the person's real browser.
   if (process.env['ENGRAM_USERDATA']) return
-  const check = () => void refreshIfStale().catch((error) => flog('work-map', error))
+  const check = () => {
+    void refreshIfStale().catch((error) => flog('work-map', error))
+    if (current) void refreshDeskNotes(current).catch((error) => flog('desk-map', error))
+  }
   setTimeout(check, FIRST_CHECK_MS).unref()
   timer = setInterval(check, CHECK_MS)
   timer.unref()
@@ -154,7 +158,15 @@ export function startWorkMap(ctx: VaultContext, onFiled?: () => void): void {
 // Turned on in Settings or at onboarding: map now rather than within the hour.
 export function workMapSettingChanged(on: boolean): void {
   if (!on) { controller?.abort(); return }
-  if (on && current && !process.env['ENGRAM_USERDATA']) void refreshWorkMap(current).catch((error) => flog('work-map', error))
+  if (on && current && !process.env['ENGRAM_USERDATA']) {
+    void refreshWorkMap(current).catch((error) => flog('work-map', error))
+    deskSettingChanged()
+  }
+}
+
+// A desk source just allowed: read it now rather than within the hour.
+export function deskSettingChanged(): void {
+  if (current && !process.env['ENGRAM_USERDATA']) void refreshDeskNotes(current, true).catch((error) => flog('desk-map', error))
 }
 
 export function registerWorkMapIpc(ctx: VaultContext): void {

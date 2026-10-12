@@ -68,6 +68,8 @@ test('settings prepare only on request and show measured stages before questions
   await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests.length)).toBe(1)
   await expect(page.getByTestId('interview-phase')).toHaveText('Starting setup…')
   await expect(page.getByTestId('interview-file-count')).toHaveCount(0)
+  await expect(page.getByTestId('interview-start-now')).toHaveText('Set up later')
+  await expect(page.getByTestId('interview-wait').locator('button.primary')).toHaveCount(0)
   await progress(0, 'mapping')
   await expect(page.getByTestId('interview-phase')).toHaveText('Finding your work places…')
   await page.clock.runFor(21_000)
@@ -79,6 +81,13 @@ test('settings prepare only on request and show measured stages before questions
     await page.evaluate(value => document.documentElement.dataset.theme = value, theme)
     expect(await page.getByTestId('interview-dialog').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
     await expect(page.getByTestId('interview-start-now')).toBeInViewport()
+    const buttons = await page.getByTestId('interview-wait').locator('.interview-intro-actions button').evaluateAll(elements => elements.map(element => {
+      const box = element.getBoundingClientRect()
+      return { top: box.top, height: box.height }
+    }))
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]!.height).toBeGreaterThanOrEqual(36)
+    expect(buttons[0]).toEqual(buttons[1])
     await screenshot(`filing-${theme}-600.png`)
   }
   await progress(0, 'filing', 'organize', 1, 3)

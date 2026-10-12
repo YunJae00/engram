@@ -14,6 +14,8 @@ import { JobRunner, type JobSpec, type RunReport, type RunnerOptions } from './r
 export type InitialFilingStage = 'capture' | 'organize'
 export interface InitialFilingOptions extends RunnerOptions {
   includeWorkMap?: boolean
+  // Notes from sources the person has not allowed; left out with what came of them.
+  withheld?: string[]
   ingest?: IngestOptions
   onProgress?(completed: number, total: number, stage: InitialFilingStage): void
 }
@@ -35,8 +37,8 @@ async function names(folder: string): Promise<string[]> {
   return (await readdir(folder)).filter(name => !name.startsWith('.')).sort()
 }
 
-function permitted(notes: Note[], includeWorkMap: boolean): Note[] {
-  const excluded = new Set(notes.filter(note => !includeWorkMap && (note.front.type === PLACE_TYPE || note.front.id.startsWith('n-place-'))).map(note => note.front.id))
+function permitted(notes: Note[], includeWorkMap: boolean, withheld: string[] = []): Note[] {
+  const excluded = new Set(notes.filter(note => withheld.includes(note.front.id) || (!includeWorkMap && (note.front.type === PLACE_TYPE || note.front.id.startsWith('n-place-')))).map(note => note.front.id))
   for (let changed = true; changed;) {
     changed = false
     for (const note of notes) {
@@ -67,18 +69,19 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
     signal?.throwIfAborted()
     captured.push({ name, hash: digest(await localFile(join(paths.inbox, name))) })
   }
-  const current = permitted(notes, options.includeWorkMap === true)
+  const current = permitted(notes, options.includeWorkMap === true, options.withheld)
   report.noteIds = current.map(note => note.front.id)
   const created: string[] = []
   const now = options.now?.() ?? new Date()
-  const run = async (jobs: JobSpec[], stage: InitialFilingStage) => {
+  // A stage split into runs keeps one running count across model batches.
+  const run = async (jobs: JobSpec[], stage: InitialFilingStage, done = 0, total = jobs.length) => {
     signal?.throwIfAborted()
-    let completed = 0
-    options.onProgress?.(0, jobs.length, stage)
+    let completed = done
+    options.onProgress?.(completed, total, stage)
     const one = await new JobRunner(paths, engines, {
-      ...options, concurrency: 1,
-      onJobDone: (job, index, total) => {
-        options.onJobDone?.(job, index, total)
+      ...options, concurrency: options.concurrency ?? 1,
+      onJobDone: (job, index, count) => {
+        options.onJobDone?.(job, index, count)
         options.onProgress?.(++completed, total, stage)
       },
     }).runAll(jobs)
@@ -128,28 +131,37 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
 
   const byId = new Map(current.map(note => [note.front.id, note]))
   const scopeHash = digest(JSON.stringify(current.map(note => [note.front.id, note.body]).sort((a, b) => a[0]!.localeCompare(b[0]!))))
+  // Model calls may overlap, but card deduplication and note writes must not.
+  let applying: Promise<unknown> = Promise.resolve()
   const guarded = (job: JobSpec, ownTarget?: string): JobSpec => ({
     ...job, inputKey: `initial:${scopeHash}:${job.inputKey}`,
-    apply: async result => {
-      signal?.throwIfAborted()
-      const parsed = extractJson(result) as { cards?: Array<{ targets?: string[] }>; estimates?: Array<{ id: string; happened_at?: unknown }> }
-      if (job.kind === 'J6' && (parsed.estimates ?? []).some(estimate => {
-        const date = estimate.happened_at
-        return typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date
-      })) throw new Error('The model returned an invalid event date; the original notes were kept.')
-      const targets = ownTarget ? [ownTarget] : job.kind === 'J6' ? (parsed.estimates ?? []).map(estimate => estimate.id) : (parsed.cards ?? []).flatMap(card => card.targets ?? [])
-      for (const id of new Set(targets)) {
-        const original = byId.get(id)
-        if (!original) throw new Error('The filing result referred to a note outside this preparation.')
-        const latest = parseNote((await localFile(notePath(paths, id))).toString('utf8'))
-        if (latest.front.id !== id || latest.body !== original.body || !['current', 'disputed'].includes(latest.front.status)) throw new Error('A note changed while filing; its edits were kept. Try again.')
-      }
-      signal?.throwIfAborted()
-      return job.apply(result)
+    apply: result => {
+      const pending = applying.then(async () => {
+        signal?.throwIfAborted()
+        const parsed = extractJson(result) as { cards?: Array<{ targets?: string[] }>; estimates?: Array<{ id: string; happened_at?: unknown }> }
+        if (job.kind === 'J6' && (parsed.estimates ?? []).some(estimate => {
+          const date = estimate.happened_at
+          return typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date
+        })) throw new Error('The model returned an invalid event date; the original notes were kept.')
+        const targets = ownTarget ? [ownTarget] : job.kind === 'J6' ? (parsed.estimates ?? []).map(estimate => estimate.id) : (parsed.cards ?? []).flatMap(card => card.targets ?? [])
+        for (const id of new Set(targets)) {
+          const original = byId.get(id)
+          if (!original) throw new Error('The filing result referred to a note outside this preparation.')
+          const latest = parseNote((await localFile(notePath(paths, id))).toString('utf8'))
+          if (latest.front.id !== id || latest.body !== original.body || !['current', 'disputed'].includes(latest.front.status)) throw new Error('A note changed while filing; its edits were kept. Try again.')
+        }
+        signal?.throwIfAborted()
+        return job.apply(result)
+      })
+      applying = pending.catch(() => undefined)
+      return pending
     },
   })
   const targets = current.filter(note => note.front.type !== 'hub')
-  const jobs = current.length > 1 ? await Promise.all(targets.map(async note => guarded(await buildJ2(paths, agents, note, current, now), note.front.id))) : []
+  // Links write each target's own note; dates write their batch's notes. They
+  // run in separate passes so no two writes to one note overlap.
+  const links = current.length > 1 ? await Promise.all(targets.map(async note => guarded(await buildJ2(paths, agents, note, current, now), note.front.id))) : []
+  const jobs: JobSpec[] = []
   // Keep within-batch comparisons while bounding both targets and retrieved neighbours.
   if (current.length > 1) for (let at = 0; at < targets.length; at += 20) {
     signal?.throwIfAborted()
@@ -159,6 +171,7 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
   }
   const undated = undeterminedForJ6(targets)
   for (let at = 0; at < undated.length; at += 20) jobs.push(guarded(buildJ6(paths, agents, undated.slice(at, at + 20), now)))
-  await run(jobs, 'organize')
+  if (!await run(links, 'organize', 0, links.length + jobs.length)) return report
+  await run(jobs, 'organize', links.length, links.length + jobs.length)
   return report
 }

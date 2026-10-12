@@ -6,6 +6,7 @@ import { INTERVIEW_PENDING_KEY } from '../components/WorkInterview.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { InstallClaude } from '../components/InstallClaude.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
+import { LearningSources, type LearningChoice } from '../components/LearningSources.js'
 
 export function Onboarding() {
   const profiles = useAccountProfiles()
@@ -18,7 +19,8 @@ export function Onboarding() {
   const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
   const [installing, setInstalling] = useState(false)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
-  const [learnWork, setLearnWork] = useState(false)
+  // Nothing new is read unless chosen here; the activity log keeps its current state.
+  const [sources, setSources] = useState<LearningChoice>({ workMap: false, workFiles: false, workApps: false, activity: true })
   const [interview, setInterview] = useState(true)
   const revision = useRef(0)
   // Only the first check shows spinners; later ones refresh behind what is shown.
@@ -37,6 +39,7 @@ export function Onboarding() {
   useEffect(() => {
     void api.onboardDefaults().then(value => setRoot(held => held || value.defaultRoot)).catch(() => setError('Could not find your default folder. Choose a folder below.'))
     void loadBrains()
+    void api.activityGet().then(activity => setSources(held => ({ ...held, activity }))).catch(() => undefined)
     void api.engineLogins().then(setLogins).catch(() => undefined)
     return api.onEvent(event => {
       if (event.type === 'engines:changed' || event.type === 'engines:detected') void loadBrains()
@@ -69,7 +72,9 @@ export function Onboarding() {
         if (!ready.some(brain => brain.id === filingEngine)) await api.aiSelectionSet('filing', { engine: available.id, model: '' })
       }
       const latest = await api.settingsGet()
-      if (latest.workMap !== learnWork) await api.settingsSet({ workMap: learnWork })
+      const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps }
+      if ((Object.keys(chosen) as (keyof typeof chosen)[]).some(key => latest[key] !== chosen[key])) await api.settingsSet(chosen)
+      if (await api.activityGet() !== sources.activity) await api.activitySet(sources.activity)
       try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
@@ -86,7 +91,6 @@ export function Onboarding() {
         <input id="onboard-root" aria-label="Workspace folder" data-testid="vault-root-input" value={root} placeholder="Workspace folder" onChange={event => setRoot(event.target.value)} />
         <button className="secondary" aria-label="Choose workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose…</button>
       </div>
-      <p className="onboard-note">Activity journal saves app names and window titles locally, not screen contents. Turn off in Settings.</p>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
     </section> : <section data-testid="onboard-step-2">
       <h1>Connect your AI</h1>
@@ -105,7 +109,7 @@ export function Onboarding() {
         })}
       </div>
       <div className="onboard-preferences">
-        <div><label className="setting-row"><span>Learn where you work</span><input type="checkbox" className="switch" data-testid="onboard-work-map" aria-describedby="work-map-consent" checked={learnWork} onChange={event => setLearnWork(event.target.checked)} /></label><p className="setting-hint" id="work-map-consent">Site names and titles from browser history and bookmarks go to your AI daily. No pages opened.</p></div>
+        <LearningSources value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
         <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos before questions. Selected Cosmos note excerpts, work places, past tasks and preferences go to your AI. No new document scan.</p></div>
       </div>
       <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting || installing} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>

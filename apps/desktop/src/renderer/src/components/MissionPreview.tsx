@@ -10,7 +10,7 @@ import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 import { BrowserAddress, BrowserStart } from './WebPane.js'
 import { BrowserActions } from './BrowserActions.js'
 
-export function MissionPreview({ lane, name, open, onLiveChange }: { lane: string; name: string; open(): void; onLiveChange?(live: boolean): void }) {
+export function MissionPreview({ lane, name, open, onLiveChange }: { lane: string; name: string; open(): void; onLiveChange?(live: boolean, url: string): void }) {
   const native = useNativeBrowser()
   const [live, setLive] = useState(false)
   const [url, setUrl] = useState('')
@@ -31,7 +31,7 @@ export function MissionPreview({ lane, name, open, onLiveChange }: { lane: strin
     return () => { alive = false; off() }
   }, [lane])
   const [painted, setPainted] = useState(false)
-  useEffect(() => onLiveChange?.(live || (!native && painted)), [native, live, painted, onLiveChange])
+  useEffect(() => onLiveChange?.(live || (!native && painted), url), [native, live, painted, url, onLiveChange])
   const viewport = useRef<HTMLButtonElement>(null)
   useBrowserViewport(viewport, lane, !native && painted)
   const source = useCallback((paint: (data: string) => void) => {
