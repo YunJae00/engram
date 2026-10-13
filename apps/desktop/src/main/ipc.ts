@@ -1694,7 +1694,7 @@ export function registerIpc(ctx: VaultContext): void {
       const model = (live.id === 'claude' ? settings.claudeModel : settings.codexModel) ?? '', effort = live.id === 'claude' ? settings.claudeEffort : settings.codexEffort
       const engine = withModel(live, model, effort)
       const channel = `spare-${live.id}`
-      const cwd = join(paths.cache, 'work', `spare-${Date.now().toString(36)}`)
+      const cwd = join(paths.cache, 'work', `spare-${randomUUID()}`)
       try {
         const native = await cometNativeTools({ paths, channel, cwd, sandboxed: live.id === 'codex', mode: 'once', onStep: () => undefined, audit: () => undefined })
         const tools = await cometToolSet({ channel, engine, settings, permission: 'once', native, attachments: await readChatAttachments(paths, undefined, warmAbort.signal), earlierOutputs: [], turn: undefined, recovery: null, remembered: [], guided: false, webOnly: false, audit: () => undefined })
