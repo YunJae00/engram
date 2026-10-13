@@ -28,7 +28,7 @@ test.beforeEach(async () => {
   await mkdir(TMP, { recursive: true })
   const vault = await mkdtemp(join(TMP, 'appearance-vault-'))
   await initVault(vault, { git: false })
-  env = { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'appearance-userdata-')), ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' }
+  env = { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'appearance-userdata-')), ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' }
   await start()
 })
 test.afterEach(async () => { await app?.close() })

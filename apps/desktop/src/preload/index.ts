@@ -12,6 +12,9 @@ import type {
 } from '../shared/types.js'
 
 const api: EngramApi = {
+  developerUiEnabled: process.argv.includes('--engram-developer-fixture'),
+  quickComet: message => ipcRenderer.invoke('quick:comet', message),
+  showQuickComet: () => ipcRenderer.invoke('quick:show'),
   devOpenLink: url => ipcRenderer.invoke('devOpenLink', url),
   devState: () => ipcRenderer.invoke('devState'),
   devPreferences: patch => ipcRenderer.invoke('devPreferences', patch),

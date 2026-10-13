@@ -119,7 +119,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   }
 
   return (
-    <div className="brief-overlay" onClick={() => { if (!saving) onClose() }}>
+    <div className="brief-overlay settings-overlay" onClick={() => { if (!saving) onClose() }}>
       {/* settings-loaded: the skeleton gives way with a short rise instead
           of the rows swapping between two frames. */}
       <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view" role="dialog" aria-label={t('settings.title')} aria-modal="true">
@@ -199,7 +199,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <h2>AI &amp; accounts</h2>
         {section === 'ai' && <EngineSettings />}
         </section>
-        <section className="settings-panel" hidden={section !== 'developers'} aria-label="Advanced"><h2>Advanced</h2>{section === 'developers' && <DeveloperSettings />}</section>
+        {api.developerUiEnabled && <section className="settings-panel" hidden={section !== 'developers'} aria-label="Advanced"><h2>Advanced</h2>{section === 'developers' && <DeveloperSettings />}</section>}
         <section className="settings-panel" hidden={section !== 'general'} aria-label="About">
         <h2>About Engram</h2>
         <div className="settings-app-section">

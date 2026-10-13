@@ -16,7 +16,7 @@ test.beforeAll(async () => {
   project = await mkdtemp(join(tmp, 'dev-e2e-project-'))
   await initVault(vault, { git: false })
   await writeFile(join(project, 'example.ts'), 'export const answer = 42\n')
-  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
+  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1' } })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
   await app.evaluate(({ ipcMain }) => {

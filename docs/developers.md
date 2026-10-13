@@ -1,7 +1,8 @@
 # Developers
 
-Switch between Chat and Developers with the two-icon toggle in the sidebar header. Developers is opt-in; ordinary
-chats stay unchanged. Authentication stays in Settings → AI because the same
+Developers entry points are currently hidden in the shipped app. Existing repositories,
+sessions and preferences are preserved; the workspace remains covered by isolated UI fixtures.
+Authentication stays in Settings → AI because the same
 account also serves chats and filing. Session options opens those settings.
 Developers is an agent workspace, not an IDE: there is no direct project editor,
 language service or manual command console. Ask the agent to inspect, change and

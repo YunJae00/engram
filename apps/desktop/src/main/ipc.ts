@@ -142,7 +142,7 @@ import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { canLearnTurn } from './task-result-state.js'
-import { notifyTask } from './task-notify.js'
+import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
@@ -1261,6 +1261,19 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:rename', async (_e, id: string, name: string) => {
     await renameBot(paths, id, name)
     broadcast({ type: 'bots:changed' })
+  })
+  ipcMain.handle('quick:comet', async (_e, input: unknown) => {
+    if (typeof input !== 'string' || !input.trim() || input.length > 20_000) throw new Error('Enter a message of up to 20,000 characters.')
+    const message = input.trim()
+    if (!await chatEngine('new-comet', ctx.engines)) throw new Error('Connect an AI in Engram Settings before starting a Comet.')
+    const bot = await createBot(paths, { name: UNTITLED_BOT_NAME })
+    await rememberSelections([`bot-${bot.id}`])
+    broadcast({ type: 'bots:changed' })
+    broadcast({ type: 'comet:quick', botId: bot.id, message })
+    surfaceComet()
+    const request = { engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message, history: [] }
+    void (message.startsWith('/') ? sendChat(request) : tasks.chat(request)).catch(error => flog('quick-comet', error))
+    return bot.id
   })
   ipcMain.handle('bots:delete', async (_e, id: string) => {
     abortAllChat(`bot-${id}`)

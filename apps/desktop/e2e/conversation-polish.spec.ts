@@ -14,7 +14,7 @@ test.beforeAll(async () => {
   const paths = await initVault(vault, { git: false })
   const bot = await createBot(paths, { name: '한국어 대화' })
   await appendBotTurn(paths, bot.id, { role: 'user', text: '한국어 입력은 유지', at: '2020-09-11T12:00:00Z' })
-  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-polish-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
+  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-polish-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1' } })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
   await page.setViewportSize({ width: 1280, height: 900 })

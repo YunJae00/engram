@@ -118,7 +118,7 @@ export function createTray(actions: TrayActions): TrayHandle {
             ]
           : []),
         { label: 'Open Engram', click: actions.onOpen },
-        { label: 'Quick capture', click: actions.onQuickCapture },
+        { label: 'New Comet', accelerator: 'CommandOrControl+Shift+Space', click: actions.onQuickCapture },
         { type: 'separator' },
         { label: 'Quit', click: actions.onQuit },
       ]),
