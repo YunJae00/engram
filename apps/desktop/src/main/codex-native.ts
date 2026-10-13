@@ -1,6 +1,7 @@
 import type { NativeDecision, NativeTools, ToolSessionJob, ToolSessionResult } from 'core'
 import { DevRpc } from './dev-rpc.js'
 import { flog } from './flog.js'
+import { dirname } from 'node:path'
 
 // ChatGPT with its own shell and patch tools, through the runtime's app
 // server. The process and its thread stay up between a comet's turns, as a
@@ -90,6 +91,7 @@ class CodexSession {
 
   // One turn; the conversation so far travels only with the first on this thread.
   run(job: Job, fresh: boolean): Promise<ToolSessionResult> {
+    if (this.closed || job.signal?.aborted) return Promise.resolve({ answer: '', error: job.signal?.aborted ? 'canceled' : 'the session was closed' })
     return new Promise<ToolSessionResult>((resolve) => {
       const turn: Turn = {
         job, answer: '', turnId: '', settled: false, ready: job.native.ready?.() ?? false, restart: false, refused: false,
@@ -241,7 +243,36 @@ class CodexSession {
 
 // One session per comet, kept between turns; a job without a session key gets its own, closed after the turn.
 const sessions = new Map<string, CodexSession>()
-const sweep = (): void => { for (const [key, session] of sessions) if (session.stale && !session.busy) { session.close(); sessions.delete(key) } }
+// A session opened ahead in a folder of its own: the comet that takes the folder takes the session.
+let spare: { session: CodexSession; cwd: string; opening: Promise<boolean>; owner?: string } | null = null
+const claimed = new Map<string, string>()
+const sweep = (): void => {
+  if (spare?.session.stale) { spare.session.close(); spare = null }
+  for (const [key, session] of sessions) if (session.stale && !session.busy) { session.close(); sessions.delete(key) }
+}
+const signatureOf = (native: NativeTools, spec: CodexNativeSpec): string => JSON.stringify([native.cwd, native.mode, native.readRoots, spec.config, spec.instructions, spec.model, spec.env])
+
+export function claimCodexWorkFolder(channel: string, fallback: string): string {
+  const key = `${dirname(fallback)}:${channel}`
+  const held = claimed.get(key)
+  if (held) return held
+  if (!spare || dirname(spare.cwd) !== dirname(fallback) || spare.owner && spare.owner !== channel || spare.session.stale || spare.session.busy) return fallback
+  spare.owner = channel
+  claimed.set(key, spare.cwd)
+  return spare.cwd
+}
+export const codexSpareReady = (): boolean => !!spare && !spare.session.stale && !spare.session.busy
+
+export async function warmCodexSession(spec: CodexNativeSpec, native: NativeTools): Promise<void> {
+  sweep()
+  if (codexSpareReady()) return
+  const session = new CodexSession(spec, native.cwd, signatureOf(native, spec), () => { if (spare?.session === session) spare = null })
+  let failure: unknown
+  const opening = session.open(false).then(() => true, (error: unknown) => { failure = error; session.close(); return false })
+  spare = { session, cwd: native.cwd, opening }
+  flog('engine-codex', `warming a spare session in ${native.cwd}`)
+  if (!(await opening)) throw failure
+}
 
 export function closeCodexSession(key: string): void {
   for (const [stored, session] of sessions) if (stored === key || stored.endsWith(`:${key}`)) { session.close(); sessions.delete(stored) }
@@ -250,16 +281,31 @@ export function closeCodexSession(key: string): void {
 export function closeCodexSessions(): void {
   for (const session of sessions.values()) session.close()
   sessions.clear()
+  spare?.session.close()
+  spare = null
+  claimed.clear()
 }
 
 export async function runCodexNative(job: Job, spec: CodexNativeSpec): Promise<NativeResult> {
+  if (job.signal?.aborted) return { answer: '', error: 'canceled' }
   const native = job.native, key = job.sessionKey
   if (native.mode === 'each') return { answer: '', error: 'ChatGPT uses Engram tools in Ask every time mode; native commands are disabled.', commandsDenied: true }
-  const signature = JSON.stringify([native.cwd, native.mode, native.readRoots, spec.config, spec.instructions, spec.model, spec.env])
+  const signature = signatureOf(native, spec)
   sweep()
   let session = key ? sessions.get(key) : undefined
   if (session && (session.stale || session.busy || session.signature !== signature)) { session.close(); session = undefined }
   const fresh = !session
+  let opened = !!session
+  let opening: Promise<boolean> | undefined
+  if (spare?.cwd === native.cwd && spare.session.signature !== signature) { spare.session.close(); spare = null }
+  if (!session && key && spare && spare.cwd === native.cwd && spare.session.signature === signature && !spare.session.busy && !spare.session.stale) {
+    const taken = spare
+    spare = null
+    session = taken.session
+    sessions.set(key, session)
+    opening = taken.opening
+    opened = true
+  }
   if (!session) {
     const opened = new CodexSession(spec, native.cwd, signature, () => { if (key && sessions.get(key) === opened) sessions.delete(key) })
     session = opened
@@ -271,7 +317,11 @@ export async function runCodexNative(job: Job, spec: CodexNativeSpec): Promise<N
   const cancel = () => current.close()
   job.signal?.addEventListener('abort', cancel, { once: true })
   try {
-    if (fresh) await current.open(native.ready?.() ?? false)
+    if (opening) {
+      if (!(await opening)) { current.close(); return runCodexNative(job, spec) }
+      flog('engine-codex', `${key} takes the spare session`)
+    }
+    if (!opened) await current.open(native.ready?.() ?? false)
     const result = await current.run(job, fresh)
     if (!key) current.close()
     return result

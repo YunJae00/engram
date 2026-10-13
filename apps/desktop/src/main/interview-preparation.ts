@@ -1,28 +1,35 @@
 import { engineBackoff, prepareInitialFiling, readWorkMap } from 'core'
+import { flog } from './flog.js'
 import type { EngramEvent } from '../shared/types.js'
 import { noteRunOutcome } from './engine-health.js'
 import { loadSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
 import { primeWorkMap } from './work-map-job.js'
 import { refreshDeskNotes, withheldDeskNotes } from './desk-sources.js'
+import { setTimeout as pause } from 'node:timers/promises'
 
 // Each filing call is mostly a runtime starting up and waiting on the model,
 // so a few at once cut the first wait several times without crowding memory.
 const COSMOS_PARALLEL = 4
+// How long the work map gets to arrive before Cosmos goes ahead without it, and how often to look.
+const MAP_WAIT_MS = 3 * 60_000
+const MAP_POLL_MS = 5_000
 
 export type InterviewProgress = Omit<Extract<EngramEvent, { type: 'interview:progress' }>, 'type' | 'requestId'>
 export type PrepareInterview = (signal: AbortSignal, progress: (state: InterviewProgress) => void) => Promise<readonly string[]>
 
 // Cancel waiting without cancelling a map refresh another surface may still need.
-async function waitForMap(ctx: VaultContext, signal: AbortSignal): Promise<void> {
+async function waitForMap(ctx: VaultContext, signal: AbortSignal, budget: number): Promise<void> {
   signal.throwIfAborted()
   let cancel: () => void = () => undefined
   const canceled = new Promise<never>((_resolve, reject) => {
     cancel = () => reject(signal.reason)
     signal.addEventListener('abort', cancel, { once: true })
   })
-  try { await Promise.race([primeWorkMap(ctx), canceled]) }
-  finally { signal.removeEventListener('abort', cancel) }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<void>(resolve => { timer = setTimeout(resolve, Math.max(0, budget)) })
+  try { await Promise.race([primeWorkMap(ctx), canceled, deadline]) }
+  finally { clearTimeout(timer); signal.removeEventListener('abort', cancel) }
   signal.throwIfAborted()
 }
 
@@ -30,19 +37,26 @@ export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSi
   signal.throwIfAborted()
   if (!ctx.engines.length) throw new Error('Connect an AI before preparing Cosmos.')
   if (engineBackoff.blockedMs() > 0) throw new Error('Your AI is temporarily unavailable. Retry later or start now.')
-  if ((await loadSettings()).workMap) {
+  // Right after setup the map may still be on its way (the brain was only
+  // just detected, the browser only just read). It gets a bounded wait; past
+  // that, Cosmos is prepared without it and the places join when it lands.
+  let withMap = (await loadSettings()).workMap
+  if (withMap) {
     progress({ phase: 'mapping' })
-    await waitForMap(ctx, signal)
-    if ((await loadSettings()).workMap && !process.env['ENGRAM_USERDATA']) {
+    for (const until = Date.now() + MAP_WAIT_MS; ; await pause(Math.min(MAP_POLL_MS, Math.max(0, until - Date.now())), undefined, { signal })) {
+      await waitForMap(ctx, signal, until - Date.now())
+      if (!(await loadSettings()).workMap) { withMap = false; break }
+      if (process.env['ENGRAM_USERDATA']) break
       const map = await readWorkMap(ctx.paths)
-      if (!map || (map.places.length > 0 && map.places.every(place => place.work === undefined))) throw new Error('Your work map is not ready yet. Retry or start now.')
+      if (map && !(map.places.length > 0 && map.places.every(place => place.work === undefined))) break
+      if (Date.now() >= until) { withMap = false; flog('work-map', 'Cosmos prepared without the work map; it was not ready in time'); break }
     }
   }
   await refreshDeskNotes(ctx)
   signal.throwIfAborted()
   const engine = ctx.engines[0]
   const report = await prepareInitialFiling(ctx.paths, ctx.engines, {
-    signal, concurrency: COSMOS_PARALLEL, modelHint: 'fast', includeWorkMap: (await loadSettings()).workMap, withheld: await withheldDeskNotes(),
+    signal, concurrency: COSMOS_PARALLEL, modelHint: 'fast', includeWorkMap: withMap, withheld: await withheldDeskNotes(),
     onProgress: (completed, total, stage) => progress({ phase: 'filing', stage, completed, total }),
   })
   signal.throwIfAborted()

@@ -121,7 +121,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref, PLAN_RULE } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
@@ -131,7 +131,7 @@ import { botPreviews } from './bot-previews.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { registerRoutineLearning } from './routine-learning.js'
 import { approvalsStore } from './approvals.js'
-import { fetchClaudeModels, forgetClaudeModels, claimClaudeWorkFolder, closeClaudeSession } from './engine-claude.js'
+import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
 import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
@@ -155,7 +155,7 @@ import { artifactDirectory, cometFileTools, newestRevisions, registerArtifactIpc
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
-import { aiSelection, brainName, chatEngine, isLimited, noteLimited, rememberSelections } from './ai-selection.js'
+import { aiSelection, brainName, chatEngine, isLimited, noteLimited, rememberSelections, withModel } from './ai-selection.js'
 import { releaseDesktop } from './desktop-access.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -1678,6 +1678,41 @@ export function registerIpc(ctx: VaultContext): void {
     } finally { if (waiting) initialFilingWaiters-- }
   }, () => scheduleAutoTidy(ctx, 0))
   startWorkMap(ctx, () => scheduleAutoTidy(ctx, 0))
+  // One session per signed-in brain, opened ahead in a folder of its own, so a
+  // new comet's first turn starts without waiting for a process. Built from
+  // the shape a new comet gets by default; a comet shaped otherwise opens cold.
+  let warming: Promise<void> | null = null
+  const warmAbort = new AbortController()
+  let warmTimer: ReturnType<typeof setTimeout> | undefined
+  const warmSpares = (): Promise<void> => warming ??= (async () => {
+    if (warmAbort.signal.aborted || (process.env['ENGRAM_USERDATA'] && process.env['ENGRAM_SPARES'] !== '1') || process.env['ENGRAM_ENGINE'] === 'none' || process.env['ENGRAM_ENGINE'] === 'mock') return
+    const settings = await loadSettings()
+    if (settings.nativeTools === false) return
+    for (const live of ctx.engines) {
+      if (warmAbort.signal.aborted) break
+      if ((live.id !== 'claude' && live.id !== 'codex') || !live.warm || live.spareReady?.() || isLimited(live.id, 'spare')) continue
+      const model = (live.id === 'claude' ? settings.claudeModel : settings.codexModel) ?? '', effort = live.id === 'claude' ? settings.claudeEffort : settings.codexEffort
+      const engine = withModel(live, model, effort)
+      const channel = `spare-${live.id}`
+      const cwd = join(paths.cache, 'work', `spare-${Date.now().toString(36)}`)
+      try {
+        const native = await cometNativeTools({ paths, channel, cwd, sandboxed: live.id === 'codex', mode: 'once', onStep: () => undefined, audit: () => undefined })
+        const tools = await cometToolSet({ channel, engine, settings, permission: 'once', native, attachments: await readChatAttachments(paths, undefined, warmAbort.signal), earlierOutputs: [], turn: undefined, recovery: null, remembered: [], guided: false, webOnly: false, audit: () => undefined })
+        const shape = sessionShape({ engine, tools }, { native })
+        if (!warmAbort.signal.aborted) await live.warm({ workdir: engineCwd(paths), system: shape.system, prompt: '', tools: shape.tools.map(tool => ({ ...tool, run: async () => 'not this turn' })), maxCalls: 1, native, model, signal: warmAbort.signal, ...(effort ? { effort } : {}) })
+      } catch (error) { flog('spare', `${live.id}: ${error instanceof Error ? error.message : String(error)}`) }
+    }
+  })().finally(() => { warming = null })
+  const warmLater = (ms: number): void => {
+    if (warmAbort.signal.aborted) return
+    clearTimeout(warmTimer)
+    warmTimer = setTimeout(() => void warmSpares().catch(error => flog('spare', error)), ms).unref()
+  }
+  // A minute after the vault opens, then whenever a brain has signed in since.
+  warmLater(process.env['ENGRAM_SPARES'] === '1' ? 2_000 : 60_000)
+  const warmInterval = setInterval(() => void warmSpares().catch(error => flog('spare', error)), 60_000).unref()
+  app.once('before-quit', () => { warmAbort.abort(); clearTimeout(warmTimer); clearInterval(warmInterval) })
+
   setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
 
   ipcMain.handle('routines:wallDone', (_e, routineId: string, verdict: 'resolved' | 'skip') => {
@@ -2078,6 +2113,7 @@ export function registerIpc(ctx: VaultContext): void {
     const dtos = engines.map(engineDto)
     refreshHealthFromDetection(ctx)
     broadcast({ type: 'engines:changed', engines: engines.map(engineDto) })
+    if (dtos.some(dto => dto.installed && dto.loggedIn)) warmLater(5_000)
     return dtos
   })
 
@@ -2123,6 +2159,99 @@ export function registerIpc(ctx: VaultContext): void {
         broadcast({ type: 'vault:changed' })
       }
     }
+  }
+
+  // The tools a comet is offered, the same list for a turn and for a session
+  // warmed ahead of one: what differs per turn rides in the closures.
+  const cometToolSet = async (input: {
+    channel: string; engine: Engine; settings: Awaited<ReturnType<typeof loadSettings>>; permission: PermissionMode; native: NativeTools | undefined
+    attachments: Awaited<ReturnType<typeof readChatAttachments>>; earlierOutputs: Awaited<ReturnType<typeof priorOutputs>>; turn: TaskTurn | undefined
+    recovery: string | null | undefined; remembered: string[]; guided: boolean; webOnly: boolean; audit: (kind: AuditKind, rest: { tool?: string; url?: string; detail?: string }) => void
+  }): Promise<AgentTool[]> => {
+    const { channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit } = input
+    return [...cometTools({
+      paths,
+      batchReads: process.env.ENGRAM_BATCH_READS !== '0',
+      onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
+      skillNotes: () => ctx.store.getAll(),
+      // The web is on the menu whenever a browser is installed. Whether
+      // the machine can afford to open it is decided at the moment of
+      // opening - where the model can step aside to make room - not
+      // here, where a tight reading meant a comet with no web at all
+      // telling the person it had no such tool (measured).
+      // On its own tab: two comets at work never share a page, and
+      // a new comet never inherits the page an old one left open.
+      courier: agentBrowserAvailable()
+        ? agentCourier({
+            askBeforePress: tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
+            lane: channel,
+            onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
+            onAside: (phase) => {
+              broadcast({ type: 'comet:step', channel, line: `${phase}: ` })
+              audit('step', { tool: phase })
+            },
+          })
+        : null,
+      // A wall met this turn keeps the window open past the answer,
+      // so the person signs in where they were told to; the hold is
+      // let go when they speak again, or after a while on its own.
+      wallMet: (url) => {
+        audit('wall', { url })
+        if (wallHolds.has(channel)) return
+        const release = holdAgentBrowser()
+        wallHolds.set(channel, release)
+        setTimeout(() => {
+          if (wallHolds.get(channel) === release) {
+            wallHolds.delete(channel)
+            release()
+          }
+        }, WALL_HOLD_MS).unref()
+      },
+      searchTemplate: async () => (await loadSettings()).searchTemplate || null,
+      runProcedure: (id, slots, _signal, again) => recovery
+        ? Promise.resolve('The saved replay already ran. Inspect the current page and continue only unfinished work; do not replay it again.')
+        : runProcedureForComet(id, slots, again === true, channel),
+      remembered: () => remembered,
+      guided,
+      learnSearch: async (template) => {
+        await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || template }))
+      },
+      retrieve: async (query, limit) => {
+        // The embedder is what tells one subject from another when the
+        // words differ - "housework" against "things to do at home" - so it is woken
+        // where there is room for it, and only skipped on a tight
+        // machine. Which notes it recognised travels with them: the
+        // comet has to tell "the notebook has nothing on this" from
+        // "the words differ and the subject is the same".
+        const semantic =
+          os.freemem() > ROOM_FOR_EMBEDDER
+            ? await semanticQuery(query, limit)
+            : await semanticQueryIfLive(query, limit)
+        const closeness = new Map(semantic.map((one) => [one.id, one.score]))
+        flog(
+          'comet-retrieve',
+          `"${query.slice(0, 40)}" free=${(os.freemem() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
+        )
+        const hits = activationRerank(
+          hybridMerge(ctx.store.search(query), semantic, limit),
+          (id) => ctx.store.get(id),
+        )
+        return hits
+          .map((h) => ctx.store.get(h.id))
+          // A saved procedure is a note too, and handing one back as
+          // an answer sent the comet reading steps instead of looking.
+          .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
+          .slice(0, limit)
+          .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
+      },
+    }), ...workEvidenceTools(paths, channel), ...attachments.tools,
+    // Offered every turn so a check runs in the same session as the work it checks.
+    resultCheckTool(turn?.verification ? {
+      outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
+      sources: attachments.evidencePaths,
+      requireSourceEvidence: attachments.paths.length > 0,
+      generatedDirectory: artifactDirectory(paths),
+    } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
@@ -2372,9 +2501,9 @@ export function registerIpc(ctx: VaultContext): void {
         // already lets it look, a work folder of its own, commands once allowed.
         // Plan mode on ChatGPT is its runtime without a shell: reading goes through Engram's file tools.
         const permission = aiSelection(settings, channel).permission ?? 'once'
-        // A Claude comet works in the folder a spare session is already warm for, when there is one.
-        const workFolder = engine.id === 'claude' && settings.nativeTools !== false ? claimClaudeWorkFolder(channel, await workFolderFor(paths, channel)) : await workFolderFor(paths, channel)
-        if (engine.id === 'claude') await rememberWorkFolder(paths, channel, workFolder)
+        // A comet works in the folder a session is already warm for, when there is one.
+        const workFolder = settings.nativeTools !== false ? engine.claimWorkFolder?.(channel, await workFolderFor(paths, channel)) ?? await workFolderFor(paths, channel) : await workFolderFor(paths, channel)
+        await rememberWorkFolder(paths, channel, workFolder)
         const native = (engine.id === 'claude' || (engine.id === 'codex' && permission !== 'plan')) && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
           ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
@@ -2385,89 +2514,7 @@ export function registerIpc(ctx: VaultContext): void {
             engine,
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
-            tools: [...cometTools({
-              paths,
-              batchReads: process.env.ENGRAM_BATCH_READS !== '0',
-              onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
-              skillNotes: () => ctx.store.getAll(),
-              // The web is on the menu whenever a browser is installed. Whether
-              // the machine can afford to open it is decided at the moment of
-              // opening - where the model can step aside to make room - not
-              // here, where a tight reading meant a comet with no web at all
-              // telling the person it had no such tool (measured).
-              // On its own tab: two comets at work never share a page, and
-              // a new comet never inherits the page an old one left open.
-              courier: agentBrowserAvailable()
-                ? agentCourier({
-                    askBeforePress: tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
-                    lane: channel,
-                    onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
-                    onAside: (phase) => {
-                      broadcast({ type: 'comet:step', channel, line: `${phase}: ` })
-                      audit('step', { tool: phase })
-                    },
-                  })
-                : null,
-              // A wall met this turn keeps the window open past the answer,
-              // so the person signs in where they were told to; the hold is
-              // let go when they speak again, or after a while on its own.
-              wallMet: (url) => {
-                audit('wall', { url })
-                if (wallHolds.has(channel)) return
-                const release = holdAgentBrowser()
-                wallHolds.set(channel, release)
-                setTimeout(() => {
-                  if (wallHolds.get(channel) === release) {
-                    wallHolds.delete(channel)
-                    release()
-                  }
-                }, WALL_HOLD_MS).unref()
-              },
-              searchTemplate: async () => (await loadSettings()).searchTemplate || null,
-              runProcedure: (id, slots, _signal, again) => recovery
-                ? Promise.resolve('The saved replay already ran. Inspect the current page and continue only unfinished work; do not replay it again.')
-                : runProcedureForComet(id, slots, again === true, channel),
-              remembered: () => remembered,
-              guided,
-              learnSearch: async (template) => {
-                await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || template }))
-              },
-              retrieve: async (query, limit) => {
-                // The embedder is what tells one subject from another when the
-                // words differ - "housework" against "things to do at home" - so it is woken
-                // where there is room for it, and only skipped on a tight
-                // machine. Which notes it recognised travels with them: the
-                // comet has to tell "the notebook has nothing on this" from
-                // "the words differ and the subject is the same".
-                const semantic =
-                  os.freemem() > ROOM_FOR_EMBEDDER
-                    ? await semanticQuery(query, limit)
-                    : await semanticQueryIfLive(query, limit)
-                const closeness = new Map(semantic.map((one) => [one.id, one.score]))
-                flog(
-                  'comet-retrieve',
-                  `"${query.slice(0, 40)}" free=${(os.freemem() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
-                )
-                const hits = activationRerank(
-                  hybridMerge(ctx.store.search(query), semantic, limit),
-                  (id) => ctx.store.get(id),
-                )
-                return hits
-                  .map((h) => ctx.store.get(h.id))
-                  // A saved procedure is a note too, and handing one back as
-                  // an answer sent the comet reading steps instead of looking.
-                  .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
-                  .slice(0, limit)
-                  .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
-              },
-            }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-            // Offered every turn so a check runs in the same session as the work it checks.
-            resultCheckTool(turn?.verification ? {
-              outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
-              sources: attachments.evidencePaths,
-              requireSourceEvidence: attachments.paths.length > 0,
-              generatedDirectory: artifactDirectory(paths),
-            } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...(!webOnly && engine.desktopToolIsolation === true && settings.computerUse !== false ? [...officeAgentTools(channel), ...desktopAgentTools(channel)] : [])].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)),
+            tools: await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit }),
           },
           request.message,
           {
@@ -2670,6 +2717,7 @@ export function registerIpc(ctx: VaultContext): void {
       } finally {
         clearApplicationWork(channel)
         endDesktopTurn(channel)
+        warmLater(3_000)
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the
         // moment the answer lands takes the evidence away. It goes on its own

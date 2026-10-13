@@ -7,6 +7,7 @@ vi.mock('../src/main/work-map-job.js', () => ({ primeWorkMap: fake.prime }))
 vi.mock('../src/main/desk-sources.js', () => ({ refreshDeskNotes: async () => undefined, withheldDeskNotes: async () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.settings }))
 vi.mock('../src/main/engine-health.js', () => ({ noteRunOutcome: fake.outcome }))
+vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 import { prepareInterviewContext } from '../src/main/interview-preparation.js'
 
 const ctx = { paths: {}, engines: [{ id: 'mock' }] } as unknown as VaultContext
@@ -40,10 +41,28 @@ it('does not read or prepare the map when learning is off', async () => {
   expect(fake.filing.mock.calls[0]![2]).toMatchObject({ includeWorkMap: false })
 })
 
-it('stops before filing when a real map could not be classified', async () => {
-  fake.map.mockResolvedValue({ places: [{}] })
-  await expect(prepareInterviewContext(ctx, new AbortController().signal, vi.fn())).rejects.toThrow('map is not ready')
-  expect(fake.filing).not.toHaveBeenCalled()
+it('goes ahead without the map when it is not ready in time, instead of stopping', async () => {
+  vi.useFakeTimers()
+  try {
+    fake.map.mockResolvedValue({ places: [{}] })
+    const pending = prepareInterviewContext(ctx, new AbortController().signal, vi.fn())
+    await vi.advanceTimersByTimeAsync(3 * 60_000 + 10_000)
+    await pending
+    expect(fake.prime.mock.calls.length).toBeGreaterThan(1)
+    expect(fake.filing.mock.calls[0]![2]).toMatchObject({ includeWorkMap: false })
+  } finally { vi.useRealTimers() }
+})
+
+it('bounds an unfinished map refresh without canceling the shared refresh', async () => {
+  vi.useFakeTimers()
+  try {
+    fake.prime.mockReturnValue(new Promise<void>(() => undefined))
+    fake.map.mockResolvedValue(null)
+    const pending = prepareInterviewContext(ctx, new AbortController().signal, vi.fn())
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(await pending).toEqual(['n-prepared'])
+    expect(fake.filing.mock.calls[0]![2]).toMatchObject({ includeWorkMap: false })
+  } finally { vi.useRealTimers() }
 })
 
 it('keeps known places usable when another place has uncertain relevance', async () => {

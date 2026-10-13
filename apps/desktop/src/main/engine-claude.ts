@@ -236,6 +236,18 @@ export class ClaudeEngine implements CloudEngine {
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
     return Promise.all([sdkModule(), chosenModel(undefined, job.model)]).then(([sdk, model]) => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }))
   }
+
+  // A session opened ahead for the next comet, so its first turn starts at once.
+  async warm(job: ToolSessionJob): Promise<void> {
+    if (job.signal?.aborted) return
+    const binary = claudeBinary()
+    if (!binary || !job.native) return
+    const [sdk, model] = await Promise.all([sdkModule(), chosenModel(undefined, job.model)])
+    if (job.signal?.aborted) return
+    sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env }, job)
+  }
+  spareReady(): boolean { return sessions.spareReady }
+  claimWorkFolder(channel: string, fallback: string): string { return sessions.claimWorkFolder(channel, fallback) }
 }
 
 const sessions = new SessionPool()
