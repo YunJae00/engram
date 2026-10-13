@@ -19,8 +19,11 @@ import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { attachNativeLayout } from './native-layout.js'
 import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
+import { closeCodexSessions } from './engine-codex.js'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { quitGuard } from './quit-guard.js'
 import { logResponsiveness, watchResponsiveness } from './performance-health.js'
 import { keepWindowState, loadWindowState, placeWindow } from './window-state.js'
 import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
@@ -720,7 +723,18 @@ app.whenReady().then(async () => {
   })
 })
 
+const markQuit = (step: string): void => {
+  try {
+    const dir = join(app.getPath('userData'), 'logs')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'quit.log'), `${new Date().toISOString()} ${step}\n`)
+  } catch { /* diagnostics only */ }
+}
+const guardQuit = quitGuard(() => { markQuit('retrying shutdown'); app.quit() }, () => { markQuit('forcing shutdown'); app.exit(0) })
 app.on('before-quit', (event) => {
+  guardQuit()
+  markQuit(`before-quit native=${nativeBrowserRunning()} dev=${developersRunning()} runtime=${runtimeProcessesRunning()}`)
+  flog('quit', `before-quit native=${nativeBrowserRunning()} dev=${developersRunning()} runtime=${runtimeProcessesRunning()}`)
   stopSemantic()
   stopDesktopControl('Engram is closing.')
   closeDesktopAccess()
@@ -728,22 +742,31 @@ app.on('before-quit', (event) => {
   if (nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
     event.preventDefault()
     abortAllChat()
+    // Whatever is still open gets a bounded chance; the quit itself is not held hostage.
     void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers()]).finally(stopRuntimeProcesses).finally(() => app.quit())
   }
 })
 
 app.on('will-quit', () => {
+  markQuit('will-quit')
   void closeAgentBrowser({ force: true })
+  markQuit('agent browser')
   closeClaudeSessions()
+  markQuit('claude sessions')
+  try { closeCodexSessions() } catch (error) { console.error('[will-quit] closeCodexSessions failed', error); flog('engine-codex', error) }
+  markQuit('codex sessions')
   closeOfficeHost()
+  markQuit('office host')
   globalShortcut.unregisterAll()
   // Closing the app is the user saying "stop remembering from here".
   stopSessionWatch()
   stopKeeper()
   stopStanding()
   stopActivityWatch()
+  markQuit('watchers')
   for (const watcher of watchers) void watcher.close()
   killAllEngineChildrenSync()
+  markQuit('done')
 })
 
 app.on('window-all-closed', () => {

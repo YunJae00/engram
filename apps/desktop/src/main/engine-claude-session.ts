@@ -2,16 +2,12 @@ import { type NativeTools, type ToolSessionCall, type ToolSessionJob, type ToolS
 import { nativeOptions } from './engine-claude-native.js'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
 import { claudeSessionStarted } from './claude-runtime.js'
+import { mkdtempSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 
-// The runtime takes a long breath before its first word - measured at
-// fifteen to twenty seconds on a locked-down machine, most of it the
-// process coming up. A comet that paid that on every turn felt slow no
-// matter what the model did. So a comet's session stays open between turns:
-// the next message goes into the same process, and only the tool calls and
-// the answer cost anything. A session is recycled when it has been idle a
-// while, after a dozen turns, or when what it was told at the start changed.
+// Reuse an idle runtime only while its account, model and tool scope match.
 
 export interface SdkUserMessage {
   type: 'user'
@@ -47,8 +43,8 @@ export interface SessionSpec {
   model: string
 }
 
-const IDLE_MS = 10 * 60_000
-const TURNS_MAX = 12
+const IDLE_MS = 60 * 60_000
+const TURNS_MAX = 40
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -59,7 +55,7 @@ function textOf(content: unknown): string {
 }
 
 export function signatureOf(job: ToolSessionJob): string {
-  return `${job.system}\n${job.tools.map((tool) => tool.name).join(',')}\n${job.effort ?? ''}\n${job.native?.cwd ?? ''}`
+  return JSON.stringify([job.system, job.tools.map(({ name, description, argsSchema }) => ({ name, description, argsSchema })), job.effort, job.native && [job.native.cwd, job.native.mode, job.native.readRoots]])
 }
 
 interface Turn {
@@ -85,6 +81,8 @@ interface PartialEvent {
 export class WarmSession {
   private readonly startedAt = performance.now()
   readonly signature: string
+  private readonly runtime: string
+  matches(spec: SessionSpec): boolean { return this.runtime === JSON.stringify([spec.binary, spec.model, spec.env]) }
   // Which model this session was opened with - a change recycles it.
   get model(): string {
     return this.spec.model
@@ -106,6 +104,7 @@ export class WarmSession {
     private readonly onEnd: () => void,
   ) {
     this.signature = signatureOf(job)
+    this.runtime = JSON.stringify([spec.binary, spec.model, spec.env])
     const server = spec.sdk.createSdkMcpServer({
       name: TOOL_SERVER,
       tools: job.tools.map((one) =>
@@ -291,6 +290,37 @@ export class WarmSession {
 // changed, or whose session went stale, gets a fresh one.
 export class SessionPool {
   private readonly sessions = new Map<string, WarmSession>()
+  // A session started ahead for the next comet, with a work folder of its
+  // own: the comet that takes the folder takes the session, warm.
+  private spare: { session: WarmSession; cwd: string; owner?: string } | null = null
+  private readonly claimed = new Map<string, string>()
+
+  // The work folder a new comet should use: the spare session's, when one is warm.
+  claimWorkFolder(channel: string, fallback: string): string {
+    const key = `${dirname(fallback)}:${channel}`
+    const held = this.claimed.get(key)
+    if (held) return held
+    if (!this.spare || dirname(this.spare.cwd) !== dirname(fallback) || this.spare.owner && this.spare.owner !== channel || this.spare.session.stale || this.spare.session.busy) return fallback
+    this.spare.owner = channel
+    this.claimed.set(key, this.spare.cwd)
+    return this.spare.cwd
+  }
+
+  private warmSpare(spec: SessionSpec, job: ToolSessionJob): void {
+    if (this.spare && !this.spare.session.matches(spec)) { this.spare.session.close(); this.spare = null }
+    if (this.spare || !job.native) return
+    const cwd = job.native.cwd
+    let folder: string
+    try { folder = mkdtempSync(join(dirname(cwd), 'spare-')) } catch { return }
+    const warm: ToolSessionJob = {
+      ...job,
+      system: job.system.split(cwd).join(folder),
+      native: { ...job.native, cwd: folder, readRoots: job.native.readRoots.map(root => root === cwd ? folder : root) },
+    }
+    const session = new WarmSession(spec, warm, () => { if (this.spare?.session === session) this.spare = null })
+    this.spare = { session, cwd: folder }
+    flog('engine-claude', `warming a spare session in ${folder}`)
+  }
 
   run(job: ToolSessionJob, spec: SessionSpec): Promise<ToolSessionResult> {
     if (job.signal?.aborted) return Promise.resolve({ answer: '', error: 'canceled' })
@@ -298,13 +328,19 @@ export class SessionPool {
     let session = this.sessions.get(key)
     // A changed model is a new session: the person switched in Settings, and
     // their next turn answers with the model they chose, warm pool or not.
-    if (session && session.model !== spec.model) {
+    if (session && !session.matches(spec)) {
       session.close()
       session = undefined
     }
     if (session && (session.stale || session.busy || session.signature !== signatureOf(job))) {
       session.close()
       session = undefined
+    }
+    if (!session && this.spare && job.native?.cwd === this.spare.cwd && this.spare.session.signature === signatureOf(job) && this.spare.session.matches(spec) && !this.spare.session.busy && !this.spare.session.stale) {
+      flog('engine-claude', `${key} takes the spare session`)
+      session = this.spare.session
+      this.spare = null
+      this.sessions.set(key, session)
     }
     if (!session) {
       flog('engine-claude', `opening a session for ${key}`)
@@ -314,6 +350,7 @@ export class SessionPool {
       session = opened
       this.sessions.set(key, session)
     }
+    this.warmSpare(spec, job)
     return session.run(job)
   }
 
@@ -331,11 +368,15 @@ export class SessionPool {
   closeAll(): void {
     for (const session of this.sessions.values()) session.close()
     this.sessions.clear()
+    this.spare?.session.close()
+    this.spare = null
+    this.claimed.clear()
   }
 
   // Idle sessions are let go so a comet that fell silent does not keep a
   // process around for the rest of the day.
   sweep(): void {
+    if (this.spare?.session.stale) { this.spare.session.close(); this.spare = null }
     for (const [key, session] of this.sessions) {
       if (session.stale && !session.busy) {
         session.close()

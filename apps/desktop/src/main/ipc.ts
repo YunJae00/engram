@@ -131,7 +131,8 @@ import { botPreviews } from './bot-previews.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { registerRoutineLearning } from './routine-learning.js'
 import { approvalsStore } from './approvals.js'
-import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
+import { fetchClaudeModels, forgetClaudeModels, claimClaudeWorkFolder, closeClaudeSession } from './engine-claude.js'
+import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
 import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
@@ -139,12 +140,12 @@ import { registerAccountIpc } from './account-ipc.js'
 import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
-import { checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
+import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { canLearnTurn } from './task-result-state.js'
 import { notifyTask } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
-import { cometNativeTools, mentionedOutputs } from './native-tools.js'
+import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { prepareInterviewContext } from './interview-preparation.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -1045,6 +1046,7 @@ export function registerIpc(ctx: VaultContext): void {
     await tasks.stopChannel(channel)
     releaseDesktop(channel)
     closeClaudeSession(id)
+    closeCodexSession(id)
     await learning.discard(id)
     await archiveBotTranscript(paths, id)
     await resetLaneView(channel)
@@ -1653,10 +1655,10 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
-    deliver: async (channel, text, since, trail) => {
+    deliver: async (channel, text, since, trail, evidence) => {
       const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(text).text, since, latestResultOutputs(trail, []).map(output => output.path))
-      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, at: new Date().toISOString() })
-      broadcast({ type: 'chat:done', channel, text: cleaned })
+      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
+      broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer) => learnFromAnswer(ctx, question, answer),
     notify: (task) => notifyTask(task, broadcast),
@@ -2370,9 +2372,12 @@ export function registerIpc(ctx: VaultContext): void {
         // already lets it look, a work folder of its own, commands once allowed.
         // Plan mode on ChatGPT is its runtime without a shell: reading goes through Engram's file tools.
         const permission = aiSelection(settings, channel).permission ?? 'once'
+        // A Claude comet works in the folder a spare session is already warm for, when there is one.
+        const workFolder = engine.id === 'claude' && settings.nativeTools !== false ? claimClaudeWorkFolder(channel, await workFolderFor(paths, channel)) : await workFolderFor(paths, channel)
+        if (engine.id === 'claude') await rememberWorkFolder(paths, channel, workFolder)
         const native = (engine.id === 'claude' || (engine.id === 'codex' && permission !== 'plan')) && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const result = await runComet(
@@ -2527,7 +2532,8 @@ export function registerIpc(ctx: VaultContext): void {
             { role: 'assistant', text: turn.verification.result },
             { role: 'assistant', text: result.answer },
           ]))
-          check = checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths))
+          const report = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
+          check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(report ? { report } : {}) }
           // A confirmed answer carries the latest file links once. A rejected
           // check delivers nothing from here: the task runner answers with the draft.
           // Only the files the answer itself hands over, at their latest revision; all of them if it named none.

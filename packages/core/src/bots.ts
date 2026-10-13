@@ -38,11 +38,22 @@ export interface Bot {
   declined?: string[]
 }
 
+// How a checked answer was checked: each requirement with its verdict and
+// the observed fact behind it, what was read as a source, and how often this
+// comet's checked work has been confirmed.
+export interface TurnEvidence {
+  checks: { requirement: string; status: 'pass' | 'fail' | 'unknown'; basis: string }[]
+  grounding: { status: 'pass' | 'fail' | 'unknown'; basis: string }
+  sources: string[]
+  record?: { confirmed: number; checked: number }
+}
+
 export interface BotTurn {
   role: 'user' | 'assistant'
   text: string
   at: string
   attachments?: string[]
+  evidence?: TurnEvidence
 }
 
 export interface BotSuggestion {

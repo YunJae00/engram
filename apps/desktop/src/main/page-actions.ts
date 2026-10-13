@@ -121,7 +121,8 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
   try {
     const control = await inspected(hand)
     if (!control) return missing(target)
-    if (pressCommits(control)) {
+    const commits = pressCommits(control)
+    if (commits) {
       const said = await allowed(page, control.words, ask)
       if (said !== 'yes') return { ok: false, refused: control.words.slice(0, 80), ...(said === 'theirs' ? { theirs: true } : said === 'later' ? { later: true } : {}) }
     }
@@ -132,7 +133,7 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
     // A click timeout can happen after dispatch. Never retry it as a DOM event.
     await hand.click({ timeout: FIND_TIMEOUT_MS })
     await settle(page)
-    return { ok: true, changed: (await signature(page)) !== before }
+    return { ok: true, changed: (await signature(page)) !== before, ...(commits ? { committed: true } : {}) }
   } catch (err) {
     return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
   } finally {
@@ -268,7 +269,8 @@ export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, si
       there = hand ? await hand.evaluate(inspectControl) : null
     } finally { await target.dispose() }
     if (!there) return { ok: false, error: 'nothing is at that point of the picture' }
-    if (pressCommits(there)) {
+    const commits = pressCommits(there)
+    if (commits) {
       const said = await allowed(page, there.words, ask)
       if (said !== 'yes') return { ok: false, refused: there.words || 'what is at that point', ...(said === 'theirs' ? { theirs: true } : said === 'later' ? { later: true } : {}) }
     }
@@ -277,7 +279,7 @@ export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, si
     pointerSink?.(page, x, y, 'press')
     await page.mouse.click(at.x, at.y)
     await settle(page)
-    return { ok: true, changed: (await signature(page)) !== before }
+    return { ok: true, changed: (await signature(page)) !== before, ...(commits ? { committed: true } : {}) }
   } catch (err) {
     return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
   }

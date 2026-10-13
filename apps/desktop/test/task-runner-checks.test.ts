@@ -133,3 +133,36 @@ it.each([false, true])('keeps corrected outputs across a repair and recheck (unf
   expect(task.verificationIssue).toBeDefined()
   expect(t.delivered).toEqual([task.result])
 })
+
+it('delivers a checked answer with how it was checked and the record of this comet', async () => {
+  const report = { checks: [{ requirement: 'Totals match the CSV', status: 'pass' as const, basis: 'Summed the 400 rows and compared each department.' }], grounding: { status: 'pass' as const, basis: 'Read sales.csv in full.' }, sources: ['sales.csv'] }
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return done('[Report](engram-artifact:report.md)')
+    return { ...readback('[Report](engram-artifact:report.md)'), check: { accepted: true, issues: [], report } }
+  }, false)
+  await t.chat('Total the sales by department')
+  expect((await t.settle('done')).verified).toBe(true)
+  expect(t.delivered).toHaveLength(1)
+  expect(t.evidences).toEqual([{ ...report, record: { confirmed: 1, checked: 1 } }])
+})
+
+it('does not display a rejected host check as fully confirmed', async () => {
+  const report = { checks: [{ requirement: 'Totals match', status: 'pass' as const, basis: 'Compared totals.' }], grounding: { status: 'pass' as const, basis: 'Read the source.' }, sources: ['sales.csv'] }
+  const t = await setup(async (_request, turn) => turn === 1
+    ? done('[Report](engram-artifact:report.md)')
+    : { ...readback('[Report](engram-artifact:report.md)'), check: { accepted: false, issues: ['The source was not fully read.'], report } }, false)
+  await t.chat('Total the sales')
+  expect((await t.settle('done')).verified).not.toBe(true)
+  expect(t.evidences).toEqual([{ ...report, grounding: { status: 'unknown', basis: 'The source was not fully read.' }, record: { confirmed: 0, checked: 1 } }])
+})
+
+it('answers a lookup at once: reading a site, with its tabs and filters, needs no check', async () => {
+  const t = await setup(async () => ({ ...done('Last week: 58 hours.', 3), trail: [{ tool: 'open_page', args: { url: 'https://tms.example' }, observation: 'opened' }, pressed('Time Report', false), { ...pressed('Week view', false), observedAfterAction: true }] }))
+  await t.chat('How many hours did I log last week?')
+  const task = await t.settle('done')
+  expect(task.verified).toBeUndefined()
+  expect(task.verificationIssue).toBeUndefined()
+  expect(task.log.map(line => line.line)).not.toContain('Checking the result')
+  expect(t.sent).toHaveLength(1)
+  expect(t.delivered).toEqual([])
+})

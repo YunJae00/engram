@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { NativeTools, ToolSessionJob } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home' } }))
-import { runCodexNative, type CodexRpcFactory } from '../src/main/codex-native.js'
+import { closeCodexSessions, runCodexNative, type CodexRpcFactory } from '../src/main/codex-native.js'
 import { NATIVE_TOOLS_OFF, RUNTIME_TOOLS_OFF } from '../src/main/engine-codex.js'
 
 type Data = Record<string, unknown>
@@ -10,19 +10,23 @@ type Script = (server: { notify(method: string, params: Data): void; request(met
 
 // An app server played from a script: what the runtime would send, in order.
 function fakeServer(script: Script, sent: { method: string; params: Data }[] = []): CodexRpcFactory {
-  return (_options, notify, request) => ({
+  return (_options, notify, request) => {
+    let turns = 0
+    return {
     initialize: async () => {},
     shutdown: async () => {},
     send: async (method, params) => {
       sent.push({ method, params })
       if (method === 'thread/start') return { thread: { id: 't1' } }
       if (method === 'turn/start') {
-        setTimeout(() => void script({ notify: (m, p) => notify(m, { threadId: 't1', turnId: 'u1', ...p }), request: (m, p) => request(m, { threadId: 't1', turnId: 'u1', ...p }) }), 0)
-        return { turn: { id: 'u1' } }
+        const turnId = `u${++turns}`
+        setTimeout(() => void script({ notify: (m, p) => notify(m, { threadId: 't1', turnId, ...p }), request: (m, p) => request(m, { threadId: 't1', turnId, ...p }) }), 0)
+        return { turn: { id: turnId } }
       }
       return {}
     },
-  })
+    }
+  }
 }
 
 function native(decide: NativeTools['decide']): NativeTools & { calls: string[]; results: string[] } {
@@ -145,5 +149,57 @@ describe('ChatGPT with its own tools', () => {
     expect(NATIVE_TOOLS_OFF).not.toContain('features.unified_exec=false')
     expect(NATIVE_TOOLS_OFF).not.toContain('include_apply_patch_tool=false')
     for (const kept of ['features.browser_use=false', 'features.computer_use=false', 'features.hooks=false', 'features.view_image=false', 'web_search="disabled"']) expect(NATIVE_TOOLS_OFF).toContain(kept)
+  })
+})
+
+describe('a comet keeps its ChatGPT runtime between turns', () => {
+  it('ignores late replies from a previous turn and opens a fresh process for another account', async () => {
+    let turns = 0, processes = 0
+    const rpc: CodexRpcFactory = (options, notify, request, ended) => {
+      processes++
+      return fakeServer(async server => {
+        if (++turns === 2) {
+          server.notify('item/completed', { turnId: 'u1', item: { id: 'old', type: 'agentMessage', text: 'stale' } })
+          server.notify('turn/completed', { turnId: 'u1', turn: { status: 'completed' } })
+        }
+        server.notify(...completed({ id: 'new', type: 'agentMessage', text: `answer ${turns}` }))
+        server.notify('turn/completed', { turn: { status: 'completed' } })
+      })(options, notify, request, ended)
+    }
+    const base = { ...job(native(async () => ({ behavior: 'allow' }))), sessionKey: 'late-turns' }
+    try {
+      expect((await runCodexNative(base, spec(rpc))).answer).toBe('answer 1')
+      expect((await runCodexNative(base, spec(rpc))).answer).toBe('answer 2')
+      expect(processes).toBe(1)
+      await runCodexNative(base, { ...spec(rpc), env: { CODEX_HOME: 'another-profile' } })
+      expect(processes).toBe(2)
+    } finally { closeCodexSessions() }
+  })
+  it('reuses the process and thread, sends the conversation so far only once, and opens anew when the rules change', async () => {
+    const sent: { method: string; params: Data }[] = []
+    let processes = 0
+    const rpc: CodexRpcFactory = (options, notify, request, ended) => {
+      processes++
+      const answer = `answer from process ${processes}`
+      return fakeServer(async (server) => {
+        server.notify(...completed({ id: 'm1', type: 'agentMessage', text: answer }))
+        server.notify('turn/completed', { turn: { status: 'completed' } })
+      }, sent)(options, notify, request, ended)
+    }
+    const hands = native(async () => ({ behavior: 'allow' }))
+    const base = { ...job(hands), sessionKey: 'bot-7', opening: 'Earlier: hello' }
+    try {
+      expect((await runCodexNative(base, spec(rpc))).answer).toBe('answer from process 1')
+      expect((await runCodexNative({ ...base, prompt: 'Next' }, spec(rpc))).answer).toBe('answer from process 1')
+      expect(processes).toBe(1)
+      expect(sent.filter(one => one.method === 'thread/start')).toHaveLength(1)
+      expect(sent.filter(one => one.method === 'turn/start').map(one => (one.params['input'] as { text: string }[])[0]!.text)).toEqual(['Earlier: hello\n\nSum the column', 'Next'])
+      expect((await runCodexNative({ ...base, prompt: 'Again' }, { ...spec(rpc), instructions: 'other rules' })).answer).toBe('answer from process 2')
+      expect(processes).toBe(2)
+      // A job with no session key gets a process of its own, closed after the turn.
+      await runCodexNative(job(hands), spec(rpc))
+      await runCodexNative(job(hands), spec(rpc))
+      expect(processes).toBe(4)
+    } finally { closeCodexSessions() }
   })
 })

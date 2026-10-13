@@ -132,3 +132,9 @@ export function continuationPrompt(task: DelegatedTask, reason: 'limit' | 'resta
   }[reason]
   return [lead, ...(reason === 'verify' && task.result ? ['The result you produced, which the person has not seen yet. Check this result and correct only what is wrong; do not redo the task:', task.result, ''] : []), ...(reason === 'verify' ? ['Derive acceptance checks only from the original requested outcomes and constraints, plus correctness or safety conditions necessary to satisfy them. Do not promote optional inspection methods or extra workflows into new requirements; report unperformed scope limitations separately. Keep each check concise.'] : []), ...(detail ? [detail] : []), ...(reason === 'verify' && task.verificationIssue ? [`Previous check did not pass: ${task.verificationIssue}`] : []), '', 'The delegated task, verbatim:', task.goal].join('\n')
 }
+
+// How often this comet's checked work was confirmed, over the tasks still on record.
+export function cometRecord(tasks: DelegatedTask[], botId: string): { confirmed: number; checked: number } {
+  const checked = tasks.filter(task => task.botId === botId && (task.verified === true || task.verificationIssue))
+  return { confirmed: checked.filter(task => task.verified === true).length, checked: checked.length }
+}

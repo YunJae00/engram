@@ -6,6 +6,7 @@ import { INTERVIEW_PENDING_KEY } from '../components/WorkInterview.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { InstallClaude } from '../components/InstallClaude.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
+import { refreshAccountUsage, useAccountUsage } from '../lib/accountUsage.js'
 import { LearningSources, type LearningChoice } from '../components/LearningSources.js'
 
 export function Onboarding() {
@@ -22,12 +23,19 @@ export function Onboarding() {
   // Nothing new is read unless chosen here; the activity log keeps its current state.
   const [sources, setSources] = useState<LearningChoice>({ workMap: false, workFiles: false, workApps: false, activity: true })
   const [interview, setInterview] = useState(true)
+  // Which connected AI answers first. Chosen here, never guessed from the order of sign-in.
+  const [choice, setChoice] = useState<'claude' | 'codex' | null>(null)
+  const usage = useAccountUsage()
   const revision = useRef(0)
   // Only the first check shows spinners; later ones refresh behind what is shown.
   const checked = useRef(false)
   const signing = useRef(false)
   const completing = useRef(false)
   const ready = brains.filter(brain => brain.installed && brain.loggedIn)
+  // A signed-in account at its usage limit is connected but cannot answer now.
+  const limited = (id: 'claude' | 'codex') => usage.some(account => account.provider === id && (account.usage?.windows ?? []).some(window => (window.used ?? 0) >= 100))
+  const usable = ready.filter(brain => !limited(brain.id as 'claude' | 'codex'))
+  const pick = choice && ready.some(brain => brain.id === choice) ? choice : (usable[0]?.id ?? ready[0]?.id ?? null) as 'claude' | 'codex' | null
 
   const loadBrains = async () => {
     const at = ++revision.current
@@ -39,6 +47,7 @@ export function Onboarding() {
   useEffect(() => {
     void api.onboardDefaults().then(value => setRoot(held => held || value.defaultRoot)).catch(() => setError('Could not find your default folder. Choose a folder below.'))
     void loadBrains()
+    void refreshAccountUsage(true).catch(() => undefined)
     void api.activityGet().then(activity => setSources(held => ({ ...held, activity }))).catch(() => undefined)
     void api.engineLogins().then(setLogins).catch(() => undefined)
     return api.onEvent(event => {
@@ -65,11 +74,10 @@ export function Onboarding() {
     completing.current = true; setFinishing(true); setError('')
     try {
       const settings = await api.settingsGet()
-      const available = ready.find(brain => brain.id === settings.defaultEngine) ?? ready[0]
+      const available = pick ? ready.find(brain => brain.id === pick) : undefined
       if (available && (available.id === 'claude' || available.id === 'codex')) {
         if (settings.defaultEngine !== available.id) await api.settingsSet({ defaultEngine: available.id })
-        const filingEngine = settings.aiSelections?.filing?.engine ?? settings.defaultEngine
-        if (!ready.some(brain => brain.id === filingEngine)) await api.aiSelectionSet('filing', { engine: available.id, model: '' })
+        if (settings.aiSelections?.filing?.engine !== available.id) await api.aiSelectionSet('filing', { engine: available.id, model: '' })
       }
       const latest = await api.settingsGet()
       const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps }
@@ -102,12 +110,13 @@ export function Onboarding() {
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
-            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}</div>
+            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>Usage limit reached for now. It can still be chosen.</span>}{!loading && !active && !connected && state?.installed && <span>Signed out</span>}</div>
             {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className="onboard-connected" data-testid={`onboard-brain-${id}`} role="status"><Check size={15} aria-hidden />Connected</span> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
             {active && <div className="onboard-login-actions">{login?.canOpen && <button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button>}<button className="secondary" onClick={() => loginAction(api.engineCancelLogin(id))}>Cancel sign-in</button></div>}
           </div>
         })}
       </div>
+      {ready.length > 1 && <fieldset className="onboard-choice" data-testid="onboard-choice"><legend>Answer with</legend>{ready.map(brain => <label key={brain.id}><input type="radio" name="onboard-brain" value={brain.id} data-testid={`onboard-choose-${brain.id}`} checked={pick === brain.id} disabled={finishing} onChange={() => setChoice(brain.id as 'claude' | 'codex')} />{brain.id === 'claude' ? 'Claude' : 'ChatGPT'}{limited(brain.id as 'claude' | 'codex') && <small>at its limit</small>}</label>)}<p className="setting-hint">Change it any time from the model picker in a conversation.</p></fieldset>}
       <div className="onboard-preferences">
         <LearningSources value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
         <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos before questions. Selected Cosmos note excerpts, work places, past tasks and preferences go to your AI. No new document scan.</p></div>

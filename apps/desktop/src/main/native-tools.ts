@@ -1,8 +1,8 @@
 import { app } from 'electron'
-import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, type NativeDecision, type NativeTools, type PermissionMode, type VaultPaths } from 'core'
+import { artifactHref, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { artifactDirectory } from './file-work.js'
 
@@ -109,9 +109,49 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
 
 const consent = new Map<string, { allowed: boolean }>()
 
-export async function cometNativeTools(options: { paths: VaultPaths; channel: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools> {
-  const cwd = join(options.paths.cache, 'work', options.channel.replace(/[^A-Za-z0-9_-]+/g, '-'))
+// Where a comet works. Its own folder under the vault's work directory, unless
+// one was assigned to it (a spare session's), which is remembered across restarts.
+const claimsFile = (paths: VaultPaths) => join(paths.cache, 'work', 'claims.json')
+async function readClaims(paths: VaultPaths): Promise<Record<string, unknown>> {
+  try {
+    const info = await lstat(claimsFile(paths))
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 128_000) throw new Error('Invalid work-folder assignments.')
+    const value: unknown = JSON.parse(await readFile(claimsFile(paths), 'utf8'))
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid work-folder assignments.')
+    return value as Record<string, unknown>
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error }
+}
+function assignedFolder(paths: VaultPaths, folder: unknown): string {
+  if (typeof folder !== 'string' || dirname(resolve(folder)) !== resolve(join(paths.cache, 'work')) || !/^[A-Za-z0-9_-]+$/.test(basename(folder))) throw new Error('A comet work folder must stay inside this workspace.')
+  return resolve(folder)
+}
+export async function workFolderFor(paths: VaultPaths, channel: string): Promise<string> {
+  const claims = await readClaims(paths)
+  const own = join(paths.cache, 'work', channel.replace(/[^A-Za-z0-9_-]+/g, '-'))
+  if (!Object.hasOwn(claims, channel)) return own
+  const folder = assignedFolder(paths, claims[channel])
+  if (Object.entries(claims).some(([owner, value]) => owner !== channel && typeof value === 'string' && relative(folder, resolve(value)) === '')) throw new Error('This work folder is assigned to another comet.')
+  return folder
+}
+let claimWrites: Promise<unknown> = Promise.resolve()
+export function rememberWorkFolder(paths: VaultPaths, channel: string, folder: string): Promise<void> {
+  const pending = claimWrites.then(async () => {
+    const target = assignedFolder(paths, folder), claims = await readClaims(paths)
+    if (Object.entries(claims).some(([owner, value]) => owner !== channel && typeof value === 'string' && relative(target, resolve(value)) === '')) throw new Error('This work folder is assigned to another comet.')
+    if (claims[channel] === target || target === resolve(join(paths.cache, 'work', channel.replace(/[^A-Za-z0-9_-]+/g, '-')))) return
+    claims[channel] = target
+    await mkdir(join(paths.cache, 'work'), { recursive: true })
+    await writeFile(`${claimsFile(paths)}.tmp`, JSON.stringify(claims))
+    await renameWithRetry(`${claimsFile(paths)}.tmp`, claimsFile(paths))
+  })
+  claimWrites = pending.catch(() => undefined)
+  return pending
+}
+
+export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools> {
+  const cwd = assignedFolder(options.paths, options.cwd ?? await workFolderFor(options.paths, options.channel))
   await mkdir(cwd, { recursive: true })
+  if ((await lstat(cwd)).isSymbolicLink() || !within(await realpath(options.paths.workspace), await realpath(cwd))) throw new Error('A comet work folder cannot redirect outside this workspace.')
   const roots = [cwd, artifactDirectory(options.paths), ...(['documents', 'desktop', 'downloads'] as const).map((name) => app.getPath(name))]
   const consentKey = `${await realpath(cwd)}:${options.sandboxed ? 'sandboxed' : 'full'}`
   let commands = consent.get(consentKey)

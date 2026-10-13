@@ -179,11 +179,15 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections?.filing?.engine))).toBe('codex')
   await page.getByTestId('onboard-connect-claude').click()
   await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Connected')
+  // With two connected, the person says which answers first; nothing is guessed from the sign-in order.
+  await expect(page.getByTestId('onboard-choice')).toBeVisible()
+  await page.getByTestId('onboard-choose-codex').check()
   await screenshot('04-connected.png')
   await page.getByTestId('onboard-finish').click()
 
   // lands in the shell on the new vault
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
+  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.aiSelections?.filing?.engine]))).toEqual(['codex', 'codex'])
   await access(join(vaultRoot, 'workspace', 'AGENTS.md'))
   await access(join(vaultRoot, 'private'))
 
@@ -215,7 +219,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await page.getByTestId('engine-status').click()
   await expect(page.getByTestId('provider-picker-menu')).toContainText('Filing provider')
   await page.getByTestId('provider-pick-codex').click()
-  await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'codex', chat: 'claude' })
+  await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'codex', chat: 'codex' })
   await page.getByTestId('model-pick-auto').click()
   await app.evaluate(({ BrowserWindow }) => {
     const engines = ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true, healthy: true }))

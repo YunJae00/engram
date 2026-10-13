@@ -241,6 +241,10 @@ export class ClaudeEngine implements CloudEngine {
 const sessions = new SessionPool()
 setInterval(() => sessions.sweep(), 60_000).unref()
 
+export function claimClaudeWorkFolder(channel: string, fallback: string): string {
+  return sessions.claimWorkFolder(channel, fallback)
+}
+
 export function closeClaudeSession(key: string): void {
   sessions.closeMatching(key)
 }

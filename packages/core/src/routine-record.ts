@@ -14,6 +14,8 @@ export interface TurnStep {
   args: Record<string, unknown>
   observation: string
   observedAfterAction?: boolean
+  // The move did something that cannot be taken back, such as a press the person approved.
+  committed?: boolean
   seeded?: boolean
 }
 

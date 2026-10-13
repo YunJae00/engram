@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { EngineCwd, ToolSessionJob } from 'core'
+import type { EngineCwd, NativeTools, ToolSessionJob } from 'core'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 const timingLog = vi.hoisted(() => vi.fn())
 vi.mock('../src/main/flog.js', () => ({ flog: timingLog }))
 import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
@@ -202,7 +205,7 @@ describe('a warm session: one process, many turns', () => {
       await pool.run(job('first', { sessionKey: 'k', signal: previous.signal }), spec)
       const listener = add.mock.calls.find(([type]) => type === 'abort')![1]
       const next = await pool.run(job('second', {
-        sessionKey: 'k', tools: [{ name: 'search_memory', description: 'search', argsSchema: {}, run: async () => {
+        sessionKey: 'k', tools: [{ name: 'search_memory', description: 'search', argsSchema: { type: 'object', properties: { query: { type: 'string' } } }, run: async () => {
           previous.abort()
           if (typeof listener === 'function') listener.call(previous.signal, new Event('abort'))
           return 'the second turn completed'
@@ -317,5 +320,32 @@ describe('the reply streams as it is written', () => {
     expect(pieces).toEqual(['Let me look. ', 'The ', 'answer ', 'is 42.'])
     expect(resets).toBe(1)
     pool.closeAll()
+  })
+})
+
+describe('a spare session for the next comet', () => {
+  it('warms one beside the first native session; the next comet takes its folder and its process', async () => {
+    const { sdk, processes, optionsSeen } = fakeSdk([])
+    const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    const work = await mkdtemp(join(tmpdir(), 'engram-spare-'))
+    const hands = (cwd: string): NativeTools => ({ cwd, readRoots: [cwd], decide: async () => ({ behavior: 'allow' }) })
+    try {
+      await pool.run(job('First', { sessionKey: 'a', native: hands(join(work, 'bot-a')) }), base)
+      expect(processes()).toBe(2)
+      const folder = pool.claimWorkFolder('bot-b', join(work, 'bot-b'))
+      expect(folder.startsWith(join(work, 'spare-'))).toBe(true)
+      expect(pool.claimWorkFolder('bot-b', join(work, 'bot-b'))).toBe(folder)
+      expect(pool.claimWorkFolder('bot-c', join(work, 'bot-c'))).toBe(join(work, 'bot-c'))
+      expect(pool.claimWorkFolder('bot-d', join(work, 'other-vault', 'bot-d'))).toBe(join(work, 'other-vault', 'bot-d'))
+      await pool.run(job('Second', { sessionKey: 'b', native: hands(folder) }), base)
+      expect(processes()).toBe(3)
+      expect(optionsSeen[1]!['cwd']).toBe(folder)
+      expect(pool.claimWorkFolder('bot-c', join(work, 'bot-c'))).not.toBe(folder)
+      expect(pool.claimWorkFolder('bot-c', join(work, 'bot-c')).startsWith(join(work, 'spare-'))).toBe(true)
+      const next = pool.claimWorkFolder('bot-c', join(work, 'bot-c'))
+      await pool.run(job('Another account', { sessionKey: 'c', native: hands(next) }), { ...base, env: { CLAUDE_CONFIG_DIR: 'another-profile' } })
+      expect(processes()).toBe(5)
+      expect(optionsSeen[3]!['env']).toEqual({ CLAUDE_CONFIG_DIR: 'another-profile' })
+    } finally { pool.closeAll(); await rm(work, { recursive: true, force: true }) }
   })
 })

@@ -289,7 +289,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (event.type === 'chat:done') {
         const at = streamingAt(current.messages)
         const next = [...current.messages]
-        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false }
+        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, ...(event.evidence ? { evidence: event.evidence } : {}) }
         settle(id, next, { offer: event.offer ?? null })
         return id
       }

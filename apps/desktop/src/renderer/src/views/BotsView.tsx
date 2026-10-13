@@ -5,6 +5,7 @@ import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
 import { CometOffer } from '../components/CometOffer.js'
 import { CometWork } from '../components/CometWork.js'
+import { CheckEvidence } from '../components/CheckEvidence.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { Fragment } from 'react'
@@ -152,7 +153,7 @@ export const BotsView = memo(function BotsView() {
                       m.streaming && !m.text ? (
                         <span className="bots-pending" data-testid="bots-pending" />
                       ) : (
-                        <StreamingAnswer text={m.text} done={!m.streaming} />
+                        <><StreamingAnswer text={m.text} done={!m.streaming} />{!m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}</>
                       )
                     ) : (
                       <UserMessage text={m.text} attachments={m.attachments} />

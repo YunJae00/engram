@@ -127,3 +127,20 @@
   .bots-main > .web-pane { position: relative; inset: auto; width: var(--web-pane-width, 52%); min-width: 380px; max-width: calc(100% - 328px); margin: 0; border-left: 1px solid var(--border-soft); }
   .bots-main > .web-pane .web-pane-grip { display: block; }
 }
+
+/* How a checked answer was checked: folded under the answer, open only when something needs a look. */
+.check-evidence { margin: 6px 0 0; font-size: var(--fs-small); color: var(--fg-dim); }
+.check-evidence > summary { display: flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; padding: 4px 0; }
+.check-evidence > summary::-webkit-details-marker { display: none; }
+.check-evidence > summary > svg { flex: none; transition: transform 120ms ease; }
+.check-evidence[open] > summary > svg { transform: rotate(90deg); }
+.check-evidence > summary > small { margin-left: auto; color: var(--fg-faint); }
+.check-evidence ol { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.check-evidence li { display: flex; align-items: flex-start; gap: 8px; }
+.check-evidence li > svg { flex: none; margin-top: 3px; }
+.check-evidence li[data-status='pass'] > svg { color: var(--fg-faint); }
+.check-evidence li[data-status='fail'] > svg { color: var(--clay); }
+.check-evidence li[data-status='unknown'] > svg { color: var(--fg-dim); }
+.check-evidence li > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+.check-evidence li > span > strong { display: block; font-weight: 550; color: var(--fg); }
+.check-evidence > p { margin: 6px 0 0; color: var(--fg-faint); }

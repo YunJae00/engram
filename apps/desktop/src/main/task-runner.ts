@@ -9,8 +9,8 @@ import {
   playbookContext,
   readBotTranscript,
   recordPlaybook,
-  successfulTurnSteps,
   TASK_MAX_TURNS,
+  cometRecord,
   tasksToResume,
   updateTask,
   type DelegatedTask,
@@ -18,9 +18,10 @@ import {
   type VaultPaths,
 } from 'core'
 import type { ChatRequestDto, EngramEvent } from '../shared/types.js'
+import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
-import { freshResultReadback, RESULT_CHANGES as CHANGES } from './task-result-state.js'
+import { freshResultReadback, needsResultCheck } from './task-result-state.js'
 
 // Every comet message is a task: its first turn is the ordinary chat turn the
 // person watches, and when that turn stops short of the goal the work goes on
@@ -28,7 +29,7 @@ import { freshResultReadback, RESULT_CHANGES as CHANGES } from './task-result-st
 // approval, or reaches its limits. A press that would commit something is not
 // made unattended: it waits in the task, and the rest of the work goes on.
 
-export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[] }; held?: boolean }
+export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
 // How the host runs one of the task's turns: extra context, and whether the
 // message is the task's own continuation rather than words the person said.
 // holdIf: the host keeps this turn's answer out of the thread when it says so (work that will be checked first).
@@ -42,7 +43,6 @@ const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const artifactLinks = (text = '') => [...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map((match) => match[1]!)
 // Captures already have consent, provenance and save receipts; this text and
 // document check must not demand a text read of a PNG or retake a recording.
-const savedWorkFile = (text = '') => /\]\(engram-artifact:[^\s)]+\.(?:txt|md|json|csv|tsv|xlsx|docx|pptx)\)/i.test(text)
 
 export function taskRunner(deps: {
   paths: VaultPaths
@@ -53,7 +53,7 @@ export function taskRunner(deps: {
   remember(text: string): Promise<void>
   // A held answer, put in the thread once: after its check, or when the task stops for the person.
   // since: when the task began, for finding revisions saved during it.
-  deliver(channel: string, text: string, since: number, trail: TurnStep[]): Promise<void>
+  deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence): Promise<void>
   // How long a check may hold the answer back before the draft goes out as it is.
   checkBudgetMs?: number
   // The person answered what a comet asked: what holds beyond this task is kept.
@@ -105,7 +105,7 @@ export function taskRunner(deps: {
       deps.broadcast({ type: 'chat:token', channel: channelOf(started), text: '', reset: true, drop: true })
     }
     const earlier = trails.get(id) ?? []
-    const holdIf = (answer: string, steps: TurnStep[]) => !started.verified && (savedWorkFile(answer) || successfulTurnSteps([...earlier, ...steps]).some((step) => CHANGES.test(step.tool)))
+    const holdIf = (answer: string, steps: TurnStep[]) => !started.verified && needsResultCheck(answer, [...earlier, ...steps])
     // A check runs as long as it takes, unless a budget is set: past it, the draft is the answer.
     let overran = false, checkError: unknown
     let budget: ReturnType<typeof setTimeout> | undefined
@@ -158,11 +158,18 @@ export function taskRunner(deps: {
       } else if (outcome.unfinished) {
         if (t.turns >= TASK_MAX_TURNS) { t.state = 'failed'; logTask(t, 'Stopped at the task limits before the goal was met.') }
         else logTask(t, 'Continuing')
-      } else if (!t.verified && (savedWorkFile(outcome.answer) || successfulTurnSteps(trail).some((step) => CHANGES.test(step.tool)))) {
+      } else if (!t.verified && needsResultCheck(outcome.answer, trail)) {
         t.verificationPending = true; logTask(t, 'Checking the result')
       } else { t.state = 'done'; logTask(t, 'Done') }
     })
-    if (after && (outcome?.held || (checking && !outcome)) && ['done', 'waiting', 'failed'].includes(after.state) && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+    if (after && (outcome?.held || (checking && !outcome)) && ['done', 'waiting', 'failed'].includes(after.state) && after.result) {
+      const report = outcome?.check?.report
+      await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail, report && {
+        ...report,
+        grounding: after.verified === true ? report.grounding : { status: 'unknown', basis: after.verificationIssue || 'The result was not confirmed.' },
+        record: cometRecord(await listTasks(paths), after.botId),
+      })
+    }
     return after
   }
 

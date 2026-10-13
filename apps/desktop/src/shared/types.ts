@@ -256,6 +256,8 @@ export interface ChatTurnDto {
   role: 'user' | 'assistant'
   text: string
   attachments?: string[]
+  // How a checked answer was checked (core TurnEvidence).
+  evidence?: import('core').TurnEvidence
 }
 
 // Work handed to Engram to finish in the background (core delegated-tasks.ts).
@@ -444,6 +446,7 @@ export type EngramEvent =
       type: 'chat:done'
       channel: string
       text: string
+      evidence?: import('core').TurnEvidence
       // 'run' — a saved procedure matches this request, one press away.
 
       offer?:
