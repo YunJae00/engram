@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, NativeTools, ToolSessionJob } from 'core'
-import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const timingLog = vi.hoisted(() => vi.fn())
@@ -324,13 +323,15 @@ describe('the reply streams as it is written', () => {
 })
 
 describe('a spare session for the next comet', () => {
-  it('warms one beside the first native session; the next comet takes its folder and its process', async () => {
+  it('reserves explicitly warmed folders and refuses sharing across comets, workspaces and accounts', async () => {
     const { sdk, processes, optionsSeen } = fakeSdk([])
     const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
-    const work = await mkdtemp(join(tmpdir(), 'engram-spare-'))
+    const work = join(tmpdir(), 'engram-spare-fixture')
     const hands = (cwd: string): NativeTools => ({ cwd, readRoots: [cwd], decide: async () => ({ behavior: 'allow' }) })
     try {
       await pool.run(job('First', { sessionKey: 'a', native: hands(join(work, 'bot-a')) }), base)
+      expect(processes()).toBe(1)
+      pool.warm(base, job('', { native: hands(join(work, 'spare-1')) }))
       expect(processes()).toBe(2)
       const folder = pool.claimWorkFolder('bot-b', join(work, 'bot-b'))
       expect(folder.startsWith(join(work, 'spare-'))).toBe(true)
@@ -338,14 +339,50 @@ describe('a spare session for the next comet', () => {
       expect(pool.claimWorkFolder('bot-c', join(work, 'bot-c'))).toBe(join(work, 'bot-c'))
       expect(pool.claimWorkFolder('bot-d', join(work, 'other-vault', 'bot-d'))).toBe(join(work, 'other-vault', 'bot-d'))
       await pool.run(job('Second', { sessionKey: 'b', native: hands(folder) }), base)
-      expect(processes()).toBe(3)
+      expect(processes()).toBe(2)
+      pool.warm(base, job('', { native: hands(join(work, 'spare-2')) }))
       expect(optionsSeen[1]!['cwd']).toBe(folder)
       expect(pool.claimWorkFolder('bot-c', join(work, 'bot-c'))).not.toBe(folder)
       expect(pool.claimWorkFolder('bot-c', join(work, 'bot-c')).startsWith(join(work, 'spare-'))).toBe(true)
       const next = pool.claimWorkFolder('bot-c', join(work, 'bot-c'))
       await pool.run(job('Another account', { sessionKey: 'c', native: hands(next) }), { ...base, env: { CLAUDE_CONFIG_DIR: 'another-profile' } })
-      expect(processes()).toBe(5)
+      expect(processes()).toBe(4)
       expect(optionsSeen[3]!['env']).toEqual({ CLAUDE_CONFIG_DIR: 'another-profile' })
-    } finally { pool.closeAll(); await rm(work, { recursive: true, force: true }) }
+      expect(pool.spareReady).toBe(false)
+    } finally { pool.closeAll() }
+  })
+})
+
+describe('a spare opened before any comet', () => {
+  it('is taken by the first comet without creating a second preparation path', async () => {
+    const { sdk, processes, optionsSeen } = fakeSdk([])
+    const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    const work = join(tmpdir(), 'engram-spare-fixture')
+    const hands = (cwd: string): NativeTools => ({ cwd, readRoots: [cwd], decide: async () => ({ behavior: 'allow' }) })
+    try {
+      pool.warm(base, job('', { native: hands(join(work, 'spare-0')) }))
+      expect(processes()).toBe(1)
+      expect(pool.spareReady).toBe(true)
+      const folder = pool.claimWorkFolder('bot-a', join(work, 'bot-a'))
+      expect(folder).toBe(join(work, 'spare-0'))
+      await pool.run(job('First', { sessionKey: 'a', native: hands(folder) }), base)
+      expect(optionsSeen[0]!['cwd']).toBe(folder)
+      expect(processes()).toBe(1)
+      expect(pool.spareReady).toBe(false)
+    } finally { pool.closeAll() }
+  })
+
+  it('replaces an expired spare instead of leaving preparation permanently blocked', () => {
+    const { sdk, processes } = fakeSdk([]), pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    const hands = { cwd: 'C:/work/spare-old', readRoots: [], decide: async () => ({ behavior: 'allow' as const }) }
+    try {
+      pool.warm(spec, job('', { native: hands }))
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 61 * 60_000)
+      expect(pool.spareReady).toBe(false)
+      pool.warm(spec, job('', { native: { ...hands, cwd: 'C:/work/spare-new' } }))
+      expect(processes()).toBe(2)
+      expect(pool.claimWorkFolder('next', 'C:/work/next')).toBe('C:/work/spare-new')
+    } finally { pool.closeAll(); vi.restoreAllMocks() }
   })
 })

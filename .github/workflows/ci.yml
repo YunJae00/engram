@@ -37,10 +37,14 @@ jobs:
       # The model catalogue points at someone else's server; a renamed file
       # there is a 404 the first user with that much RAM discovers.
 
-  e2e:
+  e2e-shards:
     if: ${{ !inputs.native_only }}
-    name: end-to-end (Electron)
+    name: Electron shard ${{ matrix.shard }}/2
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -49,13 +53,24 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: apps/desktop/test-results
           retention-days: 7
+
+  e2e:
+    if: ${{ always() && !inputs.native_only }}
+    name: end-to-end (Electron)
+    needs: e2e-shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every shard to pass
+        env:
+          RESULT: ${{ needs.e2e-shards.result }}
+        run: test "$RESULT" = success
 
   desktop-native:
     name: native desktop control (owned fixture)

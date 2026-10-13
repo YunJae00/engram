@@ -106,6 +106,11 @@ export type EngineEvent =
   | { type: 'error'; message: string; kind?: EngineErrorKind; retryAfterMs?: number }
 
 export interface Engine {
+  // A session opened ahead for a comet shaped like `job`, in `job.native.cwd`,
+  // whether one is already waiting, and the folder the next comet should take.
+  warm?(job: ToolSessionJob): Promise<void>
+  spareReady?(): boolean
+  claimWorkFolder?(channel: string, fallback: string): string
   readonly id: EngineId
   // True only when selected-app jobs cannot call inherited runtime tools.
   readonly desktopToolIsolation?: boolean

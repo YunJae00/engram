@@ -82,6 +82,7 @@ export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './erra
 export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRoutineRun, removeRoutine, renameRoutine, routineBlock, routineSlots, routineStepLabel, routineWrites, runRoutine, validateRoutineSteps, type Routine, type RoutineBlock, type RoutineDriver, type RoutineReading, type RoutineRunOptions, type RoutineRunResult, type RoutineStep, type RoutineStepResult, type RoutineTarget } from './routine.js'
 export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
 export { runComet, runToolSession, correctableFault, PLAN_RULE } from './agent-session.js'
+export { sessionShape } from './agent-session-shape.js'
 export { resumeCheckpoint } from './agent-resume.js'
 export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type SidebarChange, type SidebarKind } from './sidebar-layout.js'
 export { recordBotSites } from './bots.js'

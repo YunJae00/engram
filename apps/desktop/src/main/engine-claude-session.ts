@@ -2,8 +2,7 @@ import { type NativeTools, type ToolSessionCall, type ToolSessionJob, type ToolS
 import { nativeOptions } from './engine-claude-native.js'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
 import { claudeSessionStarted } from './claude-runtime.js'
-import { mkdtempSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 
@@ -306,20 +305,17 @@ export class SessionPool {
     return this.spare.cwd
   }
 
-  private warmSpare(spec: SessionSpec, job: ToolSessionJob): void {
-    if (this.spare && !this.spare.session.matches(spec)) { this.spare.session.close(); this.spare = null }
+  // A session opened ahead, from a job shaped like the next comet's, in the folder that comet will take.
+  warm(spec: SessionSpec, job: ToolSessionJob): void {
+    if (this.spare && (this.spare.session.stale || !this.spare.session.matches(spec))) { this.spare.session.close(); this.spare = null }
     if (this.spare || !job.native) return
-    const cwd = job.native.cwd
-    let folder: string
-    try { folder = mkdtempSync(join(dirname(cwd), 'spare-')) } catch { return }
-    const warm: ToolSessionJob = {
-      ...job,
-      system: job.system.split(cwd).join(folder),
-      native: { ...job.native, cwd: folder, readRoots: job.native.readRoots.map(root => root === cwd ? folder : root) },
-    }
-    const session = new WarmSession(spec, warm, () => { if (this.spare?.session === session) this.spare = null })
-    this.spare = { session, cwd: folder }
-    flog('engine-claude', `warming a spare session in ${folder}`)
+    const session = new WarmSession(spec, job, () => { if (this.spare?.session === session) this.spare = null })
+    this.spare = { session, cwd: job.native.cwd }
+    flog('engine-claude', `warming a spare session in ${job.native.cwd}`)
+  }
+
+  get spareReady(): boolean {
+    return !!this.spare && !this.spare.session.stale && !this.spare.session.busy
   }
 
   run(job: ToolSessionJob, spec: SessionSpec): Promise<ToolSessionResult> {
@@ -336,6 +332,7 @@ export class SessionPool {
       session.close()
       session = undefined
     }
+    if (this.spare && job.native?.cwd === this.spare.cwd && (!this.spare.session.matches(spec) || this.spare.session.signature !== signatureOf(job))) { this.spare.session.close(); this.spare = null }
     if (!session && this.spare && job.native?.cwd === this.spare.cwd && this.spare.session.signature === signatureOf(job) && this.spare.session.matches(spec) && !this.spare.session.busy && !this.spare.session.stale) {
       flog('engine-claude', `${key} takes the spare session`)
       session = this.spare.session
@@ -350,7 +347,6 @@ export class SessionPool {
       session = opened
       this.sessions.set(key, session)
     }
-    this.warmSpare(spec, job)
     return session.run(job)
   }
 

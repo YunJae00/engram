@@ -767,7 +767,10 @@ app.on('will-quit', () => {
   for (const watcher of watchers) void watcher.close()
   killAllEngineChildrenSync()
   markQuit('done')
+  // Hidden runs must not wait for Chromium teardown after owned workers have stopped.
+  if (isHidden) app.exit(0)
 })
+app.on('quit', () => markQuit('quit'))
 
 app.on('window-all-closed', () => {
   // With tray residency the app lives on; e2e/hidden mode quits normally, and

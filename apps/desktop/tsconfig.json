@@ -3,7 +3,9 @@
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node"],
+    "incremental": true,
+    "tsBuildInfoFile": "../../tmp/desktop.tsbuildinfo"
   },
   "include": ["src", "e2e", "electron.vite.config.ts", "playwright.config.ts"]
 }

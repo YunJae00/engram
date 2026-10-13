@@ -95,10 +95,14 @@ Prerequisites: Node 22+, pnpm 9+.
 ```bash
 pnpm install
 pnpm dev            # run the desktop app in dev mode
+pnpm run check:quick # cached type/lint checks and tests affected since origin/main
+pnpm run check:quick apps/desktop/test/codex-native.test.ts # focus a development loop
 pnpm run check      # typecheck + lint + unit tests + hygiene scans
 pnpm run test:e2e   # Playwright end-to-end suite
 pnpm run dist       # build the installer
 ```
+
+Quick checks are development feedback, not a release gate. Shared core changes may still affect many tests. Releases require the full check and end-to-end suite. CI runs the full Electron suite across two isolated Windows shards; both must pass. Local Electron tests remain sequential to avoid competing windows and memory guards.
 
 ## Architecture
 

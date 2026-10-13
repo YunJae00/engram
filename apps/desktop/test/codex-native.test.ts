@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { NativeTools, ToolSessionJob } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home' } }))
-import { closeCodexSessions, runCodexNative, type CodexRpcFactory } from '../src/main/codex-native.js'
+import { claimCodexWorkFolder, closeCodexSessions, runCodexNative, warmCodexSession, type CodexRpcFactory } from '../src/main/codex-native.js'
 import { NATIVE_TOOLS_OFF, RUNTIME_TOOLS_OFF } from '../src/main/engine-codex.js'
 
 type Data = Record<string, unknown>
@@ -200,6 +200,104 @@ describe('a comet keeps its ChatGPT runtime between turns', () => {
       await runCodexNative(job(hands), spec(rpc))
       await runCodexNative(job(hands), spec(rpc))
       expect(processes).toBe(4)
+    } finally { closeCodexSessions() }
+  })
+})
+
+describe('a spare ChatGPT session for the next comet', () => {
+  it('closes an expired spare before replacing it', async () => {
+    const shutdown = vi.fn(async () => undefined)
+    const rpc: CodexRpcFactory = (options, notify, request, ended) => ({ ...fakeServer(async () => undefined)(options, notify, request, ended), shutdown })
+    const hands = { ...native(async () => ({ behavior: 'allow' })), cwd: 'C:/work/spare-old' }
+    try {
+      await warmCodexSession(spec(rpc), hands)
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 61 * 60_000)
+      await warmCodexSession(spec(rpc), { ...hands, cwd: 'C:/work/spare-new' })
+      expect(shutdown).toHaveBeenCalledOnce()
+      expect(claimCodexWorkFolder('next', 'C:/work/next')).toBe('C:/work/spare-new')
+    } finally { closeCodexSessions(); vi.restoreAllMocks() }
+  })
+
+  it('is opened ahead in a folder of its own, and the comet that takes the folder takes the session', async () => {
+    const sent: { method: string; params: Data }[] = []
+    let processes = 0
+    const rpc: CodexRpcFactory = (options, notify, request, ended) => {
+      processes++
+      return fakeServer(async (server) => {
+        server.notify(...completed({ id: 'm1', type: 'agentMessage', text: 'warm answer' }))
+        server.notify('turn/completed', { turn: { status: 'completed' } })
+      }, sent)(options, notify, request, ended)
+    }
+    const hands = native(async () => ({ behavior: 'allow' }))
+    hands.cwd = 'C:/work/spare-1'
+    try {
+      await warmCodexSession(spec(rpc), hands)
+      expect(processes).toBe(1)
+      expect(sent.map(one => one.method)).toEqual(['thread/start'])
+      expect(claimCodexWorkFolder('bot-9', 'C:/work/bot-9')).toBe('C:/work/spare-1')
+      expect(claimCodexWorkFolder('bot-9', 'C:/work/bot-9')).toBe('C:/work/spare-1')
+      expect(claimCodexWorkFolder('bot-10', 'C:/work/bot-10')).toBe('C:/work/bot-10')
+      expect(claimCodexWorkFolder('bot-9', 'C:/other-vault/bot-9')).toBe('C:/other-vault/bot-9')
+      const result = await runCodexNative({ ...job(hands), sessionKey: 'bot-9', opening: 'Earlier: hi' }, spec(rpc))
+      expect(result.answer).toBe('warm answer')
+      expect(processes).toBe(1)
+      expect(sent.filter(one => one.method === 'thread/start')).toHaveLength(1)
+      expect((sent.find(one => one.method === 'turn/start')!.params['input'] as { text: string }[])[0]!.text).toBe('Earlier: hi\n\nSum the column')
+      // Taken: the next comet gets its own folder until another spare is warm.
+      expect(claimCodexWorkFolder('bot-10', 'C:/work/bot-10')).toBe('C:/work/bot-10')
+    } finally { closeCodexSessions() }
+    expect(claimCodexWorkFolder('bot-9', 'C:/work/bot-9')).toBe('C:/work/bot-9')
+  })
+})
+
+describe('a comet that takes a spare still starting', () => {
+  it('keeps an opening spare owned during shutdown and never starts a turn after it closes', async () => {
+    const sent: { method: string; params: Data }[] = []
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const shutdown = vi.fn(async () => undefined)
+    const rpc: CodexRpcFactory = (options, notify, request, ended) => {
+      const inner = fakeServer(async () => undefined, sent)(options, notify, request, ended)
+      return { ...inner, shutdown, send: async (method, params) => { if (method === 'thread/start') await gate; return inner.send(method, params) } }
+    }
+    const hands = { ...native(async () => ({ behavior: 'allow' })), cwd: 'C:/work/spare-stop' }
+    try {
+      const warming = warmCodexSession(spec(rpc), hands)
+      const turn = runCodexNative({ ...job(hands), sessionKey: 'stopping' }, spec(rpc))
+      closeCodexSessions()
+      expect(shutdown).toHaveBeenCalledOnce()
+      release(); await warming
+      expect((await turn).error).toContain('closed')
+      expect(sent.some(one => one.method === 'turn/start')).toBe(false)
+    } finally { release(); closeCodexSessions() }
+  })
+
+  it('waits for the thread to start rather than sending its turn to a thread that has none', async () => {
+    const sent: { method: string; params: Data }[] = []
+    let processes = 0, releaseStart: () => void = () => undefined
+    const started = new Promise<void>(resolve => { releaseStart = resolve })
+    const rpc: CodexRpcFactory = (options, notify, request, ended) => {
+      processes++
+      const inner = fakeServer(async (server) => {
+        server.notify(...completed({ id: 'm1', type: 'agentMessage', text: 'warm answer' }))
+        server.notify('turn/completed', { turn: { status: 'completed' } })
+      }, sent)(options, notify, request, ended)
+      return { ...inner, send: async (method, params) => { if (method !== 'thread/start') return inner.send(method, params); sent.push({ method, params }); await started; return { thread: { id: 't1' } } } }
+    }
+    const hands = native(async () => ({ behavior: 'allow' }))
+    hands.cwd = 'C:/work/spare-2'
+    try {
+      const warming = warmCodexSession(spec(rpc), hands)
+      expect(claimCodexWorkFolder('bot-11', 'C:/work/bot-11')).toBe('C:/work/spare-2')
+      const turn = runCodexNative({ ...job(hands), sessionKey: 'bot-11' }, spec(rpc))
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(sent.map(one => one.method)).toEqual(['thread/start'])
+      releaseStart()
+      await warming
+      const result = await turn
+      expect(result.answer).toBe('warm answer')
+      expect(processes).toBe(1)
+      expect(sent.map(one => one.method)).toEqual(['thread/start', 'turn/start'])
     } finally { closeCodexSessions() }
   })
 })

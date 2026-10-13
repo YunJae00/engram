@@ -5,7 +5,7 @@ import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { startToolServer, type ToolServer } from './codex-tool-server.js'
-import { appServer, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, runCodexNative } from './codex-native.js'
+import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareReady, runCodexNative, warmCodexSession } from './codex-native.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow. Every turn runs
@@ -192,6 +192,27 @@ export class CodexEngine implements CloudEngine {
     }
   }
 
+  // A session opened ahead for the next comet, with a tool server of its own.
+  async warm(job: ToolSessionJob): Promise<void> {
+    if (job.signal?.aborted) return
+    const binary = codexBinary()
+    if (!binary || !job.native || codexSpareReady()) return
+    const server = spareServer?.server ?? await startToolServer(job.tools, job.signal)
+    server.setTools(job.tools)
+    spareServer = { server, cwd: job.native.cwd }
+    const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
+    const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
+    const catalog = await mcpCatalog(binary, job.native.cwd, env, job.signal ?? new AbortController().signal)
+    const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
+    if (job.signal?.aborted) { await server.close(); if (spareServer?.server === server) spareServer = null; return }
+    await warmCodexSession({
+      rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
+      instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
+    }, job.native)
+  }
+  spareReady(): boolean { return codexSpareReady() }
+  claimWorkFolder(channel: string, fallback: string): string { return claimCodexWorkFolder(channel, fallback) }
+
   // One turn with the comet's tools. The person's other tool servers stay off.
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     if (job.signal?.aborted) return { answer: '', error: 'canceled' }
@@ -204,7 +225,7 @@ export class CodexEngine implements CloudEngine {
     // A comet's tool server stays up with its session, so the next turn needs no new one.
     const pooled = job.native && job.sessionKey ? `${this.accountProfile}:${job.sessionKey}` : undefined
     try {
-      server = pooled ? await toolServerFor(pooled, job.tools) : await startToolServer(job.tools, abort.signal)
+      server = pooled ? await toolServerFor(pooled, job.tools, job.native?.cwd) : await startToolServer(job.tools, abort.signal)
       const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
       const catalog = { out: await mcpCatalog(binary, job.native?.cwd ?? job.workdir, env, abort.signal) }
       const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
@@ -265,10 +286,14 @@ export function forgetCodexCatalog(): void { catalogs.clear() }
 // One loopback tool server per comet session, answering with the tools of the turn under way.
 const SERVER_IDLE_MS = 60 * 60_000
 const toolServers = new Map<string, { server: ToolServer; usedAt: number }>()
-async function toolServerFor(key: string, tools: ToolSessionJob['tools']): Promise<ToolServer> {
+// The tool server a spare session was opened with; the comet that takes the spare's folder takes it too.
+let spareServer: { server: ToolServer; cwd: string } | null = null
+async function toolServerFor(key: string, tools: ToolSessionJob['tools'], cwd?: string): Promise<ToolServer> {
   const held = toolServers.get(key)
   if (held) { held.server.setTools(tools); held.usedAt = Date.now(); return held.server }
-  const server = await startToolServer(tools)
+  const server = spareServer && spareServer.cwd === cwd ? spareServer.server : await startToolServer(tools)
+  if (spareServer?.server === server) spareServer = null
+  server.setTools(tools)
   toolServers.set(key, { server, usedAt: Date.now() })
   return server
 }
@@ -276,6 +301,8 @@ export function closeCodexSessions(): void {
   closeCodexNativeSessions()
   for (const held of toolServers.values()) void held.server.close()
   toolServers.clear()
+  void spareServer?.server.close()
+  spareServer = null
 }
 export function closeCodexSession(key: string): void {
   closeCodexNativeSession(key)

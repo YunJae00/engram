@@ -43,6 +43,12 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it.each([ClaudeEngine, CodexEngine])('does not prepare a canceled spare (%s)', async Engine => {
+    await new Engine().warm({ workdir: WORKDIR, system: '', prompt: '', tools: [], maxCalls: 1, signal: AbortSignal.abort(), native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'allow' }) } })
+    expect(fixture.binary).not.toHaveBeenCalled()
+    expect(fixture.catalog).not.toHaveBeenCalled()
+  })
+
   it('caches the tool catalogue within one directory, not across project scopes', async () => {
     const engine = new CodexEngine()
     await collect(engine.run({ prompt: 'Read', workdir: WORKDIR }))

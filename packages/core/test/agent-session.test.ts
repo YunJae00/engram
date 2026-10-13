@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { correctableFault, runComet, runToolSession } from '../src/agent-session.js'
+import { sessionShape } from '../src/agent-session-shape.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { MockEngine } from '../src/engine/mock.js'
@@ -506,4 +507,22 @@ describe('bounded verification correction', () => {
     expect(result.incomplete).toContain('does not add up')
     expect(result.answer).toContain('Not verified as complete')
   })
+})
+
+it('opens a session with the rules and tools sessionShape describes, and keeps the skill shortlist in the turn', async () => {
+  let seen: ToolSessionJob | undefined
+  const engine = sessionBrain(async (job) => { seen = job; return { answer: 'ok' } })
+  const tools = [
+    { name: 'open_page', description: 'open', argsSchema: {}, run: async () => 'page' },
+    { name: 'page_steps', description: 'steps', argsSchema: {}, run: async () => 'done' },
+  ]
+  const native = { cwd: 'C:/work/spare-1', readRoots: ['C:/work/spare-1'], mode: 'once' as const, decide: async () => ({ behavior: 'allow' as const }) }
+  await runToolSession({ engine, workdir: WORKDIR, tools }, 'Look it up', { skills: [{ name: 'timesheet', description: 'weekly hours' }], native })
+  const shape = sessionShape({ engine, tools }, { native })
+  expect(seen!.system).toBe(shape.system)
+  expect(seen!.tools.map(tool => tool.name)).toEqual(shape.tools.map(tool => tool.name))
+  expect(shape.tools.map(tool => tool.name)).toContain('work_capabilities')
+  expect(seen!.system).toContain('C:/work/spare-1')
+  expect(seen!.system).not.toContain('timesheet')
+  expect(seen!.prompt).toContain('- timesheet: weekly hours')
 })

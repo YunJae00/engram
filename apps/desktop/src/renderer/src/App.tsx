@@ -112,8 +112,13 @@ function Shell() {
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
+  const [interviewOpen, setInterviewOpen] = useState(false)
+  // The first-run interview comes first; the tour waits until it has closed,
+  // so the shell does not show one and then swap it for the other.
   useEffect(() => {
-    if (!vaultReady || localStorage.getItem(TOUR_DONE_KEY)) return
+    let interviewPending = false
+    try { interviewPending = localStorage.getItem(INTERVIEW_PENDING_KEY) === '1' } catch { /* no first-run prompt */ }
+    if (!vaultReady || interviewOpen || interviewPending || localStorage.getItem(TOUR_DONE_KEY)) return
     let cancelled = false
     void api.tourEligible().then((ok) => {
       if (!ok || cancelled) return
@@ -125,9 +130,8 @@ function Shell() {
     return () => {
       cancelled = true
     }
-  }, [vaultReady])
+  }, [vaultReady, interviewOpen])
 
-  const [interviewOpen, setInterviewOpen] = useState(false)
   const interviewReady = enginesDetected && engines.some(engine => engine.installed && engine.loggedIn)
   useEffect(() => {
     let pending = false
