@@ -28,13 +28,39 @@ const STEP_LABEL: Record<string, StringKey> = {
   resume: 'bots.stepResume',
 }
 
+// The runtime's own tools and the file tools name a path or a pattern; the
+// person reads what is being done with it.
+const WORK: Record<string, string | ((arg: string) => string)> = {
+  ppt_build: 'Creating a presentation in PowerPoint', ppt_read: 'Checking the presentation', ppt_edit: 'Updating the open presentation',
+  word_write: 'Creating a document in Word', word_read: 'Checking the document', word_edit: 'Updating the open document',
+  excel_write: 'Updating the workbook in Excel', excel_read: 'Checking the workbook', excel_workbooks: 'Finding the workbook',
+  Read: arg => `Reading ${fileName(arg)}`, NotebookRead: arg => `Reading ${fileName(arg)}`,
+  Glob: arg => `Looking for files (${arg})`, Grep: arg => `Searching files for “${arg}”`, LS: 'Listing a folder',
+  Write: arg => `Writing ${fileName(arg)}`, Edit: arg => `Editing ${fileName(arg)}`, MultiEdit: arg => `Editing ${fileName(arg)}`, NotebookEdit: arg => `Editing ${fileName(arg)}`,
+  Bash: arg => `Running a command (${arg.slice(0, 60)})`, PowerShell: arg => `Running a command (${arg.slice(0, 60)})`, Shell: arg => `Running a command (${arg.slice(0, 60)})`,
+  file_read: arg => `Reading ${fileName(arg)}`, file_read_workbook: arg => `Reading the workbook ${fileName(arg)}`, file_read_package: arg => `Reading the document ${fileName(arg)}`,
+  file_create_copy: arg => `Saving ${fileName(arg)}`, file_create_workbook: arg => `Saving ${fileName(arg)}`, file_edit_package: arg => `Updating ${fileName(arg)}`,
+  find_files: arg => `Finding files named like “${arg}”`, open_skill: 'Reading a how-to it was shown',
+  work_capabilities: 'Checking what it can use', task_plan: 'Planning the steps', report_result_check: 'Reporting the check',
+  artifact_read: arg => `Reading ${fileName(arg)}`,
+}
+// Lines the host writes about the turn rather than a tool call.
+const SPOKEN = /^(note|verification|switch|aside|resume): /
+const fileName = (arg: string): string => {
+  if (arg.trim() === 'saved file') return 'a saved file'
+  return arg.trim().split(/[\\/]/).pop() || 'a file'
+}
+
 export function stepLabel(t: Translate, line: string): string {
   if (isSaidLine(line)) return line.slice(SAID.length)
-  const match = /^([a-z_]+): ([^]*)$/.exec(line)
-  const work: Record<string, string> = { ppt_build: 'Creating a presentation in PowerPoint', ppt_read: 'Checking the presentation', ppt_edit: 'Updating the open presentation', word_write: 'Creating a document in Word', word_read: 'Checking the document', word_edit: 'Updating the open document', excel_write: 'Updating the workbook in Excel', excel_read: 'Checking the workbook', excel_workbooks: 'Finding the workbook' }
-  if (match && work[match[1]!]) return work[match[1]!]!
-  const key = match ? STEP_LABEL[match[1]!] : undefined
-  return key && match ? t(key, { arg: match[2]! }) : line
+  const match = /^([A-Za-z_]+): ([^]*)$/.exec(line)
+  if (!match) return line
+  const work = WORK[match[1]!]
+  if (work) return typeof work === 'function' ? work(match[2]!) : work
+  const key = STEP_LABEL[match[1]!]
+  if (key) return t(key, { arg: match[2]! })
+  if (SPOKEN.test(line)) return match[2]!.trim() || line
+  return line
 }
 
 // Words the comet wrote between actions, kept in the work as what it said.
@@ -63,7 +89,9 @@ export function workLabel(line: string): string {
   if (/^(excel_|word_|ppt_|.*live_document)/.test(tool)) return 'Working with documents'
   if (/^(search_memory|read_note|find_procedure|open_skill)/.test(tool)) return 'Using your memory'
   if (/^(task_plan|work_capabilities)$/.test(tool)) return 'Planning the work'
-  if (/file|artifact/.test(tool)) return 'Working with files'
+  if (/^(Bash|PowerShell|Shell)$/.test(tool)) return 'Running commands'
+  if (/^(report_result_check|verification|note)$/.test(tool)) return 'Checking the result'
+  if (/^(Read|Glob|Grep|LS|Write|Edit|MultiEdit|NotebookRead|NotebookEdit)$/.test(tool) || /file|artifact/.test(tool)) return 'Working with files'
   return tool.includes(' ') || !/^[a-z_]+$/.test(tool) ? line : tool.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase())
 }
 

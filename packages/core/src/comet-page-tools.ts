@@ -46,6 +46,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       text: (still || (findOf(args) ? `${what}: action completed; the text search below is not an action result.\n` : '')) + pageReport(page, 1, findOf(args)),
       ...(!still && !findOf(args) ? { page } : {}),
       ...(page.text.trim() && move.changed !== false && !page.faults?.length && !findOf(args) ? { observedAfterAction: true } : {}),
+      ...(move.committed ? { committed: true } : {}),
     }
   }
   const tools: (Omit<AgentTool, 'run'> & { run(args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> })[] = []
@@ -167,36 +168,39 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     tools.push({
       name: 'page_steps',
       description:
-        `do several known moves on the open page in order, in one call - fill a form's fields, pick its options, press its tabs or buttons - instead of one call per field. Controls are named by their words or their number from the latest page report; the page is read once at the end, so a move that needs what an earlier one reveals (a list that only opens after a press) goes in a new call. Stops at the first move that fails, changes nothing or waits for approval - args: {"steps": [{"do": "type", "target": "#12", "text": "4"}, {"do": "choose", "target": "Activity", "option": "ChatX"}, {"do": "press", "target": "Add"}, {"do": "key", "key": "Tab"}]}`,
-      argsSchema: { type: 'object', properties: { steps: { type: 'array', maxItems: PAGE_STEPS_MAX, items: { type: 'object', properties: { do: { type: 'string', enum: ['type', 'choose', 'press', 'key'] }, target: { type: 'string' }, text: { type: 'string' }, option: { type: 'string' }, key: { type: 'string' } }, required: ['do'] } } }, required: ['steps'] },
+        `do several known moves on the open page in order, in one call - open a menu, press a tab, set filters, fill a form's fields, scroll, press a button - instead of one call per move. Controls are named by their words or their number from the latest page report; the page is read once at the end, so a move that needs what an earlier one reveals (a list that only opens after a press) goes in a new call. Stops at the first move that fails, changes nothing or waits for approval - args: {"steps": [{"do": "press", "target": "Time Report"}, {"do": "choose", "target": "Project", "option": "ChatX"}, {"do": "type", "target": "#12", "text": "4"}, {"do": "scroll", "to": "down"}, {"do": "press", "target": "Search"}, {"do": "key", "key": "Tab"}]}`,
+      argsSchema: { type: 'object', properties: { steps: { type: 'array', maxItems: PAGE_STEPS_MAX, items: { type: 'object', properties: { do: { type: 'string', enum: ['type', 'choose', 'press', 'key', 'scroll'] }, target: { type: 'string' }, text: { type: 'string' }, option: { type: 'string' }, key: { type: 'string' }, to: { type: 'string' } }, required: ['do'] } } }, required: ['steps'] },
       async run(args, context) {
         const steps = args['steps']
         if (!Array.isArray(steps) || !steps.length || steps.length > PAGE_STEPS_MAX) return `that did not work: page_steps needs a list of moves (at most ${PAGE_STEPS_MAX}); no moves were made`
         const invalid = steps.findIndex(step => {
           if (!step || typeof step !== 'object' || Array.isArray(step)) return true
           const target = str(step, 'target'), kind = str(step, 'do')
-          return !(kind === 'type' && target && str(step, 'text') || kind === 'choose' && target && str(step, 'option') || kind === 'press' && target || kind === 'key' && str(step, 'key'))
+          return !(kind === 'type' && target && str(step, 'text') || kind === 'choose' && target && str(step, 'option') || kind === 'press' && target || kind === 'key' && str(step, 'key') || kind === 'scroll' && str(step, 'to') && courier.scroll)
         })
-        if (invalid >= 0) return `that did not work: move ${invalid + 1} is incomplete; no moves were made. type needs target and text, choose needs target and option, press needs target, key needs key`
+        if (invalid >= 0) return `that did not work: move ${invalid + 1} is incomplete; no moves were made. type needs target and text, choose needs target and option, press needs target, key needs key, scroll needs to`
         const done: string[] = []
-        let allMoved = true
+        let allMoved = true, committed = false
         let last: { move: PageMove; what: string } | undefined
         for (const [index, step] of steps.entries()) {
           context.signal?.throwIfAborted()
           const target = str(step, 'target'), kind = str(step, 'do')
-          const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : `press ${str(step, 'key')}`
+          const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : kind === 'scroll' ? `scroll ${str(step, 'to')}` : `press ${str(step, 'key')}`
           const move = kind === 'type' && target && typeof step['text'] === 'string' && step['text'] ? await typeText(target, step['text'], false, context.signal)
             : kind === 'choose' && target && str(step, 'option') ? await choose(target, str(step, 'option'), context.signal)
               : kind === 'press' && target ? await press(target, context.signal)
                 : kind === 'key' && str(step, 'key') ? await pressKey(str(step, 'key'), context.signal)
-                  : { ok: false, error: `move ${index + 1} is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key` }
+                  : kind === 'scroll' && str(step, 'to') && courier.scroll ? await courier.scroll(str(step, 'to'), context.signal)
+                    : { ok: false, error: `move ${index + 1} is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key, scroll needs to` }
           last = { move, what }
+          committed ||= move.committed === true
           allMoved &&= move.changed !== false
           const stuck = !move.ok || move.later || move.theirs || move.refused !== undefined || (kind === 'press' && move.changed === false)
           if (stuck) {
             const outcome = await after(move, what, args, context.signal)
             const text = typeof outcome === 'string' ? outcome : outcome.text
-            return `that did not work: Stopped at move ${index + 1} of ${steps.length} (${what}); the moves after it were not made.\n${done.length ? `Done in order: ${done.join('; ')}.\n` : ''}${text}`
+            const stopped = `that did not work: Stopped at move ${index + 1} of ${steps.length} (${what}); the moves after it were not made.\n${done.length ? `Done in order: ${done.join('; ')}.\n` : ''}${text}`
+            return committed ? { text: stopped, committed: true } : stopped
           }
           done.push(what)
         }
@@ -205,6 +209,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         return {
           text: `Done in order: ${done.join('; ')}.\n${typeof outcome === 'string' ? outcome : outcome.text}`,
           ...(allMoved && typeof outcome !== 'string' && outcome.observedAfterAction === true ? { observedAfterAction: true } : {}),
+          ...(committed ? { committed: true } : {}),
         }
       },
     })
@@ -233,6 +238,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     run: async (args, context) => {
       const result = await tool.run(args, context)
       if (typeof result !== 'string' && result.observedAfterAction === true) context.onObservedAfterAction?.()
+      if (typeof result !== 'string' && result.committed === true) context.onCommitted?.()
       return typeof result === 'string' ? result : result.text
     },
     runRich: tool.runRich ?? (async (args, context) => {

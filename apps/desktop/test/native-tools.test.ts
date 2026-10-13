@@ -4,7 +4,8 @@ import { join, resolve } from 'node:path'
 import { vaultPaths } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: (name: string) => join('C:/home', name) } }))
-import { cometNativeTools, mentionedOutputs, nativeDecision, nativeSummary, type NativePolicy } from '../src/main/native-tools.js'
+import { cometNativeTools, mentionedOutputs, nativeDecision, nativeSummary, rememberWorkFolder, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
+import { existsSync } from 'node:fs'
 
 let root: string, cwd: string, documents: string, cache: string, privateDir: string
 const policy = (ask?: NativePolicy['ask']): NativePolicy => ({ cwd, roots: [cwd, join(cache, 'artifacts'), documents], cacheDir: cache, privateDir, commands: { allowed: false }, ...(ask ? { ask } : {}) })
@@ -171,5 +172,30 @@ describe('outputs left in the task folder', () => {
     const found = (await mentionedOutputs(cwd, answer, since)).map(path => path.slice(cwd.length + 1).replace(/\\/g, '/')).sort()
     expect(found).toEqual(['out/summary.md', 'report(2026.10.11.).xlsx'])
     expect(await mentionedOutputs(join(root, 'missing'), answer, since)).toEqual([])
+  })
+})
+
+describe('where a comet works', () => {
+  it('preserves concurrent assignments and refuses folders outside its workspace', async () => {
+    const paths = vaultPaths(join(root, 'assignments'))
+    await Promise.all(['a', 'b'].map(id => rememberWorkFolder(paths, `bot-${id}`, join(paths.cache, 'work', `spare-${id}`))))
+    expect(await workFolderFor(paths, 'bot-a')).toBe(join(paths.cache, 'work', 'spare-a'))
+    expect(await workFolderFor(paths, 'bot-b')).toBe(join(paths.cache, 'work', 'spare-b'))
+    await expect(rememberWorkFolder(paths, 'bot-c', join(paths.cache, 'work', 'spare-a'))).rejects.toThrow('another comet')
+    await expect(rememberWorkFolder(paths, 'bot-c', join(root, 'outside'))).rejects.toThrow('inside this workspace')
+    await writeFile(join(paths.cache, 'work', 'claims.json'), JSON.stringify({ 'bot-c': join(root, 'outside') }))
+    await expect(workFolderFor(paths, 'bot-c')).rejects.toThrow('inside this workspace')
+    await expect(cometNativeTools({ paths, channel: 'bot-c', cwd: join(root, 'outside'), onStep: vi.fn(), audit: vi.fn() })).rejects.toThrow('inside this workspace')
+  })
+  it('uses its own folder unless one was assigned to it, which it keeps across restarts', async () => {
+    const paths = vaultPaths(join(root, 'one'))
+    expect(await workFolderFor(paths, 'bot-1')).toBe(join(paths.cache, 'work', 'bot-1'))
+    await rememberWorkFolder(paths, 'bot-1', join(paths.cache, 'work', 'bot-1'))
+    expect(existsSync(join(paths.cache, 'work', 'claims.json'))).toBe(false)
+    await rememberWorkFolder(paths, 'bot-1', join(paths.cache, 'work', 'spare-x'))
+    expect(await workFolderFor(paths, 'bot-1')).toBe(join(paths.cache, 'work', 'spare-x'))
+    expect(await workFolderFor(paths, 'bot-2')).toBe(join(paths.cache, 'work', 'bot-2'))
+    const tools = await cometNativeTools({ paths, channel: 'bot-1', onStep: vi.fn(), audit: vi.fn() })
+    expect(tools.cwd).toBe(join(paths.cache, 'work', 'spare-x'))
   })
 })

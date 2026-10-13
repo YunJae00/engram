@@ -4,8 +4,8 @@ import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
-import { startToolServer } from './codex-tool-server.js'
-import { appServer, runCodexNative } from './codex-native.js'
+import { startToolServer, type ToolServer } from './codex-tool-server.js'
+import { appServer, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, runCodexNative } from './codex-native.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
 // person signs in with their own plan in the vendor's flow. Every turn runs
@@ -155,8 +155,7 @@ export class CodexEngine implements CloudEngine {
     try {
       const env = withHelpersOnPath(binary, this.env)
       // Match the turn's directory so project-local servers are disabled too.
-      const catalog = await runText(binary, ['-C', job.workdir, 'mcp', 'list', '--json'], Math.min(budget, 60_000), env, { signal: abort.signal })
-      if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+      const catalog = { out: await mcpCatalog(binary, job.workdir, env, abort.signal) }
       const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF]
       let text = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides },
@@ -201,16 +200,17 @@ export class CodexEngine implements CloudEngine {
     const abort = new AbortController()
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
-    let server: Awaited<ReturnType<typeof startToolServer>> | undefined
+    let server: ToolServer | undefined
+    // A comet's tool server stays up with its session, so the next turn needs no new one.
+    const pooled = job.native && job.sessionKey ? `${this.accountProfile}:${job.sessionKey}` : undefined
     try {
-      server = await startToolServer(job.tools, abort.signal)
+      server = pooled ? await toolServerFor(pooled, job.tools) : await startToolServer(job.tools, abort.signal)
       const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
-      const catalog = await runText(binary, ['-C', job.native?.cwd ?? job.workdir, 'mcp', 'list', '--json'], 60_000, env, { signal: abort.signal })
-      if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+      const catalog = { out: await mcpCatalog(binary, job.native?.cwd ?? job.workdir, env, abort.signal) }
       const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
       const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
       if (job.native) {
-        const result = await runCodexNative({ ...job, native: job.native, signal: abort.signal }, {
+        const result = await runCodexNative({ ...job, sessionKey: pooled, native: job.native, signal: abort.signal }, {
           rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
           instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
         })
@@ -241,7 +241,46 @@ export class CodexEngine implements CloudEngine {
       return { answer: '', error: err instanceof Error ? err.message : String(err) }
     } finally {
       job.signal?.removeEventListener('abort', onAbort)
-      await server?.close()
+      if (!pooled) await server?.close()
     }
   }
 }
+
+// The runtime's tool catalog changes only when the person edits their
+// configuration; read it once in a while, not before every turn.
+const CATALOG_MS = 10 * 60_000
+const catalogs = new Map<string, { out: string; at: number }>()
+async function mcpCatalog(binary: string, cwd: string, env: Record<string, string>, signal: AbortSignal): Promise<string> {
+  const key = JSON.stringify([binary, cwd, env['CODEX_HOME'] ?? env['HOME'] ?? env['USERPROFILE'] ?? ''])
+  const held = catalogs.get(key)
+  if (held && Date.now() - held.at < CATALOG_MS) return held.out
+  const catalog = await runText(binary, ['-C', cwd, 'mcp', 'list', '--json'], 60_000, env, { signal })
+  if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+  for (const [stored, value] of catalogs) if (Date.now() - value.at >= CATALOG_MS) catalogs.delete(stored)
+  catalogs.set(key, { out: catalog.out, at: Date.now() })
+  return catalog.out
+}
+export function forgetCodexCatalog(): void { catalogs.clear() }
+
+// One loopback tool server per comet session, answering with the tools of the turn under way.
+const SERVER_IDLE_MS = 60 * 60_000
+const toolServers = new Map<string, { server: ToolServer; usedAt: number }>()
+async function toolServerFor(key: string, tools: ToolSessionJob['tools']): Promise<ToolServer> {
+  const held = toolServers.get(key)
+  if (held) { held.server.setTools(tools); held.usedAt = Date.now(); return held.server }
+  const server = await startToolServer(tools)
+  toolServers.set(key, { server, usedAt: Date.now() })
+  return server
+}
+export function closeCodexSessions(): void {
+  closeCodexNativeSessions()
+  for (const held of toolServers.values()) void held.server.close()
+  toolServers.clear()
+}
+export function closeCodexSession(key: string): void {
+  closeCodexNativeSession(key)
+  for (const [stored, held] of toolServers) if (stored === key || stored.endsWith(`:${key}`)) { toolServers.delete(stored); void held.server.close() }
+}
+setInterval(() => {
+  for (const [key, held] of toolServers) if (Date.now() - held.usedAt > SERVER_IDLE_MS) { toolServers.delete(key); void held.server.close() }
+}, 60_000).unref()

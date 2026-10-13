@@ -1,3 +1,4 @@
+import type { TurnEvidence } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,7 +17,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const root = await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private') } as unknown as VaultPaths
-  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = []
+  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], evidences: TurnEvidence[] = []
   let last: TurnOutcome | undefined
   const aborted: { resolve?: () => void } = {}
   const runner: ReturnType<typeof taskRunner> = taskRunner({
@@ -37,7 +38,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     remember: async (text) => { remembered.push(text) },
     notify: (task) => notified.push(`${task.state}: ${task.goal}`),
     learn: (question, answer) => learned.push([question, answer]),
-    deliver: async (channel, text) => { delivered.push(text); events.push({ type: 'chat:done', channel, text }) },
+    deliver: async (channel, text, _since, _trail, evidence) => { delivered.push(text); if (evidence) evidences.push(evidence); events.push({ type: 'chat:done', channel, text }) },
   })
   handlers.clear()
   runner.register()
@@ -48,8 +49,9 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     expect(task.state).toBe(state)
     return task
   }, { timeout: 5000 })
-  return { paths, runner, sent, events, remembered, notified, learned, delivered, aborted, call, chat, settle }
+  return { paths, runner, sent, events, remembered, notified, learned, delivered, evidences, aborted, call, chat, settle }
 }
 
-export const pressed = (target: string) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"` })
+// A press that commits something, as an approved Save or Submit does; a plain navigation press carries no `committed`.
+export const pressed = (target: string, committed = true) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"`, ...(committed ? { committed: true } : {}) })
 export const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })

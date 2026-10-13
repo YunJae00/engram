@@ -1,5 +1,5 @@
 import { isAbsolute, relative, sep } from 'node:path'
-import type { AgentTool, TurnStep } from 'core'
+import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
 type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: string[] }
 type Report = { checks: (Finding & { requirement: string })[]; grounding: Finding }
@@ -214,4 +214,41 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
     }
   }
   return { accepted: issues.length === 0, issues: [...new Set(issues)] }
+}
+
+// Saved copies carry an id before their name; the person knows the name.
+const ownName = (path: string): string => (path.split(/[\\/]/).at(-1) ?? path).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
+
+// The last report the model made this turn, with what it read as sources
+// (the attachments, and originals read this turn; never its own outputs), in
+// the shape the answer carries to the person. Absent when no report was made.
+export function checkReport(steps: TurnStep[], options: { generatedDirectory?: string; attachments?: string[] } = {}): Omit<TurnEvidence, 'record'> | undefined {
+  const last = steps.filter(step => step.tool === TOOL && !step.seeded).at(-1)
+  const value = last && receipt(last)
+  if (!value || !Object.hasOwn(value, 'resultCheck')) return undefined
+  let checked: Report
+  try { checked = report(value.resultCheck) } catch { return undefined }
+  const generated = (path: string): boolean => {
+    if (!options.generatedDirectory) return false
+    const location = relative(options.generatedDirectory, path)
+    return location !== '..' && !location.startsWith(`..${sep}`) && !isAbsolute(location)
+  }
+  const sources = new Set<string>((options.attachments ?? []).map(ownName))
+  for (const step of steps) {
+    if (step.seeded) continue
+    if (/^(file_read|file_read_workbook|file_read_package)$/.test(step.tool)) {
+      const path = receipt(step)?.path
+      if (typeof path === 'string' && !generated(path)) sources.add(ownName(path))
+    }
+    if (/^(open_page|read_pages)$/.test(step.tool)) {
+      for (const url of [step.args['url'], ...(Array.isArray(step.args['pages']) ? step.args['pages'] : [])]) {
+        try { if (typeof url === 'string') sources.add(new URL(url).hostname) } catch { continue }
+      }
+    }
+  }
+  return {
+    checks: checked.checks.map(({ requirement, status, basis }) => ({ requirement, status, basis })),
+    grounding: { status: checked.grounding.status, basis: checked.grounding.basis },
+    sources: [...sources],
+  }
 }

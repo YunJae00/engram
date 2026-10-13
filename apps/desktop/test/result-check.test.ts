@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnStep } from 'core'
-import { checkResult as verifyResult, latestResultOutputs, resultCheckTool } from '../src/main/result-check.js'
+import { checkReport, checkResult as verifyResult, latestResultOutputs, resultCheckTool } from '../src/main/result-check.js'
 
 const source = 'C:/fixtures/source.md', path = 'C:/artifacts/proposal.md', hash = 'a'.repeat(64)
 const outputs = [{ name: 'proposal.md', path }]
@@ -196,5 +196,21 @@ describe('final output coverage', () => {
     if (problem === 'total') { value.characters = 7; value.content = 'defg' }
     second.observation = JSON.stringify(value)
     expect(checkResult([first, second], outputs, [source]).accepted).toBe(false)
+  })
+})
+
+describe('the check, read back for the person', () => {
+  it('carries each verdict with its basis and what was read, from the last valid report only', async () => {
+    const page: TurnStep = { tool: 'open_page', args: { url: 'https://tms.example.com/report?week=41' }, observation: 'page' }
+    const first = await recorded({ checks: [{ requirement: 'Old', status: 'fail', basis: 'stale' }], grounding: finding() })
+    const steps = [read(source), page, first, create(), read(), await recorded()]
+    expect(checkReport(steps, { generatedDirectory: 'C:/artifacts', attachments: ['C:/vault/.engram/chat-attachments/0d0d12a7-1b2c-4d5e-8f90-123456789abc-sales.csv'] })).toEqual({
+      checks: [{ requirement: 'Complete proposal', status: 'pass', basis: 'Read the final result against the requested deliverable.' }],
+      grounding: { status: 'pass', basis: 'The source supports the facts; unavailable pricing is explicitly an estimate, not a confirmed rate.' },
+      sources: ['sales.csv', 'source.md', 'tms.example.com'],
+    })
+    expect(checkReport(steps)!.sources).toEqual(['source.md', 'tms.example.com', 'proposal.md'])
+    expect(checkReport([read()])).toBeUndefined()
+    expect(checkReport([{ tool: 'report_result_check', args: {}, observation: '{"resultCheck":{"checks":[]}}' }])).toBeUndefined()
   })
 })

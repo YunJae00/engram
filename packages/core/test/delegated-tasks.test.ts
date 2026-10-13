@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { continuationPrompt, createTask, listTasks, logTask, tasksToResume, updateTask } from '../src/delegated-tasks.js'
+import { cometRecord, continuationPrompt, createTask, listTasks, logTask, tasksToResume, updateTask } from '../src/delegated-tasks.js'
 import type { VaultPaths } from '../src/vault.js'
 
 async function tempPaths(): Promise<VaultPaths> {
@@ -44,4 +44,17 @@ it('continues with the goal verbatim and says why', async () => {
   expect(continuationPrompt({ ...task, result: '[Report](engram-artifact:report.md)' }, 'verify')).toContain('Check this result and correct only what is wrong; do not redo the task:\n[Report](engram-artifact:report.md)')
   expect(continuationPrompt({ ...task, result: 'draft' }, 'limit')).not.toContain('draft')
   expect(verify).toContain('do not keep adding exploratory checks')
+})
+
+it('counts how often a comet\'s checked work was confirmed, leaving unchecked tasks out', async () => {
+  const paths = await tempPaths()
+  const mine = await createTask(paths, 'Report', 'bot-1')
+  const unconfirmed = await createTask(paths, 'Sheet', 'bot-1')
+  await createTask(paths, 'Question', 'bot-1')
+  const theirs = await createTask(paths, 'Other', 'bot-2')
+  await updateTask(paths, mine.id, task => { task.verified = true })
+  await updateTask(paths, unconfirmed.id, task => { task.verificationIssue = 'The check ran out of time.' })
+  await updateTask(paths, theirs.id, task => { task.verified = true })
+  expect(cometRecord(await listTasks(paths), 'bot-1')).toEqual({ confirmed: 1, checked: 2 })
+  expect(cometRecord(await listTasks(paths), 'bot-3')).toEqual({ confirmed: 0, checked: 0 })
 })

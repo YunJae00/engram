@@ -175,6 +175,20 @@ describe('a press that would commit is put to the person', () => {
 })
 
 describe('page_steps', () => {
+  it('preserves a completed commit when a later move fails', async () => {
+    const press = vi.fn(async (target: string) => target === 'Save' ? { ok: true, committed: true } : { ok: false, error: 'Missing control' })
+    const tool = pageTools({}, { ...courier([]), press }).find(one => one.name === 'page_steps')!
+    const args = { steps: [{ do: 'press', target: 'Save' }, { do: 'press', target: 'Next' }, { do: 'press', target: 'Later' }] }
+    const outcome = await tool.runRich!(args, { task: 'Save the report' })
+    expect(outcome.committed).toBe(true)
+    expect(outcome.observedAfterAction).toBeUndefined()
+    expect(outcome.text).toContain('Stopped at move 2')
+    expect(press.mock.calls.map(([target]) => target)).toEqual(['Save', 'Next'])
+    const committed = vi.fn()
+    await tool.run(args, { task: 'Save the report', onCommitted: committed })
+    expect(committed).toHaveBeenCalledOnce()
+  })
+
   it.each(['complete', 'partial', 'no-op'])('carries readback evidence only for a complete batch (%s)', async mode => {
     const base = courier([])
     const tool = pageTools({}, { ...base, typeText: async (...args) => mode === 'no-op' ? { ok: true, changed: false } : base.typeText!(...args) }).find(one => one.name === 'page_steps')!
@@ -216,5 +230,24 @@ describe('page_steps', () => {
     expect(stopped).toContain('Stopped at move 2 of 3 (press "Submit")')
     expect(stopped).toContain('was not pressed')
     expect(await steps.run({ steps: [{ do: 'choose', target: 'Activity' }] }, { task: '', read: '' })).toContain('move 1 is incomplete')
+  })
+})
+
+describe('page_steps as one trip through a page', () => {
+  it('scrolls as a move, and says the batch committed when one press did', async () => {
+    const log: string[] = []
+    const base = courier(log)
+    const tool = pageTools({}, {
+      ...base,
+      scroll: async (to) => { log.push(`scroll ${to}`); return { ok: true, changed: true } },
+      press: async (target) => { log.push(`press ${target}`); return { ok: true, changed: true, ...(target === 'Save' ? { committed: true } : {}) } },
+    }).find(one => one.name === 'page_steps')!
+    const look = await tool.runRich!({ steps: [{ do: 'press', target: 'Time Report' }, { do: 'scroll', to: 'down' }, { do: 'press', target: 'Next' }] }, { task: 'Read last week' })
+    expect(log).toEqual(['press Time Report', 'scroll down', 'press Next'])
+    expect(look.text).toContain('Done in order: press "Time Report"; scroll down; press "Next".')
+    expect(look.committed).toBeUndefined()
+    const saved = await tool.runRich!({ steps: [{ do: 'type', target: 'Hours', text: '4' }, { do: 'press', target: 'Save' }] }, { task: 'Log hours' })
+    expect(saved.committed).toBe(true)
+    expect(await tool.run({ steps: [{ do: 'scroll' }] }, { task: '' })).toContain('scroll needs to')
   })
 })

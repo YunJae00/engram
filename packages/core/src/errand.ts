@@ -76,6 +76,8 @@ export interface PageMove {
   theirs?: boolean
   // Left for the person's approval in a delegated task; the work goes on.
   later?: boolean
+  // The press was one that commits something, and the person allowed it.
+  committed?: boolean
 }
 
 // Injected by the host (the desktop drives a real browser); core stays pure

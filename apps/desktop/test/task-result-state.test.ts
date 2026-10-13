@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { AgentLoopResult, TurnStep } from 'core'
 import { checkResult, resultCheckTool } from '../src/main/result-check.js'
-import { canLearnTurn, freshResultReadback } from '../src/main/task-result-state.js'
+import { canLearnTurn, freshResultReadback, needsResultCheck } from '../src/main/task-result-state.js'
 import { done, pressed, readback, setup } from './task-runner-fixture.js'
 
 const read: TurnStep = { tool: 'read_open_page', args: {}, observation: 'Current saved state' }
@@ -57,4 +57,16 @@ it('still records verified task memory after the runner confirms completion', as
 it.each<Partial<AgentLoopResult>>([{ asked: true }, { stopped: 'calls' }, { pending: 'run_procedure' }, { incomplete: 'More work remains' }])('does not learn an unfinished turn %j', extra => {
   expect(canLearnTurn(result([read], extra), false)).toBe(false)
   expect(canLearnTurn(result([read], extra), true, { accepted: true })).toBe(false)
+})
+
+it('checks a result only when something was saved, committed or changed, not after reading a site', () => {
+  const look = [{ tool: 'open_page', args: { url: 'https://tms.example' }, observation: 'opened' }, pressed('Time Report', false), { tool: 'choose', args: { target: 'Project', option: 'ChatX' }, observation: 'chosen' }, read]
+  expect(needsResultCheck('Last week: 58 hours.', look)).toBe(false)
+  expect(needsResultCheck('Last week: 58 hours.', [...look, pressed('Save')])).toBe(true)
+  expect(needsResultCheck('Last week: 58 hours.', [...look, { tool: 'page_steps', args: {}, observation: 'Done in order: press "Save".', committed: true }])).toBe(true)
+  expect(needsResultCheck('Partially saved', [{ tool: 'page_steps', args: {}, observation: 'that did not work: Save succeeded, Next failed', committed: true }])).toBe(true)
+  expect(needsResultCheck('Last week: 58 hours.', [...look, { tool: 'page_steps', args: {}, observation: 'Done in order: press "Next".' }])).toBe(false)
+  expect(needsResultCheck('Saved [Report](engram-artifact:report.md)', look)).toBe(true)
+  expect(needsResultCheck('Done', [{ tool: 'excel_write', args: {}, observation: 'written' }])).toBe(true)
+  expect(needsResultCheck('Done', [{ ...pressed('Save'), observation: 'that did not work: no such control' }])).toBe(false)
 })

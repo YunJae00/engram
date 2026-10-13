@@ -21,7 +21,7 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
   withHelpersOnPath: () => ({ PATH: 'fixture-runtime-path' }),
 }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
-import { CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides } from '../src/main/engine-codex.js'
+import { CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides, forgetCodexCatalog } from '../src/main/engine-codex.js'
 import { ClaudeEngine, fetchClaudeModels, forgetClaudeModels } from '../src/main/engine-claude.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
@@ -32,6 +32,7 @@ async function collect(events: AsyncIterable<EngineEvent>): Promise<EngineEvent[
 }
 
 beforeEach(() => {
+  forgetCodexCatalog()
   vi.clearAllMocks()
   fixture.ready.mockResolvedValue(undefined)
   fixture.binary.mockReturnValue('fixture-codex')
@@ -42,6 +43,14 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('caches the tool catalogue within one directory, not across project scopes', async () => {
+    const engine = new CodexEngine()
+    await collect(engine.run({ prompt: 'Read', workdir: WORKDIR }))
+    await collect(engine.run({ prompt: 'Read again', workdir: WORKDIR }))
+    expect(fixture.catalog).toHaveBeenCalledOnce()
+    await collect(engine.run({ prompt: 'Other project', workdir: 'C:/other' as EngineCwd }))
+    expect(fixture.catalog).toHaveBeenCalledTimes(2)
+  })
   it('does not spend model discovery timeout waiting for the first session', async () => {
     vi.useFakeTimers()
     forgetClaudeModels()

@@ -7,7 +7,7 @@ import type { ToolSessionCall } from 'core'
 // over plain HTTP responses. The runtime's own tools stay off, so every action
 // goes through these tools and their approvals.
 
-export interface ToolServer { url: string; token: string; close(): Promise<void> }
+export interface ToolServer { url: string; token: string; setTools(tools: ToolSessionCall[]): void; close(): Promise<void> }
 
 const MAX_BODY = 4 * 1024 * 1024
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> }
@@ -42,7 +42,7 @@ async function answer(tools: ToolSessionCall[], request: RpcRequest): Promise<un
 export async function startToolServer(tools: ToolSessionCall[], signal?: AbortSignal): Promise<ToolServer> {
   signal?.throwIfAborted()
   const token = randomBytes(32).toString('base64url'), expected = Buffer.from(`Bearer ${token}`)
-  let closed = false
+  let closed = false, current = tools
   const server = createServer((req, res) => {
     req.on('error', () => res.destroy())
     if (closed || signal?.aborted) { res.writeHead(503).end(); return }
@@ -68,7 +68,7 @@ export async function startToolServer(tools: ToolSessionCall[], signal?: AbortSi
         try {
           if (closed) throw new Error('The tool session has ended.')
           signal?.throwIfAborted()
-          return { jsonrpc: '2.0', id: request.id, result: await answer(tools, request) }
+          return { jsonrpc: '2.0', id: request.id, result: await answer(current, request) }
         }
         catch (error) { return { jsonrpc: '2.0', id: request.id, error: { code: (error as { code?: number }).code ?? -32603, message: error instanceof Error ? error.message : String(error) } } }
       }))).filter(Boolean)
@@ -88,6 +88,7 @@ export async function startToolServer(tools: ToolSessionCall[], signal?: AbortSi
   return {
     url: `http://127.0.0.1:${address.port}/mcp`,
     token,
+    setTools: (next) => { current = next },
     close: () => new Promise(resolve => { closed = true; signal?.removeEventListener('abort', onAbort); server.closeAllConnections(); server.close(() => resolve()) }),
   }
 }
