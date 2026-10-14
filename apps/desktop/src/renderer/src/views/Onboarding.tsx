@@ -26,6 +26,7 @@ export function Onboarding() {
   // Nothing new is read unless chosen here; the activity log keeps its current state.
   const [sources, setSources] = useState<LearningChoice>({ workMap: false, workFiles: false, workApps: false, activity: true })
   const [interview, setInterview] = useState(true)
+  const [computerUse, setComputerUse] = useState(false)
   // Which connected AI answers first. Chosen here, never guessed from the order of sign-in.
   const [choice, setChoice] = useState<'claude' | 'codex' | null>(null)
   const [model, setModel] = useState<string | null>(null)
@@ -82,18 +83,18 @@ export function Onboarding() {
         await api.aiSelectionSet('filing', { engine: available.id, model })
       }
       const latest = await api.settingsGet()
-      const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps }
+      const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps, computerUse }
       if ((Object.keys(chosen) as (keyof typeof chosen)[]).some(key => latest[key] !== chosen[key])) await api.settingsSet(chosen)
       if (await api.activityGet() !== sources.activity) await api.activitySet(sources.activity)
       try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
-    catch (cause) { const message = apiErrorText(cause instanceof Error ? cause.message : 'Could not finish setup. Please try again.'); completing.current = false; setFinishing(false); setCheckFailed(/AI|Claude|ChatGPT|connection/i.test(message) ? pick : null); setError(message) }
+    catch (cause) { const message = apiErrorText(cause instanceof Error ? cause.message : 'Could not finish setup. Please try again.'); completing.current = false; setFinishing(false); const aiFailed = /AI|Claude|ChatGPT|connection/i.test(message); setCheckFailed(aiFailed ? pick : null); if (aiFailed) setStep(2); setError(message) }
   }
   const loginAction = (action: Promise<unknown>) => void action.catch(() => setError('Could not update the sign-in window. Please try again.'))
 
   return <div className="onboarding" data-testid="onboarding"><div className="onboard-card">
-    <div className="onboard-progress" aria-label={`Step ${step} of 2`}><strong>Engram</strong><span>{step} / 2</span></div>
+    <div className="onboard-progress" aria-label={`Step ${step} of 3`}><strong>Engram</strong><span>{step} / 3</span></div>
     {step === 1 ? <section data-testid="onboard-step-1">
       <h1>Choose your workspace</h1>
       <div className="onboard-folder">
@@ -102,7 +103,7 @@ export function Onboarding() {
         <button className="secondary" aria-label="Choose workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose…</button>
       </div>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
-    </section> : <section className="onboard-ai" data-testid="onboard-step-2">
+    </section> : step === 2 ? <section className="onboard-ai" data-testid="onboard-step-2">
       <h1>Connect your AI</h1>
       <div className="onboard-ai-content">
       <div className="onboard-providers" aria-busy={loading}>
@@ -120,12 +121,16 @@ export function Onboarding() {
         })}
       </div>
       <fieldset className="onboard-choice" data-testid="onboard-choice"><legend>Use for conversations &amp; Cosmos</legend>{(['claude', 'codex'] as const).map(id => <label key={id}><input type="radio" name="onboard-brain" value={id} data-testid={`onboard-choose-${id}`} checked={pick === id} disabled={finishing || !ready.some(brain => brain.id === id)} onChange={() => { setChoice(id); setModel(null); setCheckFailed(null) }} />{id === 'claude' ? 'Claude' : 'ChatGPT'}</label>)}{pick && <div className="onboard-model"><label htmlFor="onboard-model">Model</label><select id="onboard-model" data-testid="onboard-model" value={model ?? '__choose__'} disabled={finishing} onChange={event => { setModel(event.target.value); setCheckFailed(null) }}><option value="__choose__" disabled>Choose a model</option><option value="">Provider default</option>{catalog.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</select>{catalog.loading && <small role="status">Loading models…</small>}{catalog.error && <button className="secondary" type="button" onClick={catalog.refresh}>Retry model list</button>}</div>}<p className="setting-hint">We test this model before starting. Change it later in Settings.</p></fieldset>
-      <div className="onboard-preferences">
-        <LearningSources value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
-        <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} disabled={finishing} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos before questions. Selected Cosmos note excerpts, work places, past tasks and preferences go to your AI. No new document scan.</p></div>
       </div>
+      <div className="onboard-actions"><button className="secondary" disabled={!!connecting || installing} onClick={() => { setError(''); setStep(1) }}>Back</button><button className="primary" data-testid="onboard-ai-next" disabled={loading || !!connecting || installing || !pick || model === null} onClick={() => { setError(''); setStep(3) }}>Continue</button></div>
+    </section> : <section className="onboard-ai" data-testid="onboard-step-3">
+      <h1>Make it yours</h1>
+      <div className="onboard-ai-content onboard-preferences">
+        <LearningSources compact value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
+        <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} disabled={finishing} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos, then ask a few optional questions. Your AI uses selected notes, past tasks and preferences. No new document scan.</p></div>
+        <div><label className="setting-row"><span>Control desktop apps</span><input type="checkbox" className="switch" data-testid="onboard-computer-use" checked={computerUse} disabled={finishing} onChange={event => setComputerUse(event.target.checked)} /></label><p className="setting-hint">Uses your mouse and keyboard. App text and screenshots go to your AI. Esc stops control; sign-in stays manual.</p></div>
       </div>
-      <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || loading || !!connecting || installing || !pick || model === null} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Check AI & continue'}</button></div>
+      <div className="onboard-actions"><button className="secondary" disabled={finishing} onClick={() => { setError(''); setStep(2) }}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || !pick || model === null} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Start Engram'}</button></div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
   </div></div>

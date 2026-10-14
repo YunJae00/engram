@@ -3,6 +3,7 @@ import { Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
+import { QueuedMessages } from './QueuedMessages.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { CometPermission } from './CometPermission.js'
@@ -28,6 +29,7 @@ interface Props {
 export function BotComposer({ botId, botName, initialDraft, busy, locked, memoryOpen, onToggleMemory, onSend, onStop }: Props) {
   const [value, setValue] = useState(initialDraft)
   const attachments = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).attachments)
+  const queued = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).queued)
   const valueRef = useRef(value)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -77,7 +79,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
 
   const send = () => {
     const message = value.trim()
-    if ((!message && !attachments.length) || busy || locked) return
+    if ((!message && !attachments.length) || locked || queued.length >= 10) return
     onSend(message, attachments)
   }
 
@@ -90,6 +92,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
       </div>
       <RoutineLearning botId={botId} working={busy || locked} />
       <RoutineSkillHint value={value} select={() => change('/routine')} />
+      <QueuedMessages botId={botId} />
       <ChatComposer
         testId="bots-input"
         autoFocus
@@ -97,7 +100,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         placeholder={locked ? t('errands.busy') : t('bots.placeholder')}
         maxLength={2000}
         busy={busy}
-        disabled={locked}
+        canQueue
+        disabled={locked || queued.length >= 10}
         attachments={attachments}
         onAttachmentsChange={(next) => cometThreads.setAttachments(botId, next)}
         onChange={change}

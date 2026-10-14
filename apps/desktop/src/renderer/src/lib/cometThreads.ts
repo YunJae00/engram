@@ -14,6 +14,8 @@ export interface CometMessage extends ChatTurnDto {
 export type CometOffer = NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']>
 
 export interface CometThread {
+  queued: { id: string; draft: string; attachments: ChatAttachmentDto[] }[]
+  queueHeld: boolean
   messages: CometMessage[]
   // Whether the transcript has been read from disk yet. Until it has, an
   // empty list means "not read", not "nothing said" - and the two must not
@@ -50,7 +52,7 @@ export interface CometThreadsSnapshot {
 
 export type CometThreadsStore = ReturnType<typeof createCometThreads>
 
-const EMPTY: CometThread = { messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', attachments: [], adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
+const EMPTY: CometThread = { queued: [], queueHeld: false, messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', attachments: [], adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
 const CHANNEL_PREFIX = 'bot-'
 const WORK_LINES_KEPT = 64
 
@@ -81,6 +83,7 @@ function pendingTail(list: CometMessage[]): CometMessage[] {
 
 export function createCometThreads(initialSelected: string | null = null) {
   let snapshot: CometThreadsSnapshot = { selectedId: initialSelected, threads: {} }
+  let queueSerial = 0
   const listeners = new Set<() => void>()
   const emit = () => {
     for (const listener of listeners) listener()
@@ -117,7 +120,7 @@ export function createCometThreads(initialSelected: string | null = null) {
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
     patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages, doneSeen: thread(id).doneSeen + 1, ...extra })
   const fail = (id: string, text: string) =>
-    settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }])
+    settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }], { queueHeld: true })
 
   return {
     subscribe(listener: () => void): () => void {
@@ -128,6 +131,21 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     getSnapshot: (): CometThreadsSnapshot => snapshot,
     thread,
+    enqueue(id: string, draft: string, attachments: ChatAttachmentDto[] = []): boolean {
+      const current = thread(id)
+      if (current.queued.length >= 10) return false
+      patch(id, { queued: [...current.queued, { id: `q-${Date.now()}-${++queueSerial}`, draft, attachments: [...attachments] }], draft: '', attachments: [] })
+      return true
+    },
+    restoreQueue(id: string, queued: CometThread['queued']): void { patch(id, { queued: queued.slice(0, 10), queueHeld: true }) },
+    removeQueued(id: string, key: string): void { patch(id, { queued: thread(id).queued.filter(message => message.id !== key) }) },
+    takeQueued(id: string): CometThread['queued'][number] | undefined {
+      const current = thread(id)
+      const first = current.queued[0]
+      if (first) patch(id, { queued: current.queued.slice(1) })
+      return first
+    },
+    resumeQueue(id: string): void { patch(id, { queueHeld: false }) },
     anyBusy: (): boolean => Object.values(snapshot.threads).some((one) => one.busy),
     select(id: string | null): void {
       if (id === snapshot.selectedId) return
@@ -227,7 +245,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       settle(
         id,
         thread(id).messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
-        { stopped: true },
+        { stopped: true, queueHeld: true },
       )
     },
     // Feeds one main-process event to the thread it belongs to. Returns that
