@@ -224,6 +224,7 @@ test('tile browsers and chat pickers keep the draft through folding or modal dis
     const toggle = page.getByTestId('mission-chat-toggle-0')
     const input = tile.locator('.mini-chat-write textarea')
     if (width < 2600) await expect(toggle).toBeDisabled()
+    else await expect.poll(async () => { const box = await tile.boundingBox(); return !!box && box.width >= 960 && box.height >= 560 }).toBe(true)
     await input.fill('Keep this draft 한글')
     if (await toggle.isDisabled()) {
       await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
@@ -235,6 +236,7 @@ test('tile browsers and chat pickers keep the draft through folding or modal dis
       await expect(toggle).toBeDisabled()
       await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
     } else {
+      await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
       await toggle.click()
       await expect(toggle).toHaveAttribute('aria-expanded', 'false')
       await expect(tile.locator('.mission-chat-slot')).toBeHidden()
