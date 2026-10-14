@@ -134,6 +134,17 @@ test('the main banner and filing status recover alongside the connected settings
   await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
   await page.keyboard.press('Escape')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engine:health', id: 'codex', healthy: false, reason: 'auth' })
+  })
+  await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Log in', exact: true }).click()
+  await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('diagnostics-view')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engine:health', id: 'codex', healthy: true })
+  })
+  await expect(page.getByTestId('unhealthy-banner')).toHaveCount(0)
 })
 
 test('composer and filing settings select providers independently without a sidebar toggle', async () => {

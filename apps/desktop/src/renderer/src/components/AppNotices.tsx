@@ -70,7 +70,7 @@ export const AppNotices = memo(function AppNotices({
           <span>{unhealthyText}</span>
           <button
             className="connect-banner-btn"
-            onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}
+            onClick={() => reason === 'auth' ? onOpenSettings() : window.dispatchEvent(new Event('engram:open-diagnostics'))}
           >
             {reason === 'auth' ? t('banner.login') : t('banner.check')}
           </button>
