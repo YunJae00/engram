@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { api, apiErrorText } from '../api.js'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
-import { useTopBarState } from '../state-slices.js'
+import { useShellState, useTopBarState } from '../state-slices.js'
 import { connectionConfirmed } from '../lib/connectionStatus.js'
 
 function sweepLabel(translate: Translate, status: SweepStatus): string {
@@ -23,7 +23,8 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
 }
 
 export function SidebarStatus() {
-  const { engines, enginesDetected, sweepStatus, filing, absorb, sweepJob, errand, vaultReady, showToast } = useTopBarState()
+  const { engines, sweepStatus, filing, absorb, sweepJob, errand, vaultReady, showToast } = useTopBarState()
+  const { enginesDetected } = useShellState()
   const [retrying, setRetrying] = useState(false)
   const pending = useRef(false)
   const retry = async () => {
