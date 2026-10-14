@@ -1,7 +1,7 @@
 import { ExternalLink, LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
-import { api } from '../api.js'
+import { api, apiErrorText } from '../api.js'
 import { ModelPicker } from './ModelPicker.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import { InstallClaude } from './InstallClaude.js'
@@ -16,6 +16,8 @@ export function EngineSettings() {
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const [checking, setChecking] = useState(false)
+  const [checked, setChecked] = useState(false)
   const profiles: Profiles | null = useAccountProfiles()
   useEffect(() => {
     let alive = true
@@ -33,6 +35,7 @@ export function EngineSettings() {
     refresh()
     void api.engineLogins().then((next) => { if (alive && revision === 0) setLogins(next) }).catch(() => {})
     const off = api.onEvent((event) => {
+      if (event.type === 'settings:changed' || event.type === 'accounts:changed') setChecked(false)
       if (event.type === 'engines:login') {
         revision++
         setLogins((prior) => [...prior.filter((one) => one.id !== event.login.id || one.profile !== event.login.profile), event.login])
@@ -44,6 +47,13 @@ export function EngineSettings() {
     return () => { alive = false; off() }
   }, [attempt])
   const run = (operation: Promise<unknown>) => { setError(''); void operation.catch(() => setError('That did not finish. Please try again.')) }
+  const check = async () => {
+    if (checking) return
+    setChecking(true); setChecked(false); setError('')
+    try { await api.aiCheck(); setChecked(true); setAttempt(value => value + 1) }
+    catch (cause) { setError(apiErrorText(cause instanceof Error ? cause.message : String(cause))) }
+    finally { setChecking(false) }
+  }
   return (
     <div className="engine-settings">
       {(['claude', 'codex'] as const).map((id) => {
@@ -71,7 +81,7 @@ export function EngineSettings() {
           </section>
         )
       })}
-      <div className="engine-card engine-defaults"><section className="setting-row" aria-label="New conversation model"><strong>New conversations</strong><ModelPicker showAccounts={false} /></section><section className="setting-row" aria-label="Filing model"><strong>Filing &amp; memory</strong><ModelPicker scope="filing" showAccounts={false} /></section></div>
+      <div className="engine-card engine-defaults"><section className="setting-row" aria-label="New conversation model"><strong>New conversations</strong><ModelPicker showAccounts={false} /></section><section className="setting-row" aria-label="Filing model"><strong>Filing &amp; memory</strong><ModelPicker scope="filing" showAccounts={false} /><button type="button" className="secondary" disabled={checking} data-testid="ai-check-filing" onClick={() => void check()}>{checking ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking…</> : 'Test AI'}</button></section>{checked && <p className="setting-hint" role="status">The selected filing model answered successfully.</p>}</div>
       {error && <div role="alert" className="engine-message">{error} <button className="secondary" onClick={() => { setError(''); setAttempt((value) => value + 1) }}>Retry</button></div>}
     </div>
   )

@@ -125,13 +125,15 @@
 .onboard-preferences { display: grid; gap: 16px; }
 .onboard-preferences .setting-row { min-height: 24px; padding: 0; margin: 0; }
 .onboard-preferences .setting-hint { margin: 5px 0 0; font-size: var(--fs-small); line-height: 1.5; }
-/* Which connected AI answers first; offered only when more than one is connected. */
-.onboard-choice { display: grid; gap: 8px; margin: 0 0 16px; padding: 0; border: 0; }
+.onboard-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; padding: 0; border: 0; }
 .onboard-choice legend { padding: 0; margin-bottom: 4px; font-weight: 550; }
 .onboard-choice label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .onboard-choice label input { accent-color: var(--fg); }
-.onboard-choice label small { color: var(--fg-dim); }
-.onboard-choice .setting-hint { margin: 0; font-size: var(--fs-small); }
+.onboard-model { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.onboard-model select { flex: 1; min-width: 140px; max-width: 100%; }
+.onboard-model small { color: var(--fg-dim); }
+.onboard-card .onboard-choice input { width: auto; }
+.onboard-choice .setting-hint { grid-column: 1 / -1; margin: 0; font-size: var(--fs-small); }
 .learning-sources { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .learning-sources legend { padding: 0; margin-bottom: 4px; font-weight: 550; }
 .learning-source { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; cursor: pointer; }
@@ -145,6 +147,9 @@
 .onboard-fail { display: grid; gap: 10px; margin-top: 18px; }
 .onboard-fail > button { justify-self: start; }
 .onboard-card { max-height: calc(100dvh - 72px); overflow-y: auto; }
+.onboard-card > .onboard-ai { min-height: 0; }
+.onboard-ai-content { display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.onboard-ai > h1, .onboard-ai > .onboard-actions { flex-shrink: 0; }
 .sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: center; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }

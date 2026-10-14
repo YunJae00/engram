@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { engineCwd, type Engine, type EngineJobInput } from 'core'
+import { engineBackoff, engineCwd, type Engine, type EngineJobInput } from 'core'
 
 const fake = vi.hoisted(() => ({ ok: vi.fn(), failure: vi.fn(), forget: vi.fn(), profile: 'system' }))
 vi.mock('../src/main/engine-health.js', () => ({ markEngineOk: fake.ok, noteEngineFailure: fake.failure }))
@@ -8,7 +8,7 @@ vi.mock('../src/main/account-profiles.js', () => ({ activeAccountProfile: () => 
 import { verifySetupConnection } from '../src/main/setup-connection.js'
 
 const cwd = engineCwd({ workspace: 'tmp/connection-fixture', privateDir: '' })
-beforeEach(() => { vi.clearAllMocks(); fake.profile = 'system' })
+beforeEach(() => { vi.clearAllMocks(); fake.profile = 'system'; engineBackoff.noteOk() })
 function fixture(detection = { installed: true, loggedIn: true, conclusive: true }, outcome = 'ok') {
   const jobs: EngineJobInput[] = []
   const engine: Engine = { id: 'codex', detect: vi.fn(async () => detection), async *run(job) {
@@ -41,7 +41,7 @@ it.each([
 
 it.each(['auth', 'quota', 'empty'])('rejects unusable live requests rather than trusting local sign-in (%s)', async outcome => {
   const { engine } = fixture(undefined, outcome)
-  await expect(verifySetupConnection(engine, cwd)).rejects.toThrow(outcome === 'auth' ? 'Sign in again' : outcome === 'quota' ? 'usage limit' : 'did not answer')
+  await expect(verifySetupConnection(engine, cwd)).rejects.toThrow(outcome === 'auth' ? 'Sign in again' : outcome === 'quota' ? 'limited this request' : 'did not answer')
   expect(fake.ok).not.toHaveBeenCalled(); expect(fake.failure).toHaveBeenCalledOnce()
 })
 
@@ -66,6 +66,22 @@ it('stops waiting even if a broken runtime ignores cancellation', async () => {
 it('does not confirm an account that changed while its request was running', async () => {
   const { engine } = fixture()
   engine.run = async function* () { fake.profile = 'other'; yield { type: 'result', text: 'OK' } }
-  await expect(verifySetupConnection(engine, cwd)).rejects.toThrow('not ready')
+  await expect(verifySetupConnection(engine, cwd)).rejects.toThrow('account changed')
   expect(fake.ok).not.toHaveBeenCalled()
+})
+
+it('does not clear a limit when the selected model changes during verification', async () => {
+  const { engine } = fixture()
+  engineBackoff.noteQuota(60000)
+  await expect(verifySetupConnection(engine, cwd, undefined, async () => { throw new Error('Selection changed') })).rejects.toThrow('Selection changed')
+  expect(fake.ok).not.toHaveBeenCalled()
+  expect(fake.failure).not.toHaveBeenCalled()
+  expect(engineBackoff.blockedMs()).toBeGreaterThan(0)
+})
+
+it('clears a previous quota gate only after a successful real request', async () => {
+  engineBackoff.noteQuota(60000)
+  await verifySetupConnection(fixture().engine, cwd)
+  expect(engineBackoff.blockedMs()).toBe(0)
+  expect(fake.ok).toHaveBeenCalledOnce()
 })

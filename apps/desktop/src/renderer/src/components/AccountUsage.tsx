@@ -14,6 +14,7 @@ export function UsageSummary({ usage }: { usage: DevUsage | null }) {
       {window.resetsAt !== undefined && <small>Resets {new Date(window.resetsAt).toLocaleString('en-US')}</small>}
     </div>)}
     {usage.updatedAt && <small>Checked {new Date(usage.updatedAt).toLocaleTimeString('en-US')}</small>}
+    {!!usage.windows?.length && <small>Reported account limits. Model or short-term request limits may differ.</small>}
   </div>
 }
 

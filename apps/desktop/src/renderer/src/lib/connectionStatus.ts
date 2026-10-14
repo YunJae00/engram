@@ -10,6 +10,6 @@ export function connectionLabel(state: Connection | undefined, provider: string)
   if (state.healthy === false && state.healthReason === 'auth') return 'Reconnect required'
   if (state.conclusive === false) return 'Connection not verified'
   if (!state.loggedIn) return 'Not connected'
-  if (state.healthy === false) return state.healthReason === 'quota' ? 'Usage limit reached' : 'Connection needs attention'
+  if (state.healthy === false) return state.healthReason === 'quota' ? 'Request limited · Retry check' : 'Connection needs attention'
   return 'Connected'
 }

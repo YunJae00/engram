@@ -10,7 +10,7 @@ it('distinguishes signed out, unknown, expired and quota-limited accounts', () =
   expect(connectionConfirmed({ ...connected, conclusive: false })).toBe(false)
   expect(connectionLabel({ ...connected, conclusive: false }, 'codex')).toBe('Connection not verified')
   expect(connectionLabel({ ...connected, loggedIn: false }, 'codex')).toBe('Not connected')
-  expect(connectionLabel({ ...connected, healthy: false, healthReason: 'quota' }, 'codex')).toBe('Usage limit reached')
+  expect(connectionLabel({ ...connected, healthy: false, healthReason: 'quota' }, 'codex')).toBe('Request limited · Retry check')
   expect(connectionConfirmed({ ...connected, healthy: false, healthReason: 'auth' })).toBe(false)
   expect(connectionLabel({ ...connected, healthy: false, healthReason: 'auth' }, 'codex')).toBe('Reconnect required')
   expect(connectionLabel({ ...connected, conclusive: false, healthy: false, healthReason: 'auth' }, 'codex')).toBe('Reconnect required')

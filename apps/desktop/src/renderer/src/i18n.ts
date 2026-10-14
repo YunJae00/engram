@@ -243,7 +243,7 @@ const en = {
   'banner.notResponding': '{ids} is connected but its last calls failed — nothing is lost, the librarian retries',
   'banner.tooSlow': '{ids} answered too slowly and was stopped — usually a network stall; it retries on the next run',
   'banner.loginExpired': '{ids} needs you to log in again — the librarian is paused until you do',
-  'banner.quota': '{ids} hit its usage limit — the librarian paused and picks up where it left off once it resets',
+  'banner.quota': '{ids} limited a request. Filing is waiting to retry. Test the selected model or choose another AI in Settings.',
   'banner.offline': "{ids} can't reach the internet — the librarian resumes as soon as the connection is back",
   'banner.check': 'Check',
   // The label is the affordance: this is the one button a morning starts with.
