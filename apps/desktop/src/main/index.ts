@@ -436,7 +436,7 @@ async function startResidency(ctx: VaultContext): Promise<void> {
 function registerBaseIpc(): void {
   registerAppReset(() => mainWin, () => { quitting = true; app.relaunch(); app.quit() })
   ipcMain.handle('quick:show', () => toggleQuickCapture())
-  ipcMain.handle('quick:openApp', event => { if (event.sender.id !== quickWin?.webContents.id) return; quickWin.hide(); showMainWindow() })
+  ipcMain.handle('quick:openApp', event => { if (event.sender.id !== quickWin?.webContents.id) return; quickWin.hide(); surfaceMain() })
   ipcMain.handle('quick:layout', (event, requested: unknown) => {
     if (!quickWin || event.sender.id !== quickWin.webContents.id || !quickAnchor || typeof requested !== 'number' || !Number.isFinite(requested)) return
     const area = screen.getDisplayMatching(quickAnchor).workArea

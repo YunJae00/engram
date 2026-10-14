@@ -96,8 +96,13 @@ test('the add menu expands above the input, attaches files and opens the app wit
   await expect(popup.getByRole('button', { name: 'Remove quick-comet-attachment.txt' })).toBeVisible()
   await expect.poll(visible).toBe(true)
   await popup.getByRole('button', { name: 'Quick chat actions', exact: true }).click()
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().endsWith('#quick'))!.minimize())
   await popup.getByRole('button', { name: 'Open Engram', exact: true }).click()
   await expect.poll(visible).toBe(false)
+  expect(await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().endsWith('#quick'))!
+    return window.isVisible() && !window.isMinimized()
+  })).toBe(true)
   await openPopup()
   await expect(popup.getByTestId('quick-input')).toHaveValue('Use this attachment')
   await popup.getByTestId('quick-input').press('Enter')
