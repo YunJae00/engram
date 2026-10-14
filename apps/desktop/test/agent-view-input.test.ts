@@ -98,26 +98,13 @@ describe('browser view handoffs', () => {
     expect(currentStop).toHaveBeenCalledOnce()
   })
 
-  it('refreshes the hover target before scrolling without claiming keyboard control', async () => {
-    const { cdp } = fixture('bot-one')
+  it('maps input against the current viewport rather than a stale mirrored frame', async () => {
+    const { page, cdp } = fixture('bot-one')
     const view = await import('../src/main/agent-view.js')
     await view.lookAtLane('bot-one')
+    vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 696, height: 768 })
     await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000 }, 'bot-one')
-    expect(cdp.send.mock.calls).toEqual([
-      ['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 640, y: 430, modifiers: 0 }],
-      ['Input.dispatchMouseEvent', { type: 'mouseWheel', x: 640, y: 430, button: 'none', clickCount: 0, modifiers: 0, deltaX: 0, deltaY: 4000 }],
-    ])
+    expect(cdp.send).toHaveBeenCalledExactlyOnceWith('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 348, y: 384, button: 'none', clickCount: 0, modifiers: 0, deltaX: 0, deltaY: 4000 })
     expect(view.touchedAt('bot-one')).toBe(0)
-  })
-
-  it('drops the wheel if the selected chat changes while the pointer is moving', async () => {
-    const { cdp } = fixture('bot-one')
-    fixture('bot-two')
-    const view = await import('../src/main/agent-view.js')
-    await view.lookAtLane('bot-one')
-    cdp.send.mockImplementationOnce(async () => { deps.active = 'bot-two' })
-    await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 100 }, 'bot-one')
-    expect(cdp.send).toHaveBeenCalledOnce()
-    expect(cdp.send.mock.calls[0]![1]).toMatchObject({ type: 'mouseMoved' })
   })
 })
