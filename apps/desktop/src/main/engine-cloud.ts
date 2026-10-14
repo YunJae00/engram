@@ -167,13 +167,15 @@ export class StatusCache {
     if (this.known && this.known.detection.installed && this.known.detection.conclusive !== false && now - this.known.at < STATUS_TTL_MS) return this.known.detection
     if (this.probing) return this.probing
     const generation = this.generation
-    const pending = probe().finally(() => {
+    const pending = probe().then(detection => {
+      if (generation !== this.generation) return this.known?.detection ?? { installed: detection.installed, loggedIn: false, conclusive: false }
+      this.known = { at: now, detection }
+      return detection
+    }).finally(() => {
       if (this.probing === pending) this.probing = null
     })
     this.probing = pending
-    const detection = await pending
-    if (generation === this.generation) this.known = { at: now, detection }
-    return detection
+    return pending
   }
 
   forget(): void {
@@ -194,6 +196,7 @@ export interface CloudEngine extends Engine {
   readonly label: string
   login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }>
   logout(): Promise<void>
+  forgetStatus?(): void
 }
 
 export interface CloudLoginOptions { signal?: AbortSignal; onUrl?: (url: string) => void }

@@ -349,7 +349,7 @@ export async function runComet(deps: AgentLoopDeps, task: string, options: Agent
   const usedCalls = first.steps.reduce((total, step) => total + (step.tool === 'read_pages' && Array.isArray(step.args['pages']) ? Math.min(4, Math.max(1, step.args['pages'].length)) : 1), 0)
   const calls = Math.min(12, budget - (session ? usedCalls : modelCalls))
   if (!fault || options.signal?.aborted || calls < 1 || /(?:do not|don't|no)\s+retr(?:y|ies)|stop.on.first.error|재시도.{0,12}(?:마|않)|첫 오류/i.test(task)) return first
-  options.onReset?.()
+  options.onReset?.(true)
   options.onStep?.('verification: Checking the unfinished result')
   correcting = true
   try {

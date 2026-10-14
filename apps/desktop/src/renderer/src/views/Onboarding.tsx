@@ -8,6 +8,7 @@ import { InstallClaude } from '../components/InstallClaude.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
 import { refreshAccountUsage, useAccountUsage } from '../lib/accountUsage.js'
 import { LearningSources, type LearningChoice } from '../components/LearningSources.js'
+import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
 
 export function Onboarding() {
   const profiles = useAccountProfiles()
@@ -31,7 +32,7 @@ export function Onboarding() {
   const checked = useRef(false)
   const signing = useRef(false)
   const completing = useRef(false)
-  const ready = brains.filter(brain => brain.installed && brain.loggedIn)
+  const ready = brains.filter(connectionConfirmed)
   // A signed-in account at its usage limit is connected but cannot answer now.
   const limited = (id: 'claude' | 'codex') => usage.some(account => account.provider === id && (account.usage?.windows ?? []).some(window => (window.used ?? 0) >= 100))
   const usable = ready.filter(brain => !limited(brain.id as 'claude' | 'codex'))
@@ -106,12 +107,12 @@ export function Onboarding() {
         {(['claude', 'codex'] as const).map(id => {
           const state = brains.find(brain => brain.id === id)
           const login = logins.find(item => item.id === id && (item.profile ?? 'system') === (profiles?.selected[id] ?? 'system'))
-          const connected = (state?.installed && state.loggedIn) || login?.phase === 'connected'
+          const connected = connectionConfirmed(state)
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
-            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>Usage limit reached for now. It can still be chosen.</span>}{!loading && !active && !connected && state?.installed && <span>Signed out</span>}</div>
-            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className="onboard-connected" data-testid={`onboard-brain-${id}`} role="status"><Check size={15} aria-hidden />Connected</span> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
+            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>Usage limit reached for now. It can still be chosen.</span>}{!loading && !active && !connected && state?.installed && <span>{connectionLabel(state, id)}</span>}</div>
+            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className="onboard-connected" data-testid={`onboard-brain-${id}`} role="status"><Check size={15} aria-hidden />Connected</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>Retry check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
             {active && <div className="onboard-login-actions">{login?.canOpen && <button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button>}<button className="secondary" onClick={() => loginAction(api.engineCancelLogin(id))}>Cancel sign-in</button></div>}
           </div>
         })}

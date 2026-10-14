@@ -87,7 +87,11 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   await expect(page.locator('.bots-chat')).toBeVisible()
   await expect(page.getByTestId('live-address')).toHaveValue(url)
   await page.getByRole('button', { name: 'Return to small preview' }).click()
-  await expect(preview.locator('.browser-preview-bar button')).toHaveCount(1)
+  await expect(preview.locator('.browser-preview-bar button')).toHaveCount(2)
+  await preview.getByRole('button', { name: 'Minimize browser', exact: true }).click()
+  await expect(preview.locator('canvas')).toHaveCount(0)
+  await preview.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
+  await expect(preview.locator('canvas[data-painted]')).toBeVisible()
   await expect(preview.getByText('Open browser', { exact: true })).toHaveCount(0)
   await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
@@ -101,7 +105,7 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   await expect(page.getByTestId('press-ask')).toBeVisible()
   await expect(preview).toBeVisible()
   await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
-  await expect(preview.locator('.browser-preview-bar button')).toHaveCount(1)
+  await expect(preview.locator('.browser-preview-bar button')).toHaveCount(2)
 })
 
 test('small windows open from the composer as a preview and expand only on request', async () => {

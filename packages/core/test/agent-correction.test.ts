@@ -42,6 +42,7 @@ it('retains both passes, uses remaining budget and resets the streamed answer', 
   const result = await runComet({ engine, workdir, tools: [write, read] }, 'Update A1', { guided: false, maxCalls: 4, onReset: reset })
   expect(result.incomplete).toBeUndefined()
   expect(result.steps.map(s => s.tool)).toEqual(['excel_write', 'excel_read'])
+  expect(reset).toHaveBeenCalledWith(true)
 })
 
 it.each(['Do not retry', '실패하면 재시도하지 마'])('honors the user restriction: %s', async task => {

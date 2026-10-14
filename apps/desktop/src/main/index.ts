@@ -45,6 +45,7 @@ import { closeOfficeHost, primeOffice } from './office-host.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { developersRunning, registerDevIpc, stopDevelopers } from './dev-ipc.js'
 import { setTaskSurface } from './task-notify.js'
+import { quickCometBounds } from './quick-comet.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -103,6 +104,7 @@ const isHidden = process.env['ENGRAM_HIDDEN'] === '1'
 
 let mainWin: BrowserWindow | null = null
 let quickWin: BrowserWindow | null = null
+let quickOpening = false
 // Held for setUpdateReady — and holding it at all keeps the Tray object out
 // of GC's reach (a collected Tray silently vanishes from the system tray).
 let tray: TrayHandle | null = null
@@ -140,6 +142,7 @@ const webPreferences = {
   webviewTag: false,
   allowRunningInsecureContent: false,
   webSecurity: true,
+  additionalArguments: !app.isPackaged && isHidden && process.env['ENGRAM_DEVELOPER_FIXTURE'] === '1' ? ['--engram-developer-fixture'] : [],
 }
 
 // Navigation + window.open lockdown for every window's webContents. The renderer
@@ -309,17 +312,21 @@ function showMainWindow(): void {
 }
 
 async function toggleQuickCapture(): Promise<void> {
+  if (quickOpening) return
+  const point = screen.getCursorScreenPoint()
+  const bounds = quickCometBounds(point, screen.getDisplayNearestPoint(point).workArea)
   if (quickWin && !quickWin.isDestroyed()) {
     if (quickWin.isVisible()) quickWin.hide()
     else {
+      quickWin.setBounds(bounds)
       quickWin.show()
       quickWin.focus()
     }
     return
   }
+  quickOpening = true
   quickWin = new BrowserWindow({
-    width: 560,
-    height: 220,
+    ...bounds,
     frame: ownTitleBarIsSafe() ? false : true,
     resizable: false,
     alwaysOnTop: true,
@@ -330,9 +337,15 @@ async function toggleQuickCapture(): Promise<void> {
   })
   hardenWebContents(quickWin.webContents)
   quickWin.on('blur', () => quickWin?.hide())
-  await loadRenderer(quickWin, 'quick')
-  quickWin.show()
-  quickWin.focus()
+  quickWin.on('closed', () => { quickWin = null })
+  try {
+    await loadRenderer(quickWin, 'quick')
+    quickWin.show()
+    quickWin.focus()
+  } catch (error) {
+    quickWin?.destroy()
+    flog('quick-comet', error)
+  } finally { quickOpening = false }
 }
 
 async function startResidency(ctx: VaultContext): Promise<void> {
@@ -369,7 +382,7 @@ async function startResidency(ctx: VaultContext): Promise<void> {
       // changed from Settings: the tray menu is the fallback, and this line is
       // what tells anyone why the keystroke does nothing.
       if (!globalShortcut.register(QUICK_CAPTURE_SHORTCUT, () => void toggleQuickCapture())) {
-        console.error(`global shortcut ${QUICK_CAPTURE_SHORTCUT} is taken by another app — use the tray icon to capture`)
+    console.error(`global shortcut ${QUICK_CAPTURE_SHORTCUT} is taken by another app — use New Comet in the tray menu`)
       }
     } catch (err) {
       console.error('global shortcut registration failed:', err)
@@ -415,6 +428,7 @@ async function startResidency(ctx: VaultContext): Promise<void> {
 
 // IPC that must exist BEFORE a vault does (onboarding window).
 function registerBaseIpc(): void {
+  ipcMain.handle('quick:show', () => toggleQuickCapture())
   ipcMain.on('quick:hide', () => quickWin?.hide())
   // Renderer stalls never reach a profiler on a user's machine; the longest
   // frame-blocking tasks land in the same log everything else does.

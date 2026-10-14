@@ -233,8 +233,8 @@ const en = {
   'topbar.engineConnectShort': 'Connect AI',
 
   // no-engine banner (canvas top): the connect nudge + waiting-capture count
-  'banner.noBrain': 'No brain connected — the librarian is waiting. Sign in to Claude or ChatGPT with your own account.',
-  'banner.getBrain': 'Connect a brain',
+  'banner.noBrain': 'Filing is paused. Connect or choose an AI for filing in Settings.',
+  'banner.getBrain': 'AI settings',
   'banner.waiting': '{n} waiting',
   'banner.login': 'Log in',
   // Four failures, four sentences — they need four different actions from the

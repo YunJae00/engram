@@ -12,6 +12,9 @@ import type {
 } from '../shared/types.js'
 
 const api: EngramApi = {
+  developerUiEnabled: process.argv.includes('--engram-developer-fixture'),
+  quickComet: message => ipcRenderer.invoke('quick:comet', message),
+  showQuickComet: () => ipcRenderer.invoke('quick:show'),
   devOpenLink: url => ipcRenderer.invoke('devOpenLink', url),
   devState: () => ipcRenderer.invoke('devState'),
   devPreferences: patch => ipcRenderer.invoke('devPreferences', patch),
@@ -231,7 +234,7 @@ const api: EngramApi = {
   engineCancelLogin: (id: 'claude' | 'codex', profile?: string) => ipcRenderer.invoke('engines:cancelLogin', id, profile),
   engineOpenLogin: (id: 'claude' | 'codex', profile?: string) => ipcRenderer.invoke('engines:openLogin', id, profile),
   engineDisconnect: (id: 'claude' | 'codex') => ipcRenderer.invoke('engines:disconnect', id),
-  engineStates: () => ipcRenderer.invoke('engines:states'),
+  engineStates: ids => ipcRenderer.invoke('engines:states', ids),
   accountProfiles: () => ipcRenderer.invoke('accounts:list'),
   accountProfileStates: () => ipcRenderer.invoke('accounts:states'),
   accountProfileAdd: (provider, name) => ipcRenderer.invoke('accounts:add', provider, name),

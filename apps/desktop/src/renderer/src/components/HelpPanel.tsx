@@ -6,6 +6,7 @@ const places = [
   ['Cosmos', 'Find and edit what Engram remembers.'],
 ]
 const shortcuts = [
+  [[MOD_LABEL, 'Shift', 'Space'], 'New Comet near the pointer (global)'],
   [[MOD_LABEL, 'P'], 'Search Cosmos'],
   [[MOD_LABEL, 'Shift', 'P'], 'Commands'],
   [[MOD_LABEL, 'L'], 'Open Comets'],

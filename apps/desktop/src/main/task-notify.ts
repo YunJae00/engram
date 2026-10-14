@@ -7,6 +7,7 @@ import type { EngramEvent } from '../shared/types.js'
 
 let surface = (): void => undefined
 export function setTaskSurface(show: () => void): void { surface = show }
+export function surfaceComet(): void { surface() }
 
 export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) => void): void {
   // A hidden run has nobody watching to tell.

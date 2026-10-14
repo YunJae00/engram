@@ -120,7 +120,7 @@ test('no engine → connect banner shows', async () => {
   expect(canvasBox).not.toBeNull()
   expect(noticesBox!.y).toBeGreaterThanOrEqual(topbarBox!.y + topbarBox!.height - 1)
   expect(canvasBox!.y).toBeGreaterThanOrEqual(noticesBox!.y + noticesBox!.height - 1)
-  await banner.getByRole('button', { name: 'Connect a brain' }).click()
+  await banner.getByRole('button', { name: 'AI settings' }).click()
   await expect(page.getByTestId('settings-view')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('settings-view')).toHaveCount(0)

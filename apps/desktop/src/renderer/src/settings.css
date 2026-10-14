@@ -1,4 +1,5 @@
-div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(720px, calc(100vh - 48px)); max-height: calc(100vh - 48px); animation: fade-in 160ms ease-out; }
+.settings-overlay { --settings-safe-top: calc(var(--titlebar-height) + 12px); padding: var(--settings-safe-top) 24px 24px; }
+div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(720px, calc(100dvh - var(--settings-safe-top) - 24px)); max-height: calc(100dvh - var(--settings-safe-top) - 24px); animation: fade-in 160ms ease-out; }
 .settings-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .settings-nav { width: 190px; flex: none; padding: 20px 12px; display: flex; flex-direction: column; gap: 6px; }
 .settings-nav button { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-s); color: var(--fg-dim); text-align: left; }
@@ -137,7 +138,8 @@ input:is([type='checkbox'], [type='radio']):not(.switch):not([role='switch']) { 
 .appearance-option > input:focus-visible + .appearance-preview { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) { div.brief-box.settings-box { animation: none; } }
 @media (max-width: 700px) {
-  div.brief-box.settings-box { width: calc(100vw - 20px); height: calc(100vh - 20px); max-height: calc(100vh - 20px); }
+  .settings-overlay { padding: var(--settings-safe-top) 10px 10px; }
+  div.brief-box.settings-box { width: calc(100vw - 20px); height: calc(100dvh - var(--settings-safe-top) - 10px); max-height: calc(100dvh - var(--settings-safe-top) - 10px); }
   .settings-body { flex-direction: column; }
   .settings-nav { width: 100%; flex-direction: row; overflow-x: auto; padding: 10px 16px; gap: 4px; }
   .settings-nav button { flex: none; font-size: var(--fs-small); padding: 8px 10px; }

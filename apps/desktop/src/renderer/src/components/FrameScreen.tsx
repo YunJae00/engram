@@ -10,7 +10,7 @@ import { agentMirror } from '../lib/agentMirrorLive.js'
 
 export type FrameSource = (paint: (data: string) => void) => () => void
 
-export function FrameScreen({ className, lane, source }: { className?: string; lane?: string; source?: FrameSource }) {
+export function FrameScreen({ className, lane, source, onSize }: { className?: string; lane?: string; source?: FrameSource; onSize?(width: number, height: number): void }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const surface = canvas.current
@@ -27,6 +27,7 @@ export function FrameScreen({ className, lane, source }: { className?: string; l
       if (surface.width !== width || surface.height !== height) {
         surface.width = width
         surface.height = height
+        onSize?.(width, height)
       }
       context.drawImage(source, 0, 0, width, height)
       // An opaque canvas is black until something lands on it; it stays
@@ -70,6 +71,6 @@ export function FrameScreen({ className, lane, source }: { className?: string; l
       alive = false
       off()
     }
-  }, [lane, source])
+  }, [lane, source, onSize])
   return <canvas ref={canvas} className={className} />
 }

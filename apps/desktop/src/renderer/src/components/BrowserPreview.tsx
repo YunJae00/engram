@@ -1,4 +1,4 @@
-import { Globe, GripVertical, LoaderCircle, Maximize2 } from 'lucide-react'
+import { Globe, GripVertical, LoaderCircle, Maximize2, Minus } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
@@ -16,10 +16,10 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
   const [position, setPosition] = useState<{ right: number; top: number } | null>(null)
   const [shape, setShape] = useState<{ width: number; height: number } | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const [minimized, setMinimized] = useState(false)
   const cached = useRef<{ data: string; url?: string } | null>(null)
-  // The picture's shape is read once per address: decoding every frame twice
-  // on the page's own thread made everything on it stutter.
-  const measured = useRef<string | undefined>(undefined)
+  // Reuse the canvas decode so resized frames never keep an old aspect ratio.
+  const measureShape = useCallback((width: number, height: number) => setShape(before => before?.width === width && before.height === height ? before : { width, height }), [])
   const dragFrom = useRef<{ x: number; y: number; right: number; top: number } | null>(null)
   const keepInside = useCallback((next: { right: number; top: number }) => {
     const parent = card.current?.offsetParent
@@ -52,11 +52,6 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
         cached.current = { data: base64, url }
         paint(base64)
         setUnavailable(false)
-        if (measured.current !== url) {
-          const image = new Image()
-          image.onload = () => { if (alive) { measured.current = url; setShape(before => before?.width === image.naturalWidth && before.height === image.naturalHeight ? before : { width: image.naturalWidth, height: image.naturalHeight }) } }
-          image.src = data
-        }
       } else setUnavailable(true)
       if (live) timer = setTimeout(() => void refresh(), 1000)
     }
@@ -74,7 +69,7 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
   try { if (url && url !== 'about:blank') site = new URL(url).hostname } catch { /* Keep the generic title. */ }
   const size = native && shape ? shape : { width, height }
   const open = () => { if (onOpen) onOpen(); else if (compact) webPane.expand(channel, true); else webPane.open(channel) }
-  return <aside ref={element => { card.current = element; elementRef(element) }} className="browser-preview" data-testid="web-pane" aria-label="Browser preview" style={position ? { right: position.right, top: position.top } : undefined}>
+  return <aside ref={element => { card.current = element; elementRef(element) }} className={`browser-preview${minimized ? ' minimized' : ''}`} data-testid="web-pane" aria-label="Browser preview" style={position ? { right: position.right, top: position.top } : undefined}>
     <div className="browser-preview-bar" onPointerDown={drag} onPointerMove={event => {
       const from = dragFrom.current
       if (from) keepInside({ right: from.right + from.x - event.clientX, top: from.top + event.clientY - from.y })
@@ -82,11 +77,12 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
       <GripVertical size={12} className="browser-preview-grip" aria-hidden />
       {busy ? <LoaderCircle size={14} className="computer-spinner" aria-label="Browser working" /> : <Globe size={14} aria-hidden />}
       <span className="browser-preview-title" title={site}>{site}</span>
-      <button aria-label="Expand browser" title="Expand browser" onClick={() => { if (onOpen) onOpen(); else webPane.expand(channel, true) }}><Maximize2 size={15} aria-hidden /></button>
+      {!minimized && <button aria-label="Minimize browser" title="Minimize browser" onClick={() => setMinimized(true)}><Minus size={15} aria-hidden /></button>}
+      <button aria-label={minimized ? 'Restore browser preview' : 'Expand browser'} title={minimized ? 'Restore browser preview' : 'Expand browser'} onClick={() => { if (minimized) setMinimized(false); else if (onOpen) onOpen(); else webPane.expand(channel, true) }}><Maximize2 size={15} aria-hidden /></button>
     </div>
-    <button className="browser-preview-picture" aria-label={compact ? 'Open full browser' : 'Open browser beside chat'} onClick={open} style={{ aspectRatio: `${size.width} / ${size.height}` } as CSSProperties}>
-      <FrameScreen key={channel} lane={channel} source={native ? source : frames} />
+    {!minimized && <button className="browser-preview-picture" aria-label={compact ? 'Open full browser' : 'Open browser beside chat'} onClick={open} style={{ aspectRatio: `${size.width} / ${size.height}` } as CSSProperties}>
+      <FrameScreen key={channel} lane={channel} source={native ? source : frames} onSize={measureShape} />
       <span className="browser-preview-wait">{(!url || url === 'about:blank') && !busy ? 'Click to enter a website' : unavailable ? 'Preview unavailable · click to open' : 'Opening preview…'}</span>
-    </button>
+    </button>}
   </aside>
 }

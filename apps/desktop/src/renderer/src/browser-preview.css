@@ -3,7 +3,7 @@
   top: 16px;
   right: 16px;
   z-index: 31;
-  width: min(320px, calc(100% - 24px));
+  width: min(280px, calc(100% - 24px));
   max-height: calc(100% - 112px);
   overflow: hidden;
   border: 1px solid var(--border);
@@ -13,6 +13,16 @@
   transform-origin: top right;
   animation: browser-preview-in 240ms var(--ease-out);
 }
+.mission-tile .browser-preview { width: clamp(160px, 32cqw, 240px); max-width: calc(100% - 32px); }
+.browser-preview.minimized { width: min(180px, calc(100% - 32px)); }
+.mission-tile .browser-preview-bar { min-height: 30px; padding: 2px 6px; }
+.mission-tile .browser-preview-grip { display: none; }
+.mission-browser-dialog { box-sizing: border-box; width: min(1100px, calc(100vw - 40px)); height: min(760px, calc(100dvh - 112px)); max-height: calc(100dvh - 112px); margin: auto; padding: 0; border: 1px solid var(--border-soft); border-radius: 18px; background: var(--panel-bg); color: var(--fg); overflow: hidden; }
+.mission-browser-dialog[open] { display: flex; flex-direction: column; animation: browser-preview-in 160ms var(--ease-out); }
+.mission-browser-dialog::backdrop { background: #0005; backdrop-filter: blur(3px); }
+.mission-browser-dialog .dialog-title { font-size: var(--fs-body); }
+.mission-browser-dialog > .orbit-surface { flex: 1; min-height: 0; }
+@media (prefers-reduced-motion: reduce) { .mission-browser-dialog[open] { animation: none; } }
 .browser-preview-bar { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 4px 8px; cursor: grab; touch-action: none; user-select: none; }
 .browser-preview-bar:active { cursor: grabbing; }
 .browser-preview-grip { opacity: .4; flex-shrink: 0; }

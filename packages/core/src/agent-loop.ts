@@ -114,7 +114,7 @@ export interface AgentLoopOptions {
   // The answer as it is being written, a few words at a time; a reset says
   // the words so far were thinking aloud before a tool call, not the answer.
   onToken?(text: string): void
-  onReset?(): void
+  onReset?(dropDraft?: boolean): void
   maxCalls?: number
 }
 

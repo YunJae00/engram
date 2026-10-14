@@ -244,6 +244,7 @@ export interface EngineStatusDto {
   id: string
   installed: boolean
   loggedIn: boolean
+  conclusive?: boolean
   desktopToolIsolation?: boolean
   // live health verdict (boot ping + periodic auth re-check); undefined = not
   // measured yet. Carried on every engines list/change so a renderer reload
@@ -509,6 +510,7 @@ export type EngramEvent =
   | { type: 'note:open'; id: string }
   // A task notification was clicked: show that conversation.
   | { type: 'comet:open'; botId: string }
+  | { type: 'comet:quick'; botId: string; message: string }
   | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.
@@ -748,7 +750,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   engineOpenLogin(id: 'claude' | 'codex', profile?: string): Promise<void>
   engineDisconnect(id: 'claude' | 'codex'): Promise<void>
   // Every brain this build carries, signed in or not.
-    engineStates(): Promise<EngineStatusDto[]>
+    engineStates(ids?: ('claude' | 'codex')[]): Promise<EngineStatusDto[]>
     accountProfiles(): Promise<import('./account-profiles.js').AccountProfiles>
     accountProfileStates(): Promise<import('./account-profiles.js').AccountProfileState[]>
     accountProfileAdd(provider: 'claude' | 'codex', name: string): Promise<import('./account-profiles.js').AccountProfiles>
@@ -756,6 +758,9 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   onEvent(listener: (event: EngramEvent) => void): () => void
   // quick-capture floating window helpers
   hideQuickCapture(): void
+  quickComet(message: string): Promise<string>
+  showQuickComet(): Promise<void>
+  readonly developerUiEnabled: boolean
   pathForFile(file: File): string
   // chat panel & context packs
   chatSend(request: ChatRequestDto): Promise<void>

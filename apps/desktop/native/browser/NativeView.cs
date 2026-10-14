@@ -28,6 +28,9 @@ internal sealed class NativeView : WebView2
         if (!visible)
         {
             if (placed && !showing) return;
+            var previousRegion = Region;
+            Region = null;
+            if (previousRegion != null) previousRegion.Dispose();
             // Keep the controller running for background automation. Child
             // windows outside their parent's client area remain clipped.
             Bounds = new Rectangle(-32000, -32000, Width, Height);

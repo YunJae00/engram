@@ -9,6 +9,7 @@ import { AccountProfiles } from './AccountProfiles.js'
 import { AccountUsage } from './AccountUsage.js'
 import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
+import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
 
 export function EngineSettings() {
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -22,7 +23,12 @@ export function EngineSettings() {
     let probe = 0
     const refresh = () => {
       const at = ++probe
-      void api.engineStates().then((next) => { if (alive && at === probe) setStates(next) }).catch(() => { if (alive && at === probe) setError('Could not check connections. Retry below.') })
+      for (const id of ['claude', 'codex'] as const) {
+        const timer = window.setTimeout(() => { if (alive && at === probe) setStates(prior => [...(prior ?? []).filter(state => state.id !== id), { id, installed: true, loggedIn: false, conclusive: false }]) }, 16_000)
+        void api.engineStates([id]).then(next => {
+          if (alive && at === probe) setStates(prior => [...(prior ?? []).filter(state => state.id !== id), next.find(state => state.id === id) ?? { id, installed: false, loggedIn: false }])
+        }).catch(() => { if (alive && at === probe) { setStates(prior => [...(prior ?? []).filter(state => state.id !== id), { id, installed: true, loggedIn: false, conclusive: false }]); setError('Could not check connections. Retry below.') } }).finally(() => window.clearTimeout(timer))
+      }
     }
     refresh()
     void api.engineLogins().then((next) => { if (alive && revision === 0) setLogins(next) }).catch(() => {})
@@ -33,7 +39,7 @@ export function EngineSettings() {
         if (['connected', 'idle', 'error'].includes(event.login.phase)) refresh()
       }
       if (event.type === 'accounts:changed') { setStates(null); refresh() }
-      if (event.type === 'engines:detected' || event.type === 'engines:changed') refresh()
+      if (event.type === 'engines:detected' || event.type === 'engines:changed' || event.type === 'engine:health') refresh()
     })
     return () => { alive = false; off() }
   }, [attempt])
@@ -44,13 +50,13 @@ export function EngineSettings() {
         const state = states?.find((one) => one.id === id)
         const login = logins.find((one) => one.id === id && (one.profile ?? 'system') === (profiles?.selected[id] ?? 'system'))
         const pending = login?.phase === 'opening' || login?.phase === 'browser'
-        const connected = state?.loggedIn === true || login?.phase === 'connected'
+        const connected = connectionConfirmed(state)
         const name = id === 'claude' ? 'Claude' : 'ChatGPT'
         const profileName = profiles?.profiles.find(profile => profile.id === profiles.selected[id])?.name ?? 'System account'
-        const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : !states ? 'Checking connection…' : connected ? 'Connected' : state?.installed ? 'Not connected' : id === 'claude' ? 'Not installed' : 'Runtime unavailable'
+        const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : connectionLabel(state, id)
         return (
           <section key={id} className="engine-card engine-connection" aria-label={`${name} connection`}>
-            <div className="engine-card-heading"><div className="engine-identity"><strong><ProviderIcon provider={id} size={16} /> {name}</strong>{profileName && <small>{profileName}</small>}</div><span className="engine-status" data-connected={status === 'Connected'} data-testid={`brain-${id}-status`} role="status">{(pending || !states) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</span></div>
+            <div className="engine-card-heading"><div className="engine-identity"><strong><ProviderIcon provider={id} size={16} /> {name}</strong>{profileName && <small>{profileName}</small>}</div><span className="engine-status" data-connected={status === 'Connected'} data-testid={`brain-${id}-status`} role="status">{(pending || !state) && <LoaderCircle size={14} className="computer-spinner" aria-hidden />}{status}</span></div>
             <div className="engine-actions">
               {!pending && <AccountProfiles provider={id} />}
               {pending ? <>
@@ -58,10 +64,10 @@ export function EngineSettings() {
                 <button className="secondary" data-testid={`brain-${id}-cancel`} onClick={() => run(api.engineCancelLogin(id))}>Cancel</button>
               </> : connected ? <>
                 <button className="engine-disconnect" data-testid={`brain-${id}-disconnect`} onClick={() => run(api.engineDisconnect(id).then(() => { setLogins((prior) => prior.filter((one) => one.id !== id)); setAttempt((value) => value + 1) }))}>Disconnect</button>
-              </> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
+              </> : state?.conclusive === false && state.healthReason !== 'auth' ? <button className="secondary" onClick={() => setAttempt(value => value + 1)}>Retry connection check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
             </div>
             {login?.message && <p className="engine-message" role="status">{login.message}</p>}
-            <AccountUsage provider={id} />
+            <AccountUsage provider={id} verified={connected} />
           </section>
         )
       })}

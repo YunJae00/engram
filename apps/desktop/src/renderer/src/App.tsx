@@ -47,7 +47,7 @@ function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote, showToast } = useShellState()
   const { startRoutine } = useCometState()
   const [workspace, setWorkspace] = useState<'developers' | 'bots'>('bots')
-  const developerSidebar = activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers')
+  const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers'))
   useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (['bots', 'mission', 'routines'].includes(activity)) setWorkspace('bots') }, [activity])
   const [palette, setPalette] = useState<PaletteMode>(null)
   // What the panel should open with — a question to send outright, or a
@@ -57,6 +57,7 @@ function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general')
   useEffect(() => {
+    if (!api.developerUiEnabled) return
     const open = () => { setSettingsOpen(false); setActivity('developers') }
     const settings = () => { setSettingsSection('developers'); setSettingsOpen(true) }
     window.addEventListener('engram:open-developers', open)
@@ -100,7 +101,8 @@ function Shell() {
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'task:notice') showToast(e.message)
       else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
-      else if (e.type === 'routine:chat' || e.type === 'comet:open') {
+      else if (e.type === 'routine:chat' || e.type === 'comet:open' || e.type === 'comet:quick') {
+        if (e.type === 'comet:quick') { setSettingsOpen(false); setPalette(null); setAction(null) }
         selectComet(e.botId); setActivity('bots')
         if (window.innerWidth <= 900) setSidebarOpen(false)
       }

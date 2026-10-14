@@ -19,7 +19,7 @@ test.beforeAll(async () => {
     args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
     env: {
       ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'e2e-activity-userdata-')),
-      ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1',
+      ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1',
     },
   })
   page = await app.firstWindow({ timeout: 60_000 })

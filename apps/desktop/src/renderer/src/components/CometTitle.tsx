@@ -3,7 +3,6 @@ import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
-import { CometAvatar } from './CometAvatar.js'
 
 export function CometTitle({ ready }: { ready: boolean }) {
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
@@ -23,5 +22,5 @@ export function CometTitle({ ready }: { ready: boolean }) {
     return () => { alive = false; unsubscribe() }
   }, [ready])
   const selected = bots.find((bot) => bot.id === selectedId)
-  return <span className="conversation-title">{selected && <CometAvatar id={selected.id} small />}<span className="bots-head-name" title={selected ? [selected.name, selected.purpose].filter(Boolean).join(' — ') : undefined}>{selected?.name ?? t('topbar.tabBots')}</span></span>
+  return <span className="conversation-title"><span className="bots-head-name" title={selected ? [selected.name, selected.purpose].filter(Boolean).join(' — ') : undefined}>{selected?.name ?? t('topbar.tabBots')}</span></span>
 }

@@ -77,7 +77,7 @@ test.beforeAll(async () => {
       ENGRAM_BROWSER_EXTERNAL: '1',
     },
   })
-  page = await app.firstWindow()
+  page = await app.firstWindow({ timeout: 60_000 })
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
@@ -102,7 +102,11 @@ test('a floating mirror watches automatic work without changing the website view
     const website = browser.contexts()[0]!.pages().find(item => item.url() === siteUrl)!
     const viewport = await website.evaluate(() => [innerWidth, innerHeight])
     expect(viewport[0]).toBeGreaterThan(800)
-    await expect(preview.locator('.browser-preview-bar button')).toHaveCount(1)
+    await expect(preview.locator('.browser-preview-bar button')).toHaveCount(2)
+    await preview.getByRole('button', { name: 'Minimize browser', exact: true }).click()
+    await expect(preview.locator('canvas')).toHaveCount(0)
+    await preview.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
+    await expect(preview.locator('canvas[data-painted]')).toBeVisible()
     expect(await website.evaluate(() => [innerWidth, innerHeight])).toEqual(viewport)
     await preview.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
     await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
@@ -194,6 +198,7 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
 })
 
 test('mission control previews independent lanes and opens the chosen chat', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
   const bots = await page.evaluate(async () => {
     const first = (await window.engram.botsList())[0]!
     const second = await window.engram.botCreate({ name: 'Parallel watch', purpose: '' })
@@ -228,9 +233,11 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   }
   for (const index of [0, 1]) await openTile(index)
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2, { timeout: 15000 })
-  const previewWidths = () => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.map((node) => (node as HTMLCanvasElement).width))
-  const expectedWidths = () => page.locator('.mission-preview').evaluateAll((nodes) => nodes.map((node) => Math.max(360, Math.min(1920, Math.round(node.getBoundingClientRect().width / 8) * 8)) * 2))
-  await expect.poll(previewWidths, { timeout: 15000 }).toEqual(await expectedWidths())
+  const previewsFit = () => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.every(node => {
+    const width = node.closest('.mission-preview')!.getBoundingClientRect().width
+    return (node as HTMLCanvasElement).width === Math.max(360, Math.min(1920, Math.round(width / 8) * 8)) * 2
+  }))
+  await expect.poll(previewsFit, { timeout: 15000 }).toBe(true)
   await expect(page.locator('.mini-chat')).toHaveCount(2)
   await page.getByTestId('mission-add-2').click()
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Watching', exact: true }).click()
@@ -238,7 +245,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
   for (const index of [2, 3]) await openTile(index)
   await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(4, { timeout: 20000 })
-  await expect.poll(previewWidths, { timeout: 20000 }).toEqual(await expectedWidths())
+  await expect.poll(previewsFit, { timeout: 20000 }).toBe(true)
   const simultaneous = await page.evaluate(async ({ url, ids }) => {
     const lanes = ids.map((id) => `bot-${id}`)
     const counts = lanes.map(() => 0)
@@ -508,11 +515,13 @@ test('web phases auto-open only their own conversation and folds never leak acro
     const tile = page.getByTestId('mission-tile-0')
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
     await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-    await expect(tile.locator('.browser-start')).toBeVisible()
-    await expect(tile.locator('.mission-preview canvas')).toBeHidden()
+    const modal = page.getByTestId('mission-browser-dialog')
+    await expect(modal).toBeVisible()
+    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+    await expect(modal.locator('.browser-start')).toBeVisible()
+    await expect(modal.locator('.mission-preview canvas')).toBeHidden()
     await web.goto(`${siteUrl}?lane=first`)
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-    await expect(tile.locator('.mission-preview canvas[data-painted]')).toBeVisible()
+    await expect(modal.locator('.mission-preview canvas[data-painted]')).toBeVisible()
+    await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
   } finally { await browser.close() }
 })

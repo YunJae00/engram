@@ -1,6 +1,6 @@
 import { Check, CirclePause, LoaderCircle, RotateCw } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { api } from '../api.js'
+import { api, apiErrorText } from '../api.js'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
 import { useTopBarState } from '../state-slices.js'
@@ -16,7 +16,7 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
       if (status.deferred > 0) return translate('topbar.sweepDeferred', { n: status.deferred })
       return translate('topbar.sweepDone', { executed: status.executed, skipped: status.skipped })
     case 'error':
-      return status.message
+      return /No engine available/.test(status.message) ? 'Filing paused' : apiErrorText(status.message)
     default:
       return ''
   }
@@ -30,7 +30,7 @@ export function SidebarStatus() {
     if (pending.current) return
     pending.current = true; setRetrying(true)
     try { await api.sweep() }
-    catch (error) { showToast(error instanceof Error ? error.message : String(error)) }
+    catch (error) { const message = apiErrorText(error instanceof Error ? error.message : String(error)); showToast(/No engine available/.test(message) ? 'Filing is paused. Choose a connected AI for filing in Settings.' : message) }
     finally { pending.current = false; setRetrying(false) }
   }
   const jobKey: StringKey | null = sweepJob?.job && /^J[1-8]$/.test(sweepJob.job) ? (`topbar.job${sweepJob.job}` as StringKey) : null

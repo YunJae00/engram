@@ -79,6 +79,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   const { activity } = useShellState()
   const active = activity === 'bots'
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
+  useEffect(() => { setVisible(document.visibilityState === 'visible') }, [active])
   useEffect(() => {
     const changed = () => setVisible(document.visibilityState === 'visible')
     document.addEventListener('visibilitychange', changed)

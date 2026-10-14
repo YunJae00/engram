@@ -42,6 +42,10 @@ export async function loadCometThread(id: string): Promise<void> {
 }
 
 api.onEvent((event) => {
+  if (event.type === 'comet:quick') {
+    cometThreads.begin(event.botId, event.message)
+    return
+  }
   if (event.type === 'comet:continue') {
     cometThreads.carryOn(event.botId)
     return

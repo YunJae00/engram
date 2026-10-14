@@ -15,6 +15,8 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
 import { vaultGit } from './vault-git.js'
+import { connectionProbe } from './connection-probe.js'
+import { engineHealthOf } from './engine-health.js'
 
 // Vault + engine context for the main process. Env knobs used by dev/e2e:
 //   ENGRAM_VAULT     vault root (skips onboarding)
@@ -34,6 +36,7 @@ export interface VaultContext {
 }
 
 let context: VaultContext | null = null
+const detectionRevision = new WeakMap<VaultContext, number>()
 
 // Bundled binaries live under resources/bin in packaged builds and under
 // apps/desktop/bundle in dev (after `pnpm bundle:binaries`).
@@ -68,10 +71,12 @@ async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> 
   if (engineFlag === 'none') return []
   const selection = aiSelection(await loadSettings(), 'filing')
   const chosen = selection.engine
-  const engine = withModel(createEngine(chosen), selection.model, selection.effort)
+  const engine = Object.assign(withModel(createEngine(chosen), selection.model, selection.effort), { authConfirmed: false })
   const known = keepSet(keep).has(chosen)
   try {
-    return keepsEngine(await engine.detect(), known) ? [engine] : []
+    const detection = await engine.detect()
+    engine.authConfirmed = detection.loggedIn && detection.conclusive !== false
+    return keepsEngine(detection, known) ? [engine] : []
   } catch {
     return known ? [engine] : []
   }
@@ -89,10 +94,9 @@ export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Pro
   if (engineFlag === 'mock') return [{ id: 'mock', installed: true, loggedIn: true }]
   if (engineFlag === 'none') return [{ id: 'claude', installed: false, loggedIn: false }]
   return Promise.all(ids.map(async (id) => {
-    const detection = await createEngine(id)
-      .detect()
-      .catch(() => ({ installed: false, loggedIn: false }))
-    return { id, installed: detection.installed, loggedIn: detection.loggedIn }
+    const detection = await connectionProbe(() => createEngine(id).detect())
+    const health = engineHealthOf(id)
+    return { id, ...detection, ...(health ? { healthy: health.healthy, healthReason: health.reason } : {}) }
   }))
 }
 
@@ -101,14 +105,20 @@ export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Pro
 // handler, so no restart is needed. Safe to call from anywhere at any rate:
 // concurrent probes collapse inside the adapter (ClaudeAdapter.detect).
 export async function refreshEngines(ctx: VaultContext, selectionOnly = false): Promise<Engine[]> {
+  const revision = (detectionRevision.get(ctx) ?? 0) + 1
+  detectionRevision.set(ctx, revision)
   if (selectionOnly && (process.env['ENGRAM_ENGINE'] ?? 'auto') === 'auto') {
     const selection = aiSelection(await loadSettings(), 'filing')
-    if (ctx.engines.some(engine => engine.id === selection.engine)) {
-      ctx.engines = [withModel(createEngine(selection.engine), selection.model, selection.effort)]
+    const next = withModel(createEngine(selection.engine), selection.model, selection.effort) as Engine & { authConfirmed?: boolean; accountProfile?: string }
+    const previous = ctx.engines.find(engine => engine.id === selection.engine) as typeof next | undefined
+    if (previous && previous.accountProfile === next.accountProfile) {
+      next.authConfirmed = previous.authConfirmed
+      if (detectionRevision.get(ctx) === revision) ctx.engines = [next]
       return ctx.engines
     }
   }
-  ctx.engines = await resolveEngines(ctx.engines.map((e) => e.id))
+  const engines = await resolveEngines(ctx.engines.map((e) => e.id))
+  if (detectionRevision.get(ctx) === revision) ctx.engines = engines
   return ctx.engines
 }
 

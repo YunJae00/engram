@@ -1,4 +1,5 @@
 import { Settings, Brain, Database, CircleHelp, SlidersHorizontal } from 'lucide-react'
+import { api } from '../api.js'
 
 const SECTIONS = [
   { id: 'general', label: 'General', icon: Settings },
@@ -11,6 +12,6 @@ export type SettingsSection = typeof SECTIONS[number]['id']
 
 export function SettingsNavigation({ selected = 'general', onSelect }: { selected?: SettingsSection; onSelect?: (section: SettingsSection) => void }) {
   return <nav className="settings-nav" aria-label="Settings sections">
-    {SECTIONS.map(({ id, label, icon: Icon }) => <button key={id} type="button" disabled={!onSelect} aria-current={selected === id ? 'page' : undefined} data-testid={`settings-nav-${id}`} onClick={() => onSelect?.(id)}><Icon size={17} aria-hidden /><span>{label}</span></button>)}
+    {SECTIONS.filter(section => section.id !== 'developers' || api.developerUiEnabled).map(({ id, label, icon: Icon }) => <button key={id} type="button" disabled={!onSelect} aria-current={selected === id ? 'page' : undefined} data-testid={`settings-nav-${id}`} onClick={() => onSelect?.(id)}><Icon size={17} aria-hidden /><span>{label}</span></button>)}
   </nav>
 }

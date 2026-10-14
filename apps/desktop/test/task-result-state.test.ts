@@ -1,10 +1,21 @@
 import { expect, it, vi } from 'vitest'
 import type { AgentLoopResult, TurnStep } from 'core'
 import { checkResult, resultCheckTool } from '../src/main/result-check.js'
-import { canLearnTurn, freshResultReadback, needsResultCheck } from '../src/main/task-result-state.js'
+import { canLearnTurn, freshResultReadback, holdTaskResult, needsResultCheck } from '../src/main/task-result-state.js'
 import { done, pressed, readback, setup } from './task-runner-fixture.js'
 
 const read: TurnStep = { tool: 'read_open_page', args: {}, observation: 'Current saved state' }
+
+it('holds incomplete read-only answers while continuing instead of publishing two results', () => {
+  const draft = { answer: 'Same result', steps: [read] }
+  const turn = { holdIf: () => false }
+  expect(holdTaskResult({ ...draft, incomplete: 'The page check was not confirmed.' }, turn)).toBe(true)
+  expect(holdTaskResult({ ...draft, stopped: 'calls' }, turn)).toBe(true)
+  expect(holdTaskResult(draft, turn)).toBe(false)
+  expect(holdTaskResult({ ...draft, asked: true, incomplete: 'Need input' }, turn)).toBe(false)
+  expect(holdTaskResult({ ...draft, pending: 'run_procedure' }, turn)).toBe(false)
+  expect(holdTaskResult({ ...draft, incomplete: 'No unattended task' })).toBe(false)
+})
 const result = (steps: TurnStep[], extra: Partial<AgentLoopResult> = {}) => ({ steps, ...extra })
 const report = async (): Promise<TurnStep> => {
   const finding = { status: 'pass', basis: 'The requested state is present.' }

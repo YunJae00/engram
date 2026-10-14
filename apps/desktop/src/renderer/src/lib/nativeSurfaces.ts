@@ -43,6 +43,7 @@ function measure(): void {
   // Occlusion by another app is not a layout change. Native child windows
   // already follow their owner; unmounting them here flashes on task switching.
   for (const [element, lane] of surfaces) {
+    if (element.closest('[hidden], [inert]') || getComputedStyle(element).visibility === 'hidden') continue
     const full = element.getBoundingClientRect()
     let left = Math.max(0, full.left), top = Math.max(0, full.top)
     let right = Math.min(innerWidth, full.right), bottom = Math.min(innerHeight, full.bottom)

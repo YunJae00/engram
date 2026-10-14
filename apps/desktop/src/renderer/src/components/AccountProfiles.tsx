@@ -9,6 +9,7 @@ import { useAccountUsage } from '../lib/accountUsage.js'
 import { UsageSummary } from './AccountUsage.js'
 import { AccountLimit } from './AccountLimit.js'
 import { ProviderIcon } from './ProviderIcon.js'
+import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
 
 export function AccountProfiles({ provider, compact = false, sessionProfile }: { provider: AccountProvider; compact?: boolean; sessionProfile?: string }) {
   const [open, setOpen] = useState(false), profiles = useAccountProfiles()
@@ -26,7 +27,7 @@ export function ProfileDialog({ provider, sessionProfile, close }: { provider: A
     const refresh = () => { const at = ++revision; void api.accountProfileStates().then(value => { if (alive && at === revision) setStates(value) }).catch(error => { if (alive) setError(error.message) }) }
     refresh(); void api.engineLogins().then(value => { if (alive) setLogins(value) }).catch(() => { if (alive) setError('Could not check sign-in progress. Reopen accounts to retry.') })
     const off = api.onEvent(event => {
-      if (event.type === 'accounts:changed') refresh()
+      if (event.type === 'accounts:changed' || event.type === 'engine:health') refresh()
       if (event.type === 'engines:login') {
         setLogins(rows => [...rows.filter(row => row.id !== event.login.id || row.profile !== event.login.profile), event.login])
         if (['connected', 'idle', 'error'].includes(event.login.phase)) refresh()
@@ -45,14 +46,14 @@ export function ProfileDialog({ provider, sessionProfile, close }: { provider: A
       const state = states.find(value => value.provider === provider && value.id === row.id)
       const login = logins.find(value => value.id === provider && (value.profile ?? 'system') === row.id)
       const pending = login?.phase === 'opening' || login?.phase === 'browser'
-      const connected = state?.loggedIn || login?.phase === 'connected'
+      const connected = connectionConfirmed(state)
       const current = profiles?.selected[provider] === row.id
       const limits = usage.find(value => value.provider === provider && value.profile === row.id)
       return <section key={row.id} className="account-profile-row" data-selected={current} aria-label={row.name}>
-        <header><div><strong><ProviderIcon provider={provider} size={16} />{row.name}{current && <span className="account-selected">Selected</span>}</strong><small>{sessionProfile === row.id ? 'Used by this session' : pending ? 'Finish sign-in in your browser' : connected ? 'Connected' : state ? 'Not connected' : 'Checking connection…'}</small></div>
+        <header><div><strong><ProviderIcon provider={provider} size={16} />{row.name}{current && <span className="account-selected">Selected</span>}</strong><small>{sessionProfile === row.id ? 'Used by this session' : pending ? 'Finish sign-in in your browser' : connectionLabel(state, provider)}</small></div>
           {pending ? <div className="dev-actions">{login.canOpen && <button className="secondary" onClick={() => void act(() => api.engineOpenLogin(provider, row.id))}>Open browser</button>}<button className="secondary" onClick={() => void act(() => api.engineCancelLogin(provider, row.id))}>Cancel sign-in</button></div>
             : connected ? <button className="secondary" disabled={busy || current} onClick={() => void act(async () => { await api.accountProfileUse(provider, row.id); close() })}>{current ? <><Check size={14} />Current</> : 'Use account'}</button>
-              : <button className="secondary" disabled={busy || !state?.installed} onClick={() => connect(row.id)}>{!state ? <LoaderCircle size={14} className="spin" /> : 'Connect'}</button>}
+              : state?.conclusive === false && state.healthReason !== 'auth' ? <button className="secondary" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Retry check</button> : <button className="secondary" disabled={busy || !state?.installed} onClick={() => connect(row.id)}>{!state ? <LoaderCircle size={14} className="spin" /> : 'Connect'}</button>}
         </header>
         {connected && <UsageSummary usage={limits?.usage ?? null} />}
       </section>

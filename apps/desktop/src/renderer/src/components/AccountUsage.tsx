@@ -17,11 +17,11 @@ export function UsageSummary({ usage }: { usage: DevUsage | null }) {
   </div>
 }
 
-export function AccountUsage({ provider }: { provider: AccountProvider }) {
-  const accounts = useAccountUsage().filter(account => account.provider === provider), loading = useAccountUsageChecking(), profiles = useAccountProfiles()
+export function AccountUsage({ provider, verified = true }: { provider: AccountProvider; verified?: boolean }) {
+  const accounts = useAccountUsage().filter(account => verified && account.provider === provider), loading = useAccountUsageChecking(), profiles = useAccountProfiles()
   return <div className="account-usage">
     <div className="dev-usage-label"><strong>Accounts &amp; limits</strong><button className="dev-control" aria-label={`Refresh ${provider === 'claude' ? 'Claude' : 'ChatGPT'} usage`} disabled={loading} onClick={() => void refreshAccountUsage(true)}>{loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}</button></div>
-    {!accounts.length && <p className="dev-working" role="status">{loading ? <><LoaderCircle size={14} className="spin" />Checking connected accounts…</> : 'Connect an AI account in settings to see its reported limits.'}</p>}
+    {!accounts.length && <p className="dev-working" role="status">{loading && verified ? <><LoaderCircle size={14} className="spin" />Checking connected accounts…</> : 'Connect an AI account in settings to see its reported limits.'}</p>}
     {accounts.map(account => <section key={account.profile}><h4 className="dev-working">{account.name}{profiles?.selected[provider] === account.profile && <span className="account-selected">Selected</span>}</h4>{account.loading && !account.usage ? <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" />Checking limits…</p> : <UsageSummary usage={account.usage} />}</section>)}
   </div>
 }
