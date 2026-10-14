@@ -93,7 +93,7 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   await expect(menu).toHaveCount(0)
   const footer = sidebar.locator('.sidebar-footer')
   const work = footer.getByTestId('sweep-status')
-  const engine = footer.getByTestId('engine-status')
+  const engine = footer.getByTestId('filing-retry')
   const settings = footer.getByTestId('activity-settings')
   const expectFooterAlignment = async (withWork: boolean) => {
     await expect(engine).toBeVisible()
@@ -102,7 +102,7 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
       const [engineBox, settingsBox, workBox] = await Promise.all([engine.boundingBox(), settings.boundingBox(), withWork ? work.boundingBox() : Promise.resolve(null)])
       return {
         settingsAligned: Boolean(engineBox && settingsBox && Math.abs(engineBox.y + engineBox.height / 2 - settingsBox.y - settingsBox.height / 2) <= 1),
-        workBeside: withWork ? Boolean(engineBox && workBox && workBox.x >= engineBox.x + engineBox.width && Math.abs(workBox.y + workBox.height / 2 - engineBox.y - engineBox.height / 2) <= 1) : workBox === null,
+        workBeside: withWork ? Boolean(engineBox && workBox && workBox.x + workBox.width <= engineBox.x + 1 && Math.abs(workBox.y + workBox.height / 2 - engineBox.y - engineBox.height / 2) <= 1) : workBox === null,
       }
     }).toEqual({ settingsAligned: true, workBeside: true })
   }

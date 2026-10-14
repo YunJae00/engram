@@ -510,7 +510,7 @@ export type EngramEvent =
   | { type: 'note:open'; id: string }
   // A task notification was clicked: show that conversation.
   | { type: 'comet:open'; botId: string }
-  | { type: 'comet:quick'; botId: string; message: string }
+  | { type: 'comet:quick'; botId: string; message: string; attachments?: string[] }
   | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.
@@ -758,7 +758,11 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   onEvent(listener: (event: EngramEvent) => void): () => void
   // quick-capture floating window helpers
   hideQuickCapture(): void
-  quickComet(message: string): Promise<string>
+  quickComet(message: string, attachments?: string[]): Promise<string>
+  quickLayout(height: number): Promise<void>
+  quickOpenApp(): Promise<void>
+  quickPickFiles(count: number): Promise<ChatAttachmentDto[]>
+  resetApp(): Promise<boolean>
   showQuickComet(): Promise<void>
   readonly developerUiEnabled: boolean
   pathForFile(file: File): string

@@ -46,6 +46,8 @@ import { stopDesktopControl } from './desktop-control.js'
 import { developersRunning, registerDevIpc, stopDevelopers } from './dev-ipc.js'
 import { setTaskSurface } from './task-notify.js'
 import { quickCometBounds } from './quick-comet.js'
+import { finishAppReset, registerAppReset } from './app-reset.js'
+import { quickFileDialogOpen } from './quick-files.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -105,6 +107,7 @@ const isHidden = process.env['ENGRAM_HIDDEN'] === '1'
 let mainWin: BrowserWindow | null = null
 let quickWin: BrowserWindow | null = null
 let quickOpening = false
+let quickAnchor: Electron.Rectangle | null = null
 // Held for setUpdateReady — and holding it at all keeps the Tray object out
 // of GC's reach (a collected Tray silently vanishes from the system tray).
 let tray: TrayHandle | null = null
@@ -315,6 +318,7 @@ async function toggleQuickCapture(): Promise<void> {
   if (quickOpening) return
   const point = screen.getCursorScreenPoint()
   const bounds = quickCometBounds(point, screen.getDisplayNearestPoint(point).workArea)
+  quickAnchor = bounds
   if (quickWin && !quickWin.isDestroyed()) {
     if (quickWin.isVisible()) quickWin.hide()
     else {
@@ -332,11 +336,13 @@ async function toggleQuickCapture(): Promise<void> {
     alwaysOnTop: true,
     skipTaskbar: true,
     show: false,
-    backgroundColor: '#1e1e1e',
+    transparent: ownTitleBarIsSafe(),
+    hasShadow: false,
+    backgroundColor: '#00000000',
     webPreferences,
   })
   hardenWebContents(quickWin.webContents)
-  quickWin.on('blur', () => quickWin?.hide())
+  quickWin.on('blur', () => { if (quickWin && !quickFileDialogOpen(quickWin.webContents.id)) quickWin.hide() })
   quickWin.on('closed', () => { quickWin = null })
   try {
     await loadRenderer(quickWin, 'quick')
@@ -428,7 +434,15 @@ async function startResidency(ctx: VaultContext): Promise<void> {
 
 // IPC that must exist BEFORE a vault does (onboarding window).
 function registerBaseIpc(): void {
+  registerAppReset(() => mainWin, () => { quitting = true; app.relaunch(); app.quit() })
   ipcMain.handle('quick:show', () => toggleQuickCapture())
+  ipcMain.handle('quick:openApp', event => { if (event.sender.id !== quickWin?.webContents.id) return; quickWin.hide(); showMainWindow() })
+  ipcMain.handle('quick:layout', (event, requested: unknown) => {
+    if (!quickWin || event.sender.id !== quickWin.webContents.id || !quickAnchor || typeof requested !== 'number' || !Number.isFinite(requested)) return
+    const area = screen.getDisplayMatching(quickAnchor).workArea
+    const height = Math.min(Math.max(88, Math.round(requested)), 320, area.height - 24)
+    quickWin.setBounds({ ...quickAnchor, y: Math.max(area.y + 12, quickAnchor.y + quickAnchor.height - height), height })
+  })
   ipcMain.on('quick:hide', () => quickWin?.hide())
   // Renderer stalls never reach a profiler on a user's machine; the longest
   // frame-blocking tasks land in the same log everything else does.
@@ -616,6 +630,7 @@ app.whenReady().then(async () => {
   // Lost the single-instance race: quit was already requested above, so boot
   // nothing — no window, no vault, no watchers on a vault another process owns.
   if (!singleInstance) return
+  if (!await finishAppReset()) { app.quit(); return }
   await finishWorkspaceDeletion()
   await (await import('./account-profiles.js')).initializeAccountProfiles(app.getPath('userData'))
   nativeTheme.themeSource = (await loadSettings()).theme

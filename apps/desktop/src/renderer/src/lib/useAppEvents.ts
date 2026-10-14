@@ -248,7 +248,12 @@ export function useAppEvents(options: AppEventsOptions): void {
         }
       }
       if (event.type === 'engines:detected') setters.enginesDetected(true)
-      if (event.type === 'engines:changed') setters.engines(event.engines)
+      if (event.type === 'engines:changed') {
+        setters.engines(event.engines)
+        if (event.engines.some(engine => engine.loggedIn && engine.conclusive !== false && engine.healthy !== false)) {
+          setters.sweepStatus(previous => previous.kind === 'error' && /No engine available/.test(previous.message) ? { kind: 'idle', running: false } : previous)
+        }
+      }
       if (event.type === 'engine:health') {
         setters.engines((previous) =>
           previous.map((engine) =>

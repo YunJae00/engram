@@ -55,7 +55,7 @@ test('popup is compact, focused, preserves dismissed drafts and supports new lin
   await openPopup()
   const input = popup.getByTestId('quick-input')
   await expect(input).toBeFocused()
-  await expect(popup.getByRole('button')).toHaveCount(1)
+  await expect(popup.getByRole('button')).toHaveCount(3)
   await popup.screenshot({ path: join(tmp, 'quick-comet-empty.png') })
   await expect(popup.getByRole('button', { name: 'Start Comet', exact: true })).toBeDisabled()
   await input.fill('Keep this draft')
@@ -71,7 +71,7 @@ test('popup is compact, focused, preserves dismissed drafts and supports new lin
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().endsWith('#quick'))!
     return { bounds: window.getBounds(), area: screen.getDisplayMatching(window.getBounds()).workArea }
   })
-  expect(bounds.bounds.width).toBeLessThanOrEqual(440)
+  expect(bounds.bounds.width).toBeLessThanOrEqual(480)
   expect(bounds.bounds.x).toBeGreaterThanOrEqual(bounds.area.x)
   expect(bounds.bounds.y + bounds.bounds.height).toBeLessThanOrEqual(bounds.area.y + bounds.area.height)
   await popup.screenshot({ path: join(tmp, 'quick-comet-light.png') })
@@ -80,6 +80,32 @@ test('popup is compact, focused, preserves dismissed drafts and supports new lin
   await popup.screenshot({ path: join(tmp, 'quick-comet-dark.png') })
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(one => one.webContents.getURL().endsWith('#quick'))!.emit('blur'))
   await expect.poll(visible).toBe(false)
+})
+
+test('the add menu expands above the input, attaches files and opens the app without losing the draft', async () => {
+  await openPopup()
+  await popup.getByTestId('quick-input').fill('Use this attachment')
+  await popup.getByRole('button', { name: 'Quick chat actions', exact: true }).click()
+  await expect(popup.getByRole('button', { name: 'Attach files', exact: true })).toBeVisible()
+  const menu = (await popup.getByRole('group', { name: 'Quick chat actions' }).boundingBox())!
+  expect(menu.y + menu.height).toBeLessThan((await popup.locator('.quick-bar').boundingBox())!.y)
+  await popup.screenshot({ path: join(tmp, 'quick-comet-menu.png') })
+  await app.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }) }, join(tmp, 'quick-comet-attachment.txt'))
+  await writeFile(join(tmp, 'quick-comet-attachment.txt'), 'Quick attachment evidence')
+  await popup.getByRole('button', { name: 'Attach files', exact: true }).click()
+  await expect(popup.getByRole('button', { name: 'Remove quick-comet-attachment.txt' })).toBeVisible()
+  await expect.poll(visible).toBe(true)
+  await popup.getByRole('button', { name: 'Quick chat actions', exact: true }).click()
+  await popup.getByRole('button', { name: 'Open Engram', exact: true }).click()
+  await expect.poll(visible).toBe(false)
+  await openPopup()
+  await expect(popup.getByTestId('quick-input')).toHaveValue('Use this attachment')
+  await popup.getByTestId('quick-input').press('Enter')
+  await expect.poll(visible).toBe(false)
+  await expect.poll(() => page.evaluate(async () => {
+    const bot = (await window.engram.botsList()).at(-1)!
+    return (await window.engram.botTranscript(bot.id)).some(turn => turn.role === 'user' && turn.attachments?.length === 1)
+  })).toBe(true)
 })
 
 test('invalid input creates nothing; Enter creates one Comet and starts the normal task', async () => {

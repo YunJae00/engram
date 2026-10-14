@@ -174,10 +174,10 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await expect(page.getByTestId('sidebar-chats-toggle')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-routines-toggle')).toHaveCount(0)
   const engineStatus = sidebar.getByTestId('engine-status')
-  await expect(engineStatus).toBeVisible()
+  await expect(engineStatus).toHaveCount(0)
   const [scrollBox, engineBox, footerBox] = await Promise.all([
     sidebar.locator('.sidebar-scroll').boundingBox(),
-    engineStatus.boundingBox(),
+    sidebar.getByTestId('sweep-status').boundingBox(),
     sidebar.locator('.sidebar-footer').boundingBox(),
   ])
   expect(footerBox!.y).toBeGreaterThanOrEqual(scrollBox!.y + scrollBox!.height - 1)

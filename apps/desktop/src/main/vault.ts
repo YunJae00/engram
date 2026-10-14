@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
 import { vaultGit } from './vault-git.js'
 import { connectionProbe } from './connection-probe.js'
-import { engineHealthOf } from './engine-health.js'
+import { engineHealthOf, revalidateEngines } from './engine-health.js'
 
 // Vault + engine context for the main process. Env knobs used by dev/e2e:
 //   ENGRAM_VAULT     vault root (skips onboarding)
@@ -98,6 +98,13 @@ export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Pro
     const health = engineHealthOf(id)
     return { id, ...detection, ...(health ? { healthy: health.healthy, healthReason: health.reason } : {}) }
   }))
+}
+
+export async function synchronizeFilingProbe(ctx: VaultContext, states: EngineStatusDto[]): Promise<void> {
+  const selection = aiSelection(await loadSettings(), 'filing')
+  const status = states.find(state => state.id === selection.engine)
+  const current = ctx.engines.find(engine => engine.id === selection.engine) as (Engine & { authConfirmed?: boolean }) | undefined
+  if (status && status.conclusive !== false && (status.loggedIn && status.installed) !== (current?.authConfirmed === true)) await revalidateEngines(ctx, false, false)
 }
 
 // Re-detects engines in place (e.g. right after the user logs a CLI in via
