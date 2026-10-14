@@ -53,6 +53,10 @@ test.beforeEach(async () => {
     },
   })
   page = await app.firstWindow({ timeout: 90000 })
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('models:list')
+    ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }])
+  })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
@@ -96,10 +100,15 @@ test('a fresh workspace requires verified AI before browsing', async () => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
   await page.getByTestId('onboard-interview').uncheck()
+  await expect(page.getByTestId('onboard-finish')).toBeDisabled()
+  await page.getByTestId('onboard-choose-codex').check()
+  await expect(page.getByTestId('onboard-finish')).toBeDisabled()
+  await page.getByTestId('onboard-model').selectOption('codex-quick')
   await expect(page.getByTestId('onboard-finish')).toBeEnabled()
   await page.getByTestId('onboard-finish').click()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.workMap, settings.workFiles, settings.workApps]))).toEqual([false, true, false])
+  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.codexModel, settings.aiSelections?.filing]))).toEqual(['codex', 'codex-quick', { engine: 'codex', model: 'codex-quick' }])
   await expect(page.getByTestId('welcome-web')).toBeEnabled()
   await app.evaluate(() => { process.env['ENGRAM_ENGINE'] = 'none' })
   const titled = await page.evaluate(async () => {
@@ -158,6 +167,8 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await page.getByTestId('onboard-next').click()
   await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
   await page.getByTestId('onboard-interview').uncheck()
+  await page.getByTestId('onboard-choose-codex').check()
+  await page.getByTestId('onboard-model').selectOption('')
   await page.getByTestId('onboard-finish').click()
   await expect(page.getByRole('alert')).toContainText('did not answer the connection check')
   await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Check failed')
@@ -219,6 +230,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   // With two connected, the person says which answers first; nothing is guessed from the sign-in order.
   await expect(page.getByTestId('onboard-choice')).toBeVisible()
   await page.getByTestId('onboard-choose-codex').check()
+  await page.getByTestId('onboard-model').selectOption('')
   await screenshot('04-connected.png')
   await page.getByTestId('onboard-finish').click()
 

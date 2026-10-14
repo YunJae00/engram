@@ -623,6 +623,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   // The models the signed-in plan offers, in the runtime's own words; empty
   // until the runtime has been asked.
   modelsList(id?: 'claude' | 'codex', profile?: string): Promise<ModelChoiceDto[]>
+  aiCheck(): Promise<void>
   // Whether a window is being mirrored, without joining the watch.
   agentState(): Promise<{ on: boolean; url?: string; lane?: string }>
   // workspace registry/switcher (app-level vaults)

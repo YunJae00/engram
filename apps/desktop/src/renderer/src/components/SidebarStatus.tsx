@@ -30,7 +30,7 @@ export function SidebarStatus() {
   const retry = async () => {
     if (pending.current) return
     pending.current = true; setRetrying(true)
-    try { await api.sweep() }
+    try { if (!engines.some(engine => connectionConfirmed(engine) && engine.healthy !== false)) await api.aiCheck(); await api.sweep() }
     catch (error) { const message = apiErrorText(error instanceof Error ? error.message : String(error)); showToast(/No engine available/.test(message) ? 'Filing is paused. Choose a connected AI for filing in Settings.' : message) }
     finally { pending.current = false; setRetrying(false) }
   }

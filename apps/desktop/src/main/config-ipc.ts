@@ -13,6 +13,7 @@ import { stopDesktopControl } from './desktop-control.js'
 import { aiSelection } from './ai-selection.js'
 import { deskSettingChanged, workMapSettingChanged } from './work-map-job.js'
 import { cancelWorkInterview } from './work-interview.js'
+import { checkAISelection } from './check-ai.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
 // windows read them (language, shortcut) before any vault is booted, so these
@@ -26,6 +27,10 @@ export function setBrainChoiceHook(hook: () => void | Promise<void>): void {
 
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
+  ipcMain.handle('ai:check', async () => {
+    await checkAISelection()
+    await onBrainChoice?.()
+  })
   ipcMain.handle('ai:selection', async (_event, scope: unknown, selection: unknown) => {
     if (typeof scope !== 'string' || !/^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope)) throw new Error('Invalid AI scope')
     const value = selection as { engine?: unknown; model?: unknown; effort?: unknown } | null

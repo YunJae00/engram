@@ -42,7 +42,7 @@ export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSi
   if (!ctx.engines.length) throw new Error('Connect an AI before preparing Cosmos.')
   const engine = ctx.engines[0]!
   if (engine.id === 'claude' || engine.id === 'codex') await verifySetupConnection(engine, engineCwd(ctx.paths), AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
-  if (engineBackoff.blockedMs() > 0) throw new Error('Your AI is temporarily unavailable. Wait for its usage limit to reset or choose another AI in Settings.')
+  if (engineBackoff.blockedMs() > 0) throw new Error('Your AI is temporarily unavailable after a limited request. Retry later or test another model or AI in Settings.')
   // Right after setup the map may still be on its way (the brain was only
   // just detected, the browser only just read). It gets a bounded wait; past
   // that, Cosmos is prepared without it and the places join when it lands.
@@ -67,7 +67,7 @@ export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSi
   signal.throwIfAborted()
   noteRunOutcome(ctx, report, engine)
   if (report.haltReason === 'auth') throw new Error('Reconnect your AI to finish preparing Cosmos.')
-  if (report.haltReason === 'quota') throw new Error('Your AI reached its usage limit. Completed work was kept. Wait for the limit to reset or choose another AI in Settings.')
+  if (report.haltReason === 'quota') throw new Error('Your AI limited a request. Completed work was kept. Reported account limits may differ. Retry later or test another model or AI in Settings.')
   if (report.failed.length || report.deferred) {
     flog('interview-preparation', `${report.failed.length} failed, ${report.deferred} deferred`)
     throw new Error('Cosmos preparation is incomplete. Completed work was kept. Retry to finish the remaining work.')

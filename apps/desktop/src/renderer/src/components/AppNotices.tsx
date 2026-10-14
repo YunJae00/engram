@@ -38,7 +38,7 @@ export const AppNotices = memo(function AppNotices({
   }, [])
   useEffect(() => setError(false), [update?.version, update?.state])
   const unhealthy = engines.filter((engine) => engine.healthy === false)
-  const unhealthyIds = unhealthy.map((engine) => engine.id).join(', ')
+  const unhealthyIds = unhealthy.map((engine) => engine.id === 'codex' ? 'ChatGPT' : engine.id === 'claude' ? 'Claude' : engine.id).join(', ')
   const reason = unhealthy[0]?.healthReason
   const unhealthyText =
     reason === 'auth'
@@ -70,7 +70,7 @@ export const AppNotices = memo(function AppNotices({
           <span>{unhealthyText}</span>
           <button
             className="connect-banner-btn"
-            onClick={() => reason === 'auth' ? onOpenSettings() : window.dispatchEvent(new Event('engram:open-diagnostics'))}
+            onClick={() => reason === 'auth' || reason === 'quota' ? onOpenSettings() : window.dispatchEvent(new Event('engram:open-diagnostics'))}
           >
             {reason === 'auth' ? t('banner.login') : t('banner.check')}
           </button>

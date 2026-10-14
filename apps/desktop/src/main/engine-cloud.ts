@@ -146,7 +146,7 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
 // remedy differs - sign in again, wait for a limit, or report a crash.
 export function cloudErrorKind(message: string): EngineErrorKind {
   if (/not logged in|not authenticated|log ?in|sign ?in|invalid api key|unauthorized|\b40[13]\b/i.test(message)) return 'auth'
-  if (/rate limit|too many requests|\b429\b|quota|usage limit|extra usage|credit/i.test(message)) return 'quota'
+  if (/rate limit|too many requests|\b429\b|quota|usage limit|(?:insufficient|exhausted|not enough|out of) credits?/i.test(message)) return 'quota'
   return classifyEngineError(message)
 }
 
