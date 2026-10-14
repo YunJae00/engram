@@ -3,7 +3,7 @@ import { engineBackoff } from 'core'
 import { accountProfiles, addAccountProfile, selectAccountProfile } from './account-profiles.js'
 import { cloudEngine } from './engine-cloud.js'
 import { desktopOwner } from './desktop-access.js'
-import { broadcast, markEngineOk } from './engine-health.js'
+import { broadcast, engineHealthOf } from './engine-health.js'
 import type { AccountProfileState, AccountProvider } from '../shared/account-profiles.js'
 import { connectionProbe } from './connection-probe.js'
 
@@ -24,7 +24,8 @@ export function registerAccountIpc(changed: () => Promise<void>): void {
     // Each check is a runtime process; a few at a time keeps memory bounded.
     for (let at = 0; at < rows.length; at += STATUS_BATCH) result.push(...await Promise.all(rows.slice(at, at + STATUS_BATCH).map(async row => {
       const detection = await connectionProbe(() => cloudEngine(row.provider, row.id).detect())
-      return { ...row, ...detection, selected: profiles.selected[row.provider] === row.id }
+      const health = engineHealthOf(row.provider, row.id)
+      return { ...row, ...detection, ...(health ? { healthy: health.healthy, healthReason: health.reason } : {}), selected: profiles.selected[row.provider] === row.id }
     })))
     return result
   })
@@ -34,7 +35,6 @@ export function registerAccountIpc(changed: () => Promise<void>): void {
   })
   handle('accounts:use', async (provider: AccountProvider, id: string) => {
     await selectAccountProfile(provider, id)
-    markEngineOk(provider)
     engineBackoff.noteOk()
     broadcast({ type: 'accounts:changed', accounts: accountProfiles() })
     void changed()

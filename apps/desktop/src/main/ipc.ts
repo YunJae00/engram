@@ -190,7 +190,6 @@ import {
   markEngineOk,
   noteEngineFailure,
   noteRunOutcome,
-  refreshHealthFromDetection,
   revalidateEngines,
 } from './engine-health.js'
 import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
@@ -2125,7 +2124,6 @@ export function registerIpc(ctx: VaultContext): void {
     const { refreshEngines } = await import('./vault.js')
     const engines = await refreshEngines(ctx)
     const dtos = engines.map(engineDto)
-    refreshHealthFromDetection(ctx)
     broadcast({ type: 'engines:changed', engines: engines.map(engineDto) })
     if (dtos.some(dto => dto.installed && dto.loggedIn)) warmLater(5_000)
     return dtos
@@ -2453,7 +2451,7 @@ export function registerIpc(ctx: VaultContext): void {
       }
       answering.delete(channel)
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}) })
-      markEngineOk(engine.id)
+      markEngineOk(engine.id, (engine as Engine & { accountProfile?: string }).accountProfile)
     }
 
     // A comet is a working colleague, not a retrieval prompt: its message
@@ -2819,7 +2817,7 @@ export function registerEngineIpc(): void {
     const chosenProfile = profile ?? activeAccountProfile(cloudId(id))
     const result = await connectEngine(cloudId(id), chosenProfile)
     if (result.ok) {
-      if (chosenProfile === activeAccountProfile(cloudId(id))) markEngineOk(cloudId(id))
+      markEngineOk(cloudId(id), chosenProfile)
       if (id === 'claude') forgetClaudeModels()
       else forgetCodexModels()
       broadcast({ type: 'models:changed' })

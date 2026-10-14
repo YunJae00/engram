@@ -27,7 +27,7 @@ export function ProfileDialog({ provider, sessionProfile, close }: { provider: A
     const refresh = () => { const at = ++revision; void api.accountProfileStates().then(value => { if (alive && at === revision) setStates(value) }).catch(error => { if (alive) setError(error.message) }) }
     refresh(); void api.engineLogins().then(value => { if (alive) setLogins(value) }).catch(() => { if (alive) setError('Could not check sign-in progress. Reopen accounts to retry.') })
     const off = api.onEvent(event => {
-      if (event.type === 'accounts:changed') refresh()
+      if (event.type === 'accounts:changed' || event.type === 'engine:health') refresh()
       if (event.type === 'engines:login') {
         setLogins(rows => [...rows.filter(row => row.id !== event.login.id || row.profile !== event.login.profile), event.login])
         if (['connected', 'idle', 'error'].includes(event.login.phase)) refresh()

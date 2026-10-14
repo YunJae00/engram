@@ -40,12 +40,15 @@ export function broadcast(event: EngramEvent): void {
 }
 
 const engineHealth = new Map<string, EngineHealthDto>()
+function healthKey(id: string, profile?: string): string {
+  return id === 'claude' || id === 'codex' ? `${id}:${profile ?? activeAccountProfile(id)}` : id
+}
 
 // Read by the diagnostics handler, which lives in another module and must
 // answer with the SAME verdict the banner is showing — two screens disagreeing
 // about the engine is the state that leaves a user with nothing to do.
-export function engineHealthOf(id: string): EngineHealthDto | undefined {
-  return engineHealth.get(id)
+export function engineHealthOf(id: string, profile?: string): EngineHealthDto | undefined {
+  return engineHealth.get(healthKey(id, profile))
 }
 
 // Consecutive unconfirmed failures per engine. A single blip must not raise a
@@ -55,21 +58,19 @@ const CONFIRM_AFTER = 2
 
 // Broadcast ONLY on a real change, so a 10-minute re-verification that finds
 // everything fine is silent and the renderer's state never churns.
-function setHealth(id: string, next: EngineHealthDto): void {
-  if (!next.healthy && next.reason === 'auth' && (id === 'claude' || id === 'codex')) cloudEngine(id).forgetStatus?.()
-  // A confirmed auth failure must also drop the adapter's 60s positive auth
-  // cache. Otherwise the very next re-detect (the Diagnostics 4s poll, window
-  // focus) would answer from that stale positive and CLEAR the banner we just
-  // raised — the app would go back to claiming everything is fine.
-  const prev = engineHealth.get(id)
+function setHealth(id: string, next: EngineHealthDto, profile?: string): void {
+  const key = healthKey(id, profile)
+  if (!next.healthy && next.reason === 'auth' && (id === 'claude' || id === 'codex')) cloudEngine(id, profile).forgetStatus?.()
+  // Local login metadata cannot overrule an authentication failure from a request.
+  const prev = engineHealth.get(key)
   if (prev && prev.healthy === next.healthy && prev.reason === next.reason) return
-  engineHealth.set(id, next)
-  broadcast({ type: 'engine:health', id, healthy: next.healthy, reason: next.reason })
+  engineHealth.set(key, next)
+  if (key === healthKey(id)) broadcast({ type: 'engine:health', id, healthy: next.healthy, reason: next.reason })
 }
 
-export function markEngineOk(id: string): void {
-  failStreak.set(id, 0)
-  setHealth(id, { healthy: true })
+export function markEngineOk(id: string, profile?: string): void {
+  failStreak.set(healthKey(id, profile), 0)
+  setHealth(id, { healthy: true }, profile)
 }
 
 // For hosts that learn about a failure OUTSIDE a call path — the local
@@ -150,8 +151,9 @@ export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, c
     if (ctx) void revalidateEngines(ctx)
     return
   }
-  const streak = (failStreak.get(engine.id) ?? 0) + 1
-  failStreak.set(engine.id, streak)
+  const key = healthKey(engine.id)
+  const streak = (failStreak.get(key) ?? 0) + 1
+  failStreak.set(key, streak)
   if (streak >= CONFIRM_AFTER) setHealth(engine.id, { healthy: false, reason: toReason(kind) })
 }
 
@@ -168,20 +170,6 @@ export function startEngineWatch(ctx: VaultContext): void {
   }, AUTH_RECHECK_MS)
 }
 
-
-// After a re-detection: membership in ctx.engines now MEANS the CLI itself said
-// it is logged in (at most 60s stale — see ClaudeAdapter's auth cache), so an
-// 'auth' verdict that survives a successful re-detect is out of date. Clearing
-// it here is what makes the banner self-clearing through the paths that already
-// re-detect (the Diagnostics 4s poll, window focus) at zero extra subprocess
-// cost — the old banner was set once at boot and could never come down, so a
-// user who fixed the problem kept being told it was still broken.
-export function refreshHealthFromDetection(ctx: VaultContext): void {
-  for (const engine of ctx.engines) {
-    const health = engineHealth.get(engine.id)
-    if (health?.healthy === false && health.reason === 'auth' && (engine as Engine & { authConfirmed?: boolean }).authConfirmed === true) markEngineOk(engine.id)
-  }
-}
 
 // Detection always notifies windows. A model-only save with unchanged connection
 // status already has a settings event; another event would re-probe every picker.
@@ -205,7 +193,7 @@ export async function revalidateEngines(ctx: VaultContext, selectionOnly = false
 // not asserted. `healthy` carries the live ping/auth verdict so a renderer that
 // just reloaded does not start out painting a green dot over a dead engine.
 export function engineDto(engine: Engine): EngineStatusDto {
-  const health = engineHealth.get(engine.id)
+  const health = engineHealthOf(engine.id)
   return {
     id: engine.id,
     installed: true,
