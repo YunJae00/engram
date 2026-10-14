@@ -116,8 +116,8 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
   }
 })
 
-test('two conversations stack in narrow panes and keep their web toggle in the composer', async () => {
-  for (const width of [1600, 620]) {
+test('two conversations stack in narrow panes and open compact browsers in a modal', async () => {
+  for (const width of [2600, 1600, 620]) {
     await page.setViewportSize({ width, height: 920 })
     await navigate('mission')
     await page.getByTestId('mission-layout-2').click()
@@ -131,6 +131,15 @@ test('two conversations stack in narrow panes and keep their web toggle in the c
     await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
     await expect(button).toBeVisible()
     if (await button.getAttribute('aria-pressed') !== 'true') await button.click()
+    if (width < 2600) {
+      const modal = page.getByTestId('mission-browser-dialog')
+      await expect(modal).toBeVisible()
+      await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+      await screenshot(`split-two-${width}.png`)
+      await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
+      await expect(tile.locator('textarea')).toBeVisible()
+      continue
+    }
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
     await screenshot(`split-two-${width}.png`)
     await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
@@ -147,9 +156,9 @@ test('split conversations show animated pending status and elapsed time without 
   const tile = page.getByTestId('mission-tile-0')
   await tile.locator('textarea').fill('Review the project')
   await tile.locator('textarea').press('Enter')
-  const status = tile.getByTestId('bubble-thinking')
+  const status = tile.getByTestId('bots-thinking')
   await expect(status).toBeVisible()
-  await expect(status.locator('.thinking-elapsed')).not.toHaveText('0s')
+  await expect(status.locator('.thinking-elapsed')).toHaveText(/^Total [1-9]\d*s$/)
   await expect(status.locator('.bubble-thinking-label')).toHaveCSS('animation-name', 'thinking-shimmer')
   await expect(tile.locator('.answer-actions')).toHaveCount(0)
   await screenshot('split-thinking.png')
@@ -206,23 +215,32 @@ test('mission tiles preserve usable previews and inputs instead of clipping at n
   }
 })
 
-test('tile conversations and chat pickers unfold without losing the draft', async () => {
-  for (const width of [1600, 948, 620]) {
+test('tile browsers and chat pickers keep the draft through folding or modal dismissal', async () => {
+  for (const width of [2600, 1600, 948, 620]) {
     await page.setViewportSize({ width, height: 840 })
     await navigate('mission')
+    await page.getByTestId('mission-layout-2').click()
     const tile = page.getByTestId('mission-tile-0')
     const toggle = page.getByTestId('mission-chat-toggle-0')
     const input = tile.locator('.mini-chat-write textarea')
+    if (width < 2600) await expect(toggle).toBeDisabled()
+    await input.fill('Keep this draft 한글')
     if (await toggle.isDisabled()) {
       await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
       await tile.getByRole('button', { name: 'Show website', exact: true }).click()
     }
-    await input.fill('Keep this draft 한글')
-    await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    await expect(tile.locator('.mission-chat-slot')).toBeHidden()
-    expect(await tile.locator('.mission-chat-slot').evaluate((node) => (node as HTMLElement).inert)).toBe(true)
-    await toggle.click()
+    if (width < 2600) {
+      const modal = page.getByTestId('mission-browser-dialog')
+      await expect(modal).toBeVisible()
+      await expect(toggle).toBeDisabled()
+      await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
+    } else {
+      await toggle.click()
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await expect(tile.locator('.mission-chat-slot')).toBeHidden()
+      expect(await tile.locator('.mission-chat-slot').evaluate((node) => (node as HTMLElement).inert)).toBe(true)
+      await toggle.click()
+    }
     await expect(input).toBeVisible()
     await expect(input).toHaveValue('Keep this draft 한글')
     const choose = tile.locator('.mission-change')
