@@ -130,7 +130,7 @@ test('split chats keep spoken progress after a tool starts and show one final re
   await expect(tile).toBeVisible()
   await app.evaluate(({ BrowserWindow }, id) => {
     const channel = `bot-${id}`, window = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().endsWith('#quick'))!
-    for (const event of [{ type: 'comet:working', channel, working: true }, { type: 'chat:token', channel, text: 'Checking your work now.' }, { type: 'chat:token', channel, text: '', reset: true }, { type: 'comet:step', channel, line: 'read_open_page: Current page' }]) window.webContents.send('engram:event', event)
+    for (const event of [{ type: 'comet:continue', botId: id }, { type: 'comet:working', channel, working: true }, { type: 'chat:token', channel, text: 'Checking your work now.' }, { type: 'chat:token', channel, text: '', reset: true }, { type: 'comet:step', channel, line: 'read_open_page: Current page' }]) window.webContents.send('engram:event', event)
   }, bot.id)
   await expect(tile.getByText('Checking your work now.', { exact: true })).toBeVisible()
   await app.evaluate(({ BrowserWindow }, id) => {
