@@ -6,9 +6,9 @@ export function connectionConfirmed(state: Connection | undefined): boolean {
 }
 export function connectionLabel(state: Connection | undefined, provider: string): string {
   if (!state) return 'Checking connection…'
+  if (!state.installed && state.conclusive !== false) return provider === 'claude' ? 'Not installed' : 'Runtime unavailable'
   if (state.healthy === false && state.healthReason === 'auth') return 'Reconnect required'
   if (state.conclusive === false) return 'Connection not verified'
-  if (!state.installed) return provider === 'claude' ? 'Not installed' : 'Runtime unavailable'
   if (!state.loggedIn) return 'Not connected'
   if (state.healthy === false) return state.healthReason === 'quota' ? 'Usage limit reached' : 'Connection needs attention'
   return 'Connected'

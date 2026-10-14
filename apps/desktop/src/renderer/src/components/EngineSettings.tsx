@@ -64,7 +64,7 @@ export function EngineSettings() {
                 <button className="secondary" data-testid={`brain-${id}-cancel`} onClick={() => run(api.engineCancelLogin(id))}>Cancel</button>
               </> : connected ? <>
                 <button className="engine-disconnect" data-testid={`brain-${id}-disconnect`} onClick={() => run(api.engineDisconnect(id).then(() => { setLogins((prior) => prior.filter((one) => one.id !== id)); setAttempt((value) => value + 1) }))}>Disconnect</button>
-              </> : state?.conclusive === false ? <button className="secondary" onClick={() => setAttempt(value => value + 1)}>Retry connection check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
+              </> : state?.conclusive === false && state.healthReason !== 'auth' ? <button className="secondary" onClick={() => setAttempt(value => value + 1)}>Retry connection check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
             </div>
             {login?.message && <p className="engine-message" role="status">{login.message}</p>}
             <AccountUsage provider={id} verified={connected} />

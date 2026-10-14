@@ -51,15 +51,16 @@ test('a stalled provider does not hold the other provider or spin forever', asyn
 test('a known authentication failure stays visible in both settings and accounts despite local login metadata', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('engines:states')
-    ipcMain.handle('engines:states', (_event, ids?: string[]) => (ids ?? ['claude', 'codex']).map(id => ({ id, installed: true, loggedIn: true, conclusive: true, healthy: id !== 'codex', ...(id === 'codex' ? { healthReason: 'auth' } : {}) })))
+    ipcMain.handle('engines:states', (_event, ids?: string[]) => (ids ?? ['claude', 'codex']).map(id => ({ id, installed: true, loggedIn: true, conclusive: id !== 'codex', healthy: id !== 'codex', ...(id === 'codex' ? { healthReason: 'auth' } : {}) })))
     ipcMain.removeHandler('accounts:states')
-    ipcMain.handle('accounts:states', () => [{ id: 'system', provider: 'codex', name: 'System account', selected: true, installed: true, loggedIn: true, conclusive: true, healthy: false, healthReason: 'auth' }])
+    ipcMain.handle('accounts:states', () => [{ id: 'system', provider: 'codex', name: 'System account', selected: true, installed: true, loggedIn: true, conclusive: false, healthy: false, healthReason: 'auth' }])
   })
   await page.getByRole('button', { name: 'Close settings', exact: true }).click()
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-codex-status')).toHaveText('Reconnect required')
   await expect(page.getByTestId('brain-codex-status')).toHaveAttribute('data-connected', 'false')
+  await expect(page.getByTestId('brain-codex-connect')).toBeEnabled()
   await page.getByRole('button', { name: 'Manage ChatGPT accounts', exact: true }).click()
   const accounts = page.getByRole('dialog', { name: 'Account profiles', exact: true })
   await expect(accounts.getByText('Reconnect required', { exact: true })).toBeVisible()

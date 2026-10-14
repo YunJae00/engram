@@ -13,6 +13,8 @@ it('distinguishes signed out, unknown, expired and quota-limited accounts', () =
   expect(connectionLabel({ ...connected, healthy: false, healthReason: 'quota' }, 'codex')).toBe('Usage limit reached')
   expect(connectionConfirmed({ ...connected, healthy: false, healthReason: 'auth' })).toBe(false)
   expect(connectionLabel({ ...connected, healthy: false, healthReason: 'auth' }, 'codex')).toBe('Reconnect required')
+  expect(connectionLabel({ ...connected, conclusive: false, healthy: false, healthReason: 'auth' }, 'codex')).toBe('Reconnect required')
+  expect(connectionLabel({ ...connected, installed: false, healthy: false, healthReason: 'auth' }, 'claude')).toBe('Not installed')
 })
 
 it('ends a hung connection check as unknown, not signed out or connected', async () => {
