@@ -3,6 +3,7 @@ import { initVault } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { openActivity } from './navigation.js'
 
 test('remaining weekly usage does not hide a limited request and the chosen model can be retested', async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -53,5 +54,16 @@ test('remaining weekly usage does not hide a limited request and the chosen mode
     await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
     await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
     await expect(page.getByTestId('unhealthy-banner')).toHaveCount(0)
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('interview:questions')
+      ipcMain.handle('interview:questions', () => { throw new Error('Your AI limited a request. Completed work was kept.') })
+    })
+    await openActivity(page, 'settings')
+    await page.getByTestId('settings-nav-memory').click()
+    await page.getByTestId('interview-open').click()
+    await page.getByTestId('interview-start').click()
+    await expect(page.getByRole('alert')).toContainText('limited a request')
+    await page.getByTestId('interview-connect').click()
+    await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
   } finally { await app.close() }
 })
