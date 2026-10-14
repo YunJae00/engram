@@ -15,6 +15,7 @@ import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
 const catalogs = new Map<string, { rows: ModelChoiceDto[]; checked: number; pending?: Promise<ModelChoiceDto[]> }>()
+api.onEvent(event => { if (event.type === 'models:changed') catalogs.clear() })
 const catalogKey = (engine: Provider, profile: string) => profile === 'system' ? engine : `${engine}.${profile}`
 function cachedModels(engine: Provider, profile: string): ModelChoiceDto[] {
   const key = catalogKey(engine, profile)
@@ -34,6 +35,7 @@ function readModels(engine: Provider, profile: string, force = false): Promise<M
   if (catalog.pending) return catalog.pending
   if (!force && catalog.rows.length && Date.now() - catalog.checked < 60_000) return Promise.resolve(catalog.rows)
   catalog.pending = api.modelsList(engine, profile).then(rows => {
+    if (catalogs.get(key) !== catalog) return rows
     catalog.rows = rows; catalog.checked = Date.now()
     try { localStorage.setItem(`engram.models.${key}`, JSON.stringify({ rows, at: catalog.checked })) } catch { /* Memory caching still works without storage. */ }
     return rows

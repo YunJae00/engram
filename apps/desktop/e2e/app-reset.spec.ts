@@ -17,7 +17,15 @@ test('reset confirmation erases local app data and returns to first setup withou
   await mkdir(join(userData, 'account-profiles'))
   await writeFile(join(userData, 'account-profiles', 'keep.txt'), 'Retained account fixture')
   await writeFile(join(fixture, 'original.txt'), 'Original document')
-  const launch = () => electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' } })
+  const launch = async () => {
+    const running = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' } })
+    await running.evaluate(({ app }) => {
+      // A self-initiated restart must not wait for the test debugger to disconnect.
+      const inspector = process.getBuiltinModule('inspector') as typeof import('node:inspector')
+      app.prependOnceListener('will-quit', () => inspector.close())
+    })
+    return running
+  }
   let app: ElectronApplication | undefined = await launch()
   try {
     let page = await app.firstWindow()
@@ -54,7 +62,7 @@ test('reset confirmation erases local app data and returns to first setup withou
   } finally {
     if (app) {
       const process = app.process()
-      if (process.exitCode === null) await app.evaluate(({ app }) => { setImmediate(() => app.quit()) })
+      if (process.exitCode === null) await app.close()
       await expect.poll(() => process.exitCode, { timeout: 30_000 }).not.toBeNull()
     }
   }
