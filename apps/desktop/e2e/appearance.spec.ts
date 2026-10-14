@@ -153,7 +153,7 @@ test('compact navigation and settings retain clear actions, safety guidance and 
   await expect(comets.locator('svg path[stroke-linejoin="round"]')).toHaveCount(1)
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
-  await expect(menu.getByTestId('activity-bots')).toHaveCount(0)
+  await expect(menu.getByTestId('activity-bots')).toBeVisible()
   await expect(menu.getByTestId('activity-developers')).toHaveCount(0)
   await expect(menu.getByTestId('workspace-github-backup')).toHaveCount(0)
   await screenshot('compact-menu.png')

@@ -134,7 +134,7 @@ function Shell() {
     }
   }, [vaultReady, interviewOpen])
 
-  const interviewReady = enginesDetected && engines.some(engine => engine.installed && engine.loggedIn)
+  const interviewReady = enginesDetected && engines.some(engine => engine.installed && engine.loggedIn && engine.conclusive !== false && engine.healthy !== false)
   useEffect(() => {
     let pending = false
     try { pending = localStorage.getItem(INTERVIEW_PENDING_KEY) === '1' } catch { /* no first-run prompt */ }

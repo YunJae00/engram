@@ -1,7 +1,7 @@
-import { createPidLedger, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setSpawnObserver, sweepStaleEnginePids } from 'core'
+import { createPidLedger, engineCwd, joinTeam, killAllEngineChildrenSync, loadAbsorbState, normalizeCapture, reclassifyImported, runImport, scanImportFolder, setSpawnObserver, sweepStaleEnginePids } from 'core'
 import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeTheme, powerMonitor, screen, session, shell, type WebContents } from 'electron'
 import { rmSync, statSync, writeFileSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { NoteDto, OnboardPayload } from '../shared/types.js'
 import { registerConfigIpc, registerSettingsIpc, setBrainChoiceHook } from './config-ipc.js'
@@ -36,7 +36,7 @@ import { registerSessionWatchIpc, startSessionWatch, stopSessionWatch } from './
 import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
 import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
-import { configuredVaultRoot, openVaultContext, saveVaultRoot, type VaultContext } from './vault.js'
+import { configuredVaultRoot, openVaultContext, resolveEngines, saveVaultRoot, type VaultContext } from './vault.js'
 import { finishWorkspaceDeletion, registerWorkspaceIpc } from './workspaces.js'
 import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
@@ -48,6 +48,9 @@ import { setTaskSurface } from './task-notify.js'
 import { quickCometBounds } from './quick-comet.js'
 import { finishAppReset, registerAppReset } from './app-reset.js'
 import { quickFileDialogOpen } from './quick-files.js'
+import { verifySetupConnection } from './setup-connection.js'
+import { aiSelection } from './ai-selection.js'
+import { activeAccountProfile } from './account-profiles.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -535,6 +538,14 @@ function registerBaseIpc(): void {
   })
 
   ipcMain.handle('onboard:complete', async (_e, payload: OnboardPayload) => {
+    const selection = aiSelection(await loadSettings(), 'filing')
+    const profile = activeAccountProfile(selection.engine)
+    const [engine] = await resolveEngines()
+    if (!engine) throw new Error('Connect an AI and verify its connection before continuing.')
+    const folder = join(app.getPath('userData'), 'tmp', 'connection-check')
+    await mkdir(folder, { recursive: true })
+    await verifySetupConnection(engine, engineCwd({ workspace: folder, privateDir: '' }))
+    if (profile !== activeAccountProfile(selection.engine) || JSON.stringify(selection) !== JSON.stringify(aiSelection(await loadSettings(), 'filing'))) throw new Error('Your AI selection changed during the check. Try again.')
     if (payload.teamUrl) await joinTeam(payload.root, payload.teamUrl)
     const ctx = await bootVault(payload.root)
     await saveVaultRoot(payload.root)

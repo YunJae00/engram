@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, MessageSquareText, Pencil, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EngramEvent, InterviewQuestionDto } from '../../../shared/types.js'
-import { api } from '../api.js'
+import { api, apiErrorText } from '../api.js'
 import { timeLeft } from '../lib/pace.js'
 
 export const INTERVIEW_PENDING_KEY = 'engram.interviewPending'
@@ -19,6 +19,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
   const [progress, setProgress] = useState<PreparationProgress | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
+  const needsAi = /(?:Connect.*AI|Reconnect|AI.*(?:ready|verified|usage|unavailable)|connection check|Sign in again)/i.test(error)
   const [saved, setSaved] = useState(false)
   const finished = saved || questions?.length === 0
   const intro = !questions && !busy && !saved
@@ -75,10 +76,11 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
       if (!next.length) {
         try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* This completed prompt can still be dismissed. */ }
       }
-    } catch {
+    } catch (cause) {
       if (request === revision.current) {
         const phase = (latestProgress.current as PreparationProgress | null)?.phase
-        setError(phase === 'mapping' ? 'Could not finish mapping your work places. Retry, or finish setup later in Settings.' : phase === 'filing' ? 'Cosmos preparation paused before it finished. Retry, or finish setup later in Settings.' : 'Could not prepare questions. Check your AI connection and try again.')
+        const message = apiErrorText(cause instanceof Error ? cause.message : String(cause))
+        setError(/^(?:Connect |Reconnect |Your AI |ChatGPT |Claude |Cosmos preparation )/.test(message) ? message.slice(0, 300) : phase === 'mapping' ? 'Could not finish mapping your work places. Please retry.' : phase === 'filing' ? 'Cosmos preparation could not finish. Completed work was kept. Please retry.' : 'Could not prepare questions. Check your AI connection and try again.')
       }
     } finally { if (request === revision.current) { requestId.current = null; setBusy('') } }
   }, [])
@@ -117,7 +119,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
     </div></div> : busy ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro interview-wait" data-testid="interview-wait">
         <span className="interview-mark" aria-hidden><LoaderCircle size={24} className="computer-spinner" /></span>
-        <div role="status"><h3 ref={heading} tabIndex={-1} data-testid="interview-phase">{busy === 'saving' ? 'Saving your preferences…' : progress?.phase === 'mapping' ? 'Finding your work places…' : progress?.phase === 'filing' ? progress.stage === 'capture' ? 'Filing your first captures…' : progress.stage === 'organize' ? 'Organizing Cosmos…' : 'Preparing Cosmos…' : progress?.phase === 'questions' ? 'Preparing questions…' : 'Starting setup…'}</h3>
+        <div role="status"><h3 ref={heading} tabIndex={-1} data-testid="interview-phase">{busy === 'saving' ? 'Saving your preferences…' : progress?.phase === 'connection' ? 'Checking your AI…' : progress?.phase === 'mapping' ? 'Finding your work places…' : progress?.phase === 'filing' ? progress.stage === 'capture' ? 'Filing your first captures…' : progress.stage === 'organize' ? 'Organizing Cosmos…' : 'Preparing Cosmos…' : progress?.phase === 'questions' ? 'Preparing questions…' : 'Starting setup…'}</h3>
           {busy === 'asking' && progress?.phase === 'filing' && progress.completed !== undefined && progress.total !== undefined && <p className="interview-count" data-testid="interview-file-count">{progress.completed} / {progress.total} completed{timeLeft(progress.completed, progress.total, pace.current)}</p>}
           <p>{busy === 'saving' ? elapsed >= 20 ? 'Still waiting for your AI. You can cancel and retry.' : 'This can take a minute or more.' : elapsed >= 20 ? 'First-time preparation can take several minutes. Questions will open automatically.' : 'Questions will open automatically when Cosmos is ready.'}</p></div>
         <span className="interview-elapsed" role="timer" aria-live="off">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
@@ -125,10 +127,10 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
       </div>
     </div> : !questions ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro">
-        <p>{error ? 'You can continue without finishing setup.' : 'Prepare Cosmos, then answer a few optional questions.'}</p>
+        <p>{error ? 'Finish preparation before answering questions.' : 'Prepare Cosmos, then answer a few optional questions.'}</p>
         <details className="interview-privacy"><summary>What your AI sees</summary><p>Selected Cosmos note excerpts, site names and visit patterns, completed task requests, and your work guide. No new scan of your original documents. Task replies can update your preferences.</p></details>
         {error && <p className="computer-error" role="alert">{error}</p>}
-        <div className="interview-intro-actions"><button type="button" className="primary" data-testid="interview-start" onClick={() => void start()}>{error ? 'Retry' : 'Get started'}<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>{error ? 'Start now' : 'Not now'}</button></div>
+        <div className="interview-intro-actions">{needsAi && <button type="button" className="primary" data-testid="interview-connect" onClick={() => { onClose(); window.dispatchEvent(new Event('engram:open-brain-setup')) }}>Check AI settings</button>}<button type="button" className={needsAi ? 'secondary' : 'primary'} data-testid="interview-start" onClick={() => void start()}>{error ? 'Retry' : 'Get started'}<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>{error ? 'Close' : 'Not now'}</button></div>
       </div>
     </div> : <form onSubmit={(event) => { event.preventDefault(); if (review) void save(); else if (answerLength <= 1200) move(at + 1) }}>
       <div ref={scroll} className="interview-scroll" data-testid="interview-scroll">

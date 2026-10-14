@@ -1687,7 +1687,7 @@ export function registerIpc(ctx: VaultContext): void {
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
   registerWorkInterviewIpc(ctx, async (signal, progress) => {
-    progress({ phase: 'filing' })
+    progress({ phase: 'connection' })
     initialFilingWaiters++
     let waiting = true
     try {

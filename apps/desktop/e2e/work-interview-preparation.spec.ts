@@ -42,7 +42,7 @@ async function openInterview() {
   await expect(page.getByTestId('interview-dialog')).toBeVisible()
 }
 
-async function progress(at: number, phase: 'mapping' | 'filing' | 'questions', stage?: 'capture' | 'organize', completed?: number, total?: number) {
+async function progress(at: number, phase: 'connection' | 'mapping' | 'filing' | 'questions', stage?: 'capture' | 'organize', completed?: number, total?: number) {
   await app.evaluate(({ BrowserWindow }, value) => {
     const requestId = (globalThis as typeof globalThis & Fixture).setupRequests[value.at]!.id
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'interview:progress', requestId, phase: value.phase, stage: value.stage, completed: value.completed, total: value.total })
@@ -70,6 +70,8 @@ test('settings prepare only on request and show measured stages before questions
   await expect(page.getByTestId('interview-file-count')).toHaveCount(0)
   await expect(page.getByTestId('interview-start-now')).toHaveText('Set up later')
   await expect(page.getByTestId('interview-wait').locator('button.primary')).toHaveCount(0)
+  await progress(0, 'connection')
+  await expect(page.getByTestId('interview-phase')).toHaveText('Checking your AI…')
   await progress(0, 'mapping')
   await expect(page.getByTestId('interview-phase')).toHaveText('Finding your work places…')
   await page.clock.runFor(21_000)
@@ -118,16 +120,30 @@ test('remaining time starts fresh when filing changes stage', async () => {
   await expect(page.getByTestId('interview-file-count')).toHaveText('2 / 10 completed · about 4 min left')
 })
 
+test('an expired preparation connection explains the cause and opens AI settings', async () => {
+  await openInterview()
+  await page.getByTestId('interview-start').click()
+  await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests.length)).toBe(1)
+  await progress(0, 'filing')
+  await app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests[0]!.reject(new Error('ChatGPT is not ready. Sign in again in AI settings.')))
+  await expect(page.getByRole('alert')).toContainText('Sign in again')
+  await expect(page.getByTestId('interview-later')).toHaveText('Close')
+  await page.getByTestId('interview-connect').click()
+  await expect(page.getByTestId('interview-dialog')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'AI & accounts', exact: true })).toBeVisible()
+})
+
 test('unfinished preparation offers retry and ignores old request progress', async () => {
   await openInterview()
   await page.getByTestId('interview-start').click()
   await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests.length)).toBe(1)
   await progress(0, 'filing', 'capture', 1, 4)
   await app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests[0]!.reject(new Error('Fixture deferred')))
-  await expect(page.getByRole('alert')).toContainText('Cosmos preparation paused before it finished')
+  await expect(page.getByRole('alert')).toContainText('Cosmos preparation could not finish')
   await expect(page.getByRole('heading', { name: 'Nothing to ask yet' })).toHaveCount(0)
   await expect(page.getByTestId('interview-start')).toHaveText('Retry')
-  await expect(page.getByTestId('interview-later')).toHaveText('Start now')
+  await expect(page.getByTestId('interview-later')).toHaveText('Close')
+  await expect(page.getByText('You can continue without finishing setup.')).toHaveCount(0)
   await screenshot('paused-light-600.png')
   await page.getByTestId('interview-start').click()
   await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & Fixture).setupRequests.length)).toBe(2)

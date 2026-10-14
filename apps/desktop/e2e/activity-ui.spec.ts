@@ -82,7 +82,7 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
     })
   })
   await expect(menu.getByTestId('activity-developers')).toHaveCount(0)
-  await expect(menu.getByTestId('activity-bots')).toHaveCount(0)
+  await expect(menu.getByTestId('activity-bots')).toBeVisible()
   await expect(menu.getByTestId('workspace-github-backup')).toHaveCount(0)
   await expect(sidebar.getByRole('button', { name: 'Comets mode', exact: true })).toBeVisible()
   await expect(sidebar.getByRole('button', { name: 'Developers mode', exact: true })).toBeVisible()
