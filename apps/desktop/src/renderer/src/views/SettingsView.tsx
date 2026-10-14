@@ -17,6 +17,7 @@ import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { HelpPanel } from '../components/HelpPanel.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
+import { ResetSettings } from '../components/ResetSettings.js'
 
 const ACTIVITY = LEARNING_SOURCES.find(source => source.key === 'activity')!
 
@@ -194,6 +195,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
               </button>
           </div>
         </details>
+        {section === 'memory' && <ResetSettings />}
         </section>
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
         <h2>AI &amp; accounts</h2>

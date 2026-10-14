@@ -1,4 +1,7 @@
 import { registerBrowserTabs } from './browser-tabs.js'
+import { pickQuickFiles } from './quick-files.js'
+import type { EngineStatusDto } from '../shared/types.js'
+import { synchronizeFilingProbe } from './vault.js'
 import {
   updateRoutineGoal,
   activationRerank,
@@ -964,6 +967,7 @@ function buildVaultMap(store: VaultContext['store']): string | null {
 // A sign-in can happen before a vault exists (onboarding), so the handlers for
 // it live at app level; this is how they reach the vault once there is one.
 let onEnginesChanged: (() => Promise<void>) | null = null
+let onFilingProbe: ((states: EngineStatusDto[]) => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
   setDesktopEngineResolver(async (lane) => {
@@ -974,6 +978,7 @@ export function registerIpc(ctx: VaultContext): void {
   onEnginesChanged = async () => {
     await revalidateEngines(ctx)
   }
+  onFilingProbe = states => synchronizeFilingProbe(ctx, states)
   // Boot check: a vault carrying old backlog (unswept edits, unlinked notes)
   // starts healing shortly after launch — no button required.
   scheduleAutoTidy(ctx, 120_000)
@@ -1262,16 +1267,18 @@ export function registerIpc(ctx: VaultContext): void {
     await renameBot(paths, id, name)
     broadcast({ type: 'bots:changed' })
   })
-  ipcMain.handle('quick:comet', async (_e, input: unknown) => {
+  ipcMain.handle('quick:pickFiles', (event, count: unknown) => pickQuickFiles(event.sender, paths, count))
+  ipcMain.handle('quick:comet', async (_e, input: unknown, attachments?: string[]) => {
     if (typeof input !== 'string' || !input.trim() || input.length > 20_000) throw new Error('Enter a message of up to 20,000 characters.')
     const message = input.trim()
+    await readChatAttachments(paths, attachments)
     if (!await chatEngine('new-comet', ctx.engines)) throw new Error('Connect an AI in Engram Settings before starting a Comet.')
     const bot = await createBot(paths, { name: UNTITLED_BOT_NAME })
     await rememberSelections([`bot-${bot.id}`])
     broadcast({ type: 'bots:changed' })
-    broadcast({ type: 'comet:quick', botId: bot.id, message })
+    broadcast({ type: 'comet:quick', botId: bot.id, message, attachments })
     surfaceComet()
-    const request = { engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message, history: [] }
+    const request = { engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message, history: [], attachments }
     void (message.startsWith('/') ? sendChat(request) : tasks.chat(request)).catch(error => flog('quick-comet', error))
     return bot.id
   })
@@ -2000,6 +2007,7 @@ export function registerIpc(ctx: VaultContext): void {
     // the librarian through exactly this path.
     stopRequested = false
     try {
+      await revalidateEngines(ctx, false, false)
       if (ctx.engines.length === 0) throw new Error('No engine available — connect an AI to start auto-organizing.')
       const jobsRun: string[] = []
       const runEngine = ctx.engines[0]
@@ -2793,10 +2801,12 @@ export function registerEngineIpc(): void {
     if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
     return id
   }
-  ipcMain.handle('engines:states', (_e, ids?: unknown) => {
-    if (ids === undefined) return engineStates()
-    if (!Array.isArray(ids) || ids.length > 2) throw new Error('Invalid providers')
-    return engineStates(ids.map(cloudId))
+  ipcMain.handle('engines:states', async (_e, ids?: unknown) => {
+    if (ids !== undefined && (!Array.isArray(ids) || ids.length > 2)) throw new Error('Invalid providers')
+    const profiles = { claude: activeAccountProfile('claude'), codex: activeAccountProfile('codex') }
+    const states = await engineStates(ids === undefined ? undefined : (ids as unknown[]).map(cloudId))
+    if (profiles.claude === activeAccountProfile('claude') && profiles.codex === activeAccountProfile('codex')) await onFilingProbe?.(states)
+    return states
   })
   ipcMain.handle('engines:installClaude', async () => {
     await installClaudeRuntime()

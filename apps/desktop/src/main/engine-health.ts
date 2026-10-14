@@ -173,15 +173,15 @@ export function startEngineWatch(ctx: VaultContext): void {
 
 // Detection always notifies windows. A model-only save with unchanged connection
 // status already has a settings event; another event would re-probe every picker.
-export async function revalidateEngines(ctx: VaultContext, selectionOnly = false): Promise<void> {
+export async function revalidateEngines(ctx: VaultContext, selectionOnly = false, notifyUnchanged = true): Promise<void> {
   try {
-    const previous = selectionOnly ? JSON.stringify(ctx.engines.map(engineDto)) : null
+    const previous = selectionOnly || !notifyUnchanged ? JSON.stringify(ctx.engines.map(engineDto)) : null
     const wasReady = ctx.engines.length > 0
     const { refreshEngines } = await import('./vault.js')
     const engines = await refreshEngines(ctx, selectionOnly)
     if (!wasReady && engines.length) void import('./work-map-job.js').then(({ primeWorkMap }) => primeWorkMap(ctx)).catch(error => flog('work-map', error))
     const next = engines.map(engineDto)
-    if (selectionOnly && previous === JSON.stringify(next)) return
+    if (previous === JSON.stringify(next)) return
     broadcast({ type: 'engines:changed', engines: next })
   } catch {
     /* detection is best-effort — never let it throw into a caller's error path */

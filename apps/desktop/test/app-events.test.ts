@@ -47,6 +47,13 @@ it('coalesces graph refreshes during note bursts and cancels them on unmount', a
   delta()
   await vi.advanceTimersByTimeAsync(200)
   expect(fake.api.brainFabric).toHaveBeenCalledTimes(2)
+  fake.event!({ type: 'engines:changed', engines: [{ id: 'codex', installed: true, loggedIn: true }] })
+  const recover = vi.mocked(options.setters.sweepStatus).mock.calls.at(-1)![0] as (status: { kind: string; running: boolean; message?: string }) => unknown
+  expect(recover({ kind: 'error', running: false, message: 'No engine available — connect an AI' })).toEqual({ kind: 'idle', running: false })
+  const otherError = { kind: 'error', running: false, message: 'Disk is full' }
+  expect(recover(otherError)).toBe(otherError)
+  const quota = { kind: 'done', running: false, haltReason: 'quota', deferred: 1 }
+  expect(recover(quota)).toBe(quota)
   delta()
   cleanup()
   await vi.advanceTimersByTimeAsync(200)

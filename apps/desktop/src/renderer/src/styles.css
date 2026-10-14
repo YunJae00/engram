@@ -1345,13 +1345,24 @@ body.bubble-host { background: transparent; }
 .chat-send-btn:not(.armed):hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
 
 /* ── Quick capture ──────────────────────────────────────────── */
+body.quick-host { background: transparent; }
 .quick-capture {
-  height: 100vh; display: flex; flex-direction: column;
-  background: var(--editor-bg); padding: 12px 16px; gap: 4px;
-  border: 1px solid var(--widget-border); border-radius: 14px;
+  height: 100vh; display: flex; flex-direction: column; justify-content: flex-end;
+  background: transparent; padding: 10px;
 }
-.quick-row { display: flex; flex: 1; min-height: 0; align-items: center; gap: 12px; }
-.quick-row > svg { flex-shrink: 0; color: var(--fg-dim); }
+.quick-content { display: flex; flex-direction: column; gap: 8px; }
+.quick-bar { position: relative; background: var(--editor-bg); border: 1px solid var(--widget-border); border-radius: 26px; padding: 8px 12px; box-shadow: 0 3px 10px rgb(0 0 0 / 12%); }
+.quick-row { display: flex; min-height: 48px; align-items: center; gap: 10px; padding-right: 14px; }
+.quick-add, .quick-close { display: grid; place-items: center; flex-shrink: 0; background: transparent; color: var(--fg-dim); border-radius: 50%; }
+.quick-add { width: 28px; height: 28px; }
+.quick-close { position: absolute; right: 5px; top: 4px; width: 22px; height: 22px; }
+.quick-add:hover, .quick-close:hover { color: var(--fg); background: var(--hover-bg); }
+.quick-menu { align-self: flex-start; width: min(260px, 100%); padding: 5px; border: 1px solid var(--widget-border); border-radius: 12px; background: var(--editor-bg); box-shadow: 0 3px 10px rgb(0 0 0 / 12%); }
+.quick-menu button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; text-align: left; border-radius: 7px; background: transparent; }
+.quick-menu button:hover { background: var(--hover-bg); }
+.quick-files { display: flex; gap: 6px; overflow-x: auto; padding: 2px 24px 6px 28px; }
+.quick-files button { display: flex; align-items: center; gap: 6px; flex: none; max-width: 190px; padding: 4px 7px; border-radius: 8px; background: var(--hover-bg); font-size: var(--fs-micro); }
+.quick-files span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-send { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--fg-strong); color: var(--editor-bg); }
 .quick-capture { animation: quick-comet-in 140ms ease-out; }
 @keyframes quick-comet-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -1361,7 +1372,7 @@ body.bubble-host { background: transparent; }
   min-height: 0; padding: 8px 0; line-height: 1.55;
   border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
-.quick-error { font-size: var(--fs-micro); line-height: 1.3; color: var(--danger); }
+.quick-error { display: block; padding: 0 22px 4px 38px; font-size: var(--fs-micro); line-height: 1.3; color: var(--danger); }
 
 /* ── Onboarding ───────────────────────────────────────────────── */
 .onboarding {

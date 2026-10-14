@@ -8,7 +8,7 @@ vi.mock('electron', () => ({ app: { getPath: () => `${process.cwd()}/tmp/engine-
 vi.mock('../src/main/desktop-overlay.js', () => ({ overlayWindowIds: () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => ({ defaultEngine: 'codex', aiSelections: { filing: { engine: 'codex', model: 'chosen', effort: 'high' } } }) }))
 vi.mock('../src/main/work-map-job.js', () => ({ primeWorkMap: prime }))
-import { engineStates, refreshEngines, type VaultContext } from '../src/main/vault.js'
+import { engineStates, refreshEngines, synchronizeFilingProbe, type VaultContext } from '../src/main/vault.js'
 import { revalidateEngines } from '../src/main/engine-health.js'
 
 afterEach(() => { vi.unstubAllEnvs(); detect.mockReset(); send.mockReset(); prime.mockReset() })
@@ -26,6 +26,22 @@ it('still checks both providers for the connection settings screen', async () =>
   vi.stubEnv('ENGRAM_ENGINE', 'auto')
   detect.mockResolvedValue({ installed: true, loggedIn: false })
   expect((await engineStates()).map(state => state.id).sort()).toEqual(['claude', 'codex'])
+})
+
+it('repairs a stale empty filing engine list and suppresses unchanged probe broadcasts', async () => {
+  vi.stubEnv('ENGRAM_ENGINE', 'auto')
+  detect.mockResolvedValue({ installed: true, loggedIn: true })
+  const ctx = { engines: [] } as unknown as VaultContext
+  await synchronizeFilingProbe(ctx, await engineStates(['codex']))
+  expect(ctx.engines.map(engine => engine.id)).toEqual(['codex'])
+  expect(send).toHaveBeenCalledOnce()
+  expect(send.mock.calls[0][1]).toMatchObject({ type: 'engines:changed', engines: [{ id: 'codex', installed: true, loggedIn: true }] })
+  await revalidateEngines(ctx, false, false)
+  expect(send).toHaveBeenCalledOnce()
+  detect.mockResolvedValue({ installed: true, loggedIn: false })
+  await revalidateEngines(ctx, false, false)
+  expect(ctx.engines).toEqual([])
+  expect(send).toHaveBeenCalledTimes(2)
 })
 
 it('changing a model on the connected filing provider does not launch another auth probe', async () => {

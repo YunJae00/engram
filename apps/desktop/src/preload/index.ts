@@ -13,7 +13,11 @@ import type {
 
 const api: EngramApi = {
   developerUiEnabled: process.argv.includes('--engram-developer-fixture'),
-  quickComet: message => ipcRenderer.invoke('quick:comet', message),
+  quickComet: (message, attachments) => ipcRenderer.invoke('quick:comet', message, attachments),
+  quickLayout: height => ipcRenderer.invoke('quick:layout', height),
+  quickOpenApp: () => ipcRenderer.invoke('quick:openApp'),
+  quickPickFiles: count => ipcRenderer.invoke('quick:pickFiles', count),
+  resetApp: () => ipcRenderer.invoke('app:reset'),
   showQuickComet: () => ipcRenderer.invoke('quick:show'),
   devOpenLink: url => ipcRenderer.invoke('devOpenLink', url),
   devState: () => ipcRenderer.invoke('devState'),

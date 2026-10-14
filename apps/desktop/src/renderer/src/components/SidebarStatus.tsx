@@ -1,10 +1,9 @@
-import { Check, CirclePause, LoaderCircle, RotateCw } from 'lucide-react'
+import { Check, CircleAlert, LoaderCircle, RotateCw } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { api, apiErrorText } from '../api.js'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
 import { useTopBarState } from '../state-slices.js'
-import { ModelPicker } from './ModelPicker.js'
 
 function sweepLabel(translate: Translate, status: SweepStatus): string {
   switch (status.kind) {
@@ -16,7 +15,7 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
       if (status.deferred > 0) return translate('topbar.sweepDeferred', { n: status.deferred })
       return translate('topbar.sweepDone', { executed: status.executed, skipped: status.skipped })
     case 'error':
-      return /No engine available/.test(status.message) ? 'Filing paused' : apiErrorText(status.message)
+      return /No engine available/.test(status.message) ? 'Filing AI unavailable' : apiErrorText(status.message)
     default:
       return ''
   }
@@ -59,9 +58,8 @@ export function SidebarStatus() {
 
   return (
     <div className="sidebar-status-block">
-      <ModelPicker variant="sidebar" scope="filing" />
         <div className={`sidebar-status-row sidebar-work-status${working ? ' working' : ''}`} data-testid="sweep-status" role="status" title={activityText}>
-          <span className="sidebar-status-icon">{working ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : paused ? <CirclePause size={14} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
+          <span className="sidebar-status-icon">{working ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : paused ? <CircleAlert size={14} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
           <span>{activityText || 'Filing ready'}</span>
         </div>
       <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label="Retry filing" title="Retry filing with the selected filing AI" disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>

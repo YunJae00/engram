@@ -107,6 +107,12 @@ async function deletionRoot(vault: WorkspaceInfo, reg: Registry): Promise<string
   return root
 }
 
+export async function validatedWorkspaceRoots(): Promise<string[]> {
+  const reg = await loadRegistry()
+  const roots = await Promise.all(reg.vaults.map(vault => deletionRoot(vault, reg)))
+  return roots.filter((root): root is string => root !== null)
+}
+
 // Run before bootVault: no watchers or model processes can recreate deleted data.
 export async function finishWorkspaceDeletion(): Promise<void> {
   const reg = await loadRegistry()

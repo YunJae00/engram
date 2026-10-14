@@ -145,7 +145,6 @@
 .onboard-fail { display: grid; gap: 10px; margin-top: 18px; }
 .onboard-fail > button { justify-self: start; }
 .onboard-card { max-height: calc(100dvh - 72px); overflow-y: auto; }
-.sidebar-status-block > .provider-picker-sidebar { width: 32px; flex: none; }
 .sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: center; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }

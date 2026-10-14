@@ -114,7 +114,40 @@ test('ChatGPT models can be selected in the composer without changing the Claude
   await page.keyboard.press('Escape')
 })
 
-test('composer and filing sidebar select providers independently', async () => {
+test('the main banner and filing status recover alongside the connected settings card', async () => {
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('engram:event', { type: 'engines:detected' })
+      window.webContents.send('engram:event', { type: 'engines:changed', engines: [] })
+      window.webContents.send('engram:event', { type: 'sweep:error', message: 'No engine available — connect an AI to start auto-organizing.' })
+    }
+  })
+  await expect(page.getByTestId('connect-banner')).toBeVisible()
+  await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engines:changed', engines: [{ id: 'codex', installed: true, loggedIn: true, healthy: true }] })
+  })
+  await expect(page.getByTestId('connect-banner')).toHaveCount(0)
+  await expect(page.getByTestId('sweep-status')).toHaveText('Filing ready')
+  await expect(page.getByTestId('engine-status')).toHaveCount(0)
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-ai').click()
+  await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
+  await page.keyboard.press('Escape')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engine:health', id: 'codex', healthy: false, reason: 'auth' })
+  })
+  await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Log in', exact: true }).click()
+  await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('diagnostics-view')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engine:health', id: 'codex', healthy: true })
+  })
+  await expect(page.getByTestId('unhealthy-banner')).toHaveCount(0)
+})
+
+test('composer and filing settings select providers independently without a sidebar toggle', async () => {
   const picker = page.getByTestId('model-picker')
   await picker.click()
   await expect(page.getByTestId('provider-pick-claude').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
@@ -122,13 +155,17 @@ test('composer and filing sidebar select providers independently', async () => {
   await expect(page.getByTestId('model-pick-claude-deep')).toHaveAttribute('aria-checked', 'true')
   await page.getByTestId('model-pick-claude-fast').click()
   await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
-  await expect(page.getByTestId('engine-status')).toHaveAttribute('aria-label', /Claude/)
-  await page.getByTestId('engine-status').click()
+  await expect(page.getByTestId('engine-status')).toHaveCount(0)
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-ai').click()
+  const filingPicker = page.getByRole('region', { name: 'Filing model', exact: true }).getByTestId('model-picker')
+  await filingPicker.click()
   await expect(page.getByTestId('provider-pick-codex').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
   await page.getByTestId('provider-pick-codex').click()
   await expect(page.getByTestId('model-pick-auto')).toHaveAttribute('aria-checked', 'true')
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('engine-status')).toBeFocused()
+  await expect(filingPicker).toBeFocused()
+  await page.keyboard.press('Escape')
   await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
   expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.defaultEngine, settings.claudeModel, settings.codexModel, settings.aiSelections?.filing?.engine] })).toEqual(['claude', 'claude-fast', 'codex-fast', 'codex'])
 })
@@ -156,10 +193,7 @@ test('provider menu supports keyboard selection and stays within compact windows
     await expect(picker).toBeFocused()
     if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
     await expect(sidebar).toBeVisible()
-    await page.getByTestId('engine-status').click()
-    await expect.poll(() => page.getByTestId('provider-picker-menu').evaluate((node) => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight })).toBe(true)
-    await page.keyboard.press('Escape')
-    await expect(page.getByTestId('engine-status')).toBeFocused()
+    await expect(page.getByTestId('engine-status')).toHaveCount(0)
   }
   await page.setViewportSize({ width: 1280, height: 880 })
   if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()

@@ -1,6 +1,6 @@
 import { Download, LoaderCircle, PlugZap } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
-import type { UpdateCheckDto } from '../../../shared/types.js'
+import type { AppSettingsDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import type { AppState } from '../state.js'
@@ -26,6 +26,16 @@ export const AppNotices = memo(function AppNotices({
 }: AppNoticesProps) {
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState(false)
+  const [filingProvider, setFilingProvider] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true, changed = false
+    const read = (settings: AppSettingsDto) => {
+      if (alive) setFilingProvider((settings.aiSelections?.filing?.engine ?? settings.defaultEngine) === 'codex' ? 'ChatGPT' : 'Claude')
+    }
+    void api.settingsGet().then(settings => { if (!changed) read(settings) }).catch(() => undefined)
+    const off = api.onEvent(event => { if (event.type === 'settings:changed') { changed = true; read(event.settings) } })
+    return () => { alive = false; off() }
+  }, [])
   useEffect(() => setError(false), [update?.version, update?.state])
   const unhealthy = engines.filter((engine) => engine.healthy === false)
   const unhealthyIds = unhealthy.map((engine) => engine.id).join(', ')
@@ -46,7 +56,7 @@ export const AppNotices = memo(function AppNotices({
         <div className="connect-banner" data-testid="connect-banner">
           <PlugZap size={14} strokeWidth={1.8} aria-hidden />
           <span>
-            {t('banner.noBrain')}
+            {filingProvider ? `${filingProvider} is selected for filing but isn't ready. Check its connection or choose another AI in Settings.` : t('banner.noBrain')}
             {waiting > 0 && ` · ${t('banner.waiting', { n: waiting })}`}
           </span>
           <button className="connect-banner-btn" onClick={onOpenSettings}>
@@ -60,7 +70,7 @@ export const AppNotices = memo(function AppNotices({
           <span>{unhealthyText}</span>
           <button
             className="connect-banner-btn"
-            onClick={() => window.dispatchEvent(new Event('engram:open-diagnostics'))}
+            onClick={() => reason === 'auth' ? onOpenSettings() : window.dispatchEvent(new Event('engram:open-diagnostics'))}
           >
             {reason === 'auth' ? t('banner.login') : t('banner.check')}
           </button>

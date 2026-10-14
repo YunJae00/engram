@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { openActivity } from './navigation.js'
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -216,11 +217,14 @@ test('first-run login states, filing retry and direct browser entry', async () =
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'sweep:done', report: { executed: 0, skipped: 0, failed: 0, deferred: 13, haltReason: 'quota', briefWritten: false } })
   })
   await expect(page.getByTestId('sweep-status')).toContainText('usage limit')
-  await page.getByTestId('engine-status').click()
-  await expect(page.getByTestId('provider-picker-menu')).toContainText('Filing provider')
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-ai').click()
+  await page.getByRole('region', { name: 'Filing model', exact: true }).getByTestId('model-picker').click()
+  await expect(page.getByTestId('model-picker-menu')).toBeVisible()
   await page.getByTestId('provider-pick-codex').click()
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'codex', chat: 'codex' })
   await page.getByTestId('model-pick-auto').click()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
   await app.evaluate(({ BrowserWindow }) => {
     const engines = ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true, healthy: true }))
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })
