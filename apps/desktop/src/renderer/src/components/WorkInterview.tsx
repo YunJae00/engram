@@ -19,7 +19,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
   const [progress, setProgress] = useState<PreparationProgress | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
-  const needsAi = /(?:Connect.*AI|Reconnect|AI.*(?:ready|verified|usage|unavailable|limited)|connection check|Sign in again)/i.test(error)
+  const needsAi = /(?:Connect.*AI|Reconnect|(?:AI|Claude|ChatGPT).*(?:ready|verified|usage|unavailable|limited)|connection check|Sign in again)/i.test(error)
   const [saved, setSaved] = useState(false)
   const finished = saved || questions?.length === 0
   const intro = !questions && !busy && !saved

@@ -56,13 +56,13 @@ test('remaining weekly usage does not hide a limited request and the chosen mode
     await expect(page.getByTestId('unhealthy-banner')).toHaveCount(0)
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('interview:questions')
-      ipcMain.handle('interview:questions', () => { throw new Error('Your AI limited a request. Completed work was kept.') })
+      ipcMain.handle('interview:questions', () => { throw new Error('ChatGPT is not ready. The provider limited this request.') })
     })
     await openActivity(page, 'settings')
     await page.getByTestId('settings-nav-memory').click()
     await page.getByTestId('interview-open').click()
     await page.getByTestId('interview-start').click()
-    await expect(page.getByRole('alert')).toContainText('limited a request')
+    await expect(page.getByRole('alert')).toContainText('limited this request')
     await page.getByTestId('interview-connect').click()
     await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
   } finally { await app.close() }
