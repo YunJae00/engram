@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, List, Orbit, Trash2, User, Users } from 'lucide-react'
+import { Check, ChevronDown, List, MessageSquare, Orbit, Trash2, User, Users } from 'lucide-react'
 import type { WorkspaceInfoDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -148,6 +148,7 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
         }}>
           <nav className="sidebar-nav" aria-label="Explore Engram">
             {([
+              ['bots', 'Comets', <MessageSquare key="bots" size={17} aria-hidden />],
               ['sky', t('topbar.tabSky'), <Orbit key="sky" size={17} aria-hidden />],
               ['list', t('activity.list'), <List key="list" size={17} aria-hidden />],
             ] as const).map(([key, label, icon]) => <button key={key} className={`sidebar-nav-row${activity === key ? ' active' : ''}`} aria-current={activity === key ? 'page' : undefined} data-testid={`activity-${key}`} onClick={() => { setOpen(false); onNavigate(key) }}>{icon}<span>{label}</span></button>)}

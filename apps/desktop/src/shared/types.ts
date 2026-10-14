@@ -418,7 +418,7 @@ export type EngramEvent =
   // top bar can say "filing your capture" while it runs
   | { type: 'filing:start' }
   | { type: 'filing:done' }
-  | { type: 'interview:progress'; requestId: string; phase: 'mapping' | 'filing' | 'questions'; stage?: 'capture' | 'organize'; completed?: number; total?: number }
+  | { type: 'interview:progress'; requestId: string; phase: 'connection' | 'mapping' | 'filing' | 'questions'; stage?: 'capture' | 'organize'; completed?: number; total?: number }
   // zero-click MCP hookup refreshed a client's registration on boot
   | { type: 'mcp:autoconnected'; targets: string[] }
   // the semantic layer fell over (model download/load failed) — said once per

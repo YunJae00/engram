@@ -138,16 +138,15 @@ test('conversation rows show persisted previews, timestamps and avatars after re
 test('Engram navigation is inside its menu and the menu stays within the window', async () => {
   await showSidebar()
   for (const activity of ['sky', 'list', 'mission']) await expect(page.getByTestId(`activity-${activity}`)).toHaveCount(0)
-  await expect(page.getByTestId('activity-bots')).toBeVisible()
-  await expect(page.getByTestId('activity-bots').locator('[data-icon="comet-face"]')).toHaveCount(0)
-  await expect(page.getByTestId('activity-bots').locator('svg circle')).toHaveCount(2)
+  await expect(page.getByTestId('activity-bots')).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Workspace mode' })).toHaveCount(0)
   await expect(page.getByTestId('app-sidebar').locator('.sidebar-nav-row')).toHaveCount(0)
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
   await expect(menu).toBeVisible()
   for (const activity of ['sky', 'list']) await expect(menu.getByTestId(`activity-${activity}`)).toBeVisible()
   await expect(menu.getByTestId('activity-routines')).toHaveCount(0)
-  await expect(menu.getByTestId('activity-bots')).toHaveCount(0)
+  await expect(menu.getByTestId('activity-bots')).toBeVisible()
   await expect(menu.getByTestId('activity-mission')).toHaveCount(0)
   expect(await menu.evaluate(node => {
     const box = node.getBoundingClientRect()
@@ -157,6 +156,9 @@ test('Engram navigation is inside its menu and the menu stays within the window'
   await expect(page.getByTestId('sky-view')).toBeVisible()
   await expect(menu).toHaveCount(0)
   await openActivity(page, 'bots')
+  await page.getByTestId('app-sidebar-close').click()
+  await expect(page.getByRole('group', { name: 'Workspace mode' })).toHaveCount(0)
+  await page.getByTestId('app-sidebar-open').click()
 })
 
 test('one create menu is keyboard accessible, dismissible, and compact in both themes', async () => {

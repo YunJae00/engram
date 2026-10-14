@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
 
 // Fresh home: the two onboarding screens, including the
-// skip-AI path, land in a working shell.
+// verified AI connection, land in a working shell.
 
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
@@ -15,6 +15,7 @@ const PREVIEW = join(REPO_TMP, 'onboarding-preview')
 let app: ElectronApplication
 let page: Page
 let vaultRoot: string
+let mockDir: string
 async function screenshot(name: string) {
   const data = await app.evaluate(async ({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!
@@ -31,6 +32,8 @@ test.beforeEach(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   await mkdir(PREVIEW, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
+  mockDir = join(userData, 'mock')
+  await mkdir(mockDir); await writeFile(join(mockDir, 'default.txt'), 'OK')
   vaultRoot = join(await mkdtemp(join(REPO_TMP, 'e2e-onboard-')), 'Engram')
 
   app = await electron.launch({
@@ -58,7 +61,7 @@ test.afterEach(async () => {
   await app?.close()
 })
 
-test('a fresh workspace can skip AI and browse immediately', async () => {
+test('a fresh workspace requires verified AI before browsing', async () => {
   await expect(page.getByTestId('onboarding')).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
@@ -72,7 +75,8 @@ test('a fresh workspace can skip AI and browse immediately', async () => {
   await page.getByRole('button', { name: 'Choose workspace folder', exact: true }).click()
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
   await page.getByTestId('onboard-next').click()
-  await expect(page.getByTestId('onboard-skip-ai')).toBeEnabled()
+  await expect(page.getByTestId('onboard-skip-ai')).toHaveCount(0)
+  await expect(page.getByTestId('onboard-finish')).toBeDisabled()
   for (const key of ['workMap', 'workFiles', 'workApps']) await expect(page.getByTestId(`onboard-source-${key}`)).not.toBeChecked()
   // The activity log shows its current state, unchanged until the person changes it.
   await expect(page.getByTestId('onboard-source-activity')).toBeChecked({ checked: await page.evaluate(() => window.engram.activityGet()) })
@@ -85,10 +89,19 @@ test('a fresh workspace can skip AI and browse immediately', async () => {
   await page.getByRole('button', { name: 'Back', exact: true }).click()
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
   await page.getByTestId('onboard-next').click()
-  await page.getByTestId('onboard-skip-ai').click()
+  await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
+    process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
+    ipcMain.removeHandler('engines:states')
+    ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
+  }, mockDir)
+  await page.getByTestId('onboard-interview').uncheck()
+  await expect(page.getByTestId('onboard-finish')).toBeEnabled()
+  await page.getByTestId('onboard-finish').click()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.workMap, settings.workFiles, settings.workApps]))).toEqual([false, true, false])
   await expect(page.getByTestId('welcome-web')).toBeEnabled()
+  await app.evaluate(() => { process.env['ENGRAM_ENGINE'] = 'none' })
   const titled = await page.evaluate(async () => {
     const bot = await window.engram.botCreate({ name: 'New comet', purpose: '' })
     await window.engram.chatSend({ message: 'Review the project plan', history: [], engineId: 'claude', botId: bot.id, channel: `bot-${bot.id}` })
@@ -119,8 +132,8 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     await page.getByTestId('onboard-next').click()
     await expect(page.getByRole('heading', { name: 'Connect your AI', exact: true })).toBeVisible()
     await expect(page.getByTestId('onboard-connect-claude')).toBeEnabled()
-    await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Connected')
-    await expect(page.getByText('Connected', { exact: true })).toHaveCount(1)
+    await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
+    await expect(page.getByText('Signed in', { exact: true })).toHaveCount(1)
     await expect(page.getByTestId('onboard-source-workMap')).not.toBeChecked()
     await expect(page.getByTestId('onboard-interview')).toBeChecked()
     await expect(page.getByTestId('onboard-sources')).toContainText('Pages and files are never opened.')
@@ -133,6 +146,28 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
   }
 })
 
+test('signed-in metadata cannot finish setup when the AI request fails', async () => {
+  await expect(page.getByTestId('onboarding')).toBeVisible()
+  await writeFile(join(mockDir, 'default.txt'), '')
+  await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
+    process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
+    ipcMain.removeHandler('engines:states')
+    ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
+  }, mockDir)
+  await page.getByTestId('onboard-next').click()
+  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
+  await page.getByTestId('onboard-interview').uncheck()
+  await page.getByTestId('onboard-finish').click()
+  await expect(page.getByRole('alert')).toContainText('did not answer the connection check')
+  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Check failed')
+  await expect(page.getByTestId('onboard-step-2')).toBeVisible()
+  await expect(access(vaultRoot)).rejects.toThrow()
+  await writeFile(join(mockDir, 'default.txt'), 'OK')
+  await page.getByTestId('onboard-finish').click()
+  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
+})
+
 test('first-run login states, filing retry and direct browser entry', async () => {
   test.setTimeout(240000)
   await expect(page.getByTestId('onboarding')).toBeVisible()
@@ -143,7 +178,8 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await screenshot('01-workspace.png')
   // Replace only the authentication boundary in this isolated process.
   // No real account credentials, external browser login or model quota is used.
-  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+  await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
+    process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
     const states = [{ id: 'claude', installed: true, loggedIn: false }, { id: 'codex', installed: true, loggedIn: false }]
     let attempt = 0
     let cancel: (() => void) | undefined
@@ -160,10 +196,10 @@ test('first-run login states, filing retry and direct browser entry', async () =
       return { ok: true }
     })
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
-  })
+  }, mockDir)
   await page.getByTestId('onboard-next').click()
 
-  // ② brain sign-in — the skip path goes straight in
+  // Sign-in must finish before the live connection check.
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
   await expect(page.getByTestId('onboard-connect-codex')).toBeEnabled()
   await screenshot('02-connect-ai.png')
@@ -171,15 +207,15 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect(page.getByRole('alert')).toContainText('Sign-in did not finish')
   await page.getByTestId('onboard-connect-claude').click()
   await expect(page.getByRole('button', { name: 'Open browser', exact: true })).toBeVisible()
-  await expect(page.getByTestId('onboard-skip-ai')).toBeDisabled()
+  await expect(page.getByTestId('onboard-finish')).toBeDisabled()
   await screenshot('03-sign-in-waiting.png')
   await page.getByRole('button', { name: 'Cancel sign-in' }).click()
   await expect(page.getByTestId('onboard-connect-codex')).toBeEnabled()
   await page.getByTestId('onboard-connect-codex').click()
-  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Connected')
+  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections?.filing?.engine))).toBe('codex')
   await page.getByTestId('onboard-connect-claude').click()
-  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Connected')
+  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Signed in')
   // With two connected, the person says which answers first; nothing is guessed from the sign-in order.
   await expect(page.getByTestId('onboard-choice')).toBeVisible()
   await page.getByTestId('onboard-choose-codex').check()

@@ -1,7 +1,7 @@
 import { Check, ExternalLink, Folder, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
-import { api } from '../api.js'
+import { api, apiErrorText } from '../api.js'
 import { INTERVIEW_PENDING_KEY } from '../components/WorkInterview.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { InstallClaude } from '../components/InstallClaude.js'
@@ -18,6 +18,7 @@ export function Onboarding() {
   const [brains, setBrains] = useState<EngineStatusDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [checkFailed, setCheckFailed] = useState<string | null>(null)
   const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
   const [installing, setInstalling] = useState(false)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
@@ -42,7 +43,7 @@ export function Onboarding() {
     const at = ++revision.current
     if (!checked.current) setLoading(true)
     try { const states = await api.engineStates(); if (at === revision.current) { setBrains(states); checked.current = true } }
-    catch { if (at === revision.current) setError('Could not check AI connections. Retry, or continue without AI.') }
+    catch { if (at === revision.current) setError('Could not check AI connections. Please retry before continuing.') }
     finally { if (at === revision.current) setLoading(false) }
   }
   useEffect(() => {
@@ -59,10 +60,10 @@ export function Onboarding() {
 
   const connect = async (id: 'claude' | 'codex') => {
     if (signing.current) return
-    signing.current = true; setConnecting(id); setError('')
+    signing.current = true; setConnecting(id); setError(''); setCheckFailed(null)
     try {
       const result = await api.engineConnect(id)
-      if (!result.ok) setError(result.message || 'Sign-in was cancelled. You can try again or continue without AI.')
+      if (!result.ok) setError(result.message || 'Sign-in was cancelled. Please try again.')
       else {
         await api.settingsSet({ defaultEngine: id })
         await api.aiSelectionSet('filing', { engine: id, model: '' })
@@ -71,11 +72,14 @@ export function Onboarding() {
     finally { signing.current = false; setConnecting(null); await loadBrains() }
   }
   const finish = async () => {
-    if (completing.current || signing.current || installing || !root.trim()) return
-    completing.current = true; setFinishing(true); setError('')
+    if (completing.current || signing.current || installing || loading || !root.trim() || !pick) return
+    completing.current = true; setFinishing(true); setError(''); setCheckFailed(null)
     try {
+      const states = await api.engineStates([pick])
+      const available = states.find(brain => brain.id === pick && connectionConfirmed(brain))
+      setBrains(held => [...held.filter(brain => brain.id !== pick), ...states])
+      if (!available) throw new Error('Your AI connection is not verified. Connect it and try again.')
       const settings = await api.settingsGet()
-      const available = pick ? ready.find(brain => brain.id === pick) : undefined
       if (available && (available.id === 'claude' || available.id === 'codex')) {
         if (settings.defaultEngine !== available.id) await api.settingsSet({ defaultEngine: available.id })
         if (settings.aiSelections?.filing?.engine !== available.id) await api.aiSelectionSet('filing', { engine: available.id, model: '' })
@@ -87,7 +91,7 @@ export function Onboarding() {
       try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
-    catch (cause) { completing.current = false; setFinishing(false); setError(cause instanceof Error ? cause.message : 'Could not create your workspace. Please try again.') }
+    catch (cause) { const message = apiErrorText(cause instanceof Error ? cause.message : 'Could not finish setup. Please try again.'); completing.current = false; setFinishing(false); setCheckFailed(/AI|Claude|ChatGPT|connection/i.test(message) ? pick : null); setError(message) }
   }
   const loginAction = (action: Promise<unknown>) => void action.catch(() => setError('Could not update the sign-in window. Please try again.'))
 
@@ -111,8 +115,8 @@ export function Onboarding() {
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
-            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>Usage limit reached for now. It can still be chosen.</span>}{!loading && !active && !connected && state?.installed && <span>{connectionLabel(state, id)}</span>}</div>
-            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className="onboard-connected" data-testid={`onboard-brain-${id}`} role="status"><Check size={15} aria-hidden />Connected</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>Retry check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
+            <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>Usage limit reached. Choose another AI or retry after the reset.</span>}{!loading && !active && !connected && state?.installed && <span>{connectionLabel(state, id)}</span>}</div>
+            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className={checkFailed === id ? 'setting-hint' : 'onboard-connected'} data-testid={`onboard-brain-${id}`} role="status">{checkFailed !== id && <Check size={15} aria-hidden />}{checkFailed === id ? 'Check failed' : 'Signed in'}</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>Retry check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
             {active && <div className="onboard-login-actions">{login?.canOpen && <button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button>}<button className="secondary" onClick={() => loginAction(api.engineCancelLogin(id))}>Cancel sign-in</button></div>}
           </div>
         })}
@@ -122,7 +126,7 @@ export function Onboarding() {
         <LearningSources value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
         <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos before questions. Selected Cosmos note excerpts, work places, past tasks and preferences go to your AI. No new document scan.</p></div>
       </div>
-      <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className={ready.length ? 'primary' : 'secondary'} data-testid={ready.length ? 'onboard-finish' : 'onboard-skip-ai'} disabled={finishing || !!connecting || installing} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Creating workspace…</> : ready.length ? 'Start using Engram' : 'Continue without AI'}</button></div>
+      <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || loading || !!connecting || installing || !pick} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Check AI & continue'}</button></div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
   </div></div>

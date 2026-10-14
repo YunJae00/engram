@@ -97,4 +97,14 @@ describe('browser view handoffs', () => {
     await view.watchAgentView(false)
     expect(currentStop).toHaveBeenCalledOnce()
   })
+
+  it('maps input against the current viewport rather than a stale mirrored frame', async () => {
+    const { page, cdp } = fixture('bot-one')
+    const view = await import('../src/main/agent-view.js')
+    await view.lookAtLane('bot-one')
+    vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 696, height: 768 })
+    await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000 }, 'bot-one')
+    expect(cdp.send).toHaveBeenCalledExactlyOnceWith('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 348, y: 384, button: 'none', clickCount: 0, modifiers: 0, deltaX: 0, deltaY: 4000 })
+    expect(view.touchedAt('bot-one')).toBe(0)
+  })
 })

@@ -1,12 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { VaultContext } from '../src/main/vault.js'
 
-const fake = vi.hoisted(() => ({ map: vi.fn(), prime: vi.fn(), settings: vi.fn(), filing: vi.fn(), outcome: vi.fn(), blocked: vi.fn() }))
+const fake = vi.hoisted(() => ({ map: vi.fn(), prime: vi.fn(), settings: vi.fn(), filing: vi.fn(), outcome: vi.fn(), blocked: vi.fn(), refresh: vi.fn(), check: vi.fn() }))
 vi.mock('core', async original => ({ ...await original<typeof import('core')>(), readWorkMap: fake.map, prepareInitialFiling: fake.filing, engineBackoff: { blockedMs: fake.blocked } }))
 vi.mock('../src/main/work-map-job.js', () => ({ primeWorkMap: fake.prime }))
 vi.mock('../src/main/desk-sources.js', () => ({ refreshDeskNotes: async () => undefined, withheldDeskNotes: async () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.settings }))
-vi.mock('../src/main/engine-health.js', () => ({ noteRunOutcome: fake.outcome }))
+vi.mock('../src/main/engine-health.js', () => ({ noteRunOutcome: fake.outcome, revalidateEngines: fake.refresh }))
+vi.mock('../src/main/setup-connection.js', () => ({ verifySetupConnection: fake.check }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 import { prepareInterviewContext } from '../src/main/interview-preparation.js'
 
@@ -19,6 +20,8 @@ beforeEach(() => {
   fake.prime.mockReset().mockResolvedValue(undefined)
   fake.filing.mockReset().mockResolvedValue(report)
   fake.blocked.mockReset().mockReturnValue(0)
+  fake.refresh.mockReset().mockResolvedValue(undefined)
+  fake.check.mockReset().mockResolvedValue(undefined)
 })
 
 it('prepares the map then a finite pass with real progress and returns its membership', async () => {
@@ -30,7 +33,7 @@ it('prepares the map then a finite pass with real progress and returns its membe
     return report
   })
   expect(await prepareInterviewContext(ctx, abort.signal, progress)).toEqual(['n-prepared'])
-  expect(progress.mock.calls).toEqual([[{ phase: 'mapping' }], [{ phase: 'filing', stage: 'organize', completed: 1, total: 2 }]])
+  expect(progress.mock.calls).toEqual([[{ phase: 'connection' }], [{ phase: 'mapping' }], [{ phase: 'filing', stage: 'organize', completed: 1, total: 2 }]])
   expect(fake.outcome).toHaveBeenCalledWith(ctx, report, ctx.engines[0])
 })
 
@@ -96,5 +99,14 @@ it('does not spend usage when the engine is absent or cooling down', async () =>
   await expect(prepareInterviewContext({ ...ctx, engines: [] }, new AbortController().signal, vi.fn())).rejects.toThrow('Connect')
   fake.blocked.mockReturnValue(1000)
   await expect(prepareInterviewContext(ctx, new AbortController().signal, vi.fn())).rejects.toThrow('temporarily')
+  expect(fake.prime).not.toHaveBeenCalled(); expect(fake.filing).not.toHaveBeenCalled()
+})
+
+it('refreshes stale startup state and verifies the selected AI before any preparation', async () => {
+  const stale = { ...ctx, paths: { workspace: 'tmp/prepare-fixture', privateDir: '' }, engines: [] } as unknown as VaultContext
+  fake.refresh.mockImplementation(async () => { stale.engines = [{ id: 'codex' }] as VaultContext['engines'] })
+  fake.check.mockRejectedValue(new Error('ChatGPT is not ready. Sign in again.'))
+  await expect(prepareInterviewContext(stale, new AbortController().signal, vi.fn())).rejects.toThrow('Sign in again')
+  expect(fake.check).toHaveBeenCalledOnce()
   expect(fake.prime).not.toHaveBeenCalled(); expect(fake.filing).not.toHaveBeenCalled()
 })

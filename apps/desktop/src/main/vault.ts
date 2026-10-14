@@ -62,7 +62,7 @@ export async function saveVaultRoot(root: string): Promise<void> {
 
 // Background work uses only the filing selection. Conversations resolve
 // their own selection separately; an unavailable provider never falls back.
-async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> {
+export async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') {
     const dir = process.env['ENGRAM_MOCK_DIR']

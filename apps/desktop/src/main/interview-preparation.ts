@@ -1,9 +1,10 @@
-import { engineBackoff, prepareInitialFiling, readWorkMap } from 'core'
+import { engineBackoff, engineCwd, prepareInitialFiling, readWorkMap } from 'core'
 import { flog } from './flog.js'
 import type { EngramEvent } from '../shared/types.js'
-import { noteRunOutcome } from './engine-health.js'
+import { noteRunOutcome, revalidateEngines } from './engine-health.js'
 import { loadSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
+import { verifySetupConnection } from './setup-connection.js'
 import { primeWorkMap } from './work-map-job.js'
 import { refreshDeskNotes, withheldDeskNotes } from './desk-sources.js'
 import { setTimeout as pause } from 'node:timers/promises'
@@ -35,8 +36,13 @@ async function waitForMap(ctx: VaultContext, signal: AbortSignal, budget: number
 
 export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSignal, progress: (state: InterviewProgress) => void): Promise<readonly string[]> {
   signal.throwIfAborted()
+  progress({ phase: 'connection' })
+  await revalidateEngines(ctx, false, false)
+  signal.throwIfAborted()
   if (!ctx.engines.length) throw new Error('Connect an AI before preparing Cosmos.')
-  if (engineBackoff.blockedMs() > 0) throw new Error('Your AI is temporarily unavailable. Retry later or start now.')
+  const engine = ctx.engines[0]!
+  if (engine.id === 'claude' || engine.id === 'codex') await verifySetupConnection(engine, engineCwd(ctx.paths), AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
+  if (engineBackoff.blockedMs() > 0) throw new Error('Your AI is temporarily unavailable. Wait for its usage limit to reset or choose another AI in Settings.')
   // Right after setup the map may still be on its way (the brain was only
   // just detected, the browser only just read). It gets a bounded wait; past
   // that, Cosmos is prepared without it and the places join when it lands.
@@ -54,15 +60,17 @@ export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSi
   }
   await refreshDeskNotes(ctx)
   signal.throwIfAborted()
-  const engine = ctx.engines[0]
-  const report = await prepareInitialFiling(ctx.paths, ctx.engines, {
+  const report = await prepareInitialFiling(ctx.paths, [engine], {
     signal, concurrency: COSMOS_PARALLEL, modelHint: 'fast', includeWorkMap: withMap, withheld: await withheldDeskNotes(),
     onProgress: (completed, total, stage) => progress({ phase: 'filing', stage, completed, total }),
   })
   signal.throwIfAborted()
   noteRunOutcome(ctx, report, engine)
   if (report.haltReason === 'auth') throw new Error('Reconnect your AI to finish preparing Cosmos.')
-  if (report.haltReason === 'quota') throw new Error('Your AI reached its usage limit. Completed work was kept; retry later or start now.')
-  if (report.failed.length || report.deferred) throw new Error('Cosmos preparation is incomplete. Completed work was kept; retry or start now.')
+  if (report.haltReason === 'quota') throw new Error('Your AI reached its usage limit. Completed work was kept. Wait for the limit to reset or choose another AI in Settings.')
+  if (report.failed.length || report.deferred) {
+    flog('interview-preparation', `${report.failed.length} failed, ${report.deferred} deferred`)
+    throw new Error('Cosmos preparation is incomplete. Completed work was kept. Retry to finish the remaining work.')
+  }
   return report.noteIds
 }
