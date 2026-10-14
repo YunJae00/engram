@@ -94,6 +94,7 @@ test('invalid input creates nothing; Enter creates one Comet and starts the norm
   await expect.poll(visible).toBe(false)
   await expect.poll(() => page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(initial + 1)
   await expect(page.getByTestId('bots-view')).toBeVisible()
+  await expect(page.locator('.conversation-title svg')).toHaveCount(0)
   await expect(page.getByTestId('bots-thread').getByText('Say hello from my quick Comet', { exact: true })).toBeVisible()
   await expect.poll(() => page.evaluate(async () => {
     const bot = (await window.engram.botsList()).at(-1)!
@@ -120,4 +121,22 @@ test('missing AI keeps the draft, and composition Enter never submits', async ()
   await expect.poll(visible).toBe(true)
   expect(await page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(initial)
   await popup.getByTestId('quick-input').press('Escape')
+})
+
+test('split chats keep spoken progress after a tool starts and show one final result', async () => {
+  const bot = await page.evaluate(() => window.engram.botsList().then(bots => bots.at(-1)!))
+  await openActivity(page, 'mission')
+  const tile = page.getByTestId(`mini-chat-${bot.id}`)
+  await expect(tile).toBeVisible()
+  await app.evaluate(({ BrowserWindow }, id) => {
+    const channel = `bot-${id}`, window = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().endsWith('#quick'))!
+    for (const event of [{ type: 'comet:working', channel, working: true }, { type: 'chat:token', channel, text: 'Checking your work now.' }, { type: 'chat:token', channel, text: '', reset: true }, { type: 'comet:step', channel, line: 'read_open_page: Current page' }]) window.webContents.send('engram:event', event)
+  }, bot.id)
+  await expect(tile.getByText('Checking your work now.', { exact: true })).toBeVisible()
+  await app.evaluate(({ BrowserWindow }, id) => {
+    const channel = `bot-${id}`, window = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().endsWith('#quick'))!
+    for (const event of [{ type: 'chat:done', channel, text: 'One final checked result.' }, { type: 'comet:working', channel, working: false }]) window.webContents.send('engram:event', event)
+  }, bot.id)
+  await expect(tile.getByText('Checking your work now.', { exact: true })).toBeVisible()
+  await expect(tile.getByText('One final checked result.', { exact: true })).toHaveCount(1)
 })

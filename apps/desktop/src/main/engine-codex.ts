@@ -112,6 +112,7 @@ export class CodexEngine implements CloudEngine {
   readonly label = 'ChatGPT'
   readonly desktopToolIsolation = true
   private readonly status = new StatusCache()
+  forgetStatus(): void { this.status.forget() }
 
   detect(): Promise<EngineDetection> {
     return this.status.read(async () => {

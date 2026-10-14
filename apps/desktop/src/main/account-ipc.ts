@@ -5,6 +5,7 @@ import { cloudEngine } from './engine-cloud.js'
 import { desktopOwner } from './desktop-access.js'
 import { broadcast, markEngineOk } from './engine-health.js'
 import type { AccountProfileState, AccountProvider } from '../shared/account-profiles.js'
+import { connectionProbe } from './connection-probe.js'
 
 const STATUS_BATCH = 4
 
@@ -22,7 +23,7 @@ export function registerAccountIpc(changed: () => Promise<void>): void {
     const result: AccountProfileState[] = []
     // Each check is a runtime process; a few at a time keeps memory bounded.
     for (let at = 0; at < rows.length; at += STATUS_BATCH) result.push(...await Promise.all(rows.slice(at, at + STATUS_BATCH).map(async row => {
-      const detection = await cloudEngine(row.provider, row.id).detect().catch(() => ({ installed: true, loggedIn: false, conclusive: false }))
+      const detection = await connectionProbe(() => cloudEngine(row.provider, row.id).detect())
       return { ...row, ...detection, selected: profiles.selected[row.provider] === row.id }
     })))
     return result

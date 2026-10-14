@@ -141,7 +141,8 @@ import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
-import { canLearnTurn } from './task-result-state.js'
+import { canLearnTurn, holdTaskResult } from './task-result-state.js'
+import { activeAccountProfile } from './account-profiles.js'
 import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
@@ -2560,7 +2561,7 @@ export function registerIpc(ctx: VaultContext): void {
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
             onToken: (text) => { if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
-            onReset: () => broadcast({ type: 'chat:token', channel, text: '', reset: true }),
+            onReset: drop => broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}) }),
             onObservation: (tool: string, observation: string) => {
               if (process.env['ENGRAM_STEP_DETAIL'] === '1')
                 broadcast({ type: 'comet:step', channel, line: `  <- ${tool}: ${observation.slice(0, 300).replace(/\n/g, ' ')}` })
@@ -2630,7 +2631,7 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        const held = !result.asked && !result.stopped && !result.pending && (!!turn?.verification || (!result.incomplete && !!turn?.holdIf?.(result.answer, result.steps)))
+        const held = holdTaskResult(result, turn)
         const finished = canLearnTurn(result, held, check)
         await learning.record(bot.id, learningId, request.message, result.steps, finished)
         learningRecorded = true
@@ -2654,6 +2655,7 @@ export function registerIpc(ctx: VaultContext): void {
         // thread: the task runner delivers one answer when the check is done.
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
+          broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })
           if (bot && !recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at: new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
         } else {
           await deliverAnswer(
@@ -2793,7 +2795,11 @@ export function registerEngineIpc(): void {
     if (id !== 'claude' && id !== 'codex') throw new Error('unknown cloud brain')
     return id
   }
-  ipcMain.handle('engines:states', () => engineStates())
+  ipcMain.handle('engines:states', (_e, ids?: unknown) => {
+    if (ids === undefined) return engineStates()
+    if (!Array.isArray(ids) || ids.length > 2) throw new Error('Invalid providers')
+    return engineStates(ids.map(cloudId))
+  })
   ipcMain.handle('engines:installClaude', async () => {
     await installClaudeRuntime()
     await onEnginesChanged?.()
@@ -2810,8 +2816,10 @@ export function registerEngineIpc(): void {
   ipcMain.handle('engines:cancelLogin', (_e, id: unknown, profile?: string) => cancelEngineLogin(cloudId(id), profile))
   ipcMain.handle('engines:openLogin', (_e, id: unknown, profile?: string) => reopenEngineLogin(cloudId(id), profile))
   ipcMain.handle('engines:connect', async (_e, id: unknown, profile?: string) => {
-    const result = await connectEngine(cloudId(id), profile)
+    const chosenProfile = profile ?? activeAccountProfile(cloudId(id))
+    const result = await connectEngine(cloudId(id), chosenProfile)
     if (result.ok) {
+      if (chosenProfile === activeAccountProfile(cloudId(id))) markEngineOk(cloudId(id))
       if (id === 'claude') forgetClaudeModels()
       else forgetCodexModels()
       broadcast({ type: 'models:changed' })

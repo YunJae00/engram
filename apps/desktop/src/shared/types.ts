@@ -244,6 +244,7 @@ export interface EngineStatusDto {
   id: string
   installed: boolean
   loggedIn: boolean
+  conclusive?: boolean
   desktopToolIsolation?: boolean
   // live health verdict (boot ping + periodic auth re-check); undefined = not
   // measured yet. Carried on every engines list/change so a renderer reload
@@ -749,7 +750,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   engineOpenLogin(id: 'claude' | 'codex', profile?: string): Promise<void>
   engineDisconnect(id: 'claude' | 'codex'): Promise<void>
   // Every brain this build carries, signed in or not.
-    engineStates(): Promise<EngineStatusDto[]>
+    engineStates(ids?: ('claude' | 'codex')[]): Promise<EngineStatusDto[]>
     accountProfiles(): Promise<import('./account-profiles.js').AccountProfiles>
     accountProfileStates(): Promise<import('./account-profiles.js').AccountProfileState[]>
     accountProfileAdd(provider: 'claude' | 'codex', name: string): Promise<import('./account-profiles.js').AccountProfiles>

@@ -10,6 +10,7 @@ import type { VaultContext } from './vault.js'
 import { overlayWindowIds } from './desktop-overlay.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { flog } from './flog.js'
+import { cloudEngine } from './engine-cloud.js'
 
 function selectedAccount(engine: Engine | undefined): boolean {
   if (!engine || (engine.id !== 'claude' && engine.id !== 'codex')) return true
@@ -55,6 +56,7 @@ const CONFIRM_AFTER = 2
 // Broadcast ONLY on a real change, so a 10-minute re-verification that finds
 // everything fine is silent and the renderer's state never churns.
 function setHealth(id: string, next: EngineHealthDto): void {
+  if (!next.healthy && next.reason === 'auth' && (id === 'claude' || id === 'codex')) cloudEngine(id).forgetStatus?.()
   // A confirmed auth failure must also drop the adapter's 60s positive auth
   // cache. Otherwise the very next re-detect (the Diagnostics 4s poll, window
   // focus) would answer from that stale positive and CLEAR the banner we just
@@ -145,6 +147,7 @@ export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, c
     // The CLI says the login is fine (or could not be asked) but the call came
     // back with an auth error — believe the call, it is the more recent fact.
     setHealth(engine.id, { healthy: false, reason: 'auth' })
+    if (ctx) void revalidateEngines(ctx)
     return
   }
   const streak = (failStreak.get(engine.id) ?? 0) + 1
@@ -176,7 +179,7 @@ export function startEngineWatch(ctx: VaultContext): void {
 export function refreshHealthFromDetection(ctx: VaultContext): void {
   for (const engine of ctx.engines) {
     const health = engineHealth.get(engine.id)
-    if (health?.healthy === false && health.reason === 'auth') markEngineOk(engine.id)
+    if (health?.healthy === false && health.reason === 'auth' && (engine as Engine & { authConfirmed?: boolean }).authConfirmed === true) markEngineOk(engine.id)
   }
 }
 
@@ -207,6 +210,7 @@ export function engineDto(engine: Engine): EngineStatusDto {
     id: engine.id,
     installed: true,
     loggedIn: true,
+    ...((engine as Engine & { authConfirmed?: boolean }).authConfirmed === false ? { conclusive: false } : {}),
     desktopToolIsolation: engine.desktopToolIsolation === true,
     ...(health ? { healthy: health.healthy, ...(health.reason ? { healthReason: health.reason } : {}) } : {}),
   }

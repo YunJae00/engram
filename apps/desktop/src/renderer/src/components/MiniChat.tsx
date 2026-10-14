@@ -13,7 +13,7 @@ import { PressGate } from './PressGate.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
 import { Globe } from 'lucide-react'
-import { Thinking } from './Thinking.js'
+import { CometWork } from './CometWork.js'
 import { UserMessage } from './ChatAttachment.js'
 import { RoutineLearning, RoutineSkillHint } from './RoutineLearning.js'
 
@@ -41,16 +41,16 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
     void api.chatAbort(cometChannel(botId)).catch(() => undefined)
   }
   const status = thread.busy ? pendingStatus(t, thread.awaitingModel ? undefined : thread.workLines[thread.workLines.length - 1]) : ''
+  const lastAssistant = thread.messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
   return (
     <div className="mini-chat" data-testid={`mini-chat-${botId}`}>
       <div className="mini-chat-thread conversation-thread" ref={listRef}>
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
         {thread.messages.map((m, i) => (
           <div key={i} className={`mini-msg ${m.role}`}>
-            {m.role === 'assistant' ? (m.text.trim() && <StreamingAnswer text={m.text} done={!m.streaming} />) : <UserMessage text={m.text} attachments={m.attachments} />}
+            {m.role === 'assistant' ? <>{i === lastAssistant && <CometWork busy={thread.busy} status={status} since={thread.startedAt ?? undefined} lines={thread.workLines} kept={thread.keptWork} />}{m.text.trim() && <StreamingAnswer text={m.text} done={!m.streaming} />}</> : <UserMessage text={m.text} attachments={m.attachments} />}
           </div>
         ))}
-        {thread.busy && <Thinking label={status} since={thread.startedAt ?? undefined} />}
       </div>
       <div className="mini-chat-gates"><RoutineProgress channel={cometChannel(botId)} /><SubmitGate channel={cometChannel(botId)} /><PressGate channel={cometChannel(botId)} /></div>
       <RoutineLearning key={botId} botId={botId} working={thread.busy} />

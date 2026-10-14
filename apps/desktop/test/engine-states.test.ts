@@ -74,3 +74,25 @@ it('does not prepare personal context before an AI account is connected', async 
   expect(ctx.engines).toHaveLength(0)
   expect(prime).not.toHaveBeenCalled()
 })
+
+it('never restores an old connected result after a newer signed-out refresh', async () => {
+  vi.stubEnv('ENGRAM_ENGINE', 'auto')
+  let finishOld!: (state: { installed: boolean; loggedIn: boolean }) => void
+  detect.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve })).mockResolvedValueOnce({ installed: true, loggedIn: false })
+  const ctx = { engines: [] } as unknown as VaultContext
+  const old = refreshEngines(ctx)
+  await vi.waitFor(() => expect(detect).toHaveBeenCalledOnce())
+  await refreshEngines(ctx)
+  expect(ctx.engines).toEqual([])
+  finishOld({ installed: true, loggedIn: true })
+  await old
+  expect(ctx.engines).toEqual([])
+})
+
+it('a model-only save does not upgrade unconfirmed auth into a connected verdict', async () => {
+  vi.stubEnv('ENGRAM_ENGINE', 'auto')
+  const ctx = { engines: [{ id: 'codex', authConfirmed: false }] } as unknown as VaultContext
+  await refreshEngines(ctx, true)
+  expect((ctx.engines[0] as { authConfirmed?: boolean }).authConfirmed).toBe(false)
+  expect(detect).not.toHaveBeenCalled()
+})

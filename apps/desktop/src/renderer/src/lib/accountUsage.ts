@@ -20,7 +20,7 @@ export function refreshAccountUsage(force = false): Promise<void> {
   pending = (async () => {
     const profiles = await api.accountProfiles()
     const states = profiles.profiles.length ? await api.accountProfileStates() : (await api.engineStates()).filter(state => state.id === 'claude' || state.id === 'codex').map(state => ({ ...state, provider: state.id as DevProvider, id: 'system', name: 'System account' }))
-    accounts = states.filter(state => state.loggedIn).map(state => ({ provider: state.provider, profile: state.id, name: state.name, usage: accounts.find(account => account.provider === state.provider && account.profile === state.id)?.usage ?? null, loading: true }))
+    accounts = states.filter(state => state.loggedIn && state.conclusive !== false).map(state => ({ provider: state.provider, profile: state.id, name: state.name, usage: accounts.find(account => account.provider === state.provider && account.profile === state.id)?.usage ?? null, loading: true }))
     emit()
     const work = [...accounts]
     for (let at = 0; at < work.length; at += 2) await Promise.all(work.slice(at, at + 2).map(async ({ provider, profile }) => {

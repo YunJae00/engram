@@ -10,6 +10,7 @@ import type { ReasoningEffort } from 'core'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
 import { ProfileDialog } from './AccountProfiles.js'
 import { useAccountUsage } from '../lib/accountUsage.js'
+import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
 
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
@@ -204,7 +205,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   const selectedState = engine ? stateFor(engine) : undefined
   const selectedHealth = engines.find((one) => one.id === engine)
   const providerName = PROVIDERS.find((one) => one.id === engine)?.name ?? 'AI'
-  const status = selectedHealth?.healthy === false ? 'Needs attention' : selectedState?.loggedIn ? 'Connected' : !states && !enginesDetected ? 'Checking connection…' : 'Connect'
+  const status = selectedHealth?.healthy === false ? 'Needs attention' : !states && !enginesDetected ? 'Checking connection…' : connectionLabel(selectedState, engine ?? '')
   const modelLabel = rows.find((row) => row.value === model)?.label ?? (model || t('settings.modelAuto'))
   const label = modelLabel
   const efforts = rows.find(row => row.value === model)?.efforts ?? []
@@ -231,7 +232,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       <div className="provider-picker-heading">{controlled ? 'This session' : scope === 'filing' ? 'Filing provider' : scope ? 'This conversation' : 'New conversations'}</div>
       {PROVIDERS.map(({ id, name }) => {
         const state = stateFor(id)
-        const connected = state?.loggedIn === true
+        const connected = connectionConfirmed(state)
         const detail = connected ? 'Connected' : !states && !state ? 'Open AI settings' : state?.installed ? 'Connect in settings' : 'Set up in settings'
         return <button type="button" key={id} role="menuitemradio" aria-checked={engine === id} tabIndex={-1} disabled={saving || controlled?.disabled} className="model-picker-item provider-picker-option" data-testid={`provider-pick-${id}`}
           onClick={() => { if (!connected) setup(); else if (engine !== id) void save({ defaultEngine: id }, false) }}>

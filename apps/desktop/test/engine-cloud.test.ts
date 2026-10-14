@@ -116,6 +116,16 @@ describe('StatusCache', () => {
 })
 
 describe('withHelpersOnPath', () => {
+  it('does not let an invalidated in-flight auth probe restore a connected verdict', async () => {
+    const cache = new StatusCache()
+    let finish!: (value: { installed: boolean; loggedIn: boolean; conclusive: boolean }) => void
+    const first = cache.read(() => new Promise(resolve => { finish = resolve }))
+    const second = cache.read(async () => ({ installed: true, loggedIn: true, conclusive: true }))
+    cache.forget()
+    finish({ installed: true, loggedIn: true, conclusive: true })
+    for (const state of await Promise.all([first, second])) expect(state).toEqual({ installed: true, loggedIn: false, conclusive: false })
+    expect(await cache.read(async () => ({ installed: true, loggedIn: false, conclusive: true }))).toEqual({ installed: true, loggedIn: false, conclusive: true })
+  })
   it('puts the helper folder first on the path, whatever the key is called', () => {
     const sep = process.platform === 'win32' ? '\\' : '/'
     const binary = `${sep}x${sep}vendor${sep}bin${sep}codex`

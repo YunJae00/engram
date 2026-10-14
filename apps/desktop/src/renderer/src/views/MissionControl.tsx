@@ -16,6 +16,8 @@ import { BrowserPreview } from '../components/BrowserPreview.js'
 import type { FrameSource } from '../components/FrameScreen.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { onMissionFrame } from '../lib/missionFramesLive.js'
+import { compactBrowser } from '../lib/useCompactBrowser.js'
+import { MissionBrowserDialog } from '../components/MissionBrowserDialog.js'
 
 const SEATS_KEY = 'engram.mission.slots'
 // Tiles whose page the person opened; they stay open while the app is.
@@ -54,7 +56,11 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
   // The address each tile's comet has open; the page itself opens in the tile only when asked.
   const [pages, setPages] = useState<Map<string, string>>(() => new Map())
   const [openedPages, setOpenedPages] = useState<Set<string>>(() => new Set(openTiles))
+  const tiles = useRef(new Map<string, HTMLElement>())
+  const [browserId, setBrowserId] = useState<string | null>(null)
   const showPage = (botId: string, open: boolean) => {
+    const box = tiles.current.get(botId)?.getBoundingClientRect()
+    if (open && box && compactBrowser(box.width, box.height)) { setBrowserId(botId); return }
     if (open) openTiles.add(botId); else openTiles.delete(botId)
     setOpenedPages(new Set(openTiles))
   }
@@ -104,6 +110,18 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
 
   const watched = seats.slice(0, layout).filter((id): id is string => id !== null).map(cometChannel).join('|')
   useEffect(() => {
+    const observer = new ResizeObserver(() => setOpenedPages(before => {
+      const next = new Set(before)
+      for (const id of before) {
+        const box = tiles.current.get(id)?.getBoundingClientRect()
+        if (box && compactBrowser(box.width, box.height)) { next.delete(id); openTiles.delete(id) }
+      }
+      return next.size === before.size ? before : next
+    }))
+    for (const tile of tiles.current.values()) observer.observe(tile)
+    return () => observer.disconnect()
+  }, [watched, loaded])
+  useEffect(() => {
     const renew = () => void api.missionWatch(document.visibilityState === 'visible' && watched ? watched.split('|') : []).catch(() => setError(true))
     renew()
     const timer = setInterval(renew, 4000)
@@ -115,7 +133,8 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
     }
   }, [watched])
 
-  const open = (id: string) => { selectComet(id); setActivity('bots') }
+  const open = (id: string) => { setBrowserId(null); selectComet(id); setActivity('bots') }
+  const browserBot = bots.find(bot => bot.id === browserId)
   const seat = (index: number, id: string) => { setSeats((previous) => replaceSeat(previous, index, id)); setAdding(null) }
   const fresh = async (index: number) => {
     setCreating(true)
@@ -152,7 +171,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
             </article>
           )
           return (
-            <article className="mission-tile" data-state={statusOf(bot)} key={index} data-testid={`mission-tile-${index}`}>
+            <article ref={node => { if (node) tiles.current.set(bot.id, node); else tiles.current.delete(bot.id) }} className="mission-tile" data-state={statusOf(bot)} key={index} data-testid={`mission-tile-${index}`}>
               <header className="mission-tile-head">
                 <button className="mission-name mission-change" title={t('mission.change')} aria-label={t('mission.choose', { count: index + 1 })} aria-expanded={adding === index} onClick={() => setAdding(adding === index ? null : index)}><span>{bot.name}</span><ChevronDown size={13} /></button>
                 <span className="mission-status" role="status"><CometActivityIndicator state={statusOf(bot)} />{cometActivityLabel(statusOf(bot))}</span>
@@ -175,6 +194,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
           )
         })}
       </div>
+      {browserBot && <MissionBrowserDialog key={browserBot.id} lane={cometChannel(browserBot.id)} name={browserBot.name} busy={['running', 'waiting'].includes(statusOf(browserBot))} onClose={() => setBrowserId(null)} openChat={() => open(browserBot.id)} />}
     </section>
   )
 }

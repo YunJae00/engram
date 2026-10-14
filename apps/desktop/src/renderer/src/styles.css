@@ -1509,6 +1509,7 @@ body.bubble-host { background: transparent; }
 .brief-title { font-family: var(--font); font-weight: 650; color: var(--fg-strong); font-size: var(--fs-head); letter-spacing: -0.01em; }
 .dialog-head { display: flex; flex: none; align-items: center; justify-content: space-between; min-height: var(--section-height); padding: 0 var(--dialog-gutter); border-bottom: 1px solid var(--border-soft); }
 .dialog-title { display: flex; align-items: center; gap: 8px; }
+.dialog-head-actions { display: flex; align-items: center; gap: 4px; }
 .dialog-close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; color: var(--fg-dim); }
 .dialog-close:hover { background: var(--hover-bg); color: var(--fg); }
 .brief-text { white-space: pre-wrap; font-size: var(--fs-body); font-family: var(--font); }

@@ -47,7 +47,7 @@ test.beforeAll(async () => {
   shell = await app.firstWindow()
   await expect(shell.getByTestId('shell')).toBeVisible()
   await expect.poll(() => shell.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 60000 }).toBe(true)
-  await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setSize(1400, 1000); win.show() })
+  await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setSize(2600, 1600); win.show() })
   await shell.evaluate((bots) => localStorage.setItem('engram.mission.slots', JSON.stringify(bots)), ids)
 })
 
@@ -60,6 +60,7 @@ test.afterAll(async () => {
   if (previousAttach === undefined) delete process.env['PW_CHROMIUM_ATTACH_TO_OTHER']
   else process.env['PW_CHROMIUM_ATTACH_TO_OTHER'] = previousAttach
 })
+
 
 test('four native pages share the agent connection and keep independent input', async () => {
   expect(await shell.evaluate(() => window.engram.nativeEnabled())).toBe(true)
@@ -120,7 +121,9 @@ test('resize and chat handoffs retain the live pages and scroll', async () => {
   }
   await expect.poll(() => first.evaluate(() => scrollY)).toBeGreaterThan(100)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
-  await expect.poll(() => first.evaluate(() => innerWidth)).toBeLessThan(600)
+  await expect(shell.getByTestId('mission-tile-0').locator('.browser-preview')).toBeVisible()
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
+  for (let i = 0; i < 4; i++) await shell.getByTestId(`mission-tile-${i}`).getByRole('button', { name: 'Open full browser', exact: true }).click()
 })
 
 test('typing and editing a conversation after using the web does not reach the web page', async () => {
@@ -226,15 +229,15 @@ test('occlusion keeps native layout while a dialog hides it immediately and rest
 test('folding a tile conversation and dismissing its picker keep the native page interactive', async () => {
   const tile = shell.getByTestId('mission-tile-0')
   const first = browser.contexts()[0]!.pages().find((page) => page.url() === `${url}/?pane=0`)!
-  const before = await first.evaluate(() => innerHeight)
+  const before = await first.evaluate(() => innerWidth)
   const draft = tile.locator('.mini-chat-write textarea')
   await draft.fill('Keep the conversation draft')
   await shell.getByTestId('mission-chat-toggle-0').click()
   await expect(tile.locator('.mission-chat-slot')).toBeHidden()
-  await expect.poll(() => first.evaluate(() => innerHeight)).toBeGreaterThan(before + 30)
+  await expect.poll(() => first.evaluate(() => innerWidth)).toBeGreaterThan(before + 30)
   await shell.getByTestId('mission-chat-toggle-0').click()
   await expect(draft).toHaveValue('Keep the conversation draft')
-  await expect.poll(() => first.evaluate(() => innerHeight)).toBeLessThanOrEqual(before + 2)
+  await expect.poll(() => first.evaluate(() => innerWidth)).toBeLessThanOrEqual(before + 2)
   await tile.locator('.mission-change').click()
   await expect(shell.getByTestId('mission-add-menu')).toBeVisible()
   await shell.keyboard.press('Escape')
@@ -303,4 +306,39 @@ test('conversation deletion opens above the live browser without deleting on can
   await shell.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(shell.getByRole('dialog', { name: 'Delete folder?' })).toHaveCount(0)
   await shell.screenshot({ path: join(tmp, 'release-0710-split.png') })
+})
+
+test('small split panes use a readable modal, minimize it and retain the page across handoff', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
+  await openActivity(shell, 'mission')
+  const tile = shell.getByTestId('mission-tile-0')
+  await expect(tile.locator('.browser-preview')).toBeVisible()
+  const preview = tile.locator('.browser-preview')
+  const tileBox = (await tile.boundingBox())!, previewBox = (await preview.boundingBox())!
+  expect(previewBox.width).toBeLessThanOrEqual(tileBox.width * 0.4)
+  await preview.getByRole('button', { name: 'Minimize browser', exact: true }).click()
+  await expect(preview.locator('canvas')).toHaveCount(0)
+  expect((await preview.boundingBox())!.height).toBeLessThan(45)
+  await preview.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
+  await preview.getByRole('button', { name: 'Expand browser', exact: true }).click()
+  const modal = shell.getByTestId('mission-browser-dialog')
+  await expect(modal).toBeVisible()
+  expect((await modal.boundingBox())!.width).toBeGreaterThan(tileBox.width + 200)
+  await expect(modal.getByTestId('native-browser-surface')).toBeVisible()
+  const first = browser.contexts()[0]!.pages().find(page => page.url().startsWith(`${url}/?pane=0`))!
+  await first.getByRole('textbox', { name: 'Entry' }).fill('Modal keeps this 한글')
+  await shell.screenshot({ path: join(tmp, 'split-browser-modal.png') })
+  await modal.getByRole('button', { name: 'Minimize browser', exact: true }).click()
+  await expect(modal).toHaveCount(0)
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
+  await shell.getByRole('button', { name: 'Open Native 1', exact: true }).first().click()
+  const single = shell.locator('.browser-preview')
+  await expect(single).toBeVisible()
+  await expect(single.locator('canvas[data-painted]')).toBeVisible()
+  await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Modal keeps this 한글')
+  await expect.poll(() => single.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.width / canvas.height)).toBeCloseTo(await first.evaluate(() => innerWidth / innerHeight), 1)
+  await single.getByRole('button', { name: 'Minimize browser', exact: true }).click()
+  await expect(single.locator('canvas')).toHaveCount(0)
+  await shell.screenshot({ path: join(tmp, 'browser-minimized.png') })
+  await single.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
 })

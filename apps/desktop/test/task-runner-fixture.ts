@@ -10,6 +10,7 @@ const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknow
 vi.mock('electron', () => ({ ipcMain: { handle: (name: string, fn: (...args: unknown[]) => unknown) => handlers.set(name, fn) } }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => {} }))
 import { taskRunner, type TaskTurn, type TurnOutcome } from '../src/main/task-runner.js'
+import { holdTaskResult } from '../src/main/task-result-state.js'
 
 type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
@@ -29,7 +30,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
       if (!last) return
       if (extra?.verification && mockAcceptedCheck) last.check ??= { accepted: true, issues: [] }
       // The host keeps checked work and the check itself out of the thread; the runner delivers once.
-      last.held = !last.asked && (!!extra?.verification || (!last.unfinished && !!extra?.holdIf?.(last.answer, last.trail ?? [])))
+      last.held = holdTaskResult({ answer: last.answer, steps: last.trail ?? [], asked: last.asked, ...(last.unfinished ? { incomplete: 'The turn needs continuation.' } : {}) }, extra)
     },
     outcome: () => { const o = last; last = undefined; return o },
     abort: () => { aborted.resolve?.() },

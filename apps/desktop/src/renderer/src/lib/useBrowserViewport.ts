@@ -8,6 +8,7 @@ export function useBrowserViewport(element: RefObject<HTMLElement>, lane: string
     let asked = ''
     let timer: ReturnType<typeof setTimeout> | undefined
     const measure = () => {
+      if (box.closest('[hidden], [inert]') || getComputedStyle(box).visibility === 'hidden') { asked = ''; return }
       const rect = box.getBoundingClientRect()
       if (rect.width < 40 || rect.height < 40) { asked = ''; return }
       const width = Math.round(rect.width / 8) * 8, height = Math.round(rect.height / 8) * 8
