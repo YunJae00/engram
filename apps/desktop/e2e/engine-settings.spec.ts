@@ -123,6 +123,8 @@ test('the main banner and filing status recover alongside the connected settings
   })
   await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
   await app.evaluate(({ BrowserWindow }) => {
+    const fixture = (globalThis as Global).engineFixture
+    fixture.delayed = false; fixture.signed['codex'] = true
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('engram:event', { type: 'engines:detected' })
       window.webContents.send('engram:event', { type: 'engines:changed', engines: [] })
