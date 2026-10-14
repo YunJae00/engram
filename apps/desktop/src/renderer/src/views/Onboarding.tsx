@@ -102,8 +102,9 @@ export function Onboarding() {
         <button className="secondary" aria-label="Choose workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose…</button>
       </div>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
-    </section> : <section data-testid="onboard-step-2">
+    </section> : <section className="onboard-ai" data-testid="onboard-step-2">
       <h1>Connect your AI</h1>
+      <div className="onboard-ai-content">
       <div className="onboard-providers" aria-busy={loading}>
         {(['claude', 'codex'] as const).map(id => {
           const state = brains.find(brain => brain.id === id)
@@ -122,6 +123,7 @@ export function Onboarding() {
       <div className="onboard-preferences">
         <LearningSources value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
         <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos before questions. Selected Cosmos note excerpts, work places, past tasks and preferences go to your AI. No new document scan.</p></div>
+      </div>
       </div>
       <div className="onboard-actions"><button className="secondary" disabled={finishing || !!connecting || installing} onClick={() => setStep(1)}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || loading || !!connecting || installing || !pick || model === null} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Check AI & continue'}</button></div>
     </section>}

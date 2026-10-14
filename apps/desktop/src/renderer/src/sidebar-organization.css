@@ -147,6 +147,9 @@
 .onboard-fail { display: grid; gap: 10px; margin-top: 18px; }
 .onboard-fail > button { justify-self: start; }
 .onboard-card { max-height: calc(100dvh - 72px); overflow-y: auto; }
+.onboard-card > .onboard-ai { min-height: 0; }
+.onboard-ai-content { display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.onboard-ai > h1, .onboard-ai > .onboard-actions { flex-shrink: 0; }
 .sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: center; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }
