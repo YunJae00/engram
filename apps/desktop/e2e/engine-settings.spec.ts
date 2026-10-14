@@ -119,6 +119,13 @@ test('the main banner and filing status recover alongside the connected settings
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('engram:event', { type: 'engines:detected' })
       window.webContents.send('engram:event', { type: 'engines:changed', engines: [] })
+    }
+  })
+  await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('engram:event', { type: 'engines:detected' })
+      window.webContents.send('engram:event', { type: 'engines:changed', engines: [] })
       window.webContents.send('engram:event', { type: 'sweep:error', message: 'No engine available — connect an AI to start auto-organizing.' })
     }
   })
@@ -137,6 +144,7 @@ test('the main banner and filing status recover alongside the connected settings
   await app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engine:health', id: 'codex', healthy: false, reason: 'auth' })
   })
+  await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
   await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Log in', exact: true }).click()
   await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('diagnostics-view')).toHaveCount(0)
