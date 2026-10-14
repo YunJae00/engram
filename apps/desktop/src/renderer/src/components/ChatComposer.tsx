@@ -11,6 +11,7 @@ interface Props {
   placeholder: string
   maxLength: number
   busy: boolean
+  canQueue?: boolean
   disabled?: boolean
   testId?: string
   autoFocus?: boolean
@@ -26,7 +27,7 @@ interface Props {
 
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
-    { value, placeholder, maxLength, busy, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
+    { value, placeholder, maxLength, busy, canQueue = false, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -56,7 +57,7 @@ export const ChatComposer = memo(
     }, [])
 
     const attach = async (files: File[]) => {
-      if (!onAttachmentsChange || busy || disabled || attachingRef.current || !files.length) return
+      if (!onAttachmentsChange || (busy && !canQueue) || disabled || attachingRef.current || !files.length) return
       if (attachments.length + files.length > ATTACHMENT_MAX_COUNT) { setError(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`); return }
       const invalid = files.map(file => attachmentError(file.name, file.size)).find(Boolean)
       if (invalid) { setError(invalid); return }
@@ -76,7 +77,7 @@ export const ChatComposer = memo(
       }
     }
     const send = () => {
-      if (busy || disabled || attachingRef.current || (!value.trim() && !attachments.length)) return
+      if ((busy && !canQueue) || disabled || attachingRef.current || (!value.trim() && !attachments.length)) return
       onSend()
     }
 
@@ -95,11 +96,11 @@ export const ChatComposer = memo(
         event.stopPropagation()
         void attach(Array.from(event.dataTransfer.files))
       }}>
-        {attachments.length > 0 && <div className="chat-file-list" aria-label="Attached files">{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || busy || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
+        {attachments.length > 0 && <div className="chat-file-list" aria-label="Attached files">{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || (busy && !canQueue) || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
         {(onAttachmentsChange || actions) && <>
           <button type="button" ref={addRef} className="chat-add-button" aria-label="Add to conversation" data-testid={testId ? `${testId}-add` : undefined} {...{ popovertarget: menuId }} onClick={placeMenu}><Plus size={18} aria-hidden /></button>
           <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label="Conversation actions" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
-            {onAttachmentsChange && <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || busy || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} aria-hidden /><span>Attach files</span></button>}
+            {onAttachmentsChange && <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || (busy && !canQueue) || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} aria-hidden /><span>Attach files</span></button>}
             {actions}
           </div>
         </>}
@@ -126,15 +127,17 @@ export const ChatComposer = memo(
           <div className="chat-write-tools">{onAttachmentsChange && <>
             <input ref={fileRef} type="file" hidden multiple accept={ATTACHMENT_ACCEPT} data-testid={testId ? `${testId}-files` : undefined} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void attach(files) }} />
           </>}{tools}</div>
-          {busy ? (
+          {busy && (
             <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={onStop}>
               <Square size={11} strokeWidth={2.5} aria-hidden />
             </button>
-          ) : (
+          )}
+          {(!busy || (canQueue && (value.trim() || attachments.length > 0))) && (
             <button
               className="chat-send-btn armed"
               data-testid={testId ? `${testId}-send` : undefined}
-              aria-label={t('chat.send')}
+              aria-label={busy ? 'Queue message' : t('chat.send')}
+              title={busy ? 'Send after this reply' : undefined}
               disabled={disabled || attaching || (!value.trim() && !attachments.length)}
               onClick={send}
             >

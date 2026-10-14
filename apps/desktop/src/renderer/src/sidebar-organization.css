@@ -117,7 +117,7 @@
 .onboard-folder:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .onboard-folder > button { flex: none; }
 .onboard-providers { display: grid; gap: 8px; }
-.onboard-provider { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 12px 14px; min-height: 60px; border: 1px solid var(--border-soft); border-radius: 12px; }
+.onboard-provider { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 12px 16px; padding: 16px; min-height: 72px; border: 1px solid var(--border-soft); border-radius: 12px; }
 .onboard-provider-info { display: grid; gap: 4px; min-width: 0; }
 .onboard-provider strong { font-size: var(--fs-body); font-weight: 550; }
 .onboard-provider span { color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.5; }
@@ -125,7 +125,7 @@
 .onboard-preferences { display: grid; gap: 16px; }
 .onboard-preferences .setting-row { min-height: 24px; padding: 0; margin: 0; }
 .onboard-preferences .setting-hint { margin: 5px 0 0; font-size: var(--fs-small); line-height: 1.5; }
-.onboard-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; padding: 0; border: 0; }
+.onboard-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0; padding: 0; border: 0; }
 .onboard-choice legend { padding: 0; margin-bottom: 4px; font-weight: 550; }
 .onboard-choice label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .onboard-choice label input { accent-color: var(--fg); }
@@ -148,8 +148,12 @@
 .onboard-fail > button { justify-self: start; }
 .onboard-card { max-height: calc(100dvh - 72px); overflow-y: auto; }
 .onboard-card > .onboard-ai { min-height: 0; }
-.onboard-ai-content { display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.onboard-ai-content { display: flex; flex-direction: column; gap: 24px; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 2px 12px 2px 2px; }
 .onboard-ai > h1, .onboard-ai > .onboard-actions { flex-shrink: 0; }
+.onboard-preferences .learning-sources { gap: 14px; }
+.learning-details { font-size: var(--fs-small); color: var(--fg-dim); }
+.learning-details summary { cursor: pointer; }
+.learning-details p { margin: 10px 0 0; line-height: 1.5; }
 .sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: center; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }
@@ -164,3 +168,9 @@
 .workspace-delete:hover { background: var(--hover-bg); color: var(--fg); }
 .chat-attachment-error { margin: 6px 0; color: var(--danger); font-size: var(--fs-small); }
 .chat-attachment-status { margin: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }
+.queued-messages { padding: 10px 14px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 12px; font-size: 12px; }
+.queued-messages header, .queued-messages li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.queued-messages small { color: var(--fg-dim); }
+.queued-messages ol { margin: 6px 0 0; padding: 0; list-style: none; max-height: 100px; overflow: auto; }
+.queued-messages li > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.queued-messages button { flex-shrink: 0; }

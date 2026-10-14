@@ -11,6 +11,7 @@ import { RoutineProgress } from './RoutineProgress.js'
 import { SubmitGate } from './SubmitGate.js'
 import { PressGate } from './PressGate.js'
 import { ChatComposer } from './ChatComposer.js'
+import { QueuedMessages } from './QueuedMessages.js'
 import { ModelPicker } from './ModelPicker.js'
 import { Globe } from 'lucide-react'
 import { CometWork } from './CometWork.js'
@@ -33,7 +34,7 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
     if (!cometThreads.thread(botId).loaded) void loadCometThread(botId).catch(() => undefined)
   }, [botId])
   const send = async (message: string) => {
-    if ((!message.trim() && !thread.attachments.length) || thread.busy) return
+    if ((!message.trim() && !thread.attachments.length) || thread.queued.length >= 10) return
     await sendCometMessage(api, cometThreads, botId, message.trim(), thread.attachments)
   }
   const stop = () => {
@@ -55,7 +56,8 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
       <div className="mini-chat-gates"><RoutineProgress channel={cometChannel(botId)} /><SubmitGate channel={cometChannel(botId)} /><PressGate channel={cometChannel(botId)} /></div>
       <RoutineLearning key={botId} botId={botId} working={thread.busy} />
       <RoutineSkillHint value={draft} select={() => { setDraft('/routine'); cometThreads.setDraft(botId, '/routine') }} />
-      <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} actions={<button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /><span>{webOpen ? 'Hide website' : 'Show website'}</span></button>} tools={<ModelPicker scope={cometChannel(botId)} />} /></div>
+      <QueuedMessages botId={botId} />
+      <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} canQueue disabled={thread.queued.length >= 10} testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} actions={<button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /><span>{webOpen ? 'Hide website' : 'Show website'}</span></button>} tools={<ModelPicker scope={cometChannel(botId)} />} /></div>
     </div>
   )
 }

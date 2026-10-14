@@ -173,7 +173,7 @@ it.each(['rejection', 'event'] as const)('restores an exact draft and attachment
   expect(unsubscribe).toHaveBeenCalledTimes(2)
 })
 
-it.each(['before', 'after'] as const)('ignores a settled turn’s late rejection %s the next same-chat failure', async (timing) => {
+it('waits for a settled turn’s IPC cleanup before sending the next message and ignores its late rejection', async () => {
   const store = createCometThreads('first')
   const oldFile = { id: 'old-file', name: 'old.txt', size: 10 }
   const nextFile = { id: 'next-file', name: 'next.txt', size: 10 }
@@ -190,18 +190,13 @@ it.each(['before', 'after'] as const)('ignores a settled turn’s late rejection
   const oldSend = sendCometMessage(api, store, 'first', 'Old completed question', [oldFile])
   emit({ type: 'chat:done', channel: 'bot-first', text: 'Completed answer' })
   const nextSend = sendCometMessage(api, store, 'first', 'New question to restore', [nextFile])
+  expect(store.thread('first').queued).toHaveLength(1)
+  expect(api.chatSend).toHaveBeenCalledTimes(1)
+  rejectOld(new Error('Delayed old post-processing failure'))
+  await oldSend
   expect(store.thread('first').busy).toBe(true)
-  if (timing === 'before') {
-    rejectOld(new Error('Delayed old post-processing failure'))
-    await oldSend
-    expect(store.thread('first').busy).toBe(true)
-    expect(store.thread('first').draft).toBe('')
-  }
+  expect(store.thread('first').draft).toBe('')
   emit({ type: 'chat:error', channel: 'bot-first', message: 'New request failed' })
-  if (timing === 'after') {
-    rejectOld(new Error('Delayed old post-processing failure'))
-    await oldSend
-  }
   expect(store.thread('first').busy).toBe(false)
   expect(store.thread('first').draft).toBe('New question to restore')
   expect(store.thread('first').attachments).toEqual([nextFile])

@@ -101,7 +101,7 @@ export const BotsView = memo(function BotsView() {
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
   const sendText = async (message: string, attachments: ChatAttachmentDto[] = []) => {
-    if ((!message && !attachments.length) || busy || !selected) return
+    if ((!message && !attachments.length) || !selected) return
     await sendCometMessage(api, cometThreads, selected.id, message, attachments)
   }
 
