@@ -28,8 +28,7 @@ export interface DesktopObservationDto {
   truncated?: boolean
   captureSafe?: boolean
 }
-// An app read and operated through its accessibility providers alone: no
-// foreground change, no injected input. Control IDs belong to one snapshot.
+// Provider-only operations avoid injected input. IDs belong to one snapshot.
 export interface QuietControlDto {
   id: string
   type: string
