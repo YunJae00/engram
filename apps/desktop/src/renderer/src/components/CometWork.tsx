@@ -10,7 +10,7 @@ function WorkIcon({ line }: { line: string }) {
   const tool = line.split(':', 1)[0] ?? ''
   const site = /^(open_page|read_open_page)/.test(tool) ? answerSites(line)[0] : undefined
   if (site) return <SiteIcon origin={site.origin} />
-  const Icon = /^(search|find)/.test(tool) ? Search : /^(read_desktop|look_desktop|desktop_|open_app|list_windows)/.test(tool) ? Monitor : /^(word_|ppt_|excel_|.*document|.*file)/.test(tool) ? FileText : /^(open_page|read_open_page|press|scroll|look)/.test(tool) ? Globe : Wrench
+  const Icon = /^(search|find)/.test(tool) ? Search : /^(app_(read|set|press|text)$|read_desktop|look_desktop|desktop_|open_app|list_windows)/.test(tool) ? Monitor : /^(word_|ppt_|excel_|.*document|.*file)/.test(tool) ? FileText : /^(open_page|read_open_page|press|scroll|look)/.test(tool) ? Globe : Wrench
   return <Icon size={14} aria-hidden />
 }
 

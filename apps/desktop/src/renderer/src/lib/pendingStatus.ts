@@ -85,6 +85,7 @@ export function workBlocks(lines: string[]): ({ type: 'said'; text: string } | {
 export function workLabel(line: string): string {
   const tool = line.split(':', 1)[0] ?? ''
   if (/^(search_web|open_page|read_open_page|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
+  if (/^app_(read|set|press|text)$/.test(tool)) return 'Working with an app'
   if (/^(desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps)/.test(tool)) return 'Using the computer'
   if (/^(excel_|word_|ppt_|.*live_document)/.test(tool)) return 'Working with documents'
   if (/^(search_memory|read_note|find_procedure|open_skill)/.test(tool)) return 'Using your memory'

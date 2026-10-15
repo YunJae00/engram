@@ -1,7 +1,7 @@
 import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 import { officeReadEvidence } from './office-verification.js'
 
-const READS = new Set(['read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look'])
+const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
   if (step.tool === 'read_pages') return /^Batch read:/.test(step.observation)
   if (officeReadEvidence(step)) return true

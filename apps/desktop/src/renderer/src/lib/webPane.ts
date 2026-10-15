@@ -53,7 +53,7 @@ export const webPane = {
     }
     if (tool === 'aside' || tool === 'resume') {
       if (state(lane).phase !== 'idle') set(lane, { phase: tool === 'aside' ? 'aside' : 'working' })
-    } else if (/^(excel_|ppt_|word_|outlook_|desktop_|read_desktop|look_desktop|read_live_document|edit_live_document|open_app)/.test(tool)) set(lane, { phase: 'idle' })
+    } else if (/^(app_(read|set|press|text)$|excel_|ppt_|word_|outlook_|desktop_|read_desktop|look_desktop|read_live_document|edit_live_document|open_app)/.test(tool)) set(lane, { phase: 'idle' })
     return false
   },
 }

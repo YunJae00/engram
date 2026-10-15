@@ -28,6 +28,36 @@ export interface DesktopObservationDto {
   truncated?: boolean
   captureSafe?: boolean
 }
+// An app read and operated through its accessibility providers alone: no
+// foreground change, no injected input. Control IDs belong to one snapshot.
+export interface QuietControlDto {
+  id: string
+  type: string
+  name: string
+  value?: string | null
+  placeholder?: string | null
+  can: { set: boolean; press: boolean; text: boolean }
+  enabled: boolean
+  offscreen: boolean
+  focused: boolean
+  secret: boolean
+}
+export interface QuietStateDto { foreground: boolean; idleMs: number; minimized: boolean }
+export interface QuietObservationDto {
+  window: string
+  pid: number
+  title: string
+  snapshot: string
+  controls: QuietControlDto[]
+  texts: { id: string; text: string }[]
+  skippedControls: number
+  skippedTexts: number
+  ms: number
+  state: QuietStateDto
+}
+export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string }
+export interface QuietPressResultDto { pressed: string; control: string }
+export interface QuietReadResultDto { text: string; chars: number; headClipped: boolean }
 // The brain that holds the computer, named for the person: the banner on the
 // screen says who is moving the mouse.
 export type DesktopEngineId = 'claude' | 'codex'
