@@ -208,6 +208,9 @@ internal sealed class QuietAccess : IDisposable
         if (!held.Controls.TryGetValue(control, out found)) throw new ArgumentException("Unknown control ID for this snapshot");
         try { if (AutomationSession.RuntimeId(found.Element) != found.Runtime) throw new InvalidOperationException("The control changed. Read the app again."); }
         catch (ElementNotAvailableException) { throw new InvalidOperationException("The control is no longer there. Read the app again."); }
+        var current = found.Element.Current;
+        if (current.Name != found.Name || current.ControlType.Id != found.ControlType)
+            throw new InvalidOperationException("The control changed. Read the app again.");
         AutomationSession.SafeAncestors(found.Element, held.RootRuntime);
         return found;
     }

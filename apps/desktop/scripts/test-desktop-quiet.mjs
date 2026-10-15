@@ -30,6 +30,8 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Quiet invoke did not reach the button')
   assert.equal((await fixture.request('state')).foreground, press.foregroundChanged, 'Provider activation must be reported honestly')
   await fixture.request('away')
+  await fixture.request('quietRename')
+  await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /control changed/)
 
   await fixture.request('dense')
   const dense = await scan()
