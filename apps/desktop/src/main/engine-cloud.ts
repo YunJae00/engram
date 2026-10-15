@@ -197,6 +197,7 @@ export interface CloudEngine extends Engine {
   login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }>
   logout(): Promise<void>
   forgetStatus?(): void
+  confirmAuth?(): void
 }
 
 export interface CloudLoginOptions { signal?: AbortSignal; onUrl?: (url: string) => void }

@@ -17,6 +17,7 @@ export interface JobSpec {
   // Librarian jobs are data-in→JSON-out and set this so the engine runs
   // tool-free (see EngineJobInput.disallowTools). Threaded to engine.run below.
   disallowTools?: boolean
+  jsonSchema?: unknown
   // Per-job model tier. 'default' pins the smart model even when the run asks
   // for 'fast' — judgment jobs (supersede/conflict/merge/brief) set this: a
   // cheap model emitting a pointer instead of a real body breeds junk notes.
@@ -173,6 +174,7 @@ export class JobRunner {
       prompt: job.prompt,
       workdir: engineCwd(this.paths),
       disallowTools: job.disallowTools,
+      ...(job.jsonSchema ? { jsonSchema: job.jsonSchema } : {}),
       timeoutMs: this.timeoutMs,
       idleTimeoutMs: 120_000,
       signal: this.signal,

@@ -54,24 +54,19 @@ async function screenshot(name: string) {
   await writeFile(join(PREVIEW, name), Buffer.from(png, 'base64'))
 }
 
-test('the compact introduction keeps privacy details accessible in narrow light and dark windows', async () => {
+test('the compact introduction explains its sources without extra disclosures', async () => {
   await page.setViewportSize({ width: 600, height: 800 })
   await openInterview()
   const dialog = page.getByTestId('interview-dialog')
-  const details = page.locator('.interview-privacy')
   for (const theme of ['light', 'dark']) {
     await page.evaluate(value => document.documentElement.dataset.theme = value, theme)
-    await expect(details.locator('p')).toBeHidden()
+    await expect(page.locator('.interview-privacy')).toHaveCount(0)
+    await expect(dialog).toContainText('based on your Cosmos notes and past tasks. No new document scan.')
     await expect(page.getByTestId('interview-intro-heading')).toHaveCSS('text-align', 'left')
     const height = (await dialog.boundingBox())!.height
     expect(height).toBeLessThan(300)
     expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
     await screenshot(`intro-${theme}-600.png`)
-    await details.locator('summary').focus()
-    await page.keyboard.press('Enter')
-    await expect(details.locator('p')).toContainText('Selected Cosmos note excerpts, site names and visit patterns, completed task requests, and your work guide. No new scan of your original documents.')
-    await screenshot(`privacy-${theme}-600.png`)
-    await page.keyboard.press('Enter')
   }
 })
 

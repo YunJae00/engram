@@ -1,4 +1,4 @@
-import { Check, ExternalLink, Folder, LoaderCircle } from 'lucide-react'
+import { Check, ExternalLink, Folder, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api, apiErrorText } from '../api.js'
@@ -10,6 +10,7 @@ import { refreshAccountUsage, useAccountUsage } from '../lib/accountUsage.js'
 import { LearningSources, type LearningChoice } from '../components/LearningSources.js'
 import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
 import { useModelChoices } from '../components/ModelPicker.js'
+import { OnboardingModel } from '../components/OnboardingModel.js'
 
 export function Onboarding() {
   const profiles = useAccountProfiles()
@@ -41,6 +42,7 @@ export function Onboarding() {
   // A signed-in account at its usage limit is connected but cannot answer now.
   const limited = (id: 'claude' | 'codex') => usage.some(account => account.provider === id && account.profile === (profiles?.selected[id] ?? 'system') && (account.usage?.windows ?? []).some(window => (window.used ?? 0) >= 100 && (window.resetsAt === undefined || window.resetsAt > Date.now())))
   const pick = choice && ready.some(brain => brain.id === choice) ? choice : null
+  const modelReady = !!pick && !catalog.loading && !catalog.error && catalog.rows.length > 0 && model !== null && (model === '' || catalog.rows.some(row => row.value === model))
 
   const loadBrains = async () => {
     const at = ++revision.current
@@ -71,7 +73,7 @@ export function Onboarding() {
     finally { signing.current = false; setConnecting(null); await loadBrains() }
   }
   const finish = async () => {
-    if (completing.current || signing.current || installing || loading || !root.trim() || !pick || model === null) return
+    if (completing.current || signing.current || installing || loading || !root.trim() || !pick || !modelReady || model === null) return
     completing.current = true; setFinishing(true); setError(''); setCheckFailed(null)
     try {
       const states = await api.engineStates([pick])
@@ -98,8 +100,10 @@ export function Onboarding() {
     {step === 1 ? <section data-testid="onboard-step-1">
       <h1>Choose your workspace</h1>
       <div className="onboard-folder">
+        <div className="onboard-folder-path">
         <Folder size={18} aria-hidden />
         <input id="onboard-root" aria-label="Workspace folder" data-testid="vault-root-input" value={root} placeholder="Workspace folder" onChange={event => setRoot(event.target.value)} />
+        </div>
         <button className="secondary" aria-label="Choose workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose…</button>
       </div>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
@@ -115,22 +119,22 @@ export function Onboarding() {
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
             <div className="onboard-provider-info"><strong>{id === 'claude' ? 'Claude' : 'ChatGPT'}</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && id === 'codex' && state && !state.installed && <span>Reinstall Engram to connect.</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>A reported account limit is full. Test this model or choose another AI.</span>}{!loading && !active && !connected && state?.installed && <span>{connectionLabel(state, id)}</span>}</div>
-            {active || loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={active ? 'Signing in' : 'Checking connection'} /> : connected ? <span className={checkFailed === id ? 'setting-hint' : 'onboard-connected'} data-testid={`onboard-brain-${id}`} role="status">{checkFailed !== id && <Check size={15} aria-hidden />}{checkFailed === id ? 'Check failed' : 'Signed in'}</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>Retry check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
-            {active && <div className="onboard-login-actions">{login?.canOpen && <button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button>}<button className="secondary" onClick={() => loginAction(api.engineCancelLogin(id))}>Cancel sign-in</button></div>}
+            {active ? <div className="onboard-signing"><LoaderCircle size={18} className="computer-spinner" aria-label="Signing in" /><button type="button" className="onboard-cancel" aria-label="Cancel sign-in" title="Cancel sign-in" onClick={() => loginAction(api.engineCancelLogin(id))}><X size={16} aria-hidden /></button></div> : loading ? <LoaderCircle size={18} className="computer-spinner" aria-label="Checking connection" /> : connected ? <span className={checkFailed === id ? 'setting-hint' : 'onboard-connected'} data-testid={`onboard-brain-${id}`} role="status">{checkFailed !== id && <Check size={15} aria-hidden />}{checkFailed === id ? 'Check failed' : 'Signed in'}</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>Retry check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
+            {active && login?.canOpen && <div className="onboard-login-actions"><button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button></div>}
           </div>
         })}
       </div>
-      <fieldset className="onboard-choice" data-testid="onboard-choice"><legend>Use for conversations &amp; Cosmos</legend>{(['claude', 'codex'] as const).map(id => <label key={id}><input type="radio" name="onboard-brain" value={id} data-testid={`onboard-choose-${id}`} checked={pick === id} disabled={finishing || !ready.some(brain => brain.id === id)} onChange={() => { setChoice(id); setModel(null); setCheckFailed(null) }} />{id === 'claude' ? 'Claude' : 'ChatGPT'}</label>)}{pick && <div className="onboard-model"><label htmlFor="onboard-model">Model</label><select id="onboard-model" data-testid="onboard-model" value={model ?? '__choose__'} disabled={finishing} onChange={event => { setModel(event.target.value); setCheckFailed(null) }}><option value="__choose__" disabled>Choose a model</option><option value="">Provider default</option>{catalog.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</select>{catalog.loading && <small role="status">Loading models…</small>}{catalog.error && <button className="secondary" type="button" onClick={catalog.refresh}>Retry model list</button>}</div>}<p className="setting-hint">We test this model before starting. Change it later in Settings.</p></fieldset>
+      <fieldset className="onboard-choice" data-testid="onboard-choice"><legend>Your AI for conversations &amp; Cosmos</legend>{(['claude', 'codex'] as const).map(id => <label className="onboard-choice-card" key={id} data-selected={pick === id}><input type="radio" name="onboard-brain" value={id} data-testid={`onboard-choose-${id}`} checked={pick === id} disabled={finishing || !ready.some(brain => brain.id === id)} onChange={() => { setChoice(id); setModel(null); setCheckFailed(null) }} /><ProviderIcon provider={id} size={18} /><span>{id === 'claude' ? 'Claude' : 'ChatGPT'}</span><Check size={16} className="onboard-choice-check" aria-hidden /></label>)}{pick && <OnboardingModel {...catalog} value={model} disabled={finishing} onChange={value => { setModel(value); setCheckFailed(null) }} />}</fieldset>
       </div>
-      <div className="onboard-actions"><button className="secondary" disabled={!!connecting || installing} onClick={() => { setError(''); setStep(1) }}>Back</button><button className="primary" data-testid="onboard-ai-next" disabled={loading || !!connecting || installing || !pick || model === null} onClick={() => { setError(''); setStep(3) }}>Continue</button></div>
+      <div className="onboard-actions"><button className="secondary" disabled={!!connecting || installing} onClick={() => { setError(''); setStep(1) }}>Back</button><button className="primary" data-testid="onboard-ai-next" disabled={loading || !!connecting || installing || !modelReady} onClick={() => { setError(''); setStep(3) }}>Continue</button></div>
     </section> : <section className="onboard-ai" data-testid="onboard-step-3">
       <h1>Make it yours</h1>
       <div className="onboard-ai-content onboard-preferences">
         <LearningSources compact value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
-        <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} disabled={finishing} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Prepare Cosmos, then ask a few optional questions. Your AI uses selected notes, past tasks and preferences. No new document scan.</p></div>
+        <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} disabled={finishing} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Optional questions from selected notes and past tasks. No new document scan.</p></div>
         <div><label className="setting-row"><span>Control desktop apps</span><input type="checkbox" className="switch" data-testid="onboard-computer-use" checked={computerUse} disabled={finishing} onChange={event => setComputerUse(event.target.checked)} /></label><p className="setting-hint">Uses your mouse and keyboard. App text and screenshots go to your AI. Esc stops control; sign-in stays manual.</p></div>
       </div>
-      <div className="onboard-actions"><button className="secondary" disabled={finishing} onClick={() => { setError(''); setStep(2) }}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || !pick || model === null} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Start Engram'}</button></div>
+      <div className="onboard-actions"><button className="secondary" disabled={finishing} onClick={() => { setError(''); setStep(2) }}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || !modelReady} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Start Engram'}</button></div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
   </div></div>

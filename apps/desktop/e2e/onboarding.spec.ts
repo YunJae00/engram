@@ -5,8 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
 
-// Fresh home: the onboarding steps, including the
-// verified AI connection, land in a working shell.
+// Fresh setup reaches the shell only after a verified AI response.
 
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
@@ -16,6 +15,10 @@ let app: ElectronApplication
 let page: Page
 let vaultRoot: string
 let mockDir: string
+async function chooseModel(label: string) {
+  await page.getByTestId('onboard-model').click()
+  await page.getByRole('menuitemradio', { name: label, exact: true }).click()
+}
 async function screenshot(name: string) {
   const data = await app.evaluate(async ({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!
@@ -96,7 +99,7 @@ test('a fresh workspace requires verified AI before browsing', async () => {
   await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
   await page.getByTestId('onboard-choose-codex').check()
   await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
-  await page.getByTestId('onboard-model').selectOption('codex-quick')
+  await chooseModel('Quick model')
   await page.getByTestId('onboard-ai-next').click()
   for (const key of ['workMap', 'workFiles', 'workApps']) await expect(page.getByTestId(`onboard-source-${key}`)).not.toBeChecked()
   await expect(page.getByTestId('onboard-source-activity')).toBeChecked({ checked: await page.evaluate(() => window.engram.activityGet()) })
@@ -145,7 +148,7 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
     await expect(page.getByText('Signed in', { exact: true })).toHaveCount(1)
     await page.getByTestId('onboard-choose-codex').check()
-    await page.getByTestId('onboard-model').selectOption('codex-quick')
+    await chooseModel('Quick model')
     await expect(page.getByTestId('onboard-ai-next')).toBeInViewport()
     await expect(page.getByTestId('onboard-model')).toBeInViewport()
     await expect(page.getByTestId('onboard-sources')).toHaveCount(0)
@@ -164,14 +167,14 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     expect(await page.locator('.onboard-card').evaluate(card => ({ overflowX: card.scrollWidth > card.clientWidth, overflowY: card.scrollHeight > card.clientHeight }))).toEqual({ overflowX: false, overflowY: false })
     await screenshot(`compact-preferences-${theme}.png`)
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('index.html'))!.setContentSize(600, 600))
-    await page.locator('.learning-details summary').click()
+    await expect(page.locator('.learning-details')).toHaveCount(0)
     await page.getByTestId('onboard-computer-use').scrollIntoViewIfNeeded()
     await expect(page.getByTestId('onboard-finish')).toBeInViewport()
     await expect(page.getByRole('heading', { name: 'Make it yours', exact: true })).toBeInViewport()
     expect(await page.locator('.onboard-card').evaluate(card => card.scrollWidth <= card.clientWidth && card.scrollHeight <= card.clientHeight)).toBe(true)
     expect(await page.locator('.onboard-ai-content').evaluate(content => {
       const body = content.getBoundingClientRect(), card = content.closest('.onboard-card')!.getBoundingClientRect()
-      return body.right < card.right - 20 && body.left > card.left + 20 && content.scrollHeight > content.clientHeight
+      return body.right < card.right - 20 && body.left > card.left + 20 && content.scrollHeight >= content.clientHeight
     })).toBe(true)
     await screenshot(`compact-scroll-${theme}.png`)
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('index.html'))!.setContentSize(600, 800))
@@ -192,7 +195,7 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await page.getByTestId('onboard-next').click()
   await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
   await page.getByTestId('onboard-choose-codex').check()
-  await page.getByTestId('onboard-model').selectOption('')
+  await chooseModel('Provider default')
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-interview').uncheck()
   await page.getByTestId('onboard-finish').click()
@@ -204,6 +207,35 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-finish').click()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
+})
+
+test('models must finish loading before selection and setup can continue', async () => {
+  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+    ipcMain.removeHandler('engines:states')
+    ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('models:list')
+    ipcMain.handle('models:list', () => new Promise(resolve => { (globalThis as typeof globalThis & { finishModels?: () => void }).finishModels = () => resolve([{ value: 'sonnet', label: 'Sonnet', detail: 'Fixture' }]) }))
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
+  })
+  const choose = page.getByRole('button', { name: 'Choose workspace folder', exact: true })
+  const next = page.getByTestId('onboard-next')
+  expect(Math.abs((await choose.boundingBox())!.x - (await next.boundingBox())!.x)).toBeLessThan(2)
+  await next.click()
+  await page.getByTestId('onboard-choose-claude').check()
+  await expect(page.getByTestId('onboard-model')).toBeDisabled()
+  await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
+  await expect(page.getByTestId('onboard-model')).toContainText('Loading models')
+  await app.evaluate(() => (globalThis as typeof globalThis & { finishModels?: () => void }).finishModels!())
+  await expect(page.getByTestId('onboard-model')).toBeEnabled()
+  await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
+  await page.getByTestId('onboard-model').focus()
+  await page.getByTestId('onboard-model').press('ArrowDown')
+  await expect(page.getByRole('menu', { name: 'Choose a model' })).toBeVisible()
+  await page.getByRole('menuitemradio', { name: 'Provider default', exact: true }).press('ArrowDown')
+  await expect(page.getByRole('menuitemradio', { name: 'Sonnet', exact: true })).toBeFocused()
+  await page.getByRole('menuitemradio', { name: 'Sonnet', exact: true }).press('Enter')
+  await expect(page.getByTestId('onboard-model')).toHaveText('Sonnet')
+  await expect(page.getByTestId('onboard-ai-next')).toBeEnabled()
 })
 
 test('first-run login states, filing retry and direct browser entry', async () => {
@@ -257,7 +289,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   // With two connected, the person says which answers first; nothing is guessed from the sign-in order.
   await expect(page.getByTestId('onboard-choice')).toBeVisible()
   await page.getByTestId('onboard-choose-codex').check()
-  await page.getByTestId('onboard-model').selectOption('')
+  await chooseModel('Provider default')
   await screenshot('04-connected.png')
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-finish').click()

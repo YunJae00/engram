@@ -127,8 +127,7 @@ export function WorkInterview({ onClose, onSaved, onDraftChange, autoStart = fal
       </div>
     </div> : !questions ? <div className="interview-scroll" data-testid="interview-scroll">
       <div className="interview-intro">
-        <p>{error ? 'Finish preparation before answering questions.' : 'Prepare Cosmos, then answer a few optional questions.'}</p>
-        <details className="interview-privacy"><summary>What your AI sees</summary><p>Selected Cosmos note excerpts, site names and visit patterns, completed task requests, and your work guide. No new scan of your original documents. Task replies can update your preferences.</p></details>
+        {!error && <p>A few optional questions, based on your Cosmos notes and past tasks. No new document scan.</p>}
         {error && <p className="computer-error" role="alert">{error}</p>}
         <div className="interview-intro-actions">{needsAi && <button type="button" className="primary" data-testid="interview-connect" onClick={() => { onClose(); window.dispatchEvent(new Event('engram:open-brain-setup')) }}>Check AI settings</button>}<button type="button" className={needsAi ? 'secondary' : 'primary'} data-testid="interview-start" onClick={() => void start()}>{error ? 'Retry' : 'Get started'}<ArrowRight size={15} aria-hidden /></button><button type="button" className="interview-skip" data-testid="interview-later" onClick={onClose}>{error ? 'Close' : 'Not now'}</button></div>
       </div>

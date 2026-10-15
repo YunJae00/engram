@@ -69,6 +69,7 @@ function setHealth(id: string, next: EngineHealthDto, profile?: string): void {
 }
 
 export function markEngineOk(id: string, profile?: string): void {
+  if (id === 'claude' || id === 'codex') cloudEngine(id, profile).confirmAuth?.()
   failStreak.set(healthKey(id, profile), 0)
   setHealth(id, { healthy: true }, profile)
 }
@@ -198,7 +199,7 @@ export function engineDto(engine: Engine): EngineStatusDto {
     id: engine.id,
     installed: true,
     loggedIn: true,
-    ...((engine as Engine & { authConfirmed?: boolean }).authConfirmed === false ? { conclusive: false } : {}),
+    ...((engine as Engine & { authConfirmed?: boolean }).authConfirmed === false && !health?.healthy ? { conclusive: false } : {}),
     desktopToolIsolation: engine.desktopToolIsolation === true,
     ...(health ? { healthy: health.healthy, ...(health.reason ? { healthReason: health.reason } : {}) } : {}),
   }

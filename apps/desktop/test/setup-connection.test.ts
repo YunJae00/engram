@@ -32,11 +32,23 @@ it('requires a live response without sending user content or enabling tools', as
 it.each([
   { installed: false, loggedIn: false, conclusive: true },
   { installed: true, loggedIn: false, conclusive: true },
-  { installed: true, loggedIn: true, conclusive: false },
-])('never proceeds with absent, signed-out or unknown authentication', async detection => {
+])('never proceeds with absent or explicitly signed-out authentication', async detection => {
   const { engine, jobs } = fixture(detection)
   await expect(verifySetupConnection(engine, cwd)).rejects.toThrow('not verified')
   expect(jobs).toHaveLength(0); expect(fake.ok).not.toHaveBeenCalled()
+})
+
+it.each([true, false])('tests the real request when authentication metadata is inconclusive (%s)', async loggedIn => {
+  const { engine, jobs } = fixture({ installed: true, loggedIn, conclusive: false })
+  await verifySetupConnection(engine, cwd)
+  expect(jobs).toHaveLength(1)
+  expect(fake.ok).toHaveBeenCalledWith('codex', 'system')
+})
+
+it('does not trust an inconclusive login if the real request is rejected', async () => {
+  const { engine } = fixture({ installed: true, loggedIn: false, conclusive: false }, 'auth')
+  await expect(verifySetupConnection(engine, cwd)).rejects.toThrow('Sign in again')
+  expect(fake.ok).not.toHaveBeenCalled()
 })
 
 it.each(['auth', 'quota', 'empty'])('rejects unusable live requests rather than trusting local sign-in (%s)', async outcome => {
