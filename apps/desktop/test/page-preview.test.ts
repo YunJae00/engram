@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { Page } from 'playwright-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { captureSharpFrame, resizePreview, startPagePreview } from '../src/main/page-preview.js'
+import { captureSharpFrame, resizePreview, startPagePreview, withPreviewInput } from '../src/main/page-preview.js'
 
 function fixture() {
   const cdp = Object.assign(new EventEmitter(), { send: vi.fn(async () => ({ data: 'lossless' })), detach: vi.fn(async () => undefined) })
@@ -11,6 +11,27 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
+  it('holds input until capture restores the compositor without blocking other pages', async () => {
+    vi.useFakeTimers()
+    const { page, cdp } = fixture()
+    let finish!: () => void
+    cdp.send.mockImplementation(async () => { await new Promise<void>(resolve => { finish = resolve }); return { data: 'frame' } })
+    const frame = captureSharpFrame(page, cdp)
+    await vi.advanceTimersByTimeAsync(1)
+    const input = vi.fn(async () => undefined)
+    const dispatched = withPreviewInput(page, input)
+    await withPreviewInput(fixture().page, async () => undefined)
+    expect(input).not.toHaveBeenCalled()
+    finish()
+    await vi.advanceTimersByTimeAsync(1)
+    finish()
+    await frame
+    await vi.advanceTimersByTimeAsync(59)
+    expect(input).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    await dispatched
+    expect(input).toHaveBeenCalledOnce()
+  })
   it('orders viewport updates after capture restoration without blocking other pages', async () => {
     const { page, cdp } = fixture()
     let finish!: () => void
