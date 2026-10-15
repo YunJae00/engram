@@ -23,9 +23,10 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.equal((await helper.request('quietRead', field)).text, 'Quiet draft')
   assert.equal((await helper.request('quietSet', { ...field, text: 'Reviewed draft', expected: 'Quiet draft' })).landed, true)
   await assert.rejects(helper.request('quietSet', { ...field, snapshot: '0'.repeat(32), text: 'Wrong snapshot' }), /snapshot/)
-  await helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id })
+  const press = await helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id })
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Quiet invoke did not reach the button')
-  assert.equal((await fixture.request('state')).foreground, false)
+  assert.equal((await fixture.request('state')).foreground, press.foregroundChanged, 'Provider activation must be reported honestly')
+  await fixture.request('away')
 
   await fixture.request('dense')
   const dense = await scan()
@@ -51,5 +52,5 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /manual control/)
   await fixture.request('hidePassword')
   await fixture.request('quietReset')
-  return { readWithoutFocus: true, setWithoutFocus: true, pressWithoutFocus: true, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
+  return { readWithoutFocus: true, setWithoutFocus: true, providerOnlyPress: true, providerActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
 }

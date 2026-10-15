@@ -9,8 +9,8 @@ using System.Windows.Automation;
 using System.Windows.Automation.Text;
 
 // Reading and operating an app through its accessibility providers alone: no
-// foreground change, no injected input, nothing captured. The person keeps the
-// mouse and keyboard the whole time, so these calls never need a control lease.
+// requested foreground change, injected input or capture. Providers may activate
+// their own window when invoked; mutation receipts report that separately.
 internal sealed class QuietControl
 {
     internal AutomationElement Element;
@@ -243,6 +243,7 @@ internal sealed class QuietAccess : IDisposable
         var watch = Stopwatch.StartNew();
         check();
         RequireIdle(target);
+        var foreground = GetForegroundWindow();
         value.SetValue(text);
         var landed = false;
         string after = null;
@@ -254,7 +255,8 @@ internal sealed class QuietAccess : IDisposable
         }
         Guard.Same(target);
         // Landed says the text is in the field; exact says nothing else is. A field holding more carries text from elsewhere.
-        return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control };
+        return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
+            foregroundChanged = GetForegroundWindow() != foreground };
     }
 
     // Press through the provider: a button, a list or tab item, a toggle, a fold.
@@ -265,6 +267,7 @@ internal sealed class QuietAccess : IDisposable
         if (!element.Current.IsEnabled) throw new InvalidOperationException("This control is disabled right now");
         check();
         RequireIdle(target);
+        var foreground = GetForegroundWindow();
         object pattern;
         string how;
         if (element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) { ((InvokePattern)pattern).Invoke(); how = "invoke"; }
@@ -277,7 +280,7 @@ internal sealed class QuietAccess : IDisposable
         }
         else throw new InvalidOperationException("This control cannot be pressed without the mouse; use desktop_action for it");
         Guard.Same(target);
-        return new { pressed = how, control = control };
+        return new { pressed = how, control = control, foregroundChanged = GetForegroundWindow() != foreground };
     }
 
     // The text of one control, or of the whole window: the tail when there is too much.

@@ -55,8 +55,8 @@ export interface QuietObservationDto {
   ms: number
   state: QuietStateDto
 }
-export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string }
-export interface QuietPressResultDto { pressed: string; control: string }
+export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean }
+export interface QuietPressResultDto { pressed: string; control: string; foregroundChanged: boolean }
 export interface QuietReadResultDto { text: string; chars: number; headClipped: boolean }
 // The brain that holds the computer, named for the person: the banner on the
 // screen says who is moving the mouse.
