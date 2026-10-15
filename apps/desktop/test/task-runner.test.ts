@@ -249,11 +249,16 @@ it('keeps a quick answer out of the notes, and takes the next message as the ans
 it('lets a card be answered while the turn runs, for a call that waits on it', async () => {
   const t = await setup(async (request, _turn, _extra, runner) => {
     const ask = runner.askFor(request.channel!, async () => 'approve', 5000)!
-    const verdict = ask({ words: 'Run commands in this comet\'s work folder', url: 'file:///C:/work' })
-    setTimeout(() => { void listTasks(t.paths).then((tasks) => t.call('tasks:decide', tasks.at(-1)!.id, tasks.at(-1)!.approvals[0]!.id, 'approve')) }, 150)
-    return done(`commands: ${await verdict}`)
+    return done(`commands: ${await ask({ words: 'Run commands in this comet\'s work folder', url: 'file:///C:/work' })}`)
   })
-  await t.chat('Summarise the workbook')
+  const running = t.chat('Summarise the workbook')
+  const waiting = await vi.waitFor(async () => {
+    const task = (await listTasks(t.paths)).at(-1)!
+    expect(task?.approvals).toHaveLength(1)
+    return task
+  }, { timeout: 5000 })
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, 'approve')
+  await running
   const task = await t.settle('done')
   expect(task.result).toBe('commands: approve')
   expect(task.approvals.map((a) => [a.answer, a.settled])).toEqual([['approve', true]])
