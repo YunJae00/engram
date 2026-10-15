@@ -195,6 +195,7 @@ test('saved multiline questions render real paragraphs once and retain literal c
   await expect(page.getByText('Your answer is needed', { exact: true })).toHaveCount(0)
   const text = await answer.locator('.bubble-msg-body > p').allTextContents()
   expect(text.join(' ')).not.toContain(String.raw`\n`)
+  await page.screenshot({ path: join(REPO_TMP, 'question-newlines.png') })
   expect(await page.evaluate(id => window.engram.botTranscript(id), bot.id)).toContainEqual(expect.objectContaining({ role: 'assistant', text: question }))
   await updateTask(paths, task.id, value => { value.question = String.raw`Choose the next step.\n\n1) Keep the draft\n2) Add hours\n\n<img src=x onerror=alert(1)>` })
   await app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'tasks:changed' }) })

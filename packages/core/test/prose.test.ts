@@ -13,6 +13,7 @@ it('repairs escaped paragraphs and list breaks without changing ordinary newline
 it.each([
   String.raw`Use \n in code.`,
   String.raw`C:\new\notes\n\nfile.txt`,
+  String.raw`C:\My notes\n\nfile.txt`,
   String.raw`\\server\new\notes`,
   String.raw`{"value":"first\n\nsecond"}`,
   '`' + String.raw`first\n\nsecond` + '`',
