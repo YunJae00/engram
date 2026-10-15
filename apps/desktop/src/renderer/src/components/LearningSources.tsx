@@ -17,11 +17,10 @@ export function LearningSources({ value, disabled, onChange, testPrefix, compact
   const note = useId()
   return <fieldset className="learning-sources" aria-describedby={note} data-testid={`${testPrefix}-sources`}>
     <legend>What Engram may learn from</legend>
-    {LEARNING_SOURCES.map(source => <label key={source.key} className="learning-source">
-      <input type="checkbox" data-testid={`${testPrefix}-source-${source.key}`} checked={value[source.key]} disabled={disabled} onChange={event => onChange(source.key, event.target.checked)} />
+    {LEARNING_SOURCES.map(source => <label key={source.key} className={`learning-source${compact ? ' learning-source-compact' : ''}`} title={compact ? source.detail : undefined}>
+      <input type="checkbox" className={compact ? 'switch' : undefined} aria-description={compact ? source.detail : undefined} data-testid={`${testPrefix}-source-${source.key}`} checked={value[source.key]} disabled={disabled} onChange={event => onChange(source.key, event.target.checked)} />
       <span><strong>{source.name}</strong>{!compact && <small>{source.detail}</small>}</span>
     </label>)}
-    <p className="setting-hint" id={note}>{compact ? 'Names and window titles only, saved as notes and shared with your AI. Pages and file contents are not read.' : LEARNING_NOTE}</p>
-    {compact && <details className="learning-details"><summary>Details</summary>{LEARNING_SOURCES.map(source => <p key={source.key}><strong>{source.name}</strong> — {source.detail}</p>)}</details>}
+    <p className="setting-hint" id={note}>{compact ? 'Names and window titles are saved as notes and shared with your AI. Browser history: last 90 days. Pages and file contents are not read.' : LEARNING_NOTE}</p>
   </fieldset>
 }

@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { answerHtml, memorySources } from '../src/renderer/src/markdown.js'
+import { answerHtml, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
 describe('answerHtml', () => {
+  it('renders escaped paragraphs and numbered choices while keeping code escapes literal', () => {
+    const text = String.raw`Today is empty.\n\n1) Draft items\n2) Enter actual hours\n\nWhich option?`
+    const html = answerHtml(text)
+    expect(html).toContain('<ol>')
+    expect(html).toContain('<li>Draft items</li>')
+    expect(html).not.toContain(String.raw`\n`)
+    expect(answerHtml('```markdown\n' + text + '\n```')).not.toContain(String.raw`\n`)
+    expect(answerText('```markdown\n' + text + '\n```')).toBe('Today is empty.\n\n1) Draft items\n2) Enter actual hours\n\nWhich option?')
+    expect(answerHtml('```js\n' + String.raw`const text = 'first\n\nsecond'` + '\n```')).toContain(String.raw`first\n\nsecond`)
+  })
   it('numbers unique memory references without changing ordinary links or code', () => {
     const text = 'First [Decision](note://n-one), again [same](note://n-one). [Website](https://example.com).\n\n`[not a source](note://n-code)`'
     const sources = memorySources(text)

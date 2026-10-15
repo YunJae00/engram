@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import { answerHtml, memorySources } from '../markdown.js'
+import { answerHtml, answerText, memorySources } from '../markdown.js'
 import { Copy, Check } from 'lucide-react'
 import { answerSites, SiteIcon } from './SiteIcon.js'
 
@@ -9,7 +9,8 @@ import { answerSites, SiteIcon } from './SiteIcon.js'
 // grows with the length of the conversation. Memoised on the text, an
 // answer is parsed once and then left alone.
 
-export const Answer = memo(function Answer({ text, compact = false, citations = false, streaming = false }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean }) {
+export const Answer = memo(function Answer({ text: rawText, compact = false, citations = false, streaming = false }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean }) {
+  const text = answerText(rawText)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const sites = compact ? [] : answerSites(text)

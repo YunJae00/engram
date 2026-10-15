@@ -672,7 +672,7 @@ describe('cometTools — the web, given as freedoms rather than destinations', (
     const paths = await initVault(await tmpVaultRoot('tools-ask'), { git: false })
     const ask = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'ask_person')!
     expect(await ask.run({ question: '사내 포털 주소가 어떻게 되나요?' }, CTX)).toBe(
-      'ASK: 사내 포털 주소가 어떻게 되나요?',
+      'ASK: ' + JSON.stringify({ question: '사내 포털 주소가 어떻게 되나요?', options: [] }),
     )
   })
 

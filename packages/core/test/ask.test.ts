@@ -25,6 +25,18 @@ describe('formatAsk / parseAsk', () => {
     expect(parseAsk('nothing in the vault')).toBeNull()
     expect(parseAsk('ASK: Which?\nOPTIONS: not json')).toEqual({ question: 'Which?', options: [] })
   })
+  it('preserves complete multiline questions and literal metadata-looking lines', () => {
+    const question = 'Today is empty.\n\n1) Draft items\n2) Enter actual hours\nOPTIONS: this is part of the question\n\nWhich option?'
+    expect(parseAsk(formatAsk(question, ['Draft', 'Actual hours']))).toEqual({ question, options: ['Draft', 'Actual hours'] })
+    expect(parseAsk('ASK: First line\n\nSecond line?')).toEqual({ question: 'First line\n\nSecond line?', options: [] })
+    expect(parseAsk('ASK: First line\nSecond line?\nOPTIONS: ["A", "B"]')).toEqual({ question: 'First line\nSecond line?', options: ['A', 'B'] })
+  })
+  it('repairs double-escaped paragraph breaks in new and saved questions', () => {
+    const question = String.raw`Today is empty.\n\n1) Draft items\n\nWhich option?`
+    const expected = { question: 'Today is empty.\n\n1) Draft items\n\nWhich option?', options: [] }
+    expect(parseAsk(formatAsk(question, []))).toEqual(expected)
+    expect(parseAsk(`ASK: ${question}`)).toEqual(expected)
+  })
 })
 
 describe('choiceQuestion', () => {

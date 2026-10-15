@@ -2,9 +2,10 @@ import { expect, it, vi } from 'vitest'
 import type { Engine } from 'core'
 
 const forget = vi.hoisted(() => vi.fn())
+const confirm = vi.hoisted(() => vi.fn())
 const selection = vi.hoisted(() => ({ profile: 'system' }))
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }))
-vi.mock('../src/main/engine-cloud.js', () => ({ cloudEngine: () => ({ forgetStatus: forget }) }))
+vi.mock('../src/main/engine-cloud.js', () => ({ cloudEngine: () => ({ forgetStatus: forget, confirmAuth: confirm }) }))
 vi.mock('../src/main/desktop-overlay.js', () => ({ overlayWindowIds: () => [] }))
 vi.mock('../src/main/account-profiles.js', () => ({ activeAccountProfile: () => selection.profile }))
 import { engineDto, engineHealthOf, markEngineOk, noteEngineFailure } from '../src/main/engine-health.js'
@@ -25,4 +26,6 @@ it('revokes cached auth after a real call fails without changing another account
   expect(engineHealthOf('codex')).toEqual({ healthy: false, reason: 'auth' })
   markEngineOk('codex', 'system')
   expect(engineHealthOf('codex')).toEqual({ healthy: true })
+  expect(confirm).toHaveBeenCalledWith()
+  expect(engineDto({ id: 'codex', authConfirmed: false } as unknown as Engine).conclusive).toBeUndefined()
 })

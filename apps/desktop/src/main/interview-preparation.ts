@@ -70,7 +70,7 @@ export async function prepareInterviewContext(ctx: VaultContext, signal: AbortSi
   if (report.haltReason === 'quota') throw new Error('Your AI limited a request. Completed work was kept. Reported account limits may differ. Retry later or test another model or AI in Settings.')
   if (report.failed.length || report.deferred) {
     flog('interview-preparation', `${report.failed.length} failed, ${report.deferred} deferred`)
-    throw new Error('Cosmos preparation is incomplete. Completed work was kept. Retry to finish the remaining work.')
+    throw new Error('Cosmos preparation paused. Your progress is saved. Retry to continue.')
   }
   return report.noteIds
 }

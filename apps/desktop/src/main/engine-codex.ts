@@ -113,6 +113,7 @@ export class CodexEngine implements CloudEngine {
   readonly desktopToolIsolation = true
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
+  confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
 
   detect(): Promise<EngineDetection> {
     return this.status.read(async () => {

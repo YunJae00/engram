@@ -10,6 +10,7 @@ import { PLACE_TYPE } from '../work-map.js'
 import { boundedCandidatesAsync, buildJ1, buildJ2, buildJ3, buildJ4, buildJ6, undeterminedForJ6 } from './librarian.js'
 import { readAgentsMd } from './prompts.js'
 import { JobRunner, type JobSpec, type RunReport, type RunnerOptions } from './runner.js'
+import { INITIAL_FILING_SCHEMAS } from './initial-filing-schema.js'
 
 export type InitialFilingStage = 'capture' | 'organize'
 export interface InitialFilingOptions extends RunnerOptions {
@@ -135,6 +136,7 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
   let applying: Promise<unknown> = Promise.resolve()
   const guarded = (job: JobSpec, ownTarget?: string): JobSpec => ({
     ...job, inputKey: `initial:${scopeHash}:${job.inputKey}`,
+    jsonSchema: INITIAL_FILING_SCHEMAS[job.kind],
     apply: result => {
       const pending = applying.then(async () => {
         signal?.throwIfAborted()

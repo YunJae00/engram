@@ -11,6 +11,7 @@ import { createNote, loadNotes, readNote, writeNote } from '../src/notes.js'
 import { serializeNote } from '../src/schema.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
+import { INITIAL_FILING_SCHEMAS } from '../src/jobs/initial-filing-schema.js'
 
 let paths: VaultPaths
 const prompts: string[] = []
@@ -29,6 +30,25 @@ function engine(handle?: (job: EngineJobInput) => Promise<string | undefined>): 
 beforeEach(async () => {
   paths = await initVault(await tmpVaultRoot('initial-filing'), { git: false })
   prompts.length = 0
+})
+
+it('constrains organization output at the runtime and retries only unfinished links', async () => {
+  await createNote(paths, { id: 'n-first-0001', body: '# First work place' })
+  await createNote(paths, { id: 'n-second-0001', body: '# Second work place' })
+  const calls: EngineJobInput[] = []
+  let broken = true
+  const runtime = engine(async job => {
+    calls.push(job)
+    expect(job.jsonSchema).toEqual(INITIAL_FILING_SCHEMAS[kind(job.prompt) as keyof typeof INITIAL_FILING_SCHEMAS])
+    if (broken && kind(job.prompt) === 'J2' && /"note":\s*\{\s*"id": "n-first-0001"/.test(job.prompt)) return '{"links":['
+    return undefined
+  })
+  const failed = await prepareInitialFiling(paths, [runtime], { retryDelayMs: 0 })
+  expect(failed.failed).toHaveLength(1)
+  broken = false; calls.length = 0
+  const resumed = await prepareInitialFiling(paths, [runtime], { retryDelayMs: 0 })
+  expect(resumed.failed).toEqual([])
+  expect(calls.filter(job => kind(job.prompt) === 'J2')).toHaveLength(1)
 })
 
 it('finishes a fixed snapshot, reports each finite phase, and leaves ongoing sweep state alone', async () => {

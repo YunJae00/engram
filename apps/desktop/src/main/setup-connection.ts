@@ -12,7 +12,7 @@ export async function verifySetupConnection(engine: Engine, workdir: EngineCwd, 
   if (engine.id === 'claude' || engine.id === 'codex') cloudEngine(engine.id, profile).forgetStatus?.()
   const detection = await connectionProbe(() => engine.detect())
   signal.throwIfAborted()
-  if (!detection.installed || !detection.loggedIn || detection.conclusive === false) throw new Error(`${name} is not verified. Connect it in AI settings and try again.`)
+  if (detection.conclusive !== false && (!detection.installed || !detection.loggedIn)) throw new Error(`${name} is not verified. Connect it in AI settings and try again.`)
   let canceled!: () => void
   const stopped = new Promise<never>((_resolve, reject) => { canceled = () => reject(signal.reason); signal.addEventListener('abort', canceled, { once: true }) })
   try {
