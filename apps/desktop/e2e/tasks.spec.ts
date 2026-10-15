@@ -179,6 +179,7 @@ test('questions offer readable keyboard choices and completion notices without e
 })
 
 test('saved multiline questions render real paragraphs once and retain literal code escapes', async () => {
+  await page.setViewportSize({ width: 1280, height: 900 })
   const bot = await createBot(paths, { name: 'Time report draft' })
   const question = String.raw`Today has no recorded hours.\n\n1) Draft the items\n2) Enter actual hours\n\nWhich option?` + '\n\n```js\n' + String.raw`const marker = '\n\n'` + '\n```'
   await appendBotTurn(paths, bot.id, { role: 'user', text: 'Draft today’s time report', at: new Date().toISOString() })
@@ -186,6 +187,7 @@ test('saved multiline questions render real paragraphs once and retain literal c
   const task = await createTask(paths, 'Draft a time report', bot.id)
   await updateTask(paths, task.id, value => { value.state = 'waiting'; value.question = question; value.result = question })
   await page.reload()
+  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()
   const answer = page.getByTestId('bots-thread').locator('.bubble-msg.assistant').last()
   await expect(answer.locator('ol li')).toHaveText(['Draft the items', 'Enter actual hours'])
