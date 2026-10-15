@@ -265,6 +265,7 @@ export async function agentViewInput(input: AgentInputDto, lane: string): Promis
       const x = Math.round(Math.min(1, Math.max(0, input.x)) * size.width)
       const y = Math.round(Math.min(1, Math.max(0, input.y)) * size.height)
       const type = ({ pressed: 'mousePressed', released: 'mouseReleased', moved: 'mouseMoved', wheel: 'mouseWheel' } as const)[input.type]
+      if (input.type === 'wheel') await m.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: input.modifiers ?? 0 })
       await m.cdp.send('Input.dispatchMouseEvent', {
         type,
         x,
