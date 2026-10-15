@@ -9,7 +9,7 @@ import { artifactDirectory } from './file-work.js'
 const READS = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead'])
 const WRITES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 const SHELLS = new Set(['Bash', 'PowerShell', 'Shell'])
-const FREE = new Set(['TodoWrite', 'TaskList', 'TaskGet', 'TaskCreate', 'TaskUpdate'])
+const FREE = new Set(['ToolSearch', 'TodoWrite', 'TaskList', 'TaskGet', 'TaskCreate', 'TaskUpdate'])
 const within = (root: string, path: string): boolean => {
   const rel = relative(root, path)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..\\`) && !rel.startsWith('../') && !isAbsolute(rel))

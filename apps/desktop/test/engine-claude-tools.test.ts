@@ -38,8 +38,9 @@ describe('the comet tools in the runtime\'s shape', () => {
     expect(z.object(shape).parse({ query: 'q' })).toEqual({ query: 'q' })
   })
 
-  it('names every tool through the server, and nothing else', () => {
-    expect(allowedToolNames([{ name: 'search_memory', description: '', argsSchema: {}, run: async () => '' }])).toEqual(['mcp__engram__search_memory'])
+  it('allows schema discovery and only the offered server tools', () => {
+    expect(allowedToolNames([{ name: 'search_memory', description: '', argsSchema: {}, run: async () => '' }])).toEqual(['ToolSearch', 'mcp__engram__search_memory'])
+    expect(allowedToolNames([])).toEqual([])
   })
 
   it('preserves nested limits so planning and execution receive the same constraints', () => {

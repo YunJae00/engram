@@ -78,8 +78,7 @@ export function shapeOf(schema: object): Record<string, ZodTypeAny> {
 
 export const TOOL_SERVER = 'engram'
 
-// The runtime names a server's tools by prefixing the server: this is the
-// list that lets every comet tool through and nothing else.
+// Discovery loads deferred schemas; execution stays scoped to the offered tools.
 export function allowedToolNames(tools: ToolSessionCall[]): string[] {
-  return tools.map((tool) => `mcp__${TOOL_SERVER}__${tool.name}`)
+  return [...(tools.length ? ['ToolSearch'] : []), ...tools.map((tool) => `mcp__${TOOL_SERVER}__${tool.name}`)]
 }
