@@ -225,6 +225,18 @@ internal sealed class QuietAccess : IDisposable
     internal object State(DesktopTarget target)
     { var state = InputState(target); return new { foreground = state.Item1, idleMs = state.Item2, minimized = target.Minimized }; }
 
+    private static bool ForegroundChanged(IntPtr before)
+    {
+        // Invoke can return before the provider dispatches its queued action.
+        var watch = Stopwatch.StartNew();
+        while (watch.ElapsedMilliseconds < 250)
+        {
+            if (GetForegroundWindow() != before) return true;
+            System.Threading.Thread.Sleep(25);
+        }
+        return GetForegroundWindow() != before;
+    }
+
     // Set a field's whole value through the provider, never over text the person typed.
     internal object Set(DesktopTarget target, string snapshot, string control, string text, string expected, Action check)
     {
@@ -258,7 +270,7 @@ internal sealed class QuietAccess : IDisposable
         Guard.Same(target);
         // Landed says the text is in the field; exact says nothing else is. A field holding more carries text from elsewhere.
         return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
-            foregroundChanged = GetForegroundWindow() != foreground };
+            foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
     }
 
     // Press through the provider: a button, a list or tab item, a toggle, a fold.
@@ -282,7 +294,7 @@ internal sealed class QuietAccess : IDisposable
         }
         else throw new InvalidOperationException("This control cannot be pressed without the mouse; use desktop_action for it");
         Guard.Same(target);
-        return new { pressed = how, control = control, foregroundChanged = GetForegroundWindow() != foreground };
+        return new { pressed = how, control = control, foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
     }
 
     // The text of one control, or of the whole window: the tail when there is too much.
