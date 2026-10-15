@@ -232,6 +232,8 @@ internal sealed class QuietAccess : IDisposable
         Validate(target);
         var found = Control(target, snapshot, control);
         var element = found.Element;
+        if (!element.Current.IsEnabled || (element.Current.ControlType != ControlType.Edit && element.Current.ControlType != ControlType.Document))
+            throw new InvalidOperationException("This control is not an enabled editable field");
         if (element.Current.IsPassword) throw new InvalidOperationException("Password fields are the person's to fill");
         object pattern;
         if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) throw new InvalidOperationException("This control does not take text without the keyboard; use desktop_action for it");

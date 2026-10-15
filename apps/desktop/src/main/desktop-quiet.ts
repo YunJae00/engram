@@ -4,14 +4,8 @@ import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import type { DesktopMethod } from './desktop-host.js'
 import { flog } from './flog.js'
 
-// Operating an app through its accessibility providers: the window is read and
-// its controls are set or pressed without the foreground, the mouse or the
-// keyboard changing hands. The person keeps working; nothing is captured.
-//
-// The one thing that must wait is the person themself: when they are in that
-// very app and touching the keyboard or mouse, a value set under their hands
-// would swallow what they type. So a change waits until they have been still
-// for a moment, and gives up after a minute rather than barge in.
+// Provider calls avoid injected input and requested focus. A mutation waits
+// while the person uses the target app; providers may still activate themselves.
 const STILL_MS = 4_000
 const WAIT_AT_MOST_MS = 60_000
 const WAIT_POLL_MS = 500

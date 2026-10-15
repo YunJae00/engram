@@ -1,11 +1,8 @@
 import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { exactKeys, plainRecord, printable, requirePublicText } from './tool-args.js'
 
-// An app on this computer reached through its accessibility providers alone:
-// read, set a field, press a control, read the text back. The foreground, the
-// mouse and the keyboard stay with the person, and nothing is captured. The
-// hands tools (read_desktop, desktop_action) remain for controls that offer
-// no provider action.
+// Provider actions avoid capture and injected input; foreground tools remain
+// a fallback for controls without a usable provider action.
 export interface QuietCourier {
   scan(app: string, find: string | undefined, signal?: AbortSignal): Promise<string>
   set(app: string, snapshot: string, control: string, text: string, expected: string | undefined, context: AgentToolContext): Promise<string>
