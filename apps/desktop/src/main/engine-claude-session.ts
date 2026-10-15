@@ -146,7 +146,7 @@ export class WarmSession {
         abortController: this.abort,
         systemPrompt: job.system,
         // The runtime's own tools stay off unless the host hands them over.
-        ...(job.native ? { additionalDirectories: job.native.readRoots, ...nativeOptions(() => this.native) } : { tools: [], permissionMode: 'dontAsk' }),
+        ...(job.native ? { additionalDirectories: job.native.readRoots, ...nativeOptions(() => this.native) } : { tools: job.tools.length ? ['ToolSearch'] : [], permissionMode: 'dontAsk' }),
         mcpServers: { [TOOL_SERVER]: server },
         strictMcpConfig: true,
         allowedTools: allowedToolNames(job.tools),

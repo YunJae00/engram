@@ -115,8 +115,8 @@ describe('a warm session: one process, many turns', () => {
     try {
       await pool.run(job('Inspect A', { sessionKey: 'lane-a', tools }), spec)
       expect(optionsSeen[0]).toMatchObject({
-        tools: [], strictMcpConfig: true, settingSources: [], permissionMode: 'dontAsk',
-        allowedTools: ['mcp__engram__look_desktop', 'mcp__engram__read_desktop', 'mcp__engram__desktop_action'],
+        tools: ['ToolSearch'], strictMcpConfig: true, settingSources: [], permissionMode: 'dontAsk',
+        allowedTools: ['ToolSearch', 'mcp__engram__look_desktop', 'mcp__engram__read_desktop', 'mcp__engram__desktop_action'],
       })
       expect(Object.keys(optionsSeen[0]!['mcpServers'] as object)).toEqual(['engram'])
       expect(outcomes[0]).toEqual({ content: [
@@ -125,7 +125,7 @@ describe('a warm session: one process, many turns', () => {
       ] })
       await pool.run(job('Inspect A without input', { sessionKey: 'lane-a', tools: tools.filter((tool) => tool.name === 'read_desktop') }), spec)
       expect(processes()).toBe(2)
-      expect(optionsSeen[1]!['allowedTools']).toEqual(['mcp__engram__read_desktop'])
+      expect(optionsSeen[1]!['allowedTools']).toEqual(['ToolSearch', 'mcp__engram__read_desktop'])
       expect(optionsSeen[1]!['strictMcpConfig']).toBe(true)
     } finally { pool.closeAll() }
   })

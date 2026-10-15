@@ -56,7 +56,22 @@ describe('native tool policy', () => {
     expect((await nativeDecision(policy(), 'WebFetch', { url: 'http://127.0.0.1/admin' })).behavior).toBe('deny')
     expect((await nativeDecision(policy(), 'WebSearch', { query: 'search' })).message).toContain('Engram\'s web tools')
     expect((await nativeDecision(policy(), 'Mystery', {})).behavior).toBe('deny')
-    for (const name of ['Agent', 'Task', 'Skill', 'ToolSearch']) expect((await nativeDecision(policy(), name, {})).behavior).toBe('deny')
+    for (const name of ['Agent', 'Task', 'Skill']) expect((await nativeDecision(policy(), name, {})).behavior).toBe('deny')
+  })
+
+  it('discovers tool schemas without granting commands or private file access', async () => {
+    const ask = vi.fn<NonNullable<NativePolicy['ask']>>(async () => 'cancel')
+    const p = policy(ask)
+    const discover = () => nativeDecision(p, 'ToolSearch', { query: 'select:mcp__engram__list_windows,mcp__engram__search_memory' })
+    expect((await discover()).behavior).toBe('allow')
+    expect(ask).not.toHaveBeenCalled()
+    expect((await nativeDecision(p, 'Bash', { command: 'git log' })).behavior).toBe('deny')
+    expect((await discover()).behavior).toBe('allow')
+    expect((await nativeDecision(p, 'Read', { file_path: join(root, 'outside', 'account.db') })).behavior).toBe('deny')
+    expect(p.commands.allowed).toBe(false)
+    expect(ask).toHaveBeenCalledOnce()
+    expect((await nativeDecision({ ...p, mode: 'plan' }, 'ToolSearch', { query: 'memory' })).behavior).toBe('allow')
+    expect((await nativeDecision(p, 'ToolSearch', {}, AbortSignal.abort())).behavior).toBe('deny')
   })
 
   it('summarises a call in one line', () => {
