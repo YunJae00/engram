@@ -46,8 +46,29 @@ internal static class Program
         Send(new { id = id, error = message.Length > 500 ? message.Substring(0, 500) : message });
     }
 
+    private static string Optional(Dictionary<string, object> request, string key, int limit)
+    {
+        return request.ContainsKey(key) && request[key] != null ? Text(request, key, limit) : null;
+    }
+    // Provider-only access: nothing here takes a lease, the foreground or the person's input.
+    private static object Quiet(string method, Dictionary<string, object> request, DesktopTarget target, QuietAccess quiet, DesktopRequest queued, InputMonitor monitor)
+    {
+        Action check = delegate {
+            if (Volatile.Read(ref Closed) != 0 || monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch))
+                throw new InvalidOperationException("The desktop request was cancelled");
+        };
+        check();
+        if (method == "quietState") return quiet.State(target);
+        if (method == "quietScan") return quiet.Scan(target, Optional(request, "find", 200));
+        if (method == "quietRead") return quiet.Read(target, Optional(request, "snapshot", 100), Optional(request, "control", 32));
+        if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
+        if (method == "quietSet") return quiet.Set(target, Text(request, "snapshot", 100), Text(request, "control", 32), Text(request, "text", 2000), Optional(request, "expected", 2000), check);
+        if (method == "quietPress") return quiet.Press(target, Text(request, "snapshot", 100), Text(request, "control", 32), check);
+        throw new ArgumentException("Unsupported desktop method");
+    }
+
     private static void Receive(DesktopRequest queued, AutomationSession automation, WindowGuard guard,
-        ControlLease lease, InputMonitor monitor, DesktopActions actions, LiveDocumentWorker documents, ApplicationFrameHost frame)
+        ControlLease lease, InputMonitor monitor, DesktopActions actions, LiveDocumentWorker documents, ApplicationFrameHost frame, QuietAccess quiet)
     {
         var id = 0;
         var mutation = false;
@@ -74,6 +95,7 @@ internal static class Program
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             DesktopTarget target;
             using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
+            if (method.StartsWith("quiet", StringComparison.Ordinal)) { Send(new { id = id, result = Quiet(method, request, target, quiet, queued, monitor) }); return; }
             if (method == "applicationFrame") {
                 if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
                 Send(new { id = id, result = new { window = frame.Show(target) } }); return;
@@ -250,6 +272,7 @@ internal static class Program
                 {
                     var automation = new AutomationSession(guard);
                     var actions = new DesktopActions(lease, monitor, automation);
+                    var quiet = new QuietAccess(guard);
                     var worker = new Thread(delegate()
                     {
                         try
@@ -257,10 +280,10 @@ internal static class Program
                             foreach (var request in requests.GetConsumingEnumerable())
                             {
                                 if (Volatile.Read(ref Closed) != 0) break;
-                                Receive(request, automation, guard, lease, monitor, actions, documents, frame);
+                                Receive(request, automation, guard, lease, monitor, actions, documents, frame, quiet);
                             }
                         }
-                        finally { automation.Dispose(); }
+                        finally { quiet.Dispose(); automation.Dispose(); }
                     }) { IsBackground = true, Name = "Desktop accessibility worker" };
                     worker.SetApartmentState(ApartmentState.MTA);
                     worker.Start();

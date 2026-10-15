@@ -18,6 +18,14 @@ function workFor(page: Page): ReturnType<typeof serialWork> {
   return work
 }
 
+export function withPreviewInput<T>(page: Page, input: () => Promise<T>): Promise<T> {
+  return workFor(page).run(async () => {
+    const remaining = (restoredAt.get(page) ?? 0) - Date.now()
+    if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining))
+    return input()
+  })
+}
+
 // A screenshot temporarily resizes the compositor; its restore must finish
 // before a real viewport update, or it can put the old dimensions back.
 export function resizePreview(page: Page, size: { width: number; height: number }): Promise<boolean> {
@@ -67,10 +75,10 @@ async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
 export function captureSharpFrame(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
   const held = captures.get(page)
   if (held) return held
-  const pending = workFor(page).run(() => capture(page, cdp)).finally(() => {
-    captures.delete(page)
-    restoredAt.set(page, Date.now() + 60)
-  })
+  const pending = workFor(page).run(async () => {
+    try { return await capture(page, cdp) }
+    finally { restoredAt.set(page, Date.now() + 60) }
+  }).finally(() => { captures.delete(page) })
   captures.set(page, pending)
   return pending
 }

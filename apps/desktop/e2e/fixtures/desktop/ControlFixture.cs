@@ -148,6 +148,15 @@ internal sealed class ControlFixture : Form
             else if (method == "resize") { ClientSize = new Size(900, 600); Marker.Top = ClientSize.Height - 30; }
             else if (method == "maximize") { WindowState = FormWindowState.Maximized; Marker.Top = ClientSize.Height - 30; }
             else if (method == "restore") { WindowState = FormWindowState.Normal; ClientSize = new Size(630, 420); Marker.Top = 390; }
+            else if (method == "quietReset") { Entry.Text = ""; Clicks = 0; Counter.AccessibleName = "Count click"; }
+            else if (method == "quietRename") { Counter.AccessibleName = "Changed action"; }
+            else if (method == "quietProtected")
+            {
+                Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Sign in" };
+                Dense.Controls.Add(new TextBox { AccessibleName = "Account field", Bounds = new Rectangle(8, 8, 240, 30) });
+                Dense.Controls.Add(new Button { AccessibleName = "Continue account", Text = "Continue account", Bounds = new Rectangle(8, 60, 150, 32) });
+                Controls.Add(Dense); Dense.BringToFront();
+            }
             else if (method == "dense")
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };

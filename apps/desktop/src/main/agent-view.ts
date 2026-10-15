@@ -4,7 +4,7 @@ import { broadcast } from './engine-health.js'
 import { activeLaneName, ensureAgentPage, lanePage, laneOf, resetLane, setActiveLane, watchAgentPages } from './agent-browser.js'
 import { setPointerSink } from './page-actions.js'
 import { flog } from './flog.js'
-import { captureSharpFrame, startPagePreview } from './page-preview.js'
+import { captureSharpFrame, startPagePreview, withPreviewInput } from './page-preview.js'
 import { isNativePage, setNativeInputSink } from './native-browser.js'
 
 // External browser windows stay out of sight. Their contents are mirrored into the
@@ -260,36 +260,38 @@ export async function agentViewInput(input: AgentInputDto, lane: string): Promis
   const hands = input.kind === 'key' || input.kind === 'text' || (input.kind === 'mouse' && (input.type === 'pressed' || input.type === 'released'))
   if (hands) touched.set(laneOf(m.page) ?? activeLaneName(), Date.now())
   try {
-    if (input.kind === 'mouse') {
-      const size = m.page.viewportSize() ?? { width: m.width, height: m.height }
-      const x = Math.round(Math.min(1, Math.max(0, input.x)) * size.width)
-      const y = Math.round(Math.min(1, Math.max(0, input.y)) * size.height)
-      const type = ({ pressed: 'mousePressed', released: 'mouseReleased', moved: 'mouseMoved', wheel: 'mouseWheel' } as const)[input.type]
-      if (input.type === 'wheel') await m.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: input.modifiers ?? 0 })
-      await m.cdp.send('Input.dispatchMouseEvent', {
-        type,
-        x,
-        y,
-        button: BUTTON[input.button ?? 'none'],
-        clickCount: input.clicks ?? 0,
-        modifiers: input.modifiers ?? 0,
-        ...(input.type === 'wheel' ? { deltaX: input.deltaX ?? 0, deltaY: input.deltaY ?? 0 } : {}),
-      })
-    } else if (input.kind === 'key') {
-      // A key with text behind it is typed; one without (an arrow, a
-      // backspace, a shortcut) is only pressed.
-      await m.cdp.send('Input.dispatchKeyEvent', {
-        type: input.type === 'up' ? 'keyUp' : input.text ? 'keyDown' : 'rawKeyDown',
-        key: input.key,
-        code: input.code,
-        windowsVirtualKeyCode: input.keyCode,
-        nativeVirtualKeyCode: input.keyCode,
-        modifiers: input.modifiers ?? 0,
-        ...(input.type === 'down' && input.text ? { text: input.text, unmodifiedText: input.text } : {}),
-      })
-    } else {
-      await m.cdp.send('Input.insertText', { text: input.text })
-    }
+    await withPreviewInput(m.page, async () => {
+      if (mirror !== m || activeLaneName() !== lane || m.page.isClosed()) return
+      if (input.kind === 'mouse') {
+        const size = m.page.viewportSize() ?? { width: m.width, height: m.height }
+        const x = Math.round(Math.min(1, Math.max(0, input.x)) * size.width)
+        const y = Math.round(Math.min(1, Math.max(0, input.y)) * size.height)
+        const type = ({ pressed: 'mousePressed', released: 'mouseReleased', moved: 'mouseMoved', wheel: 'mouseWheel' } as const)[input.type]
+        if (input.type === 'wheel') await m.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: input.modifiers ?? 0 })
+        await m.cdp.send('Input.dispatchMouseEvent', {
+          type,
+          x,
+          y,
+          button: BUTTON[input.button ?? 'none'],
+          clickCount: input.clicks ?? 0,
+          modifiers: input.modifiers ?? 0,
+          ...(input.type === 'wheel' ? { deltaX: input.deltaX ?? 0, deltaY: input.deltaY ?? 0 } : {}),
+        })
+      } else if (input.kind === 'key') {
+        // A key with text behind it is typed; one without is only pressed.
+        await m.cdp.send('Input.dispatchKeyEvent', {
+          type: input.type === 'up' ? 'keyUp' : input.text ? 'keyDown' : 'rawKeyDown',
+          key: input.key,
+          code: input.code,
+          windowsVirtualKeyCode: input.keyCode,
+          nativeVirtualKeyCode: input.keyCode,
+          modifiers: input.modifiers ?? 0,
+          ...(input.type === 'down' && input.text ? { text: input.text, unmodifiedText: input.text } : {}),
+        })
+      } else {
+        await m.cdp.send('Input.insertText', { text: input.text })
+      }
+    })
   } catch (err) {
     flog('agent-view', `input failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   }

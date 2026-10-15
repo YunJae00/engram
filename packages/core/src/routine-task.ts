@@ -37,7 +37,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
     }
     return step.tool === 'task_plan' && Array.isArray(step.args['phases']) ? step.args['phases'].filter((value): value is string => typeof value === 'string').map(value => withoutSecrets(value, source).slice(0, 500)) : []
   }))].slice(0, 8)
-  const desktop = successful.some(step => step.tool !== 'upload_file' && /^(desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps|.*live_document|excel_|word_|ppt_|.*file)/.test(step.tool))
+  const desktop = successful.some(step => step.tool !== 'upload_file' && /^(app_(read|set|press|text)$|desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps|.*live_document|excel_|word_|ppt_|.*file)/.test(step.tool))
   return { goal: withoutSecrets(goal, source).trim().slice(0, 4000), urls: [...urls], method, surface: urls.size && !desktop ? 'web' : 'auto', ...(checks.length ? { checks } : {}) }
 }
 

@@ -46,7 +46,7 @@ internal sealed class AutomationSession : IDisposable
     {
         return RuntimeId(element.GetRuntimeId());
     }
-    private static string RuntimeId(int[] id)
+    internal static string RuntimeId(int[] id)
     {
         if (id == null || id.Length == 0) throw new InvalidOperationException("The control has no stable accessibility identity");
         return string.Join(".", id.Select(part => part.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray());
@@ -232,7 +232,7 @@ internal sealed class AutomationSession : IDisposable
         return false;
         }
     }
-    private static void SafeAncestors(AutomationElement element, string rootId)
+    internal static void SafeAncestors(AutomationElement element, string rootId)
     {
         using (DesktopProfile.Measure("safeAncestors"))
         {

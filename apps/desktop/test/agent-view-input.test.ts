@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const deps = vi.hoisted(() => ({
   active: 'bot-one', pages: new Map<string, unknown>(),
-  broadcast: vi.fn(), preview: vi.fn(),
+  broadcast: vi.fn(), preview: vi.fn(), input: vi.fn(),
 }))
 vi.mock('../src/main/agent-browser.js', () => ({
   activeLaneName: () => deps.active,
@@ -16,6 +16,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
 vi.mock('../src/main/page-actions.js', () => ({ setPointerSink: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/page-preview.js', () => ({
+  withPreviewInput: deps.input,
   captureSharpFrame: vi.fn(async () => ({ data: 'frame', width: 1280, height: 860 })),
   startPagePreview: deps.preview,
 }))
@@ -34,11 +35,27 @@ function fixture(lane: string) {
 beforeEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  deps.input.mockImplementation(async (_page: unknown, input: () => Promise<unknown>) => input())
   deps.pages.clear()
   deps.active = 'bot-one'
 })
 
 describe('browser view handoffs', () => {
+  it('drops input queued behind a capture when the selected chat changes', async () => {
+    const first = fixture('bot-one')
+    fixture('bot-two')
+    let resume!: () => Promise<void>
+    deps.input.mockImplementation((_page: unknown, input: () => Promise<void>) => new Promise<void>(resolve => {
+      resume = async () => { await input(); resolve() }
+    }))
+    const view = await import('../src/main/agent-view.js')
+    await view.lookAtLane('bot-one')
+    const pending = view.agentViewInput({ kind: 'text', text: 'Do not type into the old chat' }, 'bot-one')
+    await view.lookAtLane('bot-two')
+    await resume()
+    await pending
+    expect(first.cdp.send).not.toHaveBeenCalled()
+  })
   it('reports a failed navigation without discarding the existing page or its mirror', async () => {
     const first = fixture('bot-one'), second = fixture('bot-two')
     const failure = new Error('page.goto: net::ERR_CONNECTION_REFUSED')
