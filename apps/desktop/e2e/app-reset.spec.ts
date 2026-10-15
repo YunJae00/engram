@@ -17,16 +17,16 @@ test('reset confirmation erases local app data and returns to first setup withou
   await mkdir(join(userData, 'account-profiles'))
   await writeFile(join(userData, 'account-profiles', 'keep.txt'), 'Retained account fixture')
   await writeFile(join(fixture, 'original.txt'), 'Original document')
-  const launch = async () => {
+  const launch = async (selfRestart = false) => {
     const running = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' } })
-    await running.evaluate(({ app }) => {
+    if (selfRestart) await running.evaluate(({ app }) => {
       // A self-initiated restart must not wait for the test debugger to disconnect.
       const inspector = process.getBuiltinModule('inspector') as typeof import('node:inspector')
       app.prependOnceListener('will-quit', () => inspector.close())
     })
     return running
   }
-  let app: ElectronApplication | undefined = await launch()
+  let app: ElectronApplication | undefined = await launch(true)
   try {
     let page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()
