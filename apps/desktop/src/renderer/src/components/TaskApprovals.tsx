@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import type { DelegatedTaskDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
+import { answerText } from '../markdown.js'
+import { renderMarkdown } from '../lib/markdown.js'
 
 // Presses the comet's task left for the person while it went on with the
 // rest: each is decided here, and once all are decided the task continues.
@@ -24,9 +26,9 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
     if (task?.state === 'waiting') webPane.attention(`bot-${botId}`)
   }, [task, botId])
   if (!task || !['waiting', 'failed'].includes(task.state)) return null
-  if (task.question && task.question === questionShown) return null
+  if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
-  if (!pending.length || task.question) return <section className="routine-submit chat-approval" role="status"><div className="bots-question-heading"><CircleHelp size={16} aria-hidden /><span>{task.question ? 'Your answer is needed' : 'Task paused'}</span></div><p>{task.question ?? task.log.at(-1)?.line ?? 'Task paused.'}</p>{task.question && <small>Reply in the message box below to continue.</small>}</section>
+  if (!pending.length || task.question) return <section className="routine-submit chat-approval" role="status"><div className="bots-question-heading"><CircleHelp size={16} aria-hidden /><span>{task.question ? 'Your answer is needed' : 'Task paused'}</span></div><div className="bubble-msg-body">{renderMarkdown(answerText(task.question ?? task.log.at(-1)?.line ?? 'Task paused.'))}</div>{task.question && <small>Reply in the message box below to continue.</small>}</section>
   const decide = async (id: string, answer: 'approve' | 'decline') => {
     setPendingDecision(true); setError('')
     try { await api.taskDecide(task.id, id, answer) }

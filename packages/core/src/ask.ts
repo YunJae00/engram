@@ -3,6 +3,8 @@
 // back; offered as choices to tap, the same question is settled in one touch
 // and the answer lands in the thread as their own words.
 
+import { normalizeProse } from './prose.js'
+
 export interface Ask {
   question: string
   options: string[]
@@ -39,16 +41,22 @@ const ASK_HEAD = 'ASK: '
 const OPTIONS_HEAD = 'OPTIONS: '
 
 export function formatAsk(question: string, options: string[]): string {
-  const head = `${ASK_HEAD}${question.trim()}`
-  return options.length ? `${head}\n${OPTIONS_HEAD}${JSON.stringify(options)}` : head
+  return `${ASK_HEAD}${JSON.stringify({ question: normalizeProse(question.trim()), options })}`
 }
 
 export function parseAsk(observation: string): Ask | null {
   if (!observation.startsWith(ASK_HEAD)) return null
-  const [first = '', ...rest] = observation.split('\n')
-  const question = first.slice(ASK_HEAD.length).trim()
+  const body = observation.slice(ASK_HEAD.length)
+  if (body.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(body) as Partial<Ask>
+      if (typeof parsed.question === 'string') return parsed.question.trim() ? { question: normalizeProse(parsed.question.trim()), options: cleanOptions(parsed.options) } : null
+    } catch { /* Older observations used a plain-text question. */ }
+  }
+  const split = body.lastIndexOf(`\n${OPTIONS_HEAD}`)
+  const question = normalizeProse((split < 0 ? body : body.slice(0, split)).trim())
   if (!question) return null
-  const line = rest.find((l) => l.startsWith(OPTIONS_HEAD))
+  const line = split < 0 ? undefined : body.slice(split + 1)
   let options: string[] = []
   if (line) {
     try {

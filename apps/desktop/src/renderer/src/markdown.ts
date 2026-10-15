@@ -1,4 +1,5 @@
 import { marked } from 'marked'
+import { normalizeProse } from '../../../../../packages/core/src/prose.js'
 
 // A model that indents its bullets turns the whole answer into a markdown code
 // block, which then refuses to wrap and runs off the side of the panel. Strip
@@ -40,8 +41,12 @@ export function memorySources(text: string): { url: string; label: string }[] {
   return [...sources].map(([url, label]) => ({ url, label }))
 }
 
+export function answerText(text: string): string {
+  return normalizeProse(unfence(text.split('<engram:capture')[0] ?? ''))
+}
+
 export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
-  const visible = text.split('<engram:capture')[0] ?? ''
+  const visible = answerText(text)
   const renderer = new marked.Renderer()
   const link = renderer.link.bind(renderer)
   renderer.link = token => {
@@ -59,5 +64,5 @@ export function answerHtml(text: string, sourceUrls: string[] = [], notes: strin
   }
   const code = renderer.code.bind(renderer)
   renderer.code = (token) => `<div class="answer-code"><div class="answer-code-head"><span>Code</span><button type="button" data-copy-code="true">Copy code</button></div>${code(token)}</div>`
-  return marked.parse(dedent(unfence(visible)) || '…', { async: false, renderer }) as string
+  return marked.parse(dedent(visible) || '…', { async: false, renderer }) as string
 }
