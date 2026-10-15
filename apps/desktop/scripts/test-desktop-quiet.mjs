@@ -17,12 +17,15 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await assert.rejects(helper.request('quietSet', { ...field, text: 'Do not interrupt' }), /person is using/)
   await fixture.request('away')
   await until(() => helper.request('quietState', target), state => state.idleMs >= 4000, 'Owned input did not settle')
-  assert.equal((await helper.request('quietSet', { ...field, text: 'Quiet draft' })).exact, true)
+  const set = await helper.request('quietSet', { ...field, text: 'Quiet draft' })
+  assert.equal(set.exact, true)
+  assert.equal((await fixture.request('state')).foreground, set.foregroundChanged, 'Set receipt must report provider activation')
   await assert.rejects(helper.request('quietSet', { ...field, text: 'Overwrite' }), /already holds text/)
   await assert.rejects(helper.request('quietSet', { ...field, text: 'Overwrite', expected: 'Quiet  draft' }), /already holds text/)
   assert.equal((await helper.request('quietRead', field)).text, 'Quiet draft')
   assert.equal((await helper.request('quietSet', { ...field, text: 'Reviewed draft', expected: 'Quiet draft' })).landed, true)
   await assert.rejects(helper.request('quietSet', { ...field, snapshot: '0'.repeat(32), text: 'Wrong snapshot' }), /snapshot/)
+  await fixture.request('away')
   const press = await helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id })
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Quiet invoke did not reach the button')
   assert.equal((await fixture.request('state')).foreground, press.foregroundChanged, 'Provider activation must be reported honestly')
@@ -52,5 +55,5 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /manual control/)
   await fixture.request('hidePassword')
   await fixture.request('quietReset')
-  return { readWithoutFocus: true, setWithoutFocus: true, providerOnlyPress: true, providerActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
+  return { readWithoutFocus: true, providerOnlySet: true, setActivatedWindow: set.foregroundChanged, providerOnlyPress: true, pressActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
 }

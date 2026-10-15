@@ -38,7 +38,7 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
     },
     {
       name: 'app_set',
-      description: `Put text into an editable control of an app as its whole value, without keystrokes or focus; Enter is not pressed. A field that already holds text this chat did not put there is refused unless expected repeats that exact text. The returned value is the field read back: check it before pressing anything. ${QUIET_NOTE}`,
+      description: `Put text into an editable control of an app as its whole value, without injecting keystrokes or requesting focus; Enter is not pressed. A field that already holds text this chat did not put there is refused unless expected repeats that exact text. The returned value is the field read back: check it before pressing anything. ${QUIET_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['app', 'snapshot', 'control', 'text'],
         properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, snapshot: { type: 'string', minLength: 32, maxLength: 32 }, control: { type: 'string', pattern: '^c[0-9]+$' }, text: { type: 'string', minLength: 1, maxLength: 2000 }, expected: { type: 'string', maxLength: 2000 } },
