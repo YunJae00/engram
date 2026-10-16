@@ -95,7 +95,20 @@ internal static class Program
             var pid = Number(request, "pid", method == "inspectWindow" ? 0 : 1, int.MaxValue);
             DesktopTarget target;
             using (DesktopProfile.Measure("guard.resolve")) target = guard.Resolve(window, pid);
-            if (method.StartsWith("quiet", StringComparison.Ordinal)) { Send(new { id = id, result = Quiet(method, request, target, quiet, queued, monitor) }); return; }
+            if (method == "applicationFrameHide") { frame.Hide(); Send(new { id = id, result = new { hidden = true } }); return; }
+            if (method.StartsWith("quiet", StringComparison.Ordinal))
+            {
+                if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
+                if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
+                // A minimized window is shown again without being activated: the person's focus stays where it is.
+                if (method != "quietState" && target.Minimized)
+                {
+                    DesktopNative.ShowWindowAsync(target.Handle, 4);
+                    var started = unchecked((uint)Environment.TickCount);
+                    while (target.Minimized && unchecked((uint)Environment.TickCount - started) < 1500) { Thread.Sleep(50); target = guard.Resolve(window, pid); }
+                }
+                Send(new { id = id, result = Quiet(method, request, target, quiet, queued, monitor) }); return;
+            }
             if (method == "applicationFrame") {
                 if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
                 Send(new { id = id, result = new { window = frame.Show(target) } }); return;

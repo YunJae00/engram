@@ -3,7 +3,7 @@ import { lstat, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { validatedWorkspaceRoots } from './workspaces.js'
 
-const RESET_FILES = ['settings.json', 'settings.json.tmp', 'vaults.json', 'vault.json', 'activity-state.json', 'keeper-state.json', 'site-icons.json', 'window-state.json', 'logs', 'tmp']
+const RESET_FILES = ['settings.json', 'settings.json.tmp', 'connections.json', 'vaults.json', 'vault.json', 'activity-state.json', 'keeper-state.json', 'site-icons.json', 'window-state.json', 'logs', 'tmp']
 const markerPath = () => join(app.getPath('userData'), 'reset-request.json')
 
 async function resetTargets(): Promise<string[]> {

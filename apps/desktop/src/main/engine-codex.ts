@@ -4,6 +4,7 @@ import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
+import { brainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
 import { startToolServer, type ToolServer } from './codex-tool-server.js'
 import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareReady, runCodexNative, warmCodexSession } from './codex-native.js'
 
@@ -106,8 +107,9 @@ export function readLoginStatus(out: string, code: number | null): EngineDetecti
 }
 
 export class CodexEngine implements CloudEngine {
-  private readonly env: NodeJS.ProcessEnv
-  constructor(readonly accountProfile = activeAccountProfile('codex')) { this.env = accountEnvironment('codex', accountProfile) }
+  // Read fresh each time: a key connection added later must reach the next process.
+  private get env(): NodeJS.ProcessEnv { return accountEnvironment('codex', this.accountProfile) }
+  constructor(readonly accountProfile = activeAccountProfile('codex')) {}
   readonly id = 'codex' as const
   readonly label = 'ChatGPT'
   readonly desktopToolIsolation = true
@@ -119,6 +121,8 @@ export class CodexEngine implements CloudEngine {
     return this.status.read(async () => {
       const binary = codexBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
+      await loadBrainConnections()
+      if (brainConnection('codex')) { const probe = await probeConnection('codex'); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
       return readLoginStatus(out, code)
     })
@@ -136,6 +140,7 @@ export class CodexEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
+    if (brainConnection('codex')) { await clearBrainConnection('codex'); this.status.forget(); return }
     const binary = codexBinary()
     if (binary) await runText(binary, ['logout'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
     this.status.forget()
@@ -158,7 +163,7 @@ export class CodexEngine implements CloudEngine {
       const env = withHelpersOnPath(binary, this.env)
       // Match the turn's directory so project-local servers are disabled too.
       const catalog = { out: await mcpCatalog(binary, job.workdir, env, abort.signal) }
-      const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF]
+      const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides()]
       let text = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides },
         thread: {
@@ -208,7 +213,7 @@ export class CodexEngine implements CloudEngine {
     const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
     if (job.signal?.aborted) { await server.close(); if (spareServer?.server === server) spareServer = null; return }
     await warmCodexSession({
-      rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
+      rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides()],
       instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
     }, job.native)
   }
@@ -234,14 +239,14 @@ export class CodexEngine implements CloudEngine {
       const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
       if (job.native) {
         const result = await runCodexNative({ ...job, sessionKey: pooled, native: job.native, signal: abort.signal }, {
-          rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF],
+          rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides()],
           instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
         })
         if (job.signal?.aborted) return { answer: '', error: 'canceled' }
         if (!result.commandsDenied) return result
       }
       const answer = await runCodexTurn({
-        options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF] },
+        options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides()] },
         thread: {
           workingDirectory: job.workdir,
           sandboxMode: 'read-only',

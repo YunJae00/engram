@@ -43,6 +43,7 @@ it('cancels without touching data and rejects a request outside the settings win
 it('erases app-owned workspaces and settings only on next boot, preserving sign-ins, runtimes and external files', async () => {
   const first = await vault(), second = await vault('second')
   await writeFile(data('settings.json'), '{"theme":"dark"}')
+  await writeFile(data('connections.json'), '{"encrypted":"fixture"}')
   await writeFile(join(fake.base, 'original.txt'), 'keep')
   for (const name of ['account-profiles', 'runtimes', 'webview2-profile', 'Network']) {
     await mkdir(data(name)); await writeFile(data(`${name}/keep.txt`), 'keep')
@@ -52,6 +53,7 @@ it('erases app-owned workspaces and settings only on next boot, preserving sign-
   await vi.waitFor(() => expect(fake.restart).toHaveBeenCalledOnce())
   expect(fake.confirm).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ defaultId: 0, cancelId: 0, detail: expect.stringContaining('No backup') }))
   expect(await finishAppReset()).toBe(true)
+  await expect(access(data('connections.json'))).rejects.toThrow()
   for (const path of [first, second, data('settings.json'), data('vaults.json'), data('reset-request.json')]) await expect(access(path)).rejects.toThrow()
   for (const name of ['account-profiles', 'runtimes', 'webview2-profile', 'Network']) expect(await readFile(data(`${name}/keep.txt`), 'utf8')).toBe('keep')
   expect(await readFile(join(fake.base, 'original.txt'), 'utf8')).toBe('keep')

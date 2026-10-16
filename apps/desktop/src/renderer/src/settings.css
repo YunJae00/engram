@@ -147,3 +147,9 @@ input:is([type='checkbox'], [type='radio']):not(.switch):not([role='switch']) { 
   .settings-body > .settings-scroll { padding: 20px 24px; }
   .appearance-options { gap: 12px; }
 }
+.key-connection { display: block; margin-top: 12px; }
+.key-connection-summary, .key-connection-form { flex-basis: 100%; }
+.key-connection-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-small); color: var(--fg-faint); }
+.key-connection-form { display: grid; gap: 8px; }
+.key-connection-form label { display: grid; gap: 4px; font-size: var(--fs-small); }
+.key-connection-form input { min-width: 0; }

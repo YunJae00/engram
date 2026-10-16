@@ -4,8 +4,11 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await helper.ready
   await helper.request('inspectWindow', { window: target.window, pid: 0 })
   await fixture.request('away')
+  await fixture.request('minimizeQuiet')
+  assert.equal((await helper.request('quietState', target)).minimized, true)
   const scan = () => helper.request('quietScan', target)
   const first = await scan()
+  assert.equal(first.state.minimized, false, 'Quiet reads restore an owned minimized window')
   const entry = first.controls.find(control => control.name === 'Worker input')
   const button = first.controls.find(control => control.name === 'Count click')
   assert.ok(entry?.can.set)

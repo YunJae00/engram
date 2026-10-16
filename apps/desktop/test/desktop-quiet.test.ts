@@ -76,7 +76,9 @@ describe('quiet app access', () => {
   it('sets a field at once when the person is elsewhere, and waits while they type in that app', async () => {
     const away = binding({ foreground: false, idleMs: 50 })
     await quietSet('bot-one', 'Claude', 'f'.repeat(32), 'c1', 'hello', undefined)
-    expect(away.request.mock.calls.map(([method]) => method)).toEqual(['quietState', 'quietSet'])
+    expect(away.request.mock.calls.map(([method]) => method)).toEqual(['quietState', 'applicationFrame', 'quietSet'])
+    await vi.advanceTimersByTimeAsync(2_600)
+    expect(away.request.mock.calls.map(([method]) => method).at(-1)).toBe('applicationFrameHide')
 
     const busy = binding({ foreground: true, idleMs: 200 })
     const pending = quietSet('bot-one', 'Claude', 'f'.repeat(32), 'c1', 'hello', 'old')

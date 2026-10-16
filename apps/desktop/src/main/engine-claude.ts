@@ -6,6 +6,7 @@ import { loadSettings } from './settings.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
+import { brainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
 // The person's chosen model, read per call so a change in Settings or from
 // the composer takes hold on the very next turn. Empty means the app's own
@@ -118,8 +119,9 @@ export function forgetClaudeModels(): void {
 }
 
 export class ClaudeEngine implements CloudEngine {
-  private readonly env: NodeJS.ProcessEnv
-  constructor(readonly accountProfile = activeAccountProfile('claude')) { this.env = accountEnvironment('claude', accountProfile) }
+  // Read fresh each time: a key connection added later must reach the next process.
+  private get env(): NodeJS.ProcessEnv { return accountEnvironment('claude', this.accountProfile) }
+  constructor(readonly accountProfile = activeAccountProfile('claude')) {}
   readonly id = 'claude' as const
   readonly label = 'Claude'
   readonly desktopToolIsolation = true
@@ -131,6 +133,9 @@ export class ClaudeEngine implements CloudEngine {
     return this.status.read(async () => {
       const binary = claudeBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
+      await loadBrainConnections()
+      // A key connection is checked with the address itself; the runtime's sign-in files are not consulted.
+      if (brainConnection('claude')) { const probe = await probeConnection('claude'); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
       if (code === null) return { installed: true, loggedIn: false, conclusive: false }
       return readAuthStatus(out)
@@ -157,6 +162,7 @@ export class ClaudeEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
+    if (brainConnection('claude')) { await clearBrainConnection('claude'); this.status.forget(); return }
     const binary = claudeBinary()
     if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
     this.status.forget()
