@@ -53,8 +53,10 @@ it('injects a key only into the account that owns it, not another runtime or the
     expect(process.env['ENGRAM_CODEX_KEY']).toBeUndefined()
     expect(accountEnvironment('codex', 'system')['ENGRAM_CODEX_KEY']).toBe('synthetic-company-key')
     fake.broken = true
-    await expect(selectAccountProfile('codex', 'system')).resolves.toBeDefined()
+    await expect(selectAccountProfile('codex', 'system')).resolves.toBeUndefined()
+    expect(accountProfiles().selected.codex).toBe('system')
     expect(() => accountEnvironment('codex', 'system')).toThrow(/key unavailable/)
-    await expect(selectAccountProfile('codex', other)).resolves.toBeDefined()
+    await expect(selectAccountProfile('codex', other)).resolves.toBeUndefined()
+    expect(accountProfiles().selected.codex).toBe(other)
   } finally { fake.connected = false; fake.broken = false; process.env = original }
 })
