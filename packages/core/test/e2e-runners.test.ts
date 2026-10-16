@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { readdirSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -30,9 +31,34 @@ describe('e2e schedules', () => {
     }
   })
 
-  it('does not expand the suite for unit tests, verification scripts or version-only manifests', () => {
-    for (const path of ['apps/desktop/test/quiet-result-state.test.ts', 'scripts/e2e-affected.mjs', 'package.json', 'apps/desktop/package.json']) {
+  it('does not expand the suite for unit tests or verification scripts', () => {
+    for (const path of ['apps/desktop/test/quiet-result-state.test.ts', 'scripts/e2e-affected.mjs']) {
       expect(run('e2e-affected', path)).toContain('1 spec(s): shell.spec.ts')
     }
+  })
+
+  it('ignores version-only manifests, but not dependency changes or an unknown baseline', () => {
+    mkdirSync(join(root, 'tmp'), { recursive: true })
+    const fixture = mkdtempSync(join(root, 'tmp/e2e-manifest-'))
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: fixture, encoding: 'utf8' }).trim()
+    const select = () => execFileSync(process.execPath, ['scripts/e2e-affected.mjs', '--list', 'package.json'], { cwd: fixture, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+    try {
+      mkdirSync(join(fixture, 'scripts'), { recursive: true })
+      mkdirSync(join(fixture, 'apps/desktop/e2e'), { recursive: true })
+      copyFileSync(join(root, 'scripts/e2e-affected.mjs'), join(fixture, 'scripts/e2e-affected.mjs'))
+      for (const spec of all) writeFileSync(join(fixture, 'apps/desktop/e2e', spec), '')
+      writeFileSync(join(fixture, 'package.json'), '{"version":"1","dependencies":{"a":"1"}}')
+      git('init', '--quiet')
+      git('add', 'package.json')
+      git('update-ref', 'refs/remotes/origin/main', git('write-tree'))
+      writeFileSync(join(fixture, 'package.json'), '{"version":"2","dependencies":{"a":"1"}}')
+      expect(select()).toContain('1 spec(s): shell.spec.ts')
+      writeFileSync(join(fixture, 'package.json'), '{"version":"2","dependencies":{"a":"2"}}')
+      const dependenciesChanged = select()
+      for (const spec of all) expect(dependenciesChanged).toContain(spec)
+      git('update-ref', '-d', 'refs/remotes/origin/main')
+      const baselineUnknown = select()
+      for (const spec of all) expect(baselineUnknown).toContain(spec)
+    } finally { rmSync(fixture, { recursive: true, force: true }) }
   })
 })
