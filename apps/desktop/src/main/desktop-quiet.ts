@@ -15,18 +15,31 @@ const SETTLE_POLL_MS = 1_000
 // tools are turned away from these, since the person would lose the mouse for
 // nothing the providers could not do.
 const COVERED_MS = 15 * 60_000
-const covered = new Map<string, Map<string, { title: string; at: number }>>()
+const covered = new Map<string, Map<string, { title: string; at: number; verdict: 'covered' | 'bare' }>>()
 
-export function quietCovers(lane: string, app?: string): string | null {
+// What the quiet lane last found in a window: 'covered' when it exposed controls (the hands tools stay away),
+// 'bare' when it exposed none or a provider refused to act (the hands tools may step in), 'unknown' before any read.
+export function quietVerdict(lane: string, app?: string): { verdict: 'covered' | 'bare' | 'unknown'; title?: string } {
   const windows = covered.get(lane)
-  if (!windows) return null
+  if (!windows) return { verdict: 'unknown' }
   const wanted = app?.trim().toLocaleLowerCase()
   for (const [window, entry] of windows) {
     if (Date.now() - entry.at > COVERED_MS) { windows.delete(window); continue }
-    if (!wanted || entry.title.toLocaleLowerCase().includes(wanted)) return entry.title
+    if (!wanted || entry.title.toLocaleLowerCase().includes(wanted)) return { verdict: entry.verdict, title: entry.title }
   }
-  return null
+  return { verdict: 'unknown' }
 }
+export function quietCovers(lane: string, app?: string): string | null {
+  const found = quietVerdict(lane, app)
+  return found.verdict === 'covered' ? found.title ?? null : null
+}
+function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'bare'): void {
+  const windows = covered.get(lane) ?? new Map<string, { title: string; at: number; verdict: 'covered' | 'bare' }>()
+  windows.set(binding.window, { title: binding.name, at: Date.now(), verdict })
+  covered.set(lane, windows)
+}
+// A provider that offers a control but will not act on it hands the window to the hands tools.
+const PROVIDER_LIMIT = /does not take text|cannot be pressed/
 export function forgetQuietCoverage(lane?: string): void { if (lane) covered.delete(lane); else covered.clear() }
 
 // The frame around the app says which window is being worked in, without a
@@ -56,7 +69,9 @@ const pause = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((
 async function windowFor(lane: string, app: string, signal?: AbortSignal): Promise<DesktopBinding> {
   signal?.throwIfAborted()
   assertDesktopTurnNotStopped(lane)
-  const binding = await bindDesktopForLane(lane, { app })
+  // The window bound for this chat is kept while its title still matches: listing windows again costs up to seconds and re-selects every window.
+  const current = desktopBinding(lane)
+  const binding = current && current.readable && !current.stopped && !current.host.closed && current.name.toLocaleLowerCase().includes(app.trim().toLocaleLowerCase()) ? current : await bindDesktopForLane(lane, { app })
   signal?.throwIfAborted()
   if (!binding.readable || binding.stopped || binding.host.closed) throw new Error(`"${binding.name}" is not readable by this chat right now.`)
   return binding
@@ -102,11 +117,7 @@ export async function quietScan(lane: string, app: string, find: string | undefi
   showWorkFrame(binding)
   const result = await request<QuietObservationDto>(binding, 'quietScan', find ? { find } : {}, signal)
   signal?.throwIfAborted()
-  if (result.controls.length > 0) {
-    const windows = covered.get(lane) ?? new Map<string, { title: string; at: number }>()
-    windows.set(binding.window, { title: binding.name, at: Date.now() })
-    covered.set(lane, windows)
-  }
+  remember(lane, binding, result.controls.length > 0 ? 'covered' : 'bare')
   return result
 }
 
@@ -114,7 +125,7 @@ export async function quietSet(lane: string, app: string, snapshot: string, cont
   const binding = await windowFor(lane, app, signal)
   await awaitPersonAway(binding, signal)
   showWorkFrame(binding)
-  const result = await request<QuietSetResultDto>(binding, 'quietSet', { snapshot, control, text, ...(expected !== undefined ? { expected } : {}) }, signal)
+  const result = await request<QuietSetResultDto>(binding, 'quietSet', { snapshot, control, text, ...(expected !== undefined ? { expected } : {}) }, signal).catch((error: unknown) => { if (error instanceof Error && PROVIDER_LIMIT.test(error.message)) remember(lane, binding, 'bare'); throw error })
   signal?.throwIfAborted()
   return result
 }
@@ -123,7 +134,7 @@ export async function quietPress(lane: string, app: string, snapshot: string, co
   const binding = await windowFor(lane, app, signal)
   await awaitPersonAway(binding, signal)
   showWorkFrame(binding)
-  const result = await request<QuietPressResultDto>(binding, 'quietPress', { snapshot, control }, signal)
+  const result = await request<QuietPressResultDto>(binding, 'quietPress', { snapshot, control }, signal).catch((error: unknown) => { if (error instanceof Error && PROVIDER_LIMIT.test(error.message)) remember(lane, binding, 'bare'); throw error })
   signal?.throwIfAborted()
   return result
 }

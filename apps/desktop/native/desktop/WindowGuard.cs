@@ -167,6 +167,31 @@ internal sealed class WindowGuard : IDisposable
         return !string.IsNullOrWhiteSpace(title.ToString());
     }
 
+    // Listing retains process permissions without querying each accessibility tree.
+    internal DesktopTarget Describe(IntPtr handle)
+    {
+        uint actual;
+        var thread = GetWindowThreadProcessId(handle, out actual);
+        if (actual > int.MaxValue || thread == 0) throw new InvalidOperationException("The selected window has changed process");
+        var targetPid = (int)actual;
+        if (targetPid <= 4 || targetPid == OwnerPid || targetPid == HelperPid) throw new InvalidOperationException("This window cannot be shared");
+        long started;
+        using (var process = Process.GetProcessById(targetPid))
+        {
+            if (process.SessionId != SessionId || ProtectedNames.Contains(process.ProcessName))
+                throw new InvalidOperationException("System and Engram windows cannot be shared");
+            started = process.StartTime.ToUniversalTime().Ticks;
+        }
+        if (string.Equals(ProcessPath(targetPid), OwnerPath, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Engram windows cannot be shared");
+        RequireUserDesktop(thread);
+        RequireUserProcess(targetPid);
+        var generation = Lifetime.Track(handle);
+        var title = new StringBuilder(1024);
+        GetWindowText(handle, title, title.Capacity);
+        return new DesktopTarget { Handle = handle, Pid = targetPid, Title = title.ToString(), Started = started, Generation = generation, Minimized = IsIconic(handle) };
+    }
+
     internal DesktopTarget Resolve(string id, int pid)
     {
         using (var owner = Process.GetProcessById(OwnerPid))

@@ -62,7 +62,7 @@ export class DesktopHost {
         flog('desktop-native-connection', detail)
         this.close(new Error(`The computer connection closed. ${detail}`))
       }
-      this.readyTimer = setTimeout(() => fail(new Error('The native helper did not become ready within 10 seconds.')), 10000)
+      this.readyTimer = setTimeout(() => fail(new Error('The native helper did not become ready within 25 seconds.')), 25000)
       child.once('error', fail)
       child.once('exit', fail)
       child.stdin.once('error', fail)
@@ -99,8 +99,8 @@ export class DesktopHost {
         clearTimeout(pending.timer)
         this.pending.delete(message.id!)
         if (pending.generation !== this.generation) { pending.reject(new Error('Computer action was cancelled.')); return }
-        if (message.error) {
-          const error = new Error(typeof message.error === 'string' ? message.error.slice(0, 500) : 'The desktop request failed.')
+        if ('error' in message && message.error !== undefined) {
+          const error = new Error(typeof message.error === 'string' && message.error.trim() ? message.error.slice(0, 500) : 'The desktop request failed.')
           flog('desktop-native-error', `${pending.method}: ${error.message}`)
           pending.reject(error)
           if ((pending.method === 'bind' || pending.method === 'prepare') && !recoverableDesktopFailure(error.message)) this.close(error)

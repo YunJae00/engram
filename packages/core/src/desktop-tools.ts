@@ -167,7 +167,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
     },
   }, {
     name: 'open_app',
-    description: `Open a supported Windows app using its exact ID from list_apps, without command arguments. After launch, use list_windows to find its localized window title, then read_desktop to verify it opened before acting. Never retry a failed launch if the person asked to stop on the first error. ${GUIDANCE}`,
+    description: `Open a supported Windows app using its exact ID from list_apps, without command arguments. After launch, use list_windows to find its localized window title, then app_read to read it before acting. Never retry a failed launch if the person asked to stop on the first error. ${GUIDANCE}`,
     argsSchema: { type: 'object', additionalProperties: false, required: ['app'], properties: { app: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
     async run(args, context) {
       context.signal?.throwIfAborted()
@@ -178,7 +178,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
   const windows = courier.windows
   if (windows) tools.push({
     name: 'list_windows',
-    description: 'List the app windows open on this computer, with the one in front marked. Use it to pick the app for read_desktop or look_desktop. Reading the list takes no control.',
+    description: 'List the app windows open on this computer, with the one in front marked. Use it to pick the app for app_read. Reading the list takes no control.',
     argsSchema: { type: 'object', properties: {}, additionalProperties: false },
     async run(args, context) {
       context.signal?.throwIfAborted()

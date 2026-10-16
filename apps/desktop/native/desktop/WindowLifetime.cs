@@ -66,6 +66,15 @@ internal sealed class WindowLifetime : IDisposable
         lock (Sync) { if (Selected.ContainsKey(hwnd)) Destroyed.Add(hwnd); }
     }
 
+    internal long Track(IntPtr window)
+    {
+        lock (Sync)
+        {
+            long generation;
+            return Selected.TryGetValue(window, out generation) && !Destroyed.Contains(window) ? generation : Select(window);
+        }
+    }
+
     internal long Select(IntPtr window)
     {
         lock (Sync)
