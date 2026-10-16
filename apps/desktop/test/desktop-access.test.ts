@@ -21,7 +21,7 @@ vi.mock('../src/main/desktop-host.js', () => ({
     revoke(reason = 'Mouse input returned control to the user') { this.changed(reason) }
   },
 }))
-import { bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook } from '../src/main/desktop-access.js'
+import { bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
 
 const lane = 'bot-one'
 const other = 'bot-two'
@@ -84,13 +84,17 @@ describe('binding the app the comet needs', () => {
     await expect(bindDesktopForLane(other, { app: 'Quarterly' })).rejects.toThrow('belongs to another chat')
   })
 
-  it('lists windows for the comet with the one in front marked, without keeping a host open', async () => {
+  it('lists windows for the comet with the one in front marked, keeping one catalog helper warm until it is closed', async () => {
     expect(await desktopWindows()).toEqual([
       { id: 'window:100:0', name: 'Quarterly workbook - Excel', foreground: true },
       { id: 'window:101:0', name: 'Planning notes - Notepad' },
       { id: 'window:102:0', name: 'Old sheet - Excel' },
     ])
     expect(fake.hosts).toHaveLength(1)
+    expect(fake.hosts[0]!.closed).toBe(false)
+    await desktopWindows()
+    expect(fake.hosts).toHaveLength(1)
+    closeCatalogHost()
     expect(fake.hosts[0]!.closed).toBe(true)
   })
 })
@@ -112,7 +116,7 @@ describe('the connection through hands and closures', () => {
     await expect(desktopWindows()).resolves.toHaveLength(3)
     expect(fake.hosts).toHaveLength(2)
     expect(fake.request.mock.contexts.at(-1)).toBe(fake.hosts[1])
-    expect(fake.hosts[1]!.closed).toBe(true)
+    expect(fake.hosts[1]!.closed).toBe(false)
     expect(desktopBinding(lane)).toBe(binding)
     expect(binding.stopped).toBe(true)
   })

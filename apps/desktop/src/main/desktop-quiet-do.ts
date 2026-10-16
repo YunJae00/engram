@@ -9,7 +9,7 @@ export interface QuietDoRequest { lane: string; app: string; goal: string; text?
 export interface QuietDoStep { action: string; control?: string; name?: string; confidence: number; ms: number; outcome: string }
 export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean }
 
-const IRREVERSIBLE = /\b(send|submit|post|publish|delete|remove|pay|purchase|buy|confirm order|sign out|log out)\b|보내기|전송|제출|게시|삭제|제거|결제|구매|주문|로그아웃/i
+const IRREVERSIBLE = /\b(send|submit|post|publish|delete|remove|pay|purchase|buy|save|apply|confirm order|sign out|log out)\b|보내기|전송|제출|게시|삭제|제거|결제|구매|저장|적용|주문|로그아웃/i
 const OPTION_CAP = 250
 const SETTLE_MS = 700
 const MIN_CONFIDENCE = 0.35
@@ -60,6 +60,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
   let pressed = false
   let foregroundChanged = false
   let lastFingerprint = ''
+  let lastChoice = ''
   let observation = await quietScan(request.lane, request.app, undefined, request.signal)
   const finish = (status: QuietDoResult['status']): QuietDoResult => ({ status, steps, pressed, foregroundChanged, screen: observation.texts.slice(-TEXT_TAIL).map(text => text.text).join('\n') })
   for (let step = 0; step < request.maxSteps; step++) {
@@ -75,9 +76,12 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     if (decision.confidence < MIN_CONFIDENCE) { steps.push({ action: decision.choice, confidence: decision.confidence, ms: decision.ms, outcome: 'not confident enough to act' }); return finish('unsure') }
     const control = controls.get(decision.choice)!
     const [kind, id] = decision.choice.split(' ') as ['set' | 'press', string]
+    // A screen that did not change after the same action was already delivered is a loop, not progress; a
+    // display that updates while the buttons stay the same (a calculator) is not.
     const current = fingerprint(observation)
-    const unchanged = current === lastFingerprint
+    const unchanged = current === lastFingerprint && decision.choice === lastChoice
     lastFingerprint = current
+    lastChoice = decision.choice
     if (unchanged) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'the screen has not changed; do not repeat the delivered action' }); return finish('blocked') }
     if (kind === 'press' && irreversibleName(control.name)) {
       steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'looks irreversible; left for the person to approve' })

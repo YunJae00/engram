@@ -59,6 +59,9 @@ describe('a short goal run by a decision model', () => {
     expect(allowed.status).toBe('needs-person')
     expect(fake.press).not.toHaveBeenCalled()
     expect(irreversibleName('Submit form')).toBe(true)
+    expect(irreversibleName('Save changes')).toBe(true)
+    expect(irreversibleName('Apply')).toBe(true)
+    expect(irreversibleName('저장')).toBe(true)
     expect(irreversibleName('New chat')).toBe(false)
   })
 

@@ -24,9 +24,15 @@ describe('e2e schedules', () => {
   })
 
   it('falls back to the entire suite for unmapped code and dependencies', () => {
-    for (const path of ['packages/core/src/new-area.ts', 'package.json', 'pnpm-lock.yaml']) {
+    for (const path of ['packages/core/src/new-area.ts', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
       const result = run('e2e-affected', path)
       for (const spec of all) expect(result).toContain(spec)
+    }
+  })
+
+  it('does not expand the suite for unit tests, verification scripts or version-only manifests', () => {
+    for (const path of ['apps/desktop/test/quiet-result-state.test.ts', 'scripts/e2e-affected.mjs', 'package.json', 'apps/desktop/package.json']) {
+      expect(run('e2e-affected', path)).toContain('1 spec(s): shell.spec.ts')
     }
   })
 })

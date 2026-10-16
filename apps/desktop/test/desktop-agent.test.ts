@@ -3,13 +3,14 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
+  quietScan: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
   lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false,
 }))
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
 vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act, ensureDesktopControl: fake.ensure, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: vi.fn(), quietSet: vi.fn(), quietPress: vi.fn(), quietText: vi.fn() }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -188,5 +189,34 @@ describe('the quiet lane keeps the apps it has read', () => {
     expect(fake.act).not.toHaveBeenCalled()
     await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
     expect(fake.read).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a quiet press', () => {
+  it('returns the app read again, and counts as committed only for a control that cannot be taken back', async () => {
+    vi.useFakeTimers()
+    try {
+      fake.quietPress.mockResolvedValue({ pressed: 'invoke', control: 'c3' })
+      fake.quietScan.mockResolvedValue({ window: '7', pid: 70, title: 'ChatGPT', snapshot: 'b'.repeat(32), controls: [{ id: 'c1', type: 'Edit', name: 'Message', can: { set: true, press: false, text: true }, enabled: true, offscreen: false, focused: false, secret: false }], texts: [], skippedControls: 0, skippedTexts: 0, ms: 50, state: { foreground: false, idleMs: 9000, minimized: false } })
+      const press = desktopAgentTools('bot-one').find((tool) => tool.name === 'app_press')!
+      const committed = vi.fn(), observed = vi.fn()
+      const opening = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c3' }, { task: 'Open a chat', onCommitted: committed, onObservedAfterAction: observed })
+      await vi.advanceTimersByTimeAsync(400)
+      const result = await opening
+      expect(JSON.parse(result)).toMatchObject({ pressed: 'invoke', appNow: expect.any(String) })
+      expect(result).toContain('snapshot ' + 'b'.repeat(32))
+      expect(committed).not.toHaveBeenCalled()
+      expect(observed).toHaveBeenCalledOnce()
+      const sending = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c9' }, { task: 'Send it', onCommitted: committed })
+      await vi.advanceTimersByTimeAsync(400)
+      await sending
+      expect(committed).toHaveBeenCalledOnce()
+      observed.mockClear()
+      fake.quietScan.mockRejectedValueOnce(new Error('Readback unavailable'))
+      const failedRead = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c3' }, { task: 'Open a chat', onObservedAfterAction: observed })
+      await vi.advanceTimersByTimeAsync(400)
+      expect(JSON.parse(await failedRead)).toMatchObject({ pressed: 'invoke', observationMayBeStale: true, error: expect.stringContaining('Readback unavailable') })
+      expect(observed).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
   })
 })

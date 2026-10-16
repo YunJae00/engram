@@ -112,12 +112,19 @@ export async function awaitPersonAway(binding: DesktopBinding, signal?: AbortSig
   if (waited) flog('desktop-quiet', `waited for the person to leave ${binding.name}`)
 }
 
+// Control names by snapshot, so an action can be judged by what it pressed.
+const NAMED_SNAPSHOTS = 12
+const named = new Map<string, Map<string, string>>()
+export function quietControlName(snapshot: string, control: string): string | undefined { return named.get(snapshot)?.get(control) }
+
 export async function quietScan(lane: string, app: string, find: string | undefined, signal?: AbortSignal): Promise<QuietObservationDto> {
   const binding = await windowFor(lane, app, signal)
   showWorkFrame(binding)
   const result = await request<QuietObservationDto>(binding, 'quietScan', find ? { find } : {}, signal)
   signal?.throwIfAborted()
   remember(lane, binding, result.controls.length > 0 ? 'covered' : 'bare')
+  named.set(result.snapshot, new Map(result.controls.map(control => [control.id, control.name])))
+  while (named.size > NAMED_SNAPSHOTS) named.delete(named.keys().next().value!)
   return result
 }
 
