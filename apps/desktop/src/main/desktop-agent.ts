@@ -1,13 +1,13 @@
 import { nativeImage } from 'electron'
 import { desktopTools, liveDocumentTools, quietDesktopTools, type AgentTool, type ToolOutcome } from 'core'
 import type { DesktopObservationDto } from '../shared/desktop.js'
-import { desktopBinding, desktopWindows } from './desktop-access.js'
+import { catalogHost, desktopBinding, desktopWindows } from './desktop-access.js'
 import { accessLiveDocument, actOnDesktop, ensureDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
-import { quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
+import { quietControlName, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
 import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
-import { formatDo, quietDo } from './desktop-quiet-do.js'
+import { formatDo, irreversibleName, quietDo } from './desktop-quiet-do.js'
 import { brainConnection } from './brain-connections.js'
 
 function imageGeometry(observation: DesktopObservationDto): string {
@@ -61,6 +61,22 @@ async function listWindows(signal?: AbortSignal): Promise<string> {
   return windows.map((one) => `- ${one.name}${one.foreground ? ' (in front)' : ''}`).join('\n')
 }
 
+// After a press or a set, the app as it now is: the brain acts on this instead of spending a call on app_read.
+const AFTER_ACTION_MS = 350
+async function readAgain(lane: string, app: string, receipt: string, observed?: () => void, signal?: AbortSignal): Promise<string> {
+  await new Promise(resolve => setTimeout(resolve, AFTER_ACTION_MS))
+  signal?.throwIfAborted()
+  const result = JSON.parse(receipt) as Record<string, unknown>
+  try {
+    const appNow = formatScan(await quietScan(lane, app, undefined, signal), undefined)
+    observed?.()
+    return JSON.stringify({ ...result, appNow })
+  } catch (error) {
+    signal?.throwIfAborted()
+    return JSON.stringify({ ...result, observationMayBeStale: true, error: `The app could not be read again: ${error instanceof Error ? error.message : String(error)}. Use app_read.` })
+  }
+}
+
 // The computer is on the menu whenever this build can drive it; which brain
 // may hold it is the caller's check. Nothing here asks the person - the first
 // reading of an app is what takes control, and the banner is the notice.
@@ -68,8 +84,17 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   if (!DesktopHost.available()) return []
   const quiet = quietDesktopTools({
     scan: async (app, find, signal) => formatScan(await quietScan(lane, app, find, signal), find),
-    set: async (app, snapshot, control, text, expected, context) => formatSet(await quietSet(lane, app, snapshot, control, text, expected, context.signal), text),
-    press: async (app, snapshot, control, context) => formatPress(await quietPress(lane, app, snapshot, control, context.signal)),
+    set: async (app, snapshot, control, text, expected, context) => {
+      const result = formatSet(await quietSet(lane, app, snapshot, control, text, expected, context.signal), text)
+      return readAgain(lane, app, result, context.onObservedAfterAction, context.signal)
+    },
+    press: async (app, snapshot, control, context) => {
+      // Only a control named like send, submit, save or delete commits; opening a chat or a menu is navigation.
+      const name = quietControlName(snapshot, control)
+      const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal))
+      if (!name || irreversibleName(name)) context.onCommitted?.()
+      return readAgain(lane, app, result, context.onObservedAfterAction, context.signal)
+    },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
     ...(brainConnection('decision') ? { do: async (app, goal, text, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), maxSteps, ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
@@ -82,13 +107,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     if (found.verdict === 'unknown') throw new Error('Read the app with app_read first. The hands tools, which take the mouse and keyboard, are only for an app whose controls app_read reports without any action.')
   }
   return [...quiet, ...desktopTools({
-    apps: async (signal) => {
-      const host = new DesktopHost()
-      const abort = () => host.close()
-      signal?.addEventListener('abort', abort, { once: true })
-      try { signal?.throwIfAborted(); return JSON.stringify(await host.request('listApps', {})) }
-      finally { signal?.removeEventListener('abort', abort); host.close() }
-    },
+    apps: async (signal) => { signal?.throwIfAborted(); return JSON.stringify(await catalogHost().request('listApps', {})) },
     open: (app, signal) => withDesktopActivity(lane, () => openDesktopApp(lane, app, signal)),
     windows: listWindows,
     read: (signal, app) => withDesktopActivity(lane, async () => { quietFirst(app); return JSON.stringify(await readControlledDesktop(lane, signal, true, app)) }),

@@ -42,7 +42,7 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
       requirePublicText(goal, context)
       if (text) requirePublicText(text, context)
       const result = await run(app, goal.trim(), text, steps, context)
-      if ((JSON.parse(result) as { pressed?: boolean }).pressed) context.onCommitted?.()
+      if ((JSON.parse(result) as { committed?: boolean }).committed) context.onCommitted?.()
       return result
     },
   }] : []
@@ -62,7 +62,7 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
     },
     {
       name: 'app_set',
-      description: `Put text into an editable control of an app as its whole value, without injecting keystrokes or requesting focus; Enter is not pressed. A field that already holds text this chat did not put there is refused unless expected repeats that exact text. The returned value is the field read back: check it before pressing anything. ${QUIET_NOTE}`,
+      description: `Put text into an editable control of an app as its whole value, without injecting keystrokes or requesting focus; Enter is not pressed. A field that already holds text this chat did not put there is refused unless expected repeats that exact text. The result is the field read back followed by the app read again, with a new snapshot: act on that, without calling app_read again. ${QUIET_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['app', 'snapshot', 'control', 'text'],
         properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, snapshot: { type: 'string', minLength: 32, maxLength: 32 }, control: { type: 'string', pattern: '^c[0-9]+$' }, text: { type: 'string', minLength: 1, maxLength: 2000 }, expected: { type: 'string', maxLength: 2000 } },
@@ -80,16 +80,14 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
     },
     {
       name: 'app_press',
-      description: `Request a control action directly from its app provider: a button, a list, tree or tab item, a toggle or a fold. The provider may activate its own window. Pressing send, submit or anything else that cannot be taken back is done only after the text was confirmed in its field and the person asked for it. ${QUIET_NOTE}`,
+      description: `Request a control action directly from its app provider: a button, a list, tree or tab item, a toggle or a fold. The provider may activate its own window. Pressing send, submit or anything else that cannot be taken back is done only after the text was confirmed in its field and the person asked for it. The result includes the app read again after the press, with a new snapshot: act on that, without calling app_read again. ${QUIET_NOTE}`,
       argsSchema: { type: 'object', additionalProperties: false, required: ['app', 'snapshot', 'control'], properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, snapshot: { type: 'string', minLength: 32, maxLength: 32 }, control: { type: 'string', pattern: '^c[0-9]+$' } } },
       async run(args, context) {
         context.signal?.throwIfAborted()
         if (!plainRecord(args) || !exactKeys(args, ['app', 'snapshot', 'control'])) return 'app_press takes app, snapshot and control.'
         const app = appOf(args['app']), snapshot = snapshotOf(args['snapshot']), control = controlOf(args['control'])
         if (!app || !snapshot || !control) return 'app_press needs the snapshot and a control ID from app_read.'
-        const result = await courier.press(app, snapshot, control, context)
-        context.onCommitted?.()
-        return result
+        return courier.press(app, snapshot, control, context)
       },
     },
     {

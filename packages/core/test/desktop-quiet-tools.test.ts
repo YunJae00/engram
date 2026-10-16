@@ -21,7 +21,7 @@ describe('quiet app tools', () => {
   it('offers app_do only with a courier and keeps its arguments and committed receipt guarded', async () => {
     const { courier, tools } = setup()
     expect(tools.some(tool => tool.name === 'app_do')).toBe(false)
-    const run = vi.fn(async () => '{"status":"done","pressed":true}')
+    const run = vi.fn(async () => '{"status":"done","pressed":true,"committed":true}')
     const tool = quietDesktopTools({ ...courier, do: run }).find(tool => tool.name === 'app_do')!
     const committed = vi.fn()
     expect(isDesktopTool(tool.name)).toBe(true)
@@ -64,12 +64,12 @@ describe('quiet app tools', () => {
     expect(courier.set).toHaveBeenCalledTimes(2)
   })
 
-  it('presses a control and reports the press as something committed', async () => {
+  it('presses a control and leaves deciding what committed to the host', async () => {
     const { courier, tool } = setup()
     const onCommitted = vi.fn()
     expect(await tool('app_press').run({ app: 'Claude', snapshot: SNAPSHOT, control: 'c7' }, { ...CONTEXT, onCommitted })).toContain('invoke')
     expect(courier.press).toHaveBeenCalledWith('Claude', SNAPSHOT, 'c7', expect.objectContaining({ task: CONTEXT.task }))
-    expect(onCommitted).toHaveBeenCalledTimes(1)
+    expect(onCommitted).not.toHaveBeenCalled()
     expect(await tool('app_press').run({ app: 'Claude', snapshot: SNAPSHOT }, CONTEXT)).toContain('takes app, snapshot and control')
   })
 

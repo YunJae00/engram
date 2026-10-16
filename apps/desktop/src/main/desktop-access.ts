@@ -32,7 +32,7 @@ const changed = () => broadcast({ type: 'desktop:changed' })
 export function desktopBindings(): DesktopBindingDto[] {
   return [...bindings.values()].map(({ lane, source, name, readable, stopped }) => ({ lane, source, name, readable, stopped }))
 }
-export function closeDesktopAccess(): void { generation++; for (const key of [...bindings.keys()]) releaseDesktop(key) }
+export function closeDesktopAccess(): void { generation++; for (const key of [...bindings.keys()]) releaseDesktop(key); closeCatalogHost() }
 export function releaseDesktop(lane: string): void {
   releaseControl(lane, 'The app window was disconnected.')
   choices.set(lane, (choices.get(lane) ?? 0) + 1)
@@ -68,11 +68,29 @@ export async function desktopSources(): Promise<DesktopCapturerSource[]> {
     return id && !own.has(id)
   })
 }
+// The helper that answers catalog questions (open windows, launchable apps) stays up for a
+// while after each answer: starting one costs 1-6s on a loaded machine, answering costs 0.1s.
+const CATALOG_IDLE_MS = 90_000
+let catalog: { host: DesktopHost; timer: ReturnType<typeof setTimeout> } | null = null
+export function catalogHost(): DesktopHost {
+  const bound = [...bindings.values()].find((binding) => !binding.host.closed)?.host
+  if (bound) return bound
+  if (catalog && catalog.host.closed) { clearTimeout(catalog.timer); catalog = null }
+  if (!catalog) {
+    const host = new DesktopHost(() => undefined)
+    catalog = { host, timer: setTimeout(() => { if (catalog?.host === host) { catalog = null; host.close() } }, CATALOG_IDLE_MS) }
+  } else {
+    clearTimeout(catalog.timer)
+    const held = catalog
+    held.timer = setTimeout(() => { if (catalog === held) { catalog = null; held.host.close() } }, CATALOG_IDLE_MS)
+  }
+  catalog.timer.unref?.()
+  return catalog.host
+}
+export function closeCatalogHost(): void { if (catalog) { clearTimeout(catalog.timer); catalog.host.close(); catalog = null } }
 export async function desktopWindows(): Promise<DesktopWindowDto[]> {
   if (!DesktopHost.available()) return []
-  const host = [...bindings.values()].find((binding) => !binding.host.closed)?.host ?? hostFor('')
-  try { return (await nativeWindows(host)).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.foreground ? { foreground: true } : {}) })) }
-  finally { if (![...bindings.values()].some((binding) => binding.host === host)) host.close() }
+  return (await nativeWindows(catalogHost())).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.foreground ? { foreground: true } : {}) }))
 }
 async function nativeWindows(host: DesktopHost): Promise<NativeWindow[]> {
   const own = new Set(BrowserWindow.getAllWindows().map((window) => window.getNativeWindowHandle().readBigUInt64LE().toString()))

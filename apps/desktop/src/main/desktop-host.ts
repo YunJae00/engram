@@ -188,7 +188,7 @@ export class DesktopHost {
         }
         pending.timer = setTimeout(() => {
           if (this.pending.get(id) === pending) this.close(new Error('This app stopped responding. Computer control was stopped.'))
-        }, method === 'documentCompose' ? 30000 : 8000)
+        }, method === 'documentCompose' || method === 'listApps' || method === 'openApp' || method === 'listWindows' ? 30000 : 8000)
         try {
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }

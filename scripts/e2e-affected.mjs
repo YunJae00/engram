@@ -6,7 +6,7 @@
 //   node scripts/e2e-affected.mjs --list     print the chosen specs without running them
 //   node scripts/e2e-affected.mjs a.ts b.ts  specs for the given paths
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -30,6 +30,16 @@ const args = process.argv.slice(2)
 const listOnly = args.includes('--list')
 const given = args.filter(arg => !arg.startsWith('--'))
 
+function versionOnly(path) {
+  if (!/^(apps\/desktop\/)?package\.json$/.test(path)) return false
+  try {
+    const before = JSON.parse(execFileSync('git', ['show', `origin/main:${path}`], { cwd: root, encoding: 'utf8' }))
+    const after = JSON.parse(readFileSync(join(root, path), 'utf8'))
+    delete before.version; delete after.version
+    return JSON.stringify(before) === JSON.stringify(after)
+  } catch { return false }
+}
+
 function changedPaths() {
   const out = (cmd) => execFileSync('git', cmd, { cwd: root, encoding: 'utf8' })
   const lines = [...out(['diff', '--name-only', 'origin/main...HEAD']).split('\n'), ...out(['diff', '--name-only', 'HEAD']).split('\n'), ...out(['ls-files', '--others', '--exclude-standard']).split('\n')]
@@ -40,7 +50,16 @@ const paths = given.length ? given : changedPaths()
 const chosen = new Set(SMOKE)
 for (const path of paths) {
   const normalized = path.replace(/\\/g, '/')
+  if (versionOnly(normalized)) continue
+  if (/(^|\/)package\.json$|^pnpm-[^/]+\.yaml$/.test(normalized)) {
+    for (const spec of readdirSync(e2e).filter(name => name.endsWith('.spec.ts'))) chosen.add(spec)
+    continue
+  }
   if (/\.(md|txt|png|ico|svg)$/.test(normalized)) continue
+  // Unit tests are the unit run's to cover; the code they test picks the e2e specs.
+  // The verification scripts themselves change how tests run, not what the app does.
+  if (/^scripts\/(e2e-|check-)[^/]+\.mjs$/.test(normalized)) continue
+  if (/(^|\/)test\/.*\.test\.ts$/.test(normalized)) continue
   if (/^apps\/desktop\/e2e\//.test(normalized) && normalized.endsWith('.spec.ts')) { chosen.add(normalized.split('/').pop()); continue }
   let matched = false
   for (const [pattern, specs] of AREAS) if (pattern.test(normalized)) { matched = true; for (const spec of specs) chosen.add(spec) }
