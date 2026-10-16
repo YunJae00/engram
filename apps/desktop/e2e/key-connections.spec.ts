@@ -42,6 +42,7 @@ test('API connection tests the selected model before saving, keeps keys encrypte
     completed = true
     await page.getByTestId('key-connection-codex-save').click()
     await expect(page.getByTestId('key-connection-codex')).toContainText('model tested when saved')
+    await expect(page.getByRole('region', { name: 'ChatGPT connection', exact: true }).locator('.account-usage')).toBeHidden()
     expect(requests).toBe(2)
     const stored = await readFile(join(userData, 'connections.json'), 'utf8')
     expect(stored).not.toContain('synthetic-api-key')
@@ -57,6 +58,7 @@ test('API connection tests the selected model before saving, keeps keys encrypte
     await page.getByTestId('key-connection-codex-remove').click()
     await expect(page.getByTestId('key-connection-codex-open')).toBeVisible()
     expect(JSON.parse(await readFile(join(userData, 'connections.json'), 'utf8')).codex).toBeUndefined()
+    await expect(page.getByRole('region', { name: 'ChatGPT connection', exact: true }).locator('.account-usage')).toBeVisible()
   } finally {
     await app?.close()
     gateway.closeAllConnections()

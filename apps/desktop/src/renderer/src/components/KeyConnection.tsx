@@ -45,6 +45,7 @@ export function KeyConnection({ provider, onChanged }: { provider: BrainConnecti
       <KeyRound size={13} aria-hidden /> {current.usable ? 'API key saved · model tested when saved' : 'Key unavailable · reconnect'} · {current.baseUrl}{current.model ? ` · ${current.model}` : ''}{current.keyHint ? ` · key ${current.keyHint}` : ''}
       <button type="button" className="secondary" disabled={busy} onClick={() => setOpen(true)}>Change</button>
       <button type="button" className="secondary" data-testid={`key-connection-${provider}-remove`} disabled={busy} onClick={() => void remove()}>Remove</button>
+      {provider !== 'decision' && <span>Usage is managed by your API provider.</span>}
     </p> : !open ? <button type="button" className="secondary" data-testid={`key-connection-${provider}-open`} onClick={() => setOpen(true)}><KeyRound size={13} aria-hidden /> Use an API key instead</button>
     : <form className="key-connection-form" onSubmit={(event) => { event.preventDefault(); void save() }} aria-label={`${LABEL[provider]} API key`}>
       <p className="setting-hint">{HINT[provider]}</p>
