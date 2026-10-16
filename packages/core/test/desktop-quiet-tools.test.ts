@@ -18,6 +18,20 @@ function setup() {
 }
 
 describe('quiet app tools', () => {
+  it('offers app_do only with a courier and keeps its arguments and committed receipt guarded', async () => {
+    const { courier, tools } = setup()
+    expect(tools.some(tool => tool.name === 'app_do')).toBe(false)
+    const run = vi.fn(async () => '{"status":"done","pressed":true}')
+    const tool = quietDesktopTools({ ...courier, do: run }).find(tool => tool.name === 'app_do')!
+    const committed = vi.fn()
+    expect(isDesktopTool(tool.name)).toBe(true)
+    await tool.run({ app: 'Notes', goal: 'Open the draft', text: 'hello' }, { ...CONTEXT, onCommitted: committed })
+    expect(committed).toHaveBeenCalledOnce()
+    expect(desktopStepArgs('app_do', { app: 'Notes', goal: 'private', text: 'private' })).toEqual({ app: 'Notes', goal: '[redacted]', text: '[redacted]' })
+    expect(await tool.run({ app: 'Notes', goal: 'Open draft', maxSteps: 100 }, CONTEXT)).toContain('maxSteps from 1 to 12')
+    await expect(tool.run({ app: 'Notes', goal: 'Set text', text: 'token sk-proj-abcdefghijklmnopqrstuvwxyz' }, CONTEXT)).rejects.toThrow(/secret/i)
+    expect(run).toHaveBeenCalledTimes(1)
+  })
   it('are desktop tools with plain step labels and redacted text', () => {
     for (const name of ['app_read', 'app_set', 'app_press', 'app_text']) expect(isDesktopTool(name)).toBe(true)
     expect(desktopStepSummary('app_read', { app: 'Claude' })).toBe('read Claude')

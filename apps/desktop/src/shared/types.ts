@@ -752,6 +752,10 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   engineDisconnect(id: 'claude' | 'codex'): Promise<void>
   // Every brain this build carries, signed in or not.
     engineStates(ids?: ('claude' | 'codex')[]): Promise<EngineStatusDto[]>
+    // A brain reached by key instead of a sign-in; the key never comes back out.
+    brainConnectionGet(provider: BrainConnectionProvider): Promise<BrainConnectionDto | null>
+    brainConnectionSet(provider: BrainConnectionProvider, input: BrainConnectionInput): Promise<BrainConnectionDto>
+    brainConnectionClear(provider: BrainConnectionProvider): Promise<void>
     accountProfiles(): Promise<import('./account-profiles.js').AccountProfiles>
     accountProfileStates(): Promise<import('./account-profiles.js').AccountProfileState[]>
     accountProfileAdd(provider: 'claude' | 'codex', name: string): Promise<import('./account-profiles.js').AccountProfiles>
@@ -898,6 +902,12 @@ export interface ModelChoiceDto {
   detail: string
   efforts?: import('core').ReasoningEffort[]
 }
+
+// A brain reached by key: an address speaking the runtime's own API, a key for
+// it, and the model to ask for. 'decision' is the step picker's endpoint.
+export type BrainConnectionProvider = 'claude' | 'codex' | 'decision'
+export interface BrainConnectionInput { baseUrl: string; key: string; model: string }
+export interface BrainConnectionDto { provider: BrainConnectionProvider; baseUrl: string; model: string; keyHint: string; usable: boolean }
 
 export interface EngineLoginDto {
   id: 'claude' | 'codex'

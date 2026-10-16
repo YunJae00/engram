@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, EngineEvent } from 'core'
 
 const fixture = vi.hoisted(() => ({
-  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(),
+  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(), providerConfig: vi.fn(), connectionEnv: vi.fn(),
 }))
+vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), codexProviderOverrides: fixture.providerConfig, connectionEnvironment: fixture.connectionEnv }))
 vi.mock('../src/main/codex-native.js', () => ({ appServer: () => 'fixture-rpc', runCodexNative: fixture.native }))
 vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: fixture.ready, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('../src/main/codex-turn.js', () => ({
@@ -34,6 +35,8 @@ async function collect(events: AsyncIterable<EngineEvent>): Promise<EngineEvent[
 beforeEach(() => {
   forgetCodexCatalog()
   vi.clearAllMocks()
+  fixture.providerConfig.mockReturnValue([])
+  fixture.connectionEnv.mockReturnValue({})
   fixture.ready.mockResolvedValue(undefined)
   fixture.binary.mockReturnValue('fixture-codex')
   fixture.catalog.mockResolvedValue({ code: 0, out: '[{"name":"fixture","transport":{"command":"node"}}]' })
@@ -43,6 +46,17 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('keeps the owning provider config for plain, native and restricted fallback turns', async () => {
+    fixture.providerConfig.mockReturnValue(['model_provider="fixture-gateway"'])
+    const engine = new CodexEngine('system')
+    await collect(engine.run({ prompt: 'Read', workdir: WORKDIR }))
+    expect(fixture.options.mock.lastCall![0].configOverrides).toContain('model_provider="fixture-gateway"')
+    fixture.native.mockResolvedValueOnce({ answer: '', commandsDenied: true })
+    await engine.runTools({ workdir: WORKDIR, system: '', prompt: 'Read', tools: [], maxCalls: 1, native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'allow' }) } })
+    expect(fixture.native.mock.lastCall![1].config).toContain('model_provider="fixture-gateway"')
+    expect(fixture.options.mock.lastCall![0].configOverrides).toContain('model_provider="fixture-gateway"')
+    expect(fixture.providerConfig.mock.calls.every(call => call[0] === 'system')).toBe(true)
+  })
   it.each([ClaudeEngine, CodexEngine])('does not prepare a canceled spare (%s)', async Engine => {
     await new Engine().warm({ workdir: WORKDIR, system: '', prompt: '', tools: [], maxCalls: 1, signal: AbortSignal.abort(), native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'allow' }) } })
     expect(fixture.binary).not.toHaveBeenCalled()

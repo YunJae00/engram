@@ -51,6 +51,10 @@ internal sealed class ApplicationFrame : Form
         SetWindowDisplayAffinity(Handle, 0x11);
         Follow(); Timer.Start();
     }
+    internal void Detach()
+    {
+        Timer.Stop(); ShowWindow(Handle, 0); Target = null; Last = Rectangle.Empty;
+    }
     private void Follow()
     {
         uint pid; int cloaked;
@@ -116,6 +120,11 @@ internal sealed class ApplicationFrameHost : IDisposable
         if (!Ready.WaitOne(3000)) throw new InvalidOperationException("The application frame did not become ready.");
         if (StartupError != null) throw new InvalidOperationException("The application frame could not start.", StartupError);
         return (string)Frame.Invoke(new Func<string>(delegate { Frame.Attach(target); return Frame.Handle.ToInt64().ToString(); }));
+    }
+    internal void Hide()
+    {
+        if (Frame == null || Frame.IsDisposed || !Ready.WaitOne(0) || StartupError != null) return;
+        Frame.Invoke(new Action(delegate { Frame.Detach(); }));
     }
     public void Dispose()
     {

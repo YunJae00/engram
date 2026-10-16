@@ -6,7 +6,7 @@ import { workLabel } from '../src/renderer/src/lib/pendingStatus.js'
 
 const step = (tool: string, observation = 'Current app state'): TurnStep => ({ tool, args: {}, observation })
 
-it.each(['app_set', 'app_press'])('checks %s and requires a subsequent app read', tool => {
+it.each(['app_set', 'app_press', 'app_do'])('checks %s and requires a subsequent app read', tool => {
   expect(needsResultCheck('Done', [step(tool)])).toBe(true)
   expect(freshResultReadback([step('app_text'), step(tool)])).toBe(false)
   expect(freshResultReadback([step(tool), step('app_text')])).toBe(true)

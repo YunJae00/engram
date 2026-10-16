@@ -137,6 +137,8 @@ import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
+import { brainConnection, connectionModels, loadBrainConnections } from './brain-connections.js'
+import { registerConnectionIpc } from './brain-connection-ipc.js'
 import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
 import { registerAccountIpc } from './account-ipc.js'
@@ -2190,6 +2192,8 @@ export function registerIpc(ctx: VaultContext): void {
     recovery: string | null | undefined; remembered: string[]; guided: boolean; webOnly: boolean; audit: (kind: AuditKind, rest: { tool?: string; url?: string; detail?: string }) => void
   }): Promise<AgentTool[]> => {
     const { channel, engine, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit } = input
+    // Key connections decide which app tools are on the menu (a decision model adds app_do).
+    await loadBrainConnections()
     const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
@@ -2824,7 +2828,15 @@ export function registerEngineIpc(): void {
     const provider = cloudId(id)
     if (['none', 'mock'].includes(process.env['ENGRAM_ENGINE'] ?? '')) return []
     if (!(await cloudEngine(provider, profile).detect()).loggedIn) return []
+    if (brainConnection(provider, profile)) return connectionModels(provider, undefined, profile)
     return provider === 'claude' ? fetchClaudeModels(profile) : fetchCodexModels(profile)
+  })
+  registerConnectionIpc(async (provider) => {
+    if (provider === 'decision') return
+    cloudEngine(provider).forgetStatus?.()
+    if (provider === 'claude') forgetClaudeModels(); else forgetCodexModels()
+    await onEnginesChanged?.()
+    broadcast({ type: 'engines:changed', engines: await engineStates() })
   })
   ipcMain.handle('engines:logins', () => engineLogins())
   ipcMain.handle('engines:cancelLogin', (_e, id: unknown, profile?: string) => cancelEngineLogin(cloudId(id), profile))

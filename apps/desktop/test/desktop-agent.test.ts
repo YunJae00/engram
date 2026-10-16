@@ -3,12 +3,13 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
-  lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true,
+  lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false,
 }))
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
 vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act, ensureDesktopControl: fake.ensure, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietCovers: (_lane: string, app?: string) => fake.covered && (!app || app === 'Fixture') ? 'Fixture' : null, quietScan: vi.fn(), quietSet: vi.fn(), quietPress: vi.fn(), quietText: vi.fn() }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -24,6 +25,7 @@ beforeEach(() => {
   fake.binding = { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn().mockResolvedValue(captured()) } }
   fake.lookup.mockImplementation(() => fake.binding)
   fake.available = true
+  fake.covered = false
   fake.ensure.mockImplementation(async () => fake.binding)
   fake.windows.mockResolvedValue([{ id: 'window:42:0', name: 'Fixture', foreground: true }, { id: 'window:43:0', name: 'Notes' }])
   fake.read.mockResolvedValue(observation())
@@ -171,5 +173,20 @@ describe('desktop image consent and capture validation', () => {
     fake.bitmap.mockReturnValueOnce(Buffer.alloc(1))
     await expect(look()).rejects.toThrow('invalid screenshot')
     expect(fake.image).not.toHaveBeenCalled()
+  })
+})
+
+describe('the quiet lane keeps the apps it has read', () => {
+  it('turns the hands tools away from an app whose controls the quiet lane already exposed', async () => {
+    fake.covered = true
+    const tools = desktopAgentTools('bot-one')
+    const context = { task: 'Inspect the fixture' }
+    await expect(tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Fixture' }, context)).rejects.toThrow(/use app_read, app_set, app_press and app_text/)
+    await expect(tools.find((tool) => tool.name === 'look_desktop')!.runRich!({ app: 'Fixture' }, context)).rejects.toThrow(/exposes its controls/)
+    await expect(tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context)).rejects.toThrow(/exposes its controls/)
+    expect(fake.read).not.toHaveBeenCalled()
+    expect(fake.act).not.toHaveBeenCalled()
+    await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
+    expect(fake.read).toHaveBeenCalledTimes(1)
   })
 })

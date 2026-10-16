@@ -5,7 +5,10 @@ import { desktopBinding, desktopWindows } from './desktop-access.js'
 import { accessLiveDocument, actOnDesktop, ensureDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
-import { quietPress, quietScan, quietSet, quietText } from './desktop-quiet.js'
+import { quietCovers, quietPress, quietScan, quietSet, quietText } from './desktop-quiet.js'
+import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
+import { formatDo, quietDo } from './desktop-quiet-do.js'
+import { brainConnection } from './brain-connections.js'
 
 function imageGeometry(observation: DesktopObservationDto): string {
   if (observation.truncated !== false && observation.captureSafe !== true) throw new Error('This window\'s accessibility scan was incomplete. Use read_desktop for available text, or choose a simpler window before requesting a screenshot.')
@@ -64,11 +67,19 @@ async function listWindows(signal?: AbortSignal): Promise<string> {
 export function desktopAgentTools(lane: string): AgentTool[] {
   if (!DesktopHost.available()) return []
   const quiet = quietDesktopTools({
-    scan: async (app, find, signal) => JSON.stringify(await quietScan(lane, app, find, signal)),
-    set: async (app, snapshot, control, text, expected, context) => JSON.stringify(await quietSet(lane, app, snapshot, control, text, expected, context.signal)),
-    press: async (app, snapshot, control, context) => JSON.stringify(await quietPress(lane, app, snapshot, control, context.signal)),
-    text: async (app, snapshot, control, settleSeconds, signal) => JSON.stringify(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
+    scan: async (app, find, signal) => formatScan(await quietScan(lane, app, find, signal), find),
+    set: async (app, snapshot, control, text, expected, context) => formatSet(await quietSet(lane, app, snapshot, control, text, expected, context.signal), text),
+    press: async (app, snapshot, control, context) => formatPress(await quietPress(lane, app, snapshot, control, context.signal)),
+    text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
+    // With a decision model connected, a short goal runs as one call.
+    ...(brainConnection('decision') ? { do: async (app, goal, text, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), maxSteps, ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
+  // An app the quiet lane has read stays with the quiet lane: taking the
+  // person's mouse for it would gain nothing the providers do not offer.
+  const quietFirst = (app?: string): void => {
+    const title = quietCovers(lane, app ?? desktopBinding(lane)?.name)
+    if (title) throw new Error(`"${title}" exposes its controls: use app_read, app_set, app_press and app_text. Foreground control is disabled for this app in this chat. A provider may still activate its own window.`)
+  }
   return [...quiet, ...desktopTools({
     apps: async (signal) => {
       const host = new DesktopHost()
@@ -77,11 +88,12 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       try { signal?.throwIfAborted(); return JSON.stringify(await host.request('listApps', {})) }
       finally { signal?.removeEventListener('abort', abort); host.close() }
     },
-    open: (app, signal) => withDesktopActivity(lane, () => openDesktopApp(lane, app, signal)),
+    open: (app, signal) => withDesktopActivity(lane, () => { quietFirst(app); return openDesktopApp(lane, app, signal) }),
     windows: listWindows,
-    read: (signal, app) => withDesktopActivity(lane, async () => JSON.stringify(await readControlledDesktop(lane, signal, true, app))),
-    look: (signal, app) => withDesktopActivity(lane, () => lookDesktop(lane, signal, app)),
+    read: (signal, app) => withDesktopActivity(lane, async () => { quietFirst(app); return JSON.stringify(await readControlledDesktop(lane, signal, true, app)) }),
+    look: (signal, app) => withDesktopActivity(lane, () => { quietFirst(app); return lookDesktop(lane, signal, app) }),
     act: (action, context) => withDesktopActivity(lane, async () => {
+      quietFirst()
       await actOnDesktop(lane, action, context.signal)
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
@@ -92,8 +104,8 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         return JSON.stringify({ dispatched: true, error: error instanceof Error ? error.message : String(error), observationMayBeStale: true, requiresVerification: true })
       }
     }),
-    sequence: (actions, context) => withDesktopActivity(lane, () => desktopSequence(lane, actions, context.signal)),
-  }), ...liveDocumentTools((method, args, context) => withDesktopActivity(lane, () => accessLiveDocument(lane, method, args, context.signal)))]
+    sequence: (actions, context) => withDesktopActivity(lane, () => { quietFirst(); return desktopSequence(lane, actions, context.signal) }),
+  }), ...liveDocumentTools((method, args, context) => withDesktopActivity(lane, () => { quietFirst(); return accessLiveDocument(lane, method, args, context.signal) }))]
 }
 
 export function desktopContext(): string {

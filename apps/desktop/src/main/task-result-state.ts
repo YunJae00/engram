@@ -4,11 +4,11 @@ export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' 
   return !result.asked && !result.pending && !!turn && (!!turn.verification || !!result.incomplete || !!result.stopped || !!turn.holdIf?.(result.answer, result.steps))
 }
 
-export const RESULT_CHANGES = /^(app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
 // Work that leaves something behind: a document, a file, an app or a saved
 // procedure changed, or a press the person approved because it commits.
 // Reading a site - opening tabs, filters, pages - leaves nothing to check.
-const LEAVES_WORK = /^(app_set|app_press|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+const LEAVES_WORK = /^(app_do|app_set|app_press|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
 const PRESSES = /^(page_steps|press|press_point)$/
 const savedWorkFile = (text = '') => /\]\(engram-artifact:[^\s)]+\.(?:txt|md|json|csv|tsv|xlsx|docx|pptx)\)/i.test(text)
 

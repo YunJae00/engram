@@ -9,7 +9,7 @@ type Read = { step: TurnStep; position: number; value?: Receipt }
 
 const TOOL = 'report_result_check'
 const READS = /^(app_read|app_text|read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
-const CHANGES = /^(app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+const CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
 const CREATES = /^(file_create_copy|file_create_workbook|file_edit_package)$/
 // These are capture/recording evidence, not text deliverables. Their own
 // provenance/approval checks remain responsible; this gate does not certify pixels.

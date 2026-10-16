@@ -8,9 +8,11 @@ export interface QuietCourier {
   set(app: string, snapshot: string, control: string, text: string, expected: string | undefined, context: AgentToolContext): Promise<string>
   press(app: string, snapshot: string, control: string, context: AgentToolContext): Promise<string>
   text(app: string, snapshot: string | undefined, control: string | undefined, settleSeconds: number, signal?: AbortSignal): Promise<string>
+  // A short goal carried out by a decision model picking each control; offered only when one is connected.
+  do?(app: string, goal: string, text: string | undefined, maxSteps: number, context: AgentToolContext): Promise<string>
 }
 
-export const QUIET_TOOLS = ['app_read', 'app_set', 'app_press', 'app_text']
+export const QUIET_TOOLS = ['app_read', 'app_set', 'app_press', 'app_text', 'app_do']
 const APP_CAP = 80
 const CONTROL = /^[ct][0-9]{1,5}$/
 const SNAPSHOT = /^[a-f0-9]{32}$/
@@ -22,6 +24,28 @@ const controlOf = (value: unknown): string | null => typeof value === 'string' &
 const textOf = (value: unknown, max: number): string | null => typeof value === 'string' && value.length <= max && printable(value.replace(/[\r\n\t]/g, '')) ? value : null
 
 export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
+  const run = courier.do
+  const doTool: AgentTool[] = run ? [{
+    name: 'app_do',
+    description: `Carry out a short navigation or drafting goal in an app in one call, bounded by maxSteps (default 8). A decision model receives the goal and app contents and picks each control. Give text when needed. The loop stops before recognized irreversible controls; use a separate explicit app_press only if the person requested that action. Control names cannot establish safety; restrict the goal to the user request. Read the app afterwards to verify the result. ${QUIET_NOTE}`,
+    argsSchema: {
+      type: 'object', additionalProperties: false, required: ['app', 'goal'],
+      properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, goal: { type: 'string', minLength: 1, maxLength: 600 }, text: { type: 'string', minLength: 1, maxLength: 2000 }, maxSteps: { type: 'integer', minimum: 1, maximum: 12 } },
+    },
+    async run(args, context) {
+      context.signal?.throwIfAborted()
+      if (!plainRecord(args) || !Object.keys(args).every(key => ['app', 'goal', 'text', 'maxSteps'].includes(key))) return 'app_do takes app, goal, and optionally text and maxSteps.'
+      const app = appOf(args['app']), goal = textOf(args['goal'], 600)
+      const text = 'text' in args ? textOf(args['text'], 2000) : undefined
+      const steps = 'maxSteps' in args ? args['maxSteps'] : 8
+      if (!app || !goal?.trim() || text === null || text === '' || typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1 || steps > 12) return 'app_do needs app, a goal up to 600 characters, optional printable text and maxSteps from 1 to 12.'
+      requirePublicText(goal, context)
+      if (text) requirePublicText(text, context)
+      const result = await run(app, goal.trim(), text, steps, context)
+      if ((JSON.parse(result) as { pressed?: boolean }).pressed) context.onCommitted?.()
+      return result
+    },
+  }] : []
   return [
     {
       name: 'app_read',
@@ -86,6 +110,7 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
         return courier.text(app, snapshot, control, settle, context.signal)
       },
     },
+    ...doTool,
   ]
 }
 
@@ -95,5 +120,6 @@ export function quietStepSummary(name: string, args: Record<string, unknown>): s
   if (name === 'app_set') return `set text in ${app}`
   if (name === 'app_press') return `press in ${app}`
   if (name === 'app_text') return `read text from ${app}`
+  if (name === 'app_do') return `work in ${app}`
   return null
 }

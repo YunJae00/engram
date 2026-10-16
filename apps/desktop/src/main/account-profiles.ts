@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { renameWithRetry } from 'core'
 import type { AccountProfiles, AccountProvider } from '../shared/account-profiles.js'
+import { connectionEnvironment } from './brain-connections.js'
 
 let root = '', state: AccountProfiles = { profiles: [], selected: { claude: 'system', codex: 'system' } }
 let systemPaths: Record<AccountProvider, string>
@@ -30,16 +31,18 @@ export async function initializeAccountProfiles(userData: string): Promise<void>
 }
 export function accountProfiles(): AccountProfiles { return structuredClone(state) }
 export function activeAccountProfile(provider: AccountProvider): string { return state.selected[provider] }
-const credentials = { claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'], codex: ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME'] }
-export function accountEnvironment(provider: AccountProvider, id = activeAccountProfile(provider)): NodeJS.ProcessEnv {
+const credentials = { claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'], codex: ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME', 'ENGRAM_CODEX_KEY'] }
+export function accountEnvironment(provider: AccountProvider, id = activeAccountProfile(provider), runtimeConnection = true): NodeJS.ProcessEnv {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
   if (typeof id !== 'string' || !id) throw new Error('Unknown account profile.')
   const env = { ...systemEnvironment, [providerKey[provider]]: systemPaths ? profilePath(provider, id) : process.env[providerKey[provider]] }
   if (id !== 'system') for (const key of credentials[provider]) delete env[key]
-  return env
+  const connection = runtimeConnection ? connectionEnvironment(provider, id) : {}
+  if (Object.keys(connection).length) for (const key of credentials[provider]) delete env[key]
+  return { ...env, ...connection }
 }
 function applyProfile(provider: AccountProvider): void {
-  const env = accountEnvironment(provider)
+  const env = accountEnvironment(provider, activeAccountProfile(provider), false)
   for (const key of [providerKey[provider], ...credentials[provider]]) {
     if (env[key] === undefined) delete process.env[key]
     else process.env[key] = env[key]

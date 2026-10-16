@@ -10,6 +10,7 @@ import { AccountUsage } from './AccountUsage.js'
 import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
 import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
+import { KeyConnection } from './KeyConnection.js'
 
 export function EngineSettings() {
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -75,12 +76,14 @@ export function EngineSettings() {
               </> : connected ? <>
                 <button className="engine-disconnect" data-testid={`brain-${id}-disconnect`} onClick={() => run(api.engineDisconnect(id).then(() => { setLogins((prior) => prior.filter((one) => one.id !== id)); setAttempt((value) => value + 1) }))}>Disconnect</button>
               </> : state?.conclusive === false && state.healthReason !== 'auth' ? <button className="secondary" onClick={() => setAttempt(value => value + 1)}>Retry connection check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => setAttempt(value => value + 1)} /> : <button className="secondary" data-testid={`brain-${id}-connect`} disabled={!state?.installed} onClick={() => run(api.engineConnect(id))}>Connect {name}</button>}
+              {!pending && <KeyConnection key={`${id}:${profiles?.selected[id]}:${attempt}`} provider={id} onChanged={() => setAttempt(value => value + 1)} />}
             </div>
             {login?.message && <p className="engine-message" role="status">{login.message}</p>}
             <AccountUsage provider={id} verified={connected} />
           </section>
         )
       })}
+      <section className="engine-card" aria-label="Decision model connection"><strong>Decision model</strong><KeyConnection provider="decision" /></section>
       <div className="engine-card engine-defaults"><section className="setting-row" aria-label="New conversation model"><strong>New conversations</strong><ModelPicker showAccounts={false} /></section><section className="setting-row" aria-label="Filing model"><strong>Filing &amp; memory</strong><ModelPicker scope="filing" showAccounts={false} /><button type="button" className="secondary" disabled={checking} data-testid="ai-check-filing" onClick={() => void check()}>{checking ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking…</> : 'Test AI'}</button></section>{checked && <p className="setting-hint" role="status">The selected filing model answered successfully.</p>}</div>
       {error && <div role="alert" className="engine-message">{error} <button className="secondary" onClick={() => { setError(''); setAttempt((value) => value + 1) }}>Retry</button></div>}
     </div>
