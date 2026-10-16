@@ -39,13 +39,14 @@ it('injects a key only into the account that owns it, not another runtime or the
   await mkdir(resolve('tmp'), { recursive: true })
   const root = await mkdtemp(resolve('tmp/account-key-'))
   try {
+    process.env['ENGRAM_CODEX_KEY'] = 'synthetic-inherited-key'
     await initializeAccountProfiles(root)
     fake.connected = true
     const other = (await addAccountProfile('codex', 'Other')).profiles[0]!.id
     expect(accountEnvironment('codex', 'system')['ENGRAM_CODEX_KEY']).toBe('synthetic-company-key')
     expect(accountEnvironment('codex', other)['ENGRAM_CODEX_KEY']).toBeUndefined()
     await selectAccountProfile('codex', other)
-    expect(process.env['ENGRAM_CODEX_KEY']).not.toBe('synthetic-company-key')
+    expect(process.env['ENGRAM_CODEX_KEY']).toBeUndefined()
     expect(accountEnvironment('codex', 'system')['ENGRAM_CODEX_KEY']).toBe('synthetic-company-key')
   } finally { fake.connected = false; process.env = original }
 })

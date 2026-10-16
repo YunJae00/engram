@@ -31,7 +31,7 @@ export async function initializeAccountProfiles(userData: string): Promise<void>
 }
 export function accountProfiles(): AccountProfiles { return structuredClone(state) }
 export function activeAccountProfile(provider: AccountProvider): string { return state.selected[provider] }
-const credentials = { claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'], codex: ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME'] }
+const credentials = { claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'], codex: ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_SQLITE_HOME', 'ENGRAM_CODEX_KEY'] }
 export function accountEnvironment(provider: AccountProvider, id = activeAccountProfile(provider)): NodeJS.ProcessEnv {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
   if (typeof id !== 'string' || !id) throw new Error('Unknown account profile.')
