@@ -1,7 +1,7 @@
 {
   "name": "engram-monorepo",
   "private": true,
-  "version": "0.8.57",
+  "version": "0.8.58",
   "description": "A second brain that keeps your memories on your machine",
   "author": "YunJae Kwon",
   "license": "MIT",
@@ -31,6 +31,10 @@
   "scripts": {
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run css-scan",
     "check:quick": "node scripts/check-quick.mjs",
+    "verify": "node scripts/check-quick.mjs && pnpm --filter desktop build && node scripts/e2e-affected.mjs",
+    "verify:release": "pnpm run check && pnpm run test:e2e",
+    "test:e2e:fast": "pnpm --filter desktop test:e2e:fast",
+    "e2e:affected": "pnpm --filter desktop build && node scripts/e2e-affected.mjs",
     "dev": "pnpm --filter desktop dev",
     "dist": "pnpm --filter desktop dist",
     "smoke:clean-env": "pnpm --filter desktop smoke:clean-env",

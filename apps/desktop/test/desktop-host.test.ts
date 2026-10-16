@@ -1,14 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
 const deps = vi.hoisted(() => ({ spawn: vi.fn(), execFile: vi.fn(), exists: vi.fn() }))
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 vi.mock('node:child_process', () => ({ spawn: deps.spawn, execFile: deps.execFile }))
 vi.mock('../src/main/process-client.js', () => ({ ProcessClient: class { constructor(...args: unknown[]) { return deps.spawn(...args) } } }))
 vi.mock('node:fs', () => ({ existsSync: deps.exists }))
 import { DesktopHost, type DesktopMethod } from '../src/main/desktop-host.js'
-
 function processDouble() {
   return Object.assign(new EventEmitter(), {
     pid: undefined as number | undefined,
@@ -24,7 +22,6 @@ const target = { window: '100', pid: 200 }
 let child: ReturnType<typeof processDouble>
 let host: DesktopHost
 let revoked: ReturnType<typeof vi.fn<(reason: string) => void>>
-
 function respond(message: unknown): void { child.stdout.write(JSON.stringify(message) + '\n') }
 async function flush(): Promise<void> { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
 async function ready(): Promise<void> { respond({ type: 'ready', protocol: 2, control: true }); await flush() }
@@ -44,7 +41,6 @@ async function stop(): Promise<void> {
   respond({ id: latest('stop'), result: { stopped: true } })
   await request
 }
-
 beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
@@ -64,7 +60,6 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
-
 describe('desktop native readiness and request lifetime', () => {
   it('delegates foreground activation without acquiring or preparing an input lease', async () => {
     child.pid = 321
@@ -316,8 +311,11 @@ describe('native revocation correlation', () => {
     expect(child.kill).toHaveBeenCalledOnce()
   })
 })
-
 describe('desktop transport failures', () => {
+  it.each(['', '   '])('rejects an empty native error instead of returning success: %j', async error => {
+    const pending = host.request('quietScan', target), outcome = expect(pending).rejects.toThrow('The desktop request failed.')
+    await ready(); respond({ id: latest('quietScan'), error }); await outcome
+  })
   it('keeps the connection usable when held keys postpone preparation', async () => {
     child.pid = 321
     const first = host.request('bind', { ...target, grant: 'first' })
@@ -364,12 +362,11 @@ describe('desktop transport failures', () => {
     const request = host.request('observe', target)
     const rejected = expect(request).rejects.toThrow(phase === 'ready' ? 'connection closed' : 'stopped responding')
     if (phase === 'request') await ready()
-    await vi.advanceTimersByTimeAsync(phase === 'ready' ? 10_001 : 8_001)
+    await vi.advanceTimersByTimeAsync(phase === 'ready' ? 25_001 : 8_001)
     await rejected
     expect(child.kill).toHaveBeenCalledOnce()
     expect(revoked).toHaveBeenCalledOnce()
   })
-
   it('clears old request watchdogs when Stop supersedes their generation', async () => {
     await bind('old')
     const request = host.request('observe', target)

@@ -9,7 +9,7 @@ vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, create
 vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act, ensureDesktopControl: fake.ensure, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietCovers: (_lane: string, app?: string) => fake.covered && (!app || app === 'Fixture') ? 'Fixture' : null, quietScan: vi.fn(), quietSet: vi.fn(), quietPress: vi.fn(), quietText: vi.fn() }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: vi.fn(), quietSet: vi.fn(), quietPress: vi.fn(), quietText: vi.fn() }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({

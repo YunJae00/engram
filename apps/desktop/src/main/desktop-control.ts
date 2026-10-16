@@ -125,7 +125,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     await host.request('openApp', { app })
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
-    return 'Windows accepted the launch request. Use list_windows to find the actual window, then read_desktop to verify it. A launch request alone does not prove the app is ready.'
+    return 'Windows accepted the launch request. Use list_windows to find the actual window, then app_read to read it. A launch request alone does not prove the app is ready.'
   } finally {
     signal?.removeEventListener('abort', abort)
     if (launching === pending) launching = undefined

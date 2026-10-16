@@ -43,6 +43,7 @@ internal static class Program
     {
         var message = error is System.Windows.Automation.ElementNotAvailableException
             ? "The window or control is no longer available. Observe the window again." : error.Message;
+        if (string.IsNullOrWhiteSpace(message)) message = "The app did not answer (" + error.GetType().Name + "). Read it again.";
         Send(new { id = id, error = message.Length > 500 ? message.Substring(0, 500) : message });
     }
 

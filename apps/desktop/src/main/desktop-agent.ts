@@ -5,7 +5,7 @@ import { desktopBinding, desktopWindows } from './desktop-access.js'
 import { accessLiveDocument, actOnDesktop, ensureDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
-import { quietCovers, quietPress, quietScan, quietSet, quietText } from './desktop-quiet.js'
+import { quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
 import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
 import { formatDo, quietDo } from './desktop-quiet-do.js'
 import { brainConnection } from './brain-connections.js'
@@ -77,8 +77,9 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   // An app the quiet lane has read stays with the quiet lane: taking the
   // person's mouse for it would gain nothing the providers do not offer.
   const quietFirst = (app?: string): void => {
-    const title = quietCovers(lane, app ?? desktopBinding(lane)?.name)
-    if (title) throw new Error(`"${title}" exposes its controls: use app_read, app_set, app_press and app_text. Foreground control is disabled for this app in this chat. A provider may still activate its own window.`)
+    const found = quietVerdict(lane, app ?? desktopBinding(lane)?.name)
+    if (found.verdict === 'covered') throw new Error(`"${found.title}" exposes its controls: use app_read, app_set, app_press and app_text. Foreground control is disabled for this app in this chat. A provider may still activate its own window.`)
+    if (found.verdict === 'unknown') throw new Error('Read the app with app_read first. The hands tools, which take the mouse and keyboard, are only for an app whose controls app_read reports without any action.')
   }
   return [...quiet, ...desktopTools({
     apps: async (signal) => {
@@ -88,7 +89,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       try { signal?.throwIfAborted(); return JSON.stringify(await host.request('listApps', {})) }
       finally { signal?.removeEventListener('abort', abort); host.close() }
     },
-    open: (app, signal) => withDesktopActivity(lane, () => { quietFirst(app); return openDesktopApp(lane, app, signal) }),
+    open: (app, signal) => withDesktopActivity(lane, () => openDesktopApp(lane, app, signal)),
     windows: listWindows,
     read: (signal, app) => withDesktopActivity(lane, async () => { quietFirst(app); return JSON.stringify(await readControlledDesktop(lane, signal, true, app)) }),
     look: (signal, app) => withDesktopActivity(lane, () => { quietFirst(app); return lookDesktop(lane, signal, app) }),

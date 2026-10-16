@@ -15,6 +15,8 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.ok(button?.can.press)
   assert.equal((await fixture.request('state')).foreground, false)
   const field = { ...target, snapshot: first.snapshot, control: entry.id }
+  await helper.request('listWindows', {})
+  assert.equal((await helper.request('quietRead', field)).text, (entry.value ?? '').trim(), 'Listing windows must preserve the current snapshot')
   await fixture.request('focus')
   await fixture.request('foreignInput')
   await assert.rejects(helper.request('quietSet', { ...field, text: 'Do not interrupt' }), /person is using/)
@@ -60,5 +62,10 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /manual control/)
   await fixture.request('hidePassword')
   await fixture.request('quietReset')
+  const beforeReselect = await scan()
+  const oldField = beforeReselect.controls.find(control => control.name === 'Worker input')
+  assert.ok(oldField)
+  await helper.request('inspectWindow', { window: target.window, pid: 0 })
+  await assert.rejects(helper.request('quietRead', { ...target, snapshot: beforeReselect.snapshot, control: oldField.id }), /snapshot is stale/)
   return { readWithoutFocus: true, providerOnlySet: true, setActivatedWindow: set.foregroundChanged, providerOnlyPress: true, pressActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
 }

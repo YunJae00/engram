@@ -34,9 +34,20 @@ internal sealed class QuietAccess : IDisposable
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LastInput info);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder text, int length);
+    // The desktop shell window: its icons are launchers, so it is read but never operated.
+    private static void RequireOperable(DesktopTarget target)
+    {
+        var name = new StringBuilder(64);
+        GetClassName(target.Handle, name, name.Capacity);
+        var cls = name.ToString();
+        if (cls == "Progman" || cls == "WorkerW") throw new InvalidOperationException("The desktop itself is only read; open apps with open_app.");
+    }
 
-    private const int MaxControls = 80;
-    private const int MaxTexts = 80;
+    private const int MaxControls = 320;
+    private const int MaxTexts = 160;
+    // Fewer nodes than this from a window with a real page means the provider has not woken yet.
+    private const int SparseNodes = 12;
     private const int NameLimit = 300;
     private const int ValueLimit = 600;
     private const int ReadLimit = 12000;
@@ -102,7 +113,23 @@ internal sealed class QuietAccess : IDisposable
     }
 
     // What the app shows and offers: editable fields and pressable items first, then the text on screen.
+    // A Chromium app exposes its tree only once a client has asked, and re-lays it out after a press, so a
+    // sparse or faltering first read is tried again a moment later rather than reported as the app.
     internal object Scan(DesktopTarget target, string find)
+    {
+        object result = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            int nodes;
+            try { result = ScanOnce(target, find, out nodes); }
+            catch (ElementNotAvailableException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
+            catch (System.Runtime.InteropServices.COMException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
+            if (nodes >= SparseNodes || attempt == 2) break;
+            System.Threading.Thread.Sleep(400);
+        }
+        return result;
+    }
+    private object ScanOnce(DesktopTarget target, string find, out int nodes)
     {
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading it");
         var root = Validate(target);
@@ -120,7 +147,12 @@ internal sealed class QuietAccess : IDisposable
         var remaining = ReadLimit;
         var seen = new HashSet<string>();
         var skippedControls = 0;
+        var ordered = new List<AutomationElement>();
         foreach (AutomationElement element in interactive)
+            if (Has(element, AutomationElement.IsValuePatternAvailableProperty) && (element.Cached.ControlType == ControlType.Edit || element.Cached.ControlType == ControlType.Document)) ordered.Add(element);
+        foreach (AutomationElement element in interactive)
+            if (!(Has(element, AutomationElement.IsValuePatternAvailableProperty) && (element.Cached.ControlType == ControlType.Edit || element.Cached.ControlType == ControlType.Document))) ordered.Add(element);
+        foreach (var element in ordered)
         {
             var info = element.Cached;
             // A field the person could type into: links and radio buttons carry a value too, but take none.
@@ -173,6 +205,7 @@ internal sealed class QuietAccess : IDisposable
         }
         Guard.Same(target);
         Remember(snapshot);
+        nodes = controls.Count + texts.Count;
         return new
         {
             window = target.Id, pid = target.Pid, title = target.Title, snapshot = snapshot.Id, controls = controls, texts = texts,
@@ -243,6 +276,7 @@ internal sealed class QuietAccess : IDisposable
     // Set a field's whole value through the provider, never over text the person typed.
     internal object Set(DesktopTarget target, string snapshot, string control, string text, string expected, Action check)
     {
+        RequireOperable(target);
         ControlPolicy.Literal(text.Replace("\r", "").Replace("\n", "").Replace("\t", ""));
         Validate(target);
         var found = Control(target, snapshot, control);
@@ -279,6 +313,7 @@ internal sealed class QuietAccess : IDisposable
     // Press through the provider: a button, a list or tab item, a toggle, a fold.
     internal object Press(DesktopTarget target, string snapshot, string control, Action check)
     {
+        RequireOperable(target);
         Validate(target);
         var element = Control(target, snapshot, control).Element;
         if (!element.Current.IsEnabled) throw new InvalidOperationException("This control is disabled right now");
@@ -301,7 +336,18 @@ internal sealed class QuietAccess : IDisposable
     }
 
     // The text of one control, or of the whole window: the tail when there is too much.
+    // Text, too, is read again when a node vanishes mid-walk: a page re-rendering is not an unreadable page.
     internal object Read(DesktopTarget target, string snapshot, string control)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try { return ReadOnce(target, snapshot, control); }
+            catch (ElementNotAvailableException) { if (attempt == 1) throw; }
+            catch (System.Runtime.InteropServices.COMException) { if (attempt == 1) throw; }
+            System.Threading.Thread.Sleep(300);
+        }
+    }
+    private object ReadOnce(DesktopTarget target, string snapshot, string control)
     {
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading it");
         Validate(target);
@@ -328,7 +374,8 @@ internal sealed class QuietAccess : IDisposable
             {
                 foreach (AutomationElement element in root.FindAll(TreeScope.Descendants, TypeCondition(Textual)))
                 {
-                    var name = element.Cached.Name;
+                    string name;
+                    try { name = element.Cached.Name; } catch (ElementNotAvailableException) { continue; }
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     builder.Append(name.Trim()).Append('\n');
                     if (builder.Length > ReadLimit + 1) builder.Remove(0, builder.Length - ReadLimit - 1);
