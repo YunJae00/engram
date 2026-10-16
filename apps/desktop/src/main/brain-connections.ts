@@ -56,6 +56,7 @@ function storedFor(provider: BrainConnectionProvider, profile?: string): StoredC
   const stored = cache?.[provider]
   return stored && (stored.profile ?? 'system') === profileOf(provider, profile) ? stored : undefined
 }
+export const hasBrainConnection = (provider: BrainConnectionProvider, profile?: string): boolean => !!storedFor(provider, profile)
 export function brainConnection(provider: BrainConnectionProvider, profile?: string): { baseUrl: string; model: string; key: string } | null {
   const stored = storedFor(provider, profile)
   if (!stored) return null
@@ -124,6 +125,7 @@ export async function clearBrainConnection(provider: BrainConnectionProvider, pr
 // variable; Codex names its key variable in the provider it is given.
 export function connectionEnvironment(provider: 'claude' | 'codex', profile?: string): Record<string, string> {
   const connection = brainConnection(provider, profile)
+  if (!connection && hasBrainConnection(provider, profile)) throw new Error('The saved API key is unavailable. Reconnect or remove it in AI settings.')
   if (!connection) return {}
   if (provider === 'claude') return { ANTHROPIC_BASE_URL: connection.baseUrl, ANTHROPIC_AUTH_TOKEN: connection.key, ...(connection.model ? { ANTHROPIC_MODEL: connection.model } : {}) }
   return { [CODEX_KEY_ENV]: connection.key }

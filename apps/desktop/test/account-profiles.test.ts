@@ -1,8 +1,12 @@
 import { mkdtemp, mkdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-const fake = vi.hoisted(() => ({ connected: false }))
-vi.mock('../src/main/brain-connections.js', () => ({ connectionEnvironment: (provider: string, profile: string) => fake.connected && provider === 'codex' && profile === 'system' ? { ENGRAM_CODEX_KEY: 'synthetic-company-key' } : {} }))
+const fake = vi.hoisted(() => ({ connected: false, broken: false }))
+vi.mock('../src/main/brain-connections.js', () => ({ connectionEnvironment: (provider: string, profile: string) => {
+  if (!fake.connected || provider !== 'codex' || profile !== 'system') return {}
+  if (fake.broken) throw new Error('Saved key unavailable')
+  return { ENGRAM_CODEX_KEY: 'synthetic-company-key' }
+} }))
 import { initializeAccountProfiles, accountProfiles, accountEnvironment, addAccountProfile, selectAccountProfile } from '../src/main/account-profiles.js'
 
 it('keeps profile storage separate and restores the original system directory', async () => {
@@ -48,5 +52,9 @@ it('injects a key only into the account that owns it, not another runtime or the
     await selectAccountProfile('codex', other)
     expect(process.env['ENGRAM_CODEX_KEY']).toBeUndefined()
     expect(accountEnvironment('codex', 'system')['ENGRAM_CODEX_KEY']).toBe('synthetic-company-key')
-  } finally { fake.connected = false; process.env = original }
+    fake.broken = true
+    await expect(selectAccountProfile('codex', 'system')).resolves.toBeDefined()
+    expect(() => accountEnvironment('codex', 'system')).toThrow(/key unavailable/)
+    await expect(selectAccountProfile('codex', other)).resolves.toBeDefined()
+  } finally { fake.connected = false; fake.broken = false; process.env = original }
 })

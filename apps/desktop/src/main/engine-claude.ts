@@ -6,7 +6,7 @@ import { loadSettings } from './settings.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
-import { brainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
+import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
 // The person's chosen model, read per call so a change in Settings or from
 // the composer takes hold on the very next turn. Empty means the app's own
@@ -135,7 +135,7 @@ export class ClaudeEngine implements CloudEngine {
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
       await loadBrainConnections()
       // A key connection is checked with the address itself; the runtime's sign-in files are not consulted.
-      if (brainConnection('claude', this.accountProfile)) { const probe = await probeConnection('claude', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
+      if (hasBrainConnection('claude', this.accountProfile)) { const probe = await probeConnection('claude', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
       if (code === null) return { installed: true, loggedIn: false, conclusive: false }
       return readAuthStatus(out)
@@ -162,13 +162,15 @@ export class ClaudeEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
-    if (brainConnection('claude', this.accountProfile)) { await clearBrainConnection('claude', this.accountProfile); this.status.forget(); return }
+    await loadBrainConnections()
+    if (hasBrainConnection('claude', this.accountProfile)) { await clearBrainConnection('claude', this.accountProfile); this.status.forget(); return }
     const binary = claudeBinary()
     if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
     this.status.forget()
   }
 
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
+    await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) {
       yield { type: 'error', message: 'Install the Claude runtime in Settings → AI before connecting.', kind: 'crash' }
@@ -242,7 +244,7 @@ export class ClaudeEngine implements CloudEngine {
   runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
-    return Promise.all([sdkModule(), chosenModel(undefined, job.model)]).then(([sdk, model]) => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }))
+    return Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()]).then(([sdk, model]) => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }))
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.
@@ -250,7 +252,7 @@ export class ClaudeEngine implements CloudEngine {
     if (job.signal?.aborted) return
     const binary = claudeBinary()
     if (!binary || !job.native) return
-    const [sdk, model] = await Promise.all([sdkModule(), chosenModel(undefined, job.model)])
+    const [sdk, model] = await Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()])
     if (job.signal?.aborted) return
     sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env }, job)
   }

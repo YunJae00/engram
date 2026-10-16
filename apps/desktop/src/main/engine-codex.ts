@@ -4,7 +4,7 @@ import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
-import { brainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
+import { hasBrainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
 import { startToolServer, type ToolServer } from './codex-tool-server.js'
 import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareReady, runCodexNative, warmCodexSession } from './codex-native.js'
 
@@ -122,7 +122,7 @@ export class CodexEngine implements CloudEngine {
       const binary = codexBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
       await loadBrainConnections()
-      if (brainConnection('codex', this.accountProfile)) { const probe = await probeConnection('codex', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
+      if (hasBrainConnection('codex', this.accountProfile)) { const probe = await probeConnection('codex', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
       return readLoginStatus(out, code)
     })
@@ -140,7 +140,8 @@ export class CodexEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
-    if (brainConnection('codex', this.accountProfile)) { await clearBrainConnection('codex', this.accountProfile); this.status.forget(); return }
+    await loadBrainConnections()
+    if (hasBrainConnection('codex', this.accountProfile)) { await clearBrainConnection('codex', this.accountProfile); this.status.forget(); return }
     const binary = codexBinary()
     if (binary) await runText(binary, ['logout'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
     this.status.forget()
@@ -148,6 +149,7 @@ export class CodexEngine implements CloudEngine {
 
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
     if (job.signal?.aborted) return
+    await loadBrainConnections()
     const binary = codexBinary()
     if (!binary) {
       yield { type: 'error', message: 'the ChatGPT runtime is not part of this build', kind: 'crash' }
@@ -202,6 +204,7 @@ export class CodexEngine implements CloudEngine {
   // A session opened ahead for the next comet, with a tool server of its own.
   async warm(job: ToolSessionJob): Promise<void> {
     if (job.signal?.aborted) return
+    await loadBrainConnections()
     const binary = codexBinary()
     if (!binary || !job.native || codexSpareReady()) return
     const server = spareServer?.server ?? await startToolServer(job.tools, job.signal)
@@ -223,6 +226,7 @@ export class CodexEngine implements CloudEngine {
   // One turn with the comet's tools. The person's other tool servers stay off.
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     if (job.signal?.aborted) return { answer: '', error: 'canceled' }
+    await loadBrainConnections()
     const binary = codexBinary()
     if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
     const abort = new AbortController()
