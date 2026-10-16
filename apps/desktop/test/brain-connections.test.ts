@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -127,5 +127,11 @@ describe('a brain reached by key', () => {
     expect((await probeConnection('codex')).ok).toBe(false)
     await clearBrainConnection('codex')
     expect(connectionEnvironment('codex')).toEqual({})
+  })
+  it.each(['not JSON', '[]', '{"codex":{"key":"ciphertext"}}'])('does not treat an unreadable store as no connection (%s)', async content => {
+    await writeFile(join(fake.dir, 'connections.json'), content)
+    vi.resetModules()
+    const isolated = await import('../src/main/brain-connections.js')
+    await expect(isolated.loadBrainConnections()).rejects.toThrow(/could not be read/)
   })
 })

@@ -34,8 +34,16 @@ export async function loadBrainConnections(): Promise<Store> {
   loading ??= (async () => {
     try {
       const raw = JSON.parse(await readFile(path(), 'utf8')) as Store
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid connection store')
+      for (const provider of ['claude', 'codex', 'decision'] as const) {
+        const value = raw[provider]
+        if (value !== undefined && (!value || typeof value.baseUrl !== 'string' || typeof value.key !== 'string' || typeof value.model !== 'string' || typeof value.encrypted !== 'boolean' || value.profile !== undefined && typeof value.profile !== 'string')) throw new Error('Invalid saved connection')
+      }
       cache = Object.fromEntries(Object.entries(raw ?? {}).filter(([provider, value]) => ['claude', 'codex', 'decision'].includes(provider) && value && typeof value.baseUrl === 'string' && typeof value.key === 'string'))
-    } catch { cache = {} }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Saved AI connections could not be read. Repair the connection file or reset Engram in Settings.')
+      cache = {}
+    }
     return cache
   })().finally(() => { loading = null })
   return loading
