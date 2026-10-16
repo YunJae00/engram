@@ -2828,7 +2828,7 @@ export function registerEngineIpc(): void {
     const provider = cloudId(id)
     if (['none', 'mock'].includes(process.env['ENGRAM_ENGINE'] ?? '')) return []
     if (!(await cloudEngine(provider, profile).detect()).loggedIn) return []
-    if (brainConnection(provider)) return connectionModels(provider)
+    if (brainConnection(provider, profile)) return connectionModels(provider, undefined, profile)
     return provider === 'claude' ? fetchClaudeModels(profile) : fetchCodexModels(profile)
   })
   registerConnectionIpc(async (provider) => {

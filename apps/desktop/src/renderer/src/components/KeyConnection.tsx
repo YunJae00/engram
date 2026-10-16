@@ -48,6 +48,7 @@ export function KeyConnection({ provider, onChanged }: { provider: BrainConnecti
     </p> : !open ? <button type="button" className="secondary" data-testid={`key-connection-${provider}-open`} onClick={() => setOpen(true)}><KeyRound size={13} aria-hidden /> Use an API key instead</button>
     : <form className="key-connection-form" onSubmit={(event) => { event.preventDefault(); void save() }} aria-label={`${LABEL[provider]} API key`}>
       <p className="setting-hint">{HINT[provider]}</p>
+      {provider !== 'decision' && <p className="setting-hint">This key is used only for the selected account.</p>}
       <p className="setting-hint">A short model test may use API credits. {provider === 'decision' ? 'App controls, visible text and your goal are sent to this address during app actions.' : 'Conversation content is sent to this address when you use this connection.'}</p>
       <label>Address<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://…" autoComplete="off" spellCheck={false} data-testid={`key-connection-${provider}-url`} /></label>
       <label>API key<input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder={current ? 'Enter the key again to change it' : 'Paste the key'} autoComplete="off" data-testid={`key-connection-${provider}-key`} /></label>

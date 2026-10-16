@@ -135,7 +135,7 @@ export class ClaudeEngine implements CloudEngine {
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
       await loadBrainConnections()
       // A key connection is checked with the address itself; the runtime's sign-in files are not consulted.
-      if (brainConnection('claude')) { const probe = await probeConnection('claude'); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
+      if (brainConnection('claude', this.accountProfile)) { const probe = await probeConnection('claude', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
       if (code === null) return { installed: true, loggedIn: false, conclusive: false }
       return readAuthStatus(out)
@@ -162,7 +162,7 @@ export class ClaudeEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
-    if (brainConnection('claude')) { await clearBrainConnection('claude'); this.status.forget(); return }
+    if (brainConnection('claude', this.accountProfile)) { await clearBrainConnection('claude', this.accountProfile); this.status.forget(); return }
     const binary = claudeBinary()
     if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
     this.status.forget()

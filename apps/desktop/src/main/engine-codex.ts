@@ -122,7 +122,7 @@ export class CodexEngine implements CloudEngine {
       const binary = codexBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
       await loadBrainConnections()
-      if (brainConnection('codex')) { const probe = await probeConnection('codex'); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
+      if (brainConnection('codex', this.accountProfile)) { const probe = await probeConnection('codex', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
       return readLoginStatus(out, code)
     })
@@ -140,7 +140,7 @@ export class CodexEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
-    if (brainConnection('codex')) { await clearBrainConnection('codex'); this.status.forget(); return }
+    if (brainConnection('codex', this.accountProfile)) { await clearBrainConnection('codex', this.accountProfile); this.status.forget(); return }
     const binary = codexBinary()
     if (binary) await runText(binary, ['logout'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
     this.status.forget()
@@ -163,7 +163,7 @@ export class CodexEngine implements CloudEngine {
       const env = withHelpersOnPath(binary, this.env)
       // Match the turn's directory so project-local servers are disabled too.
       const catalog = { out: await mcpCatalog(binary, job.workdir, env, abort.signal) }
-      const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides()]
+      const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)]
       let text = await runCodexTurn({
         options: { codexPathOverride: binary, env, configOverrides },
         thread: {
@@ -213,7 +213,7 @@ export class CodexEngine implements CloudEngine {
     const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
     if (job.signal?.aborted) { await server.close(); if (spareServer?.server === server) spareServer = null; return }
     await warmCodexSession({
-      rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides()],
+      rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
       instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
     }, job.native)
   }
@@ -239,14 +239,14 @@ export class CodexEngine implements CloudEngine {
       const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
       if (job.native) {
         const result = await runCodexNative({ ...job, sessionKey: pooled, native: job.native, signal: abort.signal }, {
-          rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides()],
+          rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
           instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
         })
         if (job.signal?.aborted) return { answer: '', error: 'canceled' }
         if (!result.commandsDenied) return result
       }
       const answer = await runCodexTurn({
-        options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides()] },
+        options: { codexPathOverride: binary, env, configOverrides: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)] },
         thread: {
           workingDirectory: job.workdir,
           sandboxMode: 'read-only',

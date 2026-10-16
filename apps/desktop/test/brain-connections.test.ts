@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const fake = vi.hoisted(() => ({ dir: '', encryption: true, fetch: vi.fn() }))
+const fake = vi.hoisted(() => ({ dir: '', encryption: true, fetch: vi.fn(), profile: 'system' }))
+vi.mock('../src/main/account-profiles.js', () => ({ activeAccountProfile: () => fake.profile }))
 vi.mock('electron', () => ({
   app: { getPath: () => fake.dir },
   net: { fetch: fake.fetch },
@@ -17,10 +18,10 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { brainConnection, brainConnectionDto, clearBrainConnection, codexProviderOverrides, connectionEnvironment, connectionModels, loadBrainConnections, probeConnection, setBrainConnection, validateConnectionInput } from '../src/main/brain-connections.js'
 
 beforeEach(async () => {
-  fake.dir = await mkdtemp(join(tmpdir(), 'engram-connections-')); fake.encryption = true
+  fake.dir = await mkdtemp(join(tmpdir(), 'engram-connections-')); fake.encryption = true; fake.profile = 'system'
   fake.fetch.mockReset().mockImplementation(async () => new Response(JSON.stringify({ type: 'message', content: [{ type: 'text', text: 'OK' }], status: 'completed', output: [{ content: [{ type: 'output_text', text: 'OK' }] }], answers: { next: { choice: 'ready' } } })))
 })
-afterEach(async () => { for (const provider of ['claude', 'codex', 'decision'] as const) await clearBrainConnection(provider); await rm(fake.dir, { recursive: true, force: true }) })
+afterEach(async () => { fake.profile = 'system'; for (const provider of ['claude', 'codex', 'decision'] as const) await clearBrainConnection(provider); await rm(fake.dir, { recursive: true, force: true }) })
 
 describe('a brain reached by key', () => {
   it('keeps the key sealed on disk and hands the screen only its last letters', async () => {
@@ -96,5 +97,24 @@ describe('a brain reached by key', () => {
   it('serializes saves so different provider connections cannot overwrite each other', async () => {
     await Promise.all(['claude', 'codex', 'decision'].map(provider => setBrainConnection(provider as 'claude', { baseUrl: 'https://gateway.example/v1', key: 'k', model: 'm' })))
     expect(Object.keys(JSON.parse(await readFile(join(fake.dir, 'connections.json'), 'utf8'))).sort()).toEqual(['claude', 'codex', 'decision'])
+  })
+  it('never hands one account\'s key or endpoint to another account', async () => {
+    await setBrainConnection('codex', { baseUrl: 'https://gateway.example/v1', key: 'company-key', model: 'company-model' })
+    fake.profile = 'personal'
+    expect(brainConnection('codex')).toBeNull()
+    expect(brainConnectionDto('codex')).toBeNull()
+    expect(connectionEnvironment('codex')).toEqual({})
+    expect(codexProviderOverrides()).toEqual([])
+    expect(await probeConnection('codex')).toMatchObject({ ok: false, message: 'No key connection.' })
+    await clearBrainConnection('codex')
+    await expect(setBrainConnection('codex', { baseUrl: 'https://other.example/v1', key: 'personal-key', model: 'personal-model' })).rejects.toThrow(/another account/)
+    expect(brainConnection('codex', 'system')?.baseUrl).toBe('https://gateway.example/v1')
+    expect(connectionEnvironment('codex', 'personal')).toEqual({})
+    expect(connectionEnvironment('codex', 'system')).toEqual({ ENGRAM_CODEX_KEY: 'company-key' })
+  })
+  it('does not save a connection if the selected account changes during its test', async () => {
+    fake.fetch.mockImplementationOnce(async () => { fake.profile = 'other'; return new Response(JSON.stringify({ status: 'completed', output: [{ content: [{ type: 'output_text', text: 'OK' }] }] })) })
+    await expect(setBrainConnection('codex', { baseUrl: 'https://gateway.example/v1', key: 'k', model: 'm' })).rejects.toThrow(/selected account changed/)
+    expect(brainConnection('codex', 'system')).toBeNull()
   })
 })

@@ -37,7 +37,7 @@ export function accountEnvironment(provider: AccountProvider, id = activeAccount
   if (typeof id !== 'string' || !id) throw new Error('Unknown account profile.')
   const env = { ...systemEnvironment, [providerKey[provider]]: systemPaths ? profilePath(provider, id) : process.env[providerKey[provider]] }
   if (id !== 'system') for (const key of credentials[provider]) delete env[key]
-  const connection = connectionEnvironment(provider)
+  const connection = connectionEnvironment(provider, id)
   if (Object.keys(connection).length) for (const key of credentials[provider]) delete env[key]
   return { ...env, ...connection }
 }

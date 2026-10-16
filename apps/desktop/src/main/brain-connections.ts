@@ -5,8 +5,9 @@ import { join } from 'node:path'
 import { renameWithRetry } from 'core'
 import type { BrainConnectionDto, BrainConnectionInput, BrainConnectionProvider } from '../shared/types.js'
 import { flog } from './flog.js'
+import { activeAccountProfile } from './account-profiles.js'
 
-interface StoredConnection { baseUrl: string; model: string; key: string; encrypted: boolean }
+interface StoredConnection { baseUrl: string; model: string; key: string; encrypted: boolean; profile?: string }
 type Store = Partial<Record<BrainConnectionProvider, StoredConnection>>
 
 export const CODEX_KEY_ENV = 'ENGRAM_CODEX_KEY'
@@ -50,8 +51,13 @@ async function save(store: Store): Promise<void> {
 
 // The connection as the runtime needs it, with the key in the clear; only the
 // main process reads this, and only to hand it to the runtime's environment.
-export function brainConnection(provider: BrainConnectionProvider): { baseUrl: string; model: string; key: string } | null {
+const profileOf = (provider: BrainConnectionProvider, profile?: string): string => provider === 'decision' ? 'system' : profile ?? activeAccountProfile(provider)
+function storedFor(provider: BrainConnectionProvider, profile?: string): StoredConnection | undefined {
   const stored = cache?.[provider]
+  return stored && (stored.profile ?? 'system') === profileOf(provider, profile) ? stored : undefined
+}
+export function brainConnection(provider: BrainConnectionProvider, profile?: string): { baseUrl: string; model: string; key: string } | null {
+  const stored = storedFor(provider, profile)
   if (!stored) return null
   const key = open(stored)
   return key ? { baseUrl: stored.baseUrl, model: stored.model, key } : null
@@ -59,7 +65,7 @@ export function brainConnection(provider: BrainConnectionProvider): { baseUrl: s
 
 // What the settings screen may know: everything but the key itself.
 export function brainConnectionDto(provider: BrainConnectionProvider): BrainConnectionDto | null {
-  const stored = cache?.[provider]
+  const stored = storedFor(provider)
   if (!stored) return null
   const key = open(stored)
   return { provider, baseUrl: stored.baseUrl, model: stored.model, keyHint: key.length > 8 ? `…${key.slice(-4)}` : '', usable: key.length > 0 }
@@ -83,12 +89,17 @@ export function setBrainConnection(provider: BrainConnectionProvider, input: Bra
   const clean = validateConnectionInput(input)
   if (!clean.model) throw new Error('Enter the model ID to test this connection.')
   const sealed = seal(clean.key)
+  const profile = profileOf(provider)
   const work = saving.then(async () => {
+    await loadBrainConnections()
+    if (cache?.[provider] && (cache[provider]!.profile ?? 'system') !== profile) throw new Error('An API key is saved for another account. Switch back and remove it before connecting this account.')
     const checked = await checkConnection(provider, clean)
     if (!checked.ok) throw new Error(checked.message ?? 'The model did not answer the connection test.')
-    const store = { ...(await loadBrainConnections()), [provider]: { baseUrl: clean.baseUrl, model: clean.model, ...sealed } }
+    if (profileOf(provider) !== profile) throw new Error('The selected account changed. Connect again from its settings.')
+    const store = { ...(await loadBrainConnections()), [provider]: { baseUrl: clean.baseUrl, model: clean.model, profile, ...sealed } }
     await save(store)
     verified.set(store[provider]!, Date.now())
+    if (profileOf(provider) !== profile) throw new Error('The connection was saved for the previous account. Switch back to use it.')
     flog('connections', `${provider}: model answered at ${new URL(clean.baseUrl).origin}`)
     return brainConnectionDto(provider)!
   })
@@ -96,9 +107,10 @@ export function setBrainConnection(provider: BrainConnectionProvider, input: Bra
   return work
 }
 
-export async function clearBrainConnection(provider: BrainConnectionProvider): Promise<void> {
+export async function clearBrainConnection(provider: BrainConnectionProvider, profile = profileOf(provider)): Promise<void> {
   const work = saving.then(async () => {
     const store = { ...(await loadBrainConnections()) }
+    if (store[provider] && (store[provider]!.profile ?? 'system') !== profile) return
     delete store[provider]
     await save(store)
     flog('connections', `${provider}: key connection removed`)
@@ -110,8 +122,8 @@ export async function clearBrainConnection(provider: BrainConnectionProvider): P
 // Environment for a runtime reached by key. Claude Code validates an
 // ANTHROPIC_API_KEY against Anthropic itself, so a gateway takes the token
 // variable; Codex names its key variable in the provider it is given.
-export function connectionEnvironment(provider: 'claude' | 'codex'): Record<string, string> {
-  const connection = brainConnection(provider)
+export function connectionEnvironment(provider: 'claude' | 'codex', profile?: string): Record<string, string> {
+  const connection = brainConnection(provider, profile)
   if (!connection) return {}
   if (provider === 'claude') return { ANTHROPIC_BASE_URL: connection.baseUrl, ANTHROPIC_AUTH_TOKEN: connection.key, ...(connection.model ? { ANTHROPIC_MODEL: connection.model } : {}) }
   return { [CODEX_KEY_ENV]: connection.key }
@@ -119,8 +131,8 @@ export function connectionEnvironment(provider: 'claude' | 'codex'): Record<stri
 
 // Codex takes its provider as config overrides; the base URL stops where the
 // runtime appends /responses itself.
-export function codexProviderOverrides(): string[] {
-  const connection = brainConnection('codex')
+export function codexProviderOverrides(profile?: string): string[] {
+  const connection = brainConnection('codex', profile)
   if (!connection) return []
   return [
     'model_provider="engram"',
@@ -132,12 +144,11 @@ export function codexProviderOverrides(): string[] {
   ]
 }
 
-// Whether the address answers the key: the model list is the one call every
-// such API has, and 401 is its way of saying the key is wrong.
-export async function probeConnection(provider: 'claude' | 'codex', fetchImpl: typeof fetch = connectionFetch): Promise<{ ok: boolean; status: number; message?: string }> {
-  const connection = brainConnection(provider)
+// A completed inference verifies access; a model catalogue cannot do that.
+export async function probeConnection(provider: 'claude' | 'codex', fetchImpl: typeof fetch = connectionFetch, profile?: string): Promise<{ ok: boolean; status: number; message?: string }> {
+  const connection = brainConnection(provider, profile)
   if (!connection) return { ok: false, status: 0, message: 'No key connection.' }
-  const stored = cache?.[provider]
+  const stored = storedFor(provider, profile)
   if (fetchImpl === connectionFetch && stored && Date.now() - (verified.get(stored) ?? 0) < 10 * 60_000) return { ok: true, status: 200 }
   const result = await checkConnection(provider, connection, fetchImpl)
   if (result.ok && stored && cache?.[provider] === stored) verified.set(stored, Date.now())
@@ -158,8 +169,8 @@ async function checkConnection(provider: BrainConnectionProvider, connection: { 
 }
 
 // The models the address offers, in the shape the picker takes.
-export async function connectionModels(provider: 'claude' | 'codex', fetchImpl: typeof fetch = connectionFetch): Promise<{ value: string; label: string; detail: string }[]> {
-  const connection = brainConnection(provider)
+export async function connectionModels(provider: 'claude' | 'codex', fetchImpl: typeof fetch = connectionFetch, profile?: string): Promise<{ value: string; label: string; detail: string }[]> {
+  const connection = brainConnection(provider, profile)
   if (!connection) return []
   const url = provider === 'claude' ? `${connection.baseUrl}/v1/models` : `${connection.baseUrl}/models`
   const headers: Record<string, string> = provider === 'claude' ? { 'x-api-key': connection.key, 'anthropic-version': '2023-06-01' } : { authorization: `Bearer ${connection.key}` }
