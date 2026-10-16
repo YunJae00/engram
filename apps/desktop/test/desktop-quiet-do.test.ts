@@ -15,7 +15,7 @@ const screen = (controls: QuietControlDto[], texts: string[], snapshot = 'a'.rep
   window: '7', pid: 70, title: 'Claude', snapshot, controls, texts: texts.map((text, index) => ({ id: `t${index}`, text })), skippedControls: 0, skippedTexts: 0, ms: 50,
   state: { foreground: false, idleMs: 9000, minimized: false },
 })
-const request = { lane: 'bot-one', app: 'Claude', goal: 'Start a new chat and ask about the mail', text: 'What did the mail say?', allowIrreversible: false, maxSteps: 8 }
+const request = { lane: 'bot-one', app: 'Claude', goal: 'Start a new chat and ask about the mail', text: 'What did the mail say?', maxSteps: 8 }
 const decided = (choice: string, confidence = 0.9) => async () => ({ choice, confidence, probabilities: { [choice]: confidence }, ms: 120 })
 
 beforeEach(() => {
@@ -48,14 +48,14 @@ describe('a short goal run by a decision model', () => {
     expect(JSON.parse(formatDo(result))).toMatchObject({ status: 'done', requiresVerification: true })
   })
 
-  it('leaves anything irreversible to the person unless the brain was told they asked', async () => {
+  it('leaves recognized irreversible controls for a separate explicitly requested action', async () => {
     fake.scan.mockResolvedValue(screen([control('c5', '보내기'), composer], ['draft']))
     const stopped = await quietDo(request, vi.fn().mockImplementation(decided('press c5')))
     expect(stopped.status).toBe('needs-person')
     expect(fake.press).not.toHaveBeenCalled()
     expect(JSON.parse(formatDo(stopped)).steps[0].outcome).toContain('irreversible')
     fake.scan.mockResolvedValueOnce(screen([control('c5', 'Send'), composer], ['draft'])).mockResolvedValueOnce(screen([composer], ['sent'], 'd'.repeat(32)))
-    const allowed = await quietDo({ ...request, allowIrreversible: true }, vi.fn().mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('done')))
+    const allowed = await quietDo({ ...request, goal: 'Send the message' }, vi.fn().mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('done')))
     expect(allowed.status).toBe('needs-person')
     expect(fake.press).not.toHaveBeenCalled()
     expect(irreversibleName('Submit form')).toBe(true)

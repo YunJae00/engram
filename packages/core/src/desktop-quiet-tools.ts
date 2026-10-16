@@ -9,7 +9,7 @@ export interface QuietCourier {
   press(app: string, snapshot: string, control: string, context: AgentToolContext): Promise<string>
   text(app: string, snapshot: string | undefined, control: string | undefined, settleSeconds: number, signal?: AbortSignal): Promise<string>
   // A short goal carried out by a decision model picking each control; offered only when one is connected.
-  do?(app: string, goal: string, text: string | undefined, allowIrreversible: boolean, maxSteps: number, context: AgentToolContext): Promise<string>
+  do?(app: string, goal: string, text: string | undefined, maxSteps: number, context: AgentToolContext): Promise<string>
 }
 
 export const QUIET_TOOLS = ['app_read', 'app_set', 'app_press', 'app_text', 'app_do']
@@ -27,22 +27,21 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
   const run = courier.do
   const doTool: AgentTool[] = run ? [{
     name: 'app_do',
-    description: `Carry out a short navigation or drafting goal in an app in one call, bounded by maxSteps (default 8). A decision model receives the goal and app contents and picks each control. Give text when needed. The loop stops before recognized irreversible controls even with allowIrreversible; use a separate explicit app_press only if the person requested that action. Control names cannot establish safety; restrict the goal to the user request. Read the app afterwards to verify the result. ${QUIET_NOTE}`,
+    description: `Carry out a short navigation or drafting goal in an app in one call, bounded by maxSteps (default 8). A decision model receives the goal and app contents and picks each control. Give text when needed. The loop stops before recognized irreversible controls; use a separate explicit app_press only if the person requested that action. Control names cannot establish safety; restrict the goal to the user request. Read the app afterwards to verify the result. ${QUIET_NOTE}`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['app', 'goal'],
-      properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, goal: { type: 'string', minLength: 1, maxLength: 600 }, text: { type: 'string', minLength: 1, maxLength: 2000 }, allowIrreversible: { type: 'boolean' }, maxSteps: { type: 'integer', minimum: 1, maximum: 12 } },
+      properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, goal: { type: 'string', minLength: 1, maxLength: 600 }, text: { type: 'string', minLength: 1, maxLength: 2000 }, maxSteps: { type: 'integer', minimum: 1, maximum: 12 } },
     },
     async run(args, context) {
       context.signal?.throwIfAborted()
-      if (!plainRecord(args) || !Object.keys(args).every(key => ['app', 'goal', 'text', 'allowIrreversible', 'maxSteps'].includes(key))) return 'app_do takes app, goal, and optionally text, allowIrreversible and maxSteps.'
+      if (!plainRecord(args) || !Object.keys(args).every(key => ['app', 'goal', 'text', 'maxSteps'].includes(key))) return 'app_do takes app, goal, and optionally text and maxSteps.'
       const app = appOf(args['app']), goal = textOf(args['goal'], 600)
       const text = 'text' in args ? textOf(args['text'], 2000) : undefined
-      const allow = 'allowIrreversible' in args ? args['allowIrreversible'] : false
       const steps = 'maxSteps' in args ? args['maxSteps'] : 8
-      if (!app || !goal?.trim() || text === null || text === '' || typeof allow !== 'boolean' || typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1 || steps > 12) return 'app_do needs app, a goal up to 600 characters, optional printable text, allowIrreversible as a boolean and maxSteps from 1 to 12.'
+      if (!app || !goal?.trim() || text === null || text === '' || typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1 || steps > 12) return 'app_do needs app, a goal up to 600 characters, optional printable text and maxSteps from 1 to 12.'
       requirePublicText(goal, context)
       if (text) requirePublicText(text, context)
-      const result = await run(app, goal.trim(), text, allow, steps, context)
+      const result = await run(app, goal.trim(), text, steps, context)
       if ((JSON.parse(result) as { pressed?: boolean }).pressed) context.onCommitted?.()
       return result
     },

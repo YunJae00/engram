@@ -5,7 +5,7 @@ import { quietPress, quietScan, quietSet } from './desktop-quiet.js'
 import { flog } from './flog.js'
 
 // Bounded provider actions; uncertain or consequential outcomes stop the loop.
-export interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; allowIrreversible: boolean; maxSteps: number; signal?: AbortSignal }
+export interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; maxSteps: number; signal?: AbortSignal }
 export interface QuietDoStep { action: string; control?: string; name?: string; confidence: number; ms: number; outcome: string }
 export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean }
 

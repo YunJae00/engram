@@ -72,7 +72,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     press: async (app, snapshot, control, context) => formatPress(await quietPress(lane, app, snapshot, control, context.signal)),
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
-    ...(brainConnection('decision') ? { do: async (app, goal, text, allowIrreversible, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), allowIrreversible, maxSteps, ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
+    ...(brainConnection('decision') ? { do: async (app, goal, text, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), maxSteps, ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   // An app the quiet lane has read stays with the quiet lane: taking the
   // person's mouse for it would gain nothing the providers do not offer.
