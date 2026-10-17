@@ -21,6 +21,7 @@ test('completed replies show suggestions, hide their markup and send only after 
   try {
     const page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()
+    await expect(page.getByTestId(`bot-${supplied.id}`)).toBeVisible()
     await app.evaluate(({ ipcMain }) => {
       const captured = globalThis as typeof globalThis & { replyMessages?: string[] }
       captured.replyMessages = []
@@ -37,6 +38,7 @@ test('completed replies show suggestions, hide their markup and send only after 
     await page.getByTestId(`bot-${fallback.id}`).click()
     await expect(page.getByTestId('reply-chips').getByRole('button')).toHaveCount(2)
     await page.setViewportSize({ width: 780, height: 700 })
+    await page.getByTestId('app-sidebar-close').click()
     await expect(page.getByTestId('reply-chip-0')).toBeVisible()
     await page.screenshot({ path: join(tmp, 'release-060-replies.png') })
   } finally { await app.close() }

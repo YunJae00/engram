@@ -14,6 +14,7 @@ test.beforeEach(async () => {
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-queue-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
+  await expect(page.getByTestId(`bot-${botId}`)).toBeVisible()
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const fixture = globalThis as typeof globalThis & { pending: { request: { message: string; channel: string }; resolve(): void }[]; requests: string[] }
     fixture.pending = []; fixture.requests = []
