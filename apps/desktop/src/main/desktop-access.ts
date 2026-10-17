@@ -112,7 +112,9 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     const wanted = pick.app?.trim().toLocaleLowerCase()
     const candidates = wanted ? windows.filter((one) => one.title.toLocaleLowerCase().includes(wanted)) : windows.filter((one) => one.foreground)
     const target = candidates.find((one) => !one.minimized && one.foreground) ?? candidates.find((one) => !one.minimized) ?? candidates[0]
-    if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open that app first, or call list_windows to see what is open.` : 'No app window is in front to work in. Name one with app, or open it first.')
+    // The open windows travel with the miss, so the next call can name one without a separate listing.
+    const open = windows.map((one) => one.title).filter(Boolean).slice(0, 40).map((title) => `"${title}"`).join(', ')
+    if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)
     if (taken) throw new Error(`"${target.title}" belongs to another chat right now.`)

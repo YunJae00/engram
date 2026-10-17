@@ -65,7 +65,7 @@ function excelArgs(args: unknown, tool: string): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   const workbook = optionalText(args['workbook'], NAME_CAP, 'workbook')
   const sheet = optionalText(args['sheet'], 64, 'sheet')
-  if (!workbook || !sheet) throw new Error('Name the workbook and sheet explicitly; use excel_workbooks to find them, or workbook: "new" to create one.')
+  if (!workbook || !sheet) throw new Error('Name the workbook and sheet explicitly; excel_read with no workbook lists the open ones, or use workbook: "new" to create one.')
   if (workbook) out['workbook'] = workbook
   if (sheet) out['sheet'] = sheet
   return out
@@ -106,9 +106,10 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'excel_read',
-      description: `Read at most 4000 cells from an explicitly named workbook and sheet. Use excel_workbooks to find their names. range looks like "A1:D20". ${READ_NOTE}`,
-      argsSchema: { type: 'object', additionalProperties: false, required: ['range', 'workbook', 'sheet'], properties: { range: { type: 'string' }, workbook: { type: 'string' }, sheet: { type: 'string' } } },
+      description: `Read at most 4000 cells from an explicitly named workbook and sheet. With no workbook given, it lists the workbooks open in Excel with their sheets instead. range looks like "A1:D20". ${READ_NOTE}`,
+      argsSchema: { type: 'object', additionalProperties: false, properties: { range: { type: 'string' }, workbook: { type: 'string' }, sheet: { type: 'string' } } },
       run: (args, context) => {
+        if (plain(args) && Object.keys(args).length === 0) return call('excel.workbooks', {}, context)
         const out = excelArgs(args, 'excel_read')
         only(args as Record<string, unknown>, ['range', 'workbook', 'sheet'], 'excel_read')
         const range = (args as Record<string, unknown>)['range']
@@ -119,7 +120,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'excel_write',
-      description: 'Write cells, formats and charts to an explicitly named workbook and sheet. workbook: "new" creates a workbook; otherwise use its name or path from excel_workbooks. sheet names or creates a tab. Reuse the returned workbook and sheet for subsequent calls, never the active selection. cells: [{cell:"B2", value:23.5}]; strings starting with "=" are validated local formulas. formats: [{range:"A1:D1", bold, fill:"1F4E79", fontColor:"FFFFFF", numberFormat:"#,##0", align, border, autofit}]. charts: [{data:"A1:B6", type:"column|line|bar|pie", title, left, top, width, height}]. At most 4000 cells per range. Saved only when saveAs names a file or save is true. Read back changes before claiming completion.',
+      description: 'Write cells, formats and charts to an explicitly named workbook and sheet. workbook: "new" creates a workbook; otherwise use its name or path as excel_read lists it. sheet names or creates a tab. Reuse the returned workbook and sheet for subsequent calls, never the active selection. cells: [{cell:"B2", value:23.5}]; strings starting with "=" are validated local formulas. formats: [{range:"A1:D1", bold, fill:"1F4E79", fontColor:"FFFFFF", numberFormat:"#,##0", align, border, autofit}]. charts: [{data:"A1:B6", type:"column|line|bar|pie", title, left, top, width, height}]. At most 4000 cells per range. Saved only when saveAs names a file or save is true. Read back changes before claiming completion.',
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['cells', 'workbook', 'sheet'],
         properties: {

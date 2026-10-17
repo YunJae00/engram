@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { resolve, join } from 'node:path'
 import { fileWorkTools, resolveArtifact, saveArtifact } from '../src/file-work.js'
 import { workbookTool } from '../src/file-workbook.js'
-import { workCapabilities } from '../src/work-capabilities.js'
 
 let root: string
 beforeEach(async () => { await mkdir('tmp', { recursive: true }); root = await mkdtemp(resolve('tmp/file-work-')) })
@@ -247,8 +246,6 @@ it('find_files returns name/path candidates only when a finder is available, and
     findFiles: async (query) => { seen.push(query); return { matches: query.includes('budget') ? [{ path: join(root, 'Q3 budget.xlsx'), name: 'Q3 budget.xlsx', folder: root, modified: '2026-09-01T00:00:00.000Z' }] : [], limited: false } },
   })
   const find = withFinder.find((tool) => tool.name === 'find_files')!
-  const methods = JSON.parse(await workCapabilities(withFinder).run({}, context))
-  expect(methods.savedFiles.map((tool: { name: string }) => tool.name)).toContain('find_files')
   const hit = JSON.parse(await find.run({ query: 'budget' }, { task: 'find it' }))
   expect(seen).toEqual(['budget'])
   expect(hit.matches).toHaveLength(1)

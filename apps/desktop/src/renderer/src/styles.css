@@ -495,7 +495,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
   to { width: 0; min-width: 0; opacity: 0; transform: translateX(14px); }
 }
 .bots-working { animation: view-in 160ms ease-out; }
-.comet-work-toggle { animation: name-in 260ms ease; }
 .settings-loaded { animation: view-in 180ms ease-out; }
 /* engine presence dot — a filled circle, ok-tinted halo when connected */
 .engine-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
@@ -1748,8 +1747,6 @@ body.quick-host { background: transparent; }
 }
 .bots-followup:hover { background: var(--hover-bg); color: var(--fg); }
 /* The loop narrating its work: the status line over its earlier steps. */
-.bots-pending { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-.bots-pending .bubble-thinking { flex-wrap: wrap; }
 .bots-work-lines { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .bots-work-line { font-family: var(--mono); font-size: var(--fs-micro); color: var(--fg-faint); }
 /* The offer: the comet knows which saved procedure does this, and asks for
@@ -2174,11 +2171,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .work-group[open] summary > svg:last-child { transform: rotate(90deg); }
 .work-group summary > svg:last-child { transition: transform 160ms ease; }
 .comet-work.done { gap: 4px; }
-.comet-work-toggle {
-  display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
-  font-size: var(--fs-small); color: var(--fg-faint); padding: 2px 6px 2px 2px; border-radius: 999px;
-}
-.comet-work-toggle:hover { color: var(--fg-dim); background: var(--hover-bg); }
 .answer-actions { display: flex; align-items: center; gap: 6px; min-height: 28px; margin-top: 8px; color: var(--fg-faint); font-size: var(--fs-small); }
 .answer-actions button { display: grid; place-items: center; width: 28px; height: 28px; }
 .answer-actions button:hover { background: var(--hover-bg); color: var(--accent); }
@@ -2235,7 +2227,7 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   .cosmos-chat, .cosmos-chat.closing, .app-sidebar, .sidebar-nav-row, .sidebar-item { transition: none; animation: none; }
   .bots-chat, .canvas-slot:not([hidden]), .comet-work-line, .model-picker-menu, .web-pane-tab-label { animation: none; }
   .bots-memory, .comet-keep, .routine-submit, .bots-offer, .note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: none; }
-  .web-pane, .web-pane.closing, .bots-working, .comet-work-toggle, .settings-loaded, .topbar-status.live { animation: none; }
+  .web-pane, .web-pane.closing, .bots-working, .settings-loaded, .topbar-status.live { animation: none; }
   .toast, .vault-opening { animation: none; }
   .composer-web.working .composer-web-dot { animation: none; opacity: 1; }
   .tour-highlight, .mirror-screen { transition: none; }

@@ -8,7 +8,7 @@ import { withoutSecrets } from './secrets.js'
 import { answerLanguageLine } from './task-proposal.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { taskPlan } from './agent-plan.js'
-import { workCapabilities } from './work-capabilities.js'
+import { sessionMenu } from './session-menu.js'
 import { officeWriteUnverified } from './office-verification.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
@@ -100,7 +100,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // them it gets the ceiling directly. Repetition guards still end a loop.
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
-  deps = { ...deps, tools: desktopScopeTools(deps.tools) }
+  deps = { ...deps, tools: sessionMenu(desktopScopeTools(deps.tools)) }
   const runTools = deps.engine.runTools
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
@@ -109,7 +109,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const plan = taskPlan(steps)
   // File/browser work uses direct result checks. Desktop sequences retain
   // phase checkpoints for their control rules and bounded call allowance.
-  const tools = [...deps.tools, ...(planned ? [...(desktop ? [plan.tool] : []), workCapabilities(deps.tools)] : [])]
+  const tools = [...deps.tools, ...(planned && desktop ? [plan.tool] : [])]
   const allowance = () => Math.min(options.maxCalls ?? 120, 120, baseCalls + plan.completed() * 20)
   const started = Date.now()
   const lifetime = new AbortController()

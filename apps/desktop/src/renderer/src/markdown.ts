@@ -1,5 +1,5 @@
 import { marked, type Tokens } from 'marked'
-import { normalizeProse } from '../../../../../packages/core/src/prose.js'
+import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
 // A model that indents its bullets turns the whole answer into a markdown code
 // block, which then refuses to wrap and runs off the side of the panel. Strip
@@ -66,8 +66,23 @@ function withoutReplies(text: string): string {
 
 export function suggestedReplies(text: string): string[] {
   const supplied = [...new Set(answerReplies(text))]
-  const defaults = ['Tell me more', 'Summarize the key points']
+  const defaults = suggestedReplyDefaults(answerText(text))
   return supplied.length >= 2 ? supplied : [...new Set([...supplied, ...defaults])].slice(0, 2)
+}
+
+// Only split message separators outside code and hidden suggestion blocks.
+export function answerBubbles(text: string): string[] {
+  const parts: string[][] = [[]]
+  let fence: string | undefined
+  for (const line of answerText(text).split('\n')) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+    if (marker && !fence) fence = marker
+    else if (marker && fence && marker[0] === fence[0] && marker.length >= fence.length && /^\s*(?:`+|~+)\s*$/.test(line)) fence = undefined
+    if (!fence && /^\s*-{3,}\s*$/.test(line)) { parts.push([]); continue }
+    parts[parts.length - 1]!.push(line)
+  }
+  const bubbles = parts.map((part) => part.join('\n').trim()).filter(Boolean)
+  return bubbles.length ? bubbles : [answerText(text)]
 }
 
 export function answerText(text: string): string {

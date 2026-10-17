@@ -15,6 +15,7 @@ const e2e = join(root, 'apps/desktop/e2e')
 const SMOKE = ['shell.spec.ts']
 // Path fragments → the specs that exercise that area. Order does not matter; a path may hit several rows.
 const AREAS = [
+  [/session-menu|work-capabilities|office-tools/, ['chat.spec.ts', 'work-evidence.spec.ts', 'page-hands.spec.ts']],
   [/native\/desktop\/|desktop-quiet|desktop-agent|desktop-control|desktop-host|desktop-access|desktop-sequence|desktop-overlay|application-work|desktop-tools|desktop-quiet-tools/, ['computer-control.spec.ts', 'work-evidence.spec.ts', 'developers.spec.ts']],
   [/engine-|brain-connections|KeyConnection|account-profiles|codex-|claude-runtime|engine-signin|EngineSettings|ModelPicker|ai-selection/, ['engine-settings.spec.ts', 'key-connections.spec.ts', 'ai-card-layout.spec.ts', 'ai-recovery.spec.ts', 'connection-state.spec.ts', 'developers.spec.ts']],
   [/agent-session|agent-loop|agent-prompt|task-runner|task-result|result-check|chat|Composer|Conversation|conversation|queued|interim|evidence/, ['chat.spec.ts', 'chat-attachments.spec.ts', 'chat-save.spec.ts', 'queued-messages.spec.ts', 'quick-comet.spec.ts', 'conversation-polish.spec.ts', 'conversation-sidebar.spec.ts', 'work-evidence.spec.ts']],

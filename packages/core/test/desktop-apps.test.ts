@@ -16,6 +16,17 @@ describe('desktop app launch tools', () => {
     expect(open).toHaveBeenCalledWith(appId, undefined)
     expect(isDesktopTool('list_apps') && isDesktopTool('open_app')).toBe(true)
   })
+  it('opens an app by its name, and answers several matches or none with a list instead of guessing', async () => {
+    const { apps, launch, open } = fixture()
+    apps.mockResolvedValue(JSON.stringify([{ id: 'a'.repeat(64), name: 'Calculator' }, { id: 'b'.repeat(64), name: 'Outlook (classic)' }, { id: 'c'.repeat(64), name: 'Outlook (new)' }]))
+    expect(await launch.run({ app: 'calculator' }, { task: 'Open calculator' })).toContain('observe')
+    expect(open).toHaveBeenLastCalledWith('a'.repeat(64), undefined)
+    const several = JSON.parse(await launch.run({ app: 'Outlook' }, { task: 'Open Outlook' }))
+    expect(several.matches.map((app: { name: string }) => app.name)).toEqual(['Outlook (classic)', 'Outlook (new)'])
+    const none = JSON.parse(await launch.run({ app: 'Paint' }, { task: 'Open Paint' }))
+    expect(none).toMatchObject({ opened: false, apps: ['Calculator', 'Outlook (classic)', 'Outlook (new)'] })
+    expect(open).toHaveBeenCalledTimes(1)
+  })
   it.each([{ app: '../calc.exe' }, { app: 'calculator', args: '/x' }, { app: 'calc & cmd' }, {}])('rejects non-ID arguments %j', async (args) => {
     const { launch, open } = fixture()
     expect(await launch.run(args, { task: 'Open calculator' })).toContain('not accepted')

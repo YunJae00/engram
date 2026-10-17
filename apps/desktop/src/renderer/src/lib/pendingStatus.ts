@@ -34,6 +34,7 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   ppt_build: 'Creating a presentation in PowerPoint', ppt_read: 'Checking the presentation', ppt_edit: 'Updating the open presentation',
   word_write: 'Creating a document in Word', word_read: 'Checking the document', word_edit: 'Updating the open document',
   excel_write: 'Updating the workbook in Excel', excel_read: 'Checking the workbook', excel_workbooks: 'Finding the workbook',
+  outlook_mail: 'Looking through your mail', outlook_read: 'Reading a mail', outlook_draft: 'Drafting a mail', outlook_calendar: 'Checking your calendar',
   Read: arg => `Reading ${fileName(arg)}`, NotebookRead: arg => `Reading ${fileName(arg)}`,
   Glob: arg => `Looking for files (${arg})`, Grep: arg => `Searching files for “${arg}”`, LS: 'Listing a folder',
   Write: arg => `Writing ${fileName(arg)}`, Edit: arg => `Editing ${fileName(arg)}`, MultiEdit: arg => `Editing ${fileName(arg)}`, NotebookEdit: arg => `Editing ${fileName(arg)}`,
@@ -41,7 +42,7 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   file_read: arg => `Reading ${fileName(arg)}`, file_read_workbook: arg => `Reading the workbook ${fileName(arg)}`, file_read_package: arg => `Reading the document ${fileName(arg)}`,
   file_create_copy: arg => `Saving ${fileName(arg)}`, file_create_workbook: arg => `Saving ${fileName(arg)}`, file_edit_package: arg => `Updating ${fileName(arg)}`,
   find_files: arg => `Finding files named like “${arg}”`, open_skill: 'Reading a how-to it was shown',
-  work_capabilities: 'Checking what it can use', task_plan: 'Planning the steps', report_result_check: 'Reporting the check',
+  page_do: 'Working through the page', app_do: 'Working in the app', task_plan: 'Planning the steps', report_result_check: 'Reporting the check',
   artifact_read: arg => `Reading ${fileName(arg)}`,
 }
 // Lines the host writes about the turn rather than a tool call.
@@ -84,12 +85,12 @@ export function workBlocks(lines: string[]): ({ type: 'said'; text: string } | {
 
 export function workLabel(line: string): string {
   const tool = line.split(':', 1)[0] ?? ''
-  if (/^(search_web|open_page|read_open_page|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
+  if (/^(search_web|open_page|read_open_page|read_pages|page_steps|page_do|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
   if (/^app_(read|set|press|text|do)$/.test(tool)) return 'Working with an app'
   if (/^(desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps)/.test(tool)) return 'Using the computer'
   if (/^(excel_|word_|ppt_|.*live_document)/.test(tool)) return 'Working with documents'
   if (/^(search_memory|read_note|find_procedure|open_skill)/.test(tool)) return 'Using your memory'
-  if (/^(task_plan|work_capabilities)$/.test(tool)) return 'Planning the work'
+  if (tool === 'task_plan') return 'Planning the work'
   if (/^(Bash|PowerShell|Shell)$/.test(tool)) return 'Running commands'
   if (/^(report_result_check|verification|note)$/.test(tool)) return 'Checking the result'
   if (/^(Read|Glob|Grep|LS|Write|Edit|MultiEdit|NotebookRead|NotebookEdit)$/.test(tool) || /file|artifact/.test(tool)) return 'Working with files'

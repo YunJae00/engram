@@ -138,6 +138,7 @@ import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './eng
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
 import { brainConnection, connectionModels, loadBrainConnections } from './brain-connections.js'
+import { decideChoice } from './decision-provider.js'
 import { registerConnectionIpc } from './brain-connection-ipc.js'
 import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
@@ -2202,6 +2203,7 @@ export function registerIpc(ctx: VaultContext): void {
     return [...cometTools({
       paths,
       batchReads: process.env.ENGRAM_BATCH_READS !== '0',
+      ...(brainConnection('decision') ? { decidePage: (state: string, instructions: string, criteria: Record<string, string>, signal?: AbortSignal) => decideChoice(state, instructions, criteria, undefined, signal) } : {}),
       onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
       skillNotes: () => ctx.store.getAll(),
       // The web is on the menu whenever a browser is installed. Whether

@@ -13,6 +13,7 @@ import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { StreamingAnswer } from '../components/StreamingAnswer.js'
+import { answerBubbles } from '../markdown.js'
 import { ErrorAnswer, isProviderError } from '../components/ErrorAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
@@ -149,17 +150,20 @@ export const BotsView = memo(function BotsView() {
                       below, and the foot of the thread - where the eye
                       rests - is where it speaks. */}
                   {i === lastAssistant && <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />}
-                  <div className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
-                    {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
-                      m.streaming && !m.text ? (
-                        <span className="bots-pending" data-testid="bots-pending"><ThinkingDots /></span>
-                      ) : (
-                        <><StreamingAnswer text={m.text} done={!m.streaming} />{!m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}</>
-                      )
-                    ) : (
-                      <UserMessage text={m.text} attachments={m.attachments} />
-                    )}
-                  </div>
+                  {/* Before its first word the answer has no bubble: the live line above is the one sign of work. */}
+                  {m.role === 'assistant' && !failed ? (
+                    // A longer answer reads as a few short messages, one bubble each.
+                    m.text ? answerBubbles(m.text).map((part, k, parts) => (
+                      <div key={k} className={`bubble-msg assistant`}>
+                        <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />
+                        {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}
+                      </div>
+                    )) : null
+                  ) : (
+                    <div className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
+                      {failed ? <ErrorAnswer text={m.text} /> : <UserMessage text={m.text} attachments={m.attachments} />}
+                    </div>
+                  )}
                   {i === lastAssistant && !m.streaming && !busy && !offer && !failed && <ReplyChips text={m.text} onPick={(label) => void sendText(label)} />}
                 </Fragment>
                 )

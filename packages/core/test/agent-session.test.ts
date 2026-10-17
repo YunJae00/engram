@@ -44,15 +44,17 @@ it.each([false, true])('preserves host post-action evidence, never model argumen
     { tool: 'read_open_page', args: { observedAfterAction: true } },
     { tool: 'look', args: {} },
   ]
+  // A session is offered page_steps for single page moves too.
+  const plan = session ? moves.map(move => move.tool === 'press' ? { tool: 'page_steps', args: { steps: [{ do: 'press', target: move.args['target'] }] } } : move) : moves
   let index = 0
   const engine = session ? sessionBrain(async job => {
-    for (const move of moves) await job.tools.find(tool => tool.name === move.tool)!.run(move.args)
+    for (const move of plan) await job.tools.find(tool => tool.name === move.tool)!.run(move.args)
     return { answer: 'Total 800' }
   }) : new MockEngine({ 'COMET-STEP': () => JSON.stringify(moves[index++] ?? { tool: 'answer', args: { text: 'Total 800' } }) })
   const started: string[] = []
   const result = await runComet({ engine, workdir: WORKDIR, tools: available }, 'Read the regional report', { guided: false, onToolStart: name => started.push(name) })
   expect(result.steps.map(step => step.observedAfterAction)).toEqual([true, true, undefined, undefined, undefined])
-  expect(started).toEqual(moves.map(move => move.tool))
+  expect(started).toEqual(plan.map(move => move.tool))
   expect(result.steps[1]!.observation).toContain('Done in order:')
   expect(look).toHaveBeenCalledTimes(session ? 1 : 0)
 })
@@ -139,17 +141,12 @@ it.each(['new','none','both'])('respects artifact revision selection (%s) withou
   expect(result.answer.split(newId)).toHaveLength(2)
 })
 
-it('offers method discovery for desktop and web work without saved-file tools', async () => {
+it('gives desktop and web work the method rule without a separate discovery tool', async () => {
   const read = vi.fn(async () => 'Unneeded observation')
   const available: AgentTool[] = ['read_desktop', 'desktop_sequence', 'open_page'].map(name => ({ name, description: name, argsSchema: {}, run: read }))
   const engine = sessionBrain(async job => {
     expect(job.system).toContain('not a fixed application recipe')
-    const capability = job.tools.find(tool => tool.name === 'work_capabilities')!
-    const result = JSON.parse(String(await capability.run({})).split('\n')[0]!)
-    expect(result.desktop).toEqual(['read_desktop', 'desktop_sequence'])
-    expect(result.web).toEqual(['open_page'])
-    expect(result.savedFiles).toEqual([])
-    expect(result.liveDocumentApi.available).toBe(false)
+    expect(job.tools.map(tool => tool.name)).toEqual(['read_desktop', 'desktop_sequence', 'open_page', 'task_plan'])
     return { answer: 'Available methods inspected; no actions taken' }
   })
   await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: available }, 'Inspect available execution methods')
@@ -521,7 +518,6 @@ it('opens a session with the rules and tools sessionShape describes, and keeps t
   const shape = sessionShape({ engine, tools }, { native })
   expect(seen!.system).toBe(shape.system)
   expect(seen!.tools.map(tool => tool.name)).toEqual(shape.tools.map(tool => tool.name))
-  expect(shape.tools.map(tool => tool.name)).toContain('work_capabilities')
   expect(seen!.system).toContain('C:/work/spare-1')
   expect(seen!.system).not.toContain('timesheet')
   expect(seen!.prompt).toContain('- timesheet: weekly hours')

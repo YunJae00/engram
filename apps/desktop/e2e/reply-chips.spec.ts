@@ -1,6 +1,6 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { appendBotTurn, createBot, initVault } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -12,8 +12,8 @@ test('completed replies show suggestions, hide their markup and send only after 
   const supplied = await createBot(paths, { name: 'Suggested follow-ups' })
   const fallback = await createBot(paths, { name: 'Missing suggestions' })
   for (const bot of [supplied, fallback]) await appendBotTurn(paths, bot.id, { role: 'user', text: 'Find some options.', at })
-  await appendBotTurn(paths, supplied.id, { role: 'assistant', text: 'Here are the results.\n\n| Item | Status | Link |\n| --- | --- | --- |\n| Example | Open | https://example.com |\n\n```replies\nShow more options\nCompare these options\n```', at })
-  await appendBotTurn(paths, fallback.id, { role: 'assistant', text: 'The answer has no suggestions block.', at })
+  await appendBotTurn(paths, supplied.id, { role: 'assistant', text: 'Here are the results.\n---\n| Item | Status | Link |\n| --- | --- | --- |\n| Example | Open | https://example.com |\n\n```replies\nShow more options\nCompare these options\n```', at })
+  await appendBotTurn(paths, fallback.id, { role: 'assistant', text: '결과를 찾았어요.', at })
   const app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
     ...process.env, ENGRAM_VAULT: paths.root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'reply-data-')),
     ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1',
@@ -31,15 +31,24 @@ test('completed replies show suggestions, hide their markup and send only after 
     await page.getByTestId(`bot-${supplied.id}`).click()
     await expect(page.getByTestId('reply-chip-0')).toHaveText('Show more options')
     await expect(page.locator('.answer-card')).toHaveCount(1)
-    await expect(page.locator('.bubble-msg.assistant')).not.toContainText('```replies')
+    await expect(page.locator('.bubble-msg.assistant')).toHaveCount(2)
+    await expect(page.getByTestId('bots-thread')).not.toContainText('```replies')
     expect(await app.evaluate(() => (globalThis as typeof globalThis & { replyMessages: string[] }).replyMessages)).toEqual([])
     await page.getByTestId('reply-chip-0').click()
     await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { replyMessages: string[] }).replyMessages)).toEqual(['Show more options'])
     await page.getByTestId(`bot-${fallback.id}`).click()
     await expect(page.getByTestId('reply-chips').getByRole('button')).toHaveCount(2)
+    await expect(page.getByTestId('reply-chip-0')).toHaveText('좀 더 자세히 알려줘')
     await page.setViewportSize({ width: 780, height: 700 })
     await page.getByTestId('app-sidebar-close').click()
+    await expect(page.getByTestId('app-sidebar')).not.toBeVisible()
     await expect(page.getByTestId('reply-chip-0')).toBeVisible()
-    await page.screenshot({ path: join(tmp, 'release-060-replies.png') })
+    const shot = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+      await window.webContents.capturePage()
+      await new Promise(resolve => setTimeout(resolve, 400))
+      return (await window.webContents.capturePage()).toPNG().toString('base64')
+    })
+    await writeFile(join(tmp, 'release-061-replies.png'), Buffer.from(shot, 'base64'))
   } finally { await app.close() }
 })
