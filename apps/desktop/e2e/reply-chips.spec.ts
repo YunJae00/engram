@@ -32,7 +32,7 @@ test('completed replies show suggestions, hide their markup and send only after 
     await expect(page.getByTestId('reply-chip-0')).toHaveText('Show more options')
     await expect(page.locator('.answer-card')).toHaveCount(1)
     await expect(page.locator('.bubble-msg.assistant')).toHaveCount(2)
-    await expect(page.locator('.bubble-msg.assistant')).not.toContainText('```replies')
+    await expect(page.getByTestId('bots-thread')).not.toContainText('```replies')
     expect(await app.evaluate(() => (globalThis as typeof globalThis & { replyMessages: string[] }).replyMessages)).toEqual([])
     await page.getByTestId('reply-chip-0').click()
     await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { replyMessages: string[] }).replyMessages)).toEqual(['Show more options'])
