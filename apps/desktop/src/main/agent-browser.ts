@@ -7,6 +7,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
+import { watchStalledScripts } from './stalled-scripts.js'
 import { markAgentProfile } from './agent-profile.js'
 import { reserveRoom } from './memory-plan.js'
 import { observationOf, readFrames } from './page-reader.js'
@@ -353,6 +354,7 @@ async function ensureContext(): Promise<Ctx> {
     if (nativeBrowserEnabled()) {
       const ctx = await openNativeBrowser()
       context = ctx
+      watchStalledScripts(ctx)
       ctx.on('close', () => { if (context === ctx) { context = null; lanes.clear() } })
       ctx.on('page', (page) => {
         const requestedLane = allocatingLane
@@ -428,6 +430,7 @@ async function ensureContext(): Promise<Ctx> {
       if (BLOCKED_RESOURCES.has(route.request().resourceType())) return route.abort()
       return route.continue()
     })
+    watchStalledScripts(ctx)
     // The user closing the agent window by hand must read as "gone", not
     // leave a dead handle every later errand trips over.
     ctx.on('close', () => {

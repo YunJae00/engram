@@ -21,7 +21,8 @@ const AREAS = [
   [/renderer\/src\/App\.tsx|\.css$|Shell|layout|Sidebar|activity|Tour|onboarding|Onboarding|appearance|update/, ['layout.spec.ts', 'shell.spec.ts', 'appearance.spec.ts', 'activity-ui.spec.ts', 'onboarding.spec.ts']],
   [/interview|work-map|WorkInterview|cosmos|filing/, ['work-interview.spec.ts', 'work-interview-feedback.spec.ts', 'work-interview-preparation.spec.ts']],
   [/routine|learning/, ['routines.spec.ts', 'routine-learning.spec.ts']],
-  [/browser|page-|web-|live-view|mirror|preview/, ['page-hands.spec.ts', 'browser-preview.spec.ts', 'native-browser.spec.ts', 'live-view.spec.ts']],
+  [/browser|page-|web-|live-view|mirror|preview|agent-courier|comet-tools|search-|errand|stalled-/, ['page-hands.spec.ts', 'browser-preview.spec.ts', 'native-browser.spec.ts', 'live-view.spec.ts', 'chat.spec.ts']],
+  [/markdown|Answer|CometWork|BotsView|ReplyChips|Choices|Thinking/, ['chat.spec.ts', 'conversation-polish.spec.ts', 'queued-messages.spec.ts', 'routines.spec.ts', 'shell.spec.ts']],
   [/developer|workspace|artifact/, ['developers.spec.ts', 'tasks.spec.ts', 'artifact.spec.ts', 'workspace-delete.spec.ts']],
   [/index\.ts$|ipc\.ts$|vault|settings\.ts|reset|quit|boot/, ['shell.spec.ts', 'app-reset.spec.ts', 'background-workers.spec.ts', 'chat.spec.ts']],
 ]

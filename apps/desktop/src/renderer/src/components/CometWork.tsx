@@ -15,16 +15,17 @@ function WorkIcon({ line }: { line: string }) {
 }
 
 export function CometWork({ busy, status, since, lines, kept }: { busy: boolean; status: string; since?: number; lines: string[]; kept: string[] }) {
-  const [open, setOpen] = useState(true)
+  // Once the turn is over its words stay in the thread and the steps fold away behind one line.
+  const [open, setOpen] = useState(false)
   const shown = busy ? lines : kept
-  const blocks = workBlocks(shown)
+  const blocks = workBlocks(shown).filter(block => busy || open || block.type === 'said')
   const count = shown.filter(line => !isSaidLine(line)).length
   return <div className={busy ? 'comet-work' : 'comet-work done'} data-testid={busy ? 'comet-work' : 'comet-work-done'}>
     {!busy && shown.length > 0 && <button className="comet-work-toggle" data-testid="comet-work-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
       {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
       Activity · {count} {count === 1 ? 'action' : 'actions'}
     </button>}
-    {(busy || open) && blocks.length > 0 && <ol className="comet-work-lines" data-testid="bots-work-lines">
+    {blocks.length > 0 && <ol className="comet-work-lines" data-testid="bots-work-lines">
       {blocks.map((block, index) => block.type === 'said'
         ? <li key={index} className="comet-work-line said"><Answer text={block.text} compact /></li>
         : <li key={index}><details className="work-group">

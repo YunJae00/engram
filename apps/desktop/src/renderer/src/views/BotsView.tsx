@@ -23,6 +23,7 @@ import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
 import { UserMessage } from '../components/ChatAttachment.js'
+import { ReplyChips } from '../components/ReplyChips.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -151,7 +152,7 @@ export const BotsView = memo(function BotsView() {
                   <div className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
                     {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
                       m.streaming && !m.text ? (
-                        <span className="bots-pending" data-testid="bots-pending" />
+                        <span className="bots-pending" data-testid="bots-pending"><ThinkingDots /></span>
                       ) : (
                         <><StreamingAnswer text={m.text} done={!m.streaming} />{!m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}</>
                       )
@@ -159,6 +160,7 @@ export const BotsView = memo(function BotsView() {
                       <UserMessage text={m.text} attachments={m.attachments} />
                     )}
                   </div>
+                  {i === lastAssistant && !m.streaming && !busy && !offer && !failed && <ReplyChips text={m.text} onPick={(label) => void sendText(label)} />}
                 </Fragment>
                 )
               })}

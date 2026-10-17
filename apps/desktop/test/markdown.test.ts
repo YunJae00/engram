@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { answerHtml, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
@@ -63,5 +63,35 @@ describe('answerHtml', () => {
 
   it('hides the capture marker tail', () => {
     expect(answerHtml('Saved it.\n<engram:capture>buy milk</engram:capture>')).not.toContain('buy milk')
+  })
+})
+
+describe('found items and suggested replies', () => {
+  it('keeps two distinct suggestions when the model omits or duplicates its replies', async () => {
+    const { suggestedReplies } = await import('../src/renderer/src/markdown.js')
+    expect(suggestedReplies('Done.')).toEqual(['Tell me more', 'Summarize the key points'])
+    expect(suggestedReplies('Done.\n```replies\nMore details\nMore details\n```')).toEqual(['More details', 'Tell me more'])
+    expect(suggestedReplies('Done.\n```replies\nFirst\nSecond\nThird\n```')).toEqual(['First', 'Second', 'Third'])
+  })
+  const table = '| Company | Size | Deadline |\n| --- | --- | --- |\n| [AhnLab](https://example.com/a) | Mid-size | Oct 25 |\n| Kyowon | Mid-size |  |'
+
+  it('shows a table of items as cards, keeping two-column tables as tables', () => {
+    const html = answerHtml(`Found these:\n\n${table}`)
+    expect(html).toContain('class="answer-cards"')
+    expect(html.match(/class="answer-card"/g)).toHaveLength(2)
+    expect(html).toContain('<div class="answer-card-title"><a href="https://example.com/a">AhnLab</a></div>')
+    expect(html).toContain('<dt>Deadline</dt><dd>Oct 25</dd>')
+    expect(html).not.toContain('<dt>Deadline</dt><dd></dd>')
+    expect(answerHtml('| Day | Hours |\n| --- | --- |\n| Mon | 8 |')).toContain('<table>')
+  })
+
+  it('takes suggested replies out of the text and offers at most three', () => {
+    const text = 'Done.\n\n```replies\n- Show only open ones\n2. Add to my calendar\nApply to the first\nOne too many\n```'
+    expect(answerReplies(text)).toEqual(['Show only open ones', 'Add to my calendar', 'Apply to the first'])
+    expect(answerText(text)).toBe('Done.')
+    expect(answerHtml(text)).not.toContain('Show only open ones')
+    // Mid-stream the block is hidden at once and offers nothing until it closes.
+    expect(answerText('Done.\n\n```replies\n- Show')).toBe('Done.')
+    expect(answerReplies('Done.\n\n```replies\n- Show')).toEqual([])
   })
 })

@@ -89,6 +89,8 @@ export interface WebCourier {
   fetchPage(url: string, signal?: AbortSignal): Promise<WebPage>
   // The page as it stands after typing or clicking changed it.
   readOpen?(signal?: AbortSignal): Promise<WebPage>
+  // Where a redirecting link leads, read from the redirect itself without opening a page.
+  followRedirect?(url: string, signal?: AbortSignal): Promise<string | null>
   typeInto?(field: string, text: string, signal?: AbortSignal): Promise<{ ok: boolean }>
   clickOn?(target: string, signal?: AbortSignal): Promise<{ ok: boolean }>
   // The hands on a page, each moving around it without committing anything:
