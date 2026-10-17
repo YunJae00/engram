@@ -1,3 +1,4 @@
+import { net } from 'electron'
 import { markNewControls, type PageMove, type WebCourier, type WebPage } from 'core'
 import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, laneLastUrl, lanePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
@@ -6,6 +7,9 @@ import { revealText } from './page-reveal.js'
 import { maskSecrets } from './page-mask.js'
 import { touchedAt } from './agent-view.js'
 import { readWhenReady } from './page-ready.js'
+import { flog } from './flog.js'
+
+const SLOW_OPEN_MS = 5_000
 
 // What a comet is given when it can reach the web: one browser, one reused
 // tab, and the hands that move around a page without committing anything.
@@ -172,11 +176,23 @@ export function agentCourier(
       if (shot) deps.onLook?.(page.url(), masked?.covered ?? 0)
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
+    async followRedirect(url, signal) {
+      const response = await net.fetch(url, { redirect: 'manual', ...(signal ? { signal } : {}) })
+      const target = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null
+      await response.body?.cancel().catch(() => undefined)
+      return target ? new URL(target, url).href : null
+    },
     async fetchPage(url, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
+      // A slow open is logged with where the time went: a page can answer at once and still
+      // hold its loaded event behind a third-party script that never responds.
+      const started = performance.now()
       await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
+      const loaded = performance.now()
       const result = await withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
+      const read = performance.now()
+      if (read - started > SLOW_OPEN_MS) flog('browser', `slow open ${new URL(url).host}: loaded ${Math.round(loaded - started)}ms, read ${Math.round(read - loaded)}ms`)
       armIdleClose()
       return markReading(result)
     },

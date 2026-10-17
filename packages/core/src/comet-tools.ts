@@ -7,6 +7,7 @@ import { listRoutines, routineSlotExamples, routineSlots, routineStepLabel } fro
 import { annotateStaleCards, listSkills, relevantSkillCards, readSkillFile, readSkillsLedger, staleSkills } from './skills.js'
 import type { ErrandRetrievedNote, WebCourier } from './errand.js'
 import { answersTheQuestion, contentWords, deriveSearchTemplate, rankLinks, searchUrlFor, SEMANTIC_NOISE, SEMANTIC_SURE } from './search-template.js'
+import { resolveResultLinks } from './search-links.js'
 import { cleanOptions, formatAsk } from './ask.js'
 import { carriesSecret } from './secrets.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
@@ -96,7 +97,7 @@ function recalled(remembered: string[] | undefined, query: string, task: string)
   })
 }
 
-const RESULTS_CAP = 5
+const RESULTS_CAP = 8
 const RETRY_AFTER_MS = 2_500
 const BODY_EXCERPT = 300
 const PROPOSE_BODY_CAP = 8_000
@@ -500,7 +501,7 @@ ${note.body.slice(0, 2_000)}`
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           const page = await courier.fetchPage(url, context.signal)
           if (page.wall) return `the search page wants a person — ask them to clear it on the page shown in the thread`
-          const links = rankLinks(page.links ?? [], query, RESULTS_CAP, url)
+          const links = rankLinks(await resolveResultLinks(page.links ?? [], page.url || url, courier.followRedirect?.bind(courier), context.signal), query, RESULTS_CAP, url)
           // A question that names nothing searches perfectly well and lands
           // somewhere unrelated. Writing up whatever turned up is how a
           // colleague invents a job; the honest move is to ask what was meant.
