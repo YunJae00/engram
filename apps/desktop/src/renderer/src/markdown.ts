@@ -1,5 +1,5 @@
 import { marked, type Tokens } from 'marked'
-import { normalizeProse } from '../../../../../packages/core/src/prose.js'
+import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
 // A model that indents its bullets turns the whole answer into a markdown code
 // block, which then refuses to wrap and runs off the side of the panel. Strip
@@ -66,7 +66,7 @@ function withoutReplies(text: string): string {
 
 export function suggestedReplies(text: string): string[] {
   const supplied = [...new Set(answerReplies(text))]
-  const defaults = /[가-힣]/.test(answerText(text)) ? ['좀 더 자세히 알려줘', '핵심만 요약해줘'] : ['Tell me more', 'Summarize the key points']
+  const defaults = suggestedReplyDefaults(answerText(text))
   return supplied.length >= 2 ? supplied : [...new Set([...supplied, ...defaults])].slice(0, 2)
 }
 
