@@ -1,6 +1,6 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { appendBotTurn, createBot, initVault } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -43,6 +43,12 @@ test('completed replies show suggestions, hide their markup and send only after 
     await page.getByTestId('app-sidebar-close').click()
     await expect(page.getByTestId('app-sidebar')).not.toBeVisible()
     await expect(page.getByTestId('reply-chip-0')).toBeVisible()
-    await page.screenshot({ path: join(tmp, 'release-060-replies.png') })
+    const shot = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+      await window.webContents.capturePage()
+      await new Promise(resolve => setTimeout(resolve, 400))
+      return (await window.webContents.capturePage()).toPNG().toString('base64')
+    })
+    await writeFile(join(tmp, 'release-061-replies.png'), Buffer.from(shot, 'base64'))
   } finally { await app.close() }
 })
