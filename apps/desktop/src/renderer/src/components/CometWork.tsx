@@ -15,15 +15,19 @@ function WorkIcon({ line }: { line: string }) {
 }
 
 export function CometWork({ busy, status, since, lines, kept }: { busy: boolean; status: string; since?: number; lines: string[]; kept: string[] }) {
-  // Once the turn is over its words stay in the thread and the steps fold away behind one line.
+  // The comet's words stay in the thread; its steps show as one live line while it works and fold away behind one line after.
   const [open, setOpen] = useState(false)
-  const shown = busy ? lines : kept
-  const blocks = workBlocks(shown).filter(block => busy || open || block.type === 'said')
-  const count = shown.filter(line => !isSaidLine(line)).length
+  const shown = (busy ? lines : kept).filter(line => !/^\s*<- /.test(line))
+  const blocks = workBlocks(shown).filter(block => block.type === 'said' || (!busy && open))
+  const steps = shown.filter(line => !isSaidLine(line) && !line.startsWith('  <- '))
+  const count = steps.length
+  // The finished work as one card: what kind of work it was, and that it is done.
+  const kinds = [...new Set(steps.map(workLabel))].slice(0, 2).join(' · ')
   return <div className={busy ? 'comet-work' : 'comet-work done'} data-testid={busy ? 'comet-work' : 'comet-work-done'}>
-    {!busy && shown.length > 0 && <button className="comet-work-toggle" data-testid="comet-work-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-      {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
-      Activity · {count} {count === 1 ? 'action' : 'actions'}
+    {!busy && count > 0 && <button className="comet-work-card" data-testid="comet-work-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <span className="comet-work-card-icon"><WorkIcon line={steps[0]!} /></span>
+      <span className="comet-work-card-text"><span className="comet-work-card-title">{kinds}</span><small>Done · {count} {count === 1 ? 'action' : 'actions'}</small></span>
+      {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
     </button>}
     {blocks.length > 0 && <ol className="comet-work-lines" data-testid="bots-work-lines">
       {blocks.map((block, index) => block.type === 'said'

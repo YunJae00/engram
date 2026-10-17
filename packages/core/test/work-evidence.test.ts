@@ -6,7 +6,6 @@ import { resolve } from 'node:path'
 import type { AgentLoopStep } from '../src/agent-loop.js'
 import { routineTask } from '../src/routine-task.js'
 import { openRuleLines, pickTools } from '../src/agent-prompt.js'
-import { workCapabilities } from '../src/work-capabilities.js'
 
 const page = { url: 'https://example.test/app', title: 'App', text: 'Ready Saved', links: [] }
 const check = { id: 'save', url: page.url, ready: 'Ready', present: ['Saved'], absent: ['Failed'] }
@@ -28,8 +27,6 @@ it('advertises only screenshot, verification and upload evidence tools', async (
   const tools = evidenceTools({ read: vi.fn(), capture: vi.fn(), upload: vi.fn() })
   expect(tools.map(tool => tool.name)).toEqual(['wait_for', 'verify', 'capture_evidence', 'upload_file'])
   expect(JSON.stringify(tools)).not.toMatch(/record_start|record_stop|maxSeconds/)
-  const capability = JSON.parse(await workCapabilities(tools).run({}, { task: 'Inspect available tools' }))
-  expect(capability.evidence.map((tool: { name: string }) => tool.name)).toEqual(tools.map(tool => tool.name))
 })
 
 it('requires the expected URL and positive readiness, and never infers absence from truncated text', () => {

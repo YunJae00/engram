@@ -66,8 +66,23 @@ function withoutReplies(text: string): string {
 
 export function suggestedReplies(text: string): string[] {
   const supplied = [...new Set(answerReplies(text))]
-  const defaults = ['Tell me more', 'Summarize the key points']
+  const defaults = /[가-힣]/.test(answerText(text)) ? ['좀 더 자세히 알려줘', '핵심만 요약해줘'] : ['Tell me more', 'Summarize the key points']
   return supplied.length >= 2 ? supplied : [...new Set([...supplied, ...defaults])].slice(0, 2)
+}
+
+// Only split message separators outside code and hidden suggestion blocks.
+export function answerBubbles(text: string): string[] {
+  const parts: string[][] = [[]]
+  let fence: string | undefined
+  for (const line of answerText(text).split('\n')) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+    if (marker && !fence) fence = marker
+    else if (marker && fence && marker[0] === fence[0] && marker.length >= fence.length && /^\s*(?:`+|~+)\s*$/.test(line)) fence = undefined
+    if (!fence && /^\s*-{3,}\s*$/.test(line)) { parts.push([]); continue }
+    parts[parts.length - 1]!.push(line)
+  }
+  const bubbles = parts.map((part) => part.join('\n').trim()).filter(Boolean)
+  return bubbles.length ? bubbles : [answerText(text)]
 }
 
 export function answerText(text: string): string {

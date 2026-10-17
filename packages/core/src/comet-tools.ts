@@ -1,3 +1,4 @@
+import { pageDoTool, type DecidePage } from './page-do.js'
 import { createCard } from './cards.js'
 import { readNote } from './notes.js'
 import { noteTitle, type Note } from './schema.js'
@@ -56,6 +57,8 @@ const RESULTS_PROSE_CAP = 300
 
 export interface CometToolDeps {
   onMetric?(metric: HarnessMetric): void
+  // A decision model that can pick controls on a page; with one, short page goals run as one call.
+  decidePage?: DecidePage
   batchReads?: boolean
   paths: VaultPaths
   skillNotes?(): Note[]
@@ -550,6 +553,8 @@ ${note.body.slice(0, 2_000)}`
     )
     // The hands: what moves around a page without committing anything.
     tools.push(...pageTools({ wallMet: deps.wallMet }, courier))
+    const pageDo = deps.decidePage ? pageDoTool(courier, deps.decidePage) : null
+    if (pageDo) tools.push(pageDo)
   }
 
   tools.push({
