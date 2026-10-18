@@ -159,7 +159,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_mail',
-      description: `List recent mail from Outlook: folder (inbox, sent, drafts, or a folder name), search (words in subject, sender or body), limit up to 50. Each item carries an id for outlook_read and outlook_draft. ${READ_NOTE}`,
+      description: `List recent mail from Outlook: folder (inbox, sent, drafts, or a folder name), search (words in the subject or a sender, To or Cc name; the mail text is searched only when none of those match), limit up to 50. Each item carries an id for outlook_read and outlook_draft. ${READ_NOTE}`,
       argsSchema: { type: 'object', additionalProperties: false, properties: { folder: { type: 'string' }, search: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 50 } } },
       run: (args, context) => {
         if (!plain(args)) throw new Error('outlook_mail takes an object.')

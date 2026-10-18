@@ -31,7 +31,7 @@ internal static class DesktopApps
     }
     private static object Visit(string wanted, Func<bool> permitted)
     {
-        if (wanted != null && !Regex.IsMatch(wanted, "^[a-f0-9]{64}$")) throw new ArgumentException("Use an exact ID from list_apps. Paths and commands are not accepted.");
+        if (wanted != null && !Regex.IsMatch(wanted, "^[a-f0-9]{64}$")) throw new ArgumentException("Use the app name or an ID that open_app gave. Paths and commands are not accepted.");
         object shell = null, folder = null, items = null;
         try
         {
@@ -66,7 +66,7 @@ internal static class DesktopApps
                 }
                 finally { Release(item); }
             }
-            if (wanted != null) throw new InvalidOperationException("This app is no longer available. Refresh list_apps before choosing again.");
+            if (wanted != null) throw new InvalidOperationException("This app is no longer available. Call open_app with its name again.");
             return result;
         }
         finally { Release(items); Release(folder); Release(shell); }

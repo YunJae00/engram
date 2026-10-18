@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { artifactHref, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { artifactDirectory } from './file-work.js'
+import { noteScript } from './turn-scripts.js'
 
 const READS = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead'])
 const WRITES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -167,6 +168,7 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
       const line = nativeSummary(name, input)
       options.onStep(`${name}: ${line}`)
       options.audit(name, line)
+      noteScript(options.channel, name, input)
     },
   }
 }

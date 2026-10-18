@@ -1,4 +1,6 @@
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
+import { withinBudget } from './tool-budget.js'
+import { sessionMenu } from './session-menu.js'
 import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
 import { parseAsk } from './ask.js'
@@ -8,7 +10,6 @@ import { withoutSecrets } from './secrets.js'
 import { answerLanguageLine } from './task-proposal.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { taskPlan } from './agent-plan.js'
-import { sessionMenu } from './session-menu.js'
 import { officeWriteUnverified } from './office-verification.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
@@ -180,13 +181,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         } else if (recoveryBlock) {
           observation = recoveryBlock
         } else if (tool.runRich) {
-          const outcome = await tool.runRich(args, context)
+          const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }))
           observation = outcome.text
           image = outcome.image
           modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
           committed = outcome.committed === true
-        } else observation = await tool.run(args, context)
+        } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }))
       } catch (err) {
         if (signal.aborted) throw err
         observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`

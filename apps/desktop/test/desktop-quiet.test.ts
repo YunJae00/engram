@@ -133,4 +133,17 @@ describe('quiet app access', () => {
     expect(result.settled).toBe(true)
     expect(result.waitedMs).toBeGreaterThanOrEqual(5_000)
   })
+
+  it('does not take a status line that holds still for an answer while the app offers to stop it', async () => {
+    const { request } = binding({ foreground: false, idleMs: 0 }, [...Array<string>(5).fill('Starting work'), '2'])
+    const stop = { id: 'c4', type: 'Button', name: '중지', can: { set: false, press: true, text: false }, enabled: true, offscreen: false }
+    let scans = 0
+    const original = request.getMockImplementation()!
+    request.mockImplementation(async (method, args) => method === 'quietScan' ? { snapshot: 'f'.repeat(32), controls: ++scans < 3 ? [stop] : [], texts: [] } : original(method, args))
+    const pending = quietText('bot-one', 'Claude', undefined, undefined, 2_000)
+    await vi.advanceTimersByTimeAsync(20_000)
+    const result = await pending
+    expect(result).toMatchObject({ text: '2', settled: true })
+    expect(scans).toBeGreaterThanOrEqual(3)
+  })
 })

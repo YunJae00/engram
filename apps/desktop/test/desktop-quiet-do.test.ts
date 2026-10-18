@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { QuietControlDto, QuietObservationDto } from '../src/shared/desktop.js'
 
-const fake = vi.hoisted(() => ({ scan: vi.fn(), set: vi.fn(), press: vi.fn(), flog: vi.fn() }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietScan: fake.scan, quietSet: fake.set, quietPress: fake.press }))
+const fake = vi.hoisted(() => ({ scan: vi.fn(), set: vi.fn(), press: vi.fn(), text: vi.fn(), flog: vi.fn() }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietScan: fake.scan, quietSet: fake.set, quietPress: fake.press, quietText: fake.text }))
 vi.mock('../src/main/flog.js', () => ({ flog: fake.flog }))
 vi.mock('../src/main/decision-provider.js', () => ({ decideChoice: vi.fn() }))
-import { buildOptions, formatDo, irreversibleName, quietDo } from '../src/main/desktop-quiet-do.js'
+import { buildOptions, formatDo, irreversibleName, quietDo, replyAfter } from '../src/main/desktop-quiet-do.js'
 
 const control = (id: string, name: string, over: Partial<QuietControlDto> = {}): QuietControlDto => ({
   id, type: 'Button', name, value: null, placeholder: null, can: { set: false, press: true, text: false }, enabled: true, offscreen: false, focused: false, secret: false, ...over,
@@ -91,11 +91,30 @@ describe('a short goal run by a decision model', () => {
     expect((await quietDo(request, vi.fn().mockImplementation(decided('press c1')))).status).toBe('blocked')
     expect(fake.press).toHaveBeenCalledTimes(1)
   })
+  it('sends only when asked, only after its text is in the field, and returns the reply', async () => {
+    fake.text.mockResolvedValue({ text: 'Other chat\nWhat did the mail say?\nquestion - 2', chars: 10, headClipped: false, settled: true, waitedMs: 4000 })
+    fake.scan.mockResolvedValue(screen([control('c5', '보내기'), composer], ['New chat']))
+    const early = await quietDo({ ...request, send: true }, vi.fn().mockImplementation(decided('press c5')))
+    expect(early.status).toBe('needs-person')
+    expect(fake.press).not.toHaveBeenCalled()
+    fake.scan.mockResolvedValueOnce(screen([control('c5', '보내기'), composer], ['New chat']))
+      .mockResolvedValue(screen([control('c5', '보내기'), { ...composer, value: request.text }], ['New chat'], 'b'.repeat(32)))
+    const decide = vi.fn().mockImplementationOnce(decided('set c9')).mockImplementationOnce(decided('done')).mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('ready'))
+    const replied = await quietDo({ ...request, send: true }, decide)
+    expect(replied.steps.map(step => step.outcome)).toEqual(['text set', expect.stringContaining('not sent yet'), 'pressed (invoke)'])
+    expect(replied).toMatchObject({ status: 'done', committed: true, reply: 'question - 2', settled: true })
+    expect(fake.press).toHaveBeenCalledTimes(1)
+    expect(decide.mock.calls[0]![1]).toContain('Send only as the state says')
+  })
   it('does not act after cancellation or a low-confidence done verdict', async () => {
     fake.scan.mockResolvedValue(screen([control('c1', 'Next')], ['draft']))
     expect((await quietDo(request, vi.fn().mockImplementation(decided('done', 0.1)))).status).toBe('unsure')
     const abort = new AbortController()
     await expect(quietDo({ ...request, signal: abort.signal }, async () => { abort.abort(); return decided('press c1')() })).rejects.toThrow()
     expect(fake.press).not.toHaveBeenCalled()
+  })
+  it('keeps only what came after the sent message as the reply', () => {
+    expect(replyAfter('Sidebar chat\nAsk it\nAnswer: 2\nFooter', 'Ask it')).toBe('Answer: 2\nFooter')
+    expect(replyAfter('no mark here', 'Ask it')).toBe('no mark here')
   })
 })

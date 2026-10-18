@@ -51,6 +51,7 @@ internal sealed class QuietAccess : IDisposable
     private const int NameLimit = 300;
     private const int ValueLimit = 600;
     private const int ReadLimit = 12000;
+    private const double SnapshotMs = 300000;
     private const int LandMs = 1500;
     private readonly WindowGuard Guard;
     private readonly PasswordScan Passwords = new PasswordScan();
@@ -233,8 +234,9 @@ internal sealed class QuietAccess : IDisposable
         var held = Snapshots.FirstOrDefault(one => one.Id == snapshot);
         if (held == null) throw new InvalidOperationException("Read the app again before acting. This snapshot is no longer held.");
         if (held.Target.Id != target.Id || held.Target.Pid != target.Pid) throw new InvalidOperationException("This snapshot belongs to a different window");
-        if (held.Target.Started != target.Started || held.Target.Generation != target.Generation
-            || (Stopwatch.GetTimestamp() - held.Created) * 1000.0 / Stopwatch.Frequency > 60000
+        // A snapshot outlives a slow thought and other chats listing windows; each control is still checked to be the same one below.
+        if (held.Target.Started != target.Started
+            || (Stopwatch.GetTimestamp() - held.Created) * 1000.0 / Stopwatch.Frequency > SnapshotMs
             || AutomationSession.RuntimeId(AutomationElement.FromHandle(target.Handle)) != held.RootRuntime)
             throw new InvalidOperationException("Read the app again before acting. This snapshot is stale.");
         QuietControl found;
@@ -289,7 +291,9 @@ internal sealed class QuietAccess : IDisposable
         var value = (ValuePattern)pattern;
         if (value.Current.IsReadOnly) throw new InvalidOperationException("This field is read-only");
         var before = value.Current.Value ?? "";
-        if (before.Length > 0 && before != expected)
+        // An empty field that reports its own hint as its value holds nothing anyone typed.
+        var hint = before.Trim().Length > 0 && Flat(before) == Flat(element.Current.Name);
+        if (before.Length > 0 && !hint && before != expected)
             throw new InvalidOperationException("The field already holds text this chat did not put there: \"" + Clip(before, 120) + "\". Leave it, or pass that exact text as expected to replace it.");
         var watch = Stopwatch.StartNew();
         check();

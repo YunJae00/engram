@@ -3,18 +3,13 @@ import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
 import { sendCometMessage } from '../lib/attachments.js'
 import { api } from '../api.js'
 import { Choices } from '../components/Choices.js'
+import { CometMessages } from '../components/CometMessages.js'
 import { CometOffer } from '../components/CometOffer.js'
-import { CometWork } from '../components/CometWork.js'
-import { CheckEvidence } from '../components/CheckEvidence.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
-import { Fragment } from 'react'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
-import { StreamingAnswer } from '../components/StreamingAnswer.js'
-import { answerBubbles } from '../markdown.js'
-import { ErrorAnswer, isProviderError } from '../components/ErrorAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { PressGate } from '../components/PressGate.js'
@@ -23,8 +18,6 @@ import { BotComposer } from '../components/BotComposer.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
-import { UserMessage } from '../components/ChatAttachment.js'
-import { ReplyChips } from '../components/ReplyChips.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -98,7 +91,6 @@ export const BotsView = memo(function BotsView() {
 
   useStickToBottom(listRef, messages, selectedId)
   // The bubble the current work belongs to: the last one the comet wrote.
-  const lastAssistant = messages.reduce((found, m, i) => (m.role === 'assistant' ? i : found), -1)
 
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
@@ -139,35 +131,7 @@ export const BotsView = memo(function BotsView() {
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
-              {messages.map((m, i) => {
-                const failed = m.error || (m.role === 'assistant' && isProviderError(m.text))
-                return (
-                <Fragment key={i}>
-                  {/* The work sits above the words it leads to: every step
-                      and every aside in order, then the answer under them.
-                      Words the comet writes between actions stay where
-                      they were written instead of leaping into a list
-                      below, and the foot of the thread - where the eye
-                      rests - is where it speaks. */}
-                  {i === lastAssistant && <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />}
-                  {/* Before its first word the answer has no bubble: the live line above is the one sign of work. */}
-                  {m.role === 'assistant' && !failed ? (
-                    // A longer answer reads as a few short messages, one bubble each.
-                    m.text ? answerBubbles(m.text).map((part, k, parts) => (
-                      <div key={k} className={`bubble-msg assistant`}>
-                        <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />
-                        {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}
-                      </div>
-                    )) : null
-                  ) : (
-                    <div className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
-                      {failed ? <ErrorAnswer text={m.text} /> : <UserMessage text={m.text} attachments={m.attachments} />}
-                    </div>
-                  )}
-                  {i === lastAssistant && !m.streaming && !busy && !offer && !failed && <ReplyChips text={m.text} onPick={(label) => void sendText(label)} />}
-                </Fragment>
-                )
-              })}
+              <CometMessages messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={(label) => void sendText(label)} />
               {offer && offer.kind === 'asked' && !routine.running && (
                 <Choices
                   options={offer.options}
