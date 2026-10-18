@@ -52,3 +52,4 @@
 .comet-work-steps .comet-work-line { padding: 2px 0; }
 
 @media (prefers-reduced-motion: reduce) { .reply-chips, .comet-work-card, .bubble-typing { animation: none; } }
+:is(.bots-thread, .mini-chat-thread) .bubble-scheduled { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--fg-faint); font-size: var(--fs-micro, 11px); }

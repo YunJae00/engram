@@ -4,11 +4,15 @@ import { t } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread } from '../lib/cometThreadsLive.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
+import { threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { sendCometMessage } from '../lib/attachments.js'
 import { RoutineProgress } from './RoutineProgress.js'
 import { SubmitGate } from './SubmitGate.js'
 import { PressGate } from './PressGate.js'
+import { TaskApprovals } from './TaskApprovals.js'
+import { ThreadOffers } from './ThreadOffers.js'
+import { ScheduledChip } from './ScheduledChip.js'
 import { ChatComposer } from './ChatComposer.js'
 import { QueuedMessages } from './QueuedMessages.js'
 import { ModelPicker } from './ModelPicker.js'
@@ -39,14 +43,15 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
     cometThreads.stop(botId, t('bubble.stopped'))
     void api.chatAbort(cometChannel(botId)).catch(() => undefined)
   }
-  const status = thread.busy ? pendingStatus(t, thread.awaitingModel ? undefined : thread.workLines[thread.workLines.length - 1]) : ''
+  const status = thread.busy ? pendingStatus(threadT(threadLang(thread.messages)), thread.awaitingModel ? undefined : thread.workLines[thread.workLines.length - 1]) : ''
   return (
     <div className="mini-chat" data-testid={`mini-chat-${botId}`}>
       <div className="mini-chat-thread conversation-thread" ref={listRef}>
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
         <CometMessages messages={thread.messages} busy={thread.busy} status={status} since={thread.startedAt ?? undefined} workLines={thread.workLines} keptWork={thread.keptWork} offerOpen={!!thread.offer} onReply={(label) => void send(label)} />
+        <ThreadOffers botId={botId} onSend={(label) => void send(label)} />
       </div>
-      <div className="mini-chat-gates"><RoutineProgress channel={cometChannel(botId)} /><SubmitGate channel={cometChannel(botId)} /><PressGate channel={cometChannel(botId)} /></div>
+      <div className="mini-chat-gates"><ScheduledChip botId={botId} /><RoutineProgress channel={cometChannel(botId)} /><SubmitGate channel={cometChannel(botId)} /><PressGate channel={cometChannel(botId)} /><TaskApprovals botId={botId} questionShown={!thread.busy && thread.messages.at(-1)?.role === 'assistant' && !thread.messages.at(-1)?.streaming ? thread.messages.at(-1)?.text : undefined} /></div>
       <RoutineLearning key={botId} botId={botId} working={thread.busy} />
       <RoutineSkillHint value={draft} select={() => { setDraft('/routine'); cometThreads.setDraft(botId, '/routine') }} />
       <QueuedMessages botId={botId} />
