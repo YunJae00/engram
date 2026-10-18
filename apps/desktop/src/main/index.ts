@@ -55,6 +55,10 @@ import { activeAccountProfile } from './account-profiles.js'
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
 
+// Windows names and draws a notification by the app ID of the shortcut the
+// installer made; without the same ID here it shows the runtime's name and no icon.
+if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('dev.engram.app')
+
 const singleInstance = !app.isPackaged || app.requestSingleInstanceLock()
 if (!singleInstance) {
   app.quit()

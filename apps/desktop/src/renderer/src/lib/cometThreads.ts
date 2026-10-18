@@ -9,6 +9,19 @@ import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../share
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
   error?: boolean
+  // A draft held while it is checked: still shown, until the checked answer takes its place.
+  checking?: boolean
+  // What the comet said and did on the way to this answer, kept with it so an
+  // earlier turn still reads as it happened after the next one starts.
+  work?: string[]
+}
+
+// The finished turn's work travels with its answer: the last assistant message, unless it already has its own.
+export function withWork(messages: CometMessage[], work: string[]): CometMessage[] {
+  if (!work.length) return messages
+  const at = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
+  if (at < 0 || messages[at]!.work) return messages
+  return messages.map((message, index) => index === at ? { ...message, work } : message)
 }
 
 export type CometOffer = NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']>
@@ -118,7 +131,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages, doneSeen: thread(id).doneSeen + 1, ...extra })
+    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, ...extra })
   const fail = (id: string, text: string) =>
     settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }], { queueHeld: true })
 
@@ -262,7 +275,7 @@ export function createCometThreads(initialSelected: string | null = null) {
           startedAt: event.working ? current.startedAt ?? Date.now() : null,
           doneSeen: current.doneSeen + 1,
           ...(event.working && !current.busy ? { adopted: true, messages: [...current.messages, { role: 'assistant' as const, text: '', streaming: true }] } : {}),
-          ...(!event.working ? { workLines: [], messages: current.messages.filter(m => !m.streaming || m.text).map(m => ({ ...m, streaming: false })) } : {}),
+          ...(!event.working ? { workLines: [], keptWork: current.workLines.length ? current.workLines : current.keptWork, messages: withWork(current.messages.filter(m => !m.streaming || (m.text && !m.checking)).map(m => ({ ...m, streaming: false })), current.workLines) } : {}),
         })
         return id
       }
@@ -292,22 +305,27 @@ export function createCometThreads(initialSelected: string | null = null) {
           // answer. They leave the bubble, but not the screen: what it said
           // stays in the work as a note, so nothing a person has read
           // simply vanishes.
-          // A draft held for its check is not an answer yet: it leaves
-          // altogether, and the checked answer arrives once.
-          const said = event.drop ? '' : next[at]!.text.trim()
+          // A draft held for its check is not an answer yet, but it does not
+          // vanish either: it stays, marked as being checked, until the
+          // checked answer takes its place.
+          if (event.drop) {
+            if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: next }, true) }
+            return id
+          }
+          const said = next[at]!.text.trim()
           next[at] = { ...next[at]!, text: '' }
           const lines = said ? [...current.workLines.slice(1 - WORK_LINES_KEPT), `said: ${said}`] : current.workLines
           patch(id, { messages: next, workLines: lines }, true)
           return id
         }
-        next[at] = { ...next[at]!, text: next[at]!.text + event.text }
+        next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: next[at]!.text + event.text }
         patch(id, { messages: next }, true)
         return id
       }
       if (event.type === 'chat:done') {
         const at = streamingAt(current.messages)
         const next = [...current.messages]
-        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, ...(event.evidence ? { evidence: event.evidence } : {}) }
+        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
         settle(id, next, { offer: event.offer ?? null })
         return id
       }

@@ -248,7 +248,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
         className="model-picker-item" title={row.detail} data-testid={`model-pick-${row.value || 'auto'}`}
         onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexModel' : 'claudeModel']: row.value }, !controlled) }}>
         <span className="model-picker-tick">{model === row.value && <Check size={12} strokeWidth={2.4} aria-hidden />}</span>
-        <span className="model-picker-name">{row.label}</span>
+        <span className="model-picker-text"><span className="model-picker-name">{row.label}</span>{row.detail && row.value && <small className="model-picker-hint">{row.detail}</small>}</span>
       </button>)}
       {loading && <div className="model-picker-note inline-loading" role="status"><LoaderCircle size={14} className="computer-spinner" aria-hidden />{rows.length ? 'Updating models…' : 'Loading models…'}</div>}
       {loading && !rows.length && <div className="model-loading-skeleton" aria-hidden>{[0, 1, 2].map(index => <span key={index} className="skeleton-line" />)}</div>}

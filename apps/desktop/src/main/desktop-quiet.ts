@@ -146,20 +146,31 @@ export async function quietPress(lane: string, app: string, snapshot: string, co
   return result
 }
 
-// Read text once, or keep reading until it has stopped changing for a while:
-// an answer still being written settles; a finished one returns at once.
-export async function quietText(lane: string, app: string, snapshot: string | undefined, control: string | undefined, settleMs: number, signal?: AbortSignal): Promise<QuietReadResultDto & { settled: boolean; waitedMs: number }> {
+// While an app is still answering it offers a way to stop it, usually where
+// its send control was; a status line that holds still is not an answer.
+const STOP_CONTROL = /^\s*(stop|cancel)(\s+(generating|response|responding|streaming|answer))?\s*$|^\s*((응답|답변|생성)\s*)?(중지|정지|멈추기)\s*$/i
+export const answeringControl = (observation: QuietObservationDto): string | undefined =>
+  observation.controls.find(control => control.enabled && !control.offscreen && control.can.press && STOP_CONTROL.test(control.name))?.name
+
+// Read text once, or keep reading until it has stopped changing for a while
+// and the app no longer offers to stop an answer: a finished one returns at once.
+export async function quietText(lane: string, app: string, snapshot: string | undefined, control: string | undefined, settleMs: number, signal?: AbortSignal): Promise<QuietReadResultDto & { settled: boolean; waitedMs: number; stillAnswering?: string }> {
   const binding = await windowFor(lane, app, signal)
   const read = () => { showWorkFrame(binding); return request<QuietReadResultDto>(binding, 'quietRead', { ...(snapshot ? { snapshot } : {}), ...(control ? { control } : {}) }, signal) }
   const started = Date.now()
   let last = await read()
   if (settleMs <= 0) return { ...last, settled: true, waitedMs: 0 }
   let stableSince = Date.now()
+  let answering: string | undefined
   for (;;) {
     await pause(SETTLE_POLL_MS, signal)
     const next = await read()
     if (next.text !== last.text) { last = next; stableSince = Date.now() }
-    else if (Date.now() - stableSince >= settleMs) return { ...last, settled: true, waitedMs: Date.now() - started }
-    if (Date.now() - started >= SETTLE_AT_MOST_MS) return { ...last, settled: false, waitedMs: Date.now() - started }
+    else if (Date.now() - stableSince >= settleMs) {
+      answering = answeringControl(await quietScan(lane, app, undefined, signal))
+      if (!answering) return { ...last, settled: true, waitedMs: Date.now() - started }
+      stableSince = Date.now()
+    }
+    if (Date.now() - started >= SETTLE_AT_MOST_MS) return { ...last, settled: false, waitedMs: Date.now() - started, ...(answering ? { stillAnswering: answering } : {}) }
   }
 }

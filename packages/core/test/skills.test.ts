@@ -283,6 +283,17 @@ describe('learning a how-to from a kept turn', () => {
     expect(parseSkillDraft(null)).toBeNull()
   })
 
+  it('a how-to learned with a script keeps the script beside it, and never one that carries a secret', async () => {
+    const cand = turnSkillCandidate('save attachments', 'save the attachments of a mail')
+    const draft = { title: 'Save mail attachments', description: 'when a mail attachment must be read', body: '## Steps\n' + 'run references/save-attachments.ps1 with the mail id\n'.repeat(5) }
+    const script = { name: 'save-attachments.ps1', text: '$m = $ns.GetItemFromID($id)\nforeach ($a in $m.Attachments) { $a.SaveAsFile((Join-Path $dir $a.FileName)) }' }
+    expect((await installSkill(paths, cand, draft, NOW, [script, { name: '../escape.ps1', text: 'x' }])).installed).toBe(true)
+    expect(await readSkillFile(paths, `engram-${cand.slug}`, 'references/save-attachments.ps1')).toContain('SaveAsFile')
+    expect(await readSkillFile(paths, `engram-${cand.slug}`, 'references/escape.ps1')).toBeNull()
+    const leaky = turnSkillCandidate('leaky', 'a script with a key')
+    expect((await installSkill(paths, leaky, draft, NOW, [{ name: 'key.ps1', text: '$key = "sk-abcdefghijklmnopqrstuvwxyz"' }])).reason).toBe('privacy')
+  })
+
   it('a distilled turn how-to installs into the vault skills index', async () => {
     const cand = turnSkillCandidate('reconcile ledger', 'reconcile the month-end ledger')
     const draft = { title: 'Reconcile the ledger', description: 'when reconciling month-end', body: '## Steps\n' + 'do the thing\n'.repeat(20) }
@@ -292,12 +303,12 @@ describe('learning a how-to from a kept turn', () => {
   })
 })
 
-it('serializes concurrent installations and enforces the shared automatic-skill cap', async () => {
-  const results = await Promise.all(Array.from({ length: 12 }, (_, i) => installSkill(paths, turnSkillCandidate(`Task ${i}`, `Goal ${i}`), { title: 'Reusable task', description: 'When needed', body: 'Verify the current input and result.' }, NOW)))
-  expect(results.filter(result => result.installed)).toHaveLength(8)
-  expect(results.filter(result => result.reason === 'limit')).toHaveLength(4)
-  expect(Object.keys(await readSkillsLedger(paths))).toHaveLength(8)
-  expect(await listSkills(paths)).toHaveLength(8)
+it('serializes concurrent installations and enforces the cap on how-tos learned from kept work', async () => {
+  const results = await Promise.all(Array.from({ length: 62 }, (_, i) => installSkill(paths, turnSkillCandidate(`Task ${i}`, `Goal ${i}`), { title: 'Reusable task', description: 'When needed', body: 'Verify the current input and result.' }, NOW)))
+  expect(results.filter(result => result.installed)).toHaveLength(60)
+  expect(results.filter(result => result.reason === 'limit')).toHaveLength(2)
+  expect(Object.keys(await readSkillsLedger(paths))).toHaveLength(60)
+  expect(await listSkills(paths)).toHaveLength(60)
 })
 
 describe('successful-turn skill ranking', () => {

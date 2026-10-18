@@ -153,6 +153,7 @@ import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
+import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { prepareInterviewContext } from './interview-preparation.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -1005,11 +1006,11 @@ export function registerIpc(ctx: VaultContext): void {
   const resumeState = new Map<string, string>()
   // How each comet's last turn ended, read by delegated tasks after each turn.
   const turnOutcomes = new Map<string, TurnOutcome>()
-  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string; execution?: NonNullable<Routine['task']>['execution'] }>()
+  const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string; execution?: NonNullable<Routine['task']>['execution']; scripts?: TurnScript[] }>()
 
   // Only an explicitly kept, completed turn can supply reusable guidance.
   const SKILL_FROM_TURN_MIN = 3
-  const distillTurnSkill = async (name: string, goal: string, steps: TurnStep[]): Promise<void> => {
+  const distillTurnSkill = async (name: string, goal: string, steps: TurnStep[], scripts: TurnScript[] = []): Promise<void> => {
     const engine = ctx.engines[0]
     const done = successfulTurnSteps(steps)
     if (!engine || engineBackoff.blockedMs() > 0 || done.length < SKILL_FROM_TURN_MIN) return
@@ -1018,7 +1019,7 @@ export function registerIpc(ctx: VaultContext): void {
       return `- ${step.tool}${arg ? `: ${arg}` : ''} -> ${step.observation.slice(0, 100).replace(/\s+/g, ' ')}`
     })
     const raw = await collectResult(engine, {
-      prompt: turnSkillPrompt(goal, lines),
+      prompt: turnSkillPrompt(goal, lines, scripts),
       workdir: engineCwd(paths),
       disallowTools: true,
       timeoutMs: 45_000,
@@ -1027,7 +1028,7 @@ export function registerIpc(ctx: VaultContext): void {
     }).catch(() => null)
     const draft = parseSkillDraft(raw)
     if (!draft) { flog('skill-distill', `turn "${name.slice(0, 40)}": engine declined`); return }
-    const result = await installSkill(paths, turnSkillCandidate(name, goal), draft)
+    const result = await installSkill(paths, turnSkillCandidate(name, goal), draft, new Date(), scripts)
     flog('skill-distill', `turn "${name.slice(0, 40)}": ${result.installed ? 'installed a how-to' : (result.reason ?? 'skipped')}`)
   }
 
@@ -1318,7 +1319,7 @@ export function registerIpc(ctx: VaultContext): void {
     // kept turn — in the background, so keeping stays instant.
     const kept = lastTurns.get(botId)
     lastTurns.delete(botId)
-    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, input.goal, kept.steps).catch(() => undefined)
+    if (kept && (kept.keepGoal === input.goal || kept.message === input.goal)) void distillTurnSkill(input.name, input.goal, kept.steps, kept.scripts).catch(() => undefined)
     broadcast({ type: 'bots:changed' })
     broadcast({ type: 'vault:changed' })
     return task
@@ -2203,6 +2204,7 @@ export function registerIpc(ctx: VaultContext): void {
     return [...cometTools({
       paths,
       batchReads: process.env.ENGRAM_BATCH_READS !== '0',
+      // With a decision model connected, a short goal on a page runs as one call.
       ...(brainConnection('decision') ? { decidePage: (state: string, instructions: string, criteria: Record<string, string>, signal?: AbortSignal) => decideChoice(state, instructions, criteria, undefined, signal) } : {}),
       onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
       skillNotes: () => ctx.store.getAll(),
@@ -2536,6 +2538,8 @@ export function registerIpc(ctx: VaultContext): void {
         // A comet works in the folder a session is already warm for, when there is one.
         const workFolder = settings.nativeTools !== false ? engine.claimWorkFolder?.(channel, await workFolderFor(paths, channel)) ?? await workFolderFor(paths, channel) : await workFolderFor(paths, channel)
         await rememberWorkFolder(paths, channel, workFolder)
+        // Scripts left from a turn that never finished do not belong to this one.
+        takeTurnScripts(channel)
         const native = (engine.id === 'claude' || (engine.id === 'codex' && permission !== 'plan')) && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
           ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
@@ -2694,6 +2698,7 @@ export function registerIpc(ctx: VaultContext): void {
           steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
           keepGoal: undefined as string | undefined,
           execution: aiSelection(settings, channel),
+          scripts: takeTurnScripts(channel),
         }
         lastTurns.set(bot.id, completed)
         const filingEngine = ctx.engines[0]

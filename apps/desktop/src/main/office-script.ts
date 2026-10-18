@@ -57,7 +57,7 @@ function Workbook($x, $name) {
   if ($name) {
     if (Test-Path -LiteralPath $name) { foreach ($wb in $x.Workbooks) { if ($wb.FullName -eq (Resolve-Path -LiteralPath $name).Path) { return $wb } }; return $x.Workbooks.Open((Resolve-Path -LiteralPath $name).Path) }
     foreach ($wb in $x.Workbooks) { if ($wb.Name -eq $name -or $wb.Name -eq ($name + '.xlsx')) { return $wb } }
-    throw "No open workbook is named '$name'. Call excel_workbooks to see what is open, or give a full path."
+    throw "No open workbook is named '$name'. Call excel_read with no arguments to see what is open, or give a full path."
   }
   throw 'Name the workbook explicitly before accessing it.'
 }
@@ -166,7 +166,10 @@ function Op-OutlookMail($a) {
   $search = Prop $a 'search' $null
   if ($search) {
     $q = $search.Replace("'", "''")
-    $items = $items.Restrict("@SQL=(""urn:schemas:httpmail:subject"" LIKE '%$q%' OR ""urn:schemas:httpmail:fromname"" LIKE '%$q%' OR ""urn:schemas:httpmail:textdescription"" LIKE '%$q%')")
+    # Subject and people are matched at once; the mail text is read only when they match nothing, since that reads every body.
+    $found = $items.Restrict("@SQL=(""urn:schemas:httpmail:subject"" LIKE '%$q%' OR ""urn:schemas:httpmail:fromname"" LIKE '%$q%' OR ""urn:schemas:httpmail:displayto"" LIKE '%$q%' OR ""urn:schemas:httpmail:displaycc"" LIKE '%$q%')")
+    if ($found.Count -eq 0) { $found = $items.Restrict("@SQL=""urn:schemas:httpmail:textdescription"" LIKE '%$q%'") }
+    $items = $found
     $items.Sort('[ReceivedTime]', $true)
   }
   $limit = [int](Prop $a 'limit' 20)
@@ -174,7 +177,7 @@ function Op-OutlookMail($a) {
   foreach ($m in $items) {
     if ($i -ge $limit) { break }
     if ($m.Class -ne 43) { continue }
-    $out += @{ id = $m.EntryID; subject = (Cap $m.Subject 200); from = (Cap $m.SenderName 100); received = $m.ReceivedTime.ToString('yyyy-MM-dd HH:mm'); unread = $m.UnRead; preview = (Cap ($m.Body -replace '\s+', ' ') 400) }
+    $out += @{ id = $m.EntryID; subject = (Cap $m.Subject 200); from = (Cap $m.SenderName 100); cc = (Cap $m.CC 200); received = $m.ReceivedTime.ToString('yyyy-MM-dd HH:mm'); unread = $m.UnRead; preview = (Cap ($m.Body -replace '\s+', ' ') 400) }
     $i++
   }
   return @{ folder = $folder.Name; count = $out.Count; mail = $out }
