@@ -29,6 +29,7 @@ test.beforeAll(async () => {
   })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false))).toBe(true)
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const state: DesktopMock = { available: true, control: { state: 'idle' }, stops: 0, resumes: 0 }
     ipcMain.removeHandler('engines:list')
@@ -55,7 +56,6 @@ test.beforeAll(async () => {
     install('cancelCapture', () => true)
     tell()
   })
-  await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false))).toBe(true)
   const ids = await page.evaluate(async () => {
     const ids: string[] = []
     for (const name of ['Computer review', 'Planning review']) ids.push((await window.engram.botCreate({ name, purpose: 'Review the spreadsheet' })).id)
