@@ -189,3 +189,12 @@ describe('office safety regressions', () => {
     expect(run).not.toHaveBeenCalled()
   })
 })
+
+describe('calendar range', () => {
+  it('starts a listing at a given day, so a week already under way is read whole', async () => {
+    const { calls, tool } = setup()
+    await tool('outlook_calendar').run({ from: '2026-10-12', days: 7 })
+    expect(calls.at(-1)).toEqual({ op: 'outlook.calendar', args: { days: 7, from: '2026-10-12' } })
+    await expect(tool('outlook_calendar').run({ from: '12-10-2026' })).rejects.toThrow('YYYY-MM-DD')
+  })
+})

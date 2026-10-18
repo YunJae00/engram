@@ -38,3 +38,9 @@ it('rejects non-document paths and turn stops', async () => {
   await expect(saveOfficeOutput('test', '.docx', Buffer.from('data'), join(fake.directory, 'file.exe'))).rejects.toThrow('absolute')
   await expect(saveOfficeOutput('test', '.docx', Buffer.from('data'), undefined, undefined, () => { throw new Error('stopped') })).rejects.toThrow('stopped')
 })
+it('keeps a document asked for by a bare name in the usual folder under that name', async () => {
+  const first = await saveOfficeOutput('ignored', '.docx', Buffer.from('a'), '팀 회의 안건.docx')
+  expect(first).toBe(join(fake.directory, 'Engram', '팀 회의 안건.docx'))
+  const second = await saveOfficeOutput('ignored', '.docx', Buffer.from('b'), '팀 회의 안건')
+  expect(second).toMatch(/팀 회의 안건-[0-9a-f]{8}\.docx$/)
+})

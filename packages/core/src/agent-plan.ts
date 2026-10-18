@@ -1,7 +1,8 @@
 import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 import { officeReadEvidence } from './office-verification.js'
 
-const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look'])
+// Fresh readings of the world: what a phase can be shown done by.
+const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look', 'open_page', 'search_web', 'search_memory', 'outlook_mail', 'outlook_read', 'outlook_calendar', 'find_files'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
   if (step.tool === 'read_pages') return /^Batch read:/.test(step.observation)
   if (officeReadEvidence(step)) return true
@@ -52,7 +53,7 @@ export function taskPlan(steps: AgentLoopStep[]): { tool: AgentTool; completed: 
           const revising = Object.hasOwn(args, 'remainingPhases')
           if (Object.keys(args).length !== (revising ? 3 : 2) || !Number.isInteger(evidence) || typeof evidence !== 'number' || typeof finding !== 'string' || !finding.trim() || finding.length > 600) throw new Error('Supply evidenceStep and a nonempty finding of at most 600 characters.')
           const step = steps[evidence - 1]
-          if (!phases.length || completed >= phases.length || evidence <= boundary || evidence !== steps.length || !step || !hasObservation(step, revising)) throw new Error('Use the latest fresh result observation; input acknowledgements and reused evidence do not count. An error cannot complete a phase.')
+          if (!phases.length || completed >= phases.length || evidence <= boundary || evidence !== steps.length || !step || !hasObservation(step, revising)) throw new Error(`Cite step ${steps.length}, the latest, once it is a fresh result you read - a page, mail, file, search or app reading; not an error, a write, an input acknowledgement or this plan. If the latest step is not one, read the result first.`)
           if (revising) {
             const remaining = args['remainingPhases']
             if (!Array.isArray(remaining) || !remaining.length || completed + remaining.length > 8 || remaining.some((one) => typeof one !== 'string' || !one.trim() || one.length > 240)) throw new Error('Keep 1 to 8 unfinished phases within the 8-phase total, each nonempty and at most 240 characters.')
