@@ -87,3 +87,26 @@ it('preserves a confirmed login wall and respects cancellation', async () => {
   expect((await readWhenReady(page, async () => ({ url: 'https://example.com', title: 'Login', text: '', wall: 'login' })))).toHaveProperty('wall', 'login')
   await expect(readWhenReady(page, async () => ({ url: '', title: '', text: '' }), AbortSignal.abort())).rejects.toThrow('stopped')
 })
+
+it('says where an embedded frame could not be read without counting the page itself as unread', async () => {
+  const reading: FrameReading = { text: 'Price 5,000', hidden: '', dialog: '', hasPasswordField: false, controls: [], links: [], faults: [] }
+  const main = { evaluate: vi.fn().mockResolvedValue(reading), name: () => '', url: () => 'https://shop.test' }
+  const ad = { evaluate: vi.fn().mockRejectedValue(new Error('frame detached')), name: () => 'ad-slot', url: () => 'https://ads.test' }
+  const page = { on: vi.fn(), mainFrame: () => main, frames: () => [main, ad] } as unknown as Page
+  const result = await readFrames(page)
+  expect(result.faults).toEqual([])
+  expect(result.text).toContain('Price 5,000')
+  expect(result.text).toContain('[frame: ad-slot - could not be read')
+})
+
+it('passes over a frame that takes no room on the page without waiting for it', async () => {
+  const reading: FrameReading = { text: 'Timetable', hidden: '', dialog: '', hasPasswordField: false, controls: [], links: [], faults: [] }
+  const main = { evaluate: vi.fn().mockResolvedValue(reading), name: () => '', url: () => 'https://rail.test' }
+  const slot = { evaluate: vi.fn(() => new Promise(() => undefined)), name: () => 'ad', url: () => 'https://ads.test',
+    frameElement: async () => ({ evaluate: async () => false, dispose: async () => undefined }) }
+  const page = { on: vi.fn(), mainFrame: () => main, frames: () => [main, slot] } as unknown as Page
+  const result = await readFrames(page)
+  expect(result.text).toBe('Timetable')
+  expect(result.faults).toEqual([])
+  expect(slot.evaluate).not.toHaveBeenCalled()
+})

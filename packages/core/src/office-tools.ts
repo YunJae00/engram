@@ -172,7 +172,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_read',
-      description: `Read one mail in full by the id outlook_mail gave. ${READ_NOTE}`,
+      description: `Read one mail in full by the id outlook_mail gave. Its attached files come back with a saved path each; open one with file_read. ${READ_NOTE}`,
       argsSchema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string' } } },
       run: (args, context) => {
         if (!plain(args)) throw new Error('outlook_read takes an object.')
@@ -199,12 +199,14 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_calendar',
-      description: `List the person's calendar for the next days (1 to 60, default 7). ${READ_NOTE}`,
-      argsSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 60 } } },
+      description: `List the person's calendar for some days (1 to 60, default 7) starting at from (YYYY-MM-DD, default today) - a past week too, from its first day. ${READ_NOTE}`,
+      argsSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 60 }, from: { type: 'string' } } },
       run: (args, context) => {
         if (!plain(args)) throw new Error('outlook_calendar takes an object.')
-        only(args, ['days'], 'outlook_calendar')
-        return call('outlook.calendar', { days: bounded(args['days'], 7, 60) }, context)
+        only(args, ['days', 'from'], 'outlook_calendar')
+        const from = optionalText(args['from'], 10, 'from')
+        if (from !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(from) || Number.isNaN(Date.parse(from)))) throw new Error('from is a day as YYYY-MM-DD.')
+        return call('outlook.calendar', { days: bounded(args['days'], 7, 60), ...(from ? { from } : {}) }, context)
       },
     },
     {

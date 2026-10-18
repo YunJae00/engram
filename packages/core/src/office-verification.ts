@@ -5,7 +5,7 @@ import { evidenceFault } from './work-evidence.js'
 
 const WRITES = new Set(['excel_write', 'ppt_build', 'ppt_edit', 'word_write', 'word_edit'])
 const READS = new Set(['excel_read', 'ppt_read', 'word_read'])
-export const DOCUMENT_CHECK_RULE = 'After writing, read the changed document back and compare it with the request before reporting completion. Check every changed range or document. Text readback does not verify formulas, unsupported objects or visual layout; inspect those separately when required and report anything unverified.'
+export const DOCUMENT_CHECK_RULE = 'After writing, read the changed document back and compare it with the request before reporting completion. Check every changed range or document. Text readback does not verify formulas, unsupported objects or visual layout: inspect those only when the request is about them; otherwise say in one line what was not checked.'
 
 function receipt(step: AgentLoopStep): Record<string, unknown> | undefined {
   try {

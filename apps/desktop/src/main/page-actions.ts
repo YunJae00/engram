@@ -59,7 +59,7 @@ function missing(target: string): PageMove {
 // means - the cheap way to tell a press that worked from one that landed
 // on the wrong thing.
 export async function signature(page: Page): Promise<string> {
-  return page
+  const read = page
     .evaluate(() => {
       const text = (document.body?.innerText ?? '').slice(0, 200_000)
       let hash = 0
@@ -67,7 +67,10 @@ export async function signature(page: Page): Promise<string> {
       return `${location.href}|${document.title}|${text.length}|${hash}`
     })
     .catch(() => '')
+  // A page too busy to say what it shows reads as unchanged rather than holding the hand.
+  return Promise.race([read, new Promise<string>((resolve) => setTimeout(() => resolve(''), SIGNATURE_MS).unref())])
 }
+const SIGNATURE_MS = 5_000
 
 // Words that name more than one thing name nothing: the page is read once
 // more and the numbers of everything that answers to them are handed back,

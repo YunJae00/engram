@@ -15,6 +15,9 @@ describe('classifyWall', () => {
     expect(classifyWall('https://a.com/x', 'Are you a robot?', '', false)).toBe('captcha')
     expect(classifyWall('https://a.com/x', 'Site', 'complete the CAPTCHA to continue', false)).toBe('captcha')
     expect(classifyWall('https://a.com/x', 'Just a moment', 'Cloudflare is checking your browser', false)).toBe('captcha')
+    expect(classifyWall('https://rail.example/ticket', 'Tickets', '안내 메시지 자동화된 요청으로 감지되어 차단되었습니다. CODE : -8003', false)).toBe('captcha')
+    expect(classifyWall('https://a.com/x', 'Site', 'Your automated requests were blocked', false)).toBe('captcha')
+    expect(classifyWall('https://a.com/x', 'Macros', '자동화 도구 사용법 강의', false)).toBeNull()
   })
 
   it('reads a login wall from a password field, or from a page asking for a credential', () => {

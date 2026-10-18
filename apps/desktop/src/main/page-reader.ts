@@ -1,4 +1,5 @@
 import type { Frame, Page } from 'playwright-core'
+import { takesRoom } from './page-frame-room.js'
 
 // A page read the way a person sees it: the words on it, the controls in
 // the order they sit on it - each with a number, so an icon with no words
@@ -45,6 +46,8 @@ export function observationOf(page: Page): { page: string; document: number; rev
 
 export const HAND_MARK = 'data-engram-hand'
 const FRAME_READ_MS = 12_000
+// An embedded frame is most often an ad or a tracker; it gets less patience.
+const SUBFRAME_READ_MS = 4_000
 
 // Runs inside a document. Self-contained: nothing from outside is in scope,
 // not even this module's own constants.
@@ -309,6 +312,24 @@ export function readDocument(mark?: number): FrameReading {
   }
 }
 
+async function readFrame(frame: Frame, patience: number): Promise<FrameReading | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const reading = await Promise.race([
+      frame.evaluate(readDocument, undefined),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('frame read timed out')), patience) }),
+    ])
+    if (!reading || typeof reading.text !== 'string' || typeof reading.hidden !== 'string' || typeof reading.dialog !== 'string' || typeof reading.hasPasswordField !== 'boolean'
+      || !Array.isArray(reading.controls) || !Array.isArray(reading.links) || !Array.isArray(reading.faults))
+      return null
+    return reading
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function frameName(frame: Frame): string {
   return frame.name() || frame.url().slice(0, 80)
 }
@@ -322,29 +343,25 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
   const frames = [page.mainFrame(), ...page.frames().filter((frame) => frame !== page.mainFrame())]
   const map = new Map<number, ControlPlace>()
   const whole: PageReading = { text: '', hidden: '', hasPasswordField: false, links: [], controls: [], lines: [], dialog: '', faults: [] }
-  for (const frame of frames) {
-    signal?.throwIfAborted()
-    let reading: FrameReading
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      // A frame that will not answer (a script in a loop, a page far too
-      // large) is left out rather than holding the whole read.
-      reading = await Promise.race([
-        frame.evaluate(readDocument, undefined),
-        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('frame read timed out')), FRAME_READ_MS) }),
-      ])
-      if (!reading || typeof reading.text !== 'string' || typeof reading.hidden !== 'string' || typeof reading.dialog !== 'string' || typeof reading.hasPasswordField !== 'boolean'
-        || !Array.isArray(reading.controls) || !Array.isArray(reading.links) || !Array.isArray(reading.faults))
-        throw new Error('The frame returned no readable snapshot')
-    } catch {
-      signal?.throwIfAborted()
-      whole.faults.push('A frame could not be read. This extract is incomplete; reobserve before claiming all requested fields were checked.')
+  // Every frame is asked at once, so frames that will not answer (a script
+  // in a loop, a page far too large) cost one wait between them, not one each.
+  // A frame with no room on the page (an ad slot, a tracker) shows the person
+  // nothing and is not waited for.
+  const readings = await Promise.all(frames.map(async (frame, at) => at === 0 ? readFrame(frame, FRAME_READ_MS) : await takesRoom(frame) ? readFrame(frame, SUBFRAME_READ_MS) : 'unseen' as const))
+  // A late read must not overwrite controls from a newer observation.
+  signal?.throwIfAborted()
+  for (const [at, frame] of frames.entries()) {
+    const reading = readings[at]
+    if (reading === 'unseen') continue
+    if (!reading) {
+      // The page itself unread is a fault; an embedded frame unread is said
+      // where it sits, so the rest of the page still counts as read.
+      if (at === 0) whole.faults.push('A frame could not be read. This extract is incomplete; reobserve before claiming all requested fields were checked.')
+      else whole.text += `
+
+[frame: ${frameName(frame)} - could not be read; anything in it is missing from this reading]`
       continue
-    } finally {
-      clearTimeout(timer)
     }
-    // A late read must not overwrite controls from a newer observation.
-    signal?.throwIfAborted()
     if (!reading.text.trim() && reading.controls.length === 0) continue
     whole.text += (whole.text && reading.text.trim() ? `\n\n[frame: ${frameName(frame)}]\n` : '') + reading.text
     whole.hidden += (whole.hidden && reading.hidden ? '\n' : '') + reading.hidden
