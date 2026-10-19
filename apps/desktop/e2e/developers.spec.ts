@@ -289,6 +289,8 @@ test('preloads both connected accounts without selecting a provider or starting 
 test('connected accounts switch without restarting and keep per-account limits', async () => {
   const pid = app.process().pid
   await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('engines:states')
+    ipcMain.handle('engines:states', () => ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true })))
     ipcMain.removeHandler('accounts:states')
     ipcMain.handle('accounts:states', async event => {
       const profiles = await event.sender.executeJavaScript('window.engram.accountProfiles()')

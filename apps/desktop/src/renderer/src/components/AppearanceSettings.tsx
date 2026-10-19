@@ -1,13 +1,15 @@
-import { Check } from 'lucide-react'
 import type { AppSettingsDto } from '../../../shared/types.js'
 
+const THEMES = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']] as const
+
+// Three small windows to pick from; the one in use carries a soft ring.
 export function AppearanceSettings({ value, onChange, disabled = false }: { value: AppSettingsDto['theme']; onChange: (theme: NonNullable<AppSettingsDto['theme']>) => void; disabled?: boolean }) {
   return <fieldset className="appearance-settings" disabled={disabled}>
-    <legend>Appearance</legend>
-    <div className="appearance-options">{(['system', 'light', 'dark'] as const).map((theme) => <label key={theme} className="appearance-option">
+    <legend className="settings-hidden">Appearance</legend>
+    <div className="appearance-options">{THEMES.map(([theme, name]) => <label key={theme} className="appearance-option">
       <input type="radio" name="appearance" value={theme} checked={(value ?? 'system') === theme} onChange={() => onChange(theme)} />
-      <span className={`appearance-preview appearance-${theme}`} aria-hidden><i /><span><i /><i /><i /></span><Check size={16} /></span>
-      <span>{theme === 'system' ? 'Use system setting' : theme === 'light' ? 'Light' : 'Dark'}</span>
+      <span className={`appearance-preview appearance-${theme}`} aria-hidden><i /><span><i /><i /><i /></span></span>
+      <span className="appearance-name">{name}</span>
     </label>)}</div>
   </fieldset>
 }

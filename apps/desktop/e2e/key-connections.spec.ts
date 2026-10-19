@@ -58,7 +58,7 @@ test('API connection tests the selected model before saving, keeps keys encrypte
     await page.getByTestId('key-connection-codex-remove').click()
     await expect(page.getByTestId('key-connection-codex-open')).toBeVisible()
     expect(JSON.parse(await readFile(join(userData, 'connections.json'), 'utf8')).codex).toBeUndefined()
-    await expect(page.getByRole('region', { name: 'ChatGPT connection', exact: true }).locator('.account-usage')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'ChatGPT connection', exact: true }).locator('.account-usage')).toHaveCount(0)
   } finally {
     await app?.close()
     gateway.closeAllConnections()

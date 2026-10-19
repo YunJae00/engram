@@ -14,14 +14,13 @@ export function UsageSummary({ usage }: { usage: DevUsage | null }) {
       {window.resetsAt !== undefined && <small>Resets {new Date(window.resetsAt).toLocaleString('en-US')}</small>}
     </div>)}
     {usage.updatedAt && <small>Checked {new Date(usage.updatedAt).toLocaleTimeString('en-US')}</small>}
-    {!!usage.windows?.length && <small>Reported account limits. Model or short-term request limits may differ.</small>}
   </div>
 }
 
 export function AccountUsage({ provider, verified = true }: { provider: AccountProvider; verified?: boolean }) {
   const accounts = useAccountUsage().filter(account => verified && account.provider === provider), loading = useAccountUsageChecking(), profiles = useAccountProfiles()
   return <div className="account-usage">
-    <div className="dev-usage-label"><strong>Accounts &amp; limits</strong><button className="dev-control" aria-label={`Refresh ${provider === 'claude' ? 'Claude' : 'ChatGPT'} usage`} disabled={loading} onClick={() => void refreshAccountUsage(true)}>{loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}</button></div>
+    <div className="dev-usage-label"><strong>Usage limits</strong><button className="dev-control" aria-label={`Refresh ${provider === 'claude' ? 'Claude' : 'ChatGPT'} usage`} disabled={loading} onClick={() => void refreshAccountUsage(true)}>{loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}</button></div>
     {!accounts.length && <p className="dev-working" role="status">{loading && verified ? <><LoaderCircle size={14} className="spin" />Checking connected accounts…</> : 'Connect an AI account in settings to see its reported limits.'}</p>}
     {accounts.map(account => <section key={account.profile}><h4 className="dev-working">{account.name}{profiles?.selected[provider] === account.profile && <span className="account-selected">Selected</span>}</h4>{account.loading && !account.usage ? <p className="dev-working" role="status"><LoaderCircle size={14} className="spin" />Checking limits…</p> : <UsageSummary usage={account.usage} />}</section>)}
   </div>

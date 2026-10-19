@@ -66,11 +66,13 @@ it('does not enumerate real folders from an isolated profile', async () => {
   expect(fake.files).not.toHaveBeenCalled()
 })
 
-it('does not spend model usage or invent questions when there is no eligible evidence', async () => {
+it('asks only about the person, never invents work, when there is no work evidence', async () => {
   const t = await setup(() => questions)
   fake.map.mockResolvedValue(null)
   expect(await call('questions')).toEqual([])
-  expect(t.jobs).toHaveLength(0)
+  expect(t.jobs).toHaveLength(1)
+  expect(t.jobs[0]!.prompt).toMatch(/"kind":"person"/)
+  expect(t.jobs[0]!.prompt).not.toContain('work.example')
 })
 
 it('waits for initial Cosmos filing and reads prepared notes from disk before asking', async () => {
@@ -132,10 +134,11 @@ it('does not use a retained work map after the person turns learning off', async
   expect(await call('questions')).toEqual([])
   expect(fake.map).not.toHaveBeenCalled()
   expect(fake.prepare).toHaveBeenCalledOnce()
-  expect(t.jobs).toHaveLength(0)
+  expect(t.jobs).toHaveLength(1)
+  expect(t.jobs[0]!.prompt).not.toContain('work.example')
 })
 
-it('remembers a rejected source without treating it as a work rule or spending AI usage', async () => {
+it('remembers a rejected source without treating it as a work rule or asking about it again', async () => {
   const t = await setup(() => questions)
   await call('questions')
   expect(await call('save', [{ question: 'What needs approval?', answer: '', source, rejected: true }])).toEqual({ saved: true })
@@ -144,7 +147,8 @@ it('remembers a rejected source without treating it as a work rule or spending A
   await expect(readNote(t.paths, 'n-work-guide')).rejects.toThrow()
   registerWorkInterviewIpc(t.ctx, fake.prepare)
   expect(await call('questions')).toEqual([])
-  expect(t.jobs).toHaveLength(1)
+  expect(t.jobs).toHaveLength(2)
+  expect(t.jobs[1]!.prompt).not.toContain(source)
 })
 
 it('keeps skipped questions eligible and rejects invented or mismatched dismissal ids', async () => {
