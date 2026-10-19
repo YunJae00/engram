@@ -19,6 +19,7 @@ import {
   readWorkMap,
   renameWithRetry,
   selectInterviewEvidence,
+  personSources,
   WORK_GUIDE_NOTE_ID,
   writeNote,
   type InterviewAnswer,
@@ -92,7 +93,8 @@ async function evidence(ctx: VaultContext, signal: AbortSignal, preparedIds: rea
   const guide = existing?.front.status === 'current' ? existing.body : ''
   signal.throwIfAborted()
   const prepared = new Set(preparedIds)
-  return selectInterviewEvidence({ map, playbooks, guide, excludedIds, notes: notes.filter(note => prepared.has(note.front.id)) })
+  const selected = selectInterviewEvidence({ map, playbooks, guide, excludedIds, notes: notes.filter(note => prepared.has(note.front.id)) })
+  return { ...selected, sources: [...selected.sources, ...personSources(excludedIds)] }
 }
 
 // One retry when the reply cannot be used: a model sometimes answers in prose.

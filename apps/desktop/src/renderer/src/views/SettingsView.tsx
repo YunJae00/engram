@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, CloudUpload, ScrollText, LoaderCircle, Activity, Check } from 'lucide-react'
+import { FolderOpen, CloudUpload, ScrollText, LoaderCircle, Activity, Check, FileDown, Power, Sparkles, UserRound } from 'lucide-react'
 import type { AppSettingsDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
-import { DiagnosticsView } from './DiagnosticsView.js'
 import { EngineSettings } from '../components/EngineSettings.js'
 import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
@@ -14,7 +13,8 @@ import { WorkMapSettings } from '../components/WorkMapSettings.js'
 import { LEARNING_SOURCES } from '../components/LearningSources.js'
 import { WorkInterviewDialog } from '../components/WorkInterview.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
-import { HelpPanel } from '../components/HelpPanel.js'
+import { Keys, SettingsGroup, SettingsItem } from '../components/SettingsLayout.js'
+import { MOD_LABEL } from '../i18n.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 import { ResetSettings } from '../components/ResetSettings.js'
@@ -33,7 +33,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0 }, [section])
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
-  const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [interviewOpen, setInterviewOpen] = useState(false)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
@@ -90,9 +90,8 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     return () => clearInterval(timer)
   }, [])
 
-  // Escape closes settings — but yields while the diagnostics overlay is
-  // stacked on top (that one handles its own Escape).
-  useEscape(onClose, !showDiagnostics && !interviewOpen && !saving)
+  // Escape closes settings, but not under the interview that sits on top.
+  useEscape(onClose, !interviewOpen && !saving)
 
   if (!settings || !ready)
     return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
@@ -119,6 +118,13 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     }
   }
 
+  const exportLogs = async () => {
+    setExporting(true)
+    try { const path = await api.exportLogs(); showToast(path ? t('toast.logsExported', { path }) : t('toast.logsEmpty')) }
+    catch (err) { showToast(t('toast.actionFailed', { reason: String((err as Error).message ?? err).slice(0, 120) })) }
+    finally { setExporting(false) }
+  }
+
   return (
     <div className="brief-overlay settings-overlay" onClick={() => { if (!saving) onClose() }}>
       {/* settings-loaded: the skeleton gives way with a short rise instead
@@ -129,31 +135,27 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <div className="settings-body">
         <SettingsNavigation selected={section} onSelect={setSection} />
         <div className="settings-scroll" ref={scroll}>
-        <section className="settings-panel" hidden={section !== 'help'} aria-label="Help"><HelpPanel /></section>
         <section className="settings-panel" hidden={section !== 'general'} aria-label="General">
         <h2>General</h2>
-        <AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} />
-        <div className="settings-group">
-          <label className="setting-row">
-            <span>{t('settings.autoStart')}</span>
-            <input
-              type="checkbox"
-              className="switch"
-              data-testid="setting-autostart"
-              checked={settings.autoStart}
-              disabled={saving}
-              onChange={(e) => void patch({ autoStart: e.target.checked })}
-            />
-          </label>
-        </div>
+        <SettingsGroup title="Appearance"><div className="settings-item"><AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} /></div></SettingsGroup>
+        <SettingsGroup title="App">
+          <SettingsItem icon={<Power size={18} />} title={t('settings.autoStart')} description="Engram opens quietly when you sign in to Windows." htmlFor="setting-autostart">
+            <input id="setting-autostart" type="checkbox" className="switch" data-testid="setting-autostart" checked={settings.autoStart} disabled={saving} onChange={(e) => void patch({ autoStart: e.target.checked })} />
+          </SettingsItem>
+          <SettingsItem icon={<Sparkles size={18} />} title="New Comet anywhere" description="Starts a conversation next to the pointer, from any app."><Keys keys={[MOD_LABEL, 'Shift', 'Space']} /></SettingsItem>
+        </SettingsGroup>
         {section === 'general' && <ComputerSettings />}
+        </section>
+        <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
+        <h2>AI &amp; accounts</h2>
+        {section === 'ai' && <EngineSettings />}
         </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
         <h2>Memory &amp; data</h2>
-        <div className="settings-group">
-          <label className="setting-row">
-            <span className="settings-row-label"><Activity size={18} aria-hidden /><span>{ACTIVITY.name}<small>{ACTIVITY.detail}</small></span></span>
+        <SettingsGroup title="Learn from this computer" note="Only names and titles are kept, as notes your AI can read. Pages and files are never opened.">
+          <SettingsItem icon={<Activity size={18} />} title={ACTIVITY.name} description={ACTIVITY.detail} htmlFor="setting-desk-journal">
             <input
+              id="setting-desk-journal"
               type="checkbox"
               className="switch"
               data-testid="setting-desk-journal"
@@ -169,59 +171,33 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
                   .finally(() => setJournalSaving(false))
               }}
             />
-          </label>
-        </div>
-        {section === 'memory' && <WorkMapSettings />}
-        <section aria-label="How you work"><div className="setting-row"><span>How you work</span><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></div></section>
-        <details className="settings-disclosure" data-testid="settings-more">
-          <summary>Files &amp; backup</summary>
-          <div className="setting-row" data-testid="setting-audit">
-            <span className="settings-row-label"><ScrollText size={18} aria-hidden /><span>{t('settings.auditTitle')}<small>Local actions and approvals.</small></span></span>
-            <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast('Could not open the activity log.'))}>
-              <FolderOpen size={15} aria-hidden />Open folder
-            </button>
-          </div>
-          <div className="setting-row">
-            <span className="settings-row-label"><CloudUpload size={18} aria-hidden /><span>{t('settings.githubTitle')}<small>Private repository.</small></span></span>
-              <button
-                className="secondary"
-                data-testid="settings-github-backup"
-                onClick={() => {
-                  onClose()
-                  window.dispatchEvent(new Event('engram:open-github'))
-                }}
-              >
-                Set up
-              </button>
-          </div>
-        </details>
-        {section === 'memory' && <ResetSettings />}
-        </section>
-        <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
-        <h2>AI &amp; accounts</h2>
-        {section === 'ai' && <EngineSettings />}
+          </SettingsItem>
+          {section === 'memory' && <WorkMapSettings />}
+        </SettingsGroup>
+        <SettingsGroup title="Personalize">
+          <SettingsItem icon={<UserRound size={18} />} title="How you work" description="A few questions so answers fit the way you work."><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></SettingsItem>
+        </SettingsGroup>
+        <SettingsGroup title="Your data">
+          <SettingsItem icon={<ScrollText size={18} />} title={t('settings.auditTitle')} description="Every action and approval, kept on this computer." testId="setting-audit">
+            <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast('Could not open the activity log.'))}><FolderOpen size={15} aria-hidden />Open</button>
+          </SettingsItem>
+          <SettingsItem icon={<CloudUpload size={18} />} title={t('settings.githubTitle')} description="Keep a copy in a private GitHub repository.">
+            <button className="secondary" data-testid="settings-github-backup" onClick={() => { onClose(); window.dispatchEvent(new Event('engram:open-github')) }}>Set up</button>
+          </SettingsItem>
+          {section === 'memory' && <ResetSettings />}
+        </SettingsGroup>
         </section>
         {api.developerUiEnabled && <section className="settings-panel" hidden={section !== 'developers'} aria-label="Advanced"><h2>Advanced</h2>{section === 'developers' && <DeveloperSettings />}</section>}
-        <section className="settings-panel" hidden={section !== 'general'} aria-label="About">
-        <h2>About Engram</h2>
-        <div className="settings-app-section">
-          <div className="settings-support-actions">
-            <button className="secondary" onClick={() => setShowDiagnostics(true)}>
-              {t('settings.diagnostics')}
-            </button>
-            <button className="secondary" data-testid="settings-feedback" onClick={() => void api.sendFeedback()}>
-              {t('settings.feedback')}
-            </button>
-          </div>
-          <SettingsStatus
-          checkingUpdate={checkingUpdate}
-          semantic={semantic}
-          update={update}
-          version={version}
-          onCheckingUpdate={setCheckingUpdate}
-          onUpdate={setUpdate}
-          />
-        </div>
+        <section className="settings-panel" hidden={section !== 'help'} aria-label="About" data-testid="help-panel">
+        <h2>About</h2>
+        <SettingsGroup title="Engram">
+          <SettingsStatus checkingUpdate={checkingUpdate} semantic={semantic} update={update} version={version} onCheckingUpdate={setCheckingUpdate} onUpdate={setUpdate} />
+        </SettingsGroup>
+        <SettingsGroup title="Support">
+          <SettingsItem icon={<FileDown size={18} />} title="Logs" description="Save recent logs to a file to send when something goes wrong.">
+            <button className="secondary" data-testid="settings-export-logs" disabled={exporting} onClick={() => void exportLogs()}>{exporting ? <><LoaderCircle size={14} className="spin" aria-hidden />Saving…</> : 'Export logs'}</button>
+          </SettingsItem>
+        </SettingsGroup>
         </section>
         </div>
         </div>
@@ -232,7 +208,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </div>
         {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} />}
       </div>
-      {showDiagnostics && <DiagnosticsView onClose={() => setShowDiagnostics(false)} />}
     </div>
   )
 }

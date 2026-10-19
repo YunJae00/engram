@@ -2,6 +2,7 @@ import { KeyRound, LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { BrainConnectionDto, BrainConnectionProvider } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { SettingsItem } from './SettingsLayout.js'
 
 // A brain reached with a key instead of a sign-in: the address that speaks the
 // runtime's API, the key it issued, and the model to ask for. The key is shown
@@ -11,6 +12,13 @@ const HINT: Record<BrainConnectionProvider, string> = {
   claude: 'An address that speaks the Anthropic Messages API, such as a company gateway.',
   codex: 'An address that speaks the OpenAI Responses API, such as a company gateway.',
   decision: 'The decisions endpoint of a gateway or of the model vendor; used to pick the next step in an app quickly.',
+}
+
+// One line under the row when no key is set: what a key is for here.
+const SHORT: Record<BrainConnectionProvider, string> = {
+  claude: 'Use a company gateway or your own key instead of signing in.',
+  codex: 'Use a company gateway or your own key instead of signing in.',
+  decision: 'Optional. A fast model that picks the next step in an app.',
 }
 
 export function KeyConnection({ provider, onChanged }: { provider: BrainConnectionProvider; onChanged?: () => void }) {
@@ -40,14 +48,9 @@ export function KeyConnection({ provider, onChanged }: { provider: BrainConnecti
     finally { setBusy(false) }
   }
   if (current === undefined) return null
-  return <div className="key-connection" data-testid={`key-connection-${provider}`}>
-    {current && !open ? <p className="key-connection-summary">
-      <KeyRound size={13} aria-hidden /> {current.usable ? 'API key saved · model tested when saved' : 'Key unavailable · reconnect'} · {current.baseUrl}{current.model ? ` · ${current.model}` : ''}{current.keyHint ? ` · key ${current.keyHint}` : ''}
-      <button type="button" className="secondary" disabled={busy} onClick={() => setOpen(true)}>Change</button>
-      <button type="button" className="secondary" data-testid={`key-connection-${provider}-remove`} disabled={busy} onClick={() => void remove()}>Remove</button>
-      {provider !== 'decision' && <span>Usage is managed by your API provider.</span>}
-    </p> : !open ? <button type="button" className="secondary" data-testid={`key-connection-${provider}-open`} onClick={() => setOpen(true)}><KeyRound size={13} aria-hidden /> Use an API key instead</button>
-    : <form className="key-connection-form" onSubmit={(event) => { event.preventDefault(); void save() }} aria-label={`${LABEL[provider]} API key`}>
+  const summary = current ? `${current.usable ? 'API key saved · model tested when saved' : 'Key unavailable · reconnect'} · ${current.baseUrl}${current.model ? ` · ${current.model}` : ''}${current.keyHint ? ` · key ${current.keyHint}` : ''}` : SHORT[provider]
+  return <div className="key-connection" data-saved={!!current}><SettingsItem testId={`key-connection-${provider}`} icon={<KeyRound size={18} />} title={provider === 'decision' ? 'Decision model' : 'API key'} description={open ? undefined : summary}
+    below={open && <form className="key-connection-form" onSubmit={(event) => { event.preventDefault(); void save() }} aria-label={`${LABEL[provider]} API key`}>
       <p className="setting-hint">{HINT[provider]}</p>
       {provider !== 'decision' && <p className="setting-hint">This key is used only for the selected account.</p>}
       <p className="setting-hint">A short model test may use API credits. {provider === 'decision' ? 'App controls, visible text and your goal are sent to this address during app actions.' : 'Conversation content is sent to this address when you use this connection.'}</p>
@@ -59,6 +62,10 @@ export function KeyConnection({ provider, onChanged }: { provider: BrainConnecti
         <button type="button" className="secondary" disabled={busy} onClick={() => { setOpen(false); setError(''); setKey('') }}>Cancel</button>
       </div>
       {error && <p role="alert" className="engine-message">{error}</p>}
-    </form>}
-  </div>
+    </form>}>
+    {!open && (current ? <>
+      <button type="button" className="secondary" disabled={busy} onClick={() => setOpen(true)}>Change</button>
+      <button type="button" className="secondary" data-testid={`key-connection-${provider}-remove`} disabled={busy} onClick={() => void remove()}>Remove</button>
+    </> : <button type="button" className="secondary" data-testid={`key-connection-${provider}-open`} onClick={() => setOpen(true)}>Use an API key</button>)}
+  </SettingsItem></div>
 }

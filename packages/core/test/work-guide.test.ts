@@ -40,7 +40,7 @@ it('keeps distinct, bounded questions and repairs unknown topics', () => {
     ...Array.from({ length: 12 }, (_, i) => ({ topic: 'routine', question: `Q${i}` })),
   ] })
   const questions = parseInterviewQuestions(`Here:\n\`\`\`json\n${raw}\n\`\`\``)
-  expect(questions).toHaveLength(5)
+  expect(questions).toHaveLength(7)
   expect(questions[0]).toEqual({ topic: 'terms', question: '청구일과 접수일은 어떻게 구분하나요?', basis: '접수청구서.csv', options: ['청구일 그대로', '접수일로 통일', 'a', 'b', 'c'] })
   expect(questions[1]).toMatchObject({ topic: 'routine', options: [] })
   expect(() => parseInterviewQuestions('{"questions": "none"}')).toThrow()

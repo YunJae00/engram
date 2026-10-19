@@ -11,11 +11,11 @@ import { AccountLimit } from './AccountLimit.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
 
-export function AccountProfiles({ provider, compact = false, sessionProfile }: { provider: AccountProvider; compact?: boolean; sessionProfile?: string }) {
+export function AccountProfiles({ provider, compact = false, sessionProfile, label = 'Manage accounts' }: { provider: AccountProvider; compact?: boolean; sessionProfile?: string; label?: string }) {
   const [open, setOpen] = useState(false), profiles = useAccountProfiles()
   const id = sessionProfile ?? profiles?.selected[provider] ?? 'system'
   const name = profiles?.profiles.find(row => row.id === id)?.name ?? 'System account'
-  return <>{compact ? <AccountLimit provider={provider} profile={id} name={name} onClick={() => setOpen(true)} /> : <button type="button" className="secondary" aria-label={`Manage ${provider === 'claude' ? 'Claude' : 'ChatGPT'} accounts`} onClick={() => setOpen(true)}><Users size={16} />Manage accounts</button>}{open && <ProfileDialog provider={provider} sessionProfile={sessionProfile} close={() => setOpen(false)} />}</>
+  return <>{compact ? <AccountLimit provider={provider} profile={id} name={name} onClick={() => setOpen(true)} /> : <button type="button" className="secondary" aria-label={`Manage ${provider === 'claude' ? 'Claude' : 'ChatGPT'} accounts`} onClick={() => setOpen(true)}><Users size={16} />{label}</button>}{open && <ProfileDialog provider={provider} sessionProfile={sessionProfile} close={() => setOpen(false)} />}</>
 }
 export function ProfileDialog({ provider, sessionProfile, close }: { provider: AccountProvider; sessionProfile?: string; close(): void }) {
   const dialog = useRef<HTMLDialogElement>(null), profiles = useAccountProfiles(), usage = useAccountUsage()

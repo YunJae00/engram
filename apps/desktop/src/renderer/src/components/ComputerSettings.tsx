@@ -4,6 +4,7 @@ import type { AppSettingsDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { desktopError, stopComputerControl, useDesktopSession } from '../lib/desktopSession.js'
 import { computerStateLabel } from './ComputerStatus.js'
+import { SettingsItem, SettingsGroup } from './SettingsLayout.js'
 
 // One switch and one status line. There is no per-window consent to manage:
 // a comet takes an app when a task needs it, the banner says so, and the
@@ -30,14 +31,16 @@ export function ComputerSettings() {
     try { await api.settingsSet({ computerUse: on }) } catch (cause) { setError(desktopError(cause)); setSettings(settings) } finally { setSaving(false) }
   }
   const value = available === null ? 'Checking…' : available === false ? 'Unavailable on this build' : !enabled ? 'Off' : active && control ? computerStateLabel(control) : 'Ready'
-  return <section className="computer-settings" aria-label="Computer use" data-testid="computer-settings">
-    <div className="settings-group-head">Computer use</div>
-    <label className="setting-row">
-      <span className="computer-settings-label"><Monitor size={18} aria-hidden /><span>Control apps<small>{value}</small></span></span>
-      <input type="checkbox" className="switch" data-testid="setting-computer-use" checked={enabled} disabled={!settings || saving || available === false} onChange={(event) => void toggle(event.target.checked)} />
-    </label>
-    <p className="computer-settings-description">Move the mouse or type to pause. <kbd>Esc</kbd> stops control. Passwords, sign-in pages and security settings stay off limits.</p>
-    {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? 'Dismiss' : 'Stop computer control'}{!dismiss && <kbd>Esc</kbd>}</button>}
-    {error && <p className="computer-error" role="alert">{error}</p>}
-  </section>
+  return <div className="computer-settings" data-testid="computer-settings">
+    <SettingsGroup title="Computer use">
+      <SettingsItem icon={<Monitor size={18} />} title="Control apps" description="Uses your mouse and keyboard when a task needs an app. Move the mouse to pause, press Esc to stop. Passwords and sign-in pages stay off limits." htmlFor="setting-computer-use"
+        below={(active || error) && <>
+          {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? 'Dismiss' : 'Stop computer control'}</button>}
+          {error && <p className="computer-error" role="alert">{error}</p>}
+        </>}>
+        <span className="settings-item-state" role="status">{value}</span>
+        <input id="setting-computer-use" type="checkbox" className="switch" data-testid="setting-computer-use" checked={enabled} disabled={!settings || saving || available === false} onChange={(event) => void toggle(event.target.checked)} />
+      </SettingsItem>
+    </SettingsGroup>
+  </div>
 }
