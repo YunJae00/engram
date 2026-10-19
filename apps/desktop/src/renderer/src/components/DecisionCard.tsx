@@ -25,9 +25,11 @@ export function DecisionCard({ icon, label, title, sub, actions, children, tone 
           <span className="decision-card-title">{title}</span>
           {sub && <small className="decision-card-sub">{sub}</small>}
         </span>
-        {actions && <span className="decision-card-actions">{actions}</span>}
+        {actions && !children && <span className="decision-card-actions">{actions}</span>}
       </div>
       {children && <div className="decision-card-body">{children}</div>}
+      {/* With something to read first, the answers come after it. */}
+      {actions && children && <span className="decision-card-actions">{actions}</span>}
     </section>
   )
 }

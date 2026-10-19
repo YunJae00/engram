@@ -19,14 +19,24 @@ const SLOW_OPEN_MS = 5_000
 // A hand on a page answers within a budget, or answers that it did not: a
 // page that swallows a click must not swallow the turn with it.
 const HAND_BUDGET_MS = 45_000
-function withinBudget(work: Promise<PageMove>, awaitCompletion = false): Promise<PageMove> {
+// A person deciding whether a press may go is not the page being slow: while
+// `held` hands back their pending answer, the budget waits for it and starts over.
+function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: () => Promise<unknown> | null): Promise<PageMove> {
   if (awaitCompletion) return work
-  return Promise.race([
-    work,
-    new Promise<PageMove>((resolve) =>
-      setTimeout(() => resolve({ ok: false, error: 'the page did not answer that in time' }), HAND_BUDGET_MS).unref(),
-    ),
-  ])
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let settled = false
+  return new Promise<PageMove>((resolve, reject) => {
+    const arm = (): void => {
+      if (settled) return
+      timer = setTimeout(() => {
+        const waiting = held?.()
+        if (waiting) void waiting.then(arm, arm)
+        else resolve({ ok: false, error: 'the page did not answer that in time' })
+      }, HAND_BUDGET_MS).unref()
+    }
+    arm()
+    work.then(resolve, reject)
+  }).finally(() => { settled = true; clearTimeout(timer) })
 }
 
 // Two comets sharing one browser share its sign-ins - and so, on one site,
@@ -116,9 +126,11 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      // Human approval is not a timed-out click: retain the lane until it
-      // resolves. The actual Playwright click has its own bounded timeout.
-      return inTurnOn(page.url(), () => pressOn(page, target, signal, ask), signal)
+      // The press is bounded like every hand, except while the person is
+      // answering whether it may go.
+      let asking: Promise<unknown> | null = null
+      const held: typeof ask = ask && ((what) => { const answer = ask(what); asking = answer; return answer.finally(() => { asking = null }) })
+      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, held), deps.awaitCompletion, () => asking), signal)
     },
     async typeText(target, text, enter, signal) {
       await aside(signal)

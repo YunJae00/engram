@@ -16,6 +16,7 @@
 .decision-card-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; font-size: var(--fs-small); }
 .decision-card-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-left: 42px; font-size: var(--fs-small); }
 .decision-card-body .bubble-msg-body { color: var(--fg); line-height: 1.6; }
+.approval-command { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 240px; overflow: auto; font-size: var(--fs-small); }
 .decision-card-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--fg-dim); font-size: var(--fs-micro, 11px); text-decoration: underline; cursor: pointer; }
 .decision-card-more summary { cursor: pointer; list-style: none; }
 .decision-card-more summary::-webkit-details-marker { display: none; }
@@ -52,3 +53,30 @@
 .scheduled-chip-what { flex: 1; min-width: 0; overflow: hidden; color: var(--fg); text-overflow: ellipsis; white-space: nowrap; }
 .scheduled-chip-cancel { flex: none; padding: 4px; border: 0; border-radius: 8px; background: none; color: var(--fg-faint); }
 .scheduled-chip-cancel:hover { background: var(--hover-bg); color: var(--fg); }
+
+/* In the conversation a card is the comet's own next message: a bubble on
+   its side, the question in its words, the answers under it. While it waits
+   on the person, it does not also say it is thinking. */
+:is(.bots-thread, .mini-chat-thread) .decision-card { align-self: flex-start; width: min(88%, 560px); padding: 12px 14px; border-radius: 18px 18px 18px 6px; background: var(--hover-bg); box-shadow: none; }
+:is(.bots-thread, .mini-chat-thread) .decision-card-icon { background: var(--panel-bg); }
+:is(.bots-thread, .mini-chat-thread) .decision-card-row { flex-wrap: wrap; }
+:is(.bots-thread, .mini-chat-thread) .decision-card-actions { justify-content: flex-start; width: 100%; padding-left: 42px; box-sizing: border-box; }
+.decision-card > .decision-card-actions { justify-content: flex-end; }
+:is(.bots-thread, .mini-chat-thread) .decision-card > .decision-card-actions { justify-content: flex-start; }
+:is(.bots-thread, .mini-chat-thread) .decision-card-title { font-size: var(--fs-chat, 14px); font-weight: 500; -webkit-line-clamp: 3; }
+:is(.bots-thread, .mini-chat-thread) > :is(.chat-approval, [data-testid='routine-live']) { align-self: stretch; max-height: none; overflow: visible; }
+:is(.bots-thread, .mini-chat-thread) .chat-approval { display: flex; flex-direction: column; gap: 6px; }
+:is(.bots-thread, .mini-chat-thread) .bots-choices .decision-card-body, :is(.bots-thread, .mini-chat-thread) .decision-card-body { padding-left: 42px; }
+:is(.bots-thread, .mini-chat-thread):has(.decision-card.ask) .bubble-typing { display: none; }
+.mini-chat-thread .decision-card-actions, .mini-chat-thread .decision-card-body { padding-left: 0; }
+/* The floating page preview sits over the top of the conversation; a short
+   conversation starts below it, so nothing the person must answer hides
+   under it. */
+.bots-main:has(.browser-preview:not(.minimized)) .bots-thread { padding-top: min(280px, 40vh); }
+.bots-main:has(.browser-preview.minimized) .bots-thread { padding-top: 64px; }
+/* A narrow card puts its answers on as many lines as they need. */
+:is(.bots-thread, .mini-chat-thread) .decision-card-actions { flex-wrap: wrap; }
+:is(.bots-thread, .mini-chat-thread) .decision-card-actions button { max-width: 100%; white-space: normal; }
+@container (max-width: 420px) {
+  :is(.bots-thread, .mini-chat-thread) .decision-card-actions, :is(.bots-thread, .mini-chat-thread) .decision-card-body { padding-left: 0; }
+}

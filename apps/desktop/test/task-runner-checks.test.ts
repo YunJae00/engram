@@ -65,6 +65,24 @@ it('consumes a running approval only once across simultaneous calls', async () =
   expect(confirm).toHaveBeenCalledTimes(1)
 })
 
+it('keeps the complete command visible and cannot reuse its approval for another command', async () => {
+  const words = `Run this command outside the sandbox?\n${'echo safe; '.repeat(30)}Remove-Item report.txt`
+  const confirm = vi.fn(async () => 'approve' as const)
+  const t = await setup(async (request, _turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, confirm, 1200)!
+    const waiting = ask({ words, url: 'file:///work#command-one' })
+    await vi.waitFor(async () => expect((await listTasks(t.paths))[0]!.approvals).toHaveLength(1))
+    const task = (await listTasks(t.paths))[0]!
+    expect(task.approvals[0]!.words).toBe(words)
+    await t.call('tasks:decide', task.id, task.approvals[0]!.id, 'approve')
+    expect(await waiting).toBe('approve')
+    expect(await runner.askFor(request.channel!, confirm)!({ words, url: 'file:///work#command-two' })).toBe('later')
+    return done('Ready')
+  })
+  await t.chat('Prepare a report')
+  expect(confirm).toHaveBeenCalledTimes(1)
+})
+
 it('does not ask again after a running command approval was declined', async () => {
   const confirm = vi.fn(async () => 'approve' as const)
   const t = await setup(async (request, _turn, _extra, runner) => {

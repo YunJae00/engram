@@ -5,7 +5,7 @@ const BUDGETS: Record<string, number | null> = {
   app_do: 320_000,
   page_do: 120_000,
   ppt_build: 120_000, word_write: 120_000, excel_write: 120_000, compose_live_document: 120_000, edit_live_document: 120_000,
-  press: null, press_point: null, page_steps: null, desktop_action: null, desktop_sequence: null, upload_file: null, run_procedure: null, ask_person: null,
+  press: null, press_point: null, app_press: null, page_steps: null, desktop_action: null, desktop_sequence: null, upload_file: null, run_procedure: null, ask_person: null,
 }
 
 export function toolBudgetMs(name: string): number | null {

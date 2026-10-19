@@ -145,8 +145,8 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   await openActivity(page, 'settings')
   await expect(page.getByTestId('setting-autostart')).toBeVisible()
   await page.getByTestId('settings-nav-general').click()
-  await page.evaluate(async () => { await window.engram.settingsSet({ ...await window.engram.settingsGet(), computerUse: true }) })
-  await expect(page.getByTestId('setting-computer-use')).toBeChecked()
+  await expect(page.getByTestId('setting-computer-use')).toHaveCount(0)
+  await expect(page.getByTestId('computer-use-state')).toBeVisible()
   await screenshot('ui-settings.png')
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByTestId('settings-view')).toHaveCount(0)
@@ -226,16 +226,7 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
     await page.keyboard.press('Escape')
   }
 
-  const permission = page.locator('.bots-write').getByRole('button', { name: 'Permissions' })
-  await expect(permission).toHaveAttribute('title', 'Permissions: Ask once')
-  await permission.click()
-  await page.getByTestId('permission-pick-plan').click()
-  await expect(permission).toHaveAttribute('title', 'Permissions: Plan only')
-  const modes = await page.evaluate(async () => Object.values((await (window as unknown as { engram: { settingsGet(): Promise<{ aiSelections?: Record<string, { permission?: string }> }> } }).engram.settingsGet()).aiSelections ?? {}).map(one => one.permission))
-  expect(modes).toContain('plan')
-  await permission.click()
-  await page.getByTestId('permission-pick-once').click()
-  await expect(permission).toHaveAttribute('title', 'Permissions: Ask once')
+  await expect(page.locator('.bots-write').getByRole('button', { name: 'Permissions' })).toHaveCount(0)
 })
 
 test('the selected comet is remembered across tabs', async () => {

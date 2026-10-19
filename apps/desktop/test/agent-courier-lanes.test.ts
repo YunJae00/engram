@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCourier } from '../src/main/agent-courier.js'
-import { handOn, pressPoint } from '../src/main/page-actions.js'
+import { handOn, pressOn, pressPoint } from '../src/main/page-actions.js'
 import { readWhenReady } from '../src/main/page-ready.js'
 
 const browser = vi.hoisted(() => ({
@@ -172,5 +172,27 @@ describe('courier new controls', () => {
     await first.fetchPage(url)
     expect((await second.readOpen!()).controls).toEqual(opened.controls)
     expect((await first.readOpen!()).controls).toEqual([...initial.controls, '#3 [option] Reports [new]'])
+  })
+
+  it('gives up on a press the page swallows, but not while the person is deciding whether it may go', async () => {
+    vi.useFakeTimers()
+    try {
+      browser.lanePage.mockReturnValue({})
+      browser.ensureAgentPage.mockResolvedValue({ url: () => 'https://hang.test/a' })
+      vi.mocked(pressOn).mockImplementationOnce(() => new Promise(() => undefined))
+      const swallowed = agentCourier({ lane: 'bot-hang' }).press!('Accept')
+      await vi.advanceTimersByTimeAsync(46_000)
+      await expect(swallowed).resolves.toEqual({ ok: false, error: 'the page did not answer that in time' })
+      let answer!: (said: 'approve') => void
+      const ask = vi.fn(() => new Promise<'approve'>((resolve) => { answer = resolve }))
+      vi.mocked(pressOn).mockImplementationOnce(async (_page, _target, _signal, asked) => { await asked!({ words: 'Pay', url: 'https://pay.test' }); return { ok: true } })
+      browser.ensureAgentPage.mockResolvedValue({ url: () => 'https://pay.test/b' })
+      const decided = agentCourier({ lane: 'bot-pay', askBeforePress: ask }).press!('Pay')
+      await vi.advanceTimersByTimeAsync(120_000)
+      answer('approve')
+      await expect(decided).resolves.toEqual({ ok: true })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

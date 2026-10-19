@@ -12,8 +12,7 @@ import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
-import { PressGate } from '../components/PressGate.js'
-import { TaskApprovals } from '../components/TaskApprovals.js'
+import { ThreadAsks } from '../components/ThreadAsks.js'
 import { ScheduledChip } from '../components/ScheduledChip.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { useCometState } from '../state-slices.js'
@@ -118,6 +117,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
               <CometMessages messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={(label) => void sendText(label)} />
               <ThreadOffers botId={selected.id} onSend={(label) => void sendText(label)} />
+              <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <ThinkingDots />
@@ -140,8 +140,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
               )}
             </div>
             <ScheduledChip botId={selected.id} />
-            <PressGate channel={cometChannel(selected.id)} />
-            <TaskApprovals botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} />
             <BotComposer
               key={selected.id}
               botId={selected.id}
