@@ -19,9 +19,10 @@ export interface BotTask {
   name: string
   goal: string
   lastRunAt?: string
-  // A task that stands: the procedure it replays and when. Only a
-  // read-only procedure with no blanks is ever given one - anything that
-  // posts, or needs words, stays a press away.
+  // A task that stands: when it runs, and the procedure it replays. Without
+  // a procedure the goal is said in its conversation at that time, as a
+  // turn like any other - anything it would send or submit still waits for
+  // the person's OK.
   schedule?: Schedule
   routineId?: string
 }
@@ -54,6 +55,8 @@ export interface BotTurn {
   at: string
   attachments?: string[]
   evidence?: TurnEvidence
+  // Said by a kept schedule at its time, not typed then.
+  scheduled?: boolean
 }
 
 export interface BotSuggestion {
@@ -243,7 +246,6 @@ export async function addBotTask(
   if (!name) throw new Error('a task needs a name')
   if (!goal) throw new Error('a task needs a goal — what should it do?')
   if (input.schedule !== undefined && !isSchedule(input.schedule)) throw new Error('a schedule needs days, an hour and a minute')
-  if (input.schedule && !input.routineId) throw new Error('a standing task needs a procedure to replay')
   const task: BotTask = {
     id: `task-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
     name,

@@ -91,7 +91,8 @@ export { recordBotSites } from './bots.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
 export { choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
-export { dueNow, guessSchedule, isSchedule, type Schedule } from './schedule.js'
+export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedule } from './schedule.js'
+export { scheduleTool, scheduleWords, type ScheduleDeps } from './schedule-tools.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {
   factScore,

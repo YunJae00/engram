@@ -1,0 +1,54 @@
+/* Everything that waits on the person - a press to allow, a question, a
+   sign-in, a post to look over, an offer, a choice - is one kind of card:
+   a small mark, a line naming the kind, the thing itself, where, and the
+   answers on the right; more to read sits below. */
+.decision-card { container-type: inline-size; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 10px 10px 12px; border-radius: 16px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); text-align: left; animation: fade-in 180ms ease; }
+.decision-card-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.decision-card-icon { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 9px; background: var(--hover-bg); color: var(--clay); }
+.decision-card.info .decision-card-icon { color: var(--fg-dim); }
+.decision-card-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.35; }
+.decision-card-label { color: var(--clay); font-weight: 600; font-size: var(--fs-micro, 11px); }
+.decision-card.info .decision-card-label { color: var(--fg-faint); }
+.decision-card-title { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--fg); font-size: var(--fs-small); font-weight: 600; overflow-wrap: anywhere; }
+.decision-card-title:empty { display: none; }
+.decision-card-sub { overflow: hidden; color: var(--fg-faint); font-size: var(--fs-micro, 11px); text-overflow: ellipsis; white-space: nowrap; }
+.decision-card-actions { display: flex; flex: none; align-items: center; gap: 6px; }
+.decision-card-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; font-size: var(--fs-small); }
+.decision-card-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-left: 42px; font-size: var(--fs-small); }
+.decision-card-body .bubble-msg-body { color: var(--fg); line-height: 1.6; }
+.decision-card-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--fg-dim); font-size: var(--fs-micro, 11px); text-decoration: underline; cursor: pointer; }
+.decision-card-more summary { cursor: pointer; list-style: none; }
+.decision-card-more summary::-webkit-details-marker { display: none; }
+.decision-card-more[open] summary { margin-bottom: 4px; }
+.decision-card .comet-keep-name { font-size: var(--fs-small); }
+.decision-card .comet-keep-instructions { margin-top: 0; }
+.decision-card .comet-keep-instructions textarea { min-height: 64px; margin: 6px 0 4px; }
+.decision-card .bots-choice { padding: 8px 10px; }
+.decision-stack { display: flex; flex-direction: column; gap: 6px; }
+
+/* By the message box, a card is as wide as the box. */
+.bots-view .bots-chat > :is(.chat-approval, .decision-card, .scheduled-chip) { width: min(var(--composer-width), calc(100% - 2 * var(--page-gutter))); margin: 0 auto 8px; box-sizing: border-box; }
+.bots-run-status:empty { display: none; }
+.bots-run-status { display: flex; flex-direction: column; gap: 6px; }
+
+/* In a split tile the cards fill the tile, closer together. */
+.mini-chat-gates { display: flex; flex-direction: column; gap: 6px; margin: 0 10px 6px; }
+.mini-chat-thread :is(.bots-choices, .bots-offer, .comet-keep) { margin: 2px 0; }
+
+/* A card with little room puts its answers on a line of their own. */
+@container (max-width: 480px) {
+  .decision-card-row { flex-wrap: wrap; }
+  .decision-card-actions { justify-content: flex-end; width: 100%; }
+  .decision-card-body { padding-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .decision-card { animation: none; } }
+
+/* What this conversation was asked to do later: a quiet chip that opens into the list. */
+.scheduled-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.scheduled-chip-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--hover-bg); color: var(--fg-dim); font-size: var(--fs-micro, 11px); }
+.scheduled-chip-list { display: flex; flex-direction: column; gap: 2px; width: 100%; box-sizing: border-box; margin: 0; padding: 6px; border-radius: 14px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); list-style: none; }
+.scheduled-chip-list li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: var(--fs-small); }
+.scheduled-chip-when { flex: none; min-width: 96px; color: var(--fg-dim); font-size: var(--fs-micro, 11px); }
+.scheduled-chip-what { flex: 1; min-width: 0; overflow: hidden; color: var(--fg); text-overflow: ellipsis; white-space: nowrap; }
+.scheduled-chip-cancel { flex: none; padding: 4px; border: 0; border-radius: 8px; background: none; color: var(--fg-faint); }
+.scheduled-chip-cancel:hover { background: var(--hover-bg); color: var(--fg); }

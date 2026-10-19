@@ -180,7 +180,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       const previous = turns.at(-2)
       if (tail[0]?.role === 'user' && last?.role === 'assistant' && previous?.role === 'user' && previous.text === tail[0].text && turns.length >= current.messages.length) tail.length = 0
       else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
-      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}) })), ...tail], loaded: true })
+      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}) })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
       const current = thread(id)
@@ -204,7 +204,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     // Takes the seat for a send and hands back the history to ship with it:
     // settled turns only, never a half answer or an error bubble.
-    begin(id: string, message: string, attachments: string[] = []): ChatTurnDto[] {
+    begin(id: string, message: string, attachments: string[] = [], scheduled = false): ChatTurnDto[] {
       const current = thread(id)
       const history = current.messages
         .filter((m) => !m.streaming && !m.error)
@@ -218,9 +218,8 @@ export function createCometThreads(initialSelected: string | null = null) {
         workLines: [],
         keptWork: [],
         offer: null,
-        draft: '',
-        attachments: [],
-        messages: [...current.messages, { role: 'user', text: message, ...(attachments.length ? { attachments } : {}) }, { role: 'assistant', text: '', streaming: true }],
+        ...(scheduled ? {} : { draft: '', attachments: [] }),
+        messages: [...current.messages, { role: 'user', text: message, ...(attachments.length ? { attachments } : {}), ...(scheduled ? { scheduled: true } : {}) }, { role: 'assistant', text: '', streaming: true }],
       })
       return history
     },

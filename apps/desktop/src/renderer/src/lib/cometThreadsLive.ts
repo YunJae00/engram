@@ -57,6 +57,10 @@ api.onEvent((event) => {
     cometThreads.begin(event.botId, event.message, event.attachments)
     return
   }
+  if (event.type === 'comet:scheduled') {
+    cometThreads.begin(event.botId, event.message, [], true)
+    return
+  }
   if (event.type === 'comet:continue') {
     cometThreads.carryOn(event.botId)
     return

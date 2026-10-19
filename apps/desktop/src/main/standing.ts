@@ -1,4 +1,4 @@
-import { dueNow, loadBots, markBotTaskRun, type VaultPaths } from 'core'
+import { dueNow, loadBots, markBotTaskRun, removeBotTask, scheduleOver, type VaultPaths } from 'core'
 
 // Standing tasks run themselves: once a minute the comets' tasks are read
 // off disk, and the ones due on this day at this hour start through the same
@@ -13,6 +13,9 @@ export interface StandingDeps {
   // day (a rerun refused), which counts as run; any other refusal is a
   // moment's trouble and is tried again next tick.
   runRoutine(id: string): Promise<{ ok: boolean; blocked?: boolean }>
+  // A kept request with no procedure: said in its own conversation as a
+  // new message. Not ok while that conversation is busy; tried next tick.
+  runPrompt?(botId: string, goal: string): Promise<{ ok: boolean }>
   now?(): Date
 }
 
@@ -21,7 +24,20 @@ export async function standingTick(deps: StandingDeps): Promise<string[]> {
   const started: string[] = []
   for (const bot of await loadBots(deps.paths)) {
     for (const task of bot.tasks ?? []) {
-      if (!task.schedule || !task.routineId || !dueNow(task.schedule, task.lastRunAt, now)) continue
+      if (!task.schedule) continue
+      // A one-day request whose moment went by while the app was closed is
+      // finished with, not kept forever.
+      if (!task.routineId && scheduleOver(task.schedule, now)) { await removeBotTask(deps.paths, bot.id, task.id); continue }
+      if (!dueNow(task.schedule, task.lastRunAt, now)) continue
+      if (!task.routineId) {
+        if (!deps.runPrompt) continue
+        const reply = await deps.runPrompt(bot.id, task.goal)
+        if (!reply.ok) continue
+        if (task.schedule.on) await removeBotTask(deps.paths, bot.id, task.id)
+        else await markBotTaskRun(deps.paths, bot.id, task.id, now)
+        started.push(task.id)
+        return started
+      }
       const reply = await deps.runRoutine(task.routineId)
       if (!reply.ok && !reply.blocked) continue
       await markBotTaskRun(deps.paths, bot.id, task.id, now)

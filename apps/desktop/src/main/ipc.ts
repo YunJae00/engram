@@ -29,6 +29,7 @@ import {
   listCards,
   loadAliasGroups,
   addBotTask,
+  scheduleTool,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -1662,6 +1663,15 @@ export function registerIpc(ctx: VaultContext): void {
   // Standing tasks go through the same door as a press of Run.
   startStanding({
     paths,
+    runPrompt: async (botId, goal) => {
+      const channel = `bot-${botId}`
+      if (answering.has(channel) || tasks.activeChannels().includes(channel)) return { ok: false }
+      if ((await listTasks(paths)).some(task => task.botId === botId && ['queued', 'running', 'waiting'].includes(task.state))) return { ok: false }
+      const history = (await readBotTranscript(paths, botId)).map((turn) => ({ role: turn.role, text: turn.text }))
+      broadcast({ type: 'comet:scheduled', botId, message: goal })
+      void tasks.chat({ engineId: '', botId, channel, message: goal, history, scheduled: true }).catch(error => flog('standing', error))
+      return { ok: true }
+    },
     runRoutine: async (id) => {
       const reply = await beginRoutine(id)
       return { ok: reply.ok, ...((reply as { blocked?: boolean }).blocked ? { blocked: true } : {}) }
@@ -2188,6 +2198,20 @@ export function registerIpc(ctx: VaultContext): void {
 
   // The tools a comet is offered, the same list for a turn and for a session
   // warmed ahead of one: what differs per turn rides in the closures.
+  const cometSchedule = (botId: string) => {
+    const list = async () => (await loadBots(paths)).find((bot) => bot.id === botId)?.tasks ?? []
+    return scheduleTool({
+      list,
+      add: async (input) => { const task = await addBotTask(paths, botId, input); broadcast({ type: 'bots:changed' }); return task },
+      remove: async (id) => {
+        if (!(await list()).some((task) => task.id === id && !task.routineId)) return false
+        await removeBotTask(paths, botId, id)
+        broadcast({ type: 'bots:changed' })
+        return true
+      },
+    })
+  }
+
   const cometToolSet = async (input: {
     channel: string; engine: Engine; settings: Awaited<ReturnType<typeof loadSettings>>; permission: PermissionMode; native: NativeTools | undefined
     attachments: Awaited<ReturnType<typeof readChatAttachments>>; earlierOutputs: Awaited<ReturnType<typeof priorOutputs>>; turn: TaskTurn | undefined
@@ -2279,6 +2303,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length))] : []),
     // Offered every turn so a check runs in the same session as the work it checks.
     resultCheckTool(turn?.verification ? {
       outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
@@ -2453,7 +2478,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        if (!recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
+        if (!recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
@@ -2678,7 +2703,7 @@ export function registerIpc(ctx: VaultContext): void {
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
           broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })
-          if (bot && !recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at: new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}) }).catch(() => undefined)
+          if (bot && !recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at: new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) }).catch(() => undefined)
         } else {
           await deliverAnswer(
             `${result.answer}${note}`,

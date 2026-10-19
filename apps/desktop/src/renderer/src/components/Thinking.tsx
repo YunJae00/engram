@@ -19,12 +19,15 @@ export function Thinking({
   label,
   since,
   testId = 'bubble-thinking',
+  total = (seconds: number) => `Total ${seconds}s`,
 }: {
   label: string | ((seconds: number) => string)
   // When the wait began. Given, the clock survives this component
   // unmounting with its tab; absent, it counts from mount.
   since?: number
   testId?: string
+  // How the elapsed time reads, in the language of the conversation it sits in.
+  total?: (seconds: number) => string
 }) {
   const elapsed = () => (since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : 0)
   const [seconds, setSeconds] = useState(elapsed)
@@ -41,7 +44,7 @@ export function Thinking({
       <span className="bubble-thinking-label" key={text.replace(/\d+/g, '')}>
         {text}
       </span>
-      <span className="thinking-elapsed" title="Total response time, not the duration of the current step" aria-hidden>Total {seconds}s</span>
+      <span className="thinking-elapsed" title="Total response time, not the duration of the current step" aria-hidden>{total(seconds)}</span>
     </span>
   )
 }

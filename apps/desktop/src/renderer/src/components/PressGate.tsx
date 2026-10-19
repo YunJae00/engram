@@ -1,6 +1,8 @@
 import { AlertTriangle } from 'lucide-react'
-import { t } from '../i18n.js'
+import { cometOfChannel } from '../lib/cometThreads.js'
+import { useThreadT } from '../lib/useThreadT.js'
 import { useCometState } from '../state-slices.js'
+import { DecisionCard } from './DecisionCard.js'
 
 // A comet at a control that would commit something: it stops and asks. The
 // page is on screen right above this, so the question needs no description
@@ -9,28 +11,23 @@ import { useCometState } from '../state-slices.js'
 
 export function PressGate({ channel }: { channel: string }) {
   const { pressAsks, answerPressAsk } = useCometState()
+  const t = useThreadT(cometOfChannel(channel))
   const pressAsk = pressAsks.find((ask) => ask.channel === channel)
   if (!pressAsk) return null
+  // Allowing a site for good is a deliberate choice, folded under the site's
+  // name, away from the two everyday answers.
   return (
-    <section className="routine-submit chat-approval" data-testid="press-ask" role="region" aria-label="Approval required">
-      <strong role="status">Approval required · Waiting for you</strong>
-      <div className="routine-submit-head">
-        <AlertTriangle size={14} aria-hidden /> {t('press.ask', { words: pressAsk.words })}
-      </div>
-      <div className="routine-submit-hint">{t('press.askHint')}</div>
-      <div className="dialog-actions">
-        <button className="secondary" data-testid="press-ask-mine" onClick={() => answerPressAsk(channel, 'cancel')}>
-          {t('press.mine')}
-        </button>
-        {pressAsk.host && (<details><summary>Site permissions</summary>
-          <button className="secondary" data-testid="press-ask-always" onClick={() => answerPressAsk(channel, 'always')}>
-            {t('press.always', { host: pressAsk.host })}
-          </button>
-        </details>)}
-        <button className="primary" data-testid="press-ask-go" onClick={() => answerPressAsk(channel, 'approve')}>
-          {t('press.go')}
-        </button>
-      </div>
-    </section>
+    <DecisionCard
+      testId="press-ask"
+      icon={<AlertTriangle size={14} />}
+      label={t('card.needsOk')}
+      title={t('card.press', { words: pressAsk.words })}
+      hint={t('press.askHint')}
+      sub={pressAsk.host && <details className="decision-card-more"><summary>{pressAsk.host}</summary><button className="decision-card-link" data-testid="press-ask-always" onClick={() => answerPressAsk(channel, 'always')}>{t('press.always', { host: pressAsk.host })}</button></details>}
+      actions={<>
+        <button className="secondary" data-testid="press-ask-mine" onClick={() => answerPressAsk(channel, 'cancel')}>{t('press.mine')}</button>
+        <button className="primary" data-testid="press-ask-go" onClick={() => answerPressAsk(channel, 'approve')}>{t('press.go')}</button>
+      </>}
+    />
   )
 }

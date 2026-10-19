@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, localDay, loadBots, addBotTask, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -46,6 +46,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app?.close()
 })
+
 
 test('a quiet conversation leaves the list but stays reachable', async () => {
   const quiet = page.getByTestId(`bot-${quietId}`)
@@ -115,7 +116,8 @@ test('deferred decisions stay in the conversation and remain readable in narrow 
   })
   await page.getByTestId(`bot-${bot.id}`).click()
   const card = page.getByTestId('task-approvals')
-  await expect(card).toContainText('confirm on the current page')
+  await expect(card).toContainText('Submit invoice review')
+  await expect(card.getByTestId('task-approval-fixture-approval')).toHaveAttribute('title', /confirm on the current page/)
   for (const [width, scheme] of [[1280, 'light'], [600, 'dark']] as const) {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
@@ -205,4 +207,24 @@ test('saved multiline questions render real paragraphs once and retain literal c
   await expect(card.locator('img')).toHaveCount(0)
   await expect(card).toContainText('<img src=x onerror=alert(1)>')
   await updateTask(paths, task.id, value => { value.state = 'done'; delete value.question })
+})
+
+test('a scheduled turn preserves the draft and never answers another task approval', async () => {
+  const waiting = await page.evaluate(() => window.engram.botCreate({ name: 'Waiting schedule' }))
+  const pending = await createTask(paths, 'Needs approval', waiting.id)
+  await updateTask(paths, pending.id, task => { task.state = 'waiting'; task.question = 'May I send this?' })
+  const ready = await page.evaluate(() => window.engram.botCreate({ name: 'Scheduled fixture' }))
+  const now = new Date()
+  const schedule = { days: [], hour: now.getHours(), minute: now.getMinutes(), on: localDay(now) }
+  await addBotTask(paths, waiting.id, { name: 'Keep waiting', goal: 'Scheduled reminder', schedule })
+  await addBotTask(paths, ready.id, { name: 'Due now', goal: 'Summarize the deploy procedure for the team', schedule })
+  await page.getByTestId(`bot-${ready.id}`).click()
+  await page.getByTestId('bots-input').fill('Keep my draft')
+  await expect.poll(async () => (await listTasks(paths)).find(task => task.botId === ready.id)?.state, { timeout: 90_000 }).toBe('done')
+  await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
+  await expect(page.getByTestId('bubble-scheduled')).toBeVisible()
+  expect((await listTasks(paths)).find(task => task.id === pending.id)?.state).toBe('waiting')
+  expect((await loadBots(paths)).find(bot => bot.id === waiting.id)?.tasks).toHaveLength(1)
+  await page.evaluate(async id => { const bot = (await window.engram.botsList()).find(bot => bot.id === id); for (const task of bot?.tasks ?? []) await window.engram.botTaskRemove(id, task.id) }, waiting.id)
+  await updateTask(paths, pending.id, task => { task.state = 'done'; delete task.question })
 })

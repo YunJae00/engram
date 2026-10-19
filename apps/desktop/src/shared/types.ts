@@ -135,6 +135,7 @@ export interface ScheduleDto {
   days: number[]
   hour: number
   minute: number
+  on?: string
 }
 
 export interface BotTaskDto {
@@ -259,6 +260,7 @@ export interface ChatTurnDto {
   attachments?: string[]
   // How a checked answer was checked (core TurnEvidence).
   evidence?: import('core').TurnEvidence
+  scheduled?: boolean
 }
 
 // Work handed to Engram to finish in the background (core delegated-tasks.ts).
@@ -291,6 +293,7 @@ export interface ChatRequestDto {
   channel?: string
   // Answer as this bot: its charter rides ahead of the chat rules.
   botId?: string
+  scheduled?: boolean
 }
 
 export interface ChatAttachmentDto {
@@ -511,6 +514,7 @@ export type EngramEvent =
   // A task notification was clicked: show that conversation.
   | { type: 'comet:open'; botId: string }
   | { type: 'comet:quick'; botId: string; message: string; attachments?: string[] }
+  | { type: 'comet:scheduled'; botId: string; message: string }
   | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.
