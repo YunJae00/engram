@@ -39,6 +39,8 @@ test('split panes show localized approval and choice cards without overflow', as
     await expect(choices.getByTestId('bots-choice-0')).toBeVisible()
     for (const width of [950, 620]) {
       await page.setViewportSize({ width, height: 900 })
+      if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
+      await expect(approval.getByRole('button', { name: '확인하고 진행' })).toBeVisible()
       expect(await choices.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
       expect(await approval.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
     }
