@@ -37,7 +37,9 @@ test('split panes show localized approval and choice cards without overflow', as
       value.approvals[0]!.words = command
       value.approvals[0]!.url = 'file:///work#command-one'
     })
-    await page.reload()
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'tasks:changed' })
+    })
     await expect(approval.locator('.approval-command')).toHaveText(command)
     await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeEnabled()
     expect(await approval.evaluate(node => !!node.closest('.mini-chat-thread'))).toBe(true)
