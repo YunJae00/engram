@@ -29,8 +29,18 @@ test('split panes show localized approval and choice cards without overflow', as
     await page.getByTestId('mission-layout-2').click()
     const tile = page.getByTestId('mission-tile-0')
     const approval = tile.getByTestId('task-approvals')
-    await expect(approval).toContainText('확인이 필요해요')
-    await expect(approval.getByRole('button', { name: '확인하고 진행' })).toBeVisible()
+    await expect(approval).toContainText('진행하기 전에')
+    await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeVisible()
+    const command = `Run this command outside the sandbox?\n${'echo safe; '.repeat(30)}Remove-Item report.txt`
+    await updateTask(paths, task.id, value => {
+      value.state = 'running'
+      value.approvals[0]!.words = command
+      value.approvals[0]!.url = 'file:///work#command-one'
+    })
+    await page.reload()
+    await expect(approval.locator('.approval-command')).toHaveText(command)
+    await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeEnabled()
+    expect(await approval.evaluate(node => !!node.closest('.mini-chat-thread'))).toBe(true)
     await app.evaluate(({ BrowserWindow }, id) => {
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'chat:offer', channel: `bot-${id}`, offer: { kind: 'asked', question: 'Which one?', options: ['먼저 확인해줘', '나중에 할게'] } })
     }, bot.id)
@@ -40,9 +50,14 @@ test('split panes show localized approval and choice cards without overflow', as
     for (const width of [950, 620]) {
       await page.setViewportSize({ width, height: 900 })
       if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
-      await expect(approval.getByRole('button', { name: '확인하고 진행' })).toBeVisible()
+      await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeVisible()
       expect(await choices.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
       expect(await approval.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+      await approval.getByRole('button', { name: '진행해 주세요' }).scrollIntoViewIfNeeded()
+      expect(await approval.getByRole('button', { name: '진행해 주세요' }).evaluate(node => {
+        const box = node.getBoundingClientRect()
+        return node.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+      })).toBe(true)
     }
     await page.screenshot({ path: join(root, 'release-064-split-cards.png') })
   } finally { await app.close() }

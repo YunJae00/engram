@@ -139,9 +139,24 @@ describe('native tool policy', () => {
 })
 
 describe('permission modes', () => {
+  it('requires exact approval for every unsandboxed automatic command, even after an earlier grant', async () => {
+    const ask = vi.fn<NonNullable<NativePolicy['ask']>>(async () => 'approve')
+    const p = { ...policy(ask), mode: 'auto' as const, commands: { allowed: true } }
+    const prefix = `echo ${'safe '.repeat(40)}`
+    const commands = [`${prefix}\nRemove-Item data.txt`, `${prefix}\nInvoke-WebRequest https://example.test`]
+    for (const command of commands) expect((await nativeDecision(p, 'PowerShell', { command })).behavior).toBe('allow')
+    expect(ask).toHaveBeenCalledTimes(2)
+    expect(ask.mock.calls[0]![0].words).toContain(commands[0])
+    expect(ask.mock.calls[0]![0].url).not.toBe(ask.mock.calls[1]![0].url)
+    ask.mockResolvedValueOnce('cancel')
+    expect((await nativeDecision(p, 'Bash', { command: 'rm report.txt' })).behavior).toBe('deny')
+    expect((await nativeDecision({ ...policy(), mode: 'auto' }, 'Bash', { command: 'ls' })).behavior).toBe('deny')
+    expect((await nativeDecision(p, 'Bash', { command: 'x'.repeat(16_001) })).behavior).toBe('deny')
+  })
+
   it('runs commands without asking in auto, asks for each command in each, and allows nothing in plan', async () => {
     const ask = vi.fn<NonNullable<NativePolicy['ask']>>(async () => 'approve')
-    const auto = { ...policy(ask), mode: 'auto' as const }
+    const auto = { ...policy(ask), mode: 'auto' as const, sandboxed: true }
     expect((await nativeDecision(auto, 'Bash', { command: 'python a.py' })).behavior).toBe('allow')
     expect(ask).not.toHaveBeenCalled()
     const each = { ...policy(ask), mode: 'each' as const }
@@ -166,7 +181,8 @@ describe('permission modes', () => {
 
   it('reports commands ready only when chosen or already approved for this comet', async () => {
     const options = { channel: 'bot-2', onStep: vi.fn(), audit: vi.fn(), ask: async () => 'approve' as const }
-    expect((await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'a')), mode: 'auto' })).ready!()).toBe(true)
+    expect((await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'a')), mode: 'auto', sandboxed: true })).ready!()).toBe(true)
+    expect((await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'full')), mode: 'auto' })).ready!()).toBe(false)
     const once = await cometNativeTools({ ...options, paths: vaultPaths(join(root, 'b')) })
     expect(once.ready!()).toBe(false)
     await once.decide('Bash', { command: 'dir' }, new AbortController().signal)

@@ -284,7 +284,7 @@ export function taskRunner(deps: {
       const id = owners.get(channel)
       if (!id || !channels.has(channel)) return undefined
       return async ({ words, url }) => {
-        const cardWords = words.slice(0, 120)
+        const cardWords = url.startsWith('file:') ? words : words.slice(0, 120)
         if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
         const current = (await listTasks(paths)).find(t => t.id === id)
         if (current?.state !== 'running') return 'cancel'

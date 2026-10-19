@@ -27,7 +27,6 @@ export function Onboarding() {
   // Nothing new is read unless chosen here; the activity log keeps its current state.
   const [sources, setSources] = useState<LearningChoice>({ workMap: false, workFiles: false, workApps: false, activity: true })
   const [interview, setInterview] = useState(true)
-  const [computerUse, setComputerUse] = useState(false)
   // Which connected AI answers first. Chosen here, never guessed from the order of sign-in.
   const [choice, setChoice] = useState<'claude' | 'codex' | null>(null)
   const [model, setModel] = useState<string | null>(null)
@@ -85,7 +84,7 @@ export function Onboarding() {
         await api.aiSelectionSet('filing', { engine: available.id, model })
       }
       const latest = await api.settingsGet()
-      const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps, computerUse }
+      const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps }
       if ((Object.keys(chosen) as (keyof typeof chosen)[]).some(key => latest[key] !== chosen[key])) await api.settingsSet(chosen)
       if (await api.activityGet() !== sources.activity) await api.activitySet(sources.activity)
       try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
@@ -132,7 +131,6 @@ export function Onboarding() {
       <div className="onboard-ai-content onboard-preferences" aria-busy={finishing}>
         <LearningSources compact value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
         <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} disabled={finishing} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Optional questions from selected notes and past tasks. No new document scan.</p></div>
-        <div><label className="setting-row"><span>Control desktop apps</span><input type="checkbox" className="switch" data-testid="onboard-computer-use" checked={computerUse} disabled={finishing} onChange={event => setComputerUse(event.target.checked)} /></label><p className="setting-hint">Uses your mouse and keyboard. App text and screenshots go to your AI. Press Esc to stop. You always sign in yourself.</p></div>
       </div>
       <div className="onboard-actions"><button className="secondary" disabled={finishing} onClick={() => { setError(''); setStep(2) }}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || !modelReady} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Start Engram'}</button></div>
     </section>}

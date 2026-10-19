@@ -29,7 +29,6 @@ test.beforeAll(async () => {
   })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false))).toBe(true)
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const state: DesktopMock = { available: true, control: { state: 'idle' }, stops: 0, resumes: 0 }
     ipcMain.removeHandler('engines:list')
@@ -56,6 +55,7 @@ test.beforeAll(async () => {
     install('cancelCapture', () => true)
     tell()
   })
+  await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false))).toBe(true)
   const ids = await page.evaluate(async () => {
     const ids: string[] = []
     for (const name of ['Computer review', 'Planning review']) ids.push((await window.engram.botCreate({ name, purpose: 'Review the spreadsheet' })).id)
@@ -213,26 +213,21 @@ test('terminal errors never add an in-app banner or bottom space at any width', 
   await page.setViewportSize({ width: 1440, height: 900 })
 })
 
-test('settings carry one switch for computer use, and its state', async () => {
+test('settings show computer use state without a permission switch', async () => {
   await orbit()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-general').click()
   const settings = page.getByTestId('computer-settings')
-  await expect(settings).toContainText('Control apps')
+  await expect(settings).toContainText('Apps on this computer')
   await expect(settings).not.toContainText('select a window')
-  const toggle = page.getByTestId('setting-computer-use')
-  await expect(toggle).not.toBeChecked()
-  await toggle.check()
+  await expect(page.getByTestId('setting-computer-use')).toHaveCount(0)
   await expect(settings).toContainText('Claude is controlling your computer')
   await expect(page.getByTestId('computer-control-status')).toHaveCount(0)
   expect(await settings.evaluate((box) => box.getBoundingClientRect().bottom <= innerHeight)).toBe(true)
-  await toggle.uncheck()
-  await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then((value) => value.computerUse))).toBe(false)
-  await control({ state: 'idle' })
-  await expect(settings).toContainText('Off')
-  await toggle.check()
+  await page.evaluate(() => window.engram.settingsSet({ computerUse: false }))
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then((value) => value.computerUse))).toBe(true)
+  await control({ state: 'idle' })
   await expect(settings).toContainText('Ready')
 })

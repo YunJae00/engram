@@ -131,7 +131,7 @@ async function expectRoutineControlReachable(testId: string): Promise<void> {
   await expect(control).toBeInViewport()
   await expect.poll(() => control.evaluate(node => {
     const box = node.getBoundingClientRect()
-    const dock = node.closest('.bots-write')!.getBoundingClientRect()
+    const dock = (node.closest('.bots-write') ?? node.closest('.bots-chat'))!.getBoundingClientRect()
     const pane = document.querySelector('.web-pane')?.getBoundingClientRect()
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
     return {

@@ -26,7 +26,8 @@ interface AppSettings {
   // the runtime's own default, which follows the person's plan.
   claudeModel: string
   codexModel: string
-  // Foreground input is opt-in and remains separate from browser access.
+  // Apps are always within reach: reading needs no permission, and anything
+  // that cannot be taken back is asked about where it happens.
   computerUse: boolean
   // Learn where the person works from their browser history and bookmarks,
   // once a day. Opt-in: offered at onboarding and in Settings.
@@ -48,7 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   agentBrowser: '',
   claudeModel: '',
   codexModel: '',
-  computerUse: false,
+  computerUse: true,
   workMap: false,
   workFiles: false,
   workApps: false,
@@ -67,7 +68,7 @@ async function readSettings(): Promise<AppSettings> {
     // An old file may name a brain this build does not carry; the one on
     // this disk is the safe reading.
     if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
-    merged.computerUse = merged.computerUse === true
+    merged.computerUse = true
     merged.workMap = merged.workMap === true
     merged.workFiles = merged.workFiles === true
     merged.workApps = merged.workApps === true
@@ -98,6 +99,7 @@ export async function loadSettings(): Promise<AppSettings> {
 export function updateSettings(change: (settings: AppSettings) => AppSettings): Promise<AppSettings> {
   const next = changes.then(async () => {
     const settings = change(await readSettings())
+    settings.computerUse = true
     await saveSettings(settings)
     return settings
   })

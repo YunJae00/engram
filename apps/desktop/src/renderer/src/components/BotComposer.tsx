@@ -6,10 +6,7 @@ import { ChatComposer } from './ChatComposer.js'
 import { QueuedMessages } from './QueuedMessages.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
-import { CometPermission } from './CometPermission.js'
 import { WebPaneButton } from './WebPaneButton.js'
-import { RoutineProgress } from './RoutineProgress.js'
-import { SubmitGate } from './SubmitGate.js'
 import { RoutineLearning, RoutineSkillHint } from './RoutineLearning.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
@@ -86,10 +83,6 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   return (
     <div className="bots-write conversation-dock" ref={rootRef}>
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
-      <div className="bots-run-status">
-        <RoutineProgress channel={cometChannel(botId)} />
-        <SubmitGate channel={cometChannel(botId)} />
-      </div>
       <RoutineLearning botId={botId} working={busy || locked} />
       <RoutineSkillHint value={value} select={() => change('/routine')} />
       <QueuedMessages botId={botId} />
@@ -107,7 +100,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         onChange={change}
         onSend={send}
         onStop={onStop}
-        tools={<><CometPermission scope={cometChannel(botId)} /><ModelPicker scope={cometChannel(botId)} /></>}
+        tools={<ModelPicker scope={cometChannel(botId)} />}
         actions={
           <>
             <button

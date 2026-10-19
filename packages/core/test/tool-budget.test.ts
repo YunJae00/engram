@@ -16,6 +16,7 @@ describe('a budget for each tool call', () => {
   it('passes a quick answer through and leaves calls that wait on the person unbounded', async () => {
     expect(await withinBudget('read_note', new AbortController().signal, async () => 'note')).toBe('note')
     expect(toolBudgetMs('press')).toBeNull()
+    expect(toolBudgetMs('app_press')).toBeNull()
     expect(toolBudgetMs('app_text')).toBeGreaterThan(180_000)
     const parent = new AbortController()
     let seen: AbortSignal | undefined

@@ -122,7 +122,7 @@ test('deferred decisions stay in the conversation and remain readable in narrow 
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
     if (width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
-    await expect(card.getByRole('button', { name: 'Review and continue' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Go ahead' })).toBeVisible()
     const png = await app.evaluate(async ({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!
       await window.webContents.capturePage()
