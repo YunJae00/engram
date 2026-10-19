@@ -288,7 +288,7 @@ function Shell() {
                 sky is the exception - its canvas animates on its own clock,
                 so it mounts when looked at and unmounts when left. */}
             <div className="canvas-slot" hidden={activity !== 'bots'}>
-              <BotsView />
+              <BotsView active={activity === 'bots'} />
             </div>
             {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
