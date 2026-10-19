@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, localDay, loadBots, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, localDay, loadBots, addBotTask, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -216,10 +216,8 @@ test('a scheduled turn preserves the draft and never answers another task approv
   const ready = await page.evaluate(() => window.engram.botCreate({ name: 'Scheduled fixture' }))
   const now = new Date()
   const schedule = { days: [], hour: now.getHours(), minute: now.getMinutes(), on: localDay(now) }
-  await page.evaluate(async ({ waiting, ready, schedule }) => {
-    await window.engram.botTaskAdd(waiting, { name: 'Keep waiting', goal: 'Scheduled reminder', schedule })
-    await window.engram.botTaskAdd(ready, { name: 'Due now', goal: 'Summarize the deploy procedure for the team', schedule })
-  }, { waiting: waiting.id, ready: ready.id, schedule })
+  await addBotTask(paths, waiting.id, { name: 'Keep waiting', goal: 'Scheduled reminder', schedule })
+  await addBotTask(paths, ready.id, { name: 'Due now', goal: 'Summarize the deploy procedure for the team', schedule })
   await page.getByTestId(`bot-${ready.id}`).click()
   await page.getByTestId('bots-input').fill('Keep my draft')
   await expect.poll(async () => (await listTasks(paths)).find(task => task.botId === ready.id)?.state, { timeout: 90_000 }).toBe('done')
