@@ -17,7 +17,6 @@ export function setDesktopReleaseHook(hook: typeof releaseControl): void { relea
 let labelsOff: string[] = []
 export function setDesktopAppsOff(labels: string[]): void {
   labelsOff = labels.map(label => label.toLowerCase())
-  generation++
   for (const binding of bindings.values()) if (keptOut(binding.name)) releaseDesktop(binding.lane)
 }
 export function keptOut(title: string): string | undefined {
