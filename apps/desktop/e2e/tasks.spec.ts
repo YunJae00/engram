@@ -241,6 +241,7 @@ test('the bell cancels schedules and opens a habit only once with a localized de
   await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('engram:event', { type: 'notices:changed' }) })
   await page.getByTestId('notices-bell').click()
   await page.getByRole('button', { name: 'Stop “Weekly report”' }).click()
+  await expect(page.getByRole('button', { name: 'Stop “Weekly report”' })).toHaveCount(0)
   expect((await loadBots(paths)).find(one => one.id === bot.id)?.tasks?.some(one => one.id === task.id)).toBe(false)
   await page.getByTestId('notices-item').filter({ hasText: '문의 기록' }).click()
   await expect(page.getByTestId('habit-ask-keep')).toHaveText('이대로 저장')
