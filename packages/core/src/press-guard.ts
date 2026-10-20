@@ -46,9 +46,6 @@ const LINK_DESTINATIONS = /^(purchase orders|sent mail|submitted requests|주문
 const PASSAGE_WORDS =
   /\b(sign ?in|log ?in|continue|next|proceed|go|open|view|show|search|find|filter|refresh|reload|more|back|close|ok|okay|select|choose|browse|expand|collapse|details?)\b|로그인|계속|다음|이동|열기|보기|조회|검색|찾기|필터|새로고침|더보기|뒤로|닫기|확인|선택|상세/i
 
-const ENTRY_WORDS = 8
-const listEntry = (words: string): boolean => /\s[|·•]\s|[\n\t]/.test(words.trim()) || words.trim().split(/\s+/).length > ENTRY_WORDS
-
 export function pressCommits(target: PressTarget): boolean {
   // A control the page itself declares to be a state of the view is read,
   // not action: it is what tabs, toggles, filters and unit pickers are, and
@@ -60,10 +57,6 @@ export function pressCommits(target: PressTarget): boolean {
   // A link or a menu entry goes where it says: "Purchase orders" and "Sent
   // mail" are places. Only a link naming an act done by the click itself asks.
   if (target.navigates && !target.submits && LINK_DESTINATIONS.test(target.words.trim())) return false
-  // An entry in a list or a table - several pieces of text, or a long line -
-  // opens that entry; an action word in it ("submitted", "deleted") is the
-  // entry's state, not what the press does.
-  if (!target.submits && listEntry(target.words)) return false
   if (COMMIT_WORDS.test(target.words)) return true
   // What is left is an unlabelled button that posts a form: nobody can say
   // what it carries, so the person does.

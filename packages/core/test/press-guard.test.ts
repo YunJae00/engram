@@ -25,8 +25,10 @@ describe('a press that would be hard to take back is told apart from one that on
     expect(pressCommits({ submits: true, words: '', posts: false })).toBe(false)
   })
 
-  it('opens an entry of a list whose text carries a state word, and still asks about the action itself', () => {
-    expect(pressCommits({ submits: false, words: '공가(훈련등) 제출 | 공가(훈련등) | 2026년 10월 6일 화요일' })).toBe(false)
+  it('opens an entry known to change only the view, but does not infer that from its label', () => {
+    const words = '공가(훈련등) 제출 | 공가(훈련등) | 2026년 10월 6일 화요일'
+    expect(pressCommits({ submits: false, words, shows: true })).toBe(false)
+    expect(pressCommits({ submits: false, words })).toBe(true)
     expect(pressCommits({ submits: false, words: 'Expense report March submitted by Kim on 3 April awaiting review' })).toBe(false)
     expect(pressCommits({ submits: false, words: '제출' })).toBe(true)
     expect(pressCommits({ submits: true, words: 'Submit | Cancel', posts: true })).toBe(true)
