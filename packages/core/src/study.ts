@@ -81,6 +81,7 @@ export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): stri
     `Study, without changing anything, how the person does this: "${study.what}" - so that the job "${study.ask}" can be done their way.`,
     `Look where their past work on it shows: ${study.where.length ? study.where.join(', ') : 'the apps and sites the job involves'}; their own records there (earlier entries, history, past messages and threads, sent replies), desk_activity for the apps they used around it, and the menus of the systems involved.`,
     'Read and move only. Never press anything that saves, sends, submits or deletes; those presses are refused while you study.',
+    'Only reading tools are enabled during study. Read records through the available mail, file, app and page readers. Do not call action tools or commands; if another view needs a click or input, ask the person to open it instead.',
     'When you have looked, call study_findings with what you learned as a how-to, then tell the person in two or three sentences what you learned and that a card asks them to confirm it.',
     `Write to the person in ${language || 'the language of the job above'}.`,
   ].join('\n')
