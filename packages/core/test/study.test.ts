@@ -2,10 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changeStudies, offerStudyTool, readStudies, studyCandidate, studyFindingsTool, studyMessage } from '../src/study.js'
+import { changeStudies, offerStudyTool, readStudies, studyCandidate, studyFindingsTool, studyGuard, studyMessage } from '../src/study.js'
 import { initVault } from '../src/vault.js'
 
 describe('studying a job', () => {
+  it('guards warm tools at execution, including rich calls, without restricting normal work', async () => {
+    let studying = false
+    let calls = 0
+    const tool = { name: 'app_press', description: '', argsSchema: {}, run: async () => { calls++; return 'ok' }, runRich: async () => { calls++; return { text: 'ok' } } }
+    const guarded = studyGuard(tool, () => studying)
+    expect(await guarded.run({}, { task: 'x' })).toBe('ok')
+    studying = true
+    expect(() => guarded.run({}, { task: 'x' })).toThrow('read-only')
+    expect(() => guarded.runRich!({}, { task: 'x' })).toThrow('read-only')
+    for (const name of ['file_create_copy', 'run_procedure', 'schedule', 'outlook_draft', 'page_steps', 'unknown_write']) {
+      expect(() => studyGuard({ ...tool, name }, () => true).run({}, { task: 'x' })).toThrow('read-only')
+    }
+    expect(calls).toBe(1)
+    expect(await studyGuard({ ...tool, name: 'outlook_read' }, () => true).run({}, { task: 'x' })).toBe('ok')
+    studying = false
+    expect(await guarded.runRich!({}, { task: 'x' })).toEqual({ text: 'ok' })
+  })
+
   it('offers with what is unknown and where it shows', async () => {
     const offered: unknown[] = []
     const tool = offerStudyTool({ offer: async (input) => { offered.push(input) } })

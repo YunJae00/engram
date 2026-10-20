@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentTool } from './agent-loop.js'
+import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { renameWithRetry } from './rename-with-retry.js'
 import type { SkillCandidate, SkillDraft } from './skills.js'
 import { scriptLanguage } from './task-proposal.js'
@@ -26,6 +26,26 @@ export interface Study {
 
 const file = (paths: VaultPaths) => join(paths.cache, 'studies.json')
 const KEEP = 40
+
+// Keep the warm session's tool shape stable, but enforce study consent at execution.
+const STUDY_READS = new Set([
+  'search_memory', 'read_note', 'find_procedure', 'open_skill', 'find_skills',
+  'open_page', 'search_web', 'read_open_page', 'read_pages', 'look', 'verify', 'wait_for',
+  'app_read', 'app_text', 'read_desktop', 'look_desktop', 'list_windows', 'list_apps',
+  'excel_workbooks', 'excel_read', 'outlook_mail', 'outlook_read', 'outlook_calendar',
+  'file_read', 'file_read_workbook', 'desk_activity', 'ask_person', 'study_findings',
+])
+
+export function studyGuard(tool: AgentTool, active: () => boolean): AgentTool {
+  const check = () => {
+    if (active() && !STUDY_READS.has(tool.name)) throw new Error('Studying is read-only. Read available records; ask the person to open another view if needed. Changes and actions wait until the study is confirmed.')
+  }
+  return {
+    ...tool,
+    run: (args, context) => { check(); return tool.run(args, context) },
+    ...(tool.runRich ? { runRich: (args: Record<string, unknown>, context: AgentToolContext) => { check(); return tool.runRich!(args, context) } } : {}),
+  }
+}
 
 export async function readStudies(paths: VaultPaths): Promise<Study[]> {
   try {

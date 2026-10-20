@@ -16,6 +16,7 @@
 .decision-card-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; font-size: var(--fs-small); }
 .decision-card-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-left: 42px; font-size: var(--fs-small); }
 .decision-card-body .bubble-msg-body { color: var(--fg); line-height: 1.6; }
+.approval-command { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 240px; overflow: auto; font-size: var(--fs-small); }
 .decision-card-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--fg-dim); font-size: var(--fs-micro, 11px); text-decoration: underline; cursor: pointer; }
 .decision-card-more summary { cursor: pointer; list-style: none; }
 .decision-card-more summary::-webkit-details-marker { display: none; }
@@ -32,6 +33,7 @@
 .bots-run-status { display: flex; flex-direction: column; gap: 6px; }
 
 /* In a split tile the cards fill the tile, closer together. */
+.mini-chat-gates { display: flex; flex-direction: column; gap: 6px; margin: 0 10px 6px; }
 .mini-chat-thread :is(.bots-choices, .bots-offer, .comet-keep) { margin: 2px 0; }
 
 /* A card with little room puts its answers on a line of their own. */
@@ -41,8 +43,6 @@
   .decision-card-body { padding-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .decision-card { animation: none; } }
-
-/* What this conversation was asked to do later: a quiet chip that opens into the list. */
 
 /* In the conversation a card is the comet's own next message: a bubble on
    its side, the question in its words, the answers under it. While it waits

@@ -62,6 +62,13 @@ describe('a press that would be hard to take back is told apart from one that on
     }
   })
 
+  it('requires approval for long or formatted destructive labels', () => {
+    for (const words of ['Permanently delete all files and backups from this workspace', 'Delete | All files', 'Send\nAll messages', '파일 전체 삭제 · 복구할 수 없음']) {
+      expect(pressCommits({ submits: false, words })).toBe(true)
+      expect(pressCommits({ submits: false, words, navigates: true })).toBe(true)
+    }
+  })
+
   it('lets a tab, a day, a page or a plain OK through', () => {
     for (const words of ['Notices', 'Previous week', '24', '이전 페이지', '다음', '확인', 'International flights', 'Q2 report']) {
       expect(pressCommits({ submits: false, words })).toBe(false)

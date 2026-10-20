@@ -289,6 +289,8 @@ test('preloads both connected accounts without selecting a provider or starting 
 test('connected accounts switch without restarting and keep per-account limits', async () => {
   const pid = app.process().pid
   await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('engines:states')
+    ipcMain.handle('engines:states', () => ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true })))
     ipcMain.removeHandler('accounts:states')
     ipcMain.handle('accounts:states', async event => {
       const profiles = await event.sender.executeJavaScript('window.engram.accountProfiles()')
@@ -300,8 +302,10 @@ test('connected accounts switch without restarting and keep per-account limits',
   await page.getByTestId('activity-settings').click()
   await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-claude-status')).toHaveText('Connected')
-  const card = await page.getByRole('region', { name: 'Claude connection', exact: true }).boundingBox()
-  expect(card!.height).toBeLessThan(400)
+  const card = page.getByRole('region', { name: 'Claude connection', exact: true })
+  expect(await card.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+  await card.getByRole('button', { name: 'Manage Claude accounts' }).scrollIntoViewIfNeeded()
+  await expect(card.getByRole('button', { name: 'Manage Claude accounts' })).toBeVisible()
   await screenshot('developers-connections.png')
   await page.getByTestId('settings-view').getByRole('button', { name: 'Manage ChatGPT accounts', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Account profiles' })).toBeVisible()

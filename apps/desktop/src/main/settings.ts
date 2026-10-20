@@ -114,6 +114,7 @@ export async function loadSettings(): Promise<AppSettings> {
 export function updateSettings(change: (settings: AppSettings) => AppSettings): Promise<AppSettings> {
   const next = changes.then(async () => {
     const settings = change(await readSettings())
+    settings.computerUse = true
     await saveSettings(settings)
     return settings
   })

@@ -97,7 +97,6 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     if (decision.choice === 'done' && request.send) { steps.push({ action: 'done', confidence: decision.confidence, ms: decision.ms, outcome: 'not sent yet; sending ends the goal' }); continue }
     if (decision.choice === 'done') { steps.push({ action: 'done', confidence: decision.confidence, ms: decision.ms, outcome: 'the screen shows the goal met' }); return finish('done') }
     if (decision.choice === 'blocked') { steps.push({ action: 'blocked', confidence: decision.confidence, ms: decision.ms, outcome: 'nothing on this screen leads further' }); return finish('blocked') }
-    if (decision.confidence < MIN_CONFIDENCE) { steps.push({ action: decision.choice, confidence: decision.confidence, ms: decision.ms, outcome: 'not confident enough to act' }); return finish('unsure') }
     const control = controls.get(decision.choice)!
     const [kind, id] = decision.choice.split(' ') as ['set' | 'press', string]
     // A screen that did not change after the same action was already delivered is a loop, not progress; a

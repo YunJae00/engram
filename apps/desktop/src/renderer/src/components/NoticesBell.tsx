@@ -40,7 +40,7 @@ export function NoticesBell({ disabled, onOpen }: { disabled?: boolean; onOpen(b
       {unread ? <BellDot size={17} strokeWidth={1.8} aria-hidden /> : <Bell size={17} strokeWidth={1.8} aria-hidden />}
     </button>
     <div id={id} ref={panel} {...{ popover: 'auto' }} className="notices-panel" data-testid="notices-panel" aria-label="Notifications">
-      <header><strong>Notifications</strong>{inbox.items.some(item => item.read) && <button className="notices-clear" data-testid="notices-clear" onClick={() => void api.noticesClear().then(setInbox)}>Clear read</button>}</header>
+      <header><strong>Notifications</strong>{inbox.items.some(item => item.read) && <button className="notices-clear" data-testid="notices-clear" onClick={() => void api.noticesClear().then(setInbox).catch(() => setError('Could not clear notifications. Try again.'))}>Clear read</button>}</header>
       {inbox.items.length === 0 && <p className="notices-empty">Nothing new. Scheduled results and ways of working Engram notices show up here.</p>}
       <ul className="notices-items">
         {inbox.items.map(item => <li key={item.id}>

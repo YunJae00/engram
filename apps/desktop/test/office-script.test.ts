@@ -21,6 +21,15 @@ function Sheet($wb, $name) { return $sheet }
 try { Op-ExcelRead ([pscustomobject]@{ range = 'A1:XFD1048576'; workbook = 'Book1'; sheet = 'Sheet1' }); throw 'UNBOUNDED_READ' }
 catch { if ($_.Exception.Message -notlike '*4000*') { throw }; Write-Output 'BOUNDED_BEFORE_VALUE' }
 $positions = LiteralPositions 'draft Draft draft' 'draft'
+$attachment = [pscustomobject]@{ FileName = 'same.txt'; Type = 1; Size = 3 }
+$attachment | Add-Member ScriptMethod SaveAsFile { param($path) }
+$mail = [pscustomobject]@{ EntryID = 'test'; Subject = 'test'; SenderName = 'test'; To = 'test'; ReceivedTime = (Get-Date); Body = 'test'; Attachments = @($attachment, $attachment) }
+$mailbox = [pscustomobject]@{}
+$mailbox | Add-Member ScriptMethod GetItemFromID { param($id) return $mail }
+function Mailbox { return $mailbox }
+$first = Op-OutlookRead ([pscustomobject]@{id='test'})
+$second = Op-OutlookRead ([pscustomobject]@{id='test'})
+if ($first.attachments.Count -ne 2 -or $first.attachments[0].path -eq $first.attachments[1].path -or $first.attachments[0].path -eq $second.attachments[0].path) { throw 'ATTACHMENT_PATH_COLLISION' }
 if ($positions.Count -ne 2 -or $positions[1] -ne 12) { throw 'LITERAL_MATCH_FAILED' }
 try { LiteralPositions 'text' ''; throw 'EMPTY_FIND_ACCEPTED' } catch { if ($_.Exception.Message -notlike '*Empty replacement*') { throw } }
 $doc = [pscustomobject]@{ Content = [pscustomobject]@{ End = 100001 } }

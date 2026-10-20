@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { appLabels, habitCandidate, habitChains, habitPrompt, habitsToDraft, readHabits, usedApps, writeHabits, type ActivityStep } from '../src/habit-chains.js'
+import { appLabels, changeHabits, habitCandidate, habitChains, habitPrompt, habitsToDraft, readHabits, usedApps, writeHabits, type ActivityStep } from '../src/habit-chains.js'
 import { initVault } from '../src/vault.js'
 
 const at = (day: number, minute: number) => new Date(Date.UTC(2026, 9, day, 1, minute)).toISOString()
@@ -23,6 +23,17 @@ const noise = (day: number): ActivityStep[] => [
 ]
 
 describe('habit chains', () => {
+  it('serializes scanning and decisions without losing either change', async () => {
+    const paths = await initVault(await mkdtemp(join(tmpdir(), 'habits-')), { git: false })
+    await Promise.all([
+      changeHabits(paths, async ledger => { await Promise.resolve(); ledger.first = { state: 'kept', at: at(1, 0), times: 3, labels: [] } }),
+      changeHabits(paths, ledger => { ledger.second = { state: 'draft', at: at(1, 0), times: 3, labels: [] } }),
+    ])
+    expect(Object.keys(await readHabits(paths))).toEqual(['first', 'second'])
+    await expect(changeHabits(paths, () => { throw new Error('offline') })).rejects.toThrow('offline')
+    await changeHabits(paths, ledger => { ledger.second!.state = 'dismissed' })
+    expect((await readHabits(paths)).second?.state).toBe('dismissed')
+  })
   it('names apps by the title tail most of their windows share', () => {
     const labels = appLabels([...job(1), span('assistant', 'Assistant - Chat about x', 1, 50, 51)])
     expect(labels.get('sheet')).toBe('Sheets')

@@ -88,7 +88,7 @@ test('native picker attaches a file to a new chat without importing it into Cosm
   expect(await readdir(paths.inbox)).toEqual([])
   expect(await readdir(paths.sources)).toEqual([])
   // Only the profile the comets share may appear; attachments are never imported.
-  expect((await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])
+  await expect.poll(async () => (await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])
   expect(await readdir(join(paths.cache, 'chat-attachments'))).toHaveLength(1)
 })
 

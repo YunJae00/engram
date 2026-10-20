@@ -23,6 +23,7 @@ describe('guessSchedule', () => {
     expect(isSchedule({ days: [1], hour: 9, minute: 60 })).toBe(false)
     expect(isSchedule({ days: [], hour: 9, minute: 0, on: '2026-10-20' })).toBe(true)
     expect(isSchedule({ days: [], hour: 9, minute: 0, on: 'tomorrow' })).toBe(false)
+    expect(isSchedule({ days: [], hour: 9, minute: 0, on: '2026-02-30' })).toBe(false)
   })
 })
 

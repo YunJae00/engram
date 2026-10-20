@@ -1,9 +1,4 @@
-// How long one tool call may take before the turn hears that it is stuck.
-// A tool that runs past its budget is stopped and the brain is told so,
-// instead of waiting minutes on a program that has hung; the next call does
-// not queue behind it. Most calls finish in seconds; the few that wait on
-// an answer being written, or build a document, get more; calls that may
-// wait on the person approving a step have none.
+// Approval waits have no deadline; document and reply tools get longer budgets.
 const DEFAULT_MS = 45_000
 const BUDGETS: Record<string, number | null> = {
   app_text: 200_000,

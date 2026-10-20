@@ -27,4 +27,3 @@
 /* What each model is for, in the vendor's own words, under its name. */
 .model-picker-text { display: flex; flex-direction: column; min-width: 0; }
 .model-picker-hint { font-size: var(--fs-micro); line-height: 1.4; color: var(--fg-faint); overflow-wrap: anywhere; }
-

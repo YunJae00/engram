@@ -31,8 +31,8 @@ export function WorkHabitsSettings() {
     try { await work() } catch (cause) { setError(cause instanceof Error && cause.message ? cause.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : failed) } finally { setBusy('') }
   }
   const toggle = (app: AppUseDto, on: boolean) => run(`app:${app.app}`, async () => {
-    setApps(current => current?.map(one => one.app === app.app ? { ...one, on } : one) ?? null)
     await api.appsSet(app.app, app.label, on)
+    setApps(current => current?.map(one => one.app === app.app ? { ...one, on } : one) ?? null)
   }, 'Could not save the setting.')
   const scan = () => run('scan', async () => setDrafts(await api.habitsScan()), 'Could not look this time. Try again later.')
   const answer = (draft: HabitDraftDto, keep: boolean) => run(draft.key, async () => setDrafts(await api.habitsAnswer(draft.key, keep)), 'Could not save your answer.')

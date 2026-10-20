@@ -199,6 +199,18 @@ export async function writeHabits(paths: VaultPaths, ledger: HabitLedger): Promi
   await renameWithRetry(`${file}.tmp`, file)
 }
 
+let changes = Promise.resolve()
+export function changeHabits(paths: VaultPaths, change: (ledger: HabitLedger) => void | Promise<void>): Promise<HabitLedger> {
+  const next = changes.then(async () => {
+    const ledger = await readHabits(paths)
+    await change(ledger)
+    await writeHabits(paths, ledger)
+    return ledger
+  })
+  changes = next.then(() => undefined, () => undefined)
+  return next
+}
+
 // A run is worth a model call when it is new, or when it was declined and has
 // since come back twice more.
 export function habitsToDraft(chains: HabitChain[], ledger: HabitLedger): HabitChain[] {

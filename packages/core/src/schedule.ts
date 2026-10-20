@@ -39,7 +39,7 @@ export function isSchedule(value: unknown): value is Schedule {
     Number.isInteger(s['minute']) &&
     (s['minute'] as number) >= 0 &&
     (s['minute'] as number) <= 59 &&
-    (s['on'] === undefined || (typeof s['on'] === 'string' && DAY.test(s['on']) && !Number.isNaN(Date.parse(s['on']))))
+    (s['on'] === undefined || (typeof s['on'] === 'string' && DAY.test(s['on']) && !Number.isNaN(Date.parse(s['on'])) && new Date(s['on']).toISOString().slice(0, 10) === s['on']))
   )
 }
 

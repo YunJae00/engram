@@ -23,9 +23,12 @@ const HAND_BUDGET_MS = 45_000
 // `held` hands back their pending answer, the budget waits for it and starts over.
 function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: () => Promise<unknown> | null): Promise<PageMove> {
   if (awaitCompletion) return work
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let settled = false
   return new Promise<PageMove>((resolve, reject) => {
     const arm = (): void => {
-      setTimeout(() => {
+      if (settled) return
+      timer = setTimeout(() => {
         const waiting = held?.()
         if (waiting) void waiting.then(arm, arm)
         else resolve({ ok: false, error: 'the page did not answer that in time' })
@@ -33,7 +36,7 @@ function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: (
     }
     arm()
     work.then(resolve, reject)
-  })
+  }).finally(() => { settled = true; clearTimeout(timer) })
 }
 
 // Two comets sharing one browser share its sign-ins - and so, on one site,

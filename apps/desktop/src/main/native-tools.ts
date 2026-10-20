@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -75,11 +76,16 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
     const command = typeof input['command'] === 'string' ? input['command'].trim() : ''
     if (!command) return deny('Supply a command.')
     if (policy.mode === 'plan') return deny(PLAN_ONLY)
-    const each = policy.mode === 'each'
-    if (policy.mode === 'auto' || (!each && policy.commands.allowed)) return allow
+    const unbounded = policy.mode === 'auto' && policy.sandboxed !== true
+    const each = policy.mode === 'each' || unbounded
+    if ((policy.mode === 'auto' && policy.sandboxed === true) || (!each && policy.commands.allowed)) return allow
     if (!policy.ask) return deny('Commands are not available in this chat.')
+    if (unbounded && command.length > 16_000) return deny('This command is too long to review. Use a smaller command.')
     const words = each ? `Run this command? ${command.replace(/\s+/g, ' ')}` : policy.sandboxed ? 'Allow commands for this comet? They can read files; writes stay in the task folder and network access is blocked.' : 'Allow commands for this comet? They can read or change any accessible file and use the network; not sandboxed.'
-    const verdict = await policy.ask({ words, url: pathToFileURL(policy.cwd).href })
+    // Bind approval to the exact command, not its shortened preview or working directory.
+    const url = pathToFileURL(policy.cwd)
+    if (unbounded) url.hash = createHash('sha256').update(command).digest('hex')
+    const verdict = await policy.ask({ words: unbounded ? `Run this command outside the sandbox?\n${command}` : words, url: url.href })
     if (signal?.aborted) return deny('The call was canceled.')
     if (verdict === 'approve' || verdict === 'always') { if (!each) policy.commands.allowed = true; return allow }
     if (verdict === 'later') return deny('Running commands waits for the person\'s approval. Continue with other work, or report what remains.')
@@ -162,7 +168,7 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
     cwd,
     readRoots: roots,
     ...(options.mode ? { mode: options.mode } : {}),
-    ready: () => policy.mode === 'auto' || ((policy.mode ?? 'once') === 'once' && policy.commands.allowed),
+    ready: () => (policy.mode === 'auto' && policy.sandboxed === true) || ((policy.mode ?? 'once') === 'once' && policy.commands.allowed),
     decide: (name, input, signal) => nativeDecision(policy, name, input, signal),
     onCall(name, input) {
       const line = nativeSummary(name, input)

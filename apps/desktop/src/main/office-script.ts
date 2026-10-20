@@ -200,7 +200,7 @@ function Op-OutlookRead($a) {
   # with what came with it; links and items embedded in the mail are only named.
   $files = @()
   if ($m.Attachments.Count -gt 0) {
-    $dir = Join-Path ([IO.Path]::GetTempPath()) ('engram-mail\' + [Math]::Abs($m.EntryID.GetHashCode()))
+    $dir = Join-Path ([IO.Path]::GetTempPath()) ('engram-mail\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $i = 0
     foreach ($att in $m.Attachments) {
@@ -208,7 +208,7 @@ function Op-OutlookRead($a) {
       $name = [IO.Path]::GetFileName([string]$att.FileName)
       if (-not $name) { continue }
       if ($att.Type -ne 1 -or $att.Size -gt 20MB) { $files += @{ name = $name; size = $att.Size; saved = $false }; continue }
-      $path = Join-Path $dir $name
+      $path = Join-Path $dir ($i.ToString() + '-' + $name)
       $att.SaveAsFile($path)
       $files += @{ name = $name; size = $att.Size; path = $path }
     }

@@ -27,6 +27,7 @@ const lane = 'bot-one'
 const other = 'bot-two'
 beforeEach(() => {
   closeDesktopAccess()
+  setDesktopAppsOff([])
   vi.clearAllMocks()
   fake.hosts = []
   fake.windows = [
@@ -47,6 +48,14 @@ beforeEach(() => {
 // The comet chooses the window. The app in front is the default; a word from a
 // title names another; the person is never shown a list to pick from.
 describe('binding the app the comet needs', () => {
+  it('turning an app off releases existing access and rejects both selection paths', async () => {
+    await bindDesktopForLane(lane, { app: 'Excel' })
+    setDesktopAppsOff(['Excel'])
+    expect(desktopBinding(lane)).toBeUndefined()
+    await expect(bindDesktopForLane(lane, { app: 'Excel' })).rejects.toThrow('out of Engram')
+    fake.request.mockResolvedValueOnce({ pid: 200, title: 'Quarterly workbook - Excel' })
+    await expect(chooseDesktop(lane, 'window:100:0')).rejects.toThrow('turned off')
+  })
   it('takes the window in front, readable at once, on one host', async () => {
     const binding = await bindDesktopForLane(lane)
     expect(binding).toMatchObject({ lane, window: '100', pid: 200, name: 'Quarterly workbook - Excel', readable: true, stopped: false })

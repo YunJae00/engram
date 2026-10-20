@@ -213,7 +213,7 @@ test('terminal errors never add an in-app banner or bottom space at any width', 
   await page.setViewportSize({ width: 1440, height: 900 })
 })
 
-test('settings carry one switch for computer use, and its state', async () => {
+test('settings show computer use state without a permission switch', async () => {
   await orbit()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()

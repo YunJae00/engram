@@ -34,7 +34,7 @@ const PHASE_LABEL: Record<string, StringKey> = {
 }
 
 
-export const BotsView = memo(function BotsView() {
+export const BotsView = memo(function BotsView({ active }: { active: boolean }) {
   const { errand } = useCometState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [memoryOpen, setMemoryOpen] = useState(false)
@@ -142,7 +142,7 @@ export const BotsView = memo(function BotsView() {
               key={selected.id}
               botId={selected.id}
               botName={selected.name}
-              initialDraft={draft}
+              initialDraft={active ? cometThreads.thread(selected.id).draft : draft}
               busy={busy}
               locked={locked}
               memoryOpen={memoryOpen}

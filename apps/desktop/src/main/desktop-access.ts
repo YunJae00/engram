@@ -16,7 +16,10 @@ export function setDesktopReleaseHook(hook: typeof releaseControl): void { relea
 let laneWorking: (lane: string) => boolean = () => true
 // Apps the person keeps out of reach, by the name their windows end with.
 let labelsOff: string[] = []
-export function setDesktopAppsOff(labels: string[]): void { labelsOff = labels.map(label => label.toLowerCase()) }
+export function setDesktopAppsOff(labels: string[]): void {
+  labelsOff = labels.map(label => label.toLowerCase())
+  for (const binding of bindings.values()) if (keptOut(binding.name)) releaseDesktop(binding.lane)
+}
 export function keptOut(title: string): string | undefined {
   const tail = title.split(/\s+[-|—–]\s+/).at(-1)?.trim().toLowerCase() ?? ''
   return labelsOff.find(label => label === tail || label === title.trim().toLowerCase())
@@ -153,6 +156,7 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
     const identity = await host.request<{ pid: number; title: string }>('inspectWindow', { window, pid: 0 })
     if (host.closed) throw new Error('This app connection ended. Reconnect the app window to continue.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
+    if (keptOut(identity.title)) throw new Error('This app is turned off in Settings.')
     // Recheck after enumeration so concurrent selections cannot share a window.
     if ([...bindings.values()].some((binding) => !binding.host.closed && binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')

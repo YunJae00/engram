@@ -16,7 +16,7 @@ export function ThreadAsks({ botId, questionShown }: { botId: string; questionSh
     <SubmitGate channel={channel} />
     <PressGate channel={channel} />
     <TaskApprovals botId={botId} questionShown={questionShown} />
-    <HabitAsk botId={botId} />
-    <StudyAsk botId={botId} />
+    <HabitAsk key={botId} botId={botId} />
+    <StudyAsk key={`study-${botId}`} botId={botId} />
   </>
 }

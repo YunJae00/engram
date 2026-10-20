@@ -3,7 +3,7 @@ import {
   addNotice,
   appendBotTurn,
   changeNotices,
-  collectResult,
+  changeHabits,
   createBot,
   engineBackoff,
   engineCwd,
@@ -20,7 +20,6 @@ import {
   readHabits,
   scriptLanguage,
   usedApps,
-  writeHabits,
   type HabitEntry,
   type HabitLedger,
   type SkillDraft,
@@ -32,6 +31,7 @@ import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { loadSettings, onSettingsSaved, updateSettings, type AppSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
+import { habitResult } from './habit-drafts.js'
 
 // The apps the person uses, which of them Engram may learn from and work in,
 // and the runs of apps they keep going through for one job - drafted into a
@@ -68,9 +68,12 @@ export function scanHabits(ctx: VaultContext, force = false): Promise<number> {
   if (scanning) return scanning
   if (!force && Date.now() - lastScan < SCAN_EVERY_MS) return Promise.resolve(0)
   scanning = (async () => {
-    lastScan = Date.now()
     const engine = ctx.engines[0]
-    if (!engine || engineBackoff.blockedMs() > 0) return 0
+    if (!engine || engineBackoff.blockedMs() > 0) {
+      if (force) throw new Error('Your AI is not ready. Check AI settings and try again.')
+      return 0
+    }
+    lastScan = Date.now()
     const settings = await loadSettings()
     const spans = await readActivityRange(ctx, Date.now() - WINDOW_MS, Date.now())
     const chains = habitChains(spans, new Set(settings.appsOff.map(one => one.app)))
@@ -80,18 +83,23 @@ export function scanHabits(ctx: VaultContext, force = false): Promise<number> {
     for (const chain of habitsToDraft(chains, ledger).slice(0, DRAFTS_PER_SCAN)) {
       const labels = chain.steps.map(step => step.label)
       // A brain that did not answer has not judged the run; it is asked again next time.
-      const raw = await collectResult(engine, { prompt: habitPrompt(chain, language), workdir: engineCwd(ctx.paths), disallowTools: true, timeoutMs: 60_000, modelHint: 'fast', maxTokens: 1200 })
+      const raw = await habitResult(engine, { prompt: habitPrompt(chain, language), workdir: engineCwd(ctx.paths), timeoutMs: 60_000, modelHint: 'fast', maxTokens: 1200 })
         .catch((error: unknown) => { flog('habits', `${labels.join(' > ')}: no answer - ${error instanceof Error ? error.message : String(error)}`); return null })
       if (raw === null) continue
       const draft = parseSkillDraft(raw)
-      if (draft) await raise(ctx, chain.key, draft, raw)
-      ledger[chain.key] = draft
-        ? { state: 'draft', at: new Date().toISOString(), times: chain.times.length, labels, draft }
-        : { state: 'declined', at: new Date().toISOString(), times: chain.times.length, labels }
+      let declined = false
+      try { declined = (extractJson(raw) as { skip?: unknown } | null)?.skip === true } catch { /* Malformed output is retryable, not a refusal. */ }
+      if (!draft && !declined) { flog('habits', `unreadable answer, ${raw.length} chars`); continue }
+      await changeHabits(ctx.paths, async current => {
+        if (!habitsToDraft([chain], current).length) return
+        if (draft) await raise(ctx, chain.key, draft, raw)
+        current[chain.key] = draft
+          ? { state: 'draft', at: new Date().toISOString(), times: chain.times.length, labels, draft }
+          : { state: 'declined', at: new Date().toISOString(), times: chain.times.length, labels }
+      })
       flog('habits', `${labels.join(' > ')}: ${draft ? 'drafted' : /"skip"\s*:\s*true/.test(raw) ? 'declined' : `unreadable answer, ${raw.length} chars`}`)
       if (draft) drafted++
     }
-    await writeHabits(ctx.paths, ledger)
     if (drafted) { broadcast({ type: 'habits:changed' }); broadcast({ type: 'notices:changed' }) }
     return drafted
   })().finally(() => { scanning = null })
@@ -103,35 +111,40 @@ export function scanHabits(ctx: VaultContext, force = false): Promise<number> {
 async function raise(ctx: VaultContext, key: string, draft: SkillDraft, raw: string): Promise<void> {
   const said = (extractJson(raw) as { ask?: unknown } | null)?.ask
   const ask = typeof said === 'string' && said.trim() ? said.trim() : draft.description
-  await addNotice(ctx.paths, { kind: 'habit', title: draft.title, text: ask, key }).catch(error => flog('habits', error))
+  await addNotice(ctx.paths, { kind: 'habit', title: draft.title, text: ask, key })
 }
 
 // Opening a draft from the inbox: Engram says it first in a new conversation,
 // where the person can answer its questions before keeping it.
 export async function openHabit(ctx: VaultContext, key: string, ask: string): Promise<string> {
-  const ledger = await readHabits(ctx.paths)
-  const entry = ledger[key]
-  if (entry?.botId && (await loadBots(ctx.paths)).some(bot => bot.id === entry.botId)) return entry.botId
-  if (!entry?.draft) throw new Error('That draft is no longer waiting.')
-  // What the person says here fills the how-to in; it is not a job to do now.
-  const bot = await createBot(ctx.paths, { name: entry.draft.title.slice(0, 60), purpose: 'Talk with the person about the how-to in this conversation\'s first message. What they say here fills that how-to in - acknowledge it briefly as such - and is not a task to carry out now unless they plainly ask for it.' })
-  await appendBotTurn(ctx.paths, bot.id, { role: 'assistant', text: `${ask}\n\n${entry.draft.body}`, at: new Date().toISOString() })
-  await writeHabits(ctx.paths, { ...await readHabits(ctx.paths), [key]: { ...entry, botId: bot.id } })
+  let botId = ''
+  await changeHabits(ctx.paths, async ledger => {
+    const entry = ledger[key]
+    if (entry?.botId && (await loadBots(ctx.paths)).some(bot => bot.id === entry.botId)) { botId = entry.botId; return }
+    if (entry?.state !== 'draft' || !entry.draft) throw new Error('That draft is no longer waiting.')
+    // What the person says here fills the how-to in; it is not a job to do now.
+    const bot = await createBot(ctx.paths, { name: entry.draft.title.slice(0, 60), purpose: 'Talk with the person about the how-to in this conversation\'s first message. What they say here fills that how-to in - acknowledge it briefly as such - and is not a task to carry out now unless they plainly ask for it.' })
+    await appendBotTurn(ctx.paths, bot.id, { role: 'assistant', text: `${ask}\n\n${entry.draft.body}`, at: new Date().toISOString() })
+    ledger[key] = { ...entry, botId: bot.id }
+    botId = bot.id
+  })
   broadcast({ type: 'bots:changed' })
-  return bot.id
+  return botId
 }
 
 // What the person said in the draft's conversation, folded into the how-to
-// before it is kept; the draft as it was when nothing was said or the brain
-// cannot be reached.
+// before it is kept. A failed revision must not silently drop those answers.
 async function revised(ctx: VaultContext, entry: HabitEntry): Promise<SkillDraft> {
   const draft = entry.draft!
   const engine = ctx.engines[0]
-  if (!entry.botId || !engine) return draft
-  const answers = (await readBotTranscript(ctx.paths, entry.botId, 40).catch(() => [])).filter(turn => turn.role === 'user').map(turn => turn.text)
+  if (!entry.botId) return draft
+  const answers = (await readBotTranscript(ctx.paths, entry.botId, 40)).filter(turn => turn.role === 'user').map(turn => turn.text)
   if (!answers.length) return draft
-  const raw = await collectResult(engine, { prompt: habitRevisePrompt(draft, answers), workdir: engineCwd(ctx.paths), disallowTools: true, timeoutMs: 60_000, modelHint: 'fast', maxTokens: 1500 }).catch(() => null)
-  return parseSkillDraft(raw) ?? draft
+  if (!engine) throw new Error('Connect your AI before saving your answers.')
+  const raw = await habitResult(engine, { prompt: habitRevisePrompt(draft, answers), workdir: engineCwd(ctx.paths), timeoutMs: 60_000, modelHint: 'fast', maxTokens: 1500 })
+  const updated = parseSkillDraft(raw)
+  if (!updated) throw new Error('Your answers could not be added yet. Try saving again.')
+  return updated
 }
 
 const drafts = (ledger: HabitLedger): HabitDraftDto[] => Object.entries(ledger)
@@ -157,15 +170,15 @@ export function registerHabitsIpc(ctx: VaultContext): void {
   ipcMain.handle('habits:scan', async () => { await scanHabits(ctx, true); return drafts(await readHabits(ctx.paths)) })
   ipcMain.handle('habits:answer', async (_event, key: unknown, keep: unknown) => {
     if (typeof key !== 'string' || typeof keep !== 'boolean') throw new Error('Invalid habit')
-    const ledger = await readHabits(ctx.paths)
-    const entry = ledger[key]
-    if (entry?.state !== 'draft' || !entry.draft) throw new Error('That draft is no longer waiting.')
-    if (keep) {
-      const result = await installSkill(ctx.paths, habitCandidate(key), await revised(ctx, entry))
-      if (!result.installed) throw new Error(result.reason === 'privacy' ? 'The draft holds an address or a key, so it was not kept.' : 'The how-to could not be kept.')
-    }
-    ledger[key] = { ...entry, state: keep ? 'kept' : 'dismissed', at: new Date().toISOString() }
-    await writeHabits(ctx.paths, ledger)
+    const ledger = await changeHabits(ctx.paths, async ledger => {
+      const entry = ledger[key]
+      if (entry?.state !== 'draft' || !entry.draft) throw new Error('That draft is no longer waiting.')
+      if (keep) {
+        const result = await installSkill(ctx.paths, habitCandidate(key), await revised(ctx, entry))
+        if (!result.installed) throw new Error(result.reason === 'privacy' ? 'The draft holds an address or a key, so it was not kept.' : 'The how-to could not be kept.')
+      }
+      ledger[key] = { ...entry, state: keep ? 'kept' : 'dismissed', at: new Date().toISOString() }
+    })
     await changeNotices(ctx.paths, items => items.map(item => item.key === key ? { ...item, read: true } : item))
     broadcast({ type: 'habits:changed' })
     broadcast({ type: 'notices:changed' })

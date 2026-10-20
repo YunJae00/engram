@@ -66,6 +66,6 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   const oldField = beforeReselect.controls.find(control => control.name === 'Worker input')
   assert.ok(oldField)
   await helper.request('inspectWindow', { window: target.window, pid: 0 })
-  await assert.rejects(helper.request('quietRead', { ...target, snapshot: beforeReselect.snapshot, control: oldField.id }), /snapshot is stale/)
+  assert.equal((await helper.request('quietRead', { ...target, snapshot: beforeReselect.snapshot, control: oldField.id })).text, (oldField.value ?? '').trim(), 'Another chat inspecting the same window must preserve its unchanged controls')
   return { readWithoutFocus: true, providerOnlySet: true, setActivatedWindow: set.foregroundChanged, providerOnlyPress: true, pressActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
 }

@@ -40,6 +40,7 @@ import {
   studyCandidate,
   studyFindingsTool,
   studyMessage,
+  studyGuard,
   type SkillDraft,
   ASIDE_SCHEMA,
   asidePrompt,
@@ -1867,7 +1868,7 @@ export function registerIpc(ctx: VaultContext): void {
       const channel = `spare-${live.id}`
       const cwd = join(paths.cache, 'work', `spare-${randomUUID()}`)
       try {
-        const native = await cometNativeTools({ paths, channel, cwd, sandboxed: live.id === 'codex', mode: 'once', onStep: () => undefined, audit: () => undefined })
+        const native = await cometNativeTools({ paths, channel, cwd, sandboxed: live.id === 'codex', mode: 'auto', onStep: () => undefined, audit: () => undefined })
         const tools = await cometToolSet({ channel, engine, settings, permission: 'auto', native, attachments: await readChatAttachments(paths, undefined, warmAbort.signal), earlierOutputs: [], turn: undefined, recovery: null, remembered: [], guided: false, webOnly: false, audit: () => undefined })
         const shape = sessionShape({ engine, tools }, { native })
         if (!warmAbort.signal.aborted) await live.warm({ workdir: engineCwd(paths), system: shape.system, prompt: '', tools: shape.tools.map(tool => ({ ...tool, run: async () => 'not this turn' })), maxCalls: 1, native, model, signal: warmAbort.signal, ...(effort ? { effort } : {}) })
@@ -2332,10 +2333,11 @@ export function registerIpc(ctx: VaultContext): void {
   }
 
   // What was in front of the person on this computer, read when the work needs
-  // it - a day's report, a time sheet - not only when the ask names a day.
+  // it - a report of their day or week, a record of their work - not only
+  // when the ask names a day.
   const deskActivityTool: AgentTool = {
     name: 'desk_activity',
-    description: 'what the person had open on this computer, from the local activity journal: app names and window titles with times and hours per app - args: {"days": 1 to 7}. Use it to know what they worked on when a report, a time sheet or a summary of their day or week needs it.',
+    description: 'what the person had open on this computer, from the local activity journal: app names and window titles with times and hours per app - args: {"days": 1 to 7}. Use it to know what they worked on when a report, a record of their work or a summary of their day or week needs it.',
     argsSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 7 } } },
     async run(args) {
       const days = typeof args['days'] === 'number' ? Math.min(7, Math.max(1, Math.round(args['days']))) : 1
@@ -2453,7 +2455,7 @@ export function registerIpc(ctx: VaultContext): void {
       sources: attachments.evidencePaths,
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
-    } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name))
+    } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
@@ -2701,16 +2703,14 @@ export function registerIpc(ctx: VaultContext): void {
         const skillLedger = await readSkillsLedger(paths)
         // The runtime's own tools, governed here: reads where the person
         // already lets it look, a work folder of its own, commands once allowed.
-        // Plan mode on ChatGPT is its runtime without a shell: reading goes through Engram's file tools.
-        // There is one way to work: everything that only reads or prepares runs;
-        // what cannot be taken back stops for the person where it happens.
+        // Sandboxed commands run directly; unbounded commands retain per-call approval.
         const permission = 'auto' as PermissionMode
         // A comet works in the folder a session is already warm for, when there is one.
         const workFolder = settings.nativeTools !== false ? engine.claimWorkFolder?.(channel, await workFolderFor(paths, channel)) ?? await workFolderFor(paths, channel) : await workFolderFor(paths, channel)
         await rememberWorkFolder(paths, channel, workFolder)
         // Scripts left from a turn that never finished do not belong to this one.
         takeTurnScripts(channel)
-        const native = (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
+        const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
           ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve', 90_000); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined

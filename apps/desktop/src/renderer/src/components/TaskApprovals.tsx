@@ -29,9 +29,10 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
   useEffect(() => {
     if (task?.state === 'waiting') webPane.attention(`bot-${botId}`)
   }, [task, botId])
-  if (!task || !['waiting', 'failed'].includes(task.state)) return null
+  if (!task || !['running', 'waiting', 'failed'].includes(task.state)) return null
   if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
+  if (task.state === 'running' && !pending.length) return null
   if (!pending.length || task.question) {
     // A one-line question is the card's title; a longer one is read below it.
     const said = answerText(task.question ?? task.log.at(-1)?.line ?? 'Task paused.').trim()
@@ -66,13 +67,15 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
           hint={t('card.pressHint')}
           icon={<AlertTriangle size={14} />}
           label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
-          title={t('card.press', { words: a.words })}
+          title={a.url.startsWith('file:') ? t('card.needsOk') : t('card.press', { words: a.words })}
           sub={a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>
             <button className="primary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve')}>{t('card.continue')}</button>
           </>}
-        />
+        >
+          {a.url.startsWith('file:') && <pre className="approval-command">{a.words}</pre>}
+        </DecisionCard>
       ))}
     </div>
   )
