@@ -11,7 +11,6 @@ import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { chatMessage, sendCometMessage } from '../lib/attachments.js'
 import { webPane } from '../lib/webPane.js'
 import { selectDesktopSurface } from '../lib/desktopSession.js'
-import { RoutineSkillHint } from './RoutineLearning.js'
 
 export function CometWelcome() {
   const [draft, setDraft] = useState('')
@@ -50,7 +49,6 @@ export function CometWelcome() {
   }
   return <section className="comet-welcome" data-testid="comet-welcome">
     <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span /><CometFace size={38} /></div></div>
-    <RoutineSkillHint value={draft} select={() => setDraft('/routine')} />
     <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} onStop={() => undefined}
       placeholder="Ask Engram…" maxLength={2000} busy={false} disabled={creating} testId="welcome-input" attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching}
       actions={<button className="composer-web" data-testid="welcome-web" aria-label="Open the page panel" title="Open the page panel" disabled={creating || attaching} onClick={() => void openWeb()}><Globe size={15} strokeWidth={1.9} aria-hidden /><span>Open the page panel</span></button>} tools={<ModelPicker />} />

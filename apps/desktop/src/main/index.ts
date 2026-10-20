@@ -29,6 +29,8 @@ import { keepWindowState, loadWindowState, placeWindow } from './window-state.js
 import { registerActivityIpc, startActivityWatch, stopActivityWatch } from './activity-watch.js'
 import { registerMemoryFabricIpc, startMemoryFabric } from './memory-fabric.js'
 import { startKeeper, stopKeeper } from './keeper.js'
+import { registerHabitsIpc } from './habits-ipc.js'
+import { registerNoticesIpc } from './notices-ipc.js'
 import { stopStanding } from './standing.js'
 import { installCloudEngines } from './engine-cloud.js'
 import { runtimeProcessesRunning, stopRuntimeProcesses } from './process-client.js'
@@ -597,6 +599,8 @@ async function bootVault(root: string): Promise<VaultContext> {
     registerIpc(ctx)
     registerTeamIpc(ctx)
     registerConfigIpc(ctx)
+    registerHabitsIpc(ctx)
+    registerNoticesIpc(ctx)
     await startResidency(ctx).catch((err) => console.error('residency setup failed (non-fatal):', err))
     // Detection moved off the boot path (see openVaultContext). Run it now,
     // in the background, and tell the shell when the answer lands — the shell

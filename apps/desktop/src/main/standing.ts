@@ -13,9 +13,9 @@ export interface StandingDeps {
   // day (a rerun refused), which counts as run; any other refusal is a
   // moment's trouble and is tried again next tick.
   runRoutine(id: string): Promise<{ ok: boolean; blocked?: boolean }>
-  // A kept request with no procedure: said in its own conversation as a
-  // new message. Not ok while that conversation is busy; tried next tick.
-  runPrompt?(botId: string, goal: string): Promise<{ ok: boolean }>
+  // A kept request with no procedure: run as the first message of a new
+  // conversation, and brought to the person's inbox when it is done.
+  runPrompt?(name: string, goal: string): Promise<{ ok: boolean }>
   now?(): Date
 }
 
@@ -31,7 +31,7 @@ export async function standingTick(deps: StandingDeps): Promise<string[]> {
       if (!dueNow(task.schedule, task.lastRunAt, now)) continue
       if (!task.routineId) {
         if (!deps.runPrompt) continue
-        const reply = await deps.runPrompt(bot.id, task.goal)
+        const reply = await deps.runPrompt(task.name, task.goal)
         if (!reply.ok) continue
         if (task.schedule.on) await removeBotTask(deps.paths, bot.id, task.id)
         else await markBotTaskRun(deps.paths, bot.id, task.id, now)

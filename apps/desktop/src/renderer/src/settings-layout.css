@@ -76,3 +76,8 @@ label.settings-item-title { cursor: pointer; }
   .settings-item-control { max-width: 55%; }
   .appearance-options { gap: 12px; }
 }
+.habit-draft-body summary { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); font-size: var(--fs-small); cursor: pointer; list-style: none; }
+.habit-draft-body summary::-webkit-details-marker { display: none; }
+.habit-draft-body summary svg { transition: transform 160ms ease; }
+.habit-draft-body[open] summary svg { transform: rotate(90deg); }
+.habit-draft-body .bubble-msg-body { margin-top: 8px; font-size: var(--fs-small); line-height: 1.55; }

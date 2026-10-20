@@ -3,9 +3,9 @@ import type { BotTask } from './bots.js'
 import { isSchedule, localDay, type Schedule } from './schedule.js'
 
 // What a person asks to have done later - "every weekday at 9, sum up my
-// mail" or "tomorrow at 3, remind me to call" - kept on this conversation.
-// At its time the words are said here again as a new message and run as a
-// turn like any other, and the person is notified when it is done.
+// mail" or "tomorrow at 3, remind me to call". At its time the words start
+// a new conversation and run as a turn like any other; the result waits in
+// the person's inbox.
 export interface ScheduleDeps {
   list(): Promise<BotTask[]>
   add(input: { name: string; goal: string; schedule: Schedule }): Promise<BotTask>
@@ -31,7 +31,7 @@ function described(task: BotTask): Record<string, string> {
 export function scheduleTool(deps: ScheduleDeps): AgentTool {
   return {
     name: 'schedule',
-    description: 'Keep something the person wants done later in this conversation, by itself, at a set local time: action "add" with what (their request, in their words, complete enough to run alone), time "HH:MM" (24-hour) and either days (0 Sunday to 6 Saturday; all seven for every day) or date (YYYY-MM-DD) for once. At that time it runs here as a new message and they are notified. "list" shows what is kept; "remove" with id stops one. Only when they ask for something later or repeated.',
+    description: 'Keep something the person wants done later, by itself, at a set local time: action "add" with what (their request, in their words, complete enough to run alone in a new conversation), time "HH:MM" (24-hour) and either days (0 Sunday to 6 Saturday; all seven for every day) or date (YYYY-MM-DD) for once. At that time it runs in a new conversation and the result waits in their notifications (the bell by the search box). "list" shows everything kept; "remove" with id stops one. Only when they ask for something later or repeated.',
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['action'],
       properties: {

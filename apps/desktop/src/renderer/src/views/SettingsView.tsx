@@ -10,6 +10,7 @@ import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
 import { ComputerSettings } from '../components/ComputerSettings.js'
 import { WorkMapSettings } from '../components/WorkMapSettings.js'
+import { WorkHabitsSettings } from '../components/WorkHabitsSettings.js'
 import { LEARNING_SOURCES } from '../components/LearningSources.js'
 import { WorkInterviewDialog } from '../components/WorkInterview.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
@@ -174,6 +175,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
           </SettingsItem>
           {section === 'memory' && <WorkMapSettings />}
         </SettingsGroup>
+        {section === 'memory' && <WorkHabitsSettings />}
         <SettingsGroup title="Personalize">
           <SettingsItem icon={<UserRound size={18} />} title="How you work" description="A few questions so answers fit the way you work."><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></SettingsItem>
         </SettingsGroup>

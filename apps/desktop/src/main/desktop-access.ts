@@ -13,6 +13,16 @@ let owner: BrowserWindow | undefined
 let releaseControl: (lane: string, reason: string) => void = () => undefined
 const LANE = /^bot-[a-zA-Z0-9_-]{1,140}$/
 export function setDesktopReleaseHook(hook: typeof releaseControl): void { releaseControl = hook }
+// Apps the person keeps out of reach, by the name their windows end with.
+let labelsOff: string[] = []
+export function setDesktopAppsOff(labels: string[]): void {
+  labelsOff = labels.map(label => label.toLowerCase())
+  for (const binding of bindings.values()) if (keptOut(binding.name)) releaseDesktop(binding.lane)
+}
+export function keptOut(title: string): string | undefined {
+  const tail = title.split(/\s+[-|—–]\s+/).at(-1)?.trim().toLowerCase() ?? ''
+  return labelsOff.find(label => label === tail || label === title.trim().toLowerCase())
+}
 export function desktopBinding(lane: string): Binding | undefined { return bindings.get(lane) }
 export function desktopChanged(): void { changed() }
 export function setDesktopOwner(window: BrowserWindow): void {
@@ -116,6 +126,7 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     const open = windows.map((one) => one.title).filter(Boolean).slice(0, 40).map((title) => `"${title}"`).join(', ')
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
+    if (keptOut(target.title)) throw new Error(`The person keeps "${target.title}" out of Engram's reach in Settings. Do not work in it; say so, and that they can allow it in Settings.`)
     const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)
     if (taken) throw new Error(`"${target.title}" belongs to another chat right now.`)
     if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; return current }
@@ -141,6 +152,7 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
     const identity = await host.request<{ pid: number; title: string }>('inspectWindow', { window, pid: 0 })
     if (host.closed) throw new Error('This app connection ended. Reconnect the app window to continue.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
+    if (keptOut(identity.title)) throw new Error('This app is turned off in Settings.')
     // Recheck after enumeration so concurrent selections cannot share a window.
     if ([...bindings.values()].some((binding) => !binding.host.closed && binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')

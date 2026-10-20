@@ -7,7 +7,6 @@ import { QueuedMessages } from './QueuedMessages.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { WebPaneButton } from './WebPaneButton.js'
-import { RoutineLearning, RoutineSkillHint } from './RoutineLearning.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 
@@ -52,6 +51,20 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
     setValue(initialDraft)
   }, [initialDraft, busy])
 
+  // Typing keeps the store's draft equal to the box, so any other difference
+  // is the draft being taken (queued, steered) or put back.
+  useEffect(() => {
+    const sync = () => {
+      const draft = cometThreads.thread(botId).draft
+      if (draft === valueRef.current) return
+      valueRef.current = draft
+      setValue(draft)
+    }
+    const offDraft = cometThreads.subscribeDraft(sync)
+    const off = cometThreads.subscribe(sync)
+    return () => { offDraft(); off() }
+  }, [botId])
+
   useEffect(() => {
     if (!memoryOpen) return
     const closeOutside = (event: PointerEvent) => {
@@ -83,8 +96,6 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   return (
     <div className="bots-write conversation-dock" ref={rootRef}>
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
-      <RoutineLearning botId={botId} working={busy || locked} />
-      <RoutineSkillHint value={value} select={() => change('/routine')} />
       <QueuedMessages botId={botId} />
       <ChatComposer
         testId="bots-input"

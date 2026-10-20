@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, localDay, loadBots, addBotTask, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, localDay, loadBots, addBotTask, addNotice, writeHabits, readHabits, readNotices, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -209,7 +209,7 @@ test('saved multiline questions render real paragraphs once and retain literal c
   await updateTask(paths, task.id, value => { value.state = 'done'; delete value.question })
 })
 
-test('a scheduled turn preserves the draft and never answers another task approval', async () => {
+test('scheduled turns open new conversations, notify, and leave existing approvals and drafts alone', async () => {
   const waiting = await page.evaluate(() => window.engram.botCreate({ name: 'Waiting schedule' }))
   const pending = await createTask(paths, 'Needs approval', waiting.id)
   await updateTask(paths, pending.id, task => { task.state = 'waiting'; task.question = 'May I send this?' })
@@ -220,11 +220,34 @@ test('a scheduled turn preserves the draft and never answers another task approv
   await addBotTask(paths, ready.id, { name: 'Due now', goal: 'Summarize the deploy procedure for the team', schedule })
   await page.getByTestId(`bot-${ready.id}`).click()
   await page.getByTestId('bots-input').fill('Keep my draft')
-  await expect.poll(async () => (await listTasks(paths)).find(task => task.botId === ready.id)?.state, { timeout: 90_000 }).toBe('done')
+  await expect.poll(async () => (await readNotices(paths)).filter(item => item.kind === 'scheduled' && !item.running).length, { timeout: 90_000 }).toBe(2)
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
-  await expect(page.getByTestId('bubble-scheduled')).toBeVisible()
   expect((await listTasks(paths)).find(task => task.id === pending.id)?.state).toBe('waiting')
-  expect((await loadBots(paths)).find(bot => bot.id === waiting.id)?.tasks).toHaveLength(1)
-  await page.evaluate(async id => { const bot = (await window.engram.botsList()).find(bot => bot.id === id); for (const task of bot?.tasks ?? []) await window.engram.botTaskRemove(id, task.id) }, waiting.id)
+  expect((await loadBots(paths)).find(bot => bot.id === waiting.id)?.tasks).toHaveLength(0)
+  const notices = await readNotices(paths)
+  expect(notices.every(item => item.botId !== ready.id && item.botId !== waiting.id)).toBe(true)
+  await page.getByTestId('notices-bell').click()
+  await page.getByTestId('notices-item').filter({ hasText: 'Due now' }).click()
+  await expect(page.getByTestId('bubble-scheduled')).toBeVisible()
+  expect((await readNotices(paths)).find(item => item.title === 'Due now')?.read).toBe(true)
   await updateTask(paths, pending.id, task => { task.state = 'done'; delete task.question })
+})
+
+test('the bell cancels schedules and opens a habit only once with a localized decision', async () => {
+  const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Weekly schedule' }))
+  const task = await addBotTask(paths, bot.id, { name: 'Weekly report', goal: 'Summarize the week', schedule: { days: [1], hour: 1, minute: 0 } })
+  await writeHabits(paths, { fixture: { state: 'draft', at: new Date().toISOString(), times: 3, labels: ['Mail', 'Sheets'], draft: { title: '문의 기록', description: '문의 내용을 정리해요', body: '## 순서\n문의 내용을 시트에 적어요.\n## 질문\n무엇을 적나요?' } } })
+  const notice = await addNotice(paths, { kind: 'habit', key: 'fixture', title: '문의 기록', text: '이 순서로 저장할까요?' })
+  await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('engram:event', { type: 'notices:changed' }) })
+  await page.getByTestId('notices-bell').click()
+  await page.getByRole('button', { name: 'Stop “Weekly report”' }).click()
+  await expect(page.getByRole('button', { name: 'Stop “Weekly report”' })).toHaveCount(0)
+  expect((await loadBots(paths)).find(one => one.id === bot.id)?.tasks?.some(one => one.id === task.id)).toBe(false)
+  await page.getByTestId('notices-item').filter({ hasText: '문의 기록' }).click()
+  await expect(page.getByTestId('habit-ask-keep')).toHaveText('이대로 저장')
+  const opened = await page.evaluate(async id => Promise.all([window.engram.noticesOpen(id), window.engram.noticesOpen(id)]), notice.id)
+  expect(opened[0]).toBe(opened[1])
+  await page.getByTestId('habit-ask-no').click()
+  await expect(page.getByTestId('habit-ask-done')).toBeVisible()
+  expect((await readHabits(paths)).fixture?.state).toBe('dismissed')
 })

@@ -85,6 +85,9 @@ interface ActivityState {
 let child: ProcessClient | null = null
 let ctx: VaultContext | null = null
 let open: OpenSpan | null = null
+// Apps the person keeps out: their windows are recorded as no activity at all.
+let appsOff = new Set<string>()
+export function setActivityAppsOff(apps: string[]): void { appsOff = new Set(apps.map(app => app.toLowerCase())) }
 
 function stateFile(): string {
   return join(app.getPath('userData'), 'activity-state.json')
@@ -190,7 +193,7 @@ function startSampler(): void {
       const appName = line.slice(0, at).trim()
       const title = line.slice(at + 1).trim()
       // Engram watching itself is noise, and an empty title is a desktop.
-      if (!appName || appName.toLowerCase() === 'engram') { onSample(null); return }
+      if (!appName || appName.toLowerCase() === 'engram' || appsOff.has(appName.toLowerCase())) { onSample(null); return }
       onSample({ app: appName, title })
     })
   }

@@ -1,4 +1,5 @@
 import { cometChannel } from '../lib/cometThreads.js'
+import { HabitAsk } from './HabitAsk.js'
 import { PressGate } from './PressGate.js'
 import { RoutineProgress } from './RoutineProgress.js'
 import { SubmitGate } from './SubmitGate.js'
@@ -14,5 +15,6 @@ export function ThreadAsks({ botId, questionShown }: { botId: string; questionSh
     <SubmitGate channel={channel} />
     <PressGate channel={channel} />
     <TaskApprovals botId={botId} questionShown={questionShown} />
+    <HabitAsk key={botId} botId={botId} />
   </>
 }
