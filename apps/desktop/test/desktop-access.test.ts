@@ -21,7 +21,7 @@ vi.mock('../src/main/desktop-host.js', () => ({
     revoke(reason = 'Mouse input returned control to the user') { this.changed(reason) }
   },
 }))
-import { bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, setDesktopAppsOff, closeCatalogHost } from '../src/main/desktop-access.js'
+import { bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
 
 const lane = 'bot-one'
 const other = 'bot-two'
@@ -91,6 +91,25 @@ describe('binding the app the comet needs', () => {
   it('does not let two chats share one window', async () => {
     await bindDesktopForLane(lane)
     await expect(bindDesktopForLane(other, { app: 'Quarterly' })).rejects.toThrow('belongs to another chat')
+  })
+
+  it('hands a window over when the chat holding it is not working', async () => {
+    await bindDesktopForLane(lane)
+    setDesktopLaneWorking(held => held !== lane)
+    try {
+      expect((await bindDesktopForLane(other, { app: 'Quarterly' })).lane).toBe(other)
+      expect(desktopBinding(lane)).toBeUndefined()
+    } finally { setDesktopLaneWorking(() => true) }
+  })
+
+  it('refuses an app the person keeps out, matched by the name its windows end with', async () => {
+    setDesktopAppsOff(['Excel'])
+    try {
+      expect(keptOut('Quarterly workbook - Excel')).toBe('excel')
+      expect(keptOut('Excel tips - Browser')).toBeUndefined()
+      await expect(bindDesktopForLane(lane, { app: 'Quarterly' })).rejects.toThrow('out of Engram')
+      expect((await bindDesktopForLane(lane, { app: 'Planning' })).name).toBe('Planning notes - Notepad')
+    } finally { setDesktopAppsOff([]) }
   })
 
   it('lists windows for the comet with the one in front marked, keeping one catalog helper warm until it is closed', async () => {

@@ -69,6 +69,9 @@ export interface AgentLoopDeps {
 export interface AgentLoopOptions {
   // Called before an offered tool starts, including calls whose receipt never arrives.
   onToolStart?(name: string): void
+  // What the person wrote while this turn was working, handed over once at
+  // the next tool result, so the work can take it in without stopping.
+  takeSteer?(): string[]
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal

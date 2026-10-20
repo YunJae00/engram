@@ -1,5 +1,6 @@
 import { cometChannel } from '../lib/cometThreads.js'
 import { HabitAsk } from './HabitAsk.js'
+import { StudyAsk } from './StudyAsk.js'
 import { PressGate } from './PressGate.js'
 import { RoutineProgress } from './RoutineProgress.js'
 import { SubmitGate } from './SubmitGate.js'
@@ -16,5 +17,6 @@ export function ThreadAsks({ botId, questionShown }: { botId: string; questionSh
     <PressGate channel={channel} />
     <TaskApprovals botId={botId} questionShown={questionShown} />
     <HabitAsk key={botId} botId={botId} />
+    <StudyAsk key={`study-${botId}`} botId={botId} />
   </>
 }

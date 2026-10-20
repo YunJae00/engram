@@ -91,6 +91,14 @@ function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined {
   return undefined
 }
 
+// Words the person sent while the work was going, put in front of the brain
+// at the next tool result: it answers them in a line and carries on with them
+// in mind, the way a colleague takes a remark without dropping what they hold.
+export function withSteer(text: string, said: string[]): string {
+  if (!said.length) return text
+  return `${text}\n\nThe person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}. First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
+}
+
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
@@ -105,6 +113,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const runTools = deps.engine.runTools
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
+  let liveSteer: ((said: string[]) => Promise<boolean>) | null = null
   const compactPage = pageDelta()
   const recovery = pageRecovery()
   const plan = taskPlan(steps)
@@ -218,7 +227,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         ...(left <= 5 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
       ]
       const delivered = modelObservation ?? observation
-      const text = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
+      const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
+      // The person's words go in as their own message where the brain takes
+      // that; otherwise they ride with this result.
+      const said = options.takeSteer?.() ?? []
+      const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
       return image ? { text, image } : text
     },
   }))
@@ -272,6 +285,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     maxCalls: Math.min(options.maxCalls ?? 120, planned ? 120 : SESSION_MAX_CALLS),
     onToken: (text: string) => { if (text) touch(); options.onToken?.(text) },
     onProgress: touch,
+    onSteerable: (steer) => { liveSteer = steer },
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
   }).finally(() => {

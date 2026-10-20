@@ -22,6 +22,8 @@ export interface InterviewSource {
 
 export interface InterviewEvidence {
   sources?: InterviewSource[]
+  // The language to ask in, named; without it, the language of the evidence.
+  language?: string
   guide?: string
   context?: {
     source: string

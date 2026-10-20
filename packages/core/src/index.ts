@@ -149,3 +149,5 @@ export { appLabel, appsNote, DESK_NOTES, DESK_TYPE, DESK_WINDOW_DAYS, downloadsN
 export { applyLabels, buildWorkMap, labelPrompt, PLACE_TYPE, placeNote, placeNoteId, readWorkMap, safeAddress, workShortcuts, writeWorkMap, type TraceBookmark, type TraceVisit, type WorkMap, type WorkPlace } from './work-map.js'
 export * from './habit-chains.js'
 export * from './notices.js'
+export * from './aside.js'
+export * from './study.js'

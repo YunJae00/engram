@@ -52,4 +52,17 @@
 .comet-work-steps .comet-work-line { padding: 2px 0; }
 
 @media (prefers-reduced-motion: reduce) { .reply-chips, .comet-work-card, .bubble-typing { animation: none; } }
+
+/* Cutting in on a reply in progress: the waiting message goes now. */
+.queued-messages li { gap: 6px; }
+.queued-messages li > span { flex: 1; min-width: 0; }
+.queued-send-now { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--fg-strong); color: var(--bg); font-size: var(--fs-micro); }
+.queued-send-now:hover { opacity: 0.88; }
+
+/* What the person wrote while the work was going sits in the work where it was said, as their own bubble. */
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.you { display: block; align-self: flex-end; max-width: min(80%, 620px); padding: 10px 15px; border-radius: 18px 18px 6px 18px; background: var(--selected-soft); color: var(--fg-strong); font-size: var(--fs-chat); line-height: 1.6; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-lines { align-items: stretch; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-lines > li.said { align-self: flex-start; }
+
+/* A message a kept schedule said for the person carries a small clock, so it does not read as typed then. */
 :is(.bots-thread, .mini-chat-thread) .bubble-scheduled { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--fg-faint); font-size: var(--fs-micro, 11px); }

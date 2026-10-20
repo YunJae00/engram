@@ -34,6 +34,18 @@ import {
   recordBotSites,
   markBotTaskRun,
   addNotice,
+  changeStudies,
+  offerStudyTool,
+  readStudies,
+  studyCandidate,
+  studyFindingsTool,
+  studyMessage,
+  studyGuard,
+  type SkillDraft,
+  ASIDE_SCHEMA,
+  asidePrompt,
+  parseAside,
+  type AsideAction,
   noticeText,
   createBot,
   updateNotice,
@@ -168,7 +180,7 @@ import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, noteLimited, rememberSelections, withModel } from './ai-selection.js'
-import { releaseDesktop } from './desktop-access.js'
+import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -199,6 +211,7 @@ import type {
 import {
   broadcast,
   engineDto,
+  tapBroadcast,
   markEngineOk,
   noteEngineFailure,
   noteRunOutcome,
@@ -713,11 +726,41 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
   }
 }
 
+// While a comet studies nothing is changed: every press that would commit is refused.
+const studying = new Set<string>()
+function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): (what: T) => Promise<R | 'cancel'> {
+  return (what) => studying.has(channel) ? Promise.resolve('cancel') : ask(what)
+}
+
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 // Channels whose answer has not been delivered yet. A turn keeps working
 // after that - what to remember from it, what to offer - and that work is
 // still cancellable, but it is not something to wait on.
 const answering = new Set<string>()
+// What the person wrote while a turn was working, waiting for that turn's next tool result.
+const steers = new Map<string, string[]>()
+// Words a turn took in, kept so the thread records them where they were said.
+const heard = new Map<string, string[]>()
+const STEER_CAP = 4000
+// What was said with the voice while a turn worked, both sides, written into
+// the transcript after the ask and before the answer, where it happened.
+const asides = new Map<string, { role: 'user' | 'assistant'; text: string }[]>()
+function takeAsides(channel: string): { role: 'user' | 'assistant'; text: string }[] {
+  const said = asides.get(channel) ?? []
+  asides.delete(channel)
+  return said
+}
+// Instructions the voice passed on, taken in at the turn's next step.
+const relayed = new Map<string, string[]>()
+// What each running turn was asked, and what it has done so far.
+const turnGoals = new Map<string, string>()
+const workSoFar = new Map<string, string[]>()
+
+function takeHeard(channel: string): string[] {
+  const said = heard.get(channel) ?? []
+  heard.delete(channel)
+  return said
+}
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
@@ -1068,6 +1111,93 @@ export function registerIpc(ctx: VaultContext): void {
   // up after the send (a reload mid-answer) asks this to take the seat back
   // before the done event arrives.
   ipcMain.handle('chat:active', (): string[] => [...new Set([...answering, ...tasks.activeChannels()])])
+  setDesktopLaneWorking(lane => answering.has(lane) || tasks.activeChannels().includes(lane))
+  // A job not known is offered as a study; agreed, it runs as a turn of its
+  // own in the same conversation, reading only, and comes back as a how-to.
+  const offerStudy = async (botId: string, input: { what: string; where: string[] }, ask: string): Promise<void> => {
+    await changeStudies(paths, list => [...list.filter(one => !(one.botId === botId && one.state === 'offered')), { id: `study-${Date.now().toString(36)}`, botId, ...input, ask, state: 'offered', at: new Date().toISOString() }])
+    broadcast({ type: 'study:changed', botId })
+  }
+  const studyFound = async (botId: string, draft: SkillDraft): Promise<boolean> => {
+    let found = false
+    await changeStudies(paths, list => list.map(one => one.botId === botId && one.state === 'studying' ? (found = true, { ...one, state: 'review' as const, findings: draft }) : one))
+    if (found) broadcast({ type: 'study:changed', botId })
+    return found
+  }
+  const studiesFor = async (botId: string) => (await readStudies(paths)).filter(one => one.botId === botId && (one.state === 'offered' || one.state === 'studying' || one.state === 'review'))
+  ipcMain.handle('study:list', async (_e, botId: unknown) => typeof botId === 'string' ? studiesFor(botId) : [])
+  ipcMain.handle('study:answer', async (_e, id: unknown, answer: unknown): Promise<{ ask?: string }> => {
+    const study = (await readStudies(paths)).find(one => one.id === id)
+    if (!study) throw new Error('That study is gone.')
+    const channel = `bot-${study.botId}`
+    if (answer === 'go' && study.state === 'offered') {
+      if (answering.has(channel) || tasks.activeChannels().includes(channel)) throw new Error('This conversation is still working. Wait for it to finish first.')
+      await changeStudies(paths, list => list.map(one => one.id === study.id ? { ...one, state: 'studying' as const } : one))
+      broadcast({ type: 'study:changed', botId: study.botId })
+      studying.add(channel)
+      broadcast({ type: 'comet:continue', channel, botId: study.botId })
+      const history = (await readBotTranscript(paths, study.botId)).map(turn => ({ role: turn.role, text: turn.text }))
+      void sendChat({ engineId: '', botId: study.botId, channel, message: studyMessage(study), history }, undefined, undefined, { quiet: true })
+        .catch(error => flog('study', error))
+        .finally(async () => {
+          studying.delete(channel)
+          // A study that ended without findings goes back to being an offer.
+          await changeStudies(paths, list => list.map(one => one.id === study.id && one.state === 'studying' ? { ...one, state: 'offered' as const } : one)).catch(() => undefined)
+          broadcast({ type: 'study:changed', botId: study.botId })
+        })
+      return {}
+    }
+    if ((answer === 'later' && study.state === 'offered') || (answer === 'wrong' && study.state === 'review')) {
+      await changeStudies(paths, list => list.map(one => one.id === study.id ? { ...one, state: 'declined' as const } : one))
+      broadcast({ type: 'study:changed', botId: study.botId })
+      return {}
+    }
+    if (answer === 'keep' && study.state === 'review' && study.findings) {
+      const result = await installSkill(paths, studyCandidate(study), study.findings)
+      if (!result.installed) throw new Error(result.reason === 'privacy' ? 'What was learned holds an address or a key, so it was not kept.' : 'What was learned could not be kept.')
+      await changeStudies(paths, list => list.map(one => one.id === study.id ? { ...one, state: 'kept' as const } : one))
+      broadcast({ type: 'study:changed', botId: study.botId })
+      return { ask: study.ask }
+    }
+    throw new Error('That study is not waiting for this answer.')
+  })
+  tapBroadcast((event) => {
+    if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
+  })
+  // Said while the work runs: answered at once by a short call that sees what
+  // the work has done, which also decides what the words mean for the work.
+  ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: AsideAction; instruction?: string }> => {
+    if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
+    if (!answering.has(channel) && !tasks.activeChannels().includes(channel)) return { ok: false }
+    const said = text.trim()
+    const botId = channel.slice('bot-'.length)
+    asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
+    const engine = await chatEngine(channel, ctx.engines)
+    const earlier = await readBotTranscript(paths, botId, 12).catch(() => [])
+    const quickly = engine?.quick ? await engine.quick(asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }), { workdir: engineCwd(paths), timeoutMs: 30_000 }).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null }) : null
+    const raw = quickly ?? (engine ? await collectResult(engine, {
+      prompt: asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }),
+      workdir: engineCwd(paths), disallowTools: true, timeoutMs: 45_000, modelHint: 'fast', maxTokens: 400, jsonSchema: ASIDE_SCHEMA,
+    }).catch((error: unknown) => { flog('aside', error instanceof Error ? error.message : String(error)); return null }) : null)
+    // Without the voice, the words still reach the work.
+    const aside = parseAside(raw) ?? { reply: '', action: 'relay' as const, instruction: said }
+    if (aside.reply) asides.set(channel, [...(asides.get(channel) ?? []), { role: 'assistant', text: aside.reply }])
+    const running = answering.has(channel) || tasks.activeChannels().includes(channel)
+    if (aside.action === 'relay' && running) {
+      relayed.set(channel, [...(relayed.get(channel) ?? []), aside.instruction!])
+      broadcast({ type: 'comet:step', channel, line: `you: ${said}` })
+    }
+    flog('aside', `${channel}: ${aside.action}`)
+    // A relay that found the work already finished goes on as the next message.
+    return { ok: true, reply: aside.reply, action: aside.action === 'relay' && !running ? 'later' : aside.action, ...(aside.instruction ? { instruction: aside.instruction } : {}) }
+  })
+  // Words sent mid-turn join the work at its next step instead of waiting for it to finish.
+  ipcMain.handle('chat:steer', (_e, channel: unknown, text: unknown): boolean => {
+    if (typeof channel !== 'string' || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP || !answering.has(channel)) return false
+    steers.set(channel, [...(steers.get(channel) ?? []), text.trim()])
+    broadcast({ type: 'comet:step', channel, line: `you: ${text.trim()}` })
+    return true
+  })
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
   // the run is accepted (or refused) — the errand itself is detached and takes
@@ -2174,6 +2304,10 @@ export function registerIpc(ctx: VaultContext): void {
     const started = performance.now()
     chatAborts.add(entry)
     answering.add(entry.channel)
+    turnGoals.set(entry.channel, request.message)
+    // The voice opens with the turn, so words said while it works are answered at once.
+    if (entry.channel.startsWith('bot-')) void chatEngine(entry.channel, ctx.engines).then(live => live?.warmQuick?.(engineCwd(paths))).catch(() => undefined)
+    workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
     try {
@@ -2182,6 +2316,13 @@ export function registerIpc(ctx: VaultContext): void {
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
+      // Words the turn ended before taking in are not lost: they go on as the next message.
+      const untaken = steers.get(entry.channel)
+      if (untaken?.length) { steers.delete(entry.channel); broadcast({ type: 'chat:steer-returned', channel: entry.channel, texts: untaken }) }
+      const untold = relayed.get(entry.channel)
+      if (untold?.length) { relayed.delete(entry.channel); broadcast({ type: 'chat:steer-returned', channel: entry.channel, texts: untold }) }
+      turnGoals.delete(entry.channel); workSoFar.delete(entry.channel)
+      heard.delete(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
       releaseBrowser()
       if (savedRoutine?.task) {
@@ -2189,6 +2330,19 @@ export function registerIpc(ctx: VaultContext): void {
         broadcast({ type: 'vault:changed' })
       }
     }
+  }
+
+  // What was in front of the person on this computer, read when the work needs
+  // it - a report of their day or week, a record of their work - not only
+  // when the ask names a day.
+  const deskActivityTool: AgentTool = {
+    name: 'desk_activity',
+    description: 'what the person had open on this computer, from the local activity journal: app names and window titles with times and hours per app - args: {"days": 1 to 7}. Use it to know what they worked on when a report, a record of their work or a summary of their day or week needs it.',
+    argsSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 7 } } },
+    async run(args) {
+      const days = typeof args['days'] === 'number' ? Math.min(7, Math.max(1, Math.round(args['days']))) : 1
+      return await activitySummary(ctx, days) ?? 'Nothing is recorded for that time: the activity journal is off in Settings or nothing was in use. Say so; do not guess what they did.'
+    },
   }
 
   // What the person keeps to be done later, asked for in any conversation and
@@ -2212,7 +2366,7 @@ export function registerIpc(ctx: VaultContext): void {
     const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
-      ask: what => tasks.askFor(channel, async () => 'approve', 90_000)?.(what) ?? Promise.resolve('cancel'),
+      ask: what => studying.has(channel) ? Promise.resolve('cancel') : tasks.askFor(channel, async () => 'approve', 90_000)?.(what) ?? Promise.resolve('cancel'),
     }) : []
     return [...cometTools({
       paths,
@@ -2230,7 +2384,7 @@ export function registerIpc(ctx: VaultContext): void {
       // a new comet never inherits the page an old one left open.
       courier: agentBrowserAvailable()
         ? agentCourier({
-            askBeforePress: tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail })),
+            askBeforePress: unlessStudying(channel, tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
             lane: channel,
             onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
             onAside: (phase) => {
@@ -2293,13 +2447,15 @@ export function registerIpc(ctx: VaultContext): void {
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
     ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length))] : []),
+    deskActivityTool,
+    ...(channel.startsWith('bot-') ? [offerStudyTool({ offer: (input) => offerStudy(channel.slice('bot-'.length), input, turnGoals.get(channel) ?? '') }), studyFindingsTool({ found: (draft) => studyFound(channel.slice('bot-'.length), draft) })] : []),
     // Offered every turn so a check runs in the same session as the work it checks.
     resultCheckTool(turn?.verification ? {
       outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
       sources: attachments.evidencePaths,
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
-    } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name))
+    } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
@@ -2467,6 +2623,8 @@ export function registerIpc(ctx: VaultContext): void {
       if (bot) {
         const at = new Date().toISOString()
         if (!recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) }).catch(() => undefined)
+        for (const text of takeHeard(channel)) await appendBotTurn(paths, bot.id, { role: 'user', text, at }).catch(() => undefined)
+        for (const turn of takeAsides(channel)) await appendBotTurn(paths, bot.id, { ...turn, at }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
@@ -2552,9 +2710,9 @@ export function registerIpc(ctx: VaultContext): void {
         await rememberWorkFolder(paths, channel, workFolder)
         // Scripts left from a turn that never finished do not belong to this one.
         takeTurnScripts(channel)
-        const native = (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
+        const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: tasks.askFor(channel, async () => 'approve', 90_000), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve', 90_000); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const result = await runComet(
@@ -2585,6 +2743,7 @@ export function registerIpc(ctx: VaultContext): void {
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
+            takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); return [...said, ...told] },
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
             ...(native ? { native } : {}),
@@ -2687,6 +2846,8 @@ export function registerIpc(ctx: VaultContext): void {
         if (held) {
           broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })
           if (bot && !recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at: new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) }).catch(() => undefined)
+          if (bot) for (const text of takeHeard(channel)) await appendBotTurn(paths, bot.id, { role: 'user', text, at: new Date().toISOString() }).catch(() => undefined)
+          if (bot) for (const turn of takeAsides(channel)) await appendBotTurn(paths, bot.id, { ...turn, at: new Date().toISOString() }).catch(() => undefined)
         } else {
           await deliverAnswer(
             `${result.answer}${note}`,

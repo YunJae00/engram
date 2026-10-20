@@ -127,12 +127,12 @@ export const ChatComposer = memo(
           <div className="chat-write-tools">{onAttachmentsChange && <>
             <input ref={fileRef} type="file" hidden multiple accept={ATTACHMENT_ACCEPT} data-testid={testId ? `${testId}-files` : undefined} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void attach(files) }} />
           </>}{tools}</div>
-          {busy && (
+          {/* One button: words in the box send, an empty box stops. */}
+          {busy && !(canQueue && (value.trim() || attachments.length > 0)) ? (
             <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={onStop}>
               <Square size={11} strokeWidth={2.5} aria-hidden />
             </button>
-          )}
-          {(!busy || (canQueue && (value.trim() || attachments.length > 0))) && (
+          ) : (
             <button
               className="chat-send-btn armed"
               data-testid={testId ? `${testId}-send` : undefined}

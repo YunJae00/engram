@@ -60,9 +60,6 @@
 .mini-chat-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 14px; }
 .mini-chat-empty { margin: auto; text-align: center; font-size: var(--fs-small); color: var(--fg-faint); }
 .mini-chat-status { margin: 0; font-size: var(--fs-micro); color: var(--fg-faint); }
-.mini-chat-gates { flex: none; max-height: 40%; overflow: auto; margin: 0 10px; }
-.mini-chat-gates:empty { display: none; }
-.mini-chat-gates .dialog-actions { flex-wrap: wrap; }
 .mini-msg { font-size: 13px; line-height: 1.65; max-width: 100%; overflow-wrap: anywhere; }
 .mini-msg.user { align-self: flex-end; background: var(--hover-bg); border-radius: 14px; padding: 6px 11px; max-width: 90%; }
 .mini-chat-write { flex: none; min-width: 0; margin: 0 10px 10px; }

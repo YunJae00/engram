@@ -60,6 +60,8 @@ export interface WebPage {
   dialog?: string
   // What the page itself says is wrong with what was entered.
   faults?: string[]
+  // Files the page sent since the last reading, where they were saved.
+  downloads?: string[]
   wall?: 'login' | 'captcha'
 }
 

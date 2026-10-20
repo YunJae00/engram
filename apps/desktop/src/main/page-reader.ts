@@ -204,15 +204,22 @@ export function readDocument(mark?: number): FrameReading {
     )
     return hint ? `(icon: ${hint[1]!.toLowerCase()})` : ''
   }
-  // A dialog standing over the page. The standard shapes first (an element
-  // the page declares as one, or a native <dialog open>), then the shape
-  // every framework's modal has anyway: something lifted above the page,
-  // large enough to be a panel and small enough not to be the page itself.
+  // A dialog standing over the page: one the page declares, else a lifted
+  // panel with controls. Closed popups stay in the document (see-through, off
+  // screen, underneath), so one counts only where a click would land on it.
+  const inFront = (el: Element): boolean => {
+    for (let up: Element | null = el; up; up = up.parentElement) if (getComputedStyle(up).opacity === '0') return false
+    const r = el.getBoundingClientRect(), left = Math.max(r.left, 0), top = Math.max(r.top, 0), width = Math.min(r.right, innerWidth) - left, height = Math.min(r.bottom, innerHeight) - top
+    return width >= 4 && height >= 4 && [[0.5, 0.5], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].some(([x, y]) => {
+      let hit: Node | null = document.elementFromPoint(left + width * x!, top + height * y!)
+      while (hit && hit !== el) hit = hit.parentNode ?? (hit as ShadowRoot).host ?? null
+      return hit === el
+    })
+  }
   const dialogOf = (): Element | null => {
-    const declared = Array.from(document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]')).filter((el) => shown(el))
+    const declared = Array.from(document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]')).filter((el) => shown(el) && inFront(el))
     if (declared.length > 0) return declared[declared.length - 1]!
-    let best: Element | null = null
-    let bestArea = 0
+    let best: Element | null = null, bestArea = 0
     for (const el of all) {
       if (!shown(el)) continue
       const style = getComputedStyle(el as HTMLElement)
@@ -222,6 +229,7 @@ export function readDocument(mark?: number): FrameReading {
       const area = rect.width * rect.height
       if (area < 40_000 || area > innerWidth * innerHeight * 0.9) continue
       if (el.querySelector('button, [role="button"], input, a[href]') === null) continue
+      if (!inFront(el)) continue
       if (area > bestArea) {
         best = el
         bestArea = area

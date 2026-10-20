@@ -8,7 +8,7 @@ const fake = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   files: vi.fn(), map: vi.fn(), playbooks: vi.fn(), settings: vi.fn(), prepare: vi.fn(), broadcast: vi.fn(),
 }))
-vi.mock('electron', () => ({ app: { getPath: (name: string) => fake.roots[name] }, ipcMain: { handle: (name: string, handler: (...args: unknown[]) => unknown) => fake.handlers.set(name, handler) } }))
+vi.mock('electron', () => ({ app: { getPath: (name: string) => fake.roots[name], getPreferredSystemLanguages: () => ['en-US'], getLocale: () => 'en-US' }, ipcMain: { handle: (name: string, handler: (...args: unknown[]) => unknown) => fake.handlers.set(name, handler) } }))
 vi.mock('core', async original => ({ ...await original<typeof import('core')>(), findLocalFiles: fake.files, readWorkMap: fake.map, readPlaybooks: fake.playbooks }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))

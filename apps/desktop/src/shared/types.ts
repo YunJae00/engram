@@ -468,6 +468,8 @@ export type EngramEvent =
   // An offer written after the answer already went out; same shape the
   // done event carries.
   | { type: 'chat:offer'; channel: string; offer: NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']> }
+  // Words sent while a turn was working that it ended before taking in; they go on as the next message.
+  | { type: 'chat:steer-returned'; channel: string; texts: string[] }
   | { type: 'agent:frame'; data: string; width: number; height: number; url: string; lane: string }
   | { type: 'mission:frame'; frame: MissionFrameDto }
   | { type: 'comet:step'; channel: string; line: string }
@@ -512,6 +514,7 @@ export type EngramEvent =
   | { type: 'settings:changed'; settings: AppSettingsDto }
   | { type: 'habits:changed' }
   | { type: 'notices:changed' }
+  | { type: 'study:changed'; botId: string }
   | { type: 'import:progress'; done: number; total: number }
   | { type: 'engines:changed'; engines: EngineStatusDto[] }
   // a newer app version was downloaded and will install on next quit
@@ -661,6 +664,13 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   // Channels with an answer still running, for a surface that mounted after
   // the send and needs to know a done is on its way.
   chatActive(): Promise<string[]>
+  // Hand words to the turn working on this surface; false when none is running to take them.
+  // Words said while a comet works, answered at once by its voice.
+  // A job the comet offered to learn: shown, started, confirmed or set aside.
+  studyList(botId: string): Promise<StudyDto[]>
+  studyAnswer(id: string, answer: 'go' | 'later' | 'keep' | 'wrong'): Promise<{ ask?: string }>
+  chatSay(channel: string, text: string): Promise<{ ok: boolean; reply?: string; action?: 'relay' | 'stop' | 'later' | 'none'; instruction?: string }>
+  chatSteer(channel: string, text: string): Promise<boolean>
   // Would the vault answer this, or does it need the web? Retrieval decides;
   // no inference runs, so it is safe to call before every send.
   // Delegate one goal to the on-device librarian (core's runErrand). Runs
@@ -903,6 +913,7 @@ export interface AppSettingsDto {
 // and its own line about what the model is for.
 export interface WorkMapStatusDto { builtAt: string | null; places: number }
 export interface ScheduledDto { id: string; botId: string; name: string; goal: string; when: string; lastRunAt?: string }
+export interface StudyDto { id: string; botId: string; what: string; where: string[]; ask: string; state: 'offered' | 'studying' | 'review'; findings?: { title: string; description: string; body: string } }
 export interface NoticesDto { items: { id: string; kind: 'scheduled' | 'habit'; title: string; text: string; at: string; read: boolean; running: boolean }[]; scheduled: ScheduledDto[] }
 export interface AppUseDto { app: string; label: string; hours: number; days: number; on: boolean }
 export interface HabitDraftDto { key: string; labels: string[]; times: number; title: string; description: string; body: string; botId?: string }

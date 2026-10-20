@@ -16,6 +16,7 @@ import { BrowserLanes } from './browser-lanes.js'
 import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
 import { nativePagesVisible } from './native-layout.js'
 import { resizePreview } from './page-preview.js'
+import { takeDownloads, watchDownloads } from './page-downloads.js'
 
 // Native and external browser pages share the same CDP automation and lane
 // ownership. Each backend keeps its own persistent profile under userData.
@@ -280,7 +281,7 @@ export async function resetLane(lane: string): Promise<void> {
 
 // Whoever mirrors the window is told of every page as it opens, and which
 // lane it belongs to.
-const pageWatchers = new Set<(page: Page, lane: string | null) => void>()
+const pageWatchers = new Set<(page: Page, lane: string | null) => void>([watchDownloads(laneOf)])
 
 export function watchAgentPages(watcher: (page: Page, lane: string | null) => void): () => void {
   pageWatchers.add(watcher)
@@ -527,8 +528,15 @@ export async function readPage(page: Page, signal?: AbortSignal): Promise<WebPag
     ...(reading?.hidden ? { hidden: reading.hidden } : {}),
     ...(reading?.dialog ? { dialog: reading.dialog } : {}),
     ...(reading?.faults?.length ? { faults: reading.faults } : {}),
+    ...downloadsOf(page),
     ...(wall ? { wall } : {}),
   }
+}
+
+function downloadsOf(page: Page): { downloads?: string[] } {
+  const lane = laneOf(page)
+  const saved = lane ? takeDownloads(lane) : []
+  return saved.length ? { downloads: saved } : {}
 }
 
 async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
