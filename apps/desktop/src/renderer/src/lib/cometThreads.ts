@@ -9,6 +9,21 @@ import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../share
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
   error?: boolean
+  // A draft held while it is checked: still shown, until the checked answer takes its place.
+  checking?: boolean
+  // What the comet said and did on the way to this answer, kept with it so an
+  // earlier turn still reads as it happened after the next one starts.
+  work?: string[]
+  // Said with the voice while the work ran, above the work and its answer.
+  aside?: boolean
+}
+
+// The finished turn's work travels with its answer: the last assistant message, unless it already has its own.
+export function withWork(messages: CometMessage[], work: string[]): CometMessage[] {
+  if (!work.length) return messages
+  const at = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
+  if (at < 0 || messages[at]!.work) return messages
+  return messages.map((message, index) => index === at ? { ...message, work } : message)
 }
 
 export type CometOffer = NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']>
@@ -77,8 +92,9 @@ function streamingAt(list: CometMessage[]): number {
 function pendingTail(list: CometMessage[]): CometMessage[] {
   const at = streamingAt(list)
   if (at < 0) return []
-  const before = list[at - 1]
-  return before && before.role === 'user' ? list.slice(at - 1) : list.slice(at)
+  let from = at
+  while (list[from - 1]?.aside) from--
+  return list[from - 1]?.role === 'user' ? list.slice(from - 1) : list.slice(from)
 }
 
 export function createCometThreads(initialSelected: string | null = null) {
@@ -118,16 +134,23 @@ export function createCometThreads(initialSelected: string | null = null) {
     }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages, doneSeen: thread(id).doneSeen + 1, ...extra })
+    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, ...extra })
   const fail = (id: string, text: string) =>
     settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }], { queueHeld: true })
 
+  // Every box showing a conversation hears its draft change, without the
+  // conversation tree re-rendering per keystroke.
+  const draftListeners = new Set<() => void>()
   return {
     subscribe(listener: () => void): () => void {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
       }
+    },
+    subscribeDraft(listener: () => void): () => void {
+      draftListeners.add(listener)
+      return () => { draftListeners.delete(listener) }
     },
     getSnapshot: (): CometThreadsSnapshot => snapshot,
     thread,
@@ -139,6 +162,12 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     restoreQueue(id: string, queued: CometThread['queued']): void { patch(id, { queued: queued.slice(0, 10), queueHeld: true }) },
     removeQueued(id: string, key: string): void { patch(id, { queued: thread(id).queued.filter(message => message.id !== key) }) },
+    // A waiting message the person wants answered now goes to the front.
+    promoteQueued(id: string, key: string): void {
+      const current = thread(id).queued
+      const chosen = current.find(message => message.id === key)
+      if (chosen) patch(id, { queued: [chosen, ...current.filter(message => message.id !== key)] })
+    },
     takeQueued(id: string): CometThread['queued'][number] | undefined {
       const current = thread(id)
       const first = current.queued[0]
@@ -164,16 +193,19 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (seenDone !== undefined && seenDone !== current.doneSeen) return
       const tail = current.busy ? pendingTail(current.messages) : []
       const last = turns.at(-1)
-      const previous = turns.at(-2)
-      if (tail[0]?.role === 'user' && last?.role === 'assistant' && previous?.role === 'user' && previous.text === tail[0].text && turns.length >= current.messages.length) tail.length = 0
+      // The words that led to the last answer, including any sent while it worked.
+      const asked: string[] = []
+      for (let at = turns.length - 2; at >= 0 && turns[at]!.role === 'user'; at--) asked.push(turns[at]!.text)
+      if (tail[0]?.role === 'user' && last?.role === 'assistant' && asked.includes(tail[0].text) && turns.length >= current.messages.length) tail.length = 0
       else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
-      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}) })), ...tail], loaded: true })
+      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}) })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
       const current = thread(id)
       if (current.draft === draft) return
       // Preserve the draft without notifying the conversation tree per keystroke.
       snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...current, draft } } }
+      for (const listener of draftListeners) listener()
     },
     setAttachments(id: string, attachments: ChatAttachmentDto[]): void {
       patch(id, { attachments })
@@ -191,7 +223,8 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     // Takes the seat for a send and hands back the history to ship with it:
     // settled turns only, never a half answer or an error bubble.
-    begin(id: string, message: string, attachments: string[] = []): ChatTurnDto[] {
+    // A scheduled message is not the person typing: what they are writing stays.
+    begin(id: string, message: string, attachments: string[] = [], scheduled = false): ChatTurnDto[] {
       const current = thread(id)
       const history = current.messages
         .filter((m) => !m.streaming && !m.error)
@@ -205,9 +238,8 @@ export function createCometThreads(initialSelected: string | null = null) {
         workLines: [],
         keptWork: [],
         offer: null,
-        draft: '',
-        attachments: [],
-        messages: [...current.messages, { role: 'user', text: message, ...(attachments.length ? { attachments } : {}) }, { role: 'assistant', text: '', streaming: true }],
+        ...(scheduled ? {} : { draft: '', attachments: [] }),
+        messages: [...current.messages, { role: 'user', text: message, ...(attachments.length ? { attachments } : {}), ...(scheduled ? { scheduled: true } : {}) }, { role: 'assistant', text: '', streaming: true }],
       })
       return history
     },
@@ -241,6 +273,13 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (thread(id).stopped) patch(id, { stopped: false })
     },
     fail,
+    // Words with the voice, placed above the work still running.
+    aside(id: string, role: 'user' | 'assistant', text: string): void {
+      const current = thread(id)
+      const at = streamingAt(current.messages)
+      if (at < 0) return
+      patch(id, { messages: [...current.messages.slice(0, at), { role, text, aside: true }, ...current.messages.slice(at)] })
+    },
     stop(id: string, fallback: string): void {
       settle(
         id,
@@ -262,7 +301,7 @@ export function createCometThreads(initialSelected: string | null = null) {
           startedAt: event.working ? current.startedAt ?? Date.now() : null,
           doneSeen: current.doneSeen + 1,
           ...(event.working && !current.busy ? { adopted: true, messages: [...current.messages, { role: 'assistant' as const, text: '', streaming: true }] } : {}),
-          ...(!event.working ? { workLines: [], messages: current.messages.filter(m => !m.streaming || m.text).map(m => ({ ...m, streaming: false })) } : {}),
+          ...(!event.working ? { workLines: [], keptWork: current.workLines.length ? current.workLines : current.keptWork, messages: withWork(current.messages.filter(m => !m.streaming || (m.text && !m.checking)).map(m => ({ ...m, streaming: false })), current.workLines) } : {}),
         })
         return id
       }
@@ -272,6 +311,13 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (event.type === 'chat:offer') {
         if (current.busy || current.stopped) return null
         patch(id, { offer: event.offer })
+        return id
+      }
+      if (event.type === 'chat:steer-returned') {
+        // Words the turn ended before taking in go on as the next message.
+        // The draft being typed stays as it is.
+        const room = Math.max(0, 10 - current.queued.length)
+        patch(id, { queued: [...current.queued, ...event.texts.slice(0, room).map(text => ({ id: `q-${Date.now()}-${++queueSerial}`, draft: text, attachments: [] }))] })
         return id
       }
       if (!current.busy) return null
@@ -292,22 +338,27 @@ export function createCometThreads(initialSelected: string | null = null) {
           // answer. They leave the bubble, but not the screen: what it said
           // stays in the work as a note, so nothing a person has read
           // simply vanishes.
-          // A draft held for its check is not an answer yet: it leaves
-          // altogether, and the checked answer arrives once.
-          const said = event.drop ? '' : next[at]!.text.trim()
+          // A draft held for its check is not an answer yet, but it does not
+          // vanish either: it stays, marked as being checked, until the
+          // checked answer takes its place.
+          if (event.drop) {
+            if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: next }, true) }
+            return id
+          }
+          const said = next[at]!.text.trim()
           next[at] = { ...next[at]!, text: '' }
           const lines = said ? [...current.workLines.slice(1 - WORK_LINES_KEPT), `said: ${said}`] : current.workLines
           patch(id, { messages: next, workLines: lines }, true)
           return id
         }
-        next[at] = { ...next[at]!, text: next[at]!.text + event.text }
+        next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: next[at]!.text + event.text }
         patch(id, { messages: next }, true)
         return id
       }
       if (event.type === 'chat:done') {
         const at = streamingAt(current.messages)
         const next = [...current.messages]
-        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, ...(event.evidence ? { evidence: event.evidence } : {}) }
+        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
         settle(id, next, { offer: event.offer ?? null })
         return id
       }

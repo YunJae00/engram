@@ -156,7 +156,7 @@ it('allows only eligible source IDs, one concise question per source, and no pat
     question(c, 'Which exception needs your review?'),
   ] })
   expect(parseInterviewQuestions(raw, evidence).map(one => one.source)).toEqual([a, c])
-  expect(INTERVIEW_SCHEMA.properties.questions.maxItems).toBe(5)
+  expect(INTERVIEW_SCHEMA.properties.questions.maxItems).toBe(7)
   expect(INTERVIEW_SCHEMA.properties.questions.items.required).toContain('source')
 })
 

@@ -1,5 +1,5 @@
 import { shell } from 'electron'
-import { auditDeck, deckBodyLayout, describeDeckFindings, type OfficeTheme } from 'core'
+import { auditDeck, deckBodyLayout, describeDeckFindings, withoutMissingParts, type OfficeTheme } from 'core'
 import { saveOfficeOutput } from './office-output.js'
 import PptxGenJS from 'pptxgenjs'
 
@@ -109,7 +109,7 @@ export async function renderDeck(spec: DeckSpec, open = true, signal?: AbortSign
     if (slide.chart) addChart(pptx, s, slide.chart, layout.chartTop, t)
     if (slide.notes) s.addNotes(slide.notes)
   })
-  const data = await pptx.write({ outputType: 'nodebuffer' }) as Buffer
+  const data = await withoutMissingParts(await pptx.write({ outputType: 'nodebuffer' }) as Buffer)
   const path = await saveOfficeOutput(sanitize(spec.slides[0]?.title ?? spec.title ?? 'deck'), '.pptx', data, spec.saveAs, signal, assertActive)
   if (open) { signal?.throwIfAborted(); assertActive?.(); const error = await shell.openPath(path); if (error) throw new Error(`Saved ${path}, but opening failed: ${error}`) }
   return { path, slides: spec.slides.length }

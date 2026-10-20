@@ -54,8 +54,10 @@ internal static class Program
     // Provider-only access: nothing here takes a lease, the foreground or the person's input.
     private static object Quiet(string method, Dictionary<string, object> request, DesktopTarget target, QuietAccess quiet, DesktopRequest queued, InputMonitor monitor)
     {
+        // Esc gives back the mouse and keyboard taken by the hands tools; these
+        // calls take neither, so only Stop or a closed helper cancels them.
         Action check = delegate {
-            if (Volatile.Read(ref Closed) != 0 || monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch))
+            if (Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch))
                 throw new InvalidOperationException("The desktop request was cancelled");
         };
         check();

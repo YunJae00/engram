@@ -76,3 +76,4 @@ export function CometFace({ size = 15 }: { size?: number }) {
   const d = FACE_BODY + (size >= 20 ? FACE_EYES + FACE_SMILE : FACE_EYES_SMALL)
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" data-icon="comet-face" aria-hidden><path d={d} fillRule="evenodd" /></svg>
 }
+

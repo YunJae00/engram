@@ -6,6 +6,8 @@ it('keeps shipped interface text English and explicitly formats dates instead of
   const root = resolve('apps/desktop/src/renderer/src')
   for (const file of await readdir(root, { recursive: true })) {
     if (!/\.tsx?$/.test(file)) continue
+    // The words inside a conversation follow the person's language; this is their one table.
+    if (/threadLangKo\.ts$/.test(file)) continue
     const text = await readFile(resolve(root, file), 'utf8')
     expect(text, file).not.toMatch(/[가-힣]/)
     expect(text, file).not.toMatch(/(?:toLocale(?:Date|Time)?String|Intl\.DateTimeFormat)\(\s*(?:\)|undefined|\[\])/)

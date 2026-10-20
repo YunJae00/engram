@@ -57,3 +57,13 @@ it('reuses action readback evidence but refuses stale or failed batch results', 
   await expect(plan.tool.run({ evidenceStep: 2, finding: 'Done' }, { task: '' })).rejects.toThrow()
   expect(plan.completed()).toBe(1)
 })
+
+it('counts a mail or page that was read as evidence, and says which step to cite when it is not one', async () => {
+  const steps: AgentLoopStep[] = []
+  const plan = taskPlan(steps)
+  await plan.tool.run({ phases: ['Gather', 'Write'] }, { task: '' })
+  steps.push({ tool: 'outlook_mail', args: {}, observation: '{"items":[]}' } as AgentLoopStep)
+  await expect(plan.tool.run({ evidenceStep: 1, finding: 'Read the inbox' }, { task: '' })).resolves.toContain('"completed":1')
+  steps.push({ tool: 'word_write', args: {}, observation: '{"saved":"C:\\a.docx"}' } as AgentLoopStep)
+  await expect(plan.tool.run({ evidenceStep: 1, finding: 'Wrote it' }, { task: '' })).rejects.toThrow('Cite step 2')
+})

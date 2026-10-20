@@ -6,7 +6,7 @@ import os from 'node:os'
 import type { AppSettingsDto, DiagnosticsDto } from '../shared/types.js'
 import { broadcast } from './ipc.js'
 import { detectApiKeyEnv } from './installer.js'
-import { loadSettings, updateSettings } from './settings.js'
+import { appsOffOf, loadSettings, updateSettings } from './settings.js'
 import { getSyncStatus } from './team.js'
 import { binaryProvider, type VaultContext } from './vault.js'
 import { stopDesktopControl } from './desktop-control.js'
@@ -54,6 +54,7 @@ export function registerSettingsIpc(): void {
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
     for (const key of ['autoStart', 'computerUse', 'workMap', 'workFiles', 'workApps'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') throw new Error('Invalid setting: ' + key)
     for (const key of ['searchTemplate', 'agentBrowser', 'claudeModel', 'codexModel', 'semanticModel'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'string') throw new Error('Invalid setting: ' + key)
+    if (settings.appsOff !== undefined) settings = { ...settings, appsOff: appsOffOf(settings.appsOff) }
     if (settings.teamSync !== undefined && !['auto', 'manual'].includes(settings.teamSync)) throw new Error('Invalid sync setting')
     for (const effort of [settings.claudeEffort, settings.codexEffort]) if (effort !== undefined && !REASONING_EFFORTS.includes(effort)) throw new Error('Invalid reasoning effort')
     const change = Object.fromEntries(Object.entries(settings).filter(([key, value]) => key !== 'recordTasks' && (value !== undefined || key === 'claudeEffort' || key === 'codexEffort'))) as Partial<AppSettingsDto>

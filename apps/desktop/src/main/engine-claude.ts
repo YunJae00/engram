@@ -5,6 +5,7 @@ import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
+import { VoiceSession } from './engine-claude-voice.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
@@ -127,6 +128,22 @@ export class ClaudeEngine implements CloudEngine {
   readonly desktopToolIsolation = true
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
+
+  // Short answers from a runtime kept open, for words said while a comet works.
+  async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
+  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
+    const live = await this.voiceFor(options.workdir)
+    if (!live?.ready) throw new Error('The voice is not ready.')
+    return live.ask(prompt, options.timeoutMs)
+  }
+  private async voiceFor(workdir: string): Promise<VoiceSession | undefined> {
+    await loadBrainConnections()
+    const binary = claudeBinary()
+    if (!binary) return undefined
+    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: await chosenModel('fast') }
+    if (!voice || voice.closed || voice.key !== JSON.stringify([spec.binary, spec.model, spec.workdir])) { voice?.close(); voice = new VoiceSession(spec) }
+    return voice
+  }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
 
   detect(): Promise<EngineDetection> {
@@ -273,7 +290,9 @@ export function closeClaudeSession(key: string): void {
 
 export function closeClaudeSessions(): void {
   sessions.closeAll()
+  voice?.close()
 }
+let voice: VoiceSession | undefined
 
 async function sdkModule(): Promise<SessionSdk> {
   return (await loadClaudeSdk()) as SessionSdk

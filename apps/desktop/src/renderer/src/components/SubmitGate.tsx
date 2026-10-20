@@ -1,17 +1,27 @@
-import { AlertTriangle } from 'lucide-react'
-import { t } from '../i18n.js'
+import { Send } from 'lucide-react'
+import { cometOfChannel } from '../lib/cometThreads.js'
+import { useThreadT } from '../lib/useThreadT.js'
 import { useCometState } from '../state-slices.js'
+import { DecisionCard } from './DecisionCard.js'
 
 // The last thing between a procedure and a post. It shows the actual words
 // that will go into the page, because "approve?" without them is not consent.
 export function SubmitGate({ channel }: { channel?: string }) {
   const { routineSubmit, answerRoutineSubmit } = useCometState()
+  const t = useThreadT(channel ? cometOfChannel(channel) : null)
   if (!routineSubmit || routineSubmit.channel !== channel) return null
   return (
-    <div className="routine-submit" data-testid="routine-submit">
-      <div className="routine-submit-head">
-        <AlertTriangle size={14} aria-hidden /> {t('routines.submitAsk', { name: routineSubmit.name })}
-      </div>
+    <DecisionCard
+      testId="routine-submit"
+      icon={<Send size={14} />}
+      label={t('card.post')}
+      title={routineSubmit.name}
+      sub={routineSubmit.host ?? undefined}
+      actions={<>
+        <button className="secondary" data-testid="routine-submit-cancel" onClick={() => answerRoutineSubmit('cancel')}>{t('routines.submitCancel')}</button>
+        <button className="primary" data-testid="routine-submit-approve" onClick={() => answerRoutineSubmit('approve')}>{t('routines.submitApprove')}</button>
+      </>}
+    >
       <ul className="routine-submit-fields">
         {routineSubmit.filled.map((field, i) => (
           <li key={`${i}-${field.label}`}>
@@ -20,19 +30,9 @@ export function SubmitGate({ channel }: { channel?: string }) {
           </li>
         ))}
       </ul>
-      <div className="dialog-actions">
-        <button className="secondary" data-testid="routine-submit-cancel" onClick={() => answerRoutineSubmit('cancel')}>
-          {t('routines.submitCancel')}
-        </button>
-        {routineSubmit.canRemember && routineSubmit.host && (
-          <button className="secondary" data-testid="routine-submit-always" onClick={() => answerRoutineSubmit('always')}>
-            {t('routines.submitAlways', { host: routineSubmit.host })}
-          </button>
-        )}
-        <button className="primary" data-testid="routine-submit-approve" onClick={() => answerRoutineSubmit('approve')}>
-          {t('routines.submitApprove')}
-        </button>
-      </div>
-    </div>
+      {routineSubmit.canRemember && routineSubmit.host && (
+        <button className="decision-card-link" data-testid="routine-submit-always" onClick={() => answerRoutineSubmit('always')}>{t('routines.submitAlways', { host: routineSubmit.host })}</button>
+      )}
+    </DecisionCard>
   )
 }

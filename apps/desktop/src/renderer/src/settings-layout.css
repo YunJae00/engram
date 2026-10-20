@@ -1,0 +1,83 @@
+/* Settings read like a calm preferences page: a page title, then titled cards
+   of rows. A row is what it is and one line about it on the left, and its
+   control on the right; rows breathe instead of being ruled apart. */
+.settings-panel { gap: 28px; }
+.settings-panel h2 { font-size: 20px; }
+.settings-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.settings-section-title { display: flex; align-items: center; gap: 8px; margin: 0 0 0 4px; color: var(--fg-dim); font-size: var(--fs-small); font-weight: 600; }
+.settings-card { display: flex; flex-direction: column; min-width: 0; padding: 4px 0; border-radius: 14px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); }
+.settings-item { min-width: 0; padding: 12px 16px; }
+.settings-item-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.settings-item-icon { display: grid; flex: none; place-items: center; width: 20px; color: var(--fg-dim); }
+.settings-item-text { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.settings-item-title { color: var(--fg); font-size: var(--fs-body); font-weight: 500; line-height: 1.35; }
+label.settings-item-title { cursor: pointer; }
+.settings-item-description { color: var(--fg-dim); font-size: var(--fs-small); line-height: 1.45; overflow-wrap: anywhere; }
+.settings-item-control { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 62%; }
+.settings-item-control .secondary { display: inline-flex; align-items: center; gap: 6px; }
+.settings-item-state { color: var(--fg-faint); font-size: var(--fs-small); }
+.settings-item-value { color: var(--fg-dim); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.settings-item-below { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin-top: 10px; padding-left: 32px; }
+.settings-item-block { padding: 10px 16px 14px; }
+.settings-items { display: contents; }
+.settings-section-note { margin: 0 4px; color: var(--fg-faint); font-size: var(--fs-small); line-height: 1.5; }
+.settings-keys { display: inline-flex; gap: 4px; }
+.settings-keys kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; box-sizing: border-box; border: 0; border-radius: 7px; background: var(--hover-bg); color: var(--fg-dim); font-family: inherit; font-size: var(--fs-micro); font-weight: 500; }
+.settings-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The selected section is a soft pill, nothing more. */
+.settings-nav button[aria-current='page']::before { display: none; }
+
+/* AI: each provider is a titled card of account, sign-in and key rows. */
+.engine-settings { display: flex; flex-direction: column; gap: 28px; }
+.engine-connection.settings-section { display: flex; gap: 8px; padding: 0; border: 0; }
+.engine-connection .engine-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
+.engine-connection .engine-identity { display: flex; align-items: center; gap: 8px; margin: 0 0 0 4px; }
+.settings-item-control .engine-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.settings-item-control .claude-install { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.settings-item-control .claude-install .setting-note { display: none; }
+.settings-item-block .account-usage { display: flex; flex-direction: column; gap: 10px; }
+/* A key in use is billed by its provider: account limits do not apply. */
+.engine-connection:has(.key-connection[data-saved="true"]) .settings-item-block:has(.account-usage) { display: none; }
+.settings-item-block .dev-usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; }
+.settings-item-block .dev-usage > :is(p, small) { grid-column: 1 / -1; }
+.settings-item-below .key-connection-form { display: grid; gap: 8px; }
+.settings-item-below .key-connection-form label { display: grid; gap: 4px; font-size: var(--fs-small); }
+
+/* An update on its way: a thin bar that fills smoothly. */
+.update-progress { width: 100%; height: 4px; overflow: hidden; border: 0; border-radius: 999px; background: var(--hover-bg); appearance: none; -webkit-appearance: none; }
+.update-progress::-webkit-progress-bar { border-radius: 999px; background: var(--hover-bg); }
+.update-progress::-webkit-progress-value { border-radius: 999px; background: var(--fg); transition: width 500ms ease; }
+
+/* Appearance: three small windows; the chosen one carries a soft ring. */
+.appearance-settings { min-width: 0; margin: 0; padding: 0; border: 0; }
+.appearance-options { display: grid; grid-template-columns: repeat(3, minmax(0, 150px)); gap: 18px; }
+.appearance-option { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; }
+.appearance-option > input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.appearance-preview { position: relative; display: flex; gap: 10%; width: 100%; box-sizing: border-box; aspect-ratio: 1.6; padding: 9%; overflow: hidden; border-radius: 10px; background: #fafafa; box-shadow: inset 0 0 0 1px var(--border-soft); transition: box-shadow 140ms ease; }
+.appearance-preview > i { width: 20%; border-radius: 3px; background: #ececec; }
+.appearance-preview > span { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 12%; }
+.appearance-preview > span i { height: 10%; min-height: 3px; border-radius: 2px; background: #dcdcdc; }
+.appearance-preview > span i:last-child { width: 65%; }
+.appearance-dark { background: #232323; }
+.appearance-dark > i, .appearance-dark > span i { background: #4a4a4a; }
+.appearance-system { background: linear-gradient(135deg, #fafafa 0 50%, #232323 50% 100%); }
+.appearance-system > i, .appearance-system > span i { background: #9a9a9a; opacity: 0.55; }
+.appearance-name { color: var(--fg-dim); font-size: var(--fs-small); }
+.appearance-option > input:checked + .appearance-preview { box-shadow: inset 0 0 0 1px var(--border-soft), 0 0 0 2px var(--panel-bg), 0 0 0 4px var(--fg-faint); }
+.appearance-option > input:checked ~ .appearance-name { color: var(--fg); font-weight: 600; }
+.appearance-option > input:focus-visible + .appearance-preview { box-shadow: 0 0 0 2px var(--panel-bg), 0 0 0 4px var(--focus-ring); }
+.appearance-option:hover > .appearance-preview { box-shadow: inset 0 0 0 1px var(--border); }
+
+/* A switch that cannot be changed right now says so. */
+.switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@media (max-width: 700px) {
+  .settings-item-control { max-width: 55%; }
+  .appearance-options { gap: 12px; }
+}
+.habit-draft-body summary { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); font-size: var(--fs-small); cursor: pointer; list-style: none; }
+.habit-draft-body summary::-webkit-details-marker { display: none; }
+.habit-draft-body summary svg { transition: transform 160ms ease; }
+.habit-draft-body[open] summary svg { transform: rotate(90deg); }
+.habit-draft-body .bubble-msg-body { margin-top: 8px; font-size: var(--fs-small); line-height: 1.55; }

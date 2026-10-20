@@ -13,7 +13,7 @@ export function pageDelta() {
     const a = before?.observation, b = page.observation
     if (!a || !b || a.page !== b.page || a.document !== b.document || b.revision <= a.revision
       || before.url !== page.url || before.title !== page.title || page.wall || before.wall
-      || page.dialog || before.dialog || page.faults?.length || before.faults?.length
+      || page.dialog || before.dialog || page.faults?.length || before.faults?.length || page.downloads?.length
       || page.text.length > PAGE_TEXT_CAP || before.text.length > PAGE_TEXT_CAP || deltas >= 3) {
       deltas = 0
       return full

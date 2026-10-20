@@ -54,6 +54,22 @@ describe('ChatGPT with its own tools', () => {
     expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true })
   })
 
+  it('puts words sent mid-turn into that turn as the person own message, and stops offering once it ends', async () => {
+    const sent: { method: string; params: Data }[] = []
+    let steer: ((said: string[]) => Promise<boolean>) | null = null
+    const offered: (typeof steer)[] = []
+    let taken = false
+    const result = await runCodexNative({ ...job(native(async () => ({ behavior: 'allow' }))), onSteerable: (one) => { steer = one; offered.push(one) } }, spec(fakeServer(async (server) => {
+      taken = await steer!(['Only tomorrow'])
+      server.notify(...completed({ id: 'm1', type: 'agentMessage', text: 'Tomorrow: clear' }))
+      server.notify('turn/completed', { turn: { status: 'completed' } })
+    }, sent)))
+    expect(result).toEqual({ answer: 'Tomorrow: clear' })
+    expect(taken).toBe(true)
+    expect(sent.find(one => one.method === 'turn/steer')!.params).toEqual({ threadId: 't1', expectedTurnId: 'u1', input: [{ type: 'text', text: 'Only tomorrow', text_elements: [] }] })
+    expect(offered.at(-1)).toBeNull()
+  })
+
   it('puts the first wanted command to the person, then restarts where approval is never widened', async () => {
     const answers: unknown[] = [], sent: { method: string; params: Data }[] = []
     const decide = vi.fn<NativeTools['decide']>(async () => ({ behavior: 'allow' }))

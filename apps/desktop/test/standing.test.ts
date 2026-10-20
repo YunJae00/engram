@@ -47,4 +47,24 @@ describe('standingTick', () => {
     await standingTick(refused)
     expect(calls).toBe(3)
   })
+
+  it('starts a kept request by its name when due, waits while it cannot start, and lets a one-day one go once said or missed', async () => {
+    const paths = await tempPaths()
+    const bot = await createBot(paths, { name: 'Desk', purpose: 'chores' })
+    const daily = await addBotTask(paths, bot.id, { name: 'Mail', goal: 'Sum up my mail', schedule: { days: [0, 1, 2, 3, 4, 5, 6], hour: 9, minute: 5 } })
+    await addBotTask(paths, bot.id, { name: 'Call', goal: 'Remind me to call', schedule: { days: [], hour: 9, minute: 0, on: '2026-08-25' } })
+    await addBotTask(paths, bot.id, { name: 'Gone', goal: 'Old one', schedule: { days: [], hour: 8, minute: 0, on: '2026-08-20' } })
+    const said: string[] = []
+    let busy = true
+    const now = () => new Date(2026, 7, 25, 9, 10)
+    const deps = { paths, runRoutine: async () => ({ ok: true }), runPrompt: async (name: string, goal: string) => busy ? { ok: false } : (said.push(`${name}:${goal}`), { ok: true }), now }
+    expect(await standingTick(deps)).toEqual([])
+    expect((await loadBots(paths))[0]?.tasks?.map((t) => t.name)).toEqual(['Mail', 'Call'])
+    busy = false
+    expect(await standingTick(deps)).toEqual([daily.id])
+    await standingTick(deps)
+    expect(said).toEqual(['Mail:Sum up my mail', 'Call:Remind me to call'])
+    expect((await loadBots(paths))[0]?.tasks?.map((t) => t.name)).toEqual(['Mail'])
+    expect(await standingTick(deps)).toEqual([])
+  })
 })

@@ -130,6 +130,7 @@ class CodexSession {
     turn.settled = true
     if (turn.turnId) this.completedTurns.add(turn.turnId)
     turn.controller.abort()
+    turn.job.onSteerable?.(null)
     turn.job.signal?.removeEventListener('abort', turn.cancel)
     if (this.turn === turn) this.turn = null
     this.lastUsed = Date.now()
@@ -143,6 +144,14 @@ class CodexSession {
       ...(turn.job.effort ? { effort: turn.job.effort } : {}),
     })
     turn.turnId = text(object(started['turn'])['id'])
+    if (turn.turnId && !turn.settled) turn.job.onSteerable?.((said) => this.steer(turn, said))
+  }
+
+  // Words the person sent mid-turn join it as their own message.
+  private async steer(turn: Turn, said: string[]): Promise<boolean> {
+    if (turn.settled || this.turn !== turn || !turn.turnId) return false
+    await this.rpc.send('turn/steer', { threadId: this.threadId, expectedTurnId: turn.turnId, input: said.map((words) => ({ type: 'text', text: words, text_elements: [] })) }, 5_000)
+    return true
   }
 
   // One answer per call, bounded: a decision that does not come is a refusal.

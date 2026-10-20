@@ -110,6 +110,9 @@ export interface Engine {
   // whether one is already waiting, and the folder the next comet should take.
   warm?(job: ToolSessionJob): Promise<void>
   spareReady?(): boolean
+  // A short answer from a runtime kept open, opened ahead with warmQuick.
+  warmQuick?(workdir: string): Promise<void>
+  quick?(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string>
   claimWorkFolder?(channel: string, fallback: string): string
   readonly id: EngineId
   // True only when selected-app jobs cannot call inherited runtime tools.
@@ -182,6 +185,9 @@ export interface ToolSessionJob {
   onReset?(): void
   // Host-only activity, without private reasoning or unfinished tool arguments.
   onProgress?(): void
+  // An engine that can put the person's words into its running turn, as
+  // their own message, hands over how; null once the turn is over.
+  onSteerable?(steer: ((said: string[]) => Promise<boolean>) | null): void
 }
 
 export interface ToolSessionResult {

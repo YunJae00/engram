@@ -140,7 +140,8 @@ describe('cometThreads', () => {
     expect(thread.busy).toBe(false)
     expect(thread.workLines).toEqual([])
     expect(thread.offer).toEqual({ kind: 'teach' })
-    expect(thread.messages.at(-1)).toEqual({ role: 'assistant', text: 'ab!', streaming: false })
+    // The finished answer keeps the work that led to it, so the turn still reads the same after the next one starts.
+    expect(thread.messages.at(-1)).toEqual({ role: 'assistant', text: 'ab!', streaming: false, work: ['searching'] })
   })
 
   it('does not duplicate a routine request persisted before its replay finishes', () => {
@@ -299,9 +300,18 @@ describe('a draft held for its check', () => {
     store.carryOn(BOT)
     store.handleEvent({ type: 'comet:step', channel, line: 'note: Checking the result against your request' })
     store.handleEvent({ type: 'chat:token', channel, text: '', reset: true, drop: true })
-    expect(store.thread(BOT).messages.at(-1)).toEqual({ role: 'assistant', text: '', streaming: true })
+    // The held draft stays on screen, marked as being checked, until the checked answer replaces it.
+    expect(store.thread(BOT).messages.at(-1)).toEqual({ role: 'assistant', text: 'Draft total: 58 hr', streaming: true, checking: true })
     expect(store.thread(BOT).workLines).toEqual(['note: Checking the result against your request'])
     store.handleEvent({ type: 'chat:done', channel, text: 'Checked total: 58 hr' })
     expect(store.thread(BOT).messages.filter(m => m.role === 'assistant').map(m => m.text)).toEqual(['Checked total: 58 hr'])
+  })
+
+  it('does not repeat a question when the thread on disk also holds words sent while it was answered', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'Find the postings')
+    store.handleEvent({ type: 'chat:token', channel, text: 'Found three' })
+    store.load(BOT, [{ role: 'user', text: 'Find the postings' }, { role: 'user', text: 'Only Seoul' }, { role: 'assistant', text: 'Found three' }])
+    expect(store.thread(BOT).messages.map((m) => m.text)).toEqual(['Find the postings', 'Only Seoul', 'Found three'])
   })
 })

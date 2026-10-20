@@ -398,6 +398,7 @@ test('a newer update replaces stale restart actions in the banner and settings',
   await expect(banner.getByRole('button')).toBeDisabled()
   await expect(banner.getByText('Restart now')).toHaveCount(0)
   await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-help').click()
   await expect(page.getByTestId('settings-update')).toContainText('9.0.2')
   await expect(page.getByTestId('settings-update').getByRole('progressbar')).toHaveAttribute('value', '12')
   await app.evaluate(({ BrowserWindow }) => {

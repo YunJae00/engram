@@ -1,4 +1,6 @@
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
+import { withinBudget } from './tool-budget.js'
+import { sessionMenu } from './session-menu.js'
 import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
 import { parseAsk } from './ask.js'
@@ -8,7 +10,6 @@ import { withoutSecrets } from './secrets.js'
 import { answerLanguageLine } from './task-proposal.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { taskPlan } from './agent-plan.js'
-import { workCapabilities } from './work-capabilities.js'
 import { officeWriteUnverified } from './office-verification.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
@@ -90,6 +91,14 @@ function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined {
   return undefined
 }
 
+// Words the person sent while the work was going, put in front of the brain
+// at the next tool result: it answers them in a line and carries on with them
+// in mind, the way a colleague takes a remark without dropping what they hold.
+export function withSteer(text: string, said: string[]): string {
+  if (!said.length) return text
+  return `${text}\n\nThe person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}. First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
+}
+
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
@@ -100,16 +109,17 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // them it gets the ceiling directly. Repetition guards still end a loop.
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
-  deps = { ...deps, tools: desktopScopeTools(deps.tools) }
+  deps = { ...deps, tools: sessionMenu(desktopScopeTools(deps.tools)) }
   const runTools = deps.engine.runTools
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
+  let liveSteer: ((said: string[]) => Promise<boolean>) | null = null
   const compactPage = pageDelta()
   const recovery = pageRecovery()
   const plan = taskPlan(steps)
   // File/browser work uses direct result checks. Desktop sequences retain
   // phase checkpoints for their control rules and bounded call allowance.
-  const tools = [...deps.tools, ...(planned ? [...(desktop ? [plan.tool] : []), workCapabilities(deps.tools)] : [])]
+  const tools = [...deps.tools, ...(planned && desktop ? [plan.tool] : [])]
   const allowance = () => Math.min(options.maxCalls ?? 120, 120, baseCalls + plan.completed() * 20)
   const started = Date.now()
   const lifetime = new AbortController()
@@ -180,13 +190,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         } else if (recoveryBlock) {
           observation = recoveryBlock
         } else if (tool.runRich) {
-          const outcome = await tool.runRich(args, context)
+          const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }))
           observation = outcome.text
           image = outcome.image
           modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
           committed = outcome.committed === true
-        } else observation = await tool.run(args, context)
+        } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }))
       } catch (err) {
         if (signal.aborted) throw err
         observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`
@@ -217,7 +227,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         ...(left <= 5 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
       ]
       const delivered = modelObservation ?? observation
-      const text = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
+      const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
+      // The person's words go in as their own message where the brain takes
+      // that; otherwise they ride with this result.
+      const said = options.takeSteer?.() ?? []
+      const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
       return image ? { text, image } : text
     },
   }))
@@ -271,6 +285,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     maxCalls: Math.min(options.maxCalls ?? 120, planned ? 120 : SESSION_MAX_CALLS),
     onToken: (text: string) => { if (text) touch(); options.onToken?.(text) },
     onProgress: touch,
+    onSteerable: (steer) => { liveSteer = steer },
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
   }).finally(() => {

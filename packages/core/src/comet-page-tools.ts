@@ -31,13 +31,13 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       deps.wallMet?.(page.url)
       return 'the page now needs a person - say so, and that it stays open in the thread for them to do it; ask them to tell you when it is done'
     }
-    if (!page.text.trim() && !page.dialog && !page.controls?.length && !page.faults?.length)
+    if (!page.text.trim() && !page.dialog && !page.controls?.length && !page.faults?.length && !page.downloads?.length)
       return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`
     // A move that seemed to change nothing is only a dead end when the page
     // did not answer it either. A dialog that opened, or a field the page has
     // marked as wrong, IS the answer: that is what to deal with next, and the
     // move is tried again after - which the page report says in its own words.
-    const answered = Boolean(page.dialog) || Boolean(page.faults?.length)
+    const answered = Boolean(page.dialog) || Boolean(page.faults?.length) || Boolean(page.downloads?.length)
     const still =
       move.changed === false && !answered
         ? `${what}: nothing on the page changed, so that was probably not the thing meant - press another of the controls below by its number, or look at the page and press the point\n`
@@ -168,27 +168,28 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     tools.push({
       name: 'page_steps',
       description:
-        `do several known moves on the open page in order, in one call - open a menu, press a tab, set filters, fill a form's fields, scroll, press a button - instead of one call per move. Controls are named by their words or their number from the latest page report; the page is read once at the end, so a move that needs what an earlier one reveals (a list that only opens after a press) goes in a new call. Stops at the first move that fails, changes nothing or waits for approval - args: {"steps": [{"do": "press", "target": "Time Report"}, {"do": "choose", "target": "Project", "option": "ChatX"}, {"do": "type", "target": "#12", "text": "4"}, {"do": "scroll", "to": "down"}, {"do": "press", "target": "Search"}, {"do": "key", "key": "Tab"}]}`,
-      argsSchema: { type: 'object', properties: { steps: { type: 'array', maxItems: PAGE_STEPS_MAX, items: { type: 'object', properties: { do: { type: 'string', enum: ['type', 'choose', 'press', 'key', 'scroll'] }, target: { type: 'string' }, text: { type: 'string' }, option: { type: 'string' }, key: { type: 'string' }, to: { type: 'string' } }, required: ['do'] } } }, required: ['steps'] },
+        `make moves on the open page - one move, or several known moves in order in one call: press a link, tab, date or button; type into a field ("enter": true presses Enter after it, for a search box - refused in posting forms; websites may autosave typed text); choose an entry in a list; rest the pointer on a menu that opens on hover; press a key (Escape, ArrowDown, Tab, PageDown); scroll the page or its dialog ("down", "up", "bottom", "top", or to words or #12). Controls are named by their words or their number from the latest page report. At anything that would submit, save, send or buy, the app asks the person first. The page is read once at the end, so a move that needs what an earlier one reveals (a list that only opens after a press) goes in a new call. Stops at the first move that fails, changes nothing or waits for approval - args: {"steps": [{"do": "press", "target": "Time Report"}, {"do": "choose", "target": "Project", "option": "ChatX"}, {"do": "type", "target": "#12", "text": "4"}, {"do": "hover", "target": "Menu"}, {"do": "scroll", "to": "down"}, {"do": "type", "target": "Search", "text": "invoice", "enter": true}, {"do": "key", "key": "Tab"}]}`,
+      argsSchema: { type: 'object', properties: { steps: { type: 'array', maxItems: PAGE_STEPS_MAX, items: { type: 'object', properties: { do: { type: 'string', enum: ['type', 'choose', 'press', 'hover', 'key', 'scroll'] }, target: { type: 'string' }, text: { type: 'string' }, enter: { type: 'boolean' }, option: { type: 'string' }, key: { type: 'string' }, to: { type: 'string' } }, required: ['do'] } } }, required: ['steps'] },
       async run(args, context) {
         const steps = args['steps']
         if (!Array.isArray(steps) || !steps.length || steps.length > PAGE_STEPS_MAX) return `that did not work: page_steps needs a list of moves (at most ${PAGE_STEPS_MAX}); no moves were made`
         const invalid = steps.findIndex(step => {
           if (!step || typeof step !== 'object' || Array.isArray(step)) return true
           const target = str(step, 'target'), kind = str(step, 'do')
-          return !(kind === 'type' && target && str(step, 'text') || kind === 'choose' && target && str(step, 'option') || kind === 'press' && target || kind === 'key' && str(step, 'key') || kind === 'scroll' && str(step, 'to') && courier.scroll)
+          return !(kind === 'type' && target && str(step, 'text') || kind === 'choose' && target && str(step, 'option') || kind === 'press' && target || kind === 'hover' && target && courier.hover || kind === 'key' && str(step, 'key') || kind === 'scroll' && str(step, 'to') && courier.scroll)
         })
-        if (invalid >= 0) return `that did not work: move ${invalid + 1} is incomplete; no moves were made. type needs target and text, choose needs target and option, press needs target, key needs key, scroll needs to`
+        if (invalid >= 0) return `that did not work: move ${invalid + 1} is incomplete; no moves were made. type needs target and text, choose needs target and option, press and hover need target, key needs key, scroll needs to`
         const done: string[] = []
         let allMoved = true, committed = false
         let last: { move: PageMove; what: string } | undefined
         for (const [index, step] of steps.entries()) {
           context.signal?.throwIfAborted()
           const target = str(step, 'target'), kind = str(step, 'do')
-          const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : kind === 'scroll' ? `scroll ${str(step, 'to')}` : `press ${str(step, 'key')}`
-          const move = kind === 'type' && target && typeof step['text'] === 'string' && step['text'] ? await typeText(target, step['text'], false, context.signal)
+          const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : kind === 'hover' ? `hover "${target}"` : kind === 'scroll' ? `scroll ${str(step, 'to')}` : `press ${str(step, 'key')}`
+          const move = kind === 'type' && target && typeof step['text'] === 'string' && step['text'] ? await typeText(target, step['text'], step['enter'] === true, context.signal)
             : kind === 'choose' && target && str(step, 'option') ? await choose(target, str(step, 'option'), context.signal)
               : kind === 'press' && target ? await press(target, context.signal)
+                : kind === 'hover' && target && courier.hover ? await courier.hover(target, context.signal)
                 : kind === 'key' && str(step, 'key') ? await pressKey(str(step, 'key'), context.signal)
                   : kind === 'scroll' && str(step, 'to') && courier.scroll ? await courier.scroll(str(step, 'to'), context.signal)
                     : { ok: false, error: `move ${index + 1} is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key, scroll needs to` }

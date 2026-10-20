@@ -151,10 +151,12 @@ test('splitting a conversation preserves and sends its multiline draft and attac
   await mini.getByTestId(`mini-input-${id}-send`).click()
   await expect(mini.getByRole('textbox')).toHaveValue('')
   await expect(mini.getByLabel('Attached files')).toHaveCount(0)
-  await expect(mini.locator('.mini-msg.assistant').last()).toContainText('Record this if you want it kept')
+  await expect(mini.locator('.bubble-msg.user').last()).toContainText('Keep this second line separate.')
+  await expect(mini.locator('.bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
+  // The empty seat of a reply in progress draws no bubble, so wait for the turn itself to be saved.
+  await expect.poll(async () => (await page.evaluate(id => window.engram.botTranscript(id!), id)).filter(turn => turn.role === 'user').at(-1)?.text, { timeout: 30_000 }).toBe(`${draft}\n\nAttached: pixel.png`)
   const turns = await page.evaluate(id => window.engram.botTranscript(id!), id)
   const sent = turns.filter(turn => turn.role === 'user').at(-1)!
-  expect(sent.text).toBe(`${draft}\n\nAttached: pixel.png`)
   expect(sent.attachments).toHaveLength(1)
   await page.getByTestId('mission-layout-1').click()
   await expect(page.getByTestId('bots-input')).toHaveValue('')

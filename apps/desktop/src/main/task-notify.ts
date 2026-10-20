@@ -18,7 +18,10 @@ export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) 
   if (BrowserWindow.getFocusedWindow()) { broadcast({ type: 'task:notice', message: title }); return }
   if (!Notification.isSupported()) return
   // Notifications can appear on the lock screen; keep task contents in the app.
-  const note = new Notification({ title, body: 'Open Engram to review this task.' })
+  const body = task.state === 'done' ? 'The answer is ready. Click to see it.'
+    : task.state === 'failed' ? 'Click to see where it stopped.'
+      : task.question ? 'There is a question for you. Click to answer.' : 'A step is waiting for your OK. Click to review it.'
+  const note = new Notification({ title, body })
   note.on('click', () => { surface(); broadcast({ type: 'comet:open', botId: task.botId }) })
   note.show()
 }

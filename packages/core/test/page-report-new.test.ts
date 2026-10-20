@@ -27,3 +27,9 @@ it.each(['unmatched', 'folded'])('keeps the fresh dialog, faults and controls wh
   expect(report).toContain('Accessibility details')
   expect(report).toContain(mode === 'folded' ? 'keeps folded' : 'or that the preceding action failed')
 })
+
+it('says where a file the page sent was saved, before the page itself', () => {
+  const report = pageReport({ title: 'Rules', text: 'Download', downloads: ['C:/Users/me/Downloads/rules.hwp'] })
+  expect(report.indexOf('rules.hwp')).toBeLessThan(report.indexOf('page "Rules"'))
+  expect(report).toContain('read it from there instead of looking for a downloads window')
+})

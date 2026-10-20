@@ -2,27 +2,21 @@ import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
 import { sendCometMessage } from '../lib/attachments.js'
 import { api } from '../api.js'
-import { Choices } from '../components/Choices.js'
-import { CometOffer } from '../components/CometOffer.js'
-import { CometWork } from '../components/CometWork.js'
-import { CheckEvidence } from '../components/CheckEvidence.js'
+import { CometMessages } from '../components/CometMessages.js'
+import { ThreadOffers } from '../components/ThreadOffers.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
+import { threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
-import { Fragment } from 'react'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
-import { StreamingAnswer } from '../components/StreamingAnswer.js'
-import { ErrorAnswer, isProviderError } from '../components/ErrorAnswer.js'
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
-import { PressGate } from '../components/PressGate.js'
-import { TaskApprovals } from '../components/TaskApprovals.js'
+import { ThreadAsks } from '../components/ThreadAsks.js'
 import { BotComposer } from '../components/BotComposer.js'
-import { useCometState, useShellState } from '../state-slices.js'
+import { useCometState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
-import { UserMessage } from '../components/ChatAttachment.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -41,8 +35,7 @@ const PHASE_LABEL: Record<string, StringKey> = {
 
 
 export const BotsView = memo(function BotsView() {
-  const { errand, routine, startRoutine } = useCometState()
-  const { showToast } = useShellState()
+  const { errand } = useCometState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [memoryOpen, setMemoryOpen] = useState(false)
   // What the model is doing, from main's own word. Only 'loading' changes
@@ -60,7 +53,7 @@ export const BotsView = memo(function BotsView() {
 
   // The wait, said from evidence - see pendingStatus for the order it trusts.
   const latestStep = workLines[workLines.length - 1]
-  const status = pendingStatus(t, awaitingModel ? undefined : latestStep)
+  const status = pendingStatus(threadT(threadLang(messages)), awaitingModel ? undefined : latestStep)
 
   // Until the first read comes back, an empty list means "not read yet",
   // and the screen says nothing rather than "no comets" - a claim it cannot
@@ -96,7 +89,6 @@ export const BotsView = memo(function BotsView() {
 
   useStickToBottom(listRef, messages, selectedId)
   // The bubble the current work belongs to: the last one the comet wrote.
-  const lastAssistant = messages.reduce((found, m, i) => (m.role === 'assistant' ? i : found), -1)
 
   // A tapped choice goes the same way as typed words: through the thread,
   // so the comet hears it with the conversation behind it.
@@ -111,21 +103,6 @@ export const BotsView = memo(function BotsView() {
     await api.chatAbort(cometChannel(selected.id)).catch(() => undefined)
   }
 
-  // Dismiss the offer only after the library confirms the save.
-  const keep = async (name: string, goal: string) => {
-    if (!selected) return
-    await api.botTaskAdd(selected.id, { name, goal })
-    cometThreads.clearOffer(selected.id)
-    showToast('Saved to Routines')
-    await reload()
-  }
-
-  const stand = async (offer: { name: string; goal: string; schedule: { days: number[]; hour: number; minute: number }; routineId: string }) => {
-    if (!selected) return
-    await api.botTaskAdd(selected.id, { name: offer.name, goal: offer.goal, schedule: offer.schedule, routineId: offer.routineId }).catch(() => undefined)
-    await reload()
-  }
-
   return (
     <div className="bots-view" data-testid="bots-view">
       <section className="bots-main">
@@ -137,59 +114,9 @@ export const BotsView = memo(function BotsView() {
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
-              {messages.map((m, i) => {
-                const failed = m.error || (m.role === 'assistant' && isProviderError(m.text))
-                return (
-                <Fragment key={i}>
-                  {/* The work sits above the words it leads to: every step
-                      and every aside in order, then the answer under them.
-                      Words the comet writes between actions stay where
-                      they were written instead of leaping into a list
-                      below, and the foot of the thread - where the eye
-                      rests - is where it speaks. */}
-                  {i === lastAssistant && <CometWork busy={busy} status={status} since={startedAt ?? undefined} lines={workLines} kept={keptWork} />}
-                  <div className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
-                    {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
-                      m.streaming && !m.text ? (
-                        <span className="bots-pending" data-testid="bots-pending" />
-                      ) : (
-                        <><StreamingAnswer text={m.text} done={!m.streaming} />{!m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}</>
-                      )
-                    ) : (
-                      <UserMessage text={m.text} attachments={m.attachments} />
-                    )}
-                  </div>
-                </Fragment>
-                )
-              })}
-              {offer && offer.kind === 'asked' && !routine.running && (
-                <Choices
-                  options={offer.options}
-                  onPick={(label) => {
-                    cometThreads.clearOffer(selected.id)
-                    void sendText(label)
-                  }}
-                />
-              )}
-              {offer && offer.kind !== 'asked' && !routine.running && (
-                <CometOffer
-                  offer={offer}
-                  onKeep={keep}
-                  onRun={(wanted) => {
-                    cometThreads.clearOffer(selected.id)
-                    void startRoutine(wanted.routineId, wanted.name, wanted.force === true, wanted.slots)
-                  }}
-                  onStand={(wanted) => {
-                    cometThreads.clearOffer(selected.id)
-                    void stand(wanted)
-                  }}
-                  onDecline={(wanted) => {
-                    cometThreads.clearOffer(selected.id)
-                    void api.botStandingDecline(selected.id, wanted.goal).catch(() => undefined)
-                  }}
-                  onDismiss={() => cometThreads.clearOffer(selected.id)}
-                />
-              )}
+              <CometMessages messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={(label) => void sendText(label)} />
+              <ThreadOffers botId={selected.id} onSend={(label) => void sendText(label)} />
+              <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} />
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
                   <ThinkingDots />
@@ -211,8 +138,6 @@ export const BotsView = memo(function BotsView() {
                 </div>
               )}
             </div>
-            <PressGate channel={cometChannel(selected.id)} />
-            <TaskApprovals botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} />
             <BotComposer
               key={selected.id}
               botId={selected.id}

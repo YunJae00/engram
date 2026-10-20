@@ -175,6 +175,15 @@ describe('a press that would commit is put to the person', () => {
 })
 
 describe('page_steps', () => {
+  it('supports a single hover and a search Enter through the same batch tool', async () => {
+    const hover = vi.fn(async () => ({ ok: true, changed: true }))
+    const typeText = vi.fn(async () => ({ ok: true, changed: true }))
+    const tool = pageTools({}, { ...courier([]), hover, typeText }).find(one => one.name === 'page_steps')!
+    await tool.run({ steps: [{ do: 'hover', target: 'Menu' }] }, { task: 'Open menu' })
+    await tool.run({ steps: [{ do: 'type', target: 'Search', text: 'invoice', enter: true }] }, { task: 'Search' })
+    expect(hover).toHaveBeenCalledWith('Menu', undefined)
+    expect(typeText).toHaveBeenCalledWith('Search', 'invoice', true, undefined)
+  })
   it('preserves a completed commit when a later move fails', async () => {
     const press = vi.fn(async (target: string) => target === 'Save' ? { ok: true, committed: true } : { ok: false, error: 'Missing control' })
     const tool = pageTools({}, { ...courier([]), press }).find(one => one.name === 'page_steps')!

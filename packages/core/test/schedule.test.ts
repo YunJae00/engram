@@ -19,7 +19,10 @@ describe('guessSchedule', () => {
   it('recognises a well-formed schedule', () => {
     expect(isSchedule({ days: [1, 2], hour: 9, minute: 0 })).toBe(true)
     expect(isSchedule({ days: [7], hour: 9, minute: 0 })).toBe(false)
-    expect(isSchedule({ days: [1], hour: 9, minute: 15 })).toBe(false)
+    expect(isSchedule({ days: [1], hour: 9, minute: 15 })).toBe(true)
+    expect(isSchedule({ days: [1], hour: 9, minute: 60 })).toBe(false)
+    expect(isSchedule({ days: [], hour: 9, minute: 0, on: '2026-10-20' })).toBe(true)
+    expect(isSchedule({ days: [], hour: 9, minute: 0, on: 'tomorrow' })).toBe(false)
   })
 })
 

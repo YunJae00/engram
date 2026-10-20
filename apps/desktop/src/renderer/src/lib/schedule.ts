@@ -1,13 +1,14 @@
 import type { ScheduleDto } from '../../../shared/types.js'
-import { t } from '../i18n.js'
+import { t as english, type Translate } from '../i18n.js'
 
 // How a schedule reads to a person: "every weekday at 9:00".
 export function timeLabel(hour: number, minute: number): string {
   return `${hour}:${minute.toString().padStart(2, '0')}`
 }
 
-export function scheduleLabel(s: ScheduleDto): string {
+export function scheduleLabel(s: ScheduleDto, t: Translate = english): string {
   const time = timeLabel(s.hour, s.minute)
+  if (s.on) return `${s.on} ${time} · ${t('card.once')}`
   const days = [...s.days].sort((a, b) => a - b)
   if (days.length === 7) return t('schedule.daily', { time })
   if (days.length === 5 && days.every((d) => d >= 1 && d <= 5)) return t('schedule.weekdays', { time })
@@ -16,7 +17,7 @@ export function scheduleLabel(s: ScheduleDto): string {
   return t('schedule.days', { days: days.map((d) => names[d] ?? '').join(', '), time })
 }
 
-export function timesLabel(count: number): string {
+export function timesLabel(count: number, t: Translate = english): string {
   if (count === 2) return t('bots.timesTwice')
   if (count === 3) return t('bots.timesThree')
   return t('bots.timesN', { n: count })

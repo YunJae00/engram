@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { liveDocumentTools } from '../src/live-document-tools.js'
 import { desktopStepArgs, isDesktopTool } from '../src/desktop-tools.js'
-import { workCapabilities } from '../src/work-capabilities.js'
 
 const snapshot = 'a'.repeat(32)
 const context = { task: 'Edit the test document.' }
@@ -18,7 +17,6 @@ describe('live document boundary', () => {
     expect(native).toHaveBeenCalledTimes(3)
     expect(isDesktopTool(compose.name)).toBe(true)
     expect(desktopStepArgs(compose.name, { snapshot, paragraphs: [{ text: 'private' }] })).toEqual({ snapshot, composition: '[redacted]' })
-    expect(JSON.parse(await workCapabilities(tools).run({}, context)).liveDocumentApi.tools.map((tool: {name: string}) => tool.name)).toContain(compose.name)
   })
   it('refuses malformed composition, arbitrary code and unbounded layouts before dispatch', async () => {
     const native = vi.fn(async () => '{}')
@@ -47,7 +45,6 @@ describe('live document boundary', () => {
     expect(isDesktopTool('read_live_document')).toBe(true)
     expect(isDesktopTool('edit_live_document')).toBe(true)
     expect(desktopStepArgs('edit_live_document', { snapshot, edits })).toEqual({ snapshot, edits: '[redacted]' })
-    expect(JSON.parse(await workCapabilities(tools).run({}, context)).liveDocumentApi.available).toBe(true)
   })
   it('rejects arbitrary paths, commands, duplicate IDs and unsafe formulas before dispatch', async () => {
     const native = vi.fn(async () => '{}')

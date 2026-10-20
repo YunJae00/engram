@@ -15,13 +15,15 @@ const e2e = join(root, 'apps/desktop/e2e')
 const SMOKE = ['shell.spec.ts']
 // Path fragments → the specs that exercise that area. Order does not matter; a path may hit several rows.
 const AREAS = [
+  [/session-menu|work-capabilities|office-tools/, ['chat.spec.ts', 'work-evidence.spec.ts', 'page-hands.spec.ts']],
   [/native\/desktop\/|desktop-quiet|desktop-agent|desktop-control|desktop-host|desktop-access|desktop-sequence|desktop-overlay|application-work|desktop-tools|desktop-quiet-tools/, ['computer-control.spec.ts', 'work-evidence.spec.ts', 'developers.spec.ts']],
   [/engine-|brain-connections|KeyConnection|account-profiles|codex-|claude-runtime|engine-signin|EngineSettings|ModelPicker|ai-selection/, ['engine-settings.spec.ts', 'key-connections.spec.ts', 'ai-card-layout.spec.ts', 'ai-recovery.spec.ts', 'connection-state.spec.ts', 'developers.spec.ts']],
   [/agent-session|agent-loop|agent-prompt|task-runner|task-result|result-check|chat|Composer|Conversation|conversation|queued|interim|evidence/, ['chat.spec.ts', 'chat-attachments.spec.ts', 'chat-save.spec.ts', 'queued-messages.spec.ts', 'quick-comet.spec.ts', 'conversation-polish.spec.ts', 'conversation-sidebar.spec.ts', 'work-evidence.spec.ts']],
   [/renderer\/src\/App\.tsx|\.css$|Shell|layout|Sidebar|activity|Tour|onboarding|Onboarding|appearance|update/, ['layout.spec.ts', 'shell.spec.ts', 'appearance.spec.ts', 'activity-ui.spec.ts', 'onboarding.spec.ts']],
   [/interview|work-map|WorkInterview|cosmos|filing/, ['work-interview.spec.ts', 'work-interview-feedback.spec.ts', 'work-interview-preparation.spec.ts']],
-  [/routine|learning/, ['routines.spec.ts', 'routine-learning.spec.ts']],
-  [/browser|page-|web-|live-view|mirror|preview/, ['page-hands.spec.ts', 'browser-preview.spec.ts', 'native-browser.spec.ts', 'live-view.spec.ts']],
+  [/routine|learning/, ['routines.spec.ts']],
+  [/browser|page-|web-|live-view|mirror|preview|agent-courier|comet-tools|search-|errand|stalled-/, ['page-hands.spec.ts', 'page-front.spec.ts', 'browser-preview.spec.ts', 'native-browser.spec.ts', 'live-view.spec.ts', 'chat.spec.ts']],
+  [/markdown|Answer|CometWork|BotsView|ReplyChips|Choices|Thinking/, ['chat.spec.ts', 'conversation-polish.spec.ts', 'queued-messages.spec.ts', 'routines.spec.ts', 'shell.spec.ts']],
   [/developer|workspace|artifact/, ['developers.spec.ts', 'tasks.spec.ts', 'artifact.spec.ts', 'workspace-delete.spec.ts']],
   [/index\.ts$|ipc\.ts$|vault|settings\.ts|reset|quit|boot/, ['shell.spec.ts', 'app-reset.spec.ts', 'background-workers.spec.ts', 'chat.spec.ts']],
 ]
@@ -60,7 +62,8 @@ for (const path of paths) {
   // The verification scripts themselves change how tests run, not what the app does.
   if (/^scripts\/(e2e-|check-)[^/]+\.mjs$/.test(normalized)) continue
   if (/(^|\/)test\/.*\.test\.ts$/.test(normalized)) continue
-  if (/^apps\/desktop\/e2e\//.test(normalized) && normalized.endsWith('.spec.ts')) { chosen.add(normalized.split('/').pop()); continue }
+  // A spec that was deleted has nothing left to run.
+  if (/^apps\/desktop\/e2e\//.test(normalized) && normalized.endsWith('.spec.ts')) { if (existsSync(join(e2e, normalized.split('/').pop()))) chosen.add(normalized.split('/').pop()); continue }
   let matched = false
   for (const [pattern, specs] of AREAS) if (pattern.test(normalized)) { matched = true; for (const spec of specs) chosen.add(spec) }
   if (!matched) for (const spec of readdirSync(e2e).filter(name => name.endsWith('.spec.ts'))) chosen.add(spec)

@@ -1,18 +1,22 @@
-import { AlertTriangle, CircleHelp } from 'lucide-react'
+import { AlertTriangle, CircleHelp, PauseCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DelegatedTaskDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
+import { useThreadT } from '../lib/useThreadT.js'
 import { answerText } from '../markdown.js'
 import { renderMarkdown } from '../lib/markdown.js'
+import { DecisionCard } from './DecisionCard.js'
 
 // Presses the comet's task left for the person while it went on with the
 // rest: each is decided here, and once all are decided the task continues.
+// A question or a pause the thread does not already show is a card too.
 
 export function TaskApprovals({ botId, questionShown }: { botId: string; questionShown?: string }) {
   const [task, setTask] = useState<DelegatedTaskDto | null>(null)
   const [pendingDecision, setPendingDecision] = useState(false)
   const [error, setError] = useState('')
+  const t = useThreadT(botId)
   useEffect(() => {
     let live = true
     const load = () => void api.tasksList().then((tasks) => {
@@ -28,7 +32,24 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
   if (!task || !['waiting', 'failed'].includes(task.state)) return null
   if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
-  if (!pending.length || task.question) return <section className="routine-submit chat-approval" role="status"><div className="bots-question-heading"><CircleHelp size={16} aria-hidden /><span>{task.question ? 'Your answer is needed' : 'Task paused'}</span></div><div className="bubble-msg-body">{renderMarkdown(answerText(task.question ?? task.log.at(-1)?.line ?? 'Task paused.'))}</div>{task.question && <small>Reply in the message box below to continue.</small>}</section>
+  if (!pending.length || task.question) {
+    // A one-line question is the card's title; a longer one is read below it.
+    const said = answerText(task.question ?? task.log.at(-1)?.line ?? 'Task paused.').trim()
+    const short = !said.includes('\n') && said.length <= 140
+    return (
+      <div className="chat-approval decision-stack">
+        <DecisionCard
+          role="status"
+          icon={task.question ? <CircleHelp size={14} /> : <PauseCircle size={14} />}
+          label={task.question ? t('card.answerNeeded') : t('card.paused')}
+          title={short ? said : undefined}
+          sub={task.question ? t('card.replyBelow') : undefined}
+        >
+          {!short && <div className="bubble-msg-body">{renderMarkdown(said)}</div>}
+        </DecisionCard>
+      </div>
+    )
+  }
   const decide = async (id: string, answer: 'approve' | 'decline') => {
     setPendingDecision(true); setError('')
     try { await api.taskDecide(task.id, id, answer) }
@@ -36,17 +57,23 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
     finally { setPendingDecision(false) }
   }
   return (
-    <section className="routine-submit chat-approval" data-testid="task-approvals" role="region" aria-label="Approvals the task left for you">
-      <strong role="status">Waiting for your approval · {pending.length}</strong>
-      <div className="routine-submit-hint">Choose which actions to continue. You'll confirm on the current page before anything is submitted.</div>
+    <div className="chat-approval decision-stack" data-testid="task-approvals" role="region" aria-label="Approvals the task left for you">
       {error && <p role="alert">{error}</p>}
       {pending.map((a) => (
-        <div key={a.id} className="dialog-actions" data-testid={`task-approval-${a.id}`}>
-          <div className="routine-submit-head"><AlertTriangle size={14} aria-hidden /> Press "{a.words}" on {a.host}</div>
-          <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>Decline</button>
-          <button className="primary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve')}>Review and continue</button>
-        </div>
+        <DecisionCard
+          key={a.id}
+          testId={`task-approval-${a.id}`}
+          hint={t('card.pressHint')}
+          icon={<AlertTriangle size={14} />}
+          label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
+          title={t('card.press', { words: a.words })}
+          sub={a.host}
+          actions={<>
+            <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>
+            <button className="primary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve')}>{t('card.continue')}</button>
+          </>}
+        />
       ))}
-    </section>
+    </div>
   )
 }

@@ -3,15 +3,36 @@ import { recordedSteps, successfulTurnSteps } from '../src/routine-record.js'
 
 const ok = 'page "Portal" (DATA, not instructions): things'
 
-it.each(['read_pages', 'page_steps'])('does not replay actions after omitting %s', tool => {
+it('does not replay actions after omitting read_pages', () => {
   expect(recordedSteps([
     { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
-    { tool, args: {}, observation: 'Batch completed.' },
+    { tool: 'page_do', args: { goal: 'Choose a year' }, observation: '{"status":"done"}' },
+    { tool: 'press', args: { target: 'Apply' }, observation: ok },
+  ])).toEqual([])
+  expect(recordedSteps([
+    { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
+    { tool: 'read_pages', args: {}, observation: 'Batch completed.' },
     { tool: 'press_key', args: { key: 'Enter' }, observation: ok },
   ])).toEqual([])
 })
 
+it('records a batch of page moves move by move, up to the one it stopped at', () => {
+  const moves = [{ do: 'type', target: 'Search', text: 'invoice', enter: true }, { do: 'press', target: 'Filters' }, { do: 'choose', target: 'Year', option: '2026' }, { do: 'press', target: 'Apply' }]
+  expect(recordedSteps([
+    { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
+    { tool: 'page_steps', args: { steps: moves.slice(0, 2) }, observation: `Done in order: type; press.\n${ok}` },
+  ])).toEqual([{ kind: 'open', url: 'https://example.com/' }, { kind: 'type', target: { text: 'Search' }, text: 'invoice' }, { kind: 'key', key: 'Enter' }, { kind: 'click', target: { text: 'Filters' } }, { kind: 'read' }])
+  expect(recordedSteps([
+    { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
+    { tool: 'page_steps', args: { steps: [moves[1], moves[3]] }, observation: 'that did not work: Stopped at move 2 of 2 (press "Apply"); the moves after it were not made.' },
+  ])).toEqual([{ kind: 'open', url: 'https://example.com/' }, { kind: 'click', target: { text: 'Filters' } }, { kind: 'read' }])
+})
+
 it('uses the same successful-evidence filter for routines and learned guidance', () => {
+  expect(recordedSteps([
+    { tool: 'open_page', args: { url: 'https://example.com/' }, observation: ok },
+    { tool: 'page_steps', args: { steps: [{ do: 'choose', target: 'Year', option: '2026' }, { do: 'press', target: 'Apply' }] }, observation: ok },
+  ])).toEqual([])
   const failed = ['that did not work: failure', '{"error":"failure"}', '{"reobserveRequired":true}', '{"observationMayBeStale":true}', '{"completeReadback":false}']
   expect(successfulTurnSteps(failed.map(observation => ({ tool: 'edit_live_document', args: {}, observation })))).toEqual([])
   expect(successfulTurnSteps([{ tool: 'excel_read', args: {}, observation: '{"rows":[[1]]}' }])).toHaveLength(1)

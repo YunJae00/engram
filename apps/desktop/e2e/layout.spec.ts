@@ -286,7 +286,8 @@ test('the last answer stays above the composer and its soft scroll edge as the d
     await input.fill(draft)
     await screenshot(draft ? 'conversation-growing.png' : 'conversation-answer.png')
     await expect.poll(() => page.locator('.bots-thread').evaluate((node) => {
-      const last = node.querySelector('.bubble-msg.assistant:last-of-type p:last-child')!
+      const answers = node.querySelectorAll('.bubble-msg.assistant')
+      const last = answers[answers.length - 1]!.querySelector('p:last-child')!
       const line = last.getBoundingClientRect()
       const thread = node.getBoundingClientRect()
       const composer = node.closest('.bots-chat')!.querySelector('.bots-write')!.getBoundingClientRect()

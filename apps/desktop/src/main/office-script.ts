@@ -30,11 +30,16 @@ function Prop($obj, $name, $default) { if ($null -ne $obj -and $null -ne $obj.PS
 function Send($payload) { [Console]::Out.WriteLine((ConvertTo-Json -InputObject $payload -Compress -Depth 8)); [Console]::Out.Flush() }
 function ShowWork($doc, $kind, $compact) {
   if (-not (Prop $req 'activity' $false)) { return }
+  # An instance running with no window of its own has nothing to show; the
+  # work itself goes on unseen.
+  if ($doc.Windows.Count -lt 1) { return }
   $window = $doc.Windows.Item(1)
   if ($kind -eq 'ppt') { $window = $doc.Application }
-  $key = "$kind|$($doc.FullName)|$($window.Hwnd)"
+  $hwnd = [string]$window.Hwnd
+  if ($hwnd -notmatch '^[1-9][0-9]*$') { return }
+  $key = "$kind|$($doc.FullName)|$hwnd"
   if ($script:lastWorkDocument -ne $key) {
-    $doc.Windows.Item(1).Activate()
+    [void]$doc.Windows.Item(1).Activate()
     if ($compact) {
       $window.WindowState = $(if ($kind -eq 'excel') { -4143 } elseif ($kind -eq 'word') { 0 } else { 1 })
       $window.Left = [single]$compact.x; $window.Top = [single]$compact.y
@@ -43,7 +48,7 @@ function ShowWork($doc, $kind, $compact) {
     $script:lastWorkDocument = $key
   }
   $name = if ($kind -eq 'excel') { 'Excel' } elseif ($kind -eq 'word') { 'Word' } else { 'PowerPoint' }
-  Send @{ type = 'activity'; id = $id; window = ([string]$window.Hwnd); name = $name }
+  Send @{ type = 'activity'; id = $id; window = $hwnd; name = $name }
   $ack = ConvertFrom-Json -InputObject ([Console]::In.ReadLine())
   if ($ack.activity -ne $id) { throw 'Application work was not acknowledged.' }
 }
@@ -57,7 +62,7 @@ function Workbook($x, $name) {
   if ($name) {
     if (Test-Path -LiteralPath $name) { foreach ($wb in $x.Workbooks) { if ($wb.FullName -eq (Resolve-Path -LiteralPath $name).Path) { return $wb } }; return $x.Workbooks.Open((Resolve-Path -LiteralPath $name).Path) }
     foreach ($wb in $x.Workbooks) { if ($wb.Name -eq $name -or $wb.Name -eq ($name + '.xlsx')) { return $wb } }
-    throw "No open workbook is named '$name'. Call excel_workbooks to see what is open, or give a full path."
+    throw "No open workbook is named '$name'. Call excel_read with no arguments to see what is open, or give a full path."
   }
   throw 'Name the workbook explicitly before accessing it.'
 }
@@ -75,7 +80,7 @@ function Op-ExcelRead($a) {
   $x = App 'Excel.Application' $true
   $wb = Workbook $x (Prop $a 'workbook' $null)
   $sh = Sheet $wb (Prop $a 'sheet' $null)
-  if (Prop $req 'activity' $false) { $sh.Activate() }
+  if (Prop $req 'activity' $false) { [void]$sh.Activate() }
   ShowWork $wb 'excel' $null
   $rng = $sh.Range($a.range)
   if ([double]$rng.CountLarge -gt $CELL_CAP) { throw "Read at most $CELL_CAP cells at a time." }
@@ -105,7 +110,7 @@ function Op-ExcelWrite($a) {
   $x = App 'Excel.Application' $true
   $wb = TargetWorkbook $x $a
   $sh = TargetSheet $wb $a
-  if (Prop $req 'activity' $false) { $sh.Activate() }
+  if (Prop $req 'activity' $false) { [void]$sh.Activate() }
   ShowWork $wb 'excel' $(if ((Prop $a 'workbook' '') -eq 'new') { Prop $a 'compact' $null } else { $null })
   $n = 0
   foreach ($cell in $a.cells) {
@@ -144,7 +149,13 @@ function Op-ExcelWrite($a) {
   $x.Visible = $true
   $saved = $null
   $saveAs = Prop $a 'saveAs' $null
-  if ($saveAs) { $wb.SaveAs($saveAs); $saved = $wb.FullName }
+  if ($saveAs) {
+    # Excel holds one open workbook per file name; a name another open
+    # workbook already has is saved as a numbered sibling instead of failing.
+    $stem = [IO.Path]::GetFileNameWithoutExtension($saveAs); $ext = [IO.Path]::GetExtension($saveAs); $dir = [IO.Path]::GetDirectoryName($saveAs); $k = 2
+    while (@($x.Workbooks | Where-Object { $_.Name -eq [IO.Path]::GetFileName($saveAs) -and $_.FullName -ne $wb.FullName }).Count -gt 0) { $saveAs = Join-Path $dir ($stem + ' (' + $k + ')' + $ext); $k++ }
+    $wb.SaveAs($saveAs); $saved = $wb.FullName
+  }
   elseif ((Prop $a 'save' $false) -eq $true) { $wb.Save(); $saved = $wb.FullName }
   return @{ workbook = $wb.Name; sheet = $sh.Name; written = $n; saved = $saved }
 }
@@ -166,7 +177,10 @@ function Op-OutlookMail($a) {
   $search = Prop $a 'search' $null
   if ($search) {
     $q = $search.Replace("'", "''")
-    $items = $items.Restrict("@SQL=(""urn:schemas:httpmail:subject"" LIKE '%$q%' OR ""urn:schemas:httpmail:fromname"" LIKE '%$q%' OR ""urn:schemas:httpmail:textdescription"" LIKE '%$q%')")
+    # Subject and people are matched at once; the mail text is read only when they match nothing, since that reads every body.
+    $found = $items.Restrict("@SQL=(""urn:schemas:httpmail:subject"" LIKE '%$q%' OR ""urn:schemas:httpmail:fromname"" LIKE '%$q%' OR ""urn:schemas:httpmail:displayto"" LIKE '%$q%' OR ""urn:schemas:httpmail:displaycc"" LIKE '%$q%')")
+    if ($found.Count -eq 0) { $found = $items.Restrict("@SQL=""urn:schemas:httpmail:textdescription"" LIKE '%$q%'") }
+    $items = $found
     $items.Sort('[ReceivedTime]', $true)
   }
   $limit = [int](Prop $a 'limit' 20)
@@ -174,7 +188,7 @@ function Op-OutlookMail($a) {
   foreach ($m in $items) {
     if ($i -ge $limit) { break }
     if ($m.Class -ne 43) { continue }
-    $out += @{ id = $m.EntryID; subject = (Cap $m.Subject 200); from = (Cap $m.SenderName 100); received = $m.ReceivedTime.ToString('yyyy-MM-dd HH:mm'); unread = $m.UnRead; preview = (Cap ($m.Body -replace '\s+', ' ') 400) }
+    $out += @{ id = $m.EntryID; subject = (Cap $m.Subject 200); from = (Cap $m.SenderName 100); cc = (Cap $m.CC 200); received = $m.ReceivedTime.ToString('yyyy-MM-dd HH:mm'); unread = $m.UnRead; preview = (Cap ($m.Body -replace '\s+', ' ') 400) }
     $i++
   }
   return @{ folder = $folder.Name; count = $out.Count; mail = $out }
@@ -182,7 +196,24 @@ function Op-OutlookMail($a) {
 function Op-OutlookRead($a) {
   $ns = Mailbox
   $m = $ns.GetItemFromID($a.id)
-  return @{ id = $m.EntryID; subject = $m.Subject; from = $m.SenderName; to = (Cap $m.To 500); received = $m.ReceivedTime.ToString('yyyy-MM-dd HH:mm'); body = (Cap $m.Body $TEXT_CAP) }
+  # Attached files are saved where file_read can open them, so a mail is read
+  # with what came with it; links and items embedded in the mail are only named.
+  $files = @()
+  if ($m.Attachments.Count -gt 0) {
+    $dir = Join-Path ([IO.Path]::GetTempPath()) ('engram-mail\' + [Math]::Abs($m.EntryID.GetHashCode()))
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $i = 0
+    foreach ($att in $m.Attachments) {
+      if ($i -ge 20) { break }; $i++
+      $name = [IO.Path]::GetFileName([string]$att.FileName)
+      if (-not $name) { continue }
+      if ($att.Type -ne 1 -or $att.Size -gt 20MB) { $files += @{ name = $name; size = $att.Size; saved = $false }; continue }
+      $path = Join-Path $dir $name
+      $att.SaveAsFile($path)
+      $files += @{ name = $name; size = $att.Size; path = $path }
+    }
+  }
+  return @{ id = $m.EntryID; subject = $m.Subject; from = $m.SenderName; to = (Cap $m.To 500); received = $m.ReceivedTime.ToString('yyyy-MM-dd HH:mm'); body = (Cap $m.Body $TEXT_CAP); attachments = $files }
 }
 function Op-OutlookDraft($a) {
   $o = App 'Outlook.Application' $false
@@ -204,11 +235,13 @@ function Op-OutlookCalendar($a) {
   $cal = $ns.GetDefaultFolder(9)
   $items = $cal.Items; $items.IncludeRecurrences = $true; $items.Sort('[Start]')
   $days = [int](Prop $a 'days' 7)
-  $from = (Get-Date).Date; $to = $from.AddDays($days)
+  $start = Prop $a 'from' $null
+  $from = if ($start) { [datetime]::ParseExact($start, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) } else { (Get-Date).Date }
+  $to = $from.AddDays($days)
   $set = $items.Restrict("[Start] >= '" + $from.ToString('g') + "' AND [Start] < '" + $to.ToString('g') + "'")
   $out = @(); $i = 0
   foreach ($e in $set) { if ($i -ge 100) { break }; $out += @{ subject = (Cap $e.Subject 200); start = $e.Start.ToString('yyyy-MM-dd HH:mm'); end = $e.End.ToString('yyyy-MM-dd HH:mm'); location = (Cap $e.Location 120); organizer = (Cap $e.Organizer 100) }; $i++ }
-  return @{ days = $days; count = $out.Count; events = $out }
+  return @{ from = $from.ToString('yyyy-MM-dd'); days = $days; count = $out.Count; events = $out }
 }
 
 ${OFFICE_DOCUMENT_SCRIPT}
@@ -238,6 +271,9 @@ while ($true) {
       'word.edit' { $result = Op-WordEdit $params }
       default { throw "Unknown office operation '$($req.op)'." }
     }
+    # A COM call whose value was not discarded joins an operation's output;
+    # the answer is the operation's own result, its last value.
+    if ($result -is [array]) { $result = @($result | Where-Object { $null -ne $_ }) | Select-Object -Last 1 }
     Send @{ id = $id; ok = $true; result = $result }
   } catch {
     Send @{ id = $id; ok = $false; error = (Cap ($_.Exception.Message -replace '\s+', ' ') 400) }

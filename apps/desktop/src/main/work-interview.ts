@@ -1,8 +1,10 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
+import { setTimeout as delay } from 'node:timers/promises'
 import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   collectResult,
+  scriptLanguage,
   engineCwd,
   GUIDE_SCHEMA,
   guideBody,
@@ -19,6 +21,7 @@ import {
   readWorkMap,
   renameWithRetry,
   selectInterviewEvidence,
+  personSources,
   WORK_GUIDE_NOTE_ID,
   writeNote,
   type InterviewAnswer,
@@ -27,6 +30,7 @@ import {
   type VaultPaths,
 } from 'core'
 import { broadcast } from './engine-health.js'
+import { primeWorkMap } from './work-map-job.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 import type { PrepareInterview } from './interview-preparation.js'
@@ -79,8 +83,23 @@ export async function workGuide(paths: VaultPaths): Promise<string> {
   return guideForPrompt(await readGuide(paths).catch(() => null))
 }
 
+// Asked before the browser history has been read, the interview has only the
+// questions about the person to go on; it waits for that reading, briefly.
+const MAP_WAIT_MS = 120_000
+
+// The language to ask in: what the person wrote and visits, else the language
+// this computer is set to.
+function askingLanguage(text: string): string {
+  const named = scriptLanguage(text)
+  if (named) return named
+  const code = app.getPreferredSystemLanguages()[0] ?? app.getLocale()
+  try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? 'English' } catch { return 'English' }
+}
+
 async function evidence(ctx: VaultContext, signal: AbortSignal, preparedIds: readonly string[]) {
   const settings = await loadSettings()
+  signal.throwIfAborted()
+  if (settings.workMap) await Promise.race([primeWorkMap(ctx).catch(() => undefined), delay(MAP_WAIT_MS, undefined, { signal })])
   signal.throwIfAborted()
   const [map, playbooks, excludedIds, notes] = await Promise.all([
     settings.workMap ? readWorkMap(ctx.paths).catch(() => null) : null,
@@ -92,7 +111,9 @@ async function evidence(ctx: VaultContext, signal: AbortSignal, preparedIds: rea
   const guide = existing?.front.status === 'current' ? existing.body : ''
   signal.throwIfAborted()
   const prepared = new Set(preparedIds)
-  return selectInterviewEvidence({ map, playbooks, guide, excludedIds, notes: notes.filter(note => prepared.has(note.front.id)) })
+  const selected = selectInterviewEvidence({ map, playbooks, guide, excludedIds, notes: notes.filter(note => prepared.has(note.front.id)) })
+  const said = [...(map?.places ?? []).map(place => place.purpose ?? place.title ?? ''), ...playbooks.map(one => one.goal), guide, ...selected.sources.map(one => one.label)].join('\n')
+  return { ...selected, sources: [...selected.sources, ...personSources(excludedIds)], language: askingLanguage(said) }
 }
 
 // One retry when the reply cannot be used: a model sometimes answers in prose.

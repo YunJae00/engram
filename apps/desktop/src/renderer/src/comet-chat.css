@@ -1,0 +1,68 @@
+/* A comet's thread reads as a conversation, in the full view and in a split
+   tile alike: its words in soft bubbles on the left, the person's on the
+   right, one typing bubble at the foot while it works, each turn's work as a
+   card, found items as cards and next moves as buttons. */
+:is(.bots-thread, .mini-chat-thread).conversation-thread { gap: 6px; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg { position: relative; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant,
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.said,
+:is(.bots-thread, .mini-chat-thread) .bubble-typing { align-self: flex-start; max-width: min(88%, 680px); padding: 10px 15px; border-radius: 18px 18px 18px 6px; background: var(--hover-bg); color: var(--fg); line-height: 1.6; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.user { max-width: min(80%, 620px); padding: 10px 15px; border-radius: 18px 18px 6px 18px; margin-top: 10px; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--hover-bg); border: 0; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.checking { opacity: 0.55; transition: opacity 200ms ease; }
+:is(.bots-thread, .mini-chat-thread) .comet-work { gap: 6px; margin: 0; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-lines { gap: 6px; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.said { display: block; font-size: var(--fs-chat); }
+/* Copy sits outside the bubble and shows on hover, so a bubble is only its words. */
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant .answer-actions { position: absolute; left: calc(100% + 4px); bottom: 2px; min-height: 0; margin: 0; opacity: 0; transition: opacity 120ms ease; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant:hover .answer-actions,
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant .answer-actions:focus-within { opacity: 1; }
+:is(.bots-thread, .mini-chat-thread) .answer-sites { margin-top: 8px; }
+.mini-chat-thread :is(.bubble-msg, .comet-work-line.said, .bubble-typing) { font-size: 13px; padding: 8px 12px; }
+
+/* The typing bubble: dots, what the comet is doing, and how long it has been. */
+.bubble-typing { animation: fade-in 160ms ease; }
+.bubble-typing .bubble-thinking { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bubble-typing .bubble-thinking-label { color: var(--fg-dim); font-size: var(--fs-small); }
+.bubble-typing .thinking-elapsed { color: var(--fg-faint); font-size: var(--fs-micro, 11px); }
+
+.answer-cards { display: grid; gap: 8px; margin: 10px 0; }
+.answer-cards:last-child { margin-bottom: 0; }
+.answer-card { min-width: 0; padding: 12px 14px; border-radius: var(--radius-m); background: var(--panel-bg); }
+.answer-card-title { font-weight: 650; color: var(--fg-strong); line-height: 1.5; overflow-wrap: anywhere; }
+.answer-card dl { display: grid; grid-template-columns: fit-content(9em) minmax(0, 1fr); column-gap: 12px; row-gap: 3px; margin: 6px 0 0; font-size: var(--fs-small); line-height: 1.55; }
+.answer-card dl > div { display: contents; }
+.answer-card dt { color: var(--fg-faint); overflow-wrap: anywhere; }
+.answer-card dd { margin: 0; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
+
+.reply-chips { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; max-width: 100%; margin: 4px 0 6px; animation: fade-in 180ms ease; }
+.reply-chip { max-width: 100%; padding: 7px 13px; border-radius: 999px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); color: var(--fg); font-size: var(--fs-small); text-align: left; overflow-wrap: anywhere; }
+.reply-chip:hover { background: var(--hover-bg); }
+
+/* The finished work as a card in the thread, opened into a quiet record of its steps. */
+.comet-work-card { display: flex; align-items: center; gap: 10px; align-self: flex-start; min-width: min(260px, 100%); max-width: min(88%, 420px); padding: 9px 12px; border-radius: 14px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); color: var(--fg); text-align: left; animation: fade-in 180ms ease; }
+.comet-work-card:hover { background: var(--hover-bg); }
+.comet-work-card-icon { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 9px; background: var(--hover-bg); color: var(--fg-dim); }
+.comet-work-card-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.35; }
+.comet-work-card-title { font-weight: 600; font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comet-work-card-text small { color: var(--fg-faint); font-size: var(--fs-micro, 11px); }
+.comet-work-card > svg { flex: 0 0 auto; color: var(--fg-faint); }
+.comet-work-steps { list-style: none; align-self: flex-start; width: min(88%, 560px); margin: 0; padding: 6px 10px; border-radius: 12px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); font-size: var(--fs-small); color: var(--fg-dim); }
+.comet-work-steps .work-group summary { font-size: var(--fs-small); }
+.comet-work-steps .comet-work-line { padding: 2px 0; }
+
+@media (prefers-reduced-motion: reduce) { .reply-chips, .comet-work-card, .bubble-typing { animation: none; } }
+
+/* Cutting in on a reply in progress: the waiting message goes now. */
+.queued-messages li { gap: 6px; }
+.queued-messages li > span { flex: 1; min-width: 0; }
+.queued-send-now { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--fg-strong); color: var(--bg); font-size: var(--fs-micro); }
+.queued-send-now:hover { opacity: 0.88; }
+
+/* What the person wrote while the work was going sits in the work where it was said, as their own bubble. */
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.you { display: block; align-self: flex-end; max-width: min(80%, 620px); padding: 10px 15px; border-radius: 18px 18px 6px 18px; background: var(--selected-soft); color: var(--fg-strong); font-size: var(--fs-chat); line-height: 1.6; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-lines { align-items: stretch; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-lines > li.said { align-self: flex-start; }
+
+/* A message a kept schedule said for the person carries a small clock, so it does not read as typed then. */
+:is(.bots-thread, .mini-chat-thread) .bubble-scheduled { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--fg-faint); font-size: var(--fs-micro, 11px); }

@@ -7,7 +7,7 @@ import { placeNoteId, type WorkMap } from './work-map.js'
 
 export interface InterviewSource {
   id: string
-  kind: 'task' | 'place' | 'guide'
+  kind: 'task' | 'place' | 'guide' | 'person'
   label: string
   grounding: {
     completedCount?: number
@@ -22,6 +22,8 @@ export interface InterviewSource {
 
 export interface InterviewEvidence {
   sources?: InterviewSource[]
+  // The language to ask in, named; without it, the language of the evidence.
+  language?: string
   guide?: string
   context?: {
     source: string
@@ -37,7 +39,7 @@ export interface InterviewEvidence {
   facts?: string[]
 }
 
-export const INTERVIEW_SOURCE_ID = /^(?:task|place|guide)-[a-f0-9]{24}$/
+export const INTERVIEW_SOURCE_ID = /^(?:task|place|guide|person)-[a-f0-9]{24}$/
 const SOURCE_LIMIT = 8
 const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
 const sourceId = (kind: InterviewSource['kind'], key: string) => `${kind}-${createHash('sha256').update(normalize(key)).digest('hex').slice(0, 24)}`
@@ -61,6 +63,20 @@ function host(raw: string): string | undefined {
     const url = new URL(raw.includes('://') ? raw : `https://${raw}`)
     return /^https?:$/.test(url.protocol) && !url.username && !url.password ? url.hostname.toLowerCase() : undefined
   } catch { return undefined }
+}
+
+// The person is always worth asking about, not only the work traces show:
+// how they want to be answered and told, what must wait for them, what their
+// work is. Each is asked once; the guide keeps the answer.
+const PERSON_TOPICS = [
+  'How they want answers: length, tone, and what comes first',
+  'What Engram must always check with them before doing it',
+  'Their work: role, team, and what they are responsible for',
+  'When and how they want to hear about something new: mail, schedule, tasks',
+]
+export function personSources(excludedIds: readonly string[] = []): InterviewSource[] {
+  const excluded = new Set(excludedIds)
+  return PERSON_TOPICS.map(label => ({ id: sourceId('person', label), kind: 'person' as const, label, grounding: {} })).filter(one => !excluded.has(one.id))
 }
 
 export function selectInterviewEvidence({ map, playbooks = [], guide = '', notes = [], excludedIds = [], now = new Date() }: {

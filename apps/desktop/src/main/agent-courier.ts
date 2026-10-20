@@ -1,3 +1,4 @@
+import { net } from 'electron'
 import { markNewControls, type PageMove, type WebCourier, type WebPage } from 'core'
 import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, laneLastUrl, lanePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
@@ -6,6 +7,9 @@ import { revealText } from './page-reveal.js'
 import { maskSecrets } from './page-mask.js'
 import { touchedAt } from './agent-view.js'
 import { readWhenReady } from './page-ready.js'
+import { flog } from './flog.js'
+
+const SLOW_OPEN_MS = 5_000
 
 // What a comet is given when it can reach the web: one browser, one reused
 // tab, and the hands that move around a page without committing anything.
@@ -15,14 +19,21 @@ import { readWhenReady } from './page-ready.js'
 // A hand on a page answers within a budget, or answers that it did not: a
 // page that swallows a click must not swallow the turn with it.
 const HAND_BUDGET_MS = 45_000
-function withinBudget(work: Promise<PageMove>, awaitCompletion = false): Promise<PageMove> {
+// A person deciding whether a press may go is not the page being slow: while
+// `held` hands back their pending answer, the budget waits for it and starts over.
+function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: () => Promise<unknown> | null): Promise<PageMove> {
   if (awaitCompletion) return work
-  return Promise.race([
-    work,
-    new Promise<PageMove>((resolve) =>
-      setTimeout(() => resolve({ ok: false, error: 'the page did not answer that in time' }), HAND_BUDGET_MS).unref(),
-    ),
-  ])
+  return new Promise<PageMove>((resolve, reject) => {
+    const arm = (): void => {
+      setTimeout(() => {
+        const waiting = held?.()
+        if (waiting) void waiting.then(arm, arm)
+        else resolve({ ok: false, error: 'the page did not answer that in time' })
+      }, HAND_BUDGET_MS).unref()
+    }
+    arm()
+    work.then(resolve, reject)
+  })
 }
 
 // Two comets sharing one browser share its sign-ins - and so, on one site,
@@ -112,9 +123,11 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      // Human approval is not a timed-out click: retain the lane until it
-      // resolves. The actual Playwright click has its own bounded timeout.
-      return inTurnOn(page.url(), () => pressOn(page, target, signal, ask), signal)
+      // The press is bounded like every hand, except while the person is
+      // answering whether it may go.
+      let asking: Promise<unknown> | null = null
+      const held: typeof ask = ask && ((what) => { const answer = ask(what); asking = answer; return answer.finally(() => { asking = null }) })
+      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, held), deps.awaitCompletion, () => asking), signal)
     },
     async typeText(target, text, enter, signal) {
       await aside(signal)
@@ -172,11 +185,23 @@ export function agentCourier(
       if (shot) deps.onLook?.(page.url(), masked?.covered ?? 0)
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
+    async followRedirect(url, signal) {
+      const response = await net.fetch(url, { redirect: 'manual', ...(signal ? { signal } : {}) })
+      const target = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null
+      await response.body?.cancel().catch(() => undefined)
+      return target ? new URL(target, url).href : null
+    },
     async fetchPage(url, signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
+      // A slow open is logged with where the time went: a page can answer at once and still
+      // hold its loaded event behind a third-party script that never responds.
+      const started = performance.now()
       await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
+      const loaded = performance.now()
       const result = await withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
+      const read = performance.now()
+      if (read - started > SLOW_OPEN_MS) flog('browser', `slow open ${new URL(url).host}: loaded ${Math.round(loaded - started)}ms, read ${Math.round(read - loaded)}ms`)
       armIdleClose()
       return markReading(result)
     },

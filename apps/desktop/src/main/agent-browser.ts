@@ -7,6 +7,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
+import { watchStalledScripts } from './stalled-scripts.js'
 import { markAgentProfile } from './agent-profile.js'
 import { reserveRoom } from './memory-plan.js'
 import { observationOf, readFrames } from './page-reader.js'
@@ -15,6 +16,7 @@ import { BrowserLanes } from './browser-lanes.js'
 import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
 import { nativePagesVisible } from './native-layout.js'
 import { resizePreview } from './page-preview.js'
+import { takeDownloads, watchDownloads } from './page-downloads.js'
 
 // Native and external browser pages share the same CDP automation and lane
 // ownership. Each backend keeps its own persistent profile under userData.
@@ -191,7 +193,9 @@ export function classifyWall(
   hasPasswordField: boolean,
 ): 'login' | 'captcha' | null {
   const head = `${title}\n${textHead.slice(0, 2_500)}`
-  if (/captcha|are you a robot|not a robot|unusual traffic|verify you are human|one last step|real person|cloudflare.{0,40}checking|비정상적인 트래픽|로봇이 아니|사람인지 확인/i.test(head))
+  // A site that says it refuses automated requests is a check only the
+  // person passes: the step is handed to them, never worked around.
+  if (/captcha|are you a robot|not a robot|unusual traffic|verify you are human|one last step|real person|cloudflare.{0,40}checking|automated (requests?|access|queries)|bot (traffic|activity) (was )?detected|비정상적인 트래픽|로봇이 아니|사람인지 확인|자동화된 (요청|접근|접속)|자동 (요청|접속)으로 (감지|차단)|매크로.{0,12}(감지|차단|의심)/i.test(head))
     return 'captcha'
   if (hasPasswordField) return 'login'
   const onAuthPath = /\/(login|signin|sign-in|sign_in|sso|auth)\b/i.test(new URL(url).pathname)
@@ -277,7 +281,7 @@ export async function resetLane(lane: string): Promise<void> {
 
 // Whoever mirrors the window is told of every page as it opens, and which
 // lane it belongs to.
-const pageWatchers = new Set<(page: Page, lane: string | null) => void>()
+const pageWatchers = new Set<(page: Page, lane: string | null) => void>([watchDownloads(laneOf)])
 
 export function watchAgentPages(watcher: (page: Page, lane: string | null) => void): () => void {
   pageWatchers.add(watcher)
@@ -353,6 +357,7 @@ async function ensureContext(): Promise<Ctx> {
     if (nativeBrowserEnabled()) {
       const ctx = await openNativeBrowser()
       context = ctx
+      watchStalledScripts(ctx)
       ctx.on('close', () => { if (context === ctx) { context = null; lanes.clear() } })
       ctx.on('page', (page) => {
         const requestedLane = allocatingLane
@@ -428,6 +433,7 @@ async function ensureContext(): Promise<Ctx> {
       if (BLOCKED_RESOURCES.has(route.request().resourceType())) return route.abort()
       return route.continue()
     })
+    watchStalledScripts(ctx)
     // The user closing the agent window by hand must read as "gone", not
     // leave a dead handle every later errand trips over.
     ctx.on('close', () => {
@@ -510,7 +516,8 @@ export async function readPage(page: Page, signal?: AbortSignal): Promise<WebPag
   const reading = await readFrames(page, signal).catch(() => null)
   signal?.throwIfAborted()
   const text = reading?.text ?? ''
-  const wall = classifyWall(url, title, text, reading?.hasPasswordField ?? false)
+  // A refusal often arrives as a dialog over a page that otherwise reads fine.
+  const wall = classifyWall(url, title, `${reading?.dialog ?? ''}\n${text}`, reading?.hasPasswordField ?? false)
   return {
     url,
     title,
@@ -521,8 +528,15 @@ export async function readPage(page: Page, signal?: AbortSignal): Promise<WebPag
     ...(reading?.hidden ? { hidden: reading.hidden } : {}),
     ...(reading?.dialog ? { dialog: reading.dialog } : {}),
     ...(reading?.faults?.length ? { faults: reading.faults } : {}),
+    ...downloadsOf(page),
     ...(wall ? { wall } : {}),
   }
+}
+
+function downloadsOf(page: Page): { downloads?: string[] } {
+  const lane = laneOf(page)
+  const saved = lane ? takeDownloads(lane) : []
+  return saved.length ? { downloads: saved } : {}
 }
 
 async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {

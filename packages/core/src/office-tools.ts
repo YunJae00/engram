@@ -65,7 +65,7 @@ function excelArgs(args: unknown, tool: string): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   const workbook = optionalText(args['workbook'], NAME_CAP, 'workbook')
   const sheet = optionalText(args['sheet'], 64, 'sheet')
-  if (!workbook || !sheet) throw new Error('Name the workbook and sheet explicitly; use excel_workbooks to find them, or workbook: "new" to create one.')
+  if (!workbook || !sheet) throw new Error('Name the workbook and sheet explicitly; excel_read with no workbook lists the open ones, or use workbook: "new" to create one.')
   if (workbook) out['workbook'] = workbook
   if (sheet) out['sheet'] = sheet
   return out
@@ -106,9 +106,10 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'excel_read',
-      description: `Read at most 4000 cells from an explicitly named workbook and sheet. Use excel_workbooks to find their names. range looks like "A1:D20". ${READ_NOTE}`,
-      argsSchema: { type: 'object', additionalProperties: false, required: ['range', 'workbook', 'sheet'], properties: { range: { type: 'string' }, workbook: { type: 'string' }, sheet: { type: 'string' } } },
+      description: `Read at most 4000 cells from an explicitly named workbook and sheet. With no workbook given, it lists the workbooks open in Excel with their sheets instead. range looks like "A1:D20". ${READ_NOTE}`,
+      argsSchema: { type: 'object', additionalProperties: false, properties: { range: { type: 'string' }, workbook: { type: 'string' }, sheet: { type: 'string' } } },
       run: (args, context) => {
+        if (plain(args) && Object.keys(args).length === 0) return call('excel.workbooks', {}, context)
         const out = excelArgs(args, 'excel_read')
         only(args as Record<string, unknown>, ['range', 'workbook', 'sheet'], 'excel_read')
         const range = (args as Record<string, unknown>)['range']
@@ -119,7 +120,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'excel_write',
-      description: 'Write cells, formats and charts to an explicitly named workbook and sheet. workbook: "new" creates a workbook; otherwise use its name or path from excel_workbooks. sheet names or creates a tab. Reuse the returned workbook and sheet for subsequent calls, never the active selection. cells: [{cell:"B2", value:23.5}]; strings starting with "=" are validated local formulas. formats: [{range:"A1:D1", bold, fill:"1F4E79", fontColor:"FFFFFF", numberFormat:"#,##0", align, border, autofit}]. charts: [{data:"A1:B6", type:"column|line|bar|pie", title, left, top, width, height}]. At most 4000 cells per range. Saved only when saveAs names a file or save is true. Read back changes before claiming completion.',
+      description: 'Write cells, formats and charts to an explicitly named workbook and sheet. workbook: "new" creates a workbook; otherwise use its name or path as excel_read lists it. sheet names or creates a tab. Reuse the returned workbook and sheet for subsequent calls, never the active selection. cells: [{cell:"B2", value:23.5}]; strings starting with "=" are validated local formulas. formats: [{range:"A1:D1", bold, fill:"1F4E79", fontColor:"FFFFFF", numberFormat:"#,##0", align, border, autofit}]. charts: [{data:"A1:B6", type:"column|line|bar|pie", title, left, top, width, height}]. At most 4000 cells per range. Saved only when saveAs names a file or save is true. Read back changes before claiming completion.',
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['cells', 'workbook', 'sheet'],
         properties: {
@@ -158,7 +159,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_mail',
-      description: `List recent mail from Outlook: folder (inbox, sent, drafts, or a folder name), search (words in subject, sender or body), limit up to 50. Each item carries an id for outlook_read and outlook_draft. ${READ_NOTE}`,
+      description: `List recent mail from Outlook: folder (inbox, sent, drafts, or a folder name), search (words in the subject or a sender, To or Cc name; the mail text is searched only when none of those match), limit up to 50. Each item carries an id for outlook_read and outlook_draft. ${READ_NOTE}`,
       argsSchema: { type: 'object', additionalProperties: false, properties: { folder: { type: 'string' }, search: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 50 } } },
       run: (args, context) => {
         if (!plain(args)) throw new Error('outlook_mail takes an object.')
@@ -171,7 +172,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_read',
-      description: `Read one mail in full by the id outlook_mail gave. ${READ_NOTE}`,
+      description: `Read one mail in full by the id outlook_mail gave. Its attached files come back with a saved path each; open one with file_read. ${READ_NOTE}`,
       argsSchema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string' } } },
       run: (args, context) => {
         if (!plain(args)) throw new Error('outlook_read takes an object.')
@@ -198,12 +199,14 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_calendar',
-      description: `List the person's calendar for the next days (1 to 60, default 7). ${READ_NOTE}`,
-      argsSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 60 } } },
+      description: `List the person's calendar for some days (1 to 60, default 7) starting at from (YYYY-MM-DD, default today) - a past week too, from its first day. ${READ_NOTE}`,
+      argsSchema: { type: 'object', additionalProperties: false, properties: { days: { type: 'integer', minimum: 1, maximum: 60 }, from: { type: 'string' } } },
       run: (args, context) => {
         if (!plain(args)) throw new Error('outlook_calendar takes an object.')
-        only(args, ['days'], 'outlook_calendar')
-        return call('outlook.calendar', { days: bounded(args['days'], 7, 60) }, context)
+        only(args, ['days', 'from'], 'outlook_calendar')
+        const from = optionalText(args['from'], 10, 'from')
+        if (from !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(from) || Number.isNaN(Date.parse(from)))) throw new Error('from is a day as YYYY-MM-DD.')
+        return call('outlook.calendar', { days: bounded(args['days'], 7, 60), ...(from ? { from } : {}) }, context)
       },
     },
     {

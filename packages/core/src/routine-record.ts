@@ -49,13 +49,62 @@ function words(args: Record<string, unknown>, key: string): string {
 // The successful path, as replayable steps. A control named only by its
 // number (#12) is left out - numbers are the order of one reading and mean
 // nothing on the next visit. Keys cannot depend on an omitted interaction.
+// A batch of page moves counts move by move, up to the one it stopped at.
 export function recordedSteps(steps: TurnStep[]): RoutineStep[] {
   const out: RoutineStep[] = []
   let keyContextRecorded = true
   const pushRead = (): void => { if (out.length === 0 || out[out.length - 1]!.kind !== 'read') out.push({ kind: 'read' }) }
-  for (const step of successfulTurnSteps(steps)) {
+  // One move on the page; false when the path can no longer be replayed faithfully.
+  const move = (tool: string, args: Record<string, unknown>): boolean => {
+    if (tool === 'press') {
+      const target = words(args, 'target')
+      if (target && !target.startsWith('#')) out.push({ kind: 'click', target: { text: target } })
+      else keyContextRecorded = false
+      return true
+    }
+    if (tool === 'type_text') {
+      const target = words(args, 'target')
+      const text = words(args, 'text')
+      if (target && text && !target.startsWith('#')) {
+        out.push({ kind: 'type', target: { text: target }, text })
+        // Preserve the key that requested the search results.
+        if (args['enter'] === true) {
+          if (!keyContextRecorded) return false
+          out.push({ kind: 'key', key: 'Enter' })
+        }
+        return true
+      }
+      if (args['enter'] === true) return false
+      keyContextRecorded = false
+      return true
+    }
+    if (tool === 'press_key') {
+      const key = words(args, 'key')
+      if (!keyContextRecorded) return false
+      if (REPLAYABLE_KEYS.has(key)) out.push({ kind: 'key', key })
+      else keyContextRecorded = false
+      return true
+    }
+    keyContextRecorded = false
+    return true
+  }
+  for (const step of steps) {
+    if (step.seeded) continue
+    if (step.tool === 'page_steps') {
+      const moves = Array.isArray(step.args['steps']) ? (step.args['steps'] as unknown[]).filter((one): one is Record<string, unknown> => !!one && typeof one === 'object' && !Array.isArray(one)) : []
+      const stopped = /Stopped at move (\d+) of/.exec(step.observation.slice(0, 200))
+      const made = worked(step.observation) ? moves.length : stopped ? Number(stopped[1]) - 1 : 0
+      for (const one of moves.slice(0, made)) {
+        const kind = words(one, 'do')
+        if (!['press', 'type', 'key'].includes(kind)) return []
+        const tool = kind === 'press' ? 'press' : kind === 'type' ? 'type_text' : kind === 'key' ? 'press_key' : kind
+        if (!move(tool, kind === 'key' ? { key: one['key'] } : one)) return []
+      }
+      continue
+    }
+    if (!worked(step.observation)) continue
     // Batch checks cannot be represented by the legacy click-only replay format.
-    if (step.tool === 'read_pages' || step.tool === 'page_steps') return []
+    if (step.tool === 'read_pages' || step.tool === 'page_do') return []
     if (step.tool === 'open_page') {
       const url = words(step.args, 'url')
       if (/^https?:\/\//i.test(url)) {
@@ -67,35 +116,7 @@ export function recordedSteps(steps: TurnStep[]): RoutineStep[] {
       }
       continue
     }
-    if (step.tool === 'press') {
-      const target = words(step.args, 'target')
-      if (target && !target.startsWith('#')) out.push({ kind: 'click', target: { text: target } })
-      else keyContextRecorded = false
-      continue
-    }
-    if (step.tool === 'type_text') {
-      const target = words(step.args, 'target')
-      const text = words(step.args, 'text')
-      if (target && text && !target.startsWith('#')) {
-        out.push({ kind: 'type', target: { text: target }, text })
-        // Preserve the key that requested the search results.
-        if (step.args['enter'] === true) {
-          if (!keyContextRecorded) return []
-          out.push({ kind: 'key', key: 'Enter' })
-        }
-      } else {
-        if (step.args['enter'] === true) return []
-        keyContextRecorded = false
-      }
-      continue
-    }
-    if (step.tool === 'press_key') {
-      const key = words(step.args, 'key')
-      if (!keyContextRecorded) return []
-      if (REPLAYABLE_KEYS.has(key)) out.push({ kind: 'key', key })
-      else keyContextRecorded = false
-      continue
-    }
+    if (['press', 'type_text', 'press_key'].includes(step.tool)) { if (!move(step.tool, step.args)) return []; continue }
     // Keep explicit observations and collapse only adjacent reads.
     if (step.tool === 'read_open_page' || step.tool === 'look') { pushRead(); continue }
     if (['choose', 'press_point', 'hover', 'reveal'].includes(step.tool)) keyContextRecorded = false

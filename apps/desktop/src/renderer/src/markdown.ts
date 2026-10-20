@@ -1,5 +1,5 @@
-import { marked } from 'marked'
-import { normalizeProse } from '../../../../../packages/core/src/prose.js'
+import { marked, type Tokens } from 'marked'
+import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
 // A model that indents its bullets turns the whole answer into a markdown code
 // block, which then refuses to wrap and runs off the side of the panel. Strip
@@ -41,8 +41,72 @@ export function memorySources(text: string): { url: string; label: string }[] {
   return [...sources].map(([url, label]) => ({ url, label }))
 }
 
+// Replies the comet suggests come last, in a fenced block of their own; they are
+// shown as buttons, never as text - mid-stream too, before the fence closes.
+const REPLIES_OPEN = /^[ \t]*```[ \t]*replies[ \t]*$/im
+const REPLIES_AT_MOST = 3
+
+export function answerReplies(text: string): string[] {
+  const visible = text.split('<engram:capture')[0] ?? ''
+  const open = visible.search(REPLIES_OPEN)
+  if (open < 0) return []
+  const body = visible.slice(open).split('\n').slice(1)
+  const close = body.findIndex((line) => /^\s*```\s*$/.test(line))
+  if (close < 0) return []
+  return body.slice(0, close).map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim()).filter((line) => line.length > 0 && line.length <= 80).slice(0, REPLIES_AT_MOST)
+}
+
+function withoutReplies(text: string): string {
+  const open = text.search(REPLIES_OPEN)
+  if (open < 0) return text
+  const rest = text.slice(open).split('\n')
+  const close = rest.findIndex((line, index) => index > 0 && /^\s*```\s*$/.test(line))
+  return (text.slice(0, open) + (close < 0 ? '' : rest.slice(close + 1).join('\n'))).trimEnd()
+}
+
+export function suggestedReplies(text: string): string[] {
+  const supplied = [...new Set(answerReplies(text))]
+  const defaults = suggestedReplyDefaults(answerText(text))
+  return supplied.length >= 2 ? supplied : [...new Set([...supplied, ...defaults])].slice(0, 2)
+}
+
+// Only split message separators outside code and hidden suggestion blocks.
+export function answerBubbles(text: string): string[] {
+  const parts: string[][] = [[]]
+  let fence: string | undefined
+  for (const line of answerText(text).split('\n')) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+    if (marker && !fence) fence = marker
+    else if (marker && fence && marker[0] === fence[0] && marker.length >= fence.length && /^\s*(?:`+|~+)\s*$/.test(line)) fence = undefined
+    if (!fence && /^\s*-{3,}\s*$/.test(line)) { parts.push([]); continue }
+    parts[parts.length - 1]!.push(line)
+  }
+  const bubbles = parts.map((part) => part.join('\n').trim()).filter(Boolean)
+  return bubbles.length ? bubbles : [answerText(text)]
+}
+
 export function answerText(text: string): string {
-  return normalizeProse(unfence(text.split('<engram:capture')[0] ?? ''))
+  return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
+}
+
+// A table of found items reads as a stack of cards: the first column names the
+// item, the other columns become its labelled details. Two-column tables stay
+// tables - they are a list of values, not of items.
+const CARD_COLUMNS_MIN = 3
+const CARD_ROWS_MAX = 20
+
+function cardsHtml(token: Tokens.Table, inline: (tokens: Tokens.TableCell['tokens']) => string): string | null {
+  if (token.header.length < CARD_COLUMNS_MIN || token.rows.length === 0 || token.rows.length > CARD_ROWS_MAX) return null
+  const labels = token.header.map((cell) => inline(cell.tokens))
+  const cards = token.rows.map((row) => {
+    const title = inline(row[0]?.tokens ?? [])
+    const details = row.slice(1).map((cell, index) => {
+      const value = inline(cell.tokens)
+      return value.trim() ? `<div><dt>${labels[index + 1] ?? ''}</dt><dd>${value}</dd></div>` : ''
+    }).join('')
+    return `<article class="answer-card"><div class="answer-card-title">${title}</div>${details ? `<dl>${details}</dl>` : ''}</article>`
+  })
+  return `<div class="answer-cards">${cards.join('')}</div>`
 }
 
 export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
@@ -62,6 +126,8 @@ export function answerHtml(text: string, sourceUrls: string[] = [], notes: strin
     })
     return redundant ? '' : paragraph(token)
   }
+  const table = renderer.table.bind(renderer)
+  renderer.table = (token) => cardsHtml(token, (tokens) => renderer.parser.parseInline(tokens)) ?? table(token)
   const code = renderer.code.bind(renderer)
   renderer.code = (token) => `<div class="answer-code"><div class="answer-code-head"><span>Code</span><button type="button" data-copy-code="true">Copy code</button></div>${code(token)}</div>`
   return marked.parse(dedent(visible) || '…', { async: false, renderer }) as string

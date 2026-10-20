@@ -13,6 +13,15 @@ let owner: BrowserWindow | undefined
 let releaseControl: (lane: string, reason: string) => void = () => undefined
 const LANE = /^bot-[a-zA-Z0-9_-]{1,140}$/
 export function setDesktopReleaseHook(hook: typeof releaseControl): void { releaseControl = hook }
+let laneWorking: (lane: string) => boolean = () => true
+// Apps the person keeps out of reach, by the name their windows end with.
+let labelsOff: string[] = []
+export function setDesktopAppsOff(labels: string[]): void { labelsOff = labels.map(label => label.toLowerCase()) }
+export function keptOut(title: string): string | undefined {
+  const tail = title.split(/\s+[-|—–]\s+/).at(-1)?.trim().toLowerCase() ?? ''
+  return labelsOff.find(label => label === tail || label === title.trim().toLowerCase())
+}
+export function setDesktopLaneWorking(test: typeof laneWorking): void { laneWorking = test }
 export function desktopBinding(lane: string): Binding | undefined { return bindings.get(lane) }
 export function desktopChanged(): void { changed() }
 export function setDesktopOwner(window: BrowserWindow): void {
@@ -112,10 +121,15 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     const wanted = pick.app?.trim().toLocaleLowerCase()
     const candidates = wanted ? windows.filter((one) => one.title.toLocaleLowerCase().includes(wanted)) : windows.filter((one) => one.foreground)
     const target = candidates.find((one) => !one.minimized && one.foreground) ?? candidates.find((one) => !one.minimized) ?? candidates[0]
-    if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open that app first, or call list_windows to see what is open.` : 'No app window is in front to work in. Name one with app, or open it first.')
+    // The open windows travel with the miss, so the next call can name one without a separate listing.
+    const open = windows.map((one) => one.title).filter(Boolean).slice(0, 40).map((title) => `"${title}"`).join(', ')
+    if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
+    if (keptOut(target.title)) throw new Error(`The person keeps "${target.title}" out of Engram's reach in Settings. Do not work in it; say so, and that they can allow it in Settings.`)
     const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)
-    if (taken) throw new Error(`"${target.title}" belongs to another chat right now.`)
+    // A window stays with a chat only while that chat is working in it.
+    if (taken && laneWorking(taken.lane)) throw new Error(`"${target.title}" belongs to another chat right now.`)
+    if (taken) releaseDesktop(taken.lane)
     if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; return current }
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     if (current && current.host !== host) current.host.close()

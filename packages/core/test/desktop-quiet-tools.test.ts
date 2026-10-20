@@ -31,6 +31,10 @@ describe('quiet app tools', () => {
     expect(await tool.run({ app: 'Notes', goal: 'Open draft', maxSteps: 100 }, CONTEXT)).toContain('maxSteps from 1 to 12')
     await expect(tool.run({ app: 'Notes', goal: 'Set text', text: 'token sk-proj-abcdefghijklmnopqrstuvwxyz' }, CONTEXT)).rejects.toThrow(/secret/i)
     expect(run).toHaveBeenCalledTimes(1)
+    expect(run).toHaveBeenCalledWith('Notes', 'Open the draft', 'hello', false, 8, expect.anything())
+    expect(await tool.run({ app: 'Notes', goal: 'Send it', send: true }, CONTEXT)).toContain('send needs the text')
+    await tool.run({ app: 'Notes', goal: 'Send it', text: 'hello', send: true }, CONTEXT)
+    expect(run).toHaveBeenLastCalledWith('Notes', 'Send it', 'hello', true, 8, expect.anything())
   })
   it('are desktop tools with plain step labels and redacted text', () => {
     for (const name of ['app_read', 'app_set', 'app_press', 'app_text']) expect(isDesktopTool(name)).toBe(true)

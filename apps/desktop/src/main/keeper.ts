@@ -23,6 +23,7 @@ import { foldWebTrail, readWebTrail, recentFileNames } from './web-trail.js'
 import type { VaultContext } from './vault.js'
 import { captureDeskActivity } from './activity-capture.js'
 import { runPipelineAsync } from './ipc.js'
+import { scanHabits } from './habits-ipc.js'
 
 const WEEK_MS = 7 * 86_400_000
 const SETTLE_MS = 5 * 60_000
@@ -143,6 +144,7 @@ async function fileActivity(ctx: VaultContext): Promise<void> {
     // Both halves of the hourly work journal: desk-app spans and the browser +
     // file trail. Either producing a capture wakes the librarian once.
     const desk = await captureDeskActivity(ctx)
+    void scanHabits(ctx).catch(error => flog('habits-failed', error))
     const web = await captureWebAndFiles(ctx)
     if (desk || web) runPipelineAsync(ctx, 'librarian: work journal')
   } catch (error) { flog('activity-capture-failed', error) }

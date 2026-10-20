@@ -86,7 +86,7 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
     for (const frame of page.frames()) {
       if (signal?.aborted) throw new Error('canceled')
       const hand = frame.locator(selector).filter({ visible: true })
-      const count = await hand.count().catch(() => 0)
+      const count = await frameAnswer(hand.count(), 0)
       if (count > 1) return { many: true }
       if (count === 1) matches.push(hand)
     }
@@ -100,26 +100,24 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
     if (!place) return { none: true }
     // The control is tagged in the page so a locator can hold it; the tag
     // comes off with the next reading, which re-numbers everything.
-    const fresh = await place.frame.evaluate(readDocument, place.local).catch(() => null)
+    const fresh = await frameAnswer(place.frame.evaluate(readDocument, place.local), null)
     if (!fresh || !Array.isArray(fresh.controls) || JSON.stringify(fresh.controls[place.local - 1]) !== place.control) {
       await unmark(page)
       return { none: true }
     }
     const hand = place.frame.locator(`[${HAND_MARK}]`).first()
-    return (await hand.count().catch(() => 0)) > 0 ? { hand } : { none: true }
+    return (await frameAnswer(hand.count(), 0)) > 0 ? { hand } : { none: true }
   }
   const roots: (Page | Frame)[] = [page, ...page.frames().filter((frame) => frame !== page.mainFrame())]
   for (const root of roots) {
     for (const hand of locators(root, target)) {
       if (signal?.aborted) throw new Error('canceled')
-      const found = await hand.count().catch(() => 0)
+      const found = await frameAnswer(hand.count(), 0)
       if (found === 1) return { hand: hand.first() }
       if (found > 1) {
         // A cell and the words inside it are one thing, not two: matches
         // that nest are the same control, read at different depths.
-        const nested = await hand
-          .evaluateAll((els) => els.every((el) => el === els[0] || els[0]!.contains(el) || el.contains(els[0]!)))
-          .catch(() => false)
+        const nested = await frameAnswer(hand.evaluateAll((els) => els.every((el) => el === els[0] || els[0]!.contains(el) || el.contains(els[0]!))), false)
         if (nested) return { hand: hand.first() }
         // The same words in several places: the first one down the page is a
         // guess, and a guess here presses the wrong thing.
@@ -130,11 +128,15 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
   return { none: true }
 }
 
+// A frame that never answers (a stalled ad, a frame mid-teardown) must not
+// hold the hand that touched another one.
+const FRAME_ANSWER_MS = 3_000
+function frameAnswer<T>(work: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([work.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), FRAME_ANSWER_MS).unref())])
+}
+
 export async function unmark(page: Page): Promise<void> {
-  for (const frame of page.frames())
-    await frame
-      .evaluate((mark) => {
-        for (const el of Array.from(document.querySelectorAll(`[${mark}]`))) el.removeAttribute(mark)
-      }, HAND_MARK)
-      .catch(() => undefined)
+  await Promise.all(page.frames().map((frame) => frameAnswer(frame.evaluate((mark) => {
+    for (const el of Array.from(document.querySelectorAll(`[${mark}]`))) el.removeAttribute(mark)
+  }, HAND_MARK), undefined)))
 }

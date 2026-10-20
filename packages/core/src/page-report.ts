@@ -33,6 +33,7 @@ export interface ReadablePage {
   dialog?: string
   // What the page says is wrong with what was entered.
   faults?: string[]
+  downloads?: string[]
 }
 
 // A page longer than one report is read in parts, and the report says which
@@ -99,6 +100,10 @@ export function frontOf(page: ReadablePage): string[] {
   if (page.faults?.length) {
     const said = page.faults.map((one) => `- ${one}`).join('\n')
     lines.push(`The page says these are wrong or missing - fix each, then try the thing that failed again:\n${said}`)
+  }
+  if (page.downloads?.length) {
+    const one = page.downloads.length === 1
+    lines.push(`The page downloaded ${one ? 'a file' : 'files'}, saved on this computer - read ${one ? 'it' : 'them'} from there instead of looking for a downloads window:\n${page.downloads.map((path) => `- ${path}`).join('\n')}`)
   }
   return lines
 }
