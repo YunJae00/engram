@@ -64,12 +64,18 @@ describe('cometThreads', () => {
   it('stores typing without notifying the conversation tree', () => {
     const store = createCometThreads(BOT)
     let notifications = 0
+    let drafts = 0
+    const unsubscribeDraft = store.subscribeDraft(() => drafts++)
     const unsubscribe = store.subscribe(() => notifications++)
     store.setDraft(BOT, 'a')
     store.setDraft(BOT, 'ab')
     store.setDraft(BOT, 'abc')
     expect(store.thread(BOT).draft).toBe('abc')
     expect(notifications).toBe(0)
+    expect(drafts).toBe(3)
+    unsubscribeDraft()
+    store.setDraft(BOT, 'abcd')
+    expect(drafts).toBe(3)
     unsubscribe()
   })
 

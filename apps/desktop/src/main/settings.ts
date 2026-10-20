@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { renameWithRetry, REASONING_EFFORTS } from 'core'
 import { join } from 'node:path'
 
-interface AppSettings {
+export interface AppSettings {
   aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort; permission?: import('core').PermissionMode }>
   claudeEffort?: import('core').ReasoningEffort
   codexEffort?: import('core').ReasoningEffort
@@ -37,6 +37,9 @@ interface AppSettings {
   workApps: boolean
   // The runtime's own file, search and shell tools for comets, governed by Engram.
   nativeTools: boolean
+  // Apps the person keeps out of Engram's reach: not recorded, not learned
+  // from, not worked in. By process name, with the name the app shows.
+  appsOff: { app: string; label: string }[]
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -54,6 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   workFiles: false,
   workApps: false,
   nativeTools: true,
+  appsOff: [],
 }
 
 function settingsPath(): string {
@@ -73,6 +77,7 @@ async function readSettings(): Promise<AppSettings> {
     merged.workFiles = merged.workFiles === true
     merged.workApps = merged.workApps === true
     merged.nativeTools = merged.nativeTools !== false
+    merged.appsOff = appsOffOf(merged.appsOff)
     merged.aiSelections = Object.fromEntries(Object.entries(merged.aiSelections ?? {}).filter(([scope, value]) =>
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
@@ -84,10 +89,20 @@ async function readSettings(): Promise<AppSettings> {
   }
 }
 
+export function appsOffOf(value: unknown): AppSettings['appsOff'] {
+  if (!Array.isArray(value)) return []
+  return value.filter((one): one is { app: string; label: string } => typeof one?.app === 'string' && typeof one?.label === 'string' && one.app.trim().length > 0 && one.app.length <= 80 && one.label.length <= 80)
+    .map(one => ({ app: one.app.trim().toLowerCase(), label: one.label.trim() || one.app.trim() })).slice(0, 200)
+}
+
+const saved = new Set<(settings: AppSettings) => void>()
+export function onSettingsSaved(listener: (settings: AppSettings) => void): void { saved.add(listener) }
+
 async function saveSettings(settings: AppSettings): Promise<void> {
   const target = settingsPath()
   await writeFile(`${target}.tmp`, JSON.stringify(settings, null, 2))
   await renameWithRetry(`${target}.tmp`, target)
+  for (const listener of saved) listener(settings)
 }
 
 let changes = Promise.resolve()

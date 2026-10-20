@@ -84,12 +84,16 @@ export function parseProposal(raw: string): TaskProposal | null {
 // an English request came back answered in French because the words the turn
 // filled up with outweighed the two lines that asked for it (measured). Where
 // the script says plainly which language it is, the instruction names it.
+export function scriptLanguage(text: string): string {
+  const hangul = /[\uac00-\ud7a3]/.test(text)
+  const kana = /[\u3040-\u30ff]/.test(text)
+  const han = /[\u4e00-\u9fff]/.test(text)
+  const latin = /[a-z]/i.test(text)
+  return hangul ? 'Korean' : kana ? 'Japanese' : han && !latin ? 'Chinese' : latin && !han ? 'English' : ''
+}
+
 export function answerLanguageLine(task: string): string {
-  const hangul = /[\uac00-\ud7a3]/.test(task)
-  const kana = /[\u3040-\u30ff]/.test(task)
-  const han = /[\u4e00-\u9fff]/.test(task)
-  const latin = /[a-z]/i.test(task)
-  const named = hangul ? 'Korean' : kana ? 'Japanese' : han && !latin ? 'Chinese' : latin && !han ? 'English' : ''
+  const named = scriptLanguage(task)
   return named
     ? `Write your answer in ${named}, whatever language the pages you read are in.`
     : 'Write your answer in the language this task is written in, whatever language the pages you read are in.'

@@ -135,12 +135,19 @@ export function createCometThreads(initialSelected: string | null = null) {
   const fail = (id: string, text: string) =>
     settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }], { queueHeld: true })
 
+  // Every box showing a conversation hears its draft change, without the
+  // conversation tree re-rendering per keystroke.
+  const draftListeners = new Set<() => void>()
   return {
     subscribe(listener: () => void): () => void {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
       }
+    },
+    subscribeDraft(listener: () => void): () => void {
+      draftListeners.add(listener)
+      return () => { draftListeners.delete(listener) }
     },
     getSnapshot: (): CometThreadsSnapshot => snapshot,
     thread,
@@ -187,6 +194,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (current.draft === draft) return
       // Preserve the draft without notifying the conversation tree per keystroke.
       snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...current, draft } } }
+      for (const listener of draftListeners) listener()
     },
     setAttachments(id: string, attachments: ChatAttachmentDto[]): void {
       patch(id, { attachments })

@@ -8,7 +8,8 @@ import { KO, KO_WORDS } from './threadLangKo.js'
 export type ThreadLang = 'en' | 'ko'
 
 export function threadLang(messages: { role: string; text: string }[]): ThreadLang {
-  const asked = [...messages].reverse().find(message => message.role === 'user')?.text ?? ''
+  // A conversation Engram opened itself has no words from the person yet; its own first words stand in.
+  const asked = [...messages].reverse().find(message => message.role === 'user')?.text ?? messages[0]?.text ?? ''
   return /[\uac00-\ud7a3]/.test(asked) ? 'ko' : 'en'
 }
 

@@ -13,7 +13,6 @@ import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsL
 import { ThinkingDots } from '../components/Thinking.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
-import { ScheduledChip } from '../components/ScheduledChip.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { useCometState } from '../state-slices.js'
 import { t } from '../i18n.js'
@@ -139,7 +138,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
                 </div>
               )}
             </div>
-            <ScheduledChip botId={selected.id} />
             <BotComposer
               key={selected.id}
               botId={selected.id}

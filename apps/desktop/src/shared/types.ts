@@ -5,18 +5,6 @@ import type { DesktopApi, DesktopControlStatusDto } from './desktop.js'
 import type { DevelopersApi, DevUpdate } from './developers.js'
 import type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
 export type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
-export interface RoutineLearningDto {
-  id: string
-  phase: 'recording' | 'review'
-  preparing: boolean
-  turns: number
-  incomplete: number
-  limited: boolean
-  draft: { name: string; goal: string; does: string }
-  urls: string[]
-  method: string[]
-  checks: string[]
-}
 export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
 
 export interface McpInfoDto {
@@ -135,6 +123,7 @@ export interface ScheduleDto {
   days: number[]
   hour: number
   minute: number
+  // One day (YYYY-MM-DD) instead of a weekly pattern.
   on?: string
 }
 
@@ -260,6 +249,7 @@ export interface ChatTurnDto {
   attachments?: string[]
   // How a checked answer was checked (core TurnEvidence).
   evidence?: import('core').TurnEvidence
+  // Said by a kept schedule at its time, not typed then.
   scheduled?: boolean
 }
 
@@ -293,6 +283,7 @@ export interface ChatRequestDto {
   channel?: string
   // Answer as this bot: its charter rides ahead of the chat rules.
   botId?: string
+  // Said by a kept schedule rather than typed.
   scheduled?: boolean
 }
 
@@ -404,7 +395,6 @@ export interface PendingWorkDto {
 export interface BrowserTabDto { id: string; url: string; title?: string; active: boolean }
 
 export type EngramEvent =
-  | { type: 'routine:learning'; botId: string; error?: string }
   | { type: 'dev:changed'; update: DevUpdate | null }
   | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
   | { type: 'desktop:changed' }
@@ -514,11 +504,14 @@ export type EngramEvent =
   // A task notification was clicked: show that conversation.
   | { type: 'comet:open'; botId: string }
   | { type: 'comet:quick'; botId: string; message: string; attachments?: string[] }
+  // A kept schedule saying its request in its conversation, without taking the person there.
   | { type: 'comet:scheduled'; botId: string; message: string }
   | { type: 'brain:setup' }
   // Settings were saved anywhere — live surfaces (the agent terminal) restyle
   // without a remount or an app restart.
   | { type: 'settings:changed'; settings: AppSettingsDto }
+  | { type: 'habits:changed' }
+  | { type: 'notices:changed' }
   | { type: 'import:progress'; done: number; total: number }
   | { type: 'engines:changed'; engines: EngineStatusDto[] }
   // a newer app version was downloaded and will install on next quit
@@ -682,8 +675,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
-  routineLearning(botId: string): Promise<RoutineLearningDto | null>
-  routineLearningAction(botId: string, action: 'start' | 'finish' | 'discard' | 'save', input?: { id: string; name: string; goal: string }): Promise<RoutineLearningDto | null>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
   botStandingDecline(botId: string, goal: string): Promise<void>
   botTaskRemove(botId: string, taskId: string): Promise<void>
@@ -704,6 +695,18 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   // The work map: when it was last built and how many work places it holds.
   workMapStatus(): Promise<WorkMapStatusDto>
   workMapRefresh(): Promise<WorkMapStatusDto>
+  // The apps used lately and whether Engram may learn from and work in each.
+  appsList(): Promise<AppUseDto[]>
+  appsSet(app: string, label: string, on: boolean): Promise<void>
+  // How-tos drafted from runs of apps the person keeps going through.
+  habitsList(): Promise<HabitDraftDto[]>
+  habitsScan(): Promise<HabitDraftDto[]>
+  habitsAnswer(key: string, keep: boolean): Promise<HabitDraftDto[]>
+  // The bell: what Engram brought on its own, and what is set to run later.
+  noticesList(): Promise<NoticesDto>
+  noticesOpen(id: string): Promise<string>
+  noticesClear(): Promise<NoticesDto>
+  noticesUnschedule(id: string): Promise<NoticesDto>
   // A finite Cosmos preparation pass precedes questions; answers become the work guide.
   interviewQuestions(options?: { requestId?: string }): Promise<InterviewQuestionDto[]>
   interviewSave(answers: { question: string; answer: string; source?: string; rejected?: boolean }[]): Promise<{ saved: boolean }>
@@ -892,11 +895,17 @@ export interface AppSettingsDto {
   workFiles?: boolean
   workApps?: boolean
   nativeTools?: boolean
+  // Apps kept out of Engram's reach, by process name and shown name.
+  appsOff?: { app: string; label: string }[]
 }
 
 // One model the plan offers: the id the runtime takes, the name it shows,
 // and its own line about what the model is for.
 export interface WorkMapStatusDto { builtAt: string | null; places: number }
+export interface ScheduledDto { id: string; botId: string; name: string; goal: string; when: string; lastRunAt?: string }
+export interface NoticesDto { items: { id: string; kind: 'scheduled' | 'habit'; title: string; text: string; at: string; read: boolean; running: boolean }[]; scheduled: ScheduledDto[] }
+export interface AppUseDto { app: string; label: string; hours: number; days: number; on: boolean }
+export interface HabitDraftDto { key: string; labels: string[]; times: number; title: string; description: string; body: string; botId?: string }
 export interface ArtifactViewDto { name: string; text: string | null }
 export interface InterviewQuestionDto { topic: string; question: string; basis: string; options: string[]; source?: string }
 

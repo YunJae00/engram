@@ -28,7 +28,7 @@
 .decision-stack { display: flex; flex-direction: column; gap: 6px; }
 
 /* By the message box, a card is as wide as the box. */
-.bots-view .bots-chat > :is(.chat-approval, .decision-card, .scheduled-chip) { width: min(var(--composer-width), calc(100% - 2 * var(--page-gutter))); margin: 0 auto 8px; box-sizing: border-box; }
+.bots-view .bots-chat > :is(.chat-approval, .decision-card) { width: min(var(--composer-width), calc(100% - 2 * var(--page-gutter))); margin: 0 auto 8px; box-sizing: border-box; }
 .bots-run-status:empty { display: none; }
 .bots-run-status { display: flex; flex-direction: column; gap: 6px; }
 
@@ -43,16 +43,6 @@
   .decision-card-body { padding-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .decision-card { animation: none; } }
-
-/* What this conversation was asked to do later: a quiet chip that opens into the list. */
-.scheduled-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.scheduled-chip-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--hover-bg); color: var(--fg-dim); font-size: var(--fs-micro, 11px); }
-.scheduled-chip-list { display: flex; flex-direction: column; gap: 2px; width: 100%; box-sizing: border-box; margin: 0; padding: 6px; border-radius: 14px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); list-style: none; }
-.scheduled-chip-list li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: var(--fs-small); }
-.scheduled-chip-when { flex: none; min-width: 96px; color: var(--fg-dim); font-size: var(--fs-micro, 11px); }
-.scheduled-chip-what { flex: 1; min-width: 0; overflow: hidden; color: var(--fg); text-overflow: ellipsis; white-space: nowrap; }
-.scheduled-chip-cancel { flex: none; padding: 4px; border: 0; border-radius: 8px; background: none; color: var(--fg-faint); }
-.scheduled-chip-cancel:hover { background: var(--hover-bg); color: var(--fg); }
 
 /* In the conversation a card is the comet's own next message: a bubble on
    its side, the question in its words, the answers under it. While it waits
