@@ -46,6 +46,7 @@ const api: EngramApi = {
   devProjectCommands: (repoId, provider) => ipcRenderer.invoke('devProjectCommands', repoId, provider),
   devConfigure: (id, change) => ipcRenderer.invoke('devConfigure', id, change),
   artifactReveal: (id) => ipcRenderer.invoke('artifact:reveal', id),
+  artifactOpen: (id) => ipcRenderer.invoke('artifact:open', id),
   artifactRead: (id) => ipcRenderer.invoke('artifact:read', id),
   desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
   desktopVisible: () => ipcRenderer.invoke('desktop:visible'),

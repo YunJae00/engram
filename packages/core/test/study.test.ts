@@ -37,6 +37,8 @@ describe('studying a job', () => {
     expect(message).toContain('Never press anything that saves, sends, submits or deletes')
     expect(message).toContain('Write to the person in Korean.')
     expect(message).toContain('call study_findings')
+    expect(message).toContain('Start where the job is done - TMS')
+    expect(message).toContain('write one short line on what the last one showed you')
   })
 
   it('keeps findings only while something is being studied', async () => {

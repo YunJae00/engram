@@ -78,8 +78,9 @@ export function studyCandidate(study: Study): SkillCandidate {
 export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): string {
   const language = scriptLanguage(study.ask)
   return [
-    `Look, without changing anything, for the way to do this job as the person would: "${study.ask}". What stood in the way: "${study.what}".`,
-    `Look where their past work on it shows and where else it could be done: ${study.where.length ? study.where.join(', ') : 'the apps and sites the job involves'}; their own records there (earlier entries, history, past messages and threads, sent replies), desk_activity for the apps they used around it, and the menus of the systems involved.`,
+    `Learn, without changing anything, how the person does this job, the way a new colleague would: "${study.ask}". What stood in the way: "${study.what}".`,
+    `Start where the job is done - ${study.where.length ? study.where.join(', ') : 'the app or site the job is in'} - and read several of their own earlier records there closely, one by one: what each screen, field, code and value is, and what made them choose it (which kind of work gets which code, how much they put down and how it adds up). Go to other places (their mail, chats, files, desk_activity) only for a question the records left open, and say which question.`,
+    'Think aloud to the person while you study: before each next look, write one short line on what the last one showed you, in plain words ("this screen is where each day is entered", "this code is used for this kind of work") - what you learned, not which button you pressed. Never take two looks in a row without such a line.',
     'Read and move only. Never press anything that saves, sends, submits or deletes; those presses are refused while you study.',
     'Only reading tools are enabled during study. Read records through the available mail, file, app and page readers. Do not call action tools or commands; if another view needs a click or input, ask the person to open it instead.',
     'When you have looked, call study_findings with what you learned as a how-to, then tell the person in two or three sentences what you learned and that a card asks them to confirm it.',
@@ -105,11 +106,11 @@ export function offerStudyTool(deps: { offer(input: { what: string; where: strin
 export function studyFindingsTool(deps: { found(draft: SkillDraft): Promise<boolean> }): AgentTool {
   return {
     name: 'study_findings',
-    description: 'while studying, keep what you learned as a how-to for the person to confirm. Args: {"title": "short name of the job", "description": "one sentence: when it applies", "body": "markdown with three sections: when to use; the steps (where to go, what to read or fill, in their own terms and formats); open questions (what you could not find)"} - in the language of the conversation, the section headings included. The general way, not one case: no personal names, email addresses, dates of one case or one-time values - say "the recipient", "the latest deploy" instead.',
+    description: 'while studying, keep what you learned as a how-to for the person to confirm. Args: {"title": "short name of the job", "description": "one sentence: when it applies", "body": "markdown with four sections: when to use; what is what (each screen, field, code and value and what it means for them); how they decide and the steps (the rules seen in their earlier records, each with the records it came from, and where to go, what to read or fill, in their own terms and formats); open questions (what you could not find)"} - in the language of the conversation, the section headings included. The general way, not one case: codes and categories they use again and again belong in it; personal names, email addresses, dates of one case and one-time values do not - say "the recipient", "the latest deploy" instead.',
     argsSchema: { type: 'object', additionalProperties: false, required: ['title', 'description', 'body'], properties: { title: { type: 'string' }, description: { type: 'string' }, body: { type: 'string' } } },
     async run(args) {
       const draft = { title: String(args['title'] ?? '').trim(), description: String(args['description'] ?? '').trim(), body: String(args['body'] ?? '').trim() }
-      if (!draft.title || !draft.description || draft.body.length < 60) throw new Error('Give a title, a one-sentence description and a body with the three sections.')
+      if (!draft.title || !draft.description || draft.body.length < 60) throw new Error('Give a title, a one-sentence description and a body with the four sections.')
       if (!await deps.found(draft)) return 'Nothing is being studied in this conversation; there is nothing to keep.'
       return 'Kept for the person to confirm. Now tell them in two or three sentences what you learned and that a card asks them to confirm it.'
     },

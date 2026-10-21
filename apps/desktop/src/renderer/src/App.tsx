@@ -207,7 +207,12 @@ function Shell() {
     window.addEventListener('engram:open-help', openHelp)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
-    const openArtifact = (event: Event) => setArtifactId(String((event as CustomEvent<string>).detail))
+    // A file the thread cannot show as text opens in its own program.
+    const openArtifact = (event: Event) => {
+      const id = String((event as CustomEvent<string>).detail)
+      if (/\.(md|txt|csv|tsv|json)$/i.test(id)) setArtifactId(id)
+      else void window.engram.artifactOpen(id).catch(() => setArtifactId(id))
+    }
     window.addEventListener('engram:open-artifact', openArtifact)
     window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:open-digest', openDigest)

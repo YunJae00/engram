@@ -49,9 +49,10 @@ export function MiniChat({ botId, webOpen, onToggleWeb }: { botId: string; webOp
     <div className="mini-chat" data-testid={`mini-chat-${botId}`}>
       <div className="mini-chat-thread conversation-thread" ref={listRef}>
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
-        <CometMessages messages={thread.messages} busy={thread.busy} status={status} since={thread.startedAt ?? undefined} workLines={thread.workLines} keptWork={thread.keptWork} offerOpen={!!thread.offer} onReply={(label) => void send(label)} />
-        <ThreadOffers botId={botId} onSend={(label) => void send(label)} />
-        <ThreadAsks botId={botId} questionShown={!thread.busy && thread.messages.at(-1)?.role === 'assistant' && !thread.messages.at(-1)?.streaming ? thread.messages.at(-1)?.text : undefined} />
+        <CometMessages messages={thread.messages} busy={thread.busy} status={status} since={thread.startedAt ?? undefined} workLines={thread.workLines} keptWork={thread.keptWork} offerOpen={!!thread.offer} onReply={(label) => void send(label)}>
+          <ThreadOffers botId={botId} onSend={(label) => void send(label)} />
+          <ThreadAsks botId={botId} questionShown={!thread.busy && thread.messages.at(-1)?.role === 'assistant' && !thread.messages.at(-1)?.streaming ? thread.messages.at(-1)?.text : undefined} />
+        </CometMessages>
       </div>
       <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} canQueue testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} actions={<button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /><span>{webOpen ? 'Hide website' : 'Show website'}</span></button>} tools={<ModelPicker scope={cometChannel(botId)} />} /></div>
     </div>

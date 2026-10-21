@@ -46,7 +46,7 @@ export const KO: Partial<Record<StringKey, string>> = {
   'study.offerLabel': '다른 방법을 찾아볼까요?',
   'study.offerSub': '읽기만 해요: {where}. 저장하거나 보내지 않아요.',
   'study.anywhere': '이 일이 남아 있는 곳',
-  'study.go': '찾아보고 올게요',
+  'study.go': '네, 찾아봐 주세요',
   'study.later': '나중에',
   'study.reviewLabel': '이렇게 이해했어요',
   'study.keep': '맞아요, 저장',
