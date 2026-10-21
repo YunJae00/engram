@@ -34,6 +34,10 @@ import {
   recordBotSites,
   markBotTaskRun,
   addNotice,
+  parseUndone,
+  parseLeftover,
+  leftoverPrompt,
+  undonePrompt,
   changeStudies,
   offerStudyTool,
   readStudies,
@@ -42,7 +46,6 @@ import {
   studyMessage,
   studyGuard,
   type SkillDraft,
-  ASIDE_SCHEMA,
   asidePrompt,
   parseAside,
   type AsideAction,
@@ -733,6 +736,7 @@ function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): (w
 }
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
+const afterChecks = new Set<{ controller: AbortController; channel: string }>()
 // Channels whose answer has not been delivered yet. A turn keeps working
 // after that - what to remember from it, what to offer - and that work is
 // still cancellable, but it is not something to wait on.
@@ -754,6 +758,10 @@ function takeAsides(channel: string): { role: 'user' | 'assistant'; text: string
 const relayed = new Map<string, string[]>()
 // What each running turn was asked, and what it has done so far.
 const turnGoals = new Map<string, string>()
+// Turns that already offered another way; the after-check leaves them be.
+const offeredIn = new Set<string>()
+// Words handed to a running turn, checked against its answer when it ends.
+const handedOver = new Map<string, string[]>()
 const workSoFar = new Map<string, string[]>()
 
 function takeHeard(channel: string): string[] {
@@ -772,7 +780,7 @@ export function abortAllChat(channel?: string): void {
   for (const [lane, claim] of routineLanes) {
     if (channel === undefined || channel === lane) claim.abort()
   }
-  for (const entry of chatAborts) {
+  for (const entry of [...chatAborts, ...afterChecks]) {
     if (channel !== undefined && entry.channel !== channel) continue
     entry.controller.abort()
   }
@@ -1115,6 +1123,7 @@ export function registerIpc(ctx: VaultContext): void {
   // A job not known is offered as a study; agreed, it runs as a turn of its
   // own in the same conversation, reading only, and comes back as a how-to.
   const offerStudy = async (botId: string, input: { what: string; where: string[] }, ask: string): Promise<void> => {
+    offeredIn.add(`bot-${botId}`)
     await changeStudies(paths, list => [...list.filter(one => !(one.botId === botId && one.state === 'offered')), { id: `study-${Date.now().toString(36)}`, botId, ...input, ask, state: 'offered', at: new Date().toISOString() }])
     broadcast({ type: 'study:changed', botId })
   }
@@ -1174,18 +1183,13 @@ export function registerIpc(ctx: VaultContext): void {
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
     const engine = await chatEngine(channel, ctx.engines)
     const earlier = await readBotTranscript(paths, botId, 12).catch(() => [])
-    const quickly = engine?.quick ? await engine.quick(asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }), { workdir: engineCwd(paths), timeoutMs: 30_000 }).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null }) : null
-    const raw = quickly ?? (engine ? await collectResult(engine, {
-      prompt: asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }),
-      workdir: engineCwd(paths), disallowTools: true, timeoutMs: 45_000, modelHint: 'fast', maxTokens: 400, jsonSchema: ASIDE_SCHEMA,
-    }).catch((error: unknown) => { flog('aside', error instanceof Error ? error.message : String(error)); return null }) : null)
-    // Without the voice, the words still reach the work.
-    const aside = parseAside(raw) ?? { reply: '', action: 'relay' as const, instruction: said }
+    const quickly = engine?.quick ? await engine.quick(asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }), { workdir: engineCwd(paths), timeoutMs: 12_000 }).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null }) : null
+    // Without a voice in seconds, the words still reach the work.
+    const aside = parseAside(quickly) ?? { reply: '', action: 'relay' as const, instruction: said }
     if (aside.reply) asides.set(channel, [...(asides.get(channel) ?? []), { role: 'assistant', text: aside.reply }])
     const running = answering.has(channel) || tasks.activeChannels().includes(channel)
     if (aside.action === 'relay' && running) {
       relayed.set(channel, [...(relayed.get(channel) ?? []), aside.instruction!])
-      broadcast({ type: 'comet:step', channel, line: `you: ${said}` })
     }
     flog('aside', `${channel}: ${aside.action}`)
     // A relay that found the work already finished goes on as the next message.
@@ -2305,6 +2309,8 @@ export function registerIpc(ctx: VaultContext): void {
     chatAborts.add(entry)
     answering.add(entry.channel)
     turnGoals.set(entry.channel, request.message)
+    offeredIn.delete(entry.channel)
+    handedOver.delete(entry.channel)
     // The voice opens with the turn, so words said while it works are answered at once.
     if (entry.channel.startsWith('bot-')) void chatEngine(entry.channel, ctx.engines).then(live => live?.warmQuick?.(engineCwd(paths))).catch(() => undefined)
     workSoFar.delete(entry.channel)
@@ -2743,7 +2749,7 @@ export function registerIpc(ctx: VaultContext): void {
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
             history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
-            takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); return [...said, ...told] },
+            takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); const handed = [...said, ...told]; if (handed.length) handedOver.set(channel, [...(handedOver.get(channel) ?? []), ...handed]); return handed },
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
             ...(native ? { native } : {}),
@@ -2842,6 +2848,30 @@ export function registerIpc(ctx: VaultContext): void {
         signal.throwIfAborted()
         // Work that will be checked, and the check itself, stay out of the
         // thread: the task runner delivers one answer when the check is done.
+        // Nothing said is lost and no job ends without a way forward: the
+        // voice judges the answer - words taken in along the way that it left
+        // undone go on as the next message, and a job left undone is offered
+        // another way when the comet offered none.
+        const handed = handedOver.get(channel) ?? []
+        handedOver.delete(channel)
+        if (bot && !held && !result.stopped && result.answer.trim() && engine.quick) {
+          const checking = { controller: new AbortController(), channel }
+          afterChecks.add(checking)
+          const wasStudying = studying.has(channel)
+          const asked = request.message, said = result.answer, botId = bot.id
+          const voice = (prompt: string) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null)
+          void (async () => {
+            const left = handed.length ? parseLeftover(await voice(leftoverPrompt(asked, handed, said)), handed) : []
+            signal.throwIfAborted()
+            checking.controller.signal.throwIfAborted()
+            if (left.length) { flog('aside', `${left.length} of ${handed.length} handed-over words left for the next turn`); broadcast({ type: 'chat:steer-returned', channel, texts: left }); return }
+            if (wasStudying || studying.has(channel) || offeredIn.has(channel)) return
+            const undone = parseUndone(await voice(undonePrompt(asked, said)))
+            signal.throwIfAborted()
+            checking.controller.signal.throwIfAborted()
+            if (undone && !offeredIn.has(channel)) { flog('study', `offered after an undone turn: ${undone.blocked}`); await offerStudy(botId, { what: undone.blocked, where: [] }, asked) }
+          })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => afterChecks.delete(checking))
+        }
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
           broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })

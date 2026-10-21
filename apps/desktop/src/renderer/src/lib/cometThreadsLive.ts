@@ -2,7 +2,6 @@ import { api } from '../api.js'
 import { cometChannel, cometOfChannel, createCometThreads } from './cometThreads.js'
 import { webPane } from './webPane.js'
 import { flushQueuedCometMessages } from './attachments.js'
-import { persistQueues, readQueued } from './queuedStorage.js'
 
 const SELECTED_KEY = 'engram.comets.selected'
 
@@ -10,9 +9,6 @@ const SELECTED_KEY = 'engram.comets.selected'
 // the tab; the conversations do not.
 export const cometThreads = createCometThreads(null)
 const pendingReloads = new Set<string>()
-const restored = new Set<string>()
-const queueStorage = (() => { try { return globalThis.localStorage } catch { return undefined } })()
-if (queueStorage) persistQueues(cometThreads, queueStorage)
 
 export function selectComet(id: string | null): void {
   cometThreads.select(id)
@@ -25,7 +21,7 @@ const reloadFromDisk = (id: string) => {
   return api
     .botTranscript(id)
     .then((turns) => cometThreads.load(id, turns, seenBefore))
-    .catch(() => { if (cometThreads.thread(id).queued.length) cometThreads.restoreQueue(id, cometThreads.thread(id).queued) })
+    .catch(() => undefined)
 }
 
 // Disk first, then whatever main is still producing for this comet: a
@@ -34,11 +30,6 @@ const reloadFromDisk = (id: string) => {
 // by the listener below) withdraws the seat before it is taken - a seat
 // adopted for an answer already finished would never be released.
 export async function loadCometThread(id: string): Promise<void> {
-  if (!restored.has(id)) {
-    restored.add(id)
-    const queued = queueStorage ? readQueued(queueStorage, id) : []
-    if (queued.length && !cometThreads.thread(id).queued.length) cometThreads.restoreQueue(id, queued)
-  }
   const seenBefore = cometThreads.thread(id).doneSeen
   const turns = await api.botTranscript(id)
   cometThreads.load(id, turns, seenBefore)
@@ -82,7 +73,7 @@ api.onEvent((event) => {
     }
     if (event.type === 'comet:working' && !event.working && pendingReloads.delete(handled) && !cometThreads.thread(handled).stopped)
       void reloadFromDisk(handled).then(() => flushQueuedCometMessages(api, cometThreads, handled))
-    else if ((event.type === 'chat:done' && !adoptedBefore) || (event.type === 'comet:working' && !event.working))
+    else if ((event.type === 'chat:done' && !adoptedBefore) || (event.type === 'comet:working' && !event.working) || event.type === 'chat:steer-returned')
       void flushQueuedCometMessages(api, cometThreads, handled)
     return
   }

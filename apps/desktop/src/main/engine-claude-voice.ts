@@ -9,7 +9,7 @@ import { spawnRuntime } from './process-client.js'
 // session's own memory is only a convenience and it is renewed often.
 
 const TURNS_MAX = 24
-const IDLE_MS = 10 * 60_000
+const IDLE_MS = 60 * 60_000
 
 export interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string }
 
@@ -18,6 +18,8 @@ export class VoiceSession {
   private wake: (() => void) | undefined
   private waiting: { resolve(text: string): void; reject(error: Error): void } | undefined
   private turns = 0
+  // Questions given up on whose answers are still to come; those answers are dropped.
+  private late = 0
   private idle: NodeJS.Timeout | undefined
   private readonly abort = new AbortController()
   closed = false
@@ -39,6 +41,7 @@ export class VoiceSession {
           if (message.type === 'assistant') said += textOf((message as { message: { content: unknown } }).message.content)
           if (message.type !== 'result') continue
           const result = message as { is_error?: boolean; result?: string }
+          if (this.late > 0) { this.late--; said = ''; continue }
           const waiting = this.waiting
           this.waiting = undefined
           if (result.is_error) waiting?.reject(new Error(result.result || 'The voice could not answer.'))
@@ -54,14 +57,14 @@ export class VoiceSession {
     this.rest()
   }
 
-  get ready(): boolean { return !this.closed && !this.waiting && this.turns < TURNS_MAX }
+  get ready(): boolean { return !this.closed && !this.waiting && this.late === 0 && this.turns < TURNS_MAX }
 
   ask(text: string, timeoutMs: number): Promise<string> {
     if (!this.ready) return Promise.reject(new Error('The voice is busy.'))
     this.turns++
     this.rest()
     return new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => { if (this.waiting) { this.waiting = undefined; reject(new Error('The voice took too long.')); this.close() } }, timeoutMs)
+      const timer = setTimeout(() => { if (this.waiting) { this.waiting = undefined; this.late++; reject(new Error('The voice took too long.')) } }, timeoutMs)
       this.waiting = { resolve: (answer) => { clearTimeout(timer); resolve(answer) }, reject: (error) => { clearTimeout(timer); reject(error) } }
       this.inbox.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()

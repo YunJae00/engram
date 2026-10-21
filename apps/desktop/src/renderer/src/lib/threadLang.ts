@@ -27,7 +27,7 @@ export function threadT(lang: ThreadLang): ThreadTranslate {
 
 // Short words the conversation shows around the comet's own messages.
 const WORDS = {
-  en: { done: (count: number) => `Done · ${count} ${count === 1 ? 'action' : 'actions'}`, total: (seconds: number) => `Total ${seconds}s`, next: 'Next', paused: 'Paused', after: 'Sends after this reply', sendNext: 'Send next', sendNow: 'Send now', full: 'Queue full. Remove a message or wait for a reply.', scheduled: 'Scheduled', kept: (count: number) => `${count} scheduled` },
+  en: { done: (count: number) => `Done · ${count} ${count === 1 ? 'action' : 'actions'}`, total: (seconds: number) => `Total ${seconds}s`, scheduled: 'Scheduled', kept: (count: number) => `${count} scheduled` },
   ko: KO_WORDS,
 } as const
 export const threadWords = (lang: ThreadLang) => WORDS[lang]

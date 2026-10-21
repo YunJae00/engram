@@ -40,11 +40,13 @@ export const KO: Partial<Record<StringKey, string>> = {
   'card.answerNeeded': '답이 필요해요',
   'card.paused': '작업이 멈췄어요',
   'card.replyBelow': '아래 입력창에 답해 주시면 이어서 할게요.',
+  'aside.passed': '전달했어요. 하던 일에 반영할게요.',
+  'aside.next': '알겠어요. 지금 하던 거 끝나면 바로 할게요.',
   'habit.label': '일하는 방식',
-  'study.offerLabel': '처리 방법을 아직 몰라요',
+  'study.offerLabel': '다른 방법을 찾아볼까요?',
   'study.offerSub': '읽기만 해요: {where}. 저장하거나 보내지 않아요.',
   'study.anywhere': '이 일이 남아 있는 곳',
-  'study.go': '공부하고 올게요',
+  'study.go': '찾아보고 올게요',
   'study.later': '나중에',
   'study.reviewLabel': '이렇게 이해했어요',
   'study.keep': '맞아요, 저장',
@@ -94,7 +96,7 @@ export const KO: Partial<Record<StringKey, string>> = {
   'schedule.dayNames': '일요일,월요일,화요일,수요일,목요일,금요일,토요일',
 }
 
-export const KO_WORDS = { done: (count: number) => `완료 · ${count}단계`, total: (seconds: number) => `${seconds}초`, next: '다음', paused: '멈춤', after: '이 답이 끝나면 보내요', sendNext: '다음 거 보내기', sendNow: '지금 보내기', full: '대기열이 가득 찼어요. 하나를 지우거나 답을 기다려 주세요.', scheduled: '예약해 둔 요청', kept: (count: number) => `예약 ${count}개` } as const
+export const KO_WORDS = { done: (count: number) => `완료 · ${count}단계`, total: (seconds: number) => `${seconds}초`, scheduled: '예약해 둔 요청', kept: (count: number) => `예약 ${count}개` } as const
 
 // The same, for a conversation held in Korean.
 const name = (arg: string): string => { const file = fileName(arg); return file === 'a saved file' ? '저장된 파일' : file === 'a file' ? '파일' : file }

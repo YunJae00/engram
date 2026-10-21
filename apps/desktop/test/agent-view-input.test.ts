@@ -27,6 +27,7 @@ function fixture(lane: string) {
     context: () => ({ newCDPSession: async () => cdp }), isClosed: () => false,
     viewportSize: () => ({ width: 1280, height: 860 }), url: () => `https://${lane}.example`,
     goto: vi.fn(async () => undefined),
+    evaluate: vi.fn(async () => undefined),
   })
   deps.pages.set(lane, page)
   return { page, cdp }
@@ -125,5 +126,21 @@ describe('browser view handoffs', () => {
     expect(cdp.send).toHaveBeenNthCalledWith(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 348, y: 384, modifiers: 0 })
     expect(cdp.send).toHaveBeenNthCalledWith(2, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: 348, y: 384, button: 'none', clickCount: 0, modifiers: 0, deltaX: 0, deltaY: 4000 })
     expect(view.touchedAt('bot-one')).toBe(0)
+  })
+
+  it('waits for painting before a wheel and drops it if the chat changes meanwhile', async () => {
+    const { page, cdp } = fixture('bot-one')
+    fixture('bot-two')
+    let painted!: () => void
+    page.evaluate.mockImplementationOnce(() => new Promise<void>(resolve => { painted = resolve }))
+    const view = await import('../src/main/agent-view.js')
+    await view.lookAtLane('bot-one')
+    const input = view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000 }, 'bot-one')
+    await vi.waitFor(() => expect(painted).toBeTypeOf('function'))
+    expect(cdp.send).toHaveBeenCalledTimes(1)
+    await view.lookAtLane('bot-two')
+    painted()
+    await input
+    expect(cdp.send.mock.calls.some(call => call[1]?.type === 'mouseWheel')).toBe(false)
   })
 })

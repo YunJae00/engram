@@ -51,7 +51,7 @@ import { quickCometBounds } from './quick-comet.js'
 import { finishAppReset, registerAppReset } from './app-reset.js'
 import { quickFileDialogOpen } from './quick-files.js'
 import { verifySetupConnection } from './setup-connection.js'
-import { aiSelection } from './ai-selection.js'
+import { aiSelection, chatEngine } from './ai-selection.js'
 import { activeAccountProfile } from './account-profiles.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
@@ -611,6 +611,8 @@ async function bootVault(root: string): Promise<VaultContext> {
     void revalidateEngines(ctx).then(() => {
       enginesDetected = true
       broadcast({ type: 'engines:detected' })
+      // The voice that answers mid-work is opened now, not when first needed: a runtime start takes longer than anyone waits for a reply.
+      void chatEngine('new-comet', ctx.engines).then(live => live?.warmQuick?.(engineCwd(ctx.paths))).catch(() => undefined)
     })
     // A brain switched in Settings becomes usable the moment it is chosen —
     // not at the next refocus or the 30-minute watch tick.
