@@ -44,16 +44,24 @@ test('created file links open generated artifacts in the thread and reject escap
   const artifact = JSON.parse(await tool.run({ name: '검증 결과.json', content: '{"verified":true}' }, { task: 'Create a test artifact.' })) as { path: string; markdownLink: string }
   const markdown = JSON.parse(await tool.run({ name: 'review.md', content: '# Review\n\n**Ready**\n\n<style>body { display: none }</style>\n\n[Run](javascript:alert%281%29)\n\n![Remote](https://example.com/track)\n\n[Docs](https://example.com/docs)' }, { task: 'Create a test artifact.' })) as { markdownLink: string }
   const report = JSON.parse(await tool.run({ name: 'Weekly summary.md', content: '# Weekly summary\n\nThe review is ready.\n\n| Work | Result |\n| --- | --- |\n| Source review | Complete |\n| Draft report | Ready |\n\n## Next steps\n\n- Review the assumptions.\n- Share after approval.\n\n' + Array.from({ length: 12 }, (_, index) => `### Detail ${index + 1}\n\nSupporting information stays readable without moving the file controls.\n`).join('\n') }, { task: 'Create a test artifact.' })) as { markdownLink: string }
-  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `${artifact.markdownLink}\n\n${markdown.markdownLink}\n\n${report.markdownLink}\n\n[Unavailable output](engram-artifact:../outside.txt)`, at: new Date().toISOString() })
+  const workbookId = '0a1b2c3d-0000-4000-8000-00000000000a-draft.xlsx'
+  const workbook = { path: join(paths.cache, 'artifacts', workbookId), markdownLink: `[draft.xlsx](engram-artifact:${encodeURIComponent(workbookId)})` }
+  await writeFile(workbook.path, 'sheet')
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `${artifact.markdownLink}\n\n${markdown.markdownLink}\n\n${report.markdownLink}\n\nThe sheet is ready: ${workbook.markdownLink}\n\n[Unavailable output](engram-artifact:../outside.txt)`, at: new Date().toISOString() })
   await app.evaluate(({ shell }) => {
     shell.showItemInFolder = (path: string) => { (globalThis as unknown as { revealedArtifact: string }).revealedArtifact = path }
+    shell.openPath = async (path: string) => { (globalThis as unknown as { openedArtifact: string }).openedArtifact = path; return '' }
   })
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
   await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'File output verification' }).click()
-  await page.getByRole('link', { name: '검증 결과.json', exact: true }).click()
   const sheet = page.getByTestId('artifact-sheet')
+  // A file the thread cannot show opens in its own program.
+  await page.getByTestId('answer-file').filter({ hasText: 'draft.xlsx' }).click()
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as { openedArtifact: string }).openedArtifact)).toBe(workbook.path)
+  await expect(sheet).toHaveCount(0)
+  await page.getByTestId('answer-file').filter({ hasText: '검증 결과.json' }).click()
   await expect(sheet).toBeVisible()
   expect(await sheet.evaluate(node => node.matches(':modal'))).toBe(true)
   await expect(sheet.getByTestId('artifact-sheet-text')).toContainText('"verified":true')
@@ -64,8 +72,8 @@ test('created file links open generated artifacts in the thread and reject escap
   await expect(sheet.getByRole('button', { name: 'Show in folder' })).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(sheet).toHaveCount(0)
-  await expect(page.getByRole('link', { name: '검증 결과.json', exact: true })).toBeFocused()
-  await page.getByRole('link', { name: 'review.md', exact: true }).click()
+  await expect(page.getByTestId('answer-file').filter({ hasText: '검증 결과.json' })).toBeFocused()
+  await page.getByTestId('answer-file').filter({ hasText: 'review.md' }).click()
   await expect(sheet.getByRole('heading', { name: 'Review', exact: true })).toBeVisible()
   await expect(sheet.locator('strong')).toHaveText('Ready')
   await expect(sheet).toContainText('<style>body { display: none }</style>')
@@ -73,7 +81,7 @@ test('created file links open generated artifacts in the thread and reject escap
   await expect(sheet.getByRole('link')).toHaveCount(1)
   await expect(sheet.getByRole('link', { name: 'Docs', exact: true })).toHaveAttribute('href', 'https://example.com/docs')
   await sheet.getByRole('button', { name: 'Close', exact: true }).click()
-  await page.getByRole('link', { name: 'Weekly summary.md', exact: true }).click()
+  await page.getByTestId('answer-file').filter({ hasText: 'Weekly summary.md' }).click()
   await expect(sheet.getByRole('heading', { name: 'Weekly summary', exact: true })).toBeVisible()
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(value => value.webContents.getURL().includes('index.html'))!.setContentSize(600, 800))
   await page.setViewportSize({ width: 600, height: 800 })
@@ -88,7 +96,7 @@ test('created file links open generated artifacts in the thread and reject escap
   await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toBeInViewport()
   await page.keyboard.press('Escape')
   if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
-  await page.getByRole('link', { name: 'Unavailable output', exact: true }).click()
+  await page.getByTestId('answer-file').filter({ hasText: 'outside.txt' }).click()
   await expect(page.getByRole('alert')).toContainText('This output file is unavailable')
   expect(await app.evaluate(() => (globalThis as unknown as { revealedArtifact: string }).revealedArtifact)).toBe(artifact.path)
   await page.keyboard.press('Escape')

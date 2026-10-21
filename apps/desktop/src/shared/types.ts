@@ -586,6 +586,7 @@ export interface NativeSurfaceDto { lane: string; x: number; y: number; width: n
 
 export interface EngramApi extends DesktopApi, DevelopersApi {
   artifactReveal(id: string): Promise<void>
+  artifactOpen(id: string): Promise<void>
   // An output file as the thread can show it: text, or null when it is not text or too large.
   artifactRead(id: string): Promise<ArtifactViewDto>
   nativeEnabled(): Promise<boolean>

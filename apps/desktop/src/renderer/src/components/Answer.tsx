@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
-import { answerHtml, answerText, memorySources } from '../markdown.js'
+import { answerFiles, answerHtml, answerText, memorySources } from '../markdown.js'
+import { AnswerFiles } from './AnswerFiles.js'
 import { Copy, Check } from 'lucide-react'
 import { answerSites, SiteIcon } from './SiteIcon.js'
 
@@ -11,6 +12,7 @@ import { answerSites, SiteIcon } from './SiteIcon.js'
 
 export const Answer = memo(function Answer({ text: rawText, compact = false, citations = false, streaming = false }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean }) {
   const text = answerText(rawText)
+  const { text: body, files } = answerFiles(text)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const sites = compact ? [] : answerSites(text)
@@ -28,5 +30,5 @@ export const Answer = memo(function Answer({ text: rawText, compact = false, cit
     setError('')
     try { window.dispatchEvent(new CustomEvent('engram:open-artifact', { detail: decodeURIComponent(link.slice('engram-artifact:'.length)) })) }
     catch { setError('This output link is invalid.') }
-  }} dangerouslySetInnerHTML={{ __html: answerHtml(text, sites.map(site => site.url), notes.map(note => note.url)) }} />{!streaming && notes.length > 0 && <details className="answer-memory-sources"><summary>{notes.length} memory {notes.length === 1 ? 'source' : 'sources'}</summary><ol>{notes.map(note => <li key={note.url}><a href={note.url}>{note.label}</a></li>)}</ol></details>}{!streaming && sites.length > 0 && <div className="answer-sites" aria-label="Websites in this answer">{sites.map(site => <a className="answer-site" key={site.origin} href={site.url} title={site.url}><SiteIcon origin={site.origin} /><span>{site.label}</span></a>)}</div>}{!compact && !streaming && <div className="answer-actions"><button onClick={() => copy(text)} aria-label="Copy answer" title="Copy answer">{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}</button>{copied && <span role="status">Copied</span>}</div>}{error && <p role="alert">{error}</p>}</>
+  }} dangerouslySetInnerHTML={{ __html: answerHtml(body, sites.map(site => site.url), notes.map(note => note.url)) }} />{!streaming && files.length > 0 && <AnswerFiles files={files} />}{!streaming && notes.length > 0 && <details className="answer-memory-sources"><summary>{notes.length} memory {notes.length === 1 ? 'source' : 'sources'}</summary><ol>{notes.map(note => <li key={note.url}><a href={note.url}>{note.label}</a></li>)}</ol></details>}{!streaming && sites.length > 0 && <div className="answer-sites" aria-label="Websites in this answer">{sites.map(site => <a className="answer-site" key={site.origin} href={site.url} title={site.url}><SiteIcon origin={site.origin} /><span>{site.label}</span></a>)}</div>}{!compact && !streaming && <div className="answer-actions"><button onClick={() => copy(text)} aria-label="Copy answer" title="Copy answer">{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}</button>{copied && <span role="status">Copied</span>}</div>}{error && <p role="alert">{error}</p>}</>
 })

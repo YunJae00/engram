@@ -1,5 +1,5 @@
 import { Clock } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import type { CometMessage } from '../lib/cometThreads.js'
 import { answerBubbles } from '../markdown.js'
 import { CometWork } from './CometWork.js'
@@ -17,7 +17,7 @@ import { threadLang, threadWords } from '../lib/threadLang.js'
 // at the foot that says what it is doing; and, when it is done, the replies
 // the person is likely to send next. The full view and the split tiles both
 // show a conversation through this, so they never drift apart.
-export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply }: {
+export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, children }: {
   messages: CometMessage[]
   busy: boolean
   status: string
@@ -27,6 +27,8 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   // A question card is already offering the next moves.
   offerOpen?: boolean
   onReply(label: string): void
+  // Cards waiting on the person sit under the answer, above the replies.
+  children?: ReactNode
 }) {
   const lastAssistant = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
   const failed = (message: CometMessage) => !!message.error || (message.role === 'assistant' && isProviderError(message.text))
@@ -52,6 +54,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
       </Fragment>
     })}
     {busy && <div className="bubble-typing" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
+    {children}
     {!busy && !offerOpen && last && !last.streaming && !failed(last) && <ReplyChips text={last.text} onPick={onReply} />}
   </>
 }

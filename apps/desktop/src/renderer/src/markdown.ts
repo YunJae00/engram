@@ -109,6 +109,25 @@ function cardsHtml(token: Tokens.Table, inline: (tokens: Tokens.TableCell['token
   return `<div class="answer-cards">${cards.join('')}</div>`
 }
 
+// The files an answer made show as cards under its words. A line that is
+// only a file link becomes its card; a link inside a sentence stays a link
+// and gets a card too.
+const FILE_LINK = /\[[^\]]*\]\((engram-artifact:[^)\s]+)\)/g
+const FILE_LINE = /^\s*(?:[-*]\s+)?(\[[^\]]*\]\(engram-artifact:[^)\s]+\))\s*$/
+export interface AnswerFile { id: string; name: string }
+export function answerFiles(text: string): { text: string; files: AnswerFile[] } {
+  const files: AnswerFile[] = []
+  const links = new Set<string>()
+  for (const match of text.matchAll(FILE_LINK)) {
+    try {
+      const id = decodeURIComponent(match[1]!.slice('engram-artifact:'.length))
+      links.add(match[0])
+      if (!files.some(file => file.id === id)) files.push({ id, name: id.replace(/^[0-9a-f-]{36}-/i, '') })
+    } catch { /* A malformed link stays as written. */ }
+  }
+  return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
+}
+
 export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
   const visible = answerText(text)
   const renderer = new marked.Renderer()

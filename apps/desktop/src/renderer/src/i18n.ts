@@ -164,7 +164,7 @@ const en = {
   'study.offerLabel': 'Shall I find another way?',
   'study.offerSub': 'Reads only: {where}. Nothing is saved or sent.',
   'study.anywhere': 'where this work shows',
-  'study.go': 'Go and look',
+  'study.go': 'Yes, look into it',
   'study.later': 'Later',
   'study.reviewLabel': 'Here is what I learned',
   'study.keep': 'Right, keep it',

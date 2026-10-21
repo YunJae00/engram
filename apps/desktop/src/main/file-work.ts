@@ -83,6 +83,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
 
 const VIEWABLE = new Set(['.md', '.txt', '.csv', '.tsv', '.json'])
 const VIEW_BYTES = 2_000_000
+const OPENABLE = new Set(['.xlsx', '.docx', '.pptx', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.hwpx'])
 
 export function registerArtifactIpc(paths: VaultPaths): void {
   ipcMain.removeHandler('artifact:read')
@@ -97,7 +98,16 @@ export function registerArtifactIpc(paths: VaultPaths): void {
   ipcMain.removeHandler('artifact:reveal')
   ipcMain.handle('artifact:reveal', async (_event, id: unknown) => {
     const path = await resolveArtifact(artifactDirectory(paths), id)
-    // Reveal only: generated content never launches a program on a model's say-so.
+    // Reveal only: a model's say-so never launches a program.
     shell.showItemInFolder(path)
+  })
+  ipcMain.removeHandler('artifact:open')
+  // Opened only on the person's click, and only kinds that carry no code of
+  // their own; anything else is shown in its folder.
+  ipcMain.handle('artifact:open', async (_event, id: unknown) => {
+    const path = await resolveArtifact(artifactDirectory(paths), id)
+    if (!OPENABLE.has(extname(path).toLowerCase())) { shell.showItemInFolder(path); return }
+    const failed = await shell.openPath(path)
+    if (failed) throw new Error(failed)
   })
 }

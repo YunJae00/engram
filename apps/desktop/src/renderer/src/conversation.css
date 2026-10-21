@@ -10,6 +10,10 @@
 .chat-file-card strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); font-weight: 550; }
 .chat-file-card small { display: block; color: var(--fg-dim); font-size: 11px; margin-top: 4px; }
 .chat-file-card.media .chat-file-label { margin-top: 8px; }
+.answer-files { margin-top: 10px; padding: 0; }
+.answer-file { cursor: pointer; font: inherit; border-color: transparent; box-shadow: var(--shadow-card); transition: transform 0.16s ease, box-shadow 0.16s ease; }
+.answer-file:hover { transform: translateY(-1px); }
+.answer-file .chat-file-label > span { padding-right: 0; }
 .chat-file-card pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--fs-small); margin: 12px 0 0; }
 .chat-file-card .chat-file-actions { position: absolute; right: 4px; top: 4px; z-index: 1; display: flex; gap: 4px; }
 .chat-file-card .chat-file-action { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--panel-bg); }

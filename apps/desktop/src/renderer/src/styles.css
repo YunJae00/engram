@@ -2172,7 +2172,7 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .answer-code-head button { padding: 3px 7px; }
 .answer-code-head button:hover { background: var(--hover-bg); color: var(--accent); }
 .bubble-msg-body .answer-code pre { margin: 0; border: 0; border-radius: 0; }
-.bubble-msg-body a[href^="engram-artifact:"] { display: inline-block; max-width: 100%; padding: 6px 10px; margin: 4px 0; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-s); text-decoration: none; overflow-wrap: anywhere; }
+.bubble-msg-body a[href^="engram-artifact:"] { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 /* The page it left behind, once the browser has gone: still there to look at. */
 /* Before the first frame the card is a thin line, not a wall of nothing. */
 .routine-submit-hint { font-size: var(--fs-small); color: var(--fg-faint); }

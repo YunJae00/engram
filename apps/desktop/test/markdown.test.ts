@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestedReplies, answerBubbles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { suggestedReplies, answerBubbles, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
@@ -103,5 +103,27 @@ describe('an answer as a few short messages', () => {
     expect(answerBubbles('```\na\n---\nb\n```')).toEqual(['```\na\n---\nb\n```'])
     expect(answerBubbles('Just one line.')).toEqual(['Just one line.'])
     expect(answerBubbles('Done.\n---\n')).toEqual(['Done.'])
+  })
+})
+
+describe('files an answer made', () => {
+  it('keeps malformed links when another file has a valid card', () => {
+    const broken = '[Broken](engram-artifact:%ZZ)'
+    const result = answerFiles(`[Sheet](engram-artifact:draft.xlsx)\n${broken}`)
+    expect(result.text).toBe(broken)
+    expect(result.files).toEqual([{ id: 'draft.xlsx', name: 'draft.xlsx' }])
+  })
+  it('turns a line that is only a file link into a card and keeps links inside sentences', () => {
+    const sheet = '599c52d8-db2c-c91a-4bd4-ea0bbe13862e-2026-10-21_draft.xlsx'
+    const text = `Made the draft. [Get the sheet](engram-artifact:${encodeURIComponent(sheet)})
+
+[2026-10-21_draft.xlsx](engram-artifact:${encodeURIComponent(sheet)})
+
+Done.`
+    const { text: body, files } = answerFiles(text)
+    expect(files).toEqual([{ id: sheet, name: '2026-10-21_draft.xlsx' }])
+    expect(body).toContain('[Get the sheet]')
+    expect(body).not.toContain('[2026-10-21_draft.xlsx]')
+    expect(answerFiles('No files here.')).toEqual({ text: 'No files here.', files: [] })
   })
 })
