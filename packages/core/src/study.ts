@@ -78,8 +78,8 @@ export function studyCandidate(study: Study): SkillCandidate {
 export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): string {
   const language = scriptLanguage(study.ask)
   return [
-    `Study, without changing anything, how the person does this: "${study.what}" - so that the job "${study.ask}" can be done their way.`,
-    `Look where their past work on it shows: ${study.where.length ? study.where.join(', ') : 'the apps and sites the job involves'}; their own records there (earlier entries, history, past messages and threads, sent replies), desk_activity for the apps they used around it, and the menus of the systems involved.`,
+    `Look, without changing anything, for the way to do this job as the person would: "${study.ask}". What stood in the way: "${study.what}".`,
+    `Look where their past work on it shows and where else it could be done: ${study.where.length ? study.where.join(', ') : 'the apps and sites the job involves'}; their own records there (earlier entries, history, past messages and threads, sent replies), desk_activity for the apps they used around it, and the menus of the systems involved.`,
     'Read and move only. Never press anything that saves, sends, submits or deletes; those presses are refused while you study.',
     'Only reading tools are enabled during study. Read records through the available mail, file, app and page readers. Do not call action tools or commands; if another view needs a click or input, ask the person to open it instead.',
     'When you have looked, call study_findings with what you learned as a how-to, then tell the person in two or three sentences what you learned and that a card asks them to confirm it.',
@@ -114,4 +114,26 @@ export function studyFindingsTool(deps: { found(draft: SkillDraft): Promise<bool
       return 'Kept for the person to confirm. Now tell them in two or three sentences what you learned and that a card asks them to confirm it.'
     },
   }
+}
+
+
+// After a job, whether it was done: asked of the voice each time a turn ends
+// with an answer, so a job left undone is offered another way even when the
+// comet itself did not offer it.
+export function undonePrompt(ask: string, answer: string): string {
+  return [
+    'Did this answer do what was asked? Judge only from the two texts. A report that the page failed, was empty, could not be read or reached, or that nothing was found counts as not done; so does a plain refusal to guess. A question back asking the person for something only they know does not.',
+    'Reply with JSON only: {"done": true} or {"done": false, "blocked": "what stopped it, in one short phrase in the language of the request"}',
+    `Asked: ${ask.slice(0, 800)}`,
+    `Answer: ${answer.replace(/\s+/g, ' ').slice(0, 1500)}`,
+  ].join('\n\n')
+}
+
+export function parseUndone(raw: string | null): { blocked: string } | null {
+  const json = raw ? /\{[\s\S]*\}/.exec(raw)?.[0] : undefined
+  if (!json) return null
+  try {
+    const value = JSON.parse(json) as { done?: unknown; blocked?: unknown }
+    return value.done === false && typeof value.blocked === 'string' && value.blocked.trim() ? { blocked: value.blocked.trim().slice(0, 200) } : null
+  } catch { return null }
 }

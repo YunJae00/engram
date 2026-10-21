@@ -6,6 +6,7 @@ import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { hasBrainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
 import { startToolServer, type ToolServer } from './codex-tool-server.js'
+import { CodexVoice } from './engine-codex-voice.js'
 import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareReady, runCodexNative, warmCodexSession } from './codex-native.js'
 
 // ChatGPT, through the vendor's agent runtime bundled with this app. The
@@ -115,6 +116,25 @@ export class CodexEngine implements CloudEngine {
   readonly desktopToolIsolation = true
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
+
+  // Short answers from a runtime kept open, for words said while a comet works.
+  async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
+  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
+    const live = await this.voiceFor(options.workdir)
+    if (!live?.ready) throw new Error('The voice is not ready.')
+    return live.ask(prompt, options.timeoutMs)
+  }
+  private async voiceFor(workdir: string): Promise<CodexVoice | undefined> {
+    await loadBrainConnections()
+    const binary = codexBinary()
+    if (!binary) return undefined
+    const env = withHelpersOnPath(binary, this.env)
+    const catalog = await mcpCatalog(binary, workdir, env, new AbortController().signal)
+    const model = (await loadSettings()).codexModel.trim()
+    const spec = { rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)], cwd: workdir, ...(model ? { model } : {}) }
+    if (!codexVoice || codexVoice.closed || codexVoice.key !== JSON.stringify([spec.cwd, spec.model ?? '', spec.config])) { codexVoice?.close(); codexVoice = new CodexVoice(spec) }
+    return codexVoice
+  }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
 
   detect(): Promise<EngineDetection> {
@@ -308,8 +328,10 @@ async function toolServerFor(key: string, tools: ToolSessionJob['tools'], cwd?: 
   toolServers.set(key, { server, usedAt: Date.now() })
   return server
 }
+let codexVoice: CodexVoice | undefined
 export function closeCodexSessions(): void {
   closeCodexNativeSessions()
+  codexVoice?.close()
   for (const held of toolServers.values()) void held.server.close()
   toolServers.clear()
   void spareServer?.server.close()

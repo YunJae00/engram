@@ -182,12 +182,6 @@
 .workspace-delete:hover { background: var(--hover-bg); color: var(--fg); }
 .chat-attachment-error { margin: 6px 0; color: var(--danger); font-size: var(--fs-small); }
 .chat-attachment-status { margin: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }
-.queued-messages { padding: 10px 14px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 12px; font-size: 12px; }
-.queued-messages header, .queued-messages li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.queued-messages small { color: var(--fg-dim); }
-.queued-messages ol { margin: 6px 0 0; padding: 0; list-style: none; max-height: 100px; overflow: auto; }
-.queued-messages li > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.queued-messages button { flex-shrink: 0; }
 
 /* The model field opens under the chosen AI instead of popping in, and its
    list unfolds the same way. While setup checks the AI, the choices above

@@ -3,7 +3,6 @@ import { Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
-import { QueuedMessages } from './QueuedMessages.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
 import { WebPaneButton } from './WebPaneButton.js'
@@ -25,7 +24,6 @@ interface Props {
 export function BotComposer({ botId, botName, initialDraft, busy, locked, memoryOpen, onToggleMemory, onSend, onStop }: Props) {
   const [value, setValue] = useState(initialDraft)
   const attachments = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).attachments)
-  const queued = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).queued)
   const valueRef = useRef(value)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -89,14 +87,13 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
 
   const send = () => {
     const message = value.trim()
-    if ((!message && !attachments.length) || locked || queued.length >= 10) return
+    if ((!message && !attachments.length) || locked) return
     onSend(message, attachments)
   }
 
   return (
     <div className="bots-write conversation-dock" ref={rootRef}>
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
-      <QueuedMessages botId={botId} />
       <ChatComposer
         testId="bots-input"
         autoFocus
@@ -105,7 +102,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         maxLength={2000}
         busy={busy}
         canQueue
-        disabled={locked || queued.length >= 10}
+        disabled={locked}
         attachments={attachments}
         onAttachmentsChange={(next) => cometThreads.setAttachments(botId, next)}
         onChange={change}
