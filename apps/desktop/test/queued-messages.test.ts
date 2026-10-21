@@ -9,6 +9,34 @@ const api = () => {
   return { onEvent: (listener: (event: EngramEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }, chatSend: vi.fn(async () => undefined) }
 }
 
+it('ignores a late voice reply after stop, even after its done echo', async () => {
+  const store = createCometThreads()
+  let reply!: (answer: { ok: true; action: 'later'; instruction: string }) => void
+  const client = { ...api(), chatSay: () => new Promise<{ ok: true; action: 'later'; instruction: string }>(resolve => { reply = resolve }) }
+  await sendCometMessage(client, store, 'one', 'First')
+  const pending = sendCometMessage(client, store, 'one', 'Then this')
+  store.stop('one', 'Stopped')
+  store.clearStopped('one')
+  reply({ ok: true, action: 'later', instruction: 'Then this' })
+  await pending
+  expect(store.thread('one').queued).toEqual([])
+  expect(client.chatSend).toHaveBeenCalledTimes(1)
+})
+
+it('starts a late follow-up after completion and preserves the newer draft', async () => {
+  const store = createCometThreads()
+  let reply!: (answer: { ok: true; action: 'later'; instruction: string }) => void
+  const client = { ...api(), chatSay: () => new Promise<{ ok: true; action: 'later'; instruction: string }>(resolve => { reply = resolve }) }
+  await sendCometMessage(client, store, 'one', 'First')
+  const pending = sendCometMessage(client, store, 'one', 'Then this')
+  store.setDraft('one', 'Still typing')
+  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Done' })
+  reply({ ok: true, action: 'later', instruction: 'Then this' })
+  await pending
+  expect(client.chatSend).toHaveBeenCalledTimes(2)
+  expect(store.thread('one').draft).toBe('Still typing')
+})
+
 it('shows words sent mid-reply at once in the running work and answers them there', async () => {
   const store = createCometThreads()
   const chatSay = vi.fn(async () => ({ ok: true, reply: 'I will look at Seoul only.', action: 'relay' as const, instruction: 'Only Seoul' }))

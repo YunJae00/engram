@@ -54,19 +54,24 @@ export class CodexVoice {
     this.turns++
     this.rest()
     const reply = new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => { if (this.waiting) { this.waiting = undefined; reject(new Error('The voice took too long.')) } }, timeoutMs)
+      const timer = setTimeout(() => { if (this.waiting) { this.waiting = undefined; reject(new Error('The voice took too long.')); this.close() } }, timeoutMs)
       this.waiting = { resolve: (answer) => { clearTimeout(timer); resolve(answer) }, reject: (error) => { clearTimeout(timer); reject(error) } }
     })
-    try {
-      await this.opened
-      this.answer = ''
-      this.running = true
-      const started = await this.rpc.send('turn/start', { threadId: this.threadId, input: [{ type: 'text', text: words, text_elements: [] }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' }, effort: 'low' })
-      this.turnId = text(object(started['turn'])['id'])
-    } catch (error) {
-      this.waiting?.reject(error instanceof Error ? error : new Error(String(error)))
-      this.waiting = undefined
-    }
+    void (async () => {
+      try {
+        await this.opened
+        if (this.closed) return
+        this.answer = ''
+        this.turnId = ''
+        this.running = true
+        const started = await this.rpc.send('turn/start', { threadId: this.threadId, input: [{ type: 'text', text: words, text_elements: [] }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' }, effort: 'low' })
+        this.turnId = text(object(started['turn'])['id'])
+      } catch (error) {
+        this.waiting?.reject(error instanceof Error ? error : new Error(String(error)))
+        this.waiting = undefined
+        this.close()
+      }
+    })()
     return reply
   }
 
@@ -81,10 +86,10 @@ export class CodexVoice {
 
   private notify(method: string, params: Data): void {
     if (params['threadId'] && params['threadId'] !== this.threadId) return
-    if (method === 'turn/completed') this.running = false
-    if (!this.waiting) return
     const eventTurn = text(params['turnId']) || text(object(params['turn'])['id'])
     if (this.turnId && eventTurn && eventTurn !== this.turnId) return
+    if (method === 'turn/completed') this.running = false
+    if (!this.waiting) return
     const item = object(params['item'])
     if (method === 'item/completed' && text(item['type']) === 'agentMessage') this.answer = text(item['text']) || this.answer
     if (method !== 'turn/completed') return

@@ -34,6 +34,7 @@ export async function flushQueuedCometMessages(api: ChatApi, store: CometThreads
 export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, botId: string, draft: string, attachments: ChatAttachmentDto[] = []): Promise<void> {
   if (!chatMessage(draft, attachments)) return
   if (store.thread(botId).busy) {
+    const stopCount = store.thread(botId).stopCount
     const said = chatMessage(draft, attachments)
     const words = threadT(threadLang(store.thread(botId).messages))
     store.noteWork(botId, `you: ${said}`)
@@ -41,20 +42,24 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     if (store.thread(botId).draft === draft) store.setDraft(botId, '')
     // Files cannot join a turn already under way: they start the next one.
     if (attachments.length || !api.chatSay) {
+      if (attachments.length) store.setAttachments(botId, [])
       store.noteWork(botId, `said: ${words('aside.next')}`)
       store.enqueue(botId, draft, attachments, true)
       return
     }
     const answer = await api.chatSay(cometChannel(botId), draft.trim()).catch(() => ({ ok: false as const }))
+    if (store.thread(botId).stopCount !== stopCount) return
     if (!answer.ok) {
       store.noteWork(botId, `said: ${words('aside.next')}`)
       store.enqueue(botId, draft, [], true)
+      void flushQueuedCometMessages(api, store, botId)
       return
     }
     // A stop is said where the work ends; anything else in the running work.
     if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? ''); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
     store.noteWork(botId, `said: ${answer.reply || words('aside.passed')}`)
     if (answer.action === 'later' && answer.instruction) store.enqueue(botId, answer.instruction, [], true)
+    void flushQueuedCometMessages(api, store, botId)
     return
   }
   // Sent again before the first one took its seat: it goes right after, shown when it starts.

@@ -736,6 +736,7 @@ function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): (w
 }
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
+const afterChecks = new Set<{ controller: AbortController; channel: string }>()
 // Channels whose answer has not been delivered yet. A turn keeps working
 // after that - what to remember from it, what to offer - and that work is
 // still cancellable, but it is not something to wait on.
@@ -779,7 +780,7 @@ export function abortAllChat(channel?: string): void {
   for (const [lane, claim] of routineLanes) {
     if (channel === undefined || channel === lane) claim.abort()
   }
-  for (const entry of chatAborts) {
+  for (const entry of [...chatAborts, ...afterChecks]) {
     if (channel !== undefined && entry.channel !== channel) continue
     entry.controller.abort()
   }
@@ -2854,15 +2855,22 @@ export function registerIpc(ctx: VaultContext): void {
         const handed = handedOver.get(channel) ?? []
         handedOver.delete(channel)
         if (bot && !held && !result.stopped && result.answer.trim() && engine.quick) {
+          const checking = { controller: new AbortController(), channel }
+          afterChecks.add(checking)
+          const wasStudying = studying.has(channel)
           const asked = request.message, said = result.answer, botId = bot.id
           const voice = (prompt: string) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null)
           void (async () => {
             const left = handed.length ? parseLeftover(await voice(leftoverPrompt(asked, handed, said)), handed) : []
+            signal.throwIfAborted()
+            checking.controller.signal.throwIfAborted()
             if (left.length) { flog('aside', `${left.length} of ${handed.length} handed-over words left for the next turn`); broadcast({ type: 'chat:steer-returned', channel, texts: left }); return }
-            if (studying.has(channel) || offeredIn.has(channel)) return
+            if (wasStudying || studying.has(channel) || offeredIn.has(channel)) return
             const undone = parseUndone(await voice(undonePrompt(asked, said)))
+            signal.throwIfAborted()
+            checking.controller.signal.throwIfAborted()
             if (undone && !offeredIn.has(channel)) { flog('study', `offered after an undone turn: ${undone.blocked}`); await offerStudy(botId, { what: undone.blocked, where: [] }, asked) }
-          })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`))
+          })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => afterChecks.delete(checking))
         }
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {

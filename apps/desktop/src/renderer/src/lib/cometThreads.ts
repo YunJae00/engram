@@ -50,6 +50,7 @@ export interface CometThread {
   // main sends for the abort must not be read as news from disk - nothing of
   // this exchange ever reached disk.
   stopped: boolean
+  stopCount?: number
   // When the pending answer began, so a clock can survive the view
   // unmounting; null while nothing is pending.
   startedAt: number | null
@@ -155,7 +156,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     // otherwise appear when it starts.
     enqueue(id: string, draft: string, attachments: ChatAttachmentDto[] = [], shown = false): boolean {
       const current = thread(id)
-      patch(id, { queued: [...current.queued, { id: `q-${Date.now()}-${++queueSerial}`, draft, attachments: [...attachments], ...(shown ? { shown } : {}) }], draft: '', attachments: [] })
+      patch(id, { queued: [...current.queued, { id: `q-${Date.now()}-${++queueSerial}`, draft, attachments: [...attachments], ...(shown ? { shown } : {}) }], ...(!shown ? { draft: '', attachments: [] } : {}) })
       return true
     },
     takeQueued(id: string): CometThread['queued'][number] | undefined {
@@ -274,7 +275,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         id,
         thread(id).messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
         // A stop ends what was set to follow too.
-        { stopped: true, queued: [] },
+        { stopped: true, stopCount: (thread(id).stopCount ?? 0) + 1, queued: [] },
       )
     },
     // Feeds one main-process event to the thread it belongs to. Returns that
