@@ -1,4 +1,5 @@
 import { registerBrowserTabs } from './browser-tabs.js'
+import { dismissStudyOffers, type StudyCheck } from './study-offers.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
@@ -736,7 +737,7 @@ function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): (w
 }
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
-const afterChecks = new Set<{ controller: AbortController; channel: string }>()
+const afterChecks = new Set<StudyCheck>()
 // Channels whose answer has not been delivered yet. A turn keeps working
 // after that - what to remember from it, what to offer - and that work is
 // still cancellable, but it is not something to wait on.
@@ -1122,6 +1123,11 @@ export function registerIpc(ctx: VaultContext): void {
   setDesktopLaneWorking(lane => answering.has(lane) || tasks.activeChannels().includes(lane))
   // A job not known is offered as a study; agreed, it runs as a turn of its
   // own in the same conversation, reading only, and comes back as a how-to.
+  // Writing on instead of answering the card is moving on: the offer goes.
+  const setOffersAside = async (botId: string): Promise<void> => {
+    await dismissStudyOffers(paths, botId, afterChecks)
+    broadcast({ type: 'study:changed', botId })
+  }
   const offerStudy = async (botId: string, input: { what: string; where: string[] }, ask: string): Promise<void> => {
     offeredIn.add(`bot-${botId}`)
     await changeStudies(paths, list => [...list.filter(one => !(one.botId === botId && one.state === 'offered')), { id: `study-${Date.now().toString(36)}`, botId, ...input, ask, state: 'offered', at: new Date().toISOString() }])
@@ -1147,11 +1153,11 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'comet:continue', channel, botId: study.botId })
       const history = (await readBotTranscript(paths, study.botId)).map(turn => ({ role: turn.role, text: turn.text }))
       void sendChat({ engineId: '', botId: study.botId, channel, message: studyMessage(study), history }, undefined, undefined, { quiet: true })
-        .catch(error => flog('study', error))
-        .finally(async () => {
+        .then(() => 'declined' as const, (error: unknown) => { flog('study', error); return 'offered' as const })
+        .then(async (after) => {
           studying.delete(channel)
-          // A study that ended without findings goes back to being an offer.
-          await changeStudies(paths, list => list.map(one => one.id === study.id && one.state === 'studying' ? { ...one, state: 'offered' as const } : one)).catch(() => undefined)
+          // A study that finished without findings has said where it stopped; one cut short can be offered again.
+          await changeStudies(paths, list => list.map(one => one.id === study.id && one.state === 'studying' ? { ...one, state: after } : one)).catch(() => undefined)
           broadcast({ type: 'study:changed', botId: study.botId })
         })
       return {}
@@ -1180,6 +1186,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (!answering.has(channel) && !tasks.activeChannels().includes(channel)) return { ok: false }
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
+    void setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
     const engine = await chatEngine(channel, ctx.engines)
     const earlier = await readBotTranscript(paths, botId, 12).catch(() => [])
@@ -2298,7 +2305,10 @@ export function registerIpc(ctx: VaultContext): void {
 
   // A comet message is a task: it goes on past one turn until the work is
   // done (task-runner.ts). Skill commands stay plain turns.
-  ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => request.botId && !request.message.trim().startsWith('/') ? tasks.chat(request) : sendChat(request))
+  ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => {
+    if (request.botId) void setOffersAside(request.botId).catch(error => flog('study', error))
+    return request.botId && !request.message.trim().startsWith('/') ? tasks.chat(request) : sendChat(request)
+  })
 
   async function sendChat(request: ChatRequestDto, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
     if ([...chatAborts].some(entry => entry.channel === (request.channel ?? 'panel'))) throw new Error('The previous turn is still stopping. Please try again shortly.')
@@ -2855,7 +2865,7 @@ export function registerIpc(ctx: VaultContext): void {
         const handed = handedOver.get(channel) ?? []
         handedOver.delete(channel)
         if (bot && !held && !result.stopped && result.answer.trim() && engine.quick) {
-          const checking = { controller: new AbortController(), channel }
+          const checking: StudyCheck = { controller: new AbortController(), channel }
           afterChecks.add(checking)
           const wasStudying = studying.has(channel)
           const asked = request.message, said = result.answer, botId = bot.id
@@ -2869,7 +2879,8 @@ export function registerIpc(ctx: VaultContext): void {
             const undone = parseUndone(await voice(undonePrompt(asked, said)))
             signal.throwIfAborted()
             checking.controller.signal.throwIfAborted()
-            if (undone && !offeredIn.has(channel)) { flog('study', `offered after an undone turn: ${undone.blocked}`); await offerStudy(botId, { what: undone.blocked, where: [] }, asked) }
+            // A turn the person already started since is where they are now; an offer would land in it.
+            if (undone && !checking.superseded && !offeredIn.has(channel) && !answering.has(channel)) { flog('study', `offered after an undone turn: ${undone.blocked}`); await offerStudy(botId, { what: undone.blocked, where: [] }, asked) }
           })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => afterChecks.delete(checking))
         }
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })

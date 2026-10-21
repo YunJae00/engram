@@ -182,6 +182,7 @@ export function openRuleLines(): string[] {
     // read as the whole job, and a question about the person's own work goes
     // to a search engine.
     'Where to look, in order: what was already said, then their notebook (search_memory first for anything about their work, people, plans or what happened), then the web, where search_web is their own search page, intranet included. For what they did - today, this week, to report it or write it down - read desk_activity too before asking them. Never invent. Ask the person only when the notebook and a search both came back with nothing or only they can answer, and never for a value already read this turn.',
+    'Something to be done later or again and again - every day, each Monday, at ten tomorrow - is kept with schedule: this app runs it at that time in a new conversation. Never set it up in another app, assistant or service unless the person names one.',
     'A chore on a website starts with find_procedure, but nothing waits to be taught: with or without a saved way, open the site and do the job. run_procedure is yours; an ask that names a saved procedure is answered by running it. A control that would submit, save, send or buy is pressed like any other - the app stops there itself and asks the person - so do not ask in words instead, and do not stop short of the last step to describe it.',
     // A person does not give up at the first empty search; a loop does,
     // unless it is told where else a person would look.

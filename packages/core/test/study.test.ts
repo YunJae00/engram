@@ -36,7 +36,7 @@ describe('studying a job', () => {
     const message = studyMessage({ what: '팀원별 Activity 조회 위치', where: ['TMS'], ask: '팀 타임리포트 정리해줘' })
     expect(message).toContain('Never press anything that saves, sends, submits or deletes')
     expect(message).toContain('Write to the person in Korean.')
-    expect(message).toContain('call study_findings')
+    expect(message).toContain('Call study_findings only once you have followed the way to the end')
     expect(message).toContain('Start where the job is done - TMS')
     expect(message).toContain('write one short line on what the last one showed you')
   })
@@ -68,5 +68,10 @@ describe('a job left undone', () => {
     expect(parseUndone('{"done": false, "blocked": "페이지 접속 오류"}')).toEqual({ blocked: '페이지 접속 오류' })
     expect(parseUndone('{"done": true}')).toBeNull()
     expect(parseUndone('no')).toBeNull()
+  })
+
+  it('does not count a stop at a sign-in as a job to study', async () => {
+    const { undonePrompt } = await import('../src/study.js')
+    expect(undonePrompt('공가 승인 확인해줘', '로그인 화면이라 확인하지 못했어요.')).toContain('a stop at a sign-in or login page')
   })
 })
