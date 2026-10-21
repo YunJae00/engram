@@ -83,7 +83,8 @@ export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): stri
     'Think aloud to the person while you study: before each next look, write one short line on what the last one showed you, in plain words ("this screen is where each day is entered", "this code is used for this kind of work") - what you learned, not which button you pressed. Never take two looks in a row without such a line.',
     'Read and move only. Never press anything that saves, sends, submits or deletes; those presses are refused while you study.',
     'Only reading tools are enabled during study. Read records through the available mail, file, app and page readers. Do not call action tools or commands; if another view needs a click or input, ask the person to open it instead.',
-    'When you have looked, call study_findings with what you learned as a how-to, then tell the person in two or three sentences what you learned and that a card asks them to confirm it.',
+    'Call study_findings only once you have followed the way to the end and seen it give what the job needs - the records, the numbers, the screen that holds them. A way you did not see through is not learned: then do not call it, and tell the person in two or three sentences what you found, where it stopped and what you would need.',
+    'When you have called it, tell the person in two or three sentences what you learned and that a card asks them to confirm it.',
     `Write to the person in ${language || 'the language of the job above'}.`,
   ].join('\n')
 }
@@ -123,7 +124,7 @@ export function studyFindingsTool(deps: { found(draft: SkillDraft): Promise<bool
 // comet itself did not offer it.
 export function undonePrompt(ask: string, answer: string): string {
   return [
-    'Did this answer do what was asked? Judge only from the two texts. A report that the page failed, was empty, could not be read or reached, or that nothing was found counts as not done; so does a plain refusal to guess. A question back asking the person for something only they know does not.',
+    'Did this answer do what was asked? Judge only from the two texts. A report that the page failed, was empty, could not be read or reached, or that nothing was found counts as not done; so does a plain refusal to guess. A question back asking the person for something only they know does not, and neither does a stop at a sign-in or login page, missing access or permission, or anything else only the person can give - looking for another way does not get past those, so count them as done.',
     'Reply with JSON only: {"done": true} or {"done": false, "blocked": "what stopped it, in one short phrase in the language of the request"}',
     `Asked: ${ask.slice(0, 800)}`,
     `Answer: ${answer.replace(/\s+/g, ' ').slice(0, 1500)}`,
