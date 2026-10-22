@@ -1,4 +1,4 @@
-import type { AgentTool } from './agent-loop.js'
+import type { AgentTool, AgentToolContext, ToolOutcome } from './agent-loop.js'
 import type { PageMove, WebCourier } from './errand.js'
 import { str } from './page-report.js'
 
@@ -29,7 +29,7 @@ const filled = (step: unknown, value: string): Record<string, unknown> =>
 // needs all of them looked at one by one is one call, not dozens. The loop
 // runs here, not in the brain. A value whose moves fail is noted and the rest
 // go on; anything that would commit or needs a person stops the whole run.
-export function pageEachTool(courier: WebCourier): AgentTool | null {
+export function pageEachTool(courier: WebCourier): (Omit<AgentTool, 'run'> & { run(args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> }) | null {
   const readOpen = courier.readOpen
   if (!readOpen || !courier.press || !courier.typeText || !courier.choose || !courier.pressKey) return null
   return {
