@@ -1,5 +1,7 @@
 import { registerBrowserTabs } from './browser-tabs.js'
-import { dismissStudyOffers, type StudyCheck } from './study-offers.js'
+import { registerStudyIpc } from './study-ipc.js'
+import { registerAsideIpc } from './aside-ipc.js'
+import { afterChecks, answering, handedOver, heard, offeredIn, relayed, steers, studying, takeAsides, takeHeard, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
@@ -35,21 +37,9 @@ import {
   recordBotSites,
   markBotTaskRun,
   addNotice,
-  parseUndone,
-  parseLeftover,
-  leftoverPrompt,
-  undonePrompt,
-  changeStudies,
   offerStudyTool,
-  readStudies,
-  studyCandidate,
   studyFindingsTool,
-  studyMessage,
   studyGuard,
-  type SkillDraft,
-  asidePrompt,
-  parseAside,
-  type AsideAction,
   noticeText,
   createBot,
   updateNotice,
@@ -170,11 +160,9 @@ import { canLearnTurn, holdTaskResult } from './task-result-state.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
-import { learnFromAnswer, registerWorkInterviewIpc, workGuide } from './work-interview.js'
+import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
-import { prepareInterviewContext } from './interview-preparation.js'
-import { setTimeout as delay } from 'node:timers/promises'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
@@ -215,7 +203,6 @@ import type {
 import {
   broadcast,
   engineDto,
-  tapBroadcast,
   markEngineOk,
   noteEngineFailure,
   noteRunOutcome,
@@ -308,7 +295,6 @@ let lastFailures: JobFailure[] = []
 // manual sweep (sweep:run) so the "one sweep at a time" invariant holds.
 let draining = false
 let manualSweepInFlight = false
-let initialFilingWaiters = 0
 // Cooperative stop for the librarian (absorb:stop). Set by the widget, read by
 // the sweep's shouldStop; cleared whenever a drain/sweep next starts so a fresh
 // run is never born already-stopped.
@@ -352,7 +338,7 @@ let pipelineRunning = false
 let pipelineQueued = false
 
 export function isLibrarianBusy(): boolean {
-  return pipelineRunning || draining || manualSweepInFlight || initialFilingWaiters > 0
+  return pipelineRunning || draining || manualSweepInFlight
 }
 
 export async function runExclusiveFiling<T>(ctx: VaultContext, run: () => Promise<T>): Promise<T> {
@@ -396,7 +382,7 @@ function runPipelineSoon(ctx: VaultContext, message: string): void {
 
 export function runPipelineAsync(ctx: VaultContext, message: string): void {
   if (ctx.engines.length === 0) return
-  if (draining || manualSweepInFlight || initialFilingWaiters > 0) { scheduleAutoTidy(ctx); return }
+  if (draining || manualSweepInFlight) { scheduleAutoTidy(ctx); return }
   if (pipelineRunning) {
     pipelineQueued = true
     return
@@ -482,7 +468,6 @@ export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
   stopRequested = false
   try {
     for (;;) {
-      if (initialFilingWaiters > 0) return
       const state = await loadAbsorbState(ctx.paths)
       if (state.pending.length === 0) {
         // Queue clear — a final progress event so the UI dismisses the bar.
@@ -730,46 +715,7 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
   }
 }
 
-// While a comet studies nothing is changed: every press that would commit is refused.
-const studying = new Set<string>()
-function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): (what: T) => Promise<R | 'cancel'> {
-  return (what) => studying.has(channel) ? Promise.resolve('cancel') : ask(what)
-}
-
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
-const afterChecks = new Set<StudyCheck>()
-// Channels whose answer has not been delivered yet. A turn keeps working
-// after that - what to remember from it, what to offer - and that work is
-// still cancellable, but it is not something to wait on.
-const answering = new Set<string>()
-// What the person wrote while a turn was working, waiting for that turn's next tool result.
-const steers = new Map<string, string[]>()
-// Words a turn took in, kept so the thread records them where they were said.
-const heard = new Map<string, string[]>()
-const STEER_CAP = 4000
-// What was said with the voice while a turn worked, both sides, written into
-// the transcript after the ask and before the answer, where it happened.
-const asides = new Map<string, { role: 'user' | 'assistant'; text: string }[]>()
-function takeAsides(channel: string): { role: 'user' | 'assistant'; text: string }[] {
-  const said = asides.get(channel) ?? []
-  asides.delete(channel)
-  return said
-}
-// Instructions the voice passed on, taken in at the turn's next step.
-const relayed = new Map<string, string[]>()
-// What each running turn was asked, and what it has done so far.
-const turnGoals = new Map<string, string>()
-// Turns that already offered another way; the after-check leaves them be.
-const offeredIn = new Set<string>()
-// Words handed to a running turn, checked against its answer when it ends.
-const handedOver = new Map<string, string[]>()
-const workSoFar = new Map<string, string[]>()
-
-function takeHeard(channel: string): string[] {
-  const said = heard.get(channel) ?? []
-  heard.delete(channel)
-  return said
-}
 
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
@@ -1121,93 +1067,19 @@ export function registerIpc(ctx: VaultContext): void {
   // before the done event arrives.
   ipcMain.handle('chat:active', (): string[] => [...new Set([...answering, ...tasks.activeChannels()])])
   setDesktopLaneWorking(lane => answering.has(lane) || tasks.activeChannels().includes(lane))
-  // A job not known is offered as a study; agreed, it runs as a turn of its
-  // own in the same conversation, reading only, and comes back as a how-to.
-  // Writing on instead of answering the card is moving on: the offer goes.
-  const setOffersAside = async (botId: string): Promise<void> => {
-    await dismissStudyOffers(paths, botId, afterChecks)
-    broadcast({ type: 'study:changed', botId })
-  }
-  const offerStudy = async (botId: string, input: { what: string; where: string[] }, ask: string): Promise<void> => {
-    offeredIn.add(`bot-${botId}`)
-    await changeStudies(paths, list => [...list.filter(one => !(one.botId === botId && one.state === 'offered')), { id: `study-${Date.now().toString(36)}`, botId, ...input, ask, state: 'offered', at: new Date().toISOString() }])
-    broadcast({ type: 'study:changed', botId })
-  }
-  const studyFound = async (botId: string, draft: SkillDraft): Promise<boolean> => {
-    let found = false
-    await changeStudies(paths, list => list.map(one => one.botId === botId && one.state === 'studying' ? (found = true, { ...one, state: 'review' as const, findings: draft }) : one))
-    if (found) broadcast({ type: 'study:changed', botId })
-    return found
-  }
-  const studiesFor = async (botId: string) => (await readStudies(paths)).filter(one => one.botId === botId && (one.state === 'offered' || one.state === 'studying' || one.state === 'review'))
-  ipcMain.handle('study:list', async (_e, botId: unknown) => typeof botId === 'string' ? studiesFor(botId) : [])
-  ipcMain.handle('study:answer', async (_e, id: unknown, answer: unknown): Promise<{ ask?: string }> => {
-    const study = (await readStudies(paths)).find(one => one.id === id)
-    if (!study) throw new Error('That study is gone.')
-    const channel = `bot-${study.botId}`
-    if (answer === 'go' && study.state === 'offered') {
-      if (answering.has(channel) || tasks.activeChannels().includes(channel)) throw new Error('This conversation is still working. Wait for it to finish first.')
-      await changeStudies(paths, list => list.map(one => one.id === study.id ? { ...one, state: 'studying' as const } : one))
-      broadcast({ type: 'study:changed', botId: study.botId })
-      studying.add(channel)
-      broadcast({ type: 'comet:continue', channel, botId: study.botId })
-      const history = (await readBotTranscript(paths, study.botId)).map(turn => ({ role: turn.role, text: turn.text }))
-      void sendChat({ engineId: '', botId: study.botId, channel, message: studyMessage(study), history }, undefined, undefined, { quiet: true })
-        .then(() => 'declined' as const, (error: unknown) => { flog('study', error); return 'offered' as const })
-        .then(async (after) => {
-          studying.delete(channel)
-          // A study that finished without findings has said where it stopped; one cut short can be offered again.
-          await changeStudies(paths, list => list.map(one => one.id === study.id && one.state === 'studying' ? { ...one, state: after } : one)).catch(() => undefined)
-          broadcast({ type: 'study:changed', botId: study.botId })
-        })
-      return {}
-    }
-    if ((answer === 'later' && study.state === 'offered') || (answer === 'wrong' && study.state === 'review')) {
-      await changeStudies(paths, list => list.map(one => one.id === study.id ? { ...one, state: 'declined' as const } : one))
-      broadcast({ type: 'study:changed', botId: study.botId })
-      return {}
-    }
-    if (answer === 'keep' && study.state === 'review' && study.findings) {
-      const result = await installSkill(paths, studyCandidate(study), study.findings)
-      if (!result.installed) throw new Error(result.reason === 'privacy' ? 'What was learned holds an address or a key, so it was not kept.' : 'What was learned could not be kept.')
-      await changeStudies(paths, list => list.map(one => one.id === study.id ? { ...one, state: 'kept' as const } : one))
-      broadcast({ type: 'study:changed', botId: study.botId })
-      return { ask: study.ask }
-    }
-    throw new Error('That study is not waiting for this answer.')
+  const { offerStudy, setOffersAside, studyFound, checkAfterTurn } = registerStudyIpc({
+    paths,
+    busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
+    sendStudy: (request) => sendChat(request, undefined, undefined, { quiet: true }),
   })
-  tapBroadcast((event) => {
-    if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
-  })
-  // Said while the work runs: answered at once by a short call that sees what
-  // the work has done, which also decides what the words mean for the work.
-  ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: AsideAction; instruction?: string }> => {
-    if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
-    if (!answering.has(channel) && !tasks.activeChannels().includes(channel)) return { ok: false }
-    const said = text.trim()
-    const botId = channel.slice('bot-'.length)
-    void setOffersAside(botId).catch(error => flog('study', error))
-    asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    const engine = await chatEngine(channel, ctx.engines)
-    const earlier = await readBotTranscript(paths, botId, 12).catch(() => [])
-    const quickly = engine?.quick ? await engine.quick(asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }), { workdir: engineCwd(paths), timeoutMs: 12_000 }).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null }) : null
-    // Without a voice in seconds, the words still reach the work.
-    const aside = parseAside(quickly) ?? { reply: '', action: 'relay' as const, instruction: said }
-    if (aside.reply) asides.set(channel, [...(asides.get(channel) ?? []), { role: 'assistant', text: aside.reply }])
-    const running = answering.has(channel) || tasks.activeChannels().includes(channel)
-    if (aside.action === 'relay' && running) {
-      relayed.set(channel, [...(relayed.get(channel) ?? []), aside.instruction!])
-    }
-    flog('aside', `${channel}: ${aside.action}`)
-    // A relay that found the work already finished goes on as the next message.
-    return { ok: true, reply: aside.reply, action: aside.action === 'relay' && !running ? 'later' : aside.action, ...(aside.instruction ? { instruction: aside.instruction } : {}) }
-  })
-  // Words sent mid-turn join the work at its next step instead of waiting for it to finish.
-  ipcMain.handle('chat:steer', (_e, channel: unknown, text: unknown): boolean => {
-    if (typeof channel !== 'string' || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP || !answering.has(channel)) return false
-    steers.set(channel, [...(steers.get(channel) ?? []), text.trim()])
-    broadcast({ type: 'comet:step', channel, line: `you: ${text.trim()}` })
-    return true
+  registerAsideIpc({
+    paths,
+    busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
+    voice: async (channel, prompt, timeoutMs) => {
+      const engine = await chatEngine(channel, ctx.engines)
+      return engine?.quick ? engine.quick(prompt, { workdir: engineCwd(paths), timeoutMs }) : null
+    },
+    setOffersAside,
   })
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
@@ -1849,17 +1721,6 @@ export function registerIpc(ctx: VaultContext): void {
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
-  registerWorkInterviewIpc(ctx, async (signal, progress) => {
-    progress({ phase: 'connection' })
-    initialFilingWaiters++
-    let waiting = true
-    try {
-      while (pipelineRunning || draining || manualSweepInFlight || initialFilingWaiters > 1) await delay(250, undefined, { signal })
-      signal.throwIfAborted()
-      initialFilingWaiters--; waiting = false
-      return await runExclusiveFiling(ctx, () => prepareInterviewContext(ctx, signal, progress))
-    } finally { if (waiting) initialFilingWaiters-- }
-  }, () => scheduleAutoTidy(ctx, 0))
   startWorkMap(ctx, () => scheduleAutoTidy(ctx, 0))
   // One session per signed-in brain, opened ahead in a folder of its own, so a
   // new comet's first turn starts without waiting for a process. Built from
@@ -2776,6 +2637,7 @@ export function registerIpc(ctx: VaultContext): void {
                 broadcast({ type: 'comet:step', channel, line: `  <- ${tool}: ${observation.slice(0, 300).replace(/\n/g, ' ')}` })
               // The read has finished; the following model wait is not browser work.
               broadcast({ type: 'comet:observed', channel })
+              audit('result', { tool, detail: observation })
             },
           },
         )
@@ -2865,23 +2727,7 @@ export function registerIpc(ctx: VaultContext): void {
         const handed = handedOver.get(channel) ?? []
         handedOver.delete(channel)
         if (bot && !held && !result.stopped && result.answer.trim() && engine.quick) {
-          const checking: StudyCheck = { controller: new AbortController(), channel }
-          afterChecks.add(checking)
-          const wasStudying = studying.has(channel)
-          const asked = request.message, said = result.answer, botId = bot.id
-          const voice = (prompt: string) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null)
-          void (async () => {
-            const left = handed.length ? parseLeftover(await voice(leftoverPrompt(asked, handed, said)), handed) : []
-            signal.throwIfAborted()
-            checking.controller.signal.throwIfAborted()
-            if (left.length) { flog('aside', `${left.length} of ${handed.length} handed-over words left for the next turn`); broadcast({ type: 'chat:steer-returned', channel, texts: left }); return }
-            if (wasStudying || studying.has(channel) || offeredIn.has(channel)) return
-            const undone = parseUndone(await voice(undonePrompt(asked, said)))
-            signal.throwIfAborted()
-            checking.controller.signal.throwIfAborted()
-            // A turn the person already started since is where they are now; an offer would land in it.
-            if (undone && !checking.superseded && !offeredIn.has(channel) && !answering.has(channel)) { flog('study', `offered after an undone turn: ${undone.blocked}`); await offerStudy(botId, { what: undone.blocked, where: [] }, asked) }
-          })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => afterChecks.delete(checking))
+          checkAfterTurn({ channel, botId: bot.id, asked: request.message, answer: result.answer, handed, signal, voice: (prompt) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null) })
         }
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {

@@ -1,3 +1,4 @@
+import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { CodexAccount } from './codex-account.js'
@@ -120,9 +121,7 @@ export class CodexEngine implements CloudEngine {
   // Short answers from a runtime kept open, for words said while a comet works.
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
-    const live = await this.voiceFor(options.workdir)
-    if (!live?.ready) throw new Error('The voice is not ready.')
-    return live.ask(prompt, options.timeoutMs)
+    return askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs)
   }
   private async voiceFor(workdir: string): Promise<CodexVoice | undefined> {
     await loadBrainConnections()
@@ -132,7 +131,7 @@ export class CodexEngine implements CloudEngine {
     const catalog = await mcpCatalog(binary, workdir, env, new AbortController().signal)
     const model = (await loadSettings()).codexModel.trim()
     const spec = { rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)], cwd: workdir, ...(model ? { model } : {}) }
-    if (!codexVoice || codexVoice.closed || codexVoice.key !== JSON.stringify([spec.cwd, spec.model ?? '', spec.config])) { codexVoice?.close(); codexVoice = new CodexVoice(spec) }
+    if (!codexVoice || codexVoice.closed || codexVoice.spent || codexVoice.key !== JSON.stringify([spec.cwd, spec.model ?? '', spec.config])) { codexVoice?.close(); codexVoice = new CodexVoice(spec) }
     return codexVoice
   }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }

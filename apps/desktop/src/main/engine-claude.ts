@@ -1,3 +1,4 @@
+import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
@@ -132,16 +133,14 @@ export class ClaudeEngine implements CloudEngine {
   // Short answers from a runtime kept open, for words said while a comet works.
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
-    const live = await this.voiceFor(options.workdir)
-    if (!live?.ready) throw new Error('The voice is not ready.')
-    return live.ask(prompt, options.timeoutMs)
+    return askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs)
   }
   private async voiceFor(workdir: string): Promise<VoiceSession | undefined> {
     await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) return undefined
     const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: await chosenModel('fast') }
-    if (!voice || voice.closed || voice.key !== JSON.stringify([spec.binary, spec.model, spec.workdir])) { voice?.close(); voice = new VoiceSession(spec) }
+    if (!voice || voice.closed || voice.spent || voice.key !== JSON.stringify([spec.binary, spec.model, spec.workdir])) { voice?.close(); voice = new VoiceSession(spec) }
     return voice
   }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }

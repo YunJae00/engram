@@ -12,7 +12,6 @@ import { binaryProvider, type VaultContext } from './vault.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { aiSelection } from './ai-selection.js'
 import { deskSettingChanged, workMapSettingChanged } from './work-map-job.js'
-import { cancelWorkInterview } from './work-interview.js'
 import { checkAISelection } from './check-ai.js'
 
 // Settings are app-level, not vault-level — the onboarding and quick-capture
@@ -60,7 +59,6 @@ export function registerSettingsIpc(): void {
     const change = Object.fromEntries(Object.entries(settings).filter(([key, value]) => key !== 'recordTasks' && (value !== undefined || key === 'claudeEffort' || key === 'codexEffort'))) as Partial<AppSettingsDto>
     const held = await loadSettings()
     if (settings.workMap === false) workMapSettingChanged(false)
-    if ((['workMap', 'workFiles', 'workApps'] as const).some(key => settings[key] === false && held[key])) cancelWorkInterview()
     if (settings.computerUse === false && held.computerUse) stopDesktopControl('Computer use was turned off in Settings.')
     const saved = await updateSettings(latest => ({
       ...latest,

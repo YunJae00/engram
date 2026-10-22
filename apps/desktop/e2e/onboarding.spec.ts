@@ -106,7 +106,6 @@ test('a fresh workspace requires verified AI before browsing', async () => {
   await expect(page.getByTestId('onboard-sources')).toContainText('Pages and file contents are not read.')
   expect((await page.getByTestId('onboard-source-workMap').boundingBox())!.width).toBeLessThan(50)
   await page.getByTestId('onboard-source-workFiles').check()
-  await page.getByTestId('onboard-interview').uncheck()
   await expect(page.getByTestId('onboard-computer-use')).toHaveCount(0)
   await expect(page.getByTestId('onboard-finish')).toBeEnabled()
   await page.getByTestId('onboard-finish').click()
@@ -155,11 +154,8 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     await screenshot(`compact-connect-${theme}.png`)
     await page.getByTestId('onboard-ai-next').click()
     await expect(page.getByTestId('onboard-source-workMap')).not.toBeChecked()
-    await expect(page.getByTestId('onboard-interview')).toBeChecked()
     await expect(page.getByTestId('onboard-sources')).toContainText('Pages and file contents are not read.')
-    await expect(page.locator('#interview-consent')).toContainText('selected notes')
-    await expect(page.locator('#interview-consent')).toContainText('No new document scan')
-    for (const selector of ['[data-testid="onboard-sources"]', '#interview-consent']) {
+    for (const selector of ['[data-testid="onboard-sources"]']) {
       await page.locator(selector).scrollIntoViewIfNeeded()
       await expect(page.locator(selector)).toBeInViewport()
       await expect(page.getByTestId('onboard-finish')).toBeInViewport()
@@ -197,7 +193,6 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await page.getByTestId('onboard-choose-codex').check()
   await chooseModel('Provider default')
   await page.getByTestId('onboard-ai-next').click()
-  await page.getByTestId('onboard-interview').uncheck()
   await page.getByTestId('onboard-finish').click()
   await expect(page.getByRole('alert')).toContainText('did not answer the connection check')
   await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Check failed')

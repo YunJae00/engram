@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendAudit, auditDays, readAudit } from '../src/audit-log.js'
+import { appendAudit, auditDays, readAudit, redactSecrets } from '../src/audit-log.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
@@ -21,5 +21,15 @@ describe('the audit log', () => {
     const paths = await initVault(await tmpVaultRoot('audit-cap'), { git: false })
     await appendAudit(paths, { at: '2026-09-03T01:00:00.000Z', kind: 'step', channel: 'c', detail: 'x'.repeat(1000) })
     expect((await readAudit(paths, '2026-09-03'))[0]!.detail).toHaveLength(200)
+  })
+
+  it('keeps the head of what a step read back, with secrets masked', async () => {
+    const paths = await initVault(await tmpVaultRoot('audit-result'), { git: false })
+    await appendAudit(paths, { at: '2026-09-03T01:00:00.000Z', kind: 'result', channel: 'c', tool: 'read_open_page', detail: `Signed in.
+  password: hunter2 token=abc123 ${'y'.repeat(1000)}` })
+    const entry = (await readAudit(paths, '2026-09-03'))[0]!
+    expect(entry.detail).toHaveLength(600)
+    expect(entry.detail).toContain('Signed in. password: *** token=***')
+    expect(redactSecrets('비밀번호: 1234, api key = sk-1')).toBe('비밀번호: ***, api key = ***')
   })
 })

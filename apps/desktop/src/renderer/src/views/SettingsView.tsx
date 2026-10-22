@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, CloudUpload, ScrollText, LoaderCircle, Activity, Check, FileDown, Power, Sparkles, UserRound } from 'lucide-react'
+import { FolderOpen, CloudUpload, ScrollText, LoaderCircle, Activity, Check, FileDown, Power, Sparkles } from 'lucide-react'
 import type { AppSettingsDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
@@ -12,7 +12,6 @@ import { ComputerSettings } from '../components/ComputerSettings.js'
 import { WorkMapSettings } from '../components/WorkMapSettings.js'
 import { WorkHabitsSettings } from '../components/WorkHabitsSettings.js'
 import { LEARNING_SOURCES } from '../components/LearningSources.js'
-import { WorkInterviewDialog } from '../components/WorkInterview.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { Keys, SettingsGroup, SettingsItem } from '../components/SettingsLayout.js'
 import { MOD_LABEL } from '../i18n.js'
@@ -35,7 +34,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
   const [exporting, setExporting] = useState(false)
-  const [interviewOpen, setInterviewOpen] = useState(false)
   const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
@@ -91,8 +89,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     return () => clearInterval(timer)
   }, [])
 
-  // Escape closes settings, but not under the interview that sits on top.
-  useEscape(onClose, !interviewOpen && !saving)
+  useEscape(onClose, !saving)
 
   if (!settings || !ready)
     return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
@@ -176,9 +173,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
           {section === 'memory' && <WorkMapSettings />}
         </SettingsGroup>
         {section === 'memory' && <WorkHabitsSettings />}
-        <SettingsGroup title="Personalize">
-          <SettingsItem icon={<UserRound size={18} />} title="How you work" description="A few questions so answers fit the way you work."><button type="button" className="secondary" data-testid="interview-open" onClick={() => setInterviewOpen(true)}>Personalize</button></SettingsItem>
-        </SettingsGroup>
         <SettingsGroup title="Your data">
           <SettingsItem icon={<ScrollText size={18} />} title={t('settings.auditTitle')} description="Every action and approval, kept on this computer." testId="setting-audit">
             <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast('Could not open the activity log.'))}><FolderOpen size={15} aria-hidden />Open</button>
@@ -208,7 +202,6 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
           {saveError ? <span className="settings-save-status" role="alert">{saveError}</span> : <span className="settings-save-status" role="status">{saving ? <><LoaderCircle size={14} className="spin" aria-hidden />Saving…</> : saved ? <><Check size={14} aria-hidden />Saved</> : null}</span>}
           <button className="primary" disabled={saving} onClick={onClose}>Done</button>
         </div>
-        {interviewOpen && <WorkInterviewDialog onClose={() => setInterviewOpen(false)} />}
       </div>
     </div>
   )

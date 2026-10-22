@@ -48,6 +48,8 @@ export class CodexVoice {
   }
 
   get ready(): boolean { return !this.closed && !this.waiting && !this.running && this.turns < TURNS_MAX }
+  // Used up: replaced by a fresh one once nothing is running on it.
+  get spent(): boolean { return this.turns >= TURNS_MAX && !this.waiting && !this.running }
 
   async ask(words: string, timeoutMs: number): Promise<string> {
     if (!this.ready) throw new Error('The voice is busy.')

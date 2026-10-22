@@ -16,6 +16,7 @@ import { evidenceFault } from './work-evidence.js'
 import { resumeCheckpoint } from './agent-resume.js'
 import { pageDelta } from './page-delta.js'
 import { pageRecovery } from './page-recovery.js'
+import { progressWatch } from './no-progress.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
 // the whole turn in one session: every step then costs one exchange instead
@@ -28,6 +29,8 @@ import { pageRecovery } from './page-recovery.js'
 // budget is sized for the whole job, and is there only to stop a page that
 // will not load from becoming a hundred tries.
 const SESSION_MAX_CALLS = 40
+// Past its allowance a turn goes on only while its calls still find something new, and never past this.
+const CALL_CEILING = 300
 // Bound silent model waits. Silence can also mean long reasoning, so retain
 // unfinished work rather than claiming the model or the task failed.
 export const SESSION_STALL_MS = 180_000
@@ -39,7 +42,7 @@ const REPEAT_LIMIT = 2
 export const PLAN_RULE = 'Plan mode: read and investigate only. Do not run commands, create or change files, or submit anything; reply with a concrete plan of what you would do and what you need from the person.'
 const STALL_NOTE = 'The model stopped responding for three minutes. The work so far is kept, and the task continues from the current state.'
 
-const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'page_steps', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look'])
+const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'page_steps', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look', 'page_each'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
@@ -131,10 +134,12 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const canSearch = deps.tools.some((tool) => tool.name === 'search_web')
   let lookedFirst = false
   let exhausted = false
+  let extended = false
   let toolMs = 0
   // ponytail: guard identical consecutive moves, not multi-action cycles;
   // the total call budget bounds cycles. Reads alone do not reset the guard.
   let repeat: { key: string; result: string; times: number } | undefined
+  const stuck = progressWatch()
   const sameResult = (text: string) => text
     .replace(/^(Observation \S+\/)\d+(; control numbers belong only to this reading\.)$/gm, '$1*$2')
     .replace(/ \[new\]$/gm, '')
@@ -159,7 +164,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // earn the next bounded phase, but never exceed the total call ceiling.
       const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === budget && budget < Math.min(options.maxCalls ?? 120, 120)
         && Object.keys(args).length === 2 && typeof args['finding'] === 'string' && args['evidenceStep'] === steps.length
-      if (startedCalls + cost > budget && !checkpoint) {
+      const finding = browser && !desktop && budget >= baseCalls && stuck.idle() < 2 && startedCalls + cost <= CALL_CEILING
+      if (startedCalls + cost > budget && finding) extended = true
+      if (startedCalls + cost > budget && !checkpoint && !finding) {
         exhausted = true
         return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
       }
@@ -222,9 +229,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // The last few calls are counted out loud, so the answer is written
       // before the budget is gone rather than after.
       const left = allowance() - startedCalls
+      const going = stuck.see(sameResult(observation))
       const notes = [
+        ...(going ? [going] : []),
         ...(planned ? [`Observation step ${steps.length}`, ...(plan.pending() ? [plan.pending()!] : [])] : []),
-        ...(left <= 5 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
+        ...(left <= 5 && left > 0 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
       ]
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
@@ -304,7 +313,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   }
   if (session.error) throw new Error(session.error)
   const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
-  const stopped = exhausted || startedCalls >= allowance()
+  const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
     : session.answer.trim()
