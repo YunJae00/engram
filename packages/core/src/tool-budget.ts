@@ -4,6 +4,8 @@ const BUDGETS: Record<string, number | null> = {
   app_text: 200_000,
   app_do: 320_000,
   page_do: 120_000,
+  // Many values one by one, each moved and read.
+  page_each: 600_000,
   ppt_build: 120_000, word_write: 120_000, excel_write: 120_000, compose_live_document: 120_000, edit_live_document: 120_000,
   press: null, press_point: null, app_press: null, page_steps: null, desktop_action: null, desktop_sequence: null, upload_file: null, run_procedure: null, ask_person: null,
 }

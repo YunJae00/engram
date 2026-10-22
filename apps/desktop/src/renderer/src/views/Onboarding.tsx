@@ -2,7 +2,6 @@ import { Check, ExternalLink, Folder, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api, apiErrorText } from '../api.js'
-import { INTERVIEW_PENDING_KEY } from '../components/WorkInterview.js'
 import { ProviderIcon } from '../components/ProviderIcon.js'
 import { InstallClaude } from '../components/InstallClaude.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
@@ -26,7 +25,6 @@ export function Onboarding() {
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
   // Nothing new is read unless chosen here; the activity log keeps its current state.
   const [sources, setSources] = useState<LearningChoice>({ workMap: false, workFiles: false, workApps: false, activity: true })
-  const [interview, setInterview] = useState(true)
   // Which connected AI answers first. Chosen here, never guessed from the order of sign-in.
   const [choice, setChoice] = useState<'claude' | 'codex' | null>(null)
   const [model, setModel] = useState<string | null>(null)
@@ -87,7 +85,6 @@ export function Onboarding() {
       const chosen = { workMap: sources.workMap, workFiles: sources.workFiles, workApps: sources.workApps }
       if ((Object.keys(chosen) as (keyof typeof chosen)[]).some(key => latest[key] !== chosen[key])) await api.settingsSet(chosen)
       if (await api.activityGet() !== sources.activity) await api.activitySet(sources.activity)
-      try { if (interview && available) localStorage.setItem(INTERVIEW_PENDING_KEY, '1'); else localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* the interview stays in Settings */ }
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
     catch (cause) { const message = apiErrorText(cause instanceof Error ? cause.message : 'Could not finish setup. Please try again.'); completing.current = false; setFinishing(false); const aiFailed = /AI|Claude|ChatGPT|connection/i.test(message); setCheckFailed(aiFailed ? pick : null); if (aiFailed) setStep(2); setError(message) }
@@ -130,7 +127,6 @@ export function Onboarding() {
       <h1>Make it yours</h1>
       <div className="onboard-ai-content onboard-preferences" aria-busy={finishing}>
         <LearningSources compact value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
-        <div><label className="setting-row"><span>Personalize Engram</span><input type="checkbox" className="switch" data-testid="onboard-interview" aria-describedby="interview-consent" checked={interview} disabled={finishing} onChange={event => setInterview(event.target.checked)} /></label><p className="setting-hint" id="interview-consent">Optional questions from selected notes and past tasks. No new document scan.</p></div>
       </div>
       <div className="onboard-actions"><button className="secondary" disabled={finishing} onClick={() => { setError(''); setStep(2) }}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || !modelReady} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Start Engram'}</button></div>
     </section>}

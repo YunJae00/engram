@@ -4,11 +4,12 @@ import type { VaultPaths } from './vault.js'
 
 // What the comets did, kept where a person can read it back: every step on
 // a page, every picture sent to a brain, every question answered at a
-// control that would commit, every wall met. One line per event, one file
+// control that would commit, every wall met, and what each step read back,
+// so a run that went wrong can be followed afterwards. One line per event, one file
 // per day, inside the vault so it travels with the notes and never leaves
 // the machine on its own.
 
-export type AuditKind = 'step' | 'look' | 'approval' | 'wall'
+export type AuditKind = 'step' | 'result' | 'look' | 'approval' | 'wall'
 
 export interface AuditEntry {
   at: string
@@ -22,6 +23,14 @@ export interface AuditEntry {
 
 const DIR = 'audit'
 const DETAIL_CAP = 200
+// What a step read back is longer than what it did, and still only its head.
+const RESULT_CAP = 600
+// A value after a secret's name never reaches the file, whatever page it came from.
+const SECRET = /((?:password|passwd|pwd|passcode|pin|otp|secret|token|api[_ -]?key|비밀번호|인증번호)\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi
+
+export function redactSecrets(text: string): string {
+  return text.replace(SECRET, '$1***')
+}
 
 export function auditDir(paths: VaultPaths): string {
   return join(paths.cache, DIR)
@@ -36,7 +45,7 @@ export async function appendAudit(paths: VaultPaths, entry: Omit<AuditEntry, 'at
   const line: AuditEntry = {
     ...entry,
     at,
-    ...(entry.detail ? { detail: entry.detail.slice(0, DETAIL_CAP) } : {}),
+    ...(entry.detail ? { detail: redactSecrets(entry.detail.replace(/\s+/g, ' ')).slice(0, entry.kind === 'result' ? RESULT_CAP : DETAIL_CAP) } : {}),
   }
   const dir = auditDir(paths)
   await mkdir(dir, { recursive: true })

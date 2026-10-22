@@ -332,6 +332,20 @@ it.each(['failed-observation', 'reused-evidence'] as const)('does not replenish 
   expect(result.incomplete).toContain('Prepare workspace')
 })
 
+it('lets browser work go past its allowance while each call still finds something new', async () => {
+  let opened = 0
+  const engine = sessionBrain(async (job) => {
+    const open = job.tools.find((tool) => tool.name === 'open_page')!
+    for (let page = 0; page < 130; page++) expect(await open.run({ url: `https://x.example/${page}` })).not.toContain('No more calls')
+    // Once nothing new comes back, the allowance holds again.
+    for (let again = 0; again < 2; again++) await open.run({ url: 'https://x.example/0' })
+    expect(await open.run({ url: 'https://x.example/0' })).toContain('No more calls')
+    return { answer: 'Read them all' }
+  })
+  await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'open', argsSchema: {}, run: async (args) => { opened++; return `page ${String(args['url'])}` } }] }, 'Read every page')
+  expect(opened).toBe(132)
+})
+
 it('keeps the total 120-call ceiling even when a fresh phase checkpoint is available', async () => {
   const engine = sessionBrain(async (job) => {
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!

@@ -1,6 +1,7 @@
 import type { AgentTool, AgentToolContext, ToolOutcome } from './agent-loop.js'
 import type { PageMove, WebCourier } from './errand.js'
 import { findOf, pageReport, str } from './page-report.js'
+import { makeMove, pageEachTool } from './page-each.js'
 
 // The hands a comet has on an open page: press, type into a search box,
 // choose from a list, scroll, hover, a key. They move around a page the way
@@ -186,13 +187,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
           context.signal?.throwIfAborted()
           const target = str(step, 'target'), kind = str(step, 'do')
           const what = kind === 'type' ? `type into "${target}"` : kind === 'choose' ? `choose "${str(step, 'option')}" in "${target}"` : kind === 'press' ? `press "${target}"` : kind === 'hover' ? `hover "${target}"` : kind === 'scroll' ? `scroll ${str(step, 'to')}` : `press ${str(step, 'key')}`
-          const move = kind === 'type' && target && typeof step['text'] === 'string' && step['text'] ? await typeText(target, step['text'], step['enter'] === true, context.signal)
-            : kind === 'choose' && target && str(step, 'option') ? await choose(target, str(step, 'option'), context.signal)
-              : kind === 'press' && target ? await press(target, context.signal)
-                : kind === 'hover' && target && courier.hover ? await courier.hover(target, context.signal)
-                : kind === 'key' && str(step, 'key') ? await pressKey(str(step, 'key'), context.signal)
-                  : kind === 'scroll' && str(step, 'to') && courier.scroll ? await courier.scroll(str(step, 'to'), context.signal)
-                    : { ok: false, error: `move ${index + 1} is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key, scroll needs to` }
+          const move = await makeMove(courier, step, context.signal)
           last = { move, what }
           committed ||= move.committed === true
           allMoved &&= move.changed !== false
@@ -215,6 +210,8 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       },
     })
   }
+  const each = pageEachTool(courier)
+  if (each) tools.push(each)
   if (courier.look) {
     const look = courier.look
     const taken =

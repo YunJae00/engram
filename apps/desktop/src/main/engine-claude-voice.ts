@@ -58,6 +58,8 @@ export class VoiceSession {
   }
 
   get ready(): boolean { return !this.closed && !this.waiting && this.late === 0 && this.turns < TURNS_MAX }
+  // Used up: replaced by a fresh one once nothing is waiting on it.
+  get spent(): boolean { return this.turns >= TURNS_MAX && !this.waiting && this.late === 0 }
 
   ask(text: string, timeoutMs: number): Promise<string> {
     if (!this.ready) return Promise.reject(new Error('The voice is busy.'))

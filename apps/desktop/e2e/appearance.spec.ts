@@ -210,7 +210,7 @@ test('compact settings keep privacy controls clear and advanced tools separate a
     await expect(settings.getByRole('checkbox', { name: 'Provider hooks & project settings' })).toHaveCount(0)
     await screenshot(`minimal-settings-general-${theme}-600.png`)
     await page.getByTestId('settings-nav-memory').click()
-    for (const id of ['setting-desk-journal', 'setting-work-map', 'setting-work-files', 'setting-work-apps', 'interview-open']) await expect(settings.getByTestId(id)).toBeVisible()
+    for (const id of ['setting-desk-journal', 'setting-work-map', 'setting-work-files', 'setting-work-apps']) await expect(settings.getByTestId(id)).toBeVisible()
     await expect(settings.getByTestId('audit-open')).toBeVisible()
     await expect(settings.getByTestId('task-recording-settings')).toHaveCount(0)
     await expect(settings.getByText(/Pages and files are never opened/)).toBeVisible()

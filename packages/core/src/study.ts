@@ -117,25 +117,3 @@ export function studyFindingsTool(deps: { found(draft: SkillDraft): Promise<bool
     },
   }
 }
-
-
-// After a job, whether it was done: asked of the voice each time a turn ends
-// with an answer, so a job left undone is offered another way even when the
-// comet itself did not offer it.
-export function undonePrompt(ask: string, answer: string): string {
-  return [
-    'Did this answer do what was asked? Judge only from the two texts. A report that the page failed, was empty, could not be read or reached, or that nothing was found counts as not done; so does a plain refusal to guess. A question back asking the person for something only they know does not, and neither does a stop at a sign-in or login page, missing access or permission, or anything else only the person can give - looking for another way does not get past those, so count them as done.',
-    'Reply with JSON only: {"done": true} or {"done": false, "blocked": "what stopped it, in one short phrase in the language of the request"}',
-    `Asked: ${ask.slice(0, 800)}`,
-    `Answer: ${answer.replace(/\s+/g, ' ').slice(0, 1500)}`,
-  ].join('\n\n')
-}
-
-export function parseUndone(raw: string | null): { blocked: string } | null {
-  const json = raw ? /\{[\s\S]*\}/.exec(raw)?.[0] : undefined
-  if (!json) return null
-  try {
-    const value = JSON.parse(json) as { done?: unknown; blocked?: unknown }
-    return value.done === false && typeof value.blocked === 'string' && value.blocked.trim() ? { blocked: value.blocked.trim().slice(0, 200) } : null
-  } catch { return null }
-}

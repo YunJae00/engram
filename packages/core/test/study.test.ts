@@ -59,19 +59,3 @@ describe('studying a job', () => {
     expect(studyCandidate(study).slug).toMatch(/^study--[0-9a-f]{24}$/)
   })
 })
-
-
-describe('a job left undone', () => {
-  it('reads the verdict of the after-check', async () => {
-    const { parseUndone, undonePrompt } = await import('../src/study.js')
-    expect(undonePrompt('팀 근무 현황 정리해줘', '서비스 접속 오류가 떠서 확인하지 못했어요.')).toContain('Asked: 팀 근무 현황 정리해줘')
-    expect(parseUndone('{"done": false, "blocked": "페이지 접속 오류"}')).toEqual({ blocked: '페이지 접속 오류' })
-    expect(parseUndone('{"done": true}')).toBeNull()
-    expect(parseUndone('no')).toBeNull()
-  })
-
-  it('does not count a stop at a sign-in as a job to study', async () => {
-    const { undonePrompt } = await import('../src/study.js')
-    expect(undonePrompt('공가 승인 확인해줘', '로그인 화면이라 확인하지 못했어요.')).toContain('a stop at a sign-in or login page')
-  })
-})

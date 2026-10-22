@@ -3,7 +3,7 @@ import type { AppSettingsDto } from '../src/shared/types.js'
 
 const fake = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, settings: Partial<AppSettingsDto>) => Promise<void>>(),
-  load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), cancelInterview: vi.fn(), nativeTheme: { themeSource: 'system' },
+  load: vi.fn(), save: vi.fn(), stop: vi.fn(), broadcast: vi.fn(), changed: vi.fn(), nativeTheme: { themeSource: 'system' },
   app: { isPackaged: false, setLoginItemSettings: vi.fn() }, queue: Promise.resolve(),
 }))
 vi.mock('core', () => ({ createEngine: vi.fn(), ENGINE_ORDER: [], REASONING_EFFORTS: ['low', 'medium', 'high'] }))
@@ -18,7 +18,6 @@ vi.mock('../src/main/settings.js', () => ({ loadSettings: fake.load, updateSetti
 vi.mock('../src/main/team.js', () => ({ getSyncStatus: vi.fn() }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: vi.fn() }))
 vi.mock('../src/main/desktop-control.js', () => ({ stopDesktopControl: fake.stop }))
-vi.mock('../src/main/work-interview.js', () => ({ cancelWorkInterview: fake.cancelInterview }))
 import { registerSettingsIpc, setBrainChoiceHook } from '../src/main/config-ipc.js'
 
 const settings = { defaultEngine: 'claude', autoStart: false, teamSync: 'manual', searchTemplate: '', agentBrowser: '', claudeModel: '', codexModel: '' } as AppSettingsDto
@@ -61,7 +60,6 @@ describe('partial settings updates', () => {
     await Promise.all([save(null, { computerUse: false }), save(null, { workMap: false }), save(null, { theme: 'dark' })])
     expect(current).toEqual(expect.objectContaining({ computerUse: false, workMap: false, theme: 'dark' }))
     expect(fake.stop).toHaveBeenCalledOnce()
-    expect(fake.cancelInterview).toHaveBeenCalledOnce()
   })
 
   it('does not change native appearance or login settings for an unrelated update', async () => {
@@ -91,16 +89,6 @@ it('ignores the removed recording preference from an older settings client', asy
 })
 
 describe('desktop grant lifetime when choosing an AI connection', () => {
-  it('stops prepared map context before persisting withdrawal of work-map consent', async () => {
-    fake.load.mockResolvedValue({ ...settings, workMap: true })
-    await fake.handlers.get('settings:set')!(null, { ...settings, workMap: false })
-    expect(fake.cancelInterview).toHaveBeenCalledOnce()
-    expect(fake.cancelInterview.mock.invocationCallOrder[0]!).toBeLessThan(fake.save.mock.invocationCallOrder[0]!)
-    fake.cancelInterview.mockClear()
-    fake.load.mockResolvedValue({ ...settings, workMap: false })
-    await fake.handlers.get('settings:set')!(null, { ...settings, workMap: false, autoStart: true })
-    expect(fake.cancelInterview).not.toHaveBeenCalled()
-  })
   it('rejects invalid reasoning effort before saving any settings', async () => {
     await expect(fake.handlers.get('settings:set')!(null, { ...settings, claudeEffort: 'invalid' } as unknown as AppSettingsDto)).rejects.toThrow('Invalid reasoning effort')
     expect(fake.save).not.toHaveBeenCalled()

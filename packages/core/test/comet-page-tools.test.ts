@@ -82,7 +82,7 @@ describe('the hands on a page', () => {
     const tools = pageTools({}, courier(log))
     const tool = (name: string) => tools.find((t) => t.name === name)!
     const ctx = { task: 'last week' }
-    expect(tools.map((t) => t.name)).toEqual(['press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'page_steps', 'look'])
+    expect(tools.map((t) => t.name)).toEqual(['press', 'type_text', 'choose', 'scroll', 'hover', 'press_key', 'press_point', 'page_steps', 'page_each', 'look'])
     expect(await tool('press').run({ target: '#1' }, ctx)).toContain('week of the 17th')
     expect(await tool('press').run({ target: 'Submit' }, ctx)).toContain('would submit or commit')
     expect(await tool('press').run({ target: 'Nowhere' }, ctx)).toContain('could not find "Nowhere"')

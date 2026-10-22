@@ -411,7 +411,6 @@ export type EngramEvent =
   // top bar can say "filing your capture" while it runs
   | { type: 'filing:start' }
   | { type: 'filing:done' }
-  | { type: 'interview:progress'; requestId: string; phase: 'connection' | 'mapping' | 'filing' | 'questions'; stage?: 'capture' | 'organize'; completed?: number; total?: number }
   // zero-click MCP hookup refreshed a client's registration on boot
   | { type: 'mcp:autoconnected'; targets: string[] }
   // the semantic layer fell over (model download/load failed) — said once per
@@ -719,9 +718,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   noticesClear(): Promise<NoticesDto>
   noticesUnschedule(id: string): Promise<NoticesDto>
   // A finite Cosmos preparation pass precedes questions; answers become the work guide.
-  interviewQuestions(options?: { requestId?: string }): Promise<InterviewQuestionDto[]>
-  interviewSave(answers: { question: string; answer: string; source?: string; rejected?: boolean }[]): Promise<{ saved: boolean }>
-  interviewCancel(): Promise<void>
   taskDecide(id: string, approvalId: string, answer: 'approve' | 'decline'): Promise<void>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
@@ -919,7 +915,6 @@ export interface NoticesDto { items: { id: string; kind: 'scheduled' | 'habit'; 
 export interface AppUseDto { app: string; label: string; hours: number; days: number; on: boolean }
 export interface HabitDraftDto { key: string; labels: string[]; times: number; title: string; description: string; body: string; botId?: string }
 export interface ArtifactViewDto { name: string; text: string | null }
-export interface InterviewQuestionDto { topic: string; question: string; basis: string; options: string[]; source?: string }
 
 export interface ModelChoiceDto {
   value: string

@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { api } from './api.js'
-import { INTERVIEW_PENDING_KEY, WorkInterviewDialog } from './components/WorkInterview.js'
 import { AppNotices } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
@@ -114,13 +113,8 @@ function Shell() {
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
-  const [interviewOpen, setInterviewOpen] = useState(false)
-  // The first-run interview comes first; the tour waits until it has closed,
-  // so the shell does not show one and then swap it for the other.
   useEffect(() => {
-    let interviewPending = false
-    try { interviewPending = localStorage.getItem(INTERVIEW_PENDING_KEY) === '1' } catch { /* no first-run prompt */ }
-    if (!vaultReady || interviewOpen || interviewPending || localStorage.getItem(TOUR_DONE_KEY)) return
+    if (!vaultReady || localStorage.getItem(TOUR_DONE_KEY)) return
     let cancelled = false
     void api.tourEligible().then((ok) => {
       if (!ok || cancelled) return
@@ -132,21 +126,7 @@ function Shell() {
     return () => {
       cancelled = true
     }
-  }, [vaultReady, interviewOpen])
-
-  const interviewReady = enginesDetected && engines.some(engine => engine.installed && engine.loggedIn && engine.conclusive !== false && engine.healthy !== false)
-  useEffect(() => {
-    let pending = false
-    try { pending = localStorage.getItem(INTERVIEW_PENDING_KEY) === '1' } catch { /* no first-run prompt */ }
-    if (!vaultReady || !pending || !interviewReady) return
-    let cancelled = false
-    void api.tourEligible().then((ok) => { if (ok && !cancelled) setInterviewOpen(true) }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [vaultReady, interviewReady])
-  const closeInterview = () => {
-    try { localStorage.removeItem(INTERVIEW_PENDING_KEY) } catch { /* shown once per session at most */ }
-    setInterviewOpen(false)
-  }
+  }, [vaultReady])
 
   // useLayoutEffect, not useEffect: the shell paints (and advertises Cmd+L on
   // a button title) before passive effects commit, so a keypress in that gap
@@ -327,8 +307,7 @@ function Shell() {
         {artifactId && <ArtifactSheet id={artifactId} onClose={() => setArtifactId(null)} />}
         {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
-        {tourOpen && !interviewOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
-        {interviewOpen && <WorkInterviewDialog autoStart onClose={closeInterview} />}
+        {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
       </Suspense>
       {toast && <div className="toast" role="status">{toast}</div>}
       <ComputerStatus />
