@@ -161,6 +161,8 @@ import { activeAccountProfile } from './account-profiles.js'
 import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
+import { startFirstFiling } from './first-filing.js'
+import { setTimeout as delay } from 'node:timers/promises'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -295,6 +297,8 @@ let lastFailures: JobFailure[] = []
 // manual sweep (sweep:run) so the "one sweep at a time" invariant holds.
 let draining = false
 let manualSweepInFlight = false
+// The first filing waiting for its turn; other filing work holds back meanwhile.
+let initialFilingWaiters = 0
 // Cooperative stop for the librarian (absorb:stop). Set by the widget, read by
 // the sweep's shouldStop; cleared whenever a drain/sweep next starts so a fresh
 // run is never born already-stopped.
@@ -338,7 +342,7 @@ let pipelineRunning = false
 let pipelineQueued = false
 
 export function isLibrarianBusy(): boolean {
-  return pipelineRunning || draining || manualSweepInFlight
+  return pipelineRunning || draining || manualSweepInFlight || initialFilingWaiters > 0
 }
 
 export async function runExclusiveFiling<T>(ctx: VaultContext, run: () => Promise<T>): Promise<T> {
@@ -382,7 +386,7 @@ function runPipelineSoon(ctx: VaultContext, message: string): void {
 
 export function runPipelineAsync(ctx: VaultContext, message: string): void {
   if (ctx.engines.length === 0) return
-  if (draining || manualSweepInFlight) { scheduleAutoTidy(ctx); return }
+  if (draining || manualSweepInFlight || initialFilingWaiters > 0) { scheduleAutoTidy(ctx); return }
   if (pipelineRunning) {
     pipelineQueued = true
     return
@@ -468,6 +472,7 @@ export async function drainAbsorbQueue(ctx: VaultContext): Promise<void> {
   stopRequested = false
   try {
     for (;;) {
+      if (initialFilingWaiters > 0) return
       const state = await loadAbsorbState(ctx.paths)
       if (state.pending.length === 0) {
         // Queue clear — a final progress event so the UI dismisses the bar.
@@ -1722,6 +1727,19 @@ export function registerIpc(ctx: VaultContext): void {
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
   startWorkMap(ctx, () => scheduleAutoTidy(ctx, 0))
+  // What was gathered at setup is organized into Cosmos once, in the background.
+  const firstFiling = new AbortController()
+  app.once('before-quit', () => firstFiling.abort())
+  startFirstFiling(ctx, async (signal, run) => {
+    initialFilingWaiters++
+    let waiting = true
+    try {
+      while (pipelineRunning || draining || manualSweepInFlight || initialFilingWaiters > 1) await delay(250, undefined, { signal })
+      signal.throwIfAborted()
+      initialFilingWaiters--; waiting = false
+      await runExclusiveFiling(ctx, run)
+    } finally { if (waiting) initialFilingWaiters-- }
+  }, firstFiling.signal, () => scheduleAutoTidy(ctx, 0))
   // One session per signed-in brain, opened ahead in a folder of its own, so a
   // new comet's first turn starts without waiting for a process. Built from
   // the shape a new comet gets by default; a comet shaped otherwise opens cold.
