@@ -94,4 +94,9 @@ describe('what is not an app', () => {
     const spans = [span('locked', '', 1, 0, 30), span('mailapp', 'Mail', 1, 30, 40), span('mailapp', 'Mail', 1, 40, 50)]
     expect(usedApps(spans).map(app => app.label)).toEqual(['Mail'])
   })
+
+  it('leaves out the lock screen and drops the "?" a narrow title read left in a name', () => {
+    const spans = [span('LockApp', 'Windows Lock Screen', 1, 0, 30), span('msedge', 'Sheet - Work - Microsoft? Edge', 1, 30, 40)]
+    expect(usedApps(spans).map(app => app.label)).toEqual(['Microsoft Edge'])
+  })
 })

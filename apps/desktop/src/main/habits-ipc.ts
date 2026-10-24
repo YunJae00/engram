@@ -26,6 +26,7 @@ import {
 } from 'core'
 import type { AppUseDto, HabitDraftDto } from '../shared/types.js'
 import { readActivityRange, setActivityAppsOff } from './activity-watch.js'
+import { appIcon } from './app-icons.js'
 import { setDesktopAppsOff } from './desktop-access.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -158,7 +159,8 @@ export function registerHabitsIpc(ctx: VaultContext): void {
     const off = (await loadSettings()).appsOff
     const used = usedApps(await readActivityRange(ctx, Date.now() - WINDOW_MS, Date.now()))
     const rows = used.map(one => ({ app: one.app, label: one.label, hours: Math.round(one.ms / 360_000) / 10, days: one.days, on: !off.some(kept => kept.app === one.app) }))
-    return [...rows, ...off.filter(kept => !used.some(one => one.app === kept.app)).map(kept => ({ app: kept.app, label: kept.label, hours: 0, days: 0, on: false }))]
+    const all = [...rows, ...off.filter(kept => !used.some(one => one.app === kept.app)).map(kept => ({ app: kept.app, label: kept.label, hours: 0, days: 0, on: false }))]
+    return Promise.all(all.map(async row => { const icon = await appIcon(row.app); return icon ? { ...row, icon } : row }))
   })
   ipcMain.handle('apps:set', async (_event, app: unknown, label: unknown, on: unknown) => {
     if (typeof app !== 'string' || !app.trim() || app.length > 80 || typeof label !== 'string' || label.length > 80 || typeof on !== 'boolean') throw new Error('Invalid app')

@@ -41,7 +41,7 @@ export function WorkHabitsSettings() {
     <SettingsGroup title="Apps Engram may use" testId="apps-settings" note="An app turned off is not recorded, learned from or worked in.">
       {apps === null && <SettingsItem title="Loading…" />}
       {apps?.length === 0 && <SettingsItem icon={<AppWindow size={18} />} title="No apps yet" description="Apps appear here as you use them while Engram is open." />}
-      {shown.map(app => <SettingsItem key={app.app} icon={<AppWindow size={18} />} title={app.label} htmlFor={`app-${app.app}`} testId={`app-row-${app.app}`}
+      {shown.map(app => <SettingsItem key={app.app} icon={app.icon ? <img className="app-icon" src={app.icon} alt="" /> : <AppWindow size={18} />} title={app.label} htmlFor={`app-${app.app}`} testId={`app-row-${app.app}`}
         description={app.days ? `${app.hours} h · ${app.days} ${app.days === 1 ? 'day' : 'days'} in the last 30` : 'Turned off'}>
         <input id={`app-${app.app}`} type="checkbox" className="switch" data-testid={`app-on-${app.app}`} aria-label={`Let Engram use ${app.label}`} checked={app.on} disabled={busy === `app:${app.app}`} onChange={event => void toggle(app, event.target.checked)} />
       </SettingsItem>)}

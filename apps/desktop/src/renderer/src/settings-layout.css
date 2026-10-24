@@ -9,6 +9,7 @@
 .settings-item { min-width: 0; padding: 12px 16px; }
 .settings-item-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .settings-item-icon { display: grid; flex: none; place-items: center; width: 20px; color: var(--fg-dim); }
+.settings-item-icon > .app-icon { width: 20px; height: 20px; object-fit: contain; }
 .settings-item-text { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
 .settings-item-title { color: var(--fg); font-size: var(--fs-body); font-weight: 500; line-height: 1.35; }
 label.settings-item-title { cursor: pointer; }
