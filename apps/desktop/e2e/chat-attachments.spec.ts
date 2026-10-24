@@ -34,7 +34,7 @@ test('one-line composer keeps actions in a keyboard-accessible menu in both them
     await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
-    const add = page.getByTestId('welcome-input-add'), menu = page.locator('.chat-add-menu')
+    const add = page.getByTestId('welcome-input-add'), menu = page.getByLabel('Conversation actions', { exact: true })
     await expect(menu).toBeHidden()
     await add.focus(); await page.keyboard.press('Enter')
     await expect(menu).toBeVisible()
