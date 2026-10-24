@@ -7,6 +7,7 @@ import type { NoteDto, OnboardPayload } from '../shared/types.js'
 import { registerConfigIpc, registerSettingsIpc, setBrainChoiceHook } from './config-ipc.js'
 import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from './security.js'
 import { detectApiKeyEnv } from './installer.js'
+import { exposeResearch } from './research-hook.js'
 import { abortAllChat, broadcast, drainAbsorbQueue, registerEngineIpc, registerIpc, revalidateEngines, runPipelineAsync, scheduleAutoTidy, startEngineWatch, toDto } from './ipc.js'
 import { fixMacPath } from './macos-path.js'
 import { registerMcpIpc } from './mcp-connect.js'
@@ -597,6 +598,7 @@ async function bootVault(root: string): Promise<VaultContext> {
   if (!booted) {
     booted = true
     registerIpc(ctx)
+    exposeResearch()
     registerTeamIpc(ctx)
     registerConfigIpc(ctx)
     registerHabitsIpc(ctx)

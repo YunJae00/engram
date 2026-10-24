@@ -9,6 +9,7 @@ import { flog } from './flog.js'
 export interface ChoiceDecision { choice: string; confidence: number; probabilities: Record<string, number>; ms: number }
 const TIMEOUT_MS = 20_000
 const STATE_LIMIT = 60_000
+const RATE_RETRIES = 3
 
 export async function decisionAvailable(): Promise<boolean> {
   await loadBrainConnections()
@@ -36,16 +37,24 @@ export async function decideChoice(state: string, instructions: string, criteria
   if (options.length < 2) throw new Error('A choice needs at least two options.')
   if (options.length > 255) throw new Error('A choice takes at most 255 options.')
   const started = Date.now()
-  const response = await fetchImpl(connection.baseUrl, {
+  const send = () => fetchImpl(connection.baseUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${connection.key}` },
     body: JSON.stringify({ state: state.slice(0, STATE_LIMIT), model: connection.model, questions: { next: { type: 'choice', instructions, criteria } } }),
     redirect: 'error',
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]) : AbortSignal.timeout(TIMEOUT_MS),
   })
+  let response = await send()
+  // A burst past the endpoint's rate is waited out briefly rather than failing a run midway.
+  for (let retry = 0; response.status === 429 && retry < RATE_RETRIES; retry++) {
+    const after = Number(response.headers.get('retry-after'))
+    await new Promise(resolve => setTimeout(resolve, Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 10_000) : 1_500 * (retry + 1)))
+    signal?.throwIfAborted()
+    response = await send()
+  }
   const text = await response.text()
   if (!response.ok) {
-    flog('decision', `endpoint answered ${response.status}`)
+    flog('decision', `endpoint answered ${response.status}: ${text.replace(/\s+/g, ' ').slice(0, 300)}`)
     throw new Error(response.status === 401 || response.status === 403 ? 'The decision endpoint did not accept the key.' : response.status === 429 ? 'The decision endpoint is rate limited right now.' : `The decision endpoint answered ${response.status}.`)
   }
   let body: unknown

@@ -553,7 +553,8 @@ ${note.body.slice(0, 2_000)}`
     )
     // The hands: what moves around a page without committing anything.
     tools.push(...pageTools({ wallMet: deps.wallMet }, courier))
-    const pageDo = deps.decidePage ? pageDoTool(courier, deps.decidePage) : null
+    // Each step gated: a run goes back on dead ends and looks again only where it tends to go wrong.
+    const pageDo = deps.decidePage ? pageDoTool(courier, deps.decidePage, { gate: 'on' }) : null
     if (pageDo) tools.push(pageDo)
   }
 

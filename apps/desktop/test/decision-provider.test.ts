@@ -30,9 +30,19 @@ describe('the decision model', () => {
     expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ state: 'Goal: open a chat', model: 'jev-latest', questions: { next: { type: 'choice', instructions: 'pick the next action', criteria } } })
   })
 
+  it('waits out a brief rate limit instead of failing the run', async () => {
+    fake.connection = { baseUrl: 'https://gateway.example/decisions', model: 'jev-latest', key: 'k' }
+    let calls = 0
+    const fetchImpl = (async () => ++calls < 3
+      ? new Response('slow down', { status: 429, headers: { 'retry-after': '0.01' } })
+      : new Response(JSON.stringify({ answers: { next: { type: 'choice', choice: 'done', confidence: 0.9 } } }), { status: 200 })) as unknown as typeof fetch
+    expect(await decideChoice('s', 'i', criteria, fetchImpl)).toMatchObject({ choice: 'done' })
+    expect(calls).toBe(3)
+  })
+
   it('names what went wrong: a refused key, a rate limit, an answer outside the options', async () => {
     fake.connection = { baseUrl: 'https://gateway.example/decisions', model: 'jev-latest', key: 'k' }
-    const status = (code: number, body = '') => (async () => new Response(body, { status: code })) as unknown as typeof fetch
+    const status = (code: number, body = '') => (async () => new Response(body, { status: code, headers: { 'retry-after': '0.01' } })) as unknown as typeof fetch
     await expect(decideChoice('s', 'i', criteria, status(401))).rejects.toThrow(/did not accept the key/)
     await expect(decideChoice('s', 'i', criteria, status(429))).rejects.toThrow(/rate limited/)
     await expect(decideChoice('s', 'i', criteria, status(200, 'not json'))).rejects.toThrow(/JSON/)
