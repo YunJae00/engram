@@ -154,6 +154,7 @@ import { engineStates } from './vault.js'
 import { registerAccountIpc } from './account-ipc.js'
 import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
+import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { canLearnTurn, holdTaskResult } from './task-result-state.js'
@@ -1685,22 +1686,26 @@ export function registerIpc(ctx: VaultContext): void {
       const reply = await beginRoutine(id)
       return { ok: reply.ok, ...((reply as { blocked?: boolean }).blocked ? { blocked: true } : {}) }
     },
-    // A kept request is said in its own conversation, as the person would.
-    runPrompt: async (name, goal) => {
-      const bot = await createBot(paths, { name: name.slice(0, 60) })
+    // A kept request is said in its own conversation, as the person would; a
+    // repeating one goes on in the conversation it answered in before.
+    runPrompt: async (name, goal, into) => {
+      const kept = into ? (await loadBots(paths)).find(one => one.id === into) : undefined
+      const bot = kept ?? await createBot(paths, { name: name.slice(0, 60) })
+      const history = kept ? (await readBotTranscript(paths, kept.id)).map(turn => ({ role: turn.role, text: turn.text })) : []
       const item = await addNotice(paths, { kind: 'scheduled', title: name, text: goal, botId: bot.id, running: true })
       broadcast({ type: 'bots:changed' })
       broadcast({ type: 'notices:changed' })
       broadcast({ type: 'comet:scheduled', botId: bot.id, message: goal })
-      void tasks.chat({ engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message: goal, history: [], scheduled: true })
+      void tasks.chat({ engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message: goal, history, scheduled: true })
         .catch(error => flog('standing', error))
         .finally(async () => {
           const said = (await readBotTranscript(paths, bot.id).catch(() => [])).filter(turn => turn.role === 'assistant').at(-1)?.text ?? ''
           await updateNotice(paths, item.id, { running: false, read: false, at: new Date().toISOString(), text: noticeText(said) || goal }).catch(error => flog('standing', error))
           broadcast({ type: 'notices:changed' })
         })
-      return { ok: true }
+      return { ok: true, botId: bot.id }
     },
+    peek: peekWatch,
   })
 
   // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
@@ -2246,6 +2251,7 @@ export function registerIpc(ctx: VaultContext): void {
     list: async () => (await loadBots(paths)).flatMap(bot => bot.tasks ?? []),
     add: async (input) => { const task = await addBotTask(paths, botId, input); broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }); return task },
     remove: (id) => removeScheduled(paths, id),
+    watchable: WATCHABLE,
   })
 
   // The tools a comet is offered, the same list for a turn and for a session

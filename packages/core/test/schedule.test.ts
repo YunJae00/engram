@@ -38,3 +38,17 @@ describe('dueNow', () => {
     expect(dueNow(weekdays, at(2026, 8, 24, 9, 2).toISOString(), at(2026, 8, 25, 9, 10))).toBe(true)
   })
 })
+
+describe('every', () => {
+  const quarter = { days: [1, 2, 3, 4, 5], hour: 9, minute: 0, every: 15 }
+  it('repeats on a listed day from its time, once the minutes have gone by', () => {
+    expect(isSchedule(quarter)).toBe(true)
+    expect(isSchedule({ ...quarter, every: 2 })).toBe(false)
+    expect(isSchedule({ days: [], hour: 9, minute: 0, on: '2026-10-20', every: 15 })).toBe(false)
+    expect(dueNow(quarter, undefined, at(2026, 8, 25, 8, 59))).toBe(false)
+    expect(dueNow(quarter, undefined, at(2026, 8, 25, 16, 0))).toBe(true)
+    expect(dueNow(quarter, at(2026, 8, 25, 16, 0).toISOString(), at(2026, 8, 25, 16, 10))).toBe(false)
+    expect(dueNow(quarter, at(2026, 8, 25, 16, 0).toISOString(), new Date(at(2026, 8, 25, 16, 15).getTime() - 5_000))).toBe(true)
+    expect(dueNow(quarter, undefined, at(2026, 8, 29, 10, 0))).toBe(false)
+  })
+})

@@ -24,9 +24,14 @@ export const appKey = (app: string): string => app.trim().toLowerCase()
 
 // The name an app shows itself by is the trailing title segment most of its
 // windows share ("report.xlsx - Excel", or a bare "Mail"); without one, its
-// process name. A window with no title is no app at all (a lock screen, the
-// desktop) and is left out everywhere.
-const titled = (spans: ActivityStep[]) => spans.filter(span => span.title.trim())
+// process name. A window with no title is no app at all (the desktop), nor is
+// the lock or sign-in screen, and both are left out everywhere. A title read
+// through a narrow character set turned what it could not hold into "?" (an
+// invisible joiner in a browser's name), and no app is named with one.
+const SCREENS = new Set(['lockapp', 'logonui'])
+export const isScreen = (app: string): boolean => SCREENS.has(appKey(app))
+const titled = (spans: ActivityStep[]) => spans.filter(span => span.title.trim() && !isScreen(span.app))
+const cleanLabel = (label: string): string => label.replace(/[?\u200b-\u200d\u2060\ufeff]/g, '').replace(/\s+/g, ' ').trim()
 export function appLabels(spans: ActivityStep[]): Map<string, string> {
   const tails = new Map<string, Map<string, number>>()
   const totals = new Map<string, number>()
@@ -34,7 +39,7 @@ export function appLabels(spans: ActivityStep[]): Map<string, string> {
     const key = appKey(span.app)
     totals.set(key, (totals.get(key) ?? 0) + 1)
     const parts = span.title.split(TITLE_SPLIT)
-    const tail = parts.at(-1)!.trim()
+    const tail = cleanLabel(parts.at(-1)!)
     if (!tail || tail.length > 40 || span.title === PRIVATE) continue
     const counts = tails.get(key) ?? new Map<string, number>()
     counts.set(tail, (counts.get(tail) ?? 0) + 1)

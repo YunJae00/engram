@@ -248,3 +248,29 @@ test('compact settings keep privacy controls clear and advanced tools separate a
   await settings.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(settings).toHaveCount(0)
 })
+
+test('apps used lately carry their own icon and clean name, and the lock screen is not one', async () => {
+  await app.close()
+  const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+  const spans = [
+    { app: 'msedge', title: 'Sheet - Work - Microsoft? Edge', start: at(50), end: at(40) },
+    { app: 'LockApp', title: 'Windows Lock Screen', start: at(40), end: at(30) },
+    { app: 'node', title: 'notes.txt - Node', start: at(30), end: at(10) },
+  ]
+  const ledger = join(env.ENGRAM_VAULT!, 'workspace', '.engram', 'activity')
+  await mkdir(ledger, { recursive: true })
+  for (const span of spans) await writeFile(join(ledger, `${span.start.slice(0, 10)}.jsonl`), `${JSON.stringify(span)}\n`, { flag: 'a' })
+  await writeFile(join(env.ENGRAM_USERDATA!, 'app-paths.json'), JSON.stringify({ node: process.execPath }))
+  await start()
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-memory').click()
+  const apps = page.getByTestId('apps-settings')
+  await expect(apps.getByTestId('app-row-node')).toContainText('Node')
+  await expect(apps.getByTestId('app-row-node').locator('img.app-icon')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  await expect(apps.getByTestId('app-row-msedge')).toContainText('Microsoft Edge')
+  await expect(apps.getByTestId('app-row-msedge')).not.toContainText('?')
+  await expect(apps.getByTestId('app-row-msedge').locator('img.app-icon')).toHaveCount(0)
+  await expect(apps.getByTestId('app-row-lockapp')).toHaveCount(0)
+  await apps.scrollIntoViewIfNeeded()
+  await screenshot('settings-apps-icons.png')
+})

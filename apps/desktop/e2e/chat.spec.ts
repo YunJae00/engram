@@ -382,3 +382,39 @@ test('request errors keep readable padding, expandable details and working copy 
   await expect(error).toContainText('not a usage limit')
   await expect(error.locator('pre')).toBeHidden()
 })
+
+test('"@" offers only the apps turned on in settings and puts the chosen one in the message', async () => {
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('apps:list')
+    ipcMain.handle('apps:list', () => [
+      { app: 'outlook', label: 'Outlook', hours: 3, days: 5, on: true },
+      { app: 'onenote', label: 'OneNote', hours: 1, days: 2, on: false },
+      { app: 'excel', label: 'Excel', hours: 2, days: 4, on: true },
+    ])
+  })
+  await expect.poll(() => page.evaluate(() => window.engram.botsList()).then(() => true, () => false), { timeout: 60_000 }).toBe(true)
+  const bot = await createBot(paths, { name: 'Mention check' })
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 800))
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await app.evaluate(async ({ BrowserWindow }) => { await BrowserWindow.getAllWindows()[0]!.webContents.capturePage() })
+  await openActivity(page, 'bots')
+  if (await page.getByTestId('app-sidebar-open').isVisible()) await page.getByTestId('app-sidebar-open').click()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  const composer = page.getByTestId('bots-input')
+  const menu = page.getByTestId('bots-input-mentions')
+  await composer.fill('')
+  await composer.pressSequentially('sort it @o')
+  await expect(menu.getByRole('option')).toHaveText(['@Outlook'])
+  await composer.press('Enter')
+  await expect(composer).toHaveValue('sort it @Outlook ')
+  await expect(menu).toBeHidden()
+  await composer.pressSequentially('and @')
+  await expect(menu.getByRole('option')).toHaveText(['@Outlook', '@Excel'])
+  await composer.press('ArrowDown')
+  await composer.press('Tab')
+  await expect(composer).toHaveValue('sort it @Outlook and @Excel ')
+  await composer.pressSequentially('@zz')
+  await expect(menu).toBeHidden()
+})

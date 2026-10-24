@@ -25,7 +25,15 @@ export interface BotTask {
   // the person's OK.
   schedule?: Schedule
   routineId?: string
+  // Run only when this read-only listing shows something not seen at the
+  // last run; `seen` holds the item keys it showed then.
+  watch?: TaskWatch
+  seen?: string[]
+  // The conversation a repeating request keeps answering in.
+  chat?: string
 }
+
+export interface TaskWatch { tool: string; args: Record<string, unknown> }
 
 export interface Bot {
   id: string
@@ -238,7 +246,7 @@ export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
 export async function addBotTask(
   paths: VaultPaths,
   botId: string,
-  input: { name: string; goal: string; schedule?: Schedule; routineId?: string },
+  input: { name: string; goal: string; schedule?: Schedule; routineId?: string; watch?: TaskWatch },
   now: Date = new Date(),
 ): Promise<BotTask> {
   const name = input.name.trim().slice(0, 60)
@@ -252,6 +260,7 @@ export async function addBotTask(
     goal,
     ...(input.schedule ? { schedule: input.schedule } : {}),
     ...(input.routineId ? { routineId: input.routineId } : {}),
+    ...(input.watch ? { watch: input.watch } : {}),
   }
   await mutateBots(paths, (bots) => {
     const bot = bots.find((b) => b.id === botId)
@@ -276,10 +285,13 @@ export async function removeBotTask(paths: VaultPaths, botId: string, taskId: st
   })
 }
 
-export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: string, now: Date = new Date()): Promise<void> {
+export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: string, now: Date = new Date(), kept: { seen?: string[]; chat?: string } = {}): Promise<void> {
   await mutateBots(paths, (bots) => {
     const task = bots.find((b) => b.id === botId)?.tasks?.find((x) => x.id === taskId)
-    if (task) task.lastRunAt = now.toISOString()
+    if (!task) return
+    task.lastRunAt = now.toISOString()
+    if (kept.seen) task.seen = kept.seen.slice(0, 200)
+    if (kept.chat) task.chat = kept.chat
   })
 }
 

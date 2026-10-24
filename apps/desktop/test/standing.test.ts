@@ -67,4 +67,30 @@ describe('standingTick', () => {
     expect((await loadBots(paths))[0]?.tasks?.map((t) => t.name)).toEqual(['Mail'])
     expect(await standingTick(deps)).toEqual([])
   })
+
+  it('a watched request runs only when its listing shows something new, with just the count and ids, in one conversation', async () => {
+    const paths = await tempPaths()
+    const bot = await createBot(paths, { name: 'Desk', purpose: 'chores' })
+    const task = await addBotTask(paths, bot.id, { name: 'Mail', goal: 'Sort new mail', schedule: { days: [0, 1, 2, 3, 4, 5, 6], hour: 0, minute: 0, every: 15 }, watch: { tool: 'outlook_mail', args: {} } })
+    let listing: { key: string; id?: string }[] | null = [{ key: 'a', id: 'a' }]
+    let clock = new Date(2026, 7, 25, 9, 0)
+    const said: { goal: string; into?: string }[] = []
+    const deps = {
+      paths, now: () => clock, runRoutine: async () => ({ ok: true }), peek: async () => listing,
+      runPrompt: async (_name: string, goal: string, into?: string) => (said.push({ goal, ...(into ? { into } : {}) }), { ok: true, botId: 'chat-1' }),
+    }
+    expect(await standingTick(deps)).toEqual([task.id])
+    clock = new Date(2026, 7, 25, 9, 15)
+    expect(await standingTick(deps)).toEqual([])
+    listing = null
+    clock = new Date(2026, 7, 25, 9, 30)
+    expect(await standingTick(deps)).toEqual([])
+    listing = [{ key: 'b', id: 'b' }, { key: 'a', id: 'a' }, { key: 'c9f' }]
+    expect(await standingTick(deps)).toEqual([task.id])
+    expect(said).toEqual([
+      { goal: 'Sort new mail\n\n(1 new in outlook_mail since the last look; ids: a)' },
+      { goal: 'Sort new mail\n\n(2 new in outlook_mail since the last look; ids: b)', into: 'chat-1' },
+    ])
+    expect((await loadBots(paths))[0]?.tasks?.[0]).toMatchObject({ seen: ['b', 'a', 'c9f'], chat: 'chat-1' })
+  })
 })

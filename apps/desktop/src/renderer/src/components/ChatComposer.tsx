@@ -1,8 +1,9 @@
-import { ArrowUp, Paperclip, Plus, Square } from 'lucide-react'
+import { AppWindow, ArrowUp, Paperclip, Plus, Square } from 'lucide-react'
 import { ChatAttachment } from './ChatAttachment.js'
 import { forwardRef, memo, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { attachmentError, ATTACHMENT_ACCEPT, ATTACHMENT_MAX_COUNT } from '../../../shared/attachments.js'
+import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
 
@@ -25,6 +26,13 @@ interface Props {
   onStop(): void
 }
 
+// "@" names an app the person lets Engram work in (Settings, Apps); the list
+// is asked once and again after settings change.
+const MENTION = /(?:^|\s)@([^\s@]{0,40})$/
+const MENTIONS_SHOWN = 6
+let mentionable: Promise<string[]> | null = null
+const allowedApps = () => mentionable ??= api.appsList().then(rows => rows.filter(one => one.on).map(one => one.label)).catch(() => [])
+
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
     { value, placeholder, maxLength, busy, canQueue = false, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
@@ -38,6 +46,8 @@ export const ChatComposer = memo(
     const attachingRef = useRef(false)
     const [attaching, setAttaching] = useState(false)
     const [error, setError] = useState('')
+    const mentionRef = useRef<HTMLDivElement>(null)
+    const [mention, setMention] = useState<{ at: number; options: string[]; pick: number } | null>(null)
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
 
@@ -55,6 +65,33 @@ export const ChatComposer = memo(
       window.addEventListener('scroll', place, true)
       return () => { observer.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
     }, [])
+    useEffect(() => api.onEvent(event => { if (event.type === 'settings:changed') mentionable = null }), [])
+    useEffect(() => {
+      const menu = mentionRef.current
+      const anchor = inputRef.current?.getBoundingClientRect()
+      if (!menu) return
+      if (!mention || !anchor) { if (menu.matches(':popover-open')) menu.hidePopover(); return }
+      Object.assign(menu.style, { left: `${Math.max(8, Math.min(anchor.left, innerWidth - 228))}px`, bottom: `${innerHeight - anchor.top + 6}px`, maxHeight: `${Math.max(0, anchor.top - 14)}px` })
+      if (!menu.matches(':popover-open')) menu.showPopover()
+    }, [mention])
+
+    const lookForMention = (text: string, caret: number) => {
+      const hit = MENTION.exec(text.slice(0, caret))
+      if (!hit) { setMention(null); return }
+      const query = (hit[1] ?? '').toLowerCase()
+      void allowedApps().then(apps => {
+        const options = apps.filter(app => app.toLowerCase().includes(query)).slice(0, MENTIONS_SHOWN)
+        setMention(options.length ? { at: caret - query.length - 1, options, pick: 0 } : null)
+      })
+    }
+    const chooseMention = (app: string) => {
+      const input = inputRef.current
+      if (!mention || !input) return
+      const before = `${value.slice(0, mention.at)}@${app} `
+      onChange(before + value.slice(input.selectionStart))
+      setMention(null)
+      requestAnimationFrame(() => { input.focus(); input.setSelectionRange(before.length, before.length) })
+    }
 
     const attach = async (files: File[]) => {
       if (!onAttachmentsChange || (busy && !canQueue) || disabled || attachingRef.current || !files.length) return
@@ -82,6 +119,12 @@ export const ChatComposer = memo(
     }
 
     const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (mention && !event.nativeEvent.isComposing) {
+        const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
+        if (step) { event.preventDefault(); setMention({ ...mention, pick: (mention.pick + step + mention.options.length) % mention.options.length }); return }
+        if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); chooseMention(mention.options[mention.pick] ?? ''); return }
+        if (event.key === 'Escape') { event.preventDefault(); setMention(null); return }
+      }
       if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
       event.preventDefault()
       send()
@@ -112,8 +155,9 @@ export const ChatComposer = memo(
           maxLength={maxLength}
           placeholder={placeholder}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => { onChange(event.target.value); lookForMention(event.target.value, event.target.selectionStart) }}
           onKeyDown={onKeyDown}
+          onBlur={() => setMention(null)}
           onPaste={event => {
             const files = Array.from(event.clipboardData.files)
             const text = event.clipboardData.getData('text/plain')
@@ -123,6 +167,13 @@ export const ChatComposer = memo(
             void attach(files.length ? files : [new File([text], 'Pasted text.txt', { type: 'text/plain' })])
           }}
         />
+        <div ref={mentionRef} className="chat-add-menu chat-mention-menu" {...{ popover: 'manual' }} role="listbox" aria-label="Apps" data-testid={testId ? `${testId}-mentions` : undefined}>
+          {mention?.options.map((app, index) => (
+            <button key={app} type="button" role="option" aria-selected={index === mention.pick} className={index === mention.pick ? 'picked' : undefined} onMouseDown={event => { event.preventDefault(); chooseMention(app) }}>
+              <AppWindow size={16} aria-hidden /><span>@{app}</span>
+            </button>
+          ))}
+        </div>
         <div className="chat-write-footer">
           <div className="chat-write-tools">{onAttachmentsChange && <>
             <input ref={fileRef} type="file" hidden multiple accept={ATTACHMENT_ACCEPT} data-testid={testId ? `${testId}-files` : undefined} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void attach(files) }} />

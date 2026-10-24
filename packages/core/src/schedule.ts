@@ -10,9 +10,13 @@ export interface Schedule {
   // A single day (YYYY-MM-DD, local) instead of a weekly pattern: the task
   // runs once, on that day, and is then done.
   on?: string
+  // Again every so many minutes on the listed days, from hour:minute on.
+  every?: number
 }
 
 const WEEKDAYS = [1, 2, 3, 4, 5]
+export const EVERY_MIN = 5
+export const EVERY_MAX = 1440
 // A task is due for two hours after its time; later than that the moment
 // has passed and it waits for the next listed day.
 export const DUE_WINDOW_MS = 2 * 3_600_000
@@ -39,6 +43,7 @@ export function isSchedule(value: unknown): value is Schedule {
     Number.isInteger(s['minute']) &&
     (s['minute'] as number) >= 0 &&
     (s['minute'] as number) <= 59 &&
+    (s['every'] === undefined || (s['on'] === undefined && Number.isInteger(s['every']) && (s['every'] as number) >= EVERY_MIN && (s['every'] as number) <= EVERY_MAX)) &&
     (s['on'] === undefined || (typeof s['on'] === 'string' && DAY.test(s['on']) && !Number.isNaN(Date.parse(s['on'])) && new Date(s['on']).toISOString().slice(0, 10) === s['on']))
   )
 }
@@ -58,6 +63,8 @@ export function dueNow(schedule: Schedule, lastRunAt: string | undefined, now: D
   const at = new Date(now)
   at.setHours(schedule.hour, schedule.minute, 0, 0)
   const since = now.getTime() - at.getTime()
+  // The tick is a minute, so a run a few seconds late still counts as on time.
+  if (schedule.every) return since >= 0 && (!lastRunAt || now.getTime() - Date.parse(lastRunAt) >= schedule.every * 60_000 - 30_000)
   if (since < 0 || since > DUE_WINDOW_MS) return false
   if (lastRunAt && sameLocalDay(new Date(lastRunAt), now)) return false
   return true

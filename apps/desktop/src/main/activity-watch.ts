@@ -4,6 +4,8 @@ import { appendFile, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
+import { isScreen } from 'core'
+import { rememberAppPath } from './app-icons.js'
 import { flog } from './flog.js'
 import type { VaultContext } from './vault.js'
 
@@ -51,7 +53,10 @@ export function sanitizeTitle(title: string): string {
 }
 
 // One PowerShell child for the whole life of the watcher: Add-Type once,
-// foreground process+title every 15s, one pipe-separated line each.
+// foreground process+title every 15s, one pipe-separated line each, and the
+// first time a process is seen, its program's path on a ":path|" line (":"
+// cannot begin a process name). Titles are read wide: the narrow call turns
+// whatever the system code page cannot hold into "?".
 const PS_SCRIPT = `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type @'
@@ -60,10 +65,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 public class FG {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder t, int c);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder t, int c);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 }
 '@
+$seen = @{}
 while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) {
   try {
     $h = [FG]::GetForegroundWindow()
@@ -71,7 +77,9 @@ while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) {
     [void][FG]::GetWindowText($h, $sb, 512)
     $procId = 0
     [void][FG]::GetWindowThreadProcessId($h, [ref]$procId)
-    $name = (Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName
+    $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+    $name = $p.ProcessName
+    if ($name -and -not $seen.ContainsKey($name)) { $seen[$name] = 1; if ($p.Path) { Write-Output (':path|' + $name + '|' + $p.Path) } }
     if ($name) { Write-Output ($name + '|' + $sb.ToString()) }
   } catch {}
   Start-Sleep -Milliseconds ${SAMPLE_MS}
@@ -188,12 +196,14 @@ function startSampler(): void {
   if (child.stdout) {
     const lines = createInterface({ input: child.stdout })
     lines.on('line', (line) => {
+      const program = /^:path\|([^|]+)\|(.+)$/.exec(line)
+      if (program) { void rememberAppPath(program[1]!.trim(), program[2]!.trim()).catch(error => flog('app-path-failed', error)); return }
       const at = line.indexOf('|')
       if (at <= 0) return
       const appName = line.slice(0, at).trim()
       const title = line.slice(at + 1).trim()
       // Engram watching itself is noise, and an empty title is a desktop.
-      if (!appName || appName.toLowerCase() === 'engram' || appsOff.has(appName.toLowerCase())) { onSample(null); return }
+      if (!appName || appName.toLowerCase() === 'engram' || isScreen(appName) || appsOff.has(appName.toLowerCase())) { onSample(null); return }
       onSample({ app: appName, title })
     })
   }
