@@ -32,8 +32,9 @@ export interface PressTarget {
 // others can see it. Words like "apply" (a filter), "confirm" (a dialog) and
 // "save" (a draft, a view) are NOT here - those were what turned reading a
 // page into a queue of questions.
+// A board or a post is a place, though its name is built on the act of posting.
 const COMMIT_WORDS =
-  /\b(buy|purchase|pay|checkout|place (the )?order|order now|delete|remove|discard|publish|post|send|submit|withdraw|transfer|unsubscribe)\b|결제|구매|주문|삭제|제거|발송|전송|제출|게시|송금|해지|탈퇴/i
+  /\b(buy|purchase|pay|checkout|place (the )?order|order now|delete|remove|discard|publish|post|send|submit|withdraw|transfer|unsubscribe)\b|결제|구매|주문|삭제|제거|발송|전송|제출|게시(?!판|물|글)|송금|해지|탈퇴/i
 
 // Unambiguous destinations are safe; link semantics alone cannot prove that
 // clicking does not send, publish or submit through a page's event handler.

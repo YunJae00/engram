@@ -77,3 +77,8 @@ describe('a press that would be hard to take back is told apart from one that on
     }
   })
 })
+
+it('reads a board or a post as a place, not the act of posting', () => {
+  for (const words of ['게시판', '자유 게시판', '게시물 보기', '게시글']) expect(pressCommits({ submits: false, navigates: true, words })).toBe(false)
+  for (const words of ['게시', '게시하기', '주문하기', '구매']) expect(pressCommits({ submits: false, navigates: true, words })).toBe(true)
+})

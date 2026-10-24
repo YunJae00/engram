@@ -298,18 +298,34 @@ export class CodexEngine implements CloudEngine {
 }
 
 // The runtime's tool catalog changes only when the person edits their
-// configuration; read it once in a while, not before every turn.
+// configuration; read it once in a while, not before every turn. A project
+// folder may add servers of its own and is read for itself; the folders the
+// app makes for its comets add none, so they share one reading, and comets
+// starting together wait on the same one rather than each starting a slow
+// read of their own.
 const CATALOG_MS = 10 * 60_000
 const catalogs = new Map<string, { out: string; at: number }>()
+const reading = new Map<string, Promise<string>>()
 async function mcpCatalog(binary: string, cwd: string, env: Record<string, string>, signal: AbortSignal): Promise<string> {
-  const key = JSON.stringify([binary, cwd, env['CODEX_HOME'] ?? env['HOME'] ?? env['USERPROFILE'] ?? ''])
+  const scope = /^(.*[\\/]\.engram[\\/]work)[\\/]/.exec(cwd)?.[1] ?? cwd
+  const key = JSON.stringify([binary, scope, env['CODEX_HOME'] ?? env['HOME'] ?? env['USERPROFILE'] ?? ''])
   const held = catalogs.get(key)
   if (held && Date.now() - held.at < CATALOG_MS) return held.out
-  const catalog = await runText(binary, ['-C', cwd, 'mcp', 'list', '--json'], 60_000, env, { signal })
-  if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
-  for (const [stored, value] of catalogs) if (Date.now() - value.at >= CATALOG_MS) catalogs.delete(stored)
-  catalogs.set(key, { out: catalog.out, at: Date.now() })
-  return catalog.out
+  const pending = reading.get(key) ?? (async () => {
+    // The shared reading is not stopped by any one comet that stops waiting for it.
+    const catalog = await runText(binary, ['-C', cwd, 'mcp', 'list', '--json'], 60_000, env, { signal: new AbortController().signal })
+    if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+    for (const [stored, value] of catalogs) if (Date.now() - value.at >= CATALOG_MS) catalogs.delete(stored)
+    catalogs.set(key, { out: catalog.out, at: Date.now() })
+    return catalog.out
+  })().finally(() => reading.delete(key))
+  reading.set(key, pending)
+  return new Promise<string>((resolve, reject) => {
+    const stop = () => reject(signal.reason)
+    if (signal.aborted) return stop()
+    signal.addEventListener('abort', stop, { once: true })
+    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop))
+  })
 }
 export function forgetCodexCatalog(): void { catalogs.clear() }
 

@@ -71,6 +71,11 @@ describe('text runtime desktop isolation boundary', () => {
     await collect(engine.run({ prompt: 'Other project', workdir: 'C:/other' as EngineCwd }))
     expect(fixture.catalog).toHaveBeenCalledTimes(2)
   })
+  it('shares one catalogue reading among the folders made for comets, even when they start together', async () => {
+    const engine = new CodexEngine()
+    await Promise.all(['bot-a', 'bot-b', 'spare-1'].map(folder => collect(engine.run({ prompt: 'Read', workdir: `C:/v/.engram/work/${folder}` as EngineCwd }))))
+    expect(fixture.catalog).toHaveBeenCalledOnce()
+  })
   it('does not spend model discovery timeout waiting for the first session', async () => {
     vi.useFakeTimers()
     forgetClaudeModels()
