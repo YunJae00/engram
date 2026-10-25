@@ -138,6 +138,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
+import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
 import { botPreviews } from './bot-previews.js'
@@ -2349,6 +2350,7 @@ export function registerIpc(ctx: VaultContext): void {
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
     ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length))] : []),
     deskActivityTool,
+    notificationsTool(ctx),
     ...(channel.startsWith('bot-') ? [offerStudyTool({ offer: (input) => offerStudy(channel.slice('bot-'.length), input, turnGoals.get(channel) ?? '') }), studyFindingsTool({ found: (draft) => studyFound(channel.slice('bot-'.length), draft) })] : []),
     // Offered every turn so a check runs in the same session as the work it checks.
     resultCheckTool(turn?.verification ? {

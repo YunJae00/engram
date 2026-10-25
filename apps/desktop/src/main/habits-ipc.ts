@@ -19,6 +19,7 @@ import {
   readBotTranscript,
   readHabits,
   scriptLanguage,
+  toastUse,
   usedApps,
   type HabitEntry,
   type HabitLedger,
@@ -26,10 +27,11 @@ import {
 } from 'core'
 import type { AppUseDto, HabitDraftDto } from '../shared/types.js'
 import { readActivityRange, setActivityAppsOff } from './activity-watch.js'
-import { appIcon } from './app-icons.js'
+import { appIcon, appPaths } from './app-icons.js'
 import { setDesktopAppsOff } from './desktop-access.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
+import { readToasts, setToastAppsOff } from './notification-watch.js'
 import { loadSettings, onSettingsSaved, updateSettings, type AppSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
 import { habitResult } from './habit-drafts.js'
@@ -44,6 +46,7 @@ const DRAFTS_PER_SCAN = 2
 
 function applyAppsOff(settings: AppSettings): void {
   setActivityAppsOff(settings.appsOff.map(one => one.app))
+  setToastAppsOff(settings.appsOff.map(one => one.app))
   setDesktopAppsOff(settings.appsOff.map(one => one.label))
 }
 
@@ -158,8 +161,15 @@ export function registerHabitsIpc(ctx: VaultContext): void {
   ipcMain.handle('apps:list', async (): Promise<AppUseDto[]> => {
     const off = (await loadSettings()).appsOff
     const used = usedApps(await readActivityRange(ctx, Date.now() - WINDOW_MS, Date.now()))
-    const rows = used.map(one => ({ app: one.app, label: one.label, hours: Math.round(one.ms / 360_000) / 10, days: one.days, on: !off.some(kept => kept.app === one.app) }))
-    const all = [...rows, ...off.filter(kept => !used.some(one => one.app === kept.app)).map(kept => ({ app: kept.app, label: kept.label, hours: 0, days: 0, on: false }))]
+    // An app that only sent notifications is listed too, so it can be turned off.
+    const notes = toastUse(await readToasts(ctx, Date.now() - WINDOW_MS), await appPaths())
+    const shown = new Set(used.map(one => one.app))
+    const rows: AppUseDto[] = [
+      ...used.map(one => ({ app: one.app, label: one.label, hours: Math.round(one.ms / 360_000) / 10, days: one.days, notes: notes.get(one.app)?.count ?? 0, on: !off.some(kept => kept.app === one.app) })),
+      ...[...notes].filter(([app]) => !shown.has(app) && !off.some(kept => kept.app === app)).sort((a, b) => b[1].count - a[1].count)
+        .map(([app, note]) => ({ app, label: note.label, hours: 0, days: 0, notes: note.count, on: true })),
+    ]
+    const all = [...rows, ...off.filter(kept => !rows.some(one => one.app === kept.app)).map(kept => ({ app: kept.app, label: kept.label, hours: 0, days: 0, notes: 0, on: false }))]
     return Promise.all(all.map(async row => { const icon = await appIcon(row.app); return icon ? { ...row, icon } : row }))
   })
   ipcMain.handle('apps:set', async (_event, app: unknown, label: unknown, on: unknown) => {

@@ -148,6 +148,7 @@ export { GUIDE_SCHEMA, guideBody, guideForPrompt, guideNote, guidePrompt, WORK_G
 export { appLabel, appsNote, DESK_NOTES, DESK_TYPE, DESK_WINDOW_DAYS, downloadsNote, filesNote, parseUserAssist, type AppUse, type Download, type RecentFile } from './desk-map.js'
 export { applyLabels, buildWorkMap, labelPrompt, PLACE_TYPE, placeNote, placeNoteId, readWorkMap, safeAddress, workShortcuts, writeWorkMap, type TraceBookmark, type TraceVisit, type WorkMap, type WorkPlace } from './work-map.js'
 export * from './habit-chains.js'
+export * from './toasts.js'
 export * from './notices.js'
 export * from './aside.js'
 export * from './after-turn.js'

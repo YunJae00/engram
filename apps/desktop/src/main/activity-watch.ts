@@ -5,8 +5,10 @@ import { createInterface } from 'node:readline'
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { isScreen } from 'core'
+import { activityScript } from './activity-script.js'
 import { rememberAppPath } from './app-icons.js'
 import { flog } from './flog.js'
+import { onToastLine, startToastLog } from './notification-watch.js'
 import type { VaultContext } from './vault.js'
 
 const SAMPLE_MS = 15_000
@@ -51,40 +53,6 @@ export function foldSample(
 export function sanitizeTitle(title: string): string {
   return DENY_RE.test(title) ? '(private)' : title.slice(0, 120)
 }
-
-// One PowerShell child for the whole life of the watcher: Add-Type once,
-// foreground process+title every 15s, one pipe-separated line each, and the
-// first time a process is seen, its program's path on a ":path|" line (":"
-// cannot begin a process name). Titles are read wide: the narrow call turns
-// whatever the system code page cannot hold into "?".
-const PS_SCRIPT = `
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public class FG {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder t, int c);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-}
-'@
-$seen = @{}
-while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) {
-  try {
-    $h = [FG]::GetForegroundWindow()
-    $sb = New-Object System.Text.StringBuilder 512
-    [void][FG]::GetWindowText($h, $sb, 512)
-    $procId = 0
-    [void][FG]::GetWindowThreadProcessId($h, [ref]$procId)
-    $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
-    $name = $p.ProcessName
-    if ($name -and -not $seen.ContainsKey($name)) { $seen[$name] = 1; if ($p.Path) { Write-Output (':path|' + $name + '|' + $p.Path) } }
-    if ($name) { Write-Output ($name + '|' + $sb.ToString()) }
-  } catch {}
-  Start-Sleep -Milliseconds ${SAMPLE_MS}
-}
-`.replace('${SAMPLE_MS}', String(SAMPLE_MS))
 
 interface ActivityState {
   enabled?: boolean
@@ -168,7 +136,7 @@ function samplerSpawn(): ProcessClient {
   if (process.platform === 'darwin') {
     return new ProcessClient('/bin/sh', ['-c', MAC_SCRIPT])
   }
-  return new ProcessClient('powershell', ['-NoProfile', '-NonInteractive', '-Command', PS_SCRIPT])
+  return new ProcessClient('powershell', ['-NoProfile', '-NonInteractive', '-Command', activityScript(process.pid, SAMPLE_MS)])
 }
 
 function startSampler(): void {
@@ -196,6 +164,8 @@ function startSampler(): void {
   if (child.stdout) {
     const lines = createInterface({ input: child.stdout })
     lines.on('line', (line) => {
+      if (line.startsWith(':toast|')) { onToastLine(line.slice(7)); return }
+      if (line.startsWith(':toasts|')) { flog('notifications', line.slice(8)); return }
       const program = /^:path\|([^|]+)\|(.+)$/.exec(line)
       if (program) { void rememberAppPath(program[1]!.trim(), program[2]!.trim()).catch(error => flog('app-path-failed', error)); return }
       const at = line.indexOf('|')
@@ -227,6 +197,7 @@ async function pruneOldDays(vault: VaultContext): Promise<void> {
 export async function startActivityWatch(vault: VaultContext): Promise<void> {
   if ((process.platform !== 'win32' && process.platform !== 'darwin') || process.env['ENGRAM_HIDDEN'] === '1') return
   ctx = vault
+  startToastLog(vault)
   void pruneOldDays(vault)
   const state = await readState()
   // Default ON — the journal is the feature; the tray checkbox is the switch.

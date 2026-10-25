@@ -150,7 +150,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
         <h2>Memory &amp; data</h2>
-        <SettingsGroup title="Learn from this computer" note="Only names and titles are kept, as notes your AI can read. Pages and files are never opened.">
+        <SettingsGroup title="Learn from this computer" note="Only names, titles and notifications are kept, as notes your AI can read. Pages and files are never opened.">
           <SettingsItem icon={<Activity size={18} />} title={ACTIVITY.name} description={ACTIVITY.detail} htmlFor="setting-desk-journal">
             <input
               id="setting-desk-journal"

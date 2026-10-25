@@ -19,6 +19,8 @@ function known(): Promise<Record<string, string>> {
   return paths
 }
 
+export const appPaths = (): Promise<Readonly<Record<string, string>>> => known()
+
 export async function rememberAppPath(name: string, path: string): Promise<void> {
   const held = await known()
   const key = name.toLowerCase()
