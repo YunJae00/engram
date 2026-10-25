@@ -7,6 +7,9 @@ import { SettingsGroup, SettingsItem } from './SettingsLayout.js'
 
 const SHOWN = 8
 
+const plural = (count: number, one: string): string => `${count} ${one}${count === 1 ? '' : 's'}`
+const appUse = (app: AppUseDto): string => [app.days ? `${app.hours} h · ${plural(app.days, 'day')}` : '', app.notes ? plural(app.notes, 'notification') : ''].filter(Boolean).join(' · ') + ' in the last 30 days'
+
 // The apps used lately, each one Engram may learn from and work in or not,
 // and the ways of working noticed in them, waiting for the person to say
 // whether each is right before it is kept.
@@ -38,11 +41,11 @@ export function WorkHabitsSettings() {
   const answer = (draft: HabitDraftDto, keep: boolean) => run(draft.key, async () => setDrafts(await api.habitsAnswer(draft.key, keep)), 'Could not save your answer.')
   const shown = all ? apps ?? [] : (apps ?? []).slice(0, SHOWN)
   return <>
-    <SettingsGroup title="Apps Engram may use" testId="apps-settings" note="An app turned off is not recorded, learned from or worked in.">
+    <SettingsGroup title="Apps Engram may use" testId="apps-settings" note="Engram keeps what the apps turned on here show: their windows and their notifications. An app turned off is not recorded, learned from or worked in.">
       {apps === null && <SettingsItem title="Loading…" />}
       {apps?.length === 0 && <SettingsItem icon={<AppWindow size={18} />} title="No apps yet" description="Apps appear here as you use them while Engram is open." />}
       {shown.map(app => <SettingsItem key={app.app} icon={app.icon ? <img className="app-icon" src={app.icon} alt="" /> : <AppWindow size={18} />} title={app.label} htmlFor={`app-${app.app}`} testId={`app-row-${app.app}`}
-        description={app.days ? `${app.hours} h · ${app.days} ${app.days === 1 ? 'day' : 'days'} in the last 30` : 'Turned off'}>
+        description={app.on ? appUse(app) : 'Turned off'}>
         <input id={`app-${app.app}`} type="checkbox" className="switch" data-testid={`app-on-${app.app}`} aria-label={`Let Engram use ${app.label}`} checked={app.on} disabled={busy === `app:${app.app}`} onChange={event => void toggle(app, event.target.checked)} />
       </SettingsItem>)}
       {(apps?.length ?? 0) > SHOWN && <SettingsItem title={all ? 'Show fewer' : `Show all ${apps!.length}`}><button type="button" className="secondary" data-testid="apps-more" onClick={() => setAll(!all)}>{all ? 'Fewer' : 'All'}</button></SettingsItem>}

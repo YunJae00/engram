@@ -5,9 +5,11 @@ const mocks = vi.hoisted(() => ({
   settings: vi.fn(),
   tools: vi.fn(),
   run: vi.fn(),
+  notifications: vi.fn(),
 }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: mocks.settings }))
 vi.mock('../src/main/office-agent.js', () => ({ officeAgentTools: mocks.tools }))
+vi.mock('../src/main/notification-watch.js', () => ({ peekToasts: mocks.notifications }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -23,6 +25,14 @@ it('keeps stable keys for listings, including items without ids', () => {
   expect(watchKeys(raw)).toEqual(watchKeys(raw))
   expect(watchKeys(raw)).not.toEqual(watchKeys('[{"subject":"B"}]'))
   expect(() => watchKeys('not json')).toThrow()
+})
+
+it('checks saved notifications without opening or controlling an app', async () => {
+  mocks.notifications.mockResolvedValueOnce([{ key: 'toast-1', id: 'toast-1' }])
+  expect(await peekWatch({ tool: 'notifications', args: { app: 'Teams' } })).toEqual([{ key: 'toast-1', id: 'toast-1' }])
+  expect(mocks.notifications).toHaveBeenCalledWith({ app: 'Teams' })
+  expect(mocks.settings).not.toHaveBeenCalled()
+  expect(mocks.tools).not.toHaveBeenCalled()
 })
 
 it('only calls a read-only listing, preserving its arguments and timeout', async () => {

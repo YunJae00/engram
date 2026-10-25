@@ -249,7 +249,7 @@ test('compact settings keep privacy controls clear and advanced tools separate a
   await expect(settings).toHaveCount(0)
 })
 
-test('apps used lately carry their own icon and clean name, and the lock screen is not one', async () => {
+test('apps used lately carry their own icon and clean name, apps that only sent notifications are listed, and the lock screen is not one', async () => {
   await app.close()
   const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
   const spans = [
@@ -261,6 +261,13 @@ test('apps used lately carry their own icon and clean name, and the lock screen 
   await mkdir(ledger, { recursive: true })
   for (const span of spans) await writeFile(join(ledger, `${span.start.slice(0, 10)}.jsonl`), `${JSON.stringify(span)}\n`, { flag: 'a' })
   await writeFile(join(env.ENGRAM_USERDATA!, 'app-paths.json'), JSON.stringify({ node: process.execPath }))
+  const toasts = [
+    { id: 'a1', app: 'Node', aumid: 'node', at: at(20), title: 'Build done', text: '' },
+    { id: 'b2', app: 'Microsoft Teams', aumid: 'MSTeams_8wekyb3d8bbwe!MSTeams', at: at(15), title: 'Mina', text: 'Lunch?' },
+  ]
+  const kept = join(env.ENGRAM_VAULT!, 'workspace', '.engram', 'notifications')
+  await mkdir(kept, { recursive: true })
+  for (const toast of toasts) await writeFile(join(kept, `${toast.at.slice(0, 10)}.jsonl`), `${JSON.stringify(toast)}\n`, { flag: 'a' })
   await start()
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-memory').click()
@@ -270,6 +277,14 @@ test('apps used lately carry their own icon and clean name, and the lock screen 
   await expect(apps.getByTestId('app-row-msedge')).toContainText('Microsoft Edge')
   await expect(apps.getByTestId('app-row-msedge')).not.toContainText('?')
   await expect(apps.getByTestId('app-row-msedge').locator('img.app-icon')).toHaveCount(0)
+  await expect(apps.getByTestId('app-row-node')).toContainText('1 notification')
+  const teams = apps.getByTestId('app-row-microsoft teams')
+  await expect(teams).toContainText('Microsoft Teams')
+  await expect(teams).toContainText('1 notification in the last 30 days')
+  await apps.getByTestId('app-on-microsoft teams').click()
+  await expect(apps.getByTestId('app-on-microsoft teams')).not.toBeChecked()
+  await expect(teams).toContainText('Turned off')
+  await expect(apps).toContainText('their windows and their notifications')
   await expect(apps.getByTestId('app-row-lockapp')).toHaveCount(0)
   await apps.scrollIntoViewIfNeeded()
   await screenshot('settings-apps-icons.png')

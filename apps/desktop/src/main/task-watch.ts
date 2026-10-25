@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto'
 import type { TaskWatch } from 'core'
+import { peekToasts } from './notification-watch.js'
 import { officeAgentTools } from './office-agent.js'
 import { loadSettings } from './settings.js'
 
 // Listings a kept request may look at by itself before it runs. They only
-// read, so a look changes nothing and costs no model call.
-export const WATCHABLE = ['outlook_mail', 'outlook_calendar']
+// read, so a look changes nothing and costs no model call. The notifications
+// any app showed are Engram's own record, read without the app.
+export const WATCHABLE = ['notifications', 'outlook_mail', 'outlook_calendar']
 const LOOK_MS = 60_000
 
 function listed(value: unknown): unknown[] {
@@ -29,6 +31,7 @@ export function watchKeys(raw: string): { key: string; id?: string }[] {
 // off in settings, or the app is not on this machine.
 export async function peekWatch(watch: TaskWatch): Promise<{ key: string; id?: string }[] | null> {
   if (!WATCHABLE.includes(watch.tool)) return null
+  if (watch.tool === 'notifications') return peekToasts(watch.args)
   const settings = await loadSettings()
   if (settings.computerUse !== true) return null
   const app = watch.tool.split('_')[0] ?? ''
