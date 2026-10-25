@@ -1,7 +1,8 @@
 // One PowerShell child for the whole life of the watcher, waking each second.
 // Every SAMPLE_MS it prints the foreground process and title, one
-// pipe-separated line, and the first time a process is seen, its program's
-// path on a ":path|" line (":" cannot begin a process name). Titles are read
+// pipe-separated line, and the first time a process is seen, at start for any
+// with a window and later in front, its program's path on a ":path|" line
+// (":" cannot begin a process name). Titles are read
 // wide: the narrow call turns whatever the system code page cannot hold into "?".
 //
 // Each second it also looks at the system's notification store. That store
@@ -38,6 +39,10 @@ try {
 } catch { Write-Output (':toasts|' + $_.Exception.Message) }
 $stamp = ''
 $seen = @{}
+# Apps used before paths were kept get theirs from any window open now.
+foreach ($p in Get-Process | Where-Object { $_.MainWindowHandle -ne 0 }) {
+  try { if (-not $seen.ContainsKey($p.ProcessName) -and $p.Path) { $seen[$p.ProcessName] = 1; Write-Output (':path|' + $p.ProcessName + '|' + $p.Path) } } catch {}
+}
 $tick = 0
 $every = ${Math.max(1, Math.round(sampleMs / 1000))}
 while ($true) {
