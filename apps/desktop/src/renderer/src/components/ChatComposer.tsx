@@ -1,6 +1,6 @@
 import { AppWindow, ArrowUp, Paperclip, Plus, Square } from 'lucide-react'
 import { ChatAttachment } from './ChatAttachment.js'
-import { forwardRef, memo, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, memo, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { attachmentError, ATTACHMENT_ACCEPT, ATTACHMENT_MAX_COUNT } from '../../../shared/attachments.js'
 import { api } from '../api.js'
@@ -56,6 +56,7 @@ export const ChatComposer = memo(
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
+    const mentionCaret = useRef<number | null>(null)
     const fileRef = useRef<HTMLInputElement>(null)
     const menuRef = useRef<HTMLDivElement>(null)
     const addRef = useRef<HTMLButtonElement>(null)
@@ -71,6 +72,13 @@ export const ChatComposer = memo(
     const named = namedIn(value, apps)
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
+    useLayoutEffect(() => {
+      const caret = mentionCaret.current
+      if (caret === null || !inputRef.current) return
+      mentionCaret.current = null
+      inputRef.current.focus()
+      inputRef.current.setSelectionRange(caret, caret)
+    }, [value])
 
     const placeMenu = () => {
       const anchor = addRef.current?.getBoundingClientRect()
@@ -110,9 +118,9 @@ export const ChatComposer = memo(
       const input = inputRef.current
       if (!mention || !input) return
       const before = `${value.slice(0, mention.at)}@${app} `
+      mentionCaret.current = before.length
       onChange(before + value.slice(input.selectionStart))
       setMention(null)
-      requestAnimationFrame(() => { input.focus(); input.setSelectionRange(before.length, before.length) })
     }
 
     const attach = async (files: File[]) => {
