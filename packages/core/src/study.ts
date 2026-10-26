@@ -28,9 +28,12 @@ const file = (paths: VaultPaths) => join(paths.cache, 'studies.json')
 const KEEP = 40
 
 // Keep the warm session's tool shape stable, but enforce study consent at execution.
+// Records sit behind menus, so moving through a site is allowed; the page's
+// hands refuse any press that would keep or send something while studying.
 const STUDY_READS = new Set([
   'search_memory', 'read_note', 'find_procedure', 'open_skill', 'find_skills',
   'open_page', 'search_web', 'read_open_page', 'read_pages', 'look', 'verify', 'wait_for',
+  'page_steps', 'page_each', 'page_do', 'press', 'press_point', 'press_key', 'scroll', 'type_text',
   'app_read', 'app_text', 'read_desktop', 'look_desktop', 'list_windows', 'list_apps',
   'excel_workbooks', 'excel_read', 'outlook_mail', 'outlook_read', 'outlook_calendar',
   'file_read', 'file_read_workbook', 'desk_activity', 'ask_person', 'study_findings',
@@ -38,7 +41,7 @@ const STUDY_READS = new Set([
 
 export function studyGuard(tool: AgentTool, active: () => boolean): AgentTool {
   const check = () => {
-    if (active() && !STUDY_READS.has(tool.name)) throw new Error('Studying is read-only. Read available records; ask the person to open another view if needed. Changes and actions wait until the study is confirmed.')
+    if (active() && !STUDY_READS.has(tool.name)) throw new Error('While studying, only reading and moving through pages are allowed. Changes and actions wait until the study is confirmed.')
   }
   return {
     ...tool,
@@ -81,8 +84,8 @@ export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): stri
     `Learn, without changing anything, how the person does this job, the way a new colleague would: "${study.ask}". What stood in the way: "${study.what}".`,
     `Start where the job is done - ${study.where.length ? study.where.join(', ') : 'the app or site the job is in'} - and read several of their own earlier records there closely, one by one: what each screen, field, code and value is, and what made them choose it (which kind of work gets which code, how much they put down and how it adds up). Go to other places (their mail, chats, files, desk_activity) only for a question the records left open, and say which question.`,
     'Think aloud to the person while you study: before each next look, write one short line on what the last one showed you, in plain words ("this screen is where each day is entered", "this code is used for this kind of work") - what you learned, not which button you pressed. Never take two looks in a row without such a line.',
-    'Read and move only. Never press anything that saves, sends, submits or deletes; those presses are refused while you study.',
-    'Only reading tools are enabled during study. Read records through the available mail, file, app and page readers. Do not call action tools or commands; if another view needs a click or input, ask the person to open it instead.',
+    'Read and move only. Open menus, tabs, lists, dates and search forms on pages to reach the records; never press anything that saves, sends, submits or deletes - those presses are refused while you study.',
+    'Changes in apps and files, commands and writing tools are off during study. Ask the person to open a view only when the page itself cannot be moved to it.',
     'Call study_findings only once you have followed the way to the end and seen it give what the job needs - the records, the numbers, the screen that holds them. A way you did not see through is not learned: then do not call it, and tell the person in two or three sentences what you found, where it stopped and what you would need.',
     'When you have called it, tell the person in two or three sentences what you learned and that a card asks them to confirm it.',
     `Write to the person in ${language || 'the language of the job above'}.`,

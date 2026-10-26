@@ -67,3 +67,12 @@ it('counts a mail or page that was read as evidence, and says which step to cite
   steps.push({ tool: 'word_write', args: {}, observation: '{"saved":"C:\\a.docx"}' } as AgentLoopStep)
   await expect(plan.tool.run({ evidenceStep: 1, finding: 'Wrote it' }, { task: '' })).rejects.toThrow('Cite step 2')
 })
+
+it('takes a plan sent with empty sibling fields, object phases or long phases, and says what was wrong otherwise', async () => {
+  const steps: AgentLoopStep[] = []
+  const plan = taskPlan(steps)
+  await expect(plan.tool.run({ phases: ['Only one'] }, { task: '' })).rejects.toThrow('1 were given')
+  await plan.tool.run({ phases: [{ phase: 'Open the report', check: 'the week is shown' }, 'x'.repeat(300)], remainingPhases: null, evidenceStep: null, finding: null }, { task: '' })
+  expect(plan.pending()).toBe('Unverified phase 1/2: Open the report - the week is shown')
+  await expect(plan.tool.run({ phases: ['A', 'B'] }, { task: '' })).rejects.toThrow('already has 2 phases')
+})

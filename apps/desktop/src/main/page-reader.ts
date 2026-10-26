@@ -1,31 +1,13 @@
 import type { Frame, Page } from 'playwright-core'
 import { takesRoom } from './page-frame-room.js'
+import type { FrameReading, PageReading } from './page-reading.js'
+export type { FrameReading, PageReading } from './page-reading.js'
 
 // A page read the way a person sees it: the words on it, the controls in
 // the order they sit on it - each with a number, so an icon with no words
 // can still be named - and the words a page keeps folded away, so a search
 // for them can say where they are. Frames and open shadow roots are part
 // of the page, not exceptions to it.
-
-export interface FrameReading {
-  text: string
-  hidden: string
-  hasPasswordField: boolean
-  links: { text: string; url: string }[]
-  controls: { kind: string; name: string; state: string; ref?: string }[]
-  // What stands in front of the page right now: a dialog it has opened over
-  // itself. Its own words, so it can be answered without hunting for them
-  // among the page behind it.
-  dialog: string
-  // Fields the page itself says are wrong or missing, each with what it said
-  // about them. Read off the page's own markup, never guessed.
-  faults: string[]
-}
-
-export interface PageReading extends FrameReading {
-  // Control lines as the model sees them: "#12 [button] Next (closed)".
-  lines: string[]
-}
 
 // Where each numbered control lives, so a press by number lands on the
 // element the reading meant: which frame, and which one there.
@@ -216,6 +198,23 @@ export function readDocument(mark?: number): FrameReading {
       return hit === el
     })
   }
+  // A lifted panel that names no dialog stands over the page when a sheet
+  // covers the view behind it - what a click beside it lands on - or when it
+  // is a short notice. A board of entries drawn on top (a timetable, a
+  // floating list) is still the page itself.
+  const behindSheet = (el: Element): boolean => {
+    const r = el.getBoundingClientRect()
+    const beside = [[0.02, 0.02], [0.98, 0.02], [0.02, 0.98], [0.98, 0.98], [0.5, 0.02], [0.5, 0.98]]
+      .map(([x, y]) => [innerWidth * x!, innerHeight * y!] as const)
+      .filter(([x, y]) => x < r.left || x > r.right || y < r.top || y > r.bottom)
+    return beside.length > 0 && beside.every(([x, y]) => {
+      const hit = document.elementFromPoint(x, y)
+      if (!hit || el.contains(hit) || hit === document.body || hit === document.documentElement) return false
+      const position = getComputedStyle(hit).position, box = hit.getBoundingClientRect()
+      return (position === 'fixed' || position === 'absolute') && box.width >= innerWidth * 0.9 && box.height >= innerHeight * 0.9
+    })
+  }
+  const NOTICE_CONTROLS = 4
   const dialogOf = (): Element | null => {
     const declared = Array.from(document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]')).filter((el) => shown(el) && inFront(el))
     if (declared.length > 0) return declared[declared.length - 1]!
@@ -230,6 +229,7 @@ export function readDocument(mark?: number): FrameReading {
       if (area < 40_000 || area > innerWidth * innerHeight * 0.9) continue
       if (el.querySelector('button, [role="button"], input, a[href]') === null) continue
       if (!inFront(el)) continue
+      if (el.querySelectorAll('button, [role="button"], input, select, a[href]').length > NOTICE_CONTROLS && !behindSheet(el)) continue
       if (area > bestArea) {
         best = el
         bestArea = area

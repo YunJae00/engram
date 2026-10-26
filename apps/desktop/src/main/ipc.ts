@@ -1077,7 +1077,7 @@ export function registerIpc(ctx: VaultContext): void {
   const { offerStudy, setOffersAside, studyFound, checkAfterTurn } = registerStudyIpc({
     paths,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
-    sendStudy: (request) => sendChat(request, undefined, undefined, { quiet: true }),
+    sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
   })
   registerAsideIpc({
     paths,

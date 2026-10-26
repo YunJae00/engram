@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
-import { pressCommits, type PageMove } from 'core'
+import { pressCommits, pressKeeps, type PageMove, type PressTarget } from 'core'
 import { readFrames } from './page-reader.js'
 import { scrollDirection } from './page-scroll.js'
 import { handOn, inspectControl, unmark } from './page-target.js'
@@ -36,7 +36,9 @@ async function inspected(hand: Locator): Promise<ReturnType<typeof inspectContro
 // The person's answer to "may this go?": the host asks them, with the page
 // in front of them. No asker means the old refusal - nothing commits by
 // accident because a caller forgot to wire the question.
-export type Ask = (what: { words: string; url: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>
+// reading: the comet is only learning, so a press that keeps something is refused too.
+export type Ask = ((what: { words: string; url: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>) & { reading?: () => boolean }
+const commitsFor = (control: PressTarget, ask?: Ask) => pressCommits(control) || (ask?.reading?.() === true && pressKeeps(control.words))
 
 async function allowed(page: Page, words: string, ask?: Ask): Promise<'yes' | 'no' | 'theirs' | 'later'> {
   if (!ask) return 'no'
@@ -76,13 +78,20 @@ const SIGNATURE_MS = 5_000
 // more and the numbers of everything that answers to them are handed back,
 // so the next call can point at exactly one.
 const CHOICES_LISTED = 8
-async function ambiguity(page: Page, target: string): Promise<PageMove> {
+const controlName = (line: string) => line.replace(/^#\d+ \[[^\]]*\] /, '').replace(/ \([^)]*\)$/, '').toLowerCase()
+async function choicesFor(page: Page, target: string): Promise<string[]> {
   const reading = await readFrames(page).catch(() => null)
   const wanted = target.toLowerCase()
-  const choices = (reading?.lines ?? []).filter((line) => {
-    const name = line.replace(/^#\d+ \[[^\]]*\] /, '').replace(/ \([^)]*\)$/, '')
-    return name.toLowerCase() === wanted || name.toLowerCase().includes(wanted)
-  })
+  return (reading?.lines ?? []).filter((line) => controlName(line) === wanted || controlName(line).includes(wanted))
+}
+// The same words shown in several places name one thing when exactly one of
+// them is a control called by just those words; the rest is text around it.
+async function soleControl(page: Page, target: string): Promise<string | null> {
+  const exact = (await choicesFor(page, target)).filter(line => controlName(line) === target.toLowerCase())
+  return exact.length === 1 ? /^#\d+/.exec(exact[0]!)?.[0] ?? null : null
+}
+async function ambiguity(page: Page, target: string): Promise<PageMove> {
+  const choices = await choicesFor(page, target)
   const shown = choices.slice(0, CHOICES_LISTED).join(', ')
   return {
     ok: false,
@@ -117,14 +126,19 @@ async function showHand(page: Page, hand: Locator, kind: 'move' | 'press'): Prom
 }
 
 export async function pressOn(page: Page, target: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
-  const aim = await handOn(page, target, signal)
+  let aim = await handOn(page, target, signal)
+  if ('many' in aim) {
+    const sole = await soleControl(page, target)
+    if (!sole) return ambiguity(page, target)
+    aim = await handOn(page, sole, signal)
+  }
   if ('many' in aim) return ambiguity(page, target)
   if ('none' in aim) return missing(target)
   const hand = aim.hand
   try {
     const control = await inspected(hand)
     if (!control) return missing(target)
-    const commits = pressCommits(control)
+    const commits = commitsFor(control, ask)
     if (commits) {
       const said = await allowed(page, control.words, ask)
       if (said !== 'yes') return { ok: false, refused: control.words.slice(0, 80), ...(said === 'theirs' ? { theirs: true } : said === 'later' ? { later: true } : {}) }
@@ -173,7 +187,7 @@ export async function typeText(page: Page, target: string, text: string, enter: 
 
 // One entry from a list: a select's option by its words, or a custom list
 // opened by a press and the entry pressed in it.
-export async function chooseOption(page: Page, target: string, option: string, signal?: AbortSignal): Promise<PageMove> {
+export async function chooseOption(page: Page, target: string, option: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   const aim = await handOn(page, target, signal)
   if ('many' in aim) return ambiguity(page, target)
   if ('none' in aim) return missing(target)
@@ -191,7 +205,7 @@ export async function chooseOption(page: Page, target: string, option: string, s
       await settle(page)
       return { ok: true }
     }
-    if (pressCommits(control)) return { ok: false, refused: control.words.slice(0, 80) }
+    if (commitsFor(control, ask)) return { ok: false, refused: control.words.slice(0, 80) }
     await hand.click({ timeout: FIND_TIMEOUT_MS })
     await page.waitForTimeout(SETTLE_MS)
   } catch (err) {
@@ -199,7 +213,7 @@ export async function chooseOption(page: Page, target: string, option: string, s
   } finally {
     await unmark(page)
   }
-  return pressOn(page, option, signal)
+  return pressOn(page, option, signal, ask?.reading?.() ? ask : undefined)
 }
 
 // Never guess the picture's dimensions when its frame is unavailable.
@@ -272,7 +286,7 @@ export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, si
       there = hand ? await hand.evaluate(inspectControl) : null
     } finally { await target.dispose() }
     if (!there) return { ok: false, error: 'nothing is at that point of the picture' }
-    const commits = pressCommits(there)
+    const commits = commitsFor(there, ask)
     if (commits) {
       const said = await allowed(page, there.words, ask)
       if (said !== 'yes') return { ok: false, refused: there.words || 'what is at that point', ...(said === 'theirs' ? { theirs: true } : said === 'later' ? { later: true } : {}) }
@@ -306,7 +320,7 @@ export async function hoverOn(page: Page, target: string, signal?: AbortSignal):
 
 // A key to the page: Escape for a dialog, arrows in a picker, Tab along.
 // Activation keys inspect the current control, including framed/shadow content.
-export async function pressKey(page: Page, key: string, signal?: AbortSignal): Promise<PageMove> {
+export async function pressKey(page: Page, key: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   if (signal?.aborted) throw new Error('canceled')
   if (!KEYS.has(key)) return { ok: false, error: `"${key}" is not a key that can be pressed here; one of ${[...KEYS].join(', ')}` }
   try {
@@ -325,7 +339,7 @@ export async function pressKey(page: Page, key: string, signal?: AbortSignal): P
           const child = await hand.contentFrame()
           if (child) { frame = child; continue }
           const control = await hand.evaluate(inspectControl)
-          if (control.secret || control.posts || (!control.field && pressCommits(control)))
+          if (control.secret || control.posts || (!control.field && commitsFor(control, ask)))
             return { ok: false, refused: `${key} here could submit or commit something` }
           if (signal?.aborted) throw new Error('canceled')
           await hand.press(key, { timeout: FIND_TIMEOUT_MS })

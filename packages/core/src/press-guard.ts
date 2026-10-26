@@ -47,6 +47,12 @@ const LINK_DESTINATIONS = /^(purchase orders|sent mail|submitted requests|주문
 const PASSAGE_WORDS =
   /\b(sign ?in|log ?in|continue|next|proceed|go|open|view|show|search|find|filter|refresh|reload|more|back|close|ok|okay|select|choose|browse|expand|collapse|details?)\b|로그인|계속|다음|이동|열기|보기|조회|검색|찾기|필터|새로고침|더보기|뒤로|닫기|확인|선택|상세/i
 
+// While only learning how the person works, a press that keeps something -
+// an entry saved, a request filed, a new record begun - is as final as a send.
+const KEEP_WORDS =
+  /\b(save|apply|register|request|approve|confirm|book|reserve|create|add|new|edit|update|change)\b|저장|등록|신청|승인|확정|예약|작성|수정|추가|신규|변경|반려|상신/i
+export const pressKeeps = (words: string): boolean => KEEP_WORDS.test(words)
+
 export function pressCommits(target: PressTarget): boolean {
   // A control the page itself declares to be a state of the view is read,
   // not action: it is what tabs, toggles, filters and unit pickers are, and

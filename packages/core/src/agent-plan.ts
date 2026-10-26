@@ -41,12 +41,16 @@ export function taskPlan(steps: AgentLoopStep[]): { tool: AgentTool; completed: 
         remainingPhases: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 240 } },
         evidenceStep: { type: 'integer', minimum: 1 }, finding: { type: 'string', minLength: 1, maxLength: 600 },
       }, oneOf: [{ required: ['phases'], maxProperties: 1 }, { required: ['evidenceStep', 'finding'], maxProperties: 2 }, { required: ['remainingPhases', 'evidenceStep', 'finding'], maxProperties: 3 }] },
-      async run(args, context) {
+      async run(given, context) {
         context.signal?.throwIfAborted()
+        // Fields sent empty are fields not sent.
+        const args = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== null && value !== undefined))
         if (Object.keys(args).length === 1 && Array.isArray(args['phases'])) {
-          const value = args['phases']
-          if (phases.length || value.length < 2 || value.length > 8 || value.some((one) => typeof one !== 'string' || !one.trim() || one.length > 240)) throw new Error('Create one plan with 2 to 8 nonempty phases, each at most 240 characters.')
-          phases = value.map((one: string) => one.trim())
+          if (phases.length) throw new Error(`The plan already has ${phases.length} phases. Complete the current one with evidenceStep and finding, or revise with remainingPhases.`)
+          // A phase written as an object (a title with its check) is its words.
+          const value = (args['phases'] as unknown[]).map(one => (typeof one === 'string' ? one : one && typeof one === 'object' ? Object.values(one).filter(part => typeof part === 'string').join(' - ') : '').trim().slice(0, 240))
+          if (value.length < 2 || value.length > 8 || value.some(one => !one)) throw new Error(`Create one plan with 2 to 8 nonempty phases; ${value.length} were given${value.some(one => !one) ? ', some empty' : ''}.`)
+          phases = value
           boundary = steps.length
         } else {
           const evidence = args['evidenceStep'], finding = args['finding']

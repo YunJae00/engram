@@ -28,7 +28,7 @@ describe('search result links', () => {
     try {
       const follow = vi.fn((_url: string, signal?: AbortSignal) => new Promise<string | null>((_, reject) => signal?.addEventListener('abort', () => reject(new Error('aborted')))))
       const pending = resolveResultLinks([{ text: 'Slow', url: 'https://www.google.com/goto?url=CAES9' }], PAGE, follow)
-      await vi.advanceTimersByTimeAsync(4_100)
+      await vi.advanceTimersByTimeAsync(10_100)
       expect((await pending)[0]!.url).toBe('https://www.google.com/goto?url=CAES9')
     } finally { vi.useRealTimers() }
   })

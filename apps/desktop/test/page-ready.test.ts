@@ -82,6 +82,24 @@ it('bounds empty page recovery and never declares missing content as a fact', as
   await expect(readWhenReady(page, async () => ({ url: 'https://example.com', title: 'App', text: '' }))).rejects.toThrow('Do not infer that it is empty')
 })
 
+it('keeps waiting past the first limit while the page is still fetching its own parts, and no longer once they stop', async () => {
+  const page = clockPage()
+  // Parts keep arriving until 17s, the words land at 18s.
+  Object.assign(page, { evaluate: async () => Math.floor(Math.min(Date.now(), 17_000) / 500) })
+  const slow = await readWhenReady(page, async () => ({ url: 'https://app.test', title: 'App', text: Date.now() < 18_000 ? '' : 'Popular this week' }))
+  expect(slow.text).toBe('Popular this week')
+
+  const stalled = clockPage()
+  Object.assign(stalled, { evaluate: async () => Math.floor(Math.min(Date.now(), 3_000) / 500) })
+  await expect(readWhenReady(stalled, async () => ({ url: 'https://app.test', title: 'App', text: '' }))).rejects.toThrow('Do not infer that it is empty')
+  expect(Date.now()).toBeLessThan(15_000)
+
+  const building = clockPage()
+  Object.assign(building, { evaluate: async () => Date.now() })
+  await expect(readWhenReady(building, async () => ({ url: 'https://app.test', title: 'App', text: '' }))).rejects.toThrow('Do not infer that it is empty')
+  expect(Date.now()).toBeLessThan(32_000)
+})
+
 it('preserves a confirmed login wall and respects cancellation', async () => {
   const page = clockPage()
   expect((await readWhenReady(page, async () => ({ url: 'https://example.com', title: 'Login', text: '', wall: 'login' })))).toHaveProperty('wall', 'login')
