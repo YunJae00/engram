@@ -12,6 +12,8 @@ export interface StudyIpcDeps {
   busy(channel: string): boolean
   // Runs a turn the person did not type - a study, one more pass - quietly in the conversation.
   sendQuiet(request: ChatRequestDto): Promise<void>
+  // Stops whatever runs in the conversation.
+  stop(channel: string): void
 }
 
 export interface AfterTurnInput {
@@ -84,8 +86,17 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
     throw new Error('That study is not waiting for this answer.')
   })
   // The one more pass each conversation's undone job got: the words it was
-  // sent with, and the request they carry on.
-  const passes = new Map<string, { message: string; ask: string }>()
+  // sent with, the request they carry on, and the turn while it runs.
+  const passes = new Map<string, { message: string; ask: string; running?: Promise<void> }>()
+  // The person did not ask for the pass, so it gives way the moment they write.
+  const yieldPass = async (channel: string): Promise<void> => {
+    const running = passes.get(channel)?.running
+    if (!running) return
+    passes.delete(channel)
+    flog('study', 'another pass gave way to the person')
+    deps.stop(channel)
+    await running.catch(() => undefined)
+  }
   // When a turn ends with an answer, the voice judges it once: words taken in
   // along the way that it left undone go on as the next message, and a job
   // left undone gets one more pass, then is offered another way when the
@@ -112,16 +123,18 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
         signal.throwIfAborted()
         checking.controller.signal.throwIfAborted()
         if (checking.superseded || deps.busy(channel)) return
-        passes.set(channel, { message, ask: asked })
-        void deps.sendQuiet({ engineId: '', botId, channel, message, history }).catch((error: unknown) => {
+        const pass: { message: string; ask: string; running?: Promise<void> } = { message, ask: asked }
+        passes.set(channel, pass)
+        broadcast({ type: 'comet:continue', channel, botId })
+        pass.running = deps.sendQuiet({ engineId: '', botId, channel, message, history }).catch((error: unknown) => {
           if (passes.get(channel)?.message === message) passes.delete(channel)
           flog('study', `another pass: ${error instanceof Error ? error.message : String(error)}`)
-        })
+        }).finally(() => { delete pass.running })
         return
       }
       flog('study', `offered after an undone turn: ${judged.undone.blocked}`)
       await offerStudy(botId, { what: judged.undone.blocked, where: [] }, asked)
     })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => afterChecks.delete(checking))
   }
-  return { offerStudy, setOffersAside, studyFound, checkAfterTurn }
+  return { offerStudy, setOffersAside, studyFound, checkAfterTurn, yieldPass }
 }

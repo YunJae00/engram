@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 
 const run = promisify(execFile)
+// PowerShell can take tens of seconds to start on a busy or closely watched computer.
+const POLICY_READ_MS = 30_000
 export async function managedBookmarkSources(browser: string): Promise<{ id: string; name: string; text: string }[]> {
   if (browser !== 'chrome' && browser !== 'edge') return []
   const key = browser === 'chrome' ? 'ManagedBookmarks' : 'ManagedFavorites'
@@ -11,7 +13,7 @@ export async function managedBookmarkSources(browser: string): Promise<{ id: str
     const product = browser === 'chrome' ? 'Google\\Chrome' : 'Microsoft\\Edge'
     const script = `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $ErrorActionPreference = 'Stop'; $items = @(); foreach ($scope in @('HKLM','HKCU')) { $path = $scope + ':\\Software\\Policies\\${product}'; if (Test-Path -LiteralPath $path) { $item = Get-ItemProperty -LiteralPath $path; $value = $item.PSObject.Properties['${key}']; if ($null -ne $value -and $value.Value -is [string]) { $items += @{ id = $scope; text = $value.Value } } } }; ConvertTo-Json -InputObject $items -Compress`
     const executable = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-    const { stdout } = await run(executable, ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 8000, maxBuffer: 5_000_000, encoding: 'utf8' })
+    const { stdout } = await run(executable, ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: POLICY_READ_MS, maxBuffer: 5_000_000, encoding: 'utf8' })
     const rows: unknown = JSON.parse(stdout.replace(/^\uFEFF/, ''))
     if (!Array.isArray(rows)) throw new Error('Managed bookmark policy could not be read')
     return rows.flatMap(row => row && ['HKLM', 'HKCU'].includes(row.id) && typeof row.text === 'string' ? [{ id: `${browser}:managed:${row.id}`, name: row.id === 'HKLM' ? 'Organization · Device' : 'Organization · User', text: row.text }] : [])

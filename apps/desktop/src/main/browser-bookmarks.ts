@@ -1,8 +1,10 @@
 import { app } from 'electron'
-import { readFile, readdir, stat, mkdir, rename, writeFile, rm } from 'node:fs/promises'
+import { readFile, stat, mkdir, rename, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { browserProfileRoots } from './browser-import.js'
+import { chromiumRoots, profileDirs } from './browser-roots.js'
+import { firefoxBookmarks, readFirefox } from './firefox-places.js'
+import { flog } from './flog.js'
 import { managedBookmarkSources } from './managed-bookmarks.js'
 
 export interface Bookmark { title: string; url: string; folder: string; folderPath?: string[]; sourceId?: string; sourceName?: string }
@@ -47,19 +49,20 @@ const PROFILE_BOOKMARK_FILES = ['Bookmarks', 'AccountBookmarks']
 
 async function profiles() {
   const found: { id: string; name: string; files?: string[]; text?: string }[] = []
-  for (const root of browserProfileRoots()) {
-    for (const source of await managedBookmarkSources(root.id)) found.push({ ...source, name: `${root.name} · ${source.name}` })
+  for (const root of chromiumRoots()) {
+    // A policy that cannot be read in time leaves the profiles' own bookmarks to read.
+    const managed = await Promise.resolve().then(() => managedBookmarkSources(root.id)).catch((error: unknown) => { flog('bookmarks', `${root.name} managed bookmarks: ${error instanceof Error ? error.message.slice(0, 200) : String(error)}`); return [] })
+    for (const source of managed) found.push({ ...source, name: `${root.name} · ${source.name}` })
     const state = await readLimited(join(root.userData, 'Local State')).then(text => record(record(JSON.parse(text)).profile).info_cache).catch(() => undefined)
-    for (const dir of await readdir(root.userData, { withFileTypes: true }).catch(() => [])) {
-      if (!dir.isDirectory() || !/^(Default|Profile \d+)$/.test(dir.name)) continue
+    for (const dir of profileDirs(root.userData)) {
       const files: string[] = []
       for (const name of PROFILE_BOOKMARK_FILES) {
-        const file = join(root.userData, dir.name, name)
+        const file = join(root.userData, dir, name)
         if ((await stat(file).catch(() => null))?.isFile()) files.push(file)
       }
-      const profileName = record(record(state)[dir.name]).name
-      const label = typeof profileName === 'string' && profileName.trim() ? profileName.slice(0, 100) : dir.name
-      if (files.length) found.push({ id: `${root.id}:${dir.name}`, name: `${root.name} · ${label}`, files })
+      const profileName = record(record(state)[dir]).name
+      const label = typeof profileName === 'string' && profileName.trim() ? profileName.slice(0, 100) : dir === '.' ? 'Default' : dir
+      if (files.length) found.push({ id: `${root.id}:${dir === '.' ? 'Default' : dir}`, name: `${root.name} · ${label}`, files })
     }
   }
   return found
@@ -75,6 +78,7 @@ export async function allBookmarks(): Promise<(Bookmark & { managed: boolean })[
       for (const row of texts.flatMap(parseBookmarks)) found.push({ ...row, managed: source.id.includes(':managed') })
     } catch { continue }
   }
+  for (const row of await readFirefox(firefoxBookmarks).catch(() => [])) found.push({ ...row, managed: false })
   return found
 }
 

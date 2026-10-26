@@ -146,7 +146,7 @@ export { PROFILE_NOTE_ID, PROFILE_TYPE, profileLines, syncPersonNote } from './p
 export { findPlaybook, learnedPlaces, playbookContext, readPlaybooks, recordPlaybook, type Playbook } from './task-playbooks.js'
 export { GUIDE_SCHEMA, guideBody, guideForPrompt, guideNote, guidePrompt, WORK_GUIDE_NOTE_ID, WORK_GUIDE_TYPE, type GuideAnswer } from './work-guide.js'
 export { appLabel, appsNote, DESK_NOTES, DESK_TYPE, DESK_WINDOW_DAYS, downloadsNote, filesNote, parseUserAssist, type AppUse, type Download, type RecentFile } from './desk-map.js'
-export { applyLabels, buildWorkMap, labelPrompt, PLACE_TYPE, placeNote, placeNoteId, readWorkMap, safeAddress, workShortcuts, writeWorkMap, type TraceBookmark, type TraceVisit, type WorkMap, type WorkPlace } from './work-map.js'
+export { applyLabels, buildWorkMap, labelPrompt, PLACE_TYPE, placeNote, placeNoteId, readWorkMap, safeAddress, WORK_MAP_DAYS, workShortcuts, writeWorkMap, type TraceBookmark, type TraceVisit, type WorkMap, type WorkPlace } from './work-map.js'
 export * from './habit-chains.js'
 export * from './toasts.js'
 export * from './notices.js'

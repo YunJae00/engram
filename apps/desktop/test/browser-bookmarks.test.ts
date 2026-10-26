@@ -2,15 +2,16 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-const fake = vi.hoisted(() => ({ data: '', root: '', managed: [] as { id: string; name: string; text: string }[] }))
-vi.mock('../src/main/managed-bookmarks.js', () => ({ managedBookmarkSources: () => fake.managed }))
+const fake = vi.hoisted(() => ({ data: '', root: '', managed: [] as { id: string; name: string; text: string }[], failManaged: false }))
+vi.mock('../src/main/managed-bookmarks.js', () => ({ managedBookmarkSources: async () => { if (fake.failManaged) throw new Error('Command failed: powershell.exe'); return fake.managed } }))
+vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.data } }))
-vi.mock('../src/main/browser-import.js', () => ({ browserProfileRoots: () => [{ id: 'chrome', name: 'Chrome', userData: fake.root }] }))
-import { bookmarkSources, importBookmarks, parseBookmarks, savedBookmarks } from '../src/main/browser-bookmarks.js'
+vi.mock('../src/main/browser-roots.js', async original => ({ ...await original<typeof import('../src/main/browser-roots.js')>(), chromiumRoots: () => [{ id: 'chrome', name: 'Chrome', userData: fake.root }], firefoxPlaces: () => [] }))
+import { allBookmarks, bookmarkSources, importBookmarks, parseBookmarks, savedBookmarks } from '../src/main/browser-bookmarks.js'
 
 const tree = (children: unknown[]) => JSON.stringify({ roots: { bookmark_bar: { name: 'Work', children } } })
 beforeEach(async () => {
-  fake.managed = []
+  fake.managed = []; fake.failManaged = false
   await mkdir(resolve('tmp'), { recursive: true })
   const root = await mkdtemp(resolve('tmp/bookmarks-test-'))
   fake.data = join(root, 'app'); fake.root = join(root, 'browser')
@@ -73,4 +74,10 @@ it('reports an empty profile without claiming an import succeeded or replacing e
   await writeFile(join(fake.root, 'Default', 'Bookmarks'), tree([]))
   await expect(importBookmarks('chrome:Default')).rejects.toThrow('this profile is empty')
   expect(await savedBookmarks()).toEqual([])
+})
+
+it('still reads the profiles when the organization policy cannot be read in time', async () => {
+  fake.failManaged = true
+  await writeFile(join(fake.root, 'Default', 'Bookmarks'), tree([{ type: 'url', name: 'Wiki', url: 'https://wiki.example' }]))
+  expect(await allBookmarks()).toEqual([expect.objectContaining({ title: 'Wiki', url: 'https://wiki.example/', managed: false })])
 })

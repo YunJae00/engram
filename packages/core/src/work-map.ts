@@ -36,10 +36,11 @@ export interface WorkPlace {
 export interface WorkMap { builtAt: string; windowDays: number; places: WorkPlace[] }
 
 export const PLACE_TYPE = 'place'
-const WINDOW_DAYS = 90
+export const WORK_MAP_DAYS = 30
 const KEEP = 80
 const SHOWN_PAGES = 5
-const RHYTHM_DAYS = 6
+// A weekly visit shows four times in the window, enough to read its day and hour.
+const RHYTHM_DAYS = 4
 // A way in counts once it is used on this share of the days the place is visited.
 const VIA_SHARE = 0.3
 // Sign-in, hand-off and redirect pages are passages, not places.
@@ -65,7 +66,7 @@ export function safeAddress(raw: string): string | null {
 const localDay = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
 const argmax = (values: number[]) => values.indexOf(Math.max(...values))
 
-export function buildWorkMap(visits: TraceVisit[], bookmarks: TraceBookmark[], now = new Date(), windowDays = WINDOW_DAYS): WorkMap {
+export function buildWorkMap(visits: TraceVisit[], bookmarks: TraceBookmark[], now = new Date(), windowDays = WORK_MAP_DAYS): WorkMap {
   const since = now.getTime() - windowDays * 86_400_000
   interface Seen { days: Set<string>; weekdays: Set<string>[]; hours: number[]; pages: Map<string, { title: string; days: Set<string> }>; via: Map<string, Set<string>>; bookmarks: string[]; bookmarkUrl?: string; personal: boolean; last: string }
   const hosts = new Map<string, Seen>()
@@ -170,7 +171,7 @@ export function placeNote(place: WorkPlace, now: Date, existing?: Note | null): 
     `# ${place.purpose ?? place.title}`,
     '',
     `Address: ${place.entry}`,
-    `Visited on ${place.days} of the last ${WINDOW_DAYS} days${place.lastSeen ? `, last on ${place.lastSeen}` : ''}.${rhythmText(place)}`,
+    `Visited on ${place.days} of the last ${WORK_MAP_DAYS} days${place.lastSeen ? `, last on ${place.lastSeen}` : ''}.${rhythmText(place)}`,
     ...(place.bookmarks.length ? ['', `Bookmarked as: ${place.bookmarks.join('; ')}`] : []),
     ...(place.pages.length > 1 ? ['', 'Pages used most:', ...place.pages.map((page) => `- ${page.title || page.url}: ${page.url}`)] : []),
     '',

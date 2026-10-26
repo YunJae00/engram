@@ -14,7 +14,7 @@ import { holdTaskResult } from '../src/main/task-result-state.js'
 
 type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
-export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number) {
+export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number, offered?: (channel: string) => boolean) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const root = await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private') } as unknown as VaultPaths
@@ -36,6 +36,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     abort: () => { aborted.resolve?.() },
     broadcast: (event) => events.push(event),
     ...(checkBudgetMs ? { checkBudgetMs } : {}),
+    ...(offered ? { offered } : {}),
     remember: async (text) => { remembered.push(text) },
     notify: (task) => notified.push(`${task.state}: ${task.goal}`),
     learn: (question, answer) => learned.push([question, answer]),

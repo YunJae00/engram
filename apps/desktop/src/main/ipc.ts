@@ -1074,10 +1074,11 @@ export function registerIpc(ctx: VaultContext): void {
   // before the done event arrives.
   ipcMain.handle('chat:active', (): string[] => [...new Set([...answering, ...tasks.activeChannels()])])
   setDesktopLaneWorking(lane => answering.has(lane) || tasks.activeChannels().includes(lane))
-  const { offerStudy, setOffersAside, studyFound, checkAfterTurn } = registerStudyIpc({
+  const { offerStudy, setOffersAside, studyFound, checkAfterTurn, yieldPass } = registerStudyIpc({
     paths,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
     sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
+    stop: (channel) => abortAllChat(channel),
   })
   registerAsideIpc({
     paths,
@@ -1728,6 +1729,7 @@ export function registerIpc(ctx: VaultContext): void {
     },
     learn: (question, answer) => learnFromAnswer(ctx, question, answer),
     notify: (task) => notifyTask(task, broadcast),
+    offered: (channel) => offeredIn.has(channel),
   })
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
@@ -2190,8 +2192,9 @@ export function registerIpc(ctx: VaultContext): void {
 
   // A comet message is a task: it goes on past one turn until the work is
   // done (task-runner.ts). Skill commands stay plain turns.
-  ipcMain.handle('chat:send', (_e, request: ChatRequestDto) => {
+  ipcMain.handle('chat:send', async (_e, request: ChatRequestDto) => {
     if (request.botId) void setOffersAside(request.botId).catch(error => flog('study', error))
+    await yieldPass(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))
     return request.botId && !request.message.trim().startsWith('/') ? tasks.chat(request) : sendChat(request)
   })
 

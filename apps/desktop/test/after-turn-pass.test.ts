@@ -25,7 +25,7 @@ it('does not start another pass when stopped while loading history', async () =>
   input.signal = controller.signal
   vi.mocked(readBotTranscript).mockImplementationOnce(async () => { controller.abort(); return [] })
   const sendQuiet = vi.fn(async () => undefined)
-  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet })
+  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet, stop: () => undefined })
   checkAfterTurn(input)
   await vi.waitFor(() => expect(controller.signal.aborted).toBe(true))
   expect(sendQuiet).not.toHaveBeenCalled()
@@ -33,7 +33,7 @@ it('does not start another pass when stopped while loading history', async () =>
 
 it('sends an undone job on once more, then offers another way when that pass is undone too', async () => {
   const sendQuiet = vi.fn(async () => undefined)
-  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet })
+  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet, stop: () => undefined })
   checkAfterTurn(turn('H-Link에서 연차 신청해줘'))
   await vi.waitFor(() => expect(sendQuiet).toHaveBeenCalledTimes(1))
   const pass = (sendQuiet.mock.calls[0] as unknown as [{ message: string; history: unknown[] }])[0]
@@ -50,14 +50,14 @@ it('sends an undone job on once more, then offers another way when that pass is 
 
 it('offers another way at once when the conversation is busy, and leaves a done or person-only job alone', async () => {
   const sendQuiet = vi.fn(async () => undefined)
-  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => true, sendQuiet })
+  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => true, sendQuiet, stop: () => undefined })
   checkAfterTurn(turn('팀 TMS 정리해줘'))
   await vi.waitFor(() => expect(fake.studies).toHaveLength(1))
   expect(sendQuiet).not.toHaveBeenCalled()
 
   fake.studies = []
   offeredIn.clear()
-  const idle = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet })
+  const idle = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet, stop: () => undefined })
   idle.checkAfterTurn(turn('로그인 해줘', async () => '{"left":[],"done":false,"only_person":true,"blocked":"로그인 필요"}'))
   idle.checkAfterTurn(turn('날씨 알려줘', async () => '{"left":[],"done":true}'))
   await new Promise(resolve => setTimeout(resolve, 50))
@@ -67,10 +67,26 @@ it('offers another way at once when the conversation is busy, and leaves a done 
 
 it('treats a later message as new work even when a pass never came back', async () => {
   const sendQuiet = vi.fn(async () => { throw new Error('This conversation is still working.') })
-  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet })
+  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet, stop: () => undefined })
   checkAfterTurn(turn('첫 번째 일'))
   await vi.waitFor(() => expect(sendQuiet).toHaveBeenCalledTimes(1))
   checkAfterTurn(turn('두 번째 일'))
   await vi.waitFor(() => expect(sendQuiet).toHaveBeenCalledTimes(2))
   expect((sendQuiet.mock.calls[1] as unknown as [{ message: string }])[0].message).toContain('Request: 두 번째 일')
+})
+
+it('gives way the moment the person writes while the extra pass runs', async () => {
+  let finish!: () => void
+  const sendQuiet = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+  const stop = vi.fn(() => finish())
+  const { checkAfterTurn, yieldPass } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet, stop })
+  checkAfterTurn(turn('Workday 연차 확인'))
+  await vi.waitFor(() => expect(sendQuiet).toHaveBeenCalledTimes(1))
+  expect(fake.broadcast).toHaveBeenCalledWith({ type: 'comet:continue', channel: 'bot-b1', botId: 'b1' })
+  await yieldPass('bot-b1')
+  expect(stop).toHaveBeenCalledWith('bot-b1')
+  await yieldPass('bot-b1')
+  expect(stop).toHaveBeenCalledTimes(1)
+  checkAfterTurn(turn('다른 일'))
+  await vi.waitFor(() => expect(sendQuiet).toHaveBeenCalledTimes(2))
 })
