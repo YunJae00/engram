@@ -21,6 +21,12 @@ export async function readWhenReady(page: Page, read: (signal?: AbortSignal) => 
   }
 }
 
+// Fewer words than this, beside the page's own buttons, is often only the
+// frame an app draws before its content.
+const THIN_CHARS = 200
+// A page that fetched nothing new for this long has stopped building.
+const QUIET_MS = 1_500
+
 // How many of its own parts the page has fetched from its own host so far.
 const ownParts = (page: Page): Promise<number> =>
   Promise.resolve().then(() => page.evaluate(() => performance.getEntriesByType('resource').filter((entry) => {
@@ -35,20 +41,26 @@ async function readUntilReady(page: Page, read: (signal?: AbortSignal) => Promis
   const deadline = started + 12_000, last = started + 30_000
   // Each poll is a full multi-frame read; back off so a slow page costs a
   // handful of reads rather than thirty.
-  let wait = 400, parts = -1
+  let wait = 400, parts = -1, grew = started
   while (true) {
     if (signal?.aborted) throw new Error('stopped')
     const result = await read(signal)
     if (signal?.aborted) throw new Error('stopped')
     const words = result.text.trim()
-    if (result.wall || result.controls?.length || (words && !/^(loading|please wait)[.\s…]*$/i.test(words))) return result
+    const said = !!words && !/^(loading|please wait)[.\s…]*$/i.test(words)
+    if (result.wall) return result
+    const thin = (said || !!result.controls?.length) && words.length < THIN_CHARS
+    if (said && !thin) return result
     const before = parts
     parts = await ownParts(page)
     const building = before >= 0 && parts > before
-    if (Date.now() >= (building ? last : deadline)) {
+    if (building) grew = Date.now()
+    // A thin read stands once the page has stopped fetching its parts.
+    if (thin && (parts < 0 || Date.now() - grew >= QUIET_MS || Date.now() >= last)) return result
+    if (!thin && Date.now() >= (building ? last : deadline)) {
       throw new Error('The page has not exposed readable content after waiting. Use look to inspect the rendered page and verify its address. Do not infer that it is empty, that login is required, or that the requested information is absent.')
     }
-    await page.waitForTimeout(Math.min(wait, Math.max(0, (building ? last : deadline) - Date.now())))
+    await page.waitForTimeout(Math.min(thin ? QUIET_MS / 3 : wait, Math.max(0, (building || thin ? last : deadline) - Date.now())))
     wait = Math.min(wait * 2, 1_600)
   }
 }

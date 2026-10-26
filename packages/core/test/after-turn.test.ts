@@ -32,14 +32,14 @@ it('sends an undone job on once more with what stopped it and the request it car
   expect(message).toContain('only the person can give, ask for it and stop')
 })
 
-it('tells a turn going around in circles to stop and ask, and lets new findings reset it', () => {
+it('tells a turn going around in circles to take another way, and lets new findings reset it', () => {
   const watch = progressWatch(3)
   expect(watch.see('page A')).toBeNull()
   expect(watch.see('page B')).toBeNull()
   expect(watch.see('page A')).toBeNull()
   expect(watch.see('page  B ')).toBeNull()
   expect(watch.idle()).toBe(2)
-  expect(watch.see('page A')).toContain('nothing new')
+  expect(watch.see('page A')).toContain('clearly different way')
   expect(watch.see('page A')).toBeNull()
   expect(watch.see('page C')).toBeNull()
   expect(watch.idle()).toBe(0)

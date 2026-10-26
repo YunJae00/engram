@@ -7,8 +7,8 @@ import type { VaultPaths } from './vault.js'
 
 // How a finished task was done: the addresses it started from and the steps
 // that worked. A later task that asks for much the same thing starts from
-// them as hints, instead of finding its way again. The hint grows with use:
-// done once, the earlier task and where it started; done again, the steps too.
+// them as hints, instead of finding its way again: where it started, and the
+// steps that worked.
 
 export interface Playbook { goal: string; urls: string[]; method: string[]; at: string; count?: number }
 
@@ -16,13 +16,12 @@ const KEEP = 50
 const MIN_STEPS = 3
 const SHOWN_STEPS = 30
 const SIMILAR = 0.5
-// Steps are handed on once the same kind of task has worked this many times.
-const DETAILED_AFTER = 2
+// Asked in other words, a task this close in meaning is the same kind of task.
+const SIMILAR_MEANING = 0.75
 
 const file = (paths: VaultPaths) => join(paths.cache, 'task-playbooks.json')
 const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [])
 
-// ponytail: word overlap only; a paraphrased request misses, match by meaning (the embedder) when that matters.
 function similarity(a: string, b: string): number {
   const x = words(a), y = words(b)
   const shared = [...x].filter(word => y.has(word)).length
@@ -72,9 +71,16 @@ export function recordPlaybook(paths: VaultPaths, goal: string, steps: TurnStep[
   return next
 }
 
-export async function findPlaybook(paths: VaultPaths, goal: string): Promise<Playbook | undefined> {
+// By words first; failing that, by meaning when a measure of it is at hand.
+export type MeaningScores = (text: string, candidates: string[]) => Promise<number[] | null>
+export async function findPlaybook(paths: VaultPaths, goal: string, meaning?: MeaningScores): Promise<Playbook | undefined> {
   const playbooks = await readPlaybooks(paths)
-  return playbooks[closest(playbooks, goal)]
+  const byWords = closest(playbooks, goal)
+  if (byWords >= 0 || !meaning || !playbooks.length) return playbooks[byWords]
+  const scores = await meaning(goal, playbooks.map(one => one.goal)).catch(() => null)
+  if (!scores) return undefined
+  const best = scores.reduce((top, score, index) => score > (scores[top] ?? -1) ? index : top, 0)
+  return (scores[best] ?? 0) >= SIMILAR_MEANING ? playbooks[best] : undefined
 }
 
 export function playbookContext(playbook: Playbook): string {
@@ -83,7 +89,7 @@ export function playbookContext(playbook: Playbook): string {
     `A similar task was finished ${times > 1 ? `${times} times, last on` : 'on'} ${playbook.at.slice(0, 10)}. How it was done, as hints only: the pages and controls may have changed, so observe before acting, and nothing here is permission or proof of the current state.`,
     `Earlier task: ${playbook.goal.slice(0, 400)}`,
     ...(playbook.urls.length ? [`Started from: ${playbook.urls.join(' ')}`] : []),
-    ...(times >= DETAILED_AFTER ? ['Steps that worked:', ...playbook.method.slice(0, SHOWN_STEPS).map(step => `- ${step}`)] : []),
+    'Steps that worked:', ...playbook.method.slice(0, SHOWN_STEPS).map(step => `- ${step}`),
   ].join('\n')
 }
 

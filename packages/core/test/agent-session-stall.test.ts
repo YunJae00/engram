@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { runToolSession, SESSION_STALL_MS } from '../src/agent-session.js'
+import { REPEAT_LIMIT, runToolSession, SESSION_STALL_MS } from '../src/agent-session.js'
 import type { Engine, ToolSessionJob } from '../src/engine/types.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { pageReport } from '../src/page-report.js'
@@ -103,7 +103,7 @@ it('counts host-only progress without visible tokens, but still stops when that 
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it('refuses a page move made a third time after it came back the same twice, and lets a different move through', async () => {
+it('refuses a page move once it came back the same several times, and lets a different move through', async () => {
   let presses = 0
   const said: string[] = []
   const press = { name: 'press', description: 'press', argsSchema: {}, run: async () => { presses++; return `Observation page-1/0/${presses}; control numbers belong only to this reading.\npage "Form": nothing changed\n#3 [button] Save` } }
@@ -113,15 +113,15 @@ it('refuses a page move made a third time after it came back the same twice, and
     async *run() { yield { type: 'result', text: '' } },
     runTools: async (job: ToolSessionJob) => {
       const call = job.tools.find(tool => tool.name === 'press')!
-      for (let i = 0; i < 3; i++) said.push(String(await call.run({ target: '#3' })))
+      for (let i = 0; i <= REPEAT_LIMIT; i++) said.push(String(await call.run({ target: '#3' })))
       said.push(String(await call.run({ target: 'Cancel' })))
       return { answer: 'done' }
     },
   } as unknown as Engine
   await runToolSession({ engine, workdir: process.cwd(), tools: [press] } as never, 'Save the form')
-  expect(presses).toBe(3)
-  expect(said[2]).toContain('has already been made 2 times with the same result')
-  expect(said[3]).toContain('nothing changed')
+  expect(presses).toBe(REPEAT_LIMIT + 1)
+  expect(said[REPEAT_LIMIT]).toContain(`has already been made ${REPEAT_LIMIT} times with the same result`)
+  expect(said[REPEAT_LIMIT + 1]).toContain('nothing changed')
 })
 
 function pageSession(courier: WebCourier, act: (job: ToolSessionJob) => Promise<void>, maxCalls?: number) {
@@ -190,14 +190,14 @@ it('retains the repeat guard when only the observation revision changes on a rer
   await pageSession(courier, async job => {
     const open = job.tools.find(tool => tool.name === 'press')!
     const read = job.tools.find(tool => tool.name === 'read_open_page')!
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < REPEAT_LIMIT; i++) {
       await open.run({ target: 'Details' })
       await read.run({})
     }
     refused = String(await open.run({ target: 'Details' }))
   })
-  expect(press).toHaveBeenCalledTimes(2)
-  expect(refused).toContain('has already been made 2 times with the same result')
+  expect(press).toHaveBeenCalledTimes(REPEAT_LIMIT)
+  expect(refused).toContain(`has already been made ${REPEAT_LIMIT} times with the same result`)
 })
 
 it('counts a refused repeat toward the call budget and reports the turn unfinished', async () => {
@@ -213,10 +213,10 @@ it('counts a refused repeat toward the call budget and reports the turn unfinish
     for (let i = 0; i < 4; i++) said.push(String(await open.run({ target: 'Details' })))
   }, 3)
   expect(press).toHaveBeenCalledTimes(2)
-  expect(said[2]).toContain('has already been made 2 times with the same result')
+  expect(said[2]).toContain('was not run again after two matching browser failures')
   expect(said[3]).toContain('No more calls this turn')
   expect(result.steps).toHaveLength(3)
-  expect(result.steps[2]!.observation).toContain('has already been made 2 times with the same result')
+  expect(result.steps[2]!.observation).toContain('was not run again')
   expect(successfulTurnSteps(result.steps)).toEqual([])
   expect(result.stopped).toBe('calls')
   expect(result.answer).toContain('Not verified as complete')

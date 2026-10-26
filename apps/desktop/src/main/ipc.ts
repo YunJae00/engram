@@ -86,10 +86,10 @@ import {
   titleFromMessage,
   UNTITLED_BOT_NAME,
   secretsIn,
+  safeAddress,
   listRoutines,
   listSkills,
   annotateStaleCards,
-  relevantSkillCards,
   recordSkillUse,
   readSkillsLedger,
   installSkill,
@@ -164,6 +164,8 @@ import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
+import { learningTools } from './learning-wiring.js'
+import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
@@ -324,7 +326,7 @@ export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 // another comet finishing does not let go of it.
 const WALL_HOLD_MS = 10 * 60_000
 // Tools that change files or applications; plan mode leaves them off.
-const PLAN_BLOCKED = /^(file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence)/
+const PLAN_BLOCKED = /^(file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence|keep_)/
 const wallHolds = new Map<string, () => void>()
 function releaseWallHold(channel: string): void {
   const release = wallHolds.get(channel)
@@ -1730,6 +1732,9 @@ export function registerIpc(ctx: VaultContext): void {
     learn: (question, answer) => learnFromAnswer(ctx, question, answer),
     notify: (task) => notifyTask(task, broadcast),
     offered: (channel) => offeredIn.has(channel),
+    meaning: meaningScores,
+    // A check gets a bounded share of time; past it the draft is the answer.
+    checkBudgetMs: 5 * 60_000,
   })
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
@@ -2289,7 +2294,7 @@ export function registerIpc(ctx: VaultContext): void {
       // a new comet never inherits the page an old one left open.
       courier: agentBrowserAvailable()
         ? agentCourier({
-            askBeforePress: unlessStudying(channel, tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
+            askBeforePress: unlessStudying(channel, tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail })), 90_000) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
             lane: channel,
             onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
             onAside: (phase) => {
@@ -2354,6 +2359,7 @@ export function registerIpc(ctx: VaultContext): void {
     ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length))] : []),
     deskActivityTool,
     notificationsTool(ctx),
+    ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
     ...(channel.startsWith('bot-') ? [offerStudyTool({ offer: (input) => offerStudy(channel.slice('bot-'.length), input, turnGoals.get(channel) ?? '') }), studyFindingsTool({ found: (draft) => studyFound(channel.slice('bot-'.length), draft) })] : []),
     // Offered every turn so a check runs in the same session as the work it checks.
     resultCheckTool(turn?.verification ? {
@@ -2633,7 +2639,7 @@ export function registerIpc(ctx: VaultContext): void {
             signal,
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
-            skills: relevantSkillCards(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
+            skills: await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
@@ -2801,6 +2807,7 @@ export function registerIpc(ctx: VaultContext): void {
             message: request.message,
             answer: result.answer,
             ...(previousAnswer ? { previous: previousAnswer } : {}),
+            places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
           }).catch(error => flog('comet-memory', error))
         }
       } catch (err) {

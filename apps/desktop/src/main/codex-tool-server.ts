@@ -12,6 +12,15 @@ export interface ToolServer { url: string; token: string; setTools(tools: ToolSe
 const MAX_BODY = 4 * 1024 * 1024
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> }
 
+// The runtime's strict tool schemas refuse combinators at the top of a tool's
+// input, so they are left off there; each tool checks its own arguments again.
+const TOP_LEVEL_ONLY_KEYS = ['oneOf', 'anyOf', 'allOf', 'enum', 'not']
+export function inputSchemaOf(schema: object): Record<string, unknown> {
+  const shaped: Record<string, unknown> = { type: 'object', ...schema }
+  for (const key of TOP_LEVEL_ONLY_KEYS) delete shaped[key]
+  return shaped
+}
+
 async function answer(tools: ToolSessionCall[], request: RpcRequest): Promise<unknown> {
   const params = request.params ?? {}
   switch (request.method) {
@@ -20,7 +29,7 @@ async function answer(tools: ToolSessionCall[], request: RpcRequest): Promise<un
     case 'ping':
       return {}
     case 'tools/list':
-      return { tools: tools.map(tool => ({ name: tool.name, description: tool.description, inputSchema: { type: 'object', ...tool.argsSchema } })) }
+      return { tools: tools.map(tool => ({ name: tool.name, description: tool.description, inputSchema: inputSchemaOf(tool.argsSchema) })) }
     case 'tools/call': {
       const tool = tools.find(one => one.name === params['name'])
       if (!tool) return { content: [{ type: 'text', text: `Unknown tool: ${String(params['name'])}` }], isError: true }

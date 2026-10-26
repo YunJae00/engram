@@ -76,3 +76,13 @@ it('takes a plan sent with empty sibling fields, object phases or long phases, a
   expect(plan.pending()).toBe('Unverified phase 1/2: Open the report - the week is shown')
   await expect(plan.tool.run({ phases: ['A', 'B'] }, { task: '' })).rejects.toThrow('already has 2 phases')
 })
+
+it('lets a phase be completed right after a rejected plan call, and says when there is no plan yet', async () => {
+  const steps: AgentLoopStep[] = []
+  const plan = taskPlan(steps)
+  await expect(plan.tool.run({ evidenceStep: 1, finding: 'Read it' }, { task: '' })).rejects.toThrow('no plan in this turn')
+  await plan.tool.run({ phases: ['Gather', 'Write'] }, { task: '' })
+  steps.push({ tool: 'read_open_page', args: {}, observation: 'Week of 10-26: 3 entries' })
+  steps.push({ tool: 'task_plan', args: {}, observation: 'that did not work: Supply evidenceStep and a nonempty finding' })
+  await expect(plan.tool.run({ evidenceStep: 1, finding: 'The week is shown' }, { task: '' })).resolves.toContain('"completed":1')
+})

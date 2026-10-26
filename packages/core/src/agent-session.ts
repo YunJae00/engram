@@ -28,20 +28,19 @@ import { progressWatch } from './no-progress.js'
 // mid-job hands the person a half-finished turn to restart by hand. So the
 // budget is sized for the whole job, and is there only to stop a page that
 // will not load from becoming a hundred tries.
-const SESSION_MAX_CALLS = 40
+export const SESSION_MAX_CALLS = 80
 // Past its allowance a turn goes on only while its calls still find something new, and never past this.
 const CALL_CEILING = 300
 // Bound silent model waits. Silence can also mean long reasoning, so retain
 // unfinished work rather than claiming the model or the task failed.
-export const SESSION_STALL_MS = 180_000
+export const SESSION_STALL_MS = 300_000
 // Page moves held to account for repeating themselves, and how often the same
 // move may come back the same before the next one is refused.
 const REPEAT_GUARDED = new Set(['press', 'type_text', 'choose', 'press_point', 'page_steps', 'hover', 'reveal'])
 const PAGE_MOVES = new Set([...REPEAT_GUARDED, 'press_key', 'scroll', 'open_page', 'search_web', 'read_pages'])
-const REPEAT_LIMIT = 2
+export const REPEAT_LIMIT = 4
 export const PLAN_RULE = 'Plan mode: read and investigate only. Do not run commands, create or change files, or submit anything; reply with a concrete plan of what you would do and what you need from the person.'
-const STALL_NOTE = 'The model stopped responding for three minutes. The work so far is kept, and the task continues from the current state.'
-
+const STALL_NOTE = 'The model stopped responding for five minutes. The work so far is kept, and the task continues from the current state.'
 const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'page_steps', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look', 'page_each'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
@@ -131,6 +130,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let queued = 0
   let toolTail = Promise.resolve()
   let asked: { question: string; options: string[] } | null = null
+  // A card put to the person ends the work of the turn, as a question does.
+  let carded = false
   const canSearch = deps.tools.some((tool) => tool.name === 'search_web')
   let lookedFirst = false
   let exhausted = false
@@ -156,6 +157,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // A question to the person ends the turn: whatever the model says
       // after it, the question is the answer.
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
+      if (carded) return 'A card is already with the person. End your answer now, in one line.'
       // A turn has a budget of calls, or a page that will not load becomes a
       // hundred tries; past it the answer is made from what is in hand.
       const budget = allowance()
@@ -193,7 +195,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         // A brain in a session can look at a picture; the words are what
         // the turn keeps, the picture goes to the brain and nowhere else.
         if (repeated) {
-          observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach, or report what blocks the task.`
+          observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach.`
         } else if (recoveryBlock) {
           observation = recoveryBlock
         } else if (tool.runRich) {
@@ -221,19 +223,17 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         const result = sameResult(observation)
         repeat = { key: repeatKey, result, times: repeat?.key === repeatKey && repeat.result === result ? repeat.times + 1 : 1 }
       }
+      if ((tool.name === 'offer_study' || tool.name === 'study_findings') && !/^that did not work|^Nothing is being studied/.test(observation)) carded = true
       const ask = parseAsk(observation)
       if (ask) {
         asked = ask
         return 'The question is with the person. Reply with exactly that question and nothing else.'
       }
-      // The last few calls are counted out loud, so the answer is written
-      // before the budget is gone rather than after.
-      const left = allowance() - startedCalls
+      // No countdown rides on results: told how few calls are left, a turn wraps up early.
       const going = stuck.see(sameResult(observation))
       const notes = [
         ...(going ? [going] : []),
         ...(planned ? [`Observation step ${steps.length}`, ...(plan.pending() ? [plan.pending()!] : [])] : []),
-        ...(left <= 5 && left > 0 ? [`${left} call${left === 1 ? '' : 's'} left this turn`] : []),
       ]
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered

@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { createTask, findPlaybook, listTasks, pageTools, updateTask } from 'core'
+import { createTask, findPlaybook, listTasks, pageTools, TASK_MAX_TURNS, updateTask } from 'core'
 import type { PageMove, WebPage } from '../../../packages/core/src/errand.js'
 import type { TurnOutcome } from '../src/main/task-runner.js'
 import { done, setup, pressed, readback } from './task-runner-fixture.js'
@@ -147,7 +147,7 @@ it('does not add a check turn to an answer that changed nothing', async () => {
   expect((await t.settle('done')).turns).toBe(1)
 })
 
-it('starts a similar request from where it began last time, and from its steps once it has worked twice', async () => {
+it('starts a similar request from where it began last time and the steps that worked, and counts how often', async () => {
   const t = await setup(async (_request, turn) => turn % 2 === 0 ? readback('Checked') : ({ ...done('Filed', 4), trail: [
     { tool: 'open_page', args: { url: 'https://expenses.example/new' }, observation: 'opened' },
     { tool: 'type_text', args: { target: 'Amount' }, observation: 'typed' },
@@ -163,7 +163,7 @@ it('starts a similar request from where it began last time, and from its steps o
   const context = t.sent[2]!.extra?.context ?? ''
   expect(context).toContain('A similar task was finished')
   expect(context).toContain('Started from: https://expenses.example/new')
-  expect(context).not.toContain('- press: Submit')
+  expect(context).toContain('- press: Submit')
   expect(t.sent[2]!.request.message).toBe('File the hotel receipt as an expense')
   await vi.waitFor(async () => expect((await findPlaybook(t.paths, 'File the train receipt as an expense'))?.count).toBe(2))
   await t.chat('File the train receipt as an expense')
@@ -336,7 +336,7 @@ it('consumes duplicate decisions once and reconfirms a deferred action on the li
 it('does not exceed the call ceiling when continuing after a question', async () => {
   const t = await setup(async () => done('Unexpected'))
   const task = await createTask(t.paths, 'Long job', 'bot-1')
-  await updateTask(t.paths, task.id, x => { x.state = 'waiting'; x.question = 'Continue?'; x.turns = 8 })
+  await updateTask(t.paths, task.id, x => { x.state = 'waiting'; x.question = 'Continue?'; x.turns = TASK_MAX_TURNS })
   await t.chat('Continue')
   expect(t.sent).toHaveLength(0)
   expect((await listTasks(t.paths))[0]!.state).toBe('failed')
