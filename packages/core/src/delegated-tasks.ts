@@ -51,7 +51,7 @@ export interface DelegatedTask {
 
 // A delegated task takes as long as its work does; only the number of
 // turns is bounded, so it can never loop forever.
-export const TASK_MAX_TURNS = 8
+export const TASK_MAX_TURNS = 12
 const LOG_LINES = 60
 const KEEP_FINISHED = 100
 

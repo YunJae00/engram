@@ -33,3 +33,15 @@ describe('search result links', () => {
     } finally { vi.useRealTimers() }
   })
 })
+
+describe('one site across its hosts', () => {
+  it('treats an engine and its www host, and country second-level domains, as one site', async () => {
+    const { siteOf } = await import('../src/search-links.js')
+    expect(siteOf('www.google.com')).toBe(siteOf('google.com'))
+    expect(siteOf('search.naver.co.kr')).toBe('naver.co.kr')
+    expect(siteOf('m.place.naver.com')).toBe('naver.com')
+    const follow = vi.fn(async () => 'https://www.catch.co.kr/Recruit/1')
+    const [link] = await resolveResultLinks([{ text: 'Posting', url: 'https://google.com/goto?url=CAES1' }], PAGE, follow)
+    expect(link!.url).toBe('https://www.catch.co.kr/Recruit/1')
+  })
+})

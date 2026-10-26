@@ -1,8 +1,7 @@
 // A turn that keeps getting back what it already saw is going around, not
-// working. After enough of those in a row it is told to stop and ask, or to
-// take another way; a call that brings anything new resets the count. The
+// working. After enough of those in a row it is told to take another way; a call that brings anything new resets the count. The
 // same count lets a turn that is still finding things go past its allowance.
-export const NO_PROGRESS_LIMIT = 6
+export const NO_PROGRESS_LIMIT = 8
 
 export interface ProgressWatch {
   // The note for the brain when it has gone around too long, else null.
@@ -23,7 +22,7 @@ export function progressWatch(limit = NO_PROGRESS_LIMIT): ProgressWatch {
       stale += 1; run += 1
       if (stale < limit) return null
       stale = 0
-      return `The last ${limit} calls brought back nothing new. Stop going around: say in one line where you are stuck and ask the person one question, or take a clearly different way.`
+      return `The last ${limit} calls brought back nothing new. Stop going around and take a clearly different way: another control, page, address or source. Ask the person only for what only they can give.`
     },
     idle: () => run,
   }

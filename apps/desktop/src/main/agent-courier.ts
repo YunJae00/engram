@@ -209,13 +209,15 @@ export function agentCourier(
       // A slow open is logged with where the time went: a page can answer at once and still
       // hold its loaded event behind a third-party script that never responds.
       const started = performance.now()
-      await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
+      const response = await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
+      const status = response?.status() ?? 0
       const loaded = performance.now()
       const result = await withAbort(readWhenReady(page, reading => readPage(page, reading), signal), signal)
       const read = performance.now()
       if (read - started > SLOW_OPEN_MS) flog('browser', `slow open ${new URL(url).host}: loaded ${Math.round(loaded - started)}ms, read ${Math.round(read - loaded)}ms`)
       armIdleClose()
-      return markReading(result)
+      const reading = markReading(result)
+      return status >= 400 ? { ...reading, status } : reading
     },
   }
 }

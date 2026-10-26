@@ -63,6 +63,8 @@ export interface WebPage {
   // Files the page sent since the last reading, where they were saved.
   downloads?: string[]
   wall?: 'login' | 'captcha'
+  // The site's own answer when it was an error: a missing or refused address.
+  status?: number
 }
 
 // What came of a hand on the page: it moved, it was refused because the

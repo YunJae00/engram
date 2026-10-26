@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { correctableFault, runComet, runToolSession } from '../src/agent-session.js'
+import { correctableFault, runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
 import { sessionShape } from '../src/agent-session-shape.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
@@ -270,11 +270,11 @@ it('retains an incomplete phase and stops unproductive calls without granting a 
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!
     const read = job.tools.find((tool) => tool.name === 'read_desktop')!
     await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
-    for (let index = 0; index < 45; index++) await read.run({})
+    for (let index = 0; index < SESSION_MAX_CALLS + 5; index++) await read.run({})
     return { answer: 'Incomplete' }
   })
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return 'Observed workspace' } }] }, 'Perform the requested changes')
-  expect(reads).toBe(39)
+  expect(reads).toBe(SESSION_MAX_CALLS - 1)
   expect(result.stopped).toBe('calls')
   expect(result.incomplete).toContain('Prepare workspace')
 })
@@ -301,14 +301,14 @@ it('accepts the fresh phase checkpoint at the execution allowance boundary', asy
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!
     const read = job.tools.find((tool) => tool.name === 'read_desktop')!
     await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
-    for (let index = 0; index < 39; index++) await read.run({})
-    expect(await plan.run({ evidenceStep: 40, finding: 'The requested workspace is visible' })).toContain('"completed":1')
+    for (let index = 0; index < SESSION_MAX_CALLS - 1; index++) await read.run({})
+    expect(await plan.run({ evidenceStep: SESSION_MAX_CALLS, finding: 'The requested workspace is visible' })).toContain('"completed":1')
     await read.run({})
-    await plan.run({ evidenceStep: 42, finding: 'Requested result visible' })
+    await plan.run({ evidenceStep: SESSION_MAX_CALLS + 2, finding: 'Requested result visible' })
     return { answer: 'Verified' }
   })
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform requested changes')
-  expect(result.steps).toHaveLength(43)
+  expect(result.steps).toHaveLength(SESSION_MAX_CALLS + 3)
   expect(result.stopped).toBeUndefined()
   expect(result.incomplete).toBeUndefined()
 })
@@ -319,15 +319,15 @@ it.each(['failed-observation', 'reused-evidence'] as const)('does not replenish 
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!
     const read = job.tools.find((tool) => tool.name === 'read_desktop')!
     await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
-    for (let index = 0; index < 39; index++) await read.run({})
-    const checkpoint = { evidenceStep: cause === 'reused-evidence' ? 2 : 40, finding: 'Ready' }
+    for (let index = 0; index < SESSION_MAX_CALLS - 1; index++) await read.run({})
+    const checkpoint = { evidenceStep: cause === 'reused-evidence' ? 2 : SESSION_MAX_CALLS, finding: 'Ready' }
     expect(await plan.run(checkpoint)).not.toContain('"completed":1')
     expect(await plan.run(checkpoint)).toContain('No more calls')
     expect(await read.run({})).toContain('No more calls')
     return { answer: 'Incomplete' }
   })
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return cause === 'failed-observation' ? 'that did not work: scan failed' : 'Observed workspace' } }] }, 'Perform requested changes')
-  expect(reads).toBe(39)
+  expect(reads).toBe(SESSION_MAX_CALLS - 1)
   expect(result.stopped).toBe('calls')
   expect(result.incomplete).toContain('Prepare workspace')
 })

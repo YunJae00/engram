@@ -148,3 +148,21 @@ describe('desktop consent questions in a tool session', () => {
     expect(result.steps).toEqual([])
   })
 })
+
+describe('a card put to the person in a tool session', () => {
+  it('ends the work of the turn once another way is offered, as a question does', async () => {
+    let reads = 0
+    const engine = sessionBrain(async (job) => {
+      await job.tools.find((one) => one.name === 'open_page')!.run({ url: 'https://portal.example/' })
+      expect(await job.tools.find((one) => one.name === 'offer_study')!.run({ what: 'where leave is shown' })).toContain('Offered')
+      const blocked = await job.tools.find((one) => one.name === 'open_page')!.run({ url: 'https://portal.example/leave' })
+      expect(blocked).toContain('A card is already with the person')
+      return { answer: 'I could not find where leave is shown.' }
+    })
+    await runToolSession({ engine, workdir: WORKDIR, tools: [
+      tool('open_page', async () => { reads++; return 'Portal home' }),
+      tool('offer_study', async () => 'Offered: the person sees a card and decides. End your answer now, in one line, saying what you could not do.'),
+    ] }, 'How many days of leave do I have left?', { guided: false })
+    expect(reads).toBe(1)
+  })
+})

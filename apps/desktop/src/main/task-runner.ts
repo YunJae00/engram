@@ -14,6 +14,7 @@ import {
   tasksToResume,
   updateTask,
   type DelegatedTask,
+  type MeaningScores,
   type TurnStep,
   type VaultPaths,
 } from 'core'
@@ -62,6 +63,8 @@ export function taskRunner(deps: {
   notify(task: DelegatedTask): void
   // The turn offered the person another way to do the job, on a card of its own.
   offered?(channel: string): boolean
+  // How close in meaning texts are, for finding how a similar task was done.
+  meaning?: MeaningScores
 }) {
   const { paths } = deps
   const running = new Set<string>()
@@ -252,7 +255,7 @@ export function taskRunner(deps: {
         task = asked ?? await createTask(paths, request.message, botId)
         owners.set(channel, task.id)
         // New work starts from how a similar task was done, when one was.
-        const playbook = asked ? undefined : await findPlaybook(paths, request.message).catch((error) => { flog('tasks', error); return undefined })
+        const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
         const extra = asked
           ? { context: `This message answers your question in the task below; continue that task with it.\nThe task, verbatim:\n${asked.goal}` }
           : playbook ? { context: playbookContext(playbook) } : undefined
@@ -283,7 +286,8 @@ export function taskRunner(deps: {
       })
     },
     // The question a press would put to the person becomes an approval
-    // waiting in the task, one per page and control; the turn goes on.
+    // waiting in the task, one per page and control. The turn holds for it a
+    // while, since the person is often right there; unanswered, it goes on.
     // waitMs: how long a call may hold for the card's answer before taking 'later'.
     askFor(channel: string, confirm: Ask, waitMs = 0): Ask | undefined {
       const id = owners.get(channel)

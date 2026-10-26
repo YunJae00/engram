@@ -383,13 +383,11 @@ export async function semanticQuery(query: string, k: number): Promise<SemanticH
 // Web errands never load the model: preserve memory for active browser work.
 export async function semanticQueryIfLive(query: string, k: number): Promise<SemanticHit[]> {
   if (state.status !== 'ready' || !state.index || !state.extractor) return []
-  try {
-    const [vec] = await embedBatch([query])
-    return cosineTopK(state.index, vec!, k)
-  } catch {
-    return []
-  }
+  try { return cosineTopK(state.index, (await embedBatch([query]))[0]!, k) } catch { return [] }
 }
+
+// Vectors for texts while the model is already up, or null; this never loads it.
+export const embedLive = (texts: string[]): Promise<Float32Array[] | null> => state.status === 'ready' && state.extractor ? embedBatch(texts).catch(() => null) : Promise.resolve(null)
 
 export function registerSemanticIpc(): void {
   ipcMain.handle(

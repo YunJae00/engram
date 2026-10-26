@@ -208,11 +208,12 @@ export function renderMemory(file: BotMemoryFile, now = new Date()): string {
 // answers in a few hundred tokens and must not be asked to classify, diff
 // or copy - only to notice what is worth keeping.
 export const REMEMBER_TOKENS = 120
-export function rememberPrompt(exchange: { user: string; answer: string; previous?: string }, known: readonly string[]): string {
+export function rememberPrompt(exchange: { user: string; answer: string; previous?: string; places?: readonly string[] }, known: readonly string[]): string {
   return [
     'JOB: COMET-REMEMBER',
     'You keep short notes about the person you assist. From the exchange below, write only what is worth remembering in later, unrelated conversations: who they are, how they like to be helped, ongoing work, decisions, dates.',
     'When the person corrects your previous answer or says how they want something done, keep the rule they gave, stated so it applies next time.',
+    'Where their work lives is worth keeping: a page below that held what they asked for, as what it is for plus its address.',
     'Rules: at most 3 lines, each a complete short sentence in their language, each beginning with "- ". Nothing that is already in "Already kept". Nothing about this one request itself. No passwords or keys. If nothing is worth keeping, write only: NONE',
     '',
     'Already kept:',
@@ -221,5 +222,6 @@ export function rememberPrompt(exchange: { user: string; answer: string; previou
     ...(exchange.previous ? [`Your previous answer: ${exchange.previous.slice(0, 400)}`] : []),
     `Person: ${exchange.user.slice(0, 600)}`,
     `You answered: ${exchange.answer.slice(0, 600)}`,
+    ...(exchange.places?.length ? ['Pages the work reached:', ...exchange.places.slice(0, 6).map((place) => `- ${place}`)] : []),
   ].join('\n')
 }

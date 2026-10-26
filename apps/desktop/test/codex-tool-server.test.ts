@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { startToolServer } from '../src/main/codex-tool-server.js'
+import { inputSchemaOf, startToolServer } from '../src/main/codex-tool-server.js'
 
 it('serves only the given tools over authenticated JSON-RPC and reports tool failures as tool errors', async () => {
   const server = await startToolServer([
@@ -39,4 +39,9 @@ it('rejects malformed and browser-origin requests without dispatching or crashin
     await expect(post(request)).rejects.toThrow()
     expect(run).toHaveBeenCalledTimes(1)
   } finally { await server.close() }
+})
+
+it('leaves combinators off the top of a tool input the runtime would refuse, and keeps the fields', () => {
+  const shaped = inputSchemaOf({ additionalProperties: false, properties: { phases: { type: 'array' }, finding: { type: 'string' } }, oneOf: [{ required: ['phases'] }, { required: ['finding'] }] })
+  expect(shaped).toEqual({ type: 'object', additionalProperties: false, properties: { phases: { type: 'array' }, finding: { type: 'string' } } })
 })

@@ -29,7 +29,7 @@ export function pageRecovery() {
   return {
     before(tool: string, args: Record<string, unknown>): string | undefined {
       if ((state(destination(tool, args)).failures.get(keyOf(tool, args))?.times ?? 0) < 2) return
-      return `that did not work: This ${tool} was not run again after two matching browser failures. Changing control numbers or search text is not recovery. Obtain a fresh readable page with read_open_page, or use another source or method within the task's permissions. If reading is also blocked, open a different relevant address or report what remains incomplete; do not keep retrying this page.`
+      return `that did not work: This ${tool} was not run again after two matching browser failures. Changing control numbers or search text is not recovery. Obtain a fresh readable page with read_open_page, or use another source or method within the task's permissions; if reading is also blocked, open a different relevant address.`
     },
     after(tool: string, args: Record<string, unknown>, observation: string): void {
       if (!GUARDED.has(tool)) return

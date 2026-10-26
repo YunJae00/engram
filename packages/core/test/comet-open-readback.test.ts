@@ -50,7 +50,7 @@ it('does not certify navigation guidance or a repeated empty page as readback', 
   expect(repeated.observedAfterAction).toBeUndefined()
 })
 
-it('does not certify the cached refusal after a host fails twice', async () => {
+it('does not certify the note after a host fails twice, and lets it be tried again after another route', async () => {
   vi.useFakeTimers()
   try {
     const fetchPage = vi.fn(async () => { throw new Error('timed out') })
@@ -59,12 +59,15 @@ it('does not certify the cached refusal after a host fails twice', async () => {
     await vi.runAllTimersAsync()
     await failed
     const outcome = await open.runRich!({ url, observedAfterAction: true }, context)
-    expect(outcome.text).toContain('did not answer earlier')
+    expect(outcome.text).toContain('did not answer twice')
     expect(outcome.observedAfterAction).toBeUndefined()
-    const observed = vi.fn()
-    await open.run({ url }, { ...context, onObservedAfterAction: observed })
-    expect(observed).not.toHaveBeenCalled()
     expect(fetchPage).toHaveBeenCalledTimes(2)
+    const observed = vi.fn()
+    const again = expect(open.run({ url }, { ...context, onObservedAfterAction: observed })).rejects.toThrow('another route')
+    await vi.runAllTimersAsync()
+    await again
+    expect(observed).not.toHaveBeenCalled()
+    expect(fetchPage).toHaveBeenCalledTimes(4)
   } finally { vi.useRealTimers() }
 })
 
@@ -98,4 +101,23 @@ it.each([false, true])('preserves host receipts from automatic reads and clears 
   expect(result.steps.map(step => step.tool)).toEqual(['search_web', 'open_page'])
   expect(result.steps[1]!.observedAfterAction === true).toBe(!fails)
   if (fails) expect(result.steps[1]!.observation).toContain('that did not work: read interrupted')
+})
+
+it('says first that an address answered with an error, and does not count it as a reading', async () => {
+  const open = openTool({ status: 404, text: 'Sorry, we could not find that page.' })
+  const outcome = await open.runRich!({ url }, context)
+  expect(outcome.text.split('\n')[0]).toContain('answered 404 (no such page)')
+  expect(outcome.text).toContain('rather than guessing another address')
+  expect(outcome.observedAfterAction).toBeUndefined()
+})
+
+it('shows each search result with the words beside it and leaves the choice to the reader', async () => {
+  const results: WebPage = {
+    url: 'https://example.test/search?q=report', title: 'Search', text: 'Weekly report North and South totals for the region. Unrelated advert text.',
+    links: [{ text: 'Weekly report', url: 'https://reports.example/weekly' }, { text: 'Monthly report archive', url: 'https://reports.example/monthly' }],
+  }
+  const search = cometTools({ paths, retrieve: async () => [], searchTemplate, courier: { fetchPage: async () => results } }).find(tool => tool.name === 'search_web')!
+  const text = await search.run({ query: 'report' }, context)
+  expect(text).not.toContain('call open_page with')
+  expect(text).toContain('- Weekly report — https://reports.example/weekly\n  North and South totals for the region.')
 })

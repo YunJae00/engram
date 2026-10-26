@@ -2,7 +2,7 @@
 // says nothing about where it leads, and opening it costs a page load on the
 // search engine before the real one begins. The target is read from the link
 // itself when it carries one, or from the redirect the engine answers with.
-const TARGET_PARAMS = ['url', 'q', 'u', 'uddg', 'target', 'dest']
+const TARGET_PARAMS = ['url', 'q', 'u', 'uddg', 'target', 'dest', 'link', 'to']
 const RESOLVE_AT_MOST = 12
 // The links are followed together, and the first request a process makes can
 // wait seconds on its network setup before any answer.
@@ -22,14 +22,23 @@ export function namedTarget(link: string): string | null {
     const url = new URL(link)
     for (const key of TARGET_PARAMS) {
       const target = webAddress(url.searchParams.get(key))
-      if (target && new URL(target).host !== url.host) return target
+      if (target && siteOf(new URL(target).host) !== siteOf(url.host)) return target
     }
   } catch { return null }
   return null
 }
 
+// One site across its hosts: an engine's results and its redirector can sit on
+// www.engine and engine, or on a country domain such as engine.co.kr.
+const SECOND_LEVEL = new Set(['co', 'or', 'ac', 'go', 'ne', 'com', 'net', 'org', 'gov', 'edu'])
+export function siteOf(host: string): string {
+  const labels = host.toLowerCase().replace(/^www\./, '').split('.')
+  const keep = labels.length > 2 && labels.at(-1)!.length === 2 && SECOND_LEVEL.has(labels.at(-2)!) ? 3 : 2
+  return labels.slice(-keep).join('.')
+}
+
 function sameHost(link: string, page: string): boolean {
-  try { return new URL(link).host === new URL(page).host } catch { return false }
+  try { return siteOf(new URL(link).host) === siteOf(new URL(page).host) } catch { return false }
 }
 
 async function followWithin(follow: FollowRedirect, url: string, signal?: AbortSignal): Promise<string | null> {

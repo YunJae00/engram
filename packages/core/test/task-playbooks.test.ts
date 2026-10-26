@@ -40,13 +40,22 @@ it('preserves a malformed method store instead of silently replacing it', async 
   expect(await readFile(join(cache, 'task-playbooks.json'), 'utf8')).toBe(invalid)
 })
 
-it('hands on only where a task began until it has worked twice, and names what each site was used for', async () => {
+it('hands on where a task began and the steps that worked, and names what each site was used for', async () => {
   const paths = { cache: join(await mkdtemp(join(tmpdir(), 'engram-playbooks-')), '.engram') } as VaultPaths
   await recordPlaybook(paths, "Enter today's hours in the time report", [step('open_page', { url: 'https://portal.example/' }), step('open_page', { url: 'https://time.example/week' }), step('type_text', { target: 'Hours' }), step('press', { target: 'Save' })])
   const once = playbookContext((await findPlaybook(paths, "Enter yesterday's hours in the time report"))!)
   expect(once).toContain('Started from: https://portal.example/ https://time.example/week')
-  expect(once).not.toContain('Steps that worked')
+  expect(once).toContain('Steps that worked')
   const places = await learnedPlaces(paths)
   expect(places.get('time.example')).toBe("Enter today's hours in the time report")
   expect(places.get('portal.example')).toBe("Enter today's hours in the time report")
+})
+
+it('finds a task asked in other words by meaning when no words match, and only when it is close', async () => {
+  const paths = { cache: join(await mkdtemp(join(tmpdir(), 'engram-playbooks-')), '.engram') } as VaultPaths
+  await recordPlaybook(paths, 'Workday 연차 잔여 확인', [step('open_page', { url: 'https://portal.example/' }), step('press', { target: 'Workday' }), step('press', { target: 'Time Off' })])
+  expect(await findPlaybook(paths, 'how many days of leave do I have left')).toBeUndefined()
+  expect((await findPlaybook(paths, 'how many days of leave do I have left', async () => [0.82]))?.goal).toBe('Workday 연차 잔여 확인')
+  expect(await findPlaybook(paths, 'book a table for friday', async () => [0.4])).toBeUndefined()
+  expect(await findPlaybook(paths, 'book a table for friday', async () => null)).toBeUndefined()
 })

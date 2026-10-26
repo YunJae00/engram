@@ -36,7 +36,7 @@ const STUDY_READS = new Set([
   'page_steps', 'page_each', 'page_do', 'press', 'press_point', 'press_key', 'scroll', 'type_text',
   'app_read', 'app_text', 'read_desktop', 'look_desktop', 'list_windows', 'list_apps',
   'excel_workbooks', 'excel_read', 'outlook_mail', 'outlook_read', 'outlook_calendar',
-  'file_read', 'file_read_workbook', 'desk_activity', 'ask_person', 'study_findings',
+  'file_read', 'file_read_workbook', 'desk_activity', 'search_chats', 'ask_person', 'study_findings',
 ])
 
 export function studyGuard(tool: AgentTool, active: () => boolean): AgentTool {

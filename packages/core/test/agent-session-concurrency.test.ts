@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { runToolSession } from '../src/agent-session.js'
+import { runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
 import type { Engine, EngineCwd, ToolSessionJob } from '../src/engine/types.js'
 
 const workdir = 'C:/tmp' as EngineCwd
@@ -33,8 +33,8 @@ it.each([true, false])('counts in-flight calls against the hard allowance (deskt
   const result = await runToolSession({ workdir, engine: engine(async (job) => {
     await Promise.all(Array.from({ length: 150 }, () => job.tools[0]!.run({})))
   }, desktop), tools: [read(async () => { dispatched++; await Promise.resolve(); return 'Fresh observation' }, desktop)] }, 'Inspect the workspace')
-  expect(dispatched).toBe(40)
-  expect(result.steps).toHaveLength(40)
+  expect(dispatched).toBe(SESSION_MAX_CALLS)
+  expect(result.steps).toHaveLength(SESSION_MAX_CALLS)
   expect(result.stopped).toBe('calls')
 })
 
@@ -126,7 +126,7 @@ it('keeps concurrent callbacks within the total ceiling after verified phase all
 
 it.each(['unverified', 'exhausted'] as const)('labels an unsupported completion claim explicitly when %s', async (state) => {
   const result = await runToolSession({ workdir, engine: engine(async (job) => {
-    for (let call = 0; call < (state === 'exhausted' ? 41 : 1); call++) await job.tools[0]!.run({})
+    for (let call = 0; call < (state === 'exhausted' ? SESSION_MAX_CALLS + 1 : 1); call++) await job.tools[0]!.run({})
   }, true, 'Everything completed'), tools: [{ name: 'desktop_action', description: 'Act', argsSchema: {}, run: async () => state === 'unverified'
     ? '{"dispatched":true,"error":"Readback failed","observationMayBeStale":true}'
     : '{"observation":{"snapshot":"fresh"}}',
@@ -140,10 +140,10 @@ it('does not admit a plan revision at the exhausted phase boundary', async () =>
   const result = await runToolSession({ workdir, engine: engine(async (job) => {
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!
     await plan.run({ phases: ['Prepare', 'Verify'] })
-    for (let call = 0; call < 39; call++) await job.tools[0]!.run({})
-    revision = String(await plan.run({ remainingPhases: ['Revised work', 'Verify'], evidenceStep: 40, finding: 'The layout changed' }))
+    for (let call = 0; call < SESSION_MAX_CALLS - 1; call++) await job.tools[0]!.run({})
+    revision = String(await plan.run({ remainingPhases: ['Revised work', 'Verify'], evidenceStep: SESSION_MAX_CALLS, finding: 'The layout changed' }))
   }), tools: [read(async () => 'Fresh observation')] }, 'Change the field')
   expect(revision).toContain('No more calls')
-  expect(result.steps).toHaveLength(40)
+  expect(result.steps).toHaveLength(SESSION_MAX_CALLS)
   expect(result.incomplete).toContain('Prepare')
 })

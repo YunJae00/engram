@@ -100,6 +100,20 @@ it('keeps waiting past the first limit while the page is still fetching its own 
   expect(Date.now()).toBeLessThan(32_000)
 })
 
+it('waits past an app frame of a few buttons while the page still fetches its content, and takes a short page that is done', async () => {
+  const page = clockPage()
+  Object.assign(page, { evaluate: async () => Math.floor(Math.min(Date.now(), 6_000) / 500) })
+  const frame = { url: 'https://app.test', title: 'App', controls: ['[1] button "Menu"', '[2] button "Search"'] }
+  const built = await readWhenReady(page, async () => ({ ...frame, text: Date.now() < 6_500 ? 'Menu Search' : 'Popular this week: '.repeat(20) }))
+  expect(built.text).toContain('Popular this week')
+
+  const short = clockPage()
+  Object.assign(short, { evaluate: async () => 12 })
+  const done = await readWhenReady(short, async () => ({ ...frame, text: 'Saved.' }))
+  expect(done.text).toBe('Saved.')
+  expect(Date.now()).toBeLessThan(2_500)
+})
+
 it('preserves a confirmed login wall and respects cancellation', async () => {
   const page = clockPage()
   expect((await readWhenReady(page, async () => ({ url: 'https://example.com', title: 'Login', text: '', wall: 'login' })))).toHaveProperty('wall', 'login')

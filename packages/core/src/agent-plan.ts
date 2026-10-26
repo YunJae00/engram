@@ -2,7 +2,7 @@ import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 import { officeReadEvidence } from './office-verification.js'
 
 // Fresh readings of the world: what a phase can be shown done by.
-const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look', 'open_page', 'search_web', 'search_memory', 'outlook_mail', 'outlook_read', 'outlook_calendar', 'find_files', 'schedule', 'desk_activity', 'notifications'])
+const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look', 'open_page', 'search_web', 'search_memory', 'outlook_mail', 'outlook_read', 'outlook_calendar', 'find_files', 'schedule', 'desk_activity', 'notifications', 'search_chats'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
   if (step.tool === 'read_pages') return /^Batch read:/.test(step.observation)
   if (officeReadEvidence(step)) return true
@@ -25,6 +25,12 @@ function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
     const result = JSON.parse(step.observation) as { error?: unknown; observation?: { snapshot?: unknown }; observationMayBeStale?: boolean }
     return (allowFailure || !result.error) && !result.observationMayBeStale && typeof result.observation?.snapshot === 'string' && !!result.observation.snapshot
   } catch { return false }
+}
+// The latest step that is not a plan call: a rejected or accepted plan call
+// is bookkeeping, and must not stand between the work and its citation.
+function latestWork(steps: AgentLoopStep[]): number {
+  for (let at = steps.length; at > 0; at--) if (steps[at - 1]!.tool !== 'task_plan') return at
+  return 0
 }
 export function taskPlan(steps: AgentLoopStep[]): { tool: AgentTool; completed: () => number; pending: () => string | undefined } {
   let phases: string[] = []
@@ -56,8 +62,12 @@ export function taskPlan(steps: AgentLoopStep[]): { tool: AgentTool; completed: 
           const evidence = args['evidenceStep'], finding = args['finding']
           const revising = Object.hasOwn(args, 'remainingPhases')
           if (Object.keys(args).length !== (revising ? 3 : 2) || !Number.isInteger(evidence) || typeof evidence !== 'number' || typeof finding !== 'string' || !finding.trim() || finding.length > 600) throw new Error('Supply evidenceStep and a nonempty finding of at most 600 characters.')
-          const step = steps[evidence - 1]
-          if (!phases.length || completed >= phases.length || evidence <= boundary || evidence !== steps.length || !step || !hasObservation(step, revising)) throw new Error(`Cite step ${steps.length}, the latest, once it is a fresh result you read - a page, mail, file, search or app reading; not an error, a write, an input acknowledgement or this plan. If the latest step is not one, read the result first.`)
+          const step = steps[evidence - 1], latest = latestWork(steps)
+          if (!phases.length) throw new Error('There is no plan in this turn yet: create one with phases first, then complete its phases.')
+          if (completed >= phases.length) throw new Error('Every phase of the plan is already complete.')
+          if (latest <= boundary) throw new Error('Nothing has been read since the last checkpoint: read a fresh result of this phase (a page, mail, file, search or app reading), then cite that step.')
+          if (!hasObservation(steps[latest - 1]!, revising)) throw new Error(`Cite step ${latest}, the latest, only once it is a fresh result you read - a page, mail, file, search or app reading, not an error, a write or an input acknowledgement. Read the result first.`)
+          if (evidence !== latest || !step) throw new Error(`Cite step ${latest}, the latest reading.`)
           if (revising) {
             const remaining = args['remainingPhases']
             if (!Array.isArray(remaining) || !remaining.length || completed + remaining.length > 8 || remaining.some((one) => typeof one !== 'string' || !one.trim() || one.length > 240)) throw new Error('Keep 1 to 8 unfinished phases within the 8-phase total, each nonempty and at most 240 characters.')

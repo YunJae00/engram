@@ -30,7 +30,10 @@ type EngineCwd = Parameters<typeof collectResult>[1]['workdir']
 // held for the turn so it costs no reload. The answer has already been
 // delivered; only the next send waits on it.
 
-const REMEMBER_TIMEOUT_MS = 60_000
+// These calls share the person's AI with the conversations themselves, so
+// they go one at a time and are given room to wait for it.
+const REMEMBER_TIMEOUT_MS = 120_000
+let remembering: Promise<unknown> = Promise.resolve()
 
 export function taskRecall(store: Pick<NoteStore, 'search' | 'get'>, task: string): string {
   const notes = store.search(task.slice(0, 256)).slice(0, 12).flatMap((hit) => {
@@ -81,15 +84,17 @@ export async function rememberTurn(deps: {
   message: string
   answer: string
   previous?: string
+  // Addresses the turn read without failing.
+  places?: string[]
   signal?: AbortSignal
 }): Promise<void> {
   if (!memorableTurn(deps.message, deps.answer)) return
   const known = mergeMemory(await loadBotMemory(deps.paths, PERSON_MEMORY), await loadBotMemory(deps.paths, deps.botId)).facts.map((f) => f.text)
   let raw = ''
   try {
-    raw = await collectResult(deps.engine, {
+    const call = remembering.then(() => collectResult(deps.engine, {
       prompt: rememberPrompt(
-        { user: withoutSecrets(deps.message, deps.message), answer: withoutSecrets(deps.answer, deps.message), ...(deps.previous ? { previous: withoutSecrets(deps.previous, deps.message) } : {}) },
+        { user: withoutSecrets(deps.message, deps.message), answer: withoutSecrets(deps.answer, deps.message), ...(deps.previous ? { previous: withoutSecrets(deps.previous, deps.message) } : {}), ...(deps.places?.length ? { places: deps.places.map((place) => withoutSecrets(place, deps.message)) } : {}) },
         known,
       ),
       workdir: deps.workdir,
@@ -98,7 +103,9 @@ export async function rememberTurn(deps: {
       modelHint: 'fast',
       maxTokens: REMEMBER_TOKENS,
       ...(deps.signal ? { signal: deps.signal } : {}),
-    })
+    }))
+    remembering = call.catch(() => undefined)
+    raw = await call
   } catch (err) {
     if (deps.signal?.aborted) return
     flog('comet-memory', `remembering failed — ${err instanceof Error ? err.message : String(err)}`)
