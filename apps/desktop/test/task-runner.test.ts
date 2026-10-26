@@ -341,3 +341,13 @@ it('does not exceed the call ceiling when continuing after a question', async ()
   expect(t.sent).toHaveLength(0)
   expect((await listTasks(t.paths))[0]!.state).toBe('failed')
 })
+
+it('stops where a turn offered another way, instead of carrying on beside the card', async () => {
+  const t = await setup(async () => ({ ...done('PageOne에서 연차 화면을 찾지 못했어요.', 4), unfinished: true }), true, undefined, channel => channel === 'bot-bot-1')
+  await t.chat('Workday에서 연차 확인해줘')
+  const task = await t.settle('done')
+  expect(task.turns).toBe(1)
+  expect(t.sent).toHaveLength(1)
+  expect(task.log.at(-1)?.line).toContain('another way offered')
+  expect(t.remembered).toEqual([])
+})

@@ -8,7 +8,7 @@ import type { Note } from './schema.js'
 
 export const DESK_TYPE = 'desk'
 export const DESK_NOTES = { files: 'n-desk-files', apps: 'n-desk-apps', downloads: 'n-desk-dloads' } as const
-export const DESK_WINDOW_DAYS = 90
+export const DESK_WINDOW_DAYS = 30
 
 export interface RecentFile { path: string; at: number }
 export interface AppUse { name: string; runs: number; focusMs: number; lastRun?: number }

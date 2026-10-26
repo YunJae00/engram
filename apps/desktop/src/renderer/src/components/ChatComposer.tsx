@@ -1,6 +1,6 @@
 import { AppWindow, ArrowUp, Paperclip, Plus, Square } from 'lucide-react'
 import { ChatAttachment } from './ChatAttachment.js'
-import { forwardRef, memo, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, memo, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 import { attachmentError, ATTACHMENT_ACCEPT, ATTACHMENT_MAX_COUNT } from '../../../shared/attachments.js'
 import { api } from '../api.js'
@@ -29,10 +29,22 @@ interface Props {
 // "@" names an app the person lets Engram work in (Settings, Apps); the list
 // is asked once and again after settings change.
 const MENTION = /(?:^|\s)@([^\s@]{0,40})$/
-const MENTIONS_SHOWN = 6
+// Every allowed app can be picked; the menu scrolls past a few rows.
+const MENTIONS_SHOWN = 40
+const MENTION_MENU_MAX = 320
 interface Mentionable { label: string; icon?: string }
-let mentionable: Promise<Mentionable[]> | null = null
-const allowedApps = () => mentionable ??= api.appsList().then(rows => rows.filter(one => one.on).map(one => ({ label: one.label, ...(one.icon ? { icon: one.icon } : {}) }))).catch(() => [])
+// The apps in use fill in as the activity journal grows, so the list is read
+// again once it is a minute old, and an empty one is not kept.
+const MENTIONS_FRESH_MS = 60_000
+let mentionable: { at: number; apps: Promise<Mentionable[]> } | null = null
+const allowedApps = (): Promise<Mentionable[]> => {
+  if (mentionable && Date.now() - mentionable.at < MENTIONS_FRESH_MS) return mentionable.apps
+  const apps = api.appsList().then(rows => rows.filter(one => one.on).map(one => ({ label: one.label, ...(one.icon ? { icon: one.icon } : {}) }))).catch(() => [])
+  const held = { at: Date.now(), apps }
+  mentionable = held
+  void apps.then(list => { if (!list.length && mentionable === held) mentionable = null })
+  return apps
+}
 // An app named in the box, shown with its icon so the person sees it was taken.
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const namedIn = (text: string, apps: Mentionable[]) => text.includes('@') ? apps.filter(app => new RegExp(`(?:^|\\s)@${escaped(app.label)}(?![A-Za-z0-9])`, 'i').test(text)) : []
@@ -44,6 +56,7 @@ export const ChatComposer = memo(
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
+    const mentionCaret = useRef<number | null>(null)
     const fileRef = useRef<HTMLInputElement>(null)
     const menuRef = useRef<HTMLDivElement>(null)
     const addRef = useRef<HTMLButtonElement>(null)
@@ -59,6 +72,13 @@ export const ChatComposer = memo(
     const named = namedIn(value, apps)
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
+    useLayoutEffect(() => {
+      const caret = mentionCaret.current
+      if (caret === null || !inputRef.current) return
+      mentionCaret.current = null
+      inputRef.current.focus()
+      inputRef.current.setSelectionRange(caret, caret)
+    }, [value])
 
     const placeMenu = () => {
       const anchor = addRef.current?.getBoundingClientRect()
@@ -80,8 +100,9 @@ export const ChatComposer = memo(
       const anchor = inputRef.current?.getBoundingClientRect()
       if (!menu) return
       if (!mention || !anchor) { if (menu.matches(':popover-open')) menu.hidePopover(); return }
-      Object.assign(menu.style, { left: `${Math.max(8, Math.min(anchor.left, innerWidth - 228))}px`, bottom: `${innerHeight - anchor.top + 6}px`, maxHeight: `${Math.max(0, anchor.top - 14)}px` })
+      Object.assign(menu.style, { left: `${Math.max(8, Math.min(anchor.left, innerWidth - 228))}px`, bottom: `${innerHeight - anchor.top + 6}px`, maxHeight: `${Math.max(0, Math.min(MENTION_MENU_MAX, anchor.top - 14))}px` })
       if (!menu.matches(':popover-open')) menu.showPopover()
+      menu.querySelector('.picked')?.scrollIntoView({ block: 'nearest' })
     }, [mention])
 
     const lookForMention = (text: string, caret: number) => {
@@ -97,9 +118,9 @@ export const ChatComposer = memo(
       const input = inputRef.current
       if (!mention || !input) return
       const before = `${value.slice(0, mention.at)}@${app} `
+      mentionCaret.current = before.length
       onChange(before + value.slice(input.selectionStart))
       setMention(null)
-      requestAnimationFrame(() => { input.focus(); input.setSelectionRange(before.length, before.length) })
     }
 
     const attach = async (files: File[]) => {

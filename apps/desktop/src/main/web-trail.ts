@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { chromiumRoots, profileDirs } from './browser-roots.js'
 import { flog } from './flog.js'
 
 // The web trail — browser history as a capture source. In the webmail/groupware era much of an office day never touches a
@@ -22,29 +23,9 @@ export interface WebVisit {
 
 const WEBKIT_EPOCH_MS = Date.UTC(1601, 0, 1)
 
+// Every profile of every Chromium-family browser on this computer.
 export function historyCandidates(): string[] {
-  if (process.platform === 'darwin') {
-    const support = join(homedir(), 'Library', 'Application Support')
-    return [
-      join(support, 'Google', 'Chrome', 'Default', 'History'),
-      join(support, 'Microsoft Edge', 'Default', 'History'),
-      join(support, 'BraveSoftware', 'Brave-Browser', 'Default', 'History'),
-      join(support, 'Arc', 'User Data', 'Default', 'History'),
-    ]
-  }
-  if (process.platform === 'linux') {
-    const config = process.env['XDG_CONFIG_HOME'] ?? join(homedir(), '.config')
-    return [
-      join(config, 'google-chrome', 'Default', 'History'),
-      join(config, 'chromium', 'Default', 'History'),
-      join(config, 'microsoft-edge', 'Default', 'History'),
-    ]
-  }
-  const local = process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local')
-  return [
-    join(local, 'Google', 'Chrome', 'User Data', 'Default', 'History'),
-    join(local, 'Microsoft', 'Edge', 'User Data', 'Default', 'History'),
-  ]
+  return chromiumRoots().flatMap(root => profileDirs(root.userData).map(dir => join(root.userData, dir, 'History')))
 }
 
 const DENY_TITLE = /password|비밀번호|로그인|login|sign in|인증|otp|working\.\.\./i

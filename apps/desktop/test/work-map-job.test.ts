@@ -8,6 +8,7 @@ const fake = vi.hoisted(() => ({ data: '', history: '', workMap: true, sources: 
 vi.mock('electron', () => ({ app: { getPath: () => fake.data }, ipcMain: { handle: () => undefined } }))
 vi.mock('../src/main/web-trail.js', () => ({ historyCandidates: fake.sources }))
 vi.mock('../src/main/browser-bookmarks.js', () => ({ allBookmarks: fake.bookmarks }))
+vi.mock('../src/main/firefox-places.js', () => ({ readFirefox: async () => [], firefoxVisits: () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => ({ workMap: fake.workMap }) }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => undefined }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))

@@ -6,7 +6,7 @@ export type LearningKey = 'workMap' | 'workFiles' | 'workApps' | 'activity'
 export type LearningChoice = Record<LearningKey, boolean>
 
 export const LEARNING_SOURCES: { key: LearningKey; name: string; detail: string }[] = [
-  { key: 'workMap', name: 'Browser history, bookmarks and downloads', detail: 'Site names, page titles and downloaded file names from the last 90 days.' },
+  { key: 'workMap', name: 'Browser history, bookmarks and downloads', detail: 'Site names, page titles and downloaded file names from the last 30 days.' },
   { key: 'workFiles', name: 'Recent files and folders', detail: 'Names and locations of files you opened. Contents are not read.' },
   { key: 'workApps', name: 'Apps you use', detail: 'App names and how often you use them.' },
   { key: 'activity', name: 'App activity while Engram is open', detail: 'App names, window titles and notifications, kept while Engram runs.' },
@@ -21,6 +21,6 @@ export function LearningSources({ value, disabled, onChange, testPrefix, compact
       <input type="checkbox" className={compact ? 'switch' : undefined} aria-description={compact ? source.detail : undefined} data-testid={`${testPrefix}-source-${source.key}`} checked={value[source.key]} disabled={disabled} onChange={event => onChange(source.key, event.target.checked)} />
       <span><strong>{source.name}</strong>{!compact && <small>{source.detail}</small>}</span>
     </label>)}
-    <p className="setting-hint" id={note}>{compact ? 'Names, window titles and notifications are saved and shared with your AI. Browser history: last 90 days. Pages and file contents are not read.' : LEARNING_NOTE}</p>
+    <p className="setting-hint" id={note}>{compact ? 'Names, window titles and notifications are saved and shared with your AI. Browser history: last 30 days. Pages and file contents are not read.' : LEARNING_NOTE}</p>
   </fieldset>
 }

@@ -13,6 +13,7 @@ import {
   placeNoteId,
   readNote,
   readWorkMap,
+  WORK_MAP_DAYS,
   workShortcuts,
   writeNote,
   writeWorkMap,
@@ -20,6 +21,7 @@ import {
   type WorkMap,
 } from 'core'
 import { allBookmarks } from './browser-bookmarks.js'
+import { firefoxVisits, readFirefox } from './firefox-places.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
@@ -32,7 +34,6 @@ import { refreshDeskNotes } from './desk-sources.js'
 // history and bookmarks on this computer, names the places with one short
 // model call, and writes a note per work place.
 
-const WINDOW_MS = 90 * 86_400_000
 const STALE_MS = 86_400_000
 const CHECK_MS = 60 * 60_000
 const FIRST_CHECK_MS = 90_000
@@ -66,6 +67,7 @@ async function readVisits(sinceMs: number, signal: AbortSignal): Promise<TraceVi
       await rm(temp, { force: true }).catch(() => undefined)
     }
   }
+  visits.push(...await readFirefox(db => firefoxVisits(db, sinceMs)).catch((error: unknown) => { flog('work-map', error); return [] }))
   return visits
 }
 
@@ -92,7 +94,7 @@ export function refreshWorkMap(ctx: VaultContext): Promise<WorkMap | null> {
       // Isolated app fixtures must not inspect the real browser, even via IPC.
       if (!(await allowed()) || process.env['ENGRAM_USERDATA']) return null
       const now = new Date()
-      const [visits, bookmarks, previous] = await Promise.all([readVisits(now.getTime() - WINDOW_MS, abort.signal), allBookmarks(), readWorkMap(ctx.paths).catch(() => null)])
+      const [visits, bookmarks, previous] = await Promise.all([readVisits(now.getTime() - WORK_MAP_DAYS * 86_400_000, abort.signal), allBookmarks().catch((error: unknown) => { flog('work-map', error); return [] }), readWorkMap(ctx.paths).catch(() => null)])
       if (!(await allowed())) return null
       let map = buildWorkMap(visits, bookmarks, now)
       // A day the labelling call cannot run keeps yesterday's names.

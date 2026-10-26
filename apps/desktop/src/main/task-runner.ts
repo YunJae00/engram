@@ -60,6 +60,8 @@ export function taskRunner(deps: {
   learn?(question: string, answer: string): void
   // The task stopped for the person: done, waiting on them, or failed.
   notify(task: DelegatedTask): void
+  // The turn offered the person another way to do the job, on a card of its own.
+  offered?(channel: string): boolean
 }) {
   const { paths } = deps
   const running = new Set<string>()
@@ -80,6 +82,8 @@ export function taskRunner(deps: {
   const declined = new Map<string, Set<string>>()
   // Each task's steps across its turns, and tasks whose next turn is the check.
   const trails = new Map<string, TurnStep[]>()
+  // Tasks handed back with another way offered: the work stops there, and is not learned from.
+  const handedBack = new Set<string>()
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
@@ -136,6 +140,7 @@ export function taskRunner(deps: {
       }
       else if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
+      else if (!checking && deps.offered?.(channelOf(t))) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
       else if (checking) {
@@ -193,7 +198,7 @@ export function taskRunner(deps: {
       try { deps.notify(task) } catch (error) { flog('task-notify', error) }
     }
     // A result the check could not confirm is kept for the person, not learned from.
-    if (task.state !== 'done' || !task.result || task.verificationIssue) return
+    if (handedBack.delete(task.id) || task.state !== 'done' || !task.result || task.verificationIssue) return
     await recordPlaybook(paths, task.goal, trail).catch((error) => flog('tasks', error))
     if ((task.work ?? 0) < WORTH_KEEPING_STEPS && !savedFile(task.result)) return
     await deps.remember([`Task finished ${task.updatedAt.slice(0, 10)}: ${task.goal.slice(0, 400)}`, '', 'Result:', task.result.slice(0, 2000)].join('\n'))
