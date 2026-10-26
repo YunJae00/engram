@@ -22,6 +22,19 @@ test('closed popups left in the page are not read as open', async () => {
   expect((await readFrames(page)).dialog).toBe('')
 })
 
+// A panel that names no dialog: entries drawn on top of the page, or a notice.
+const lifted = (inner: string) => `<div id="lifted" style="position:absolute;top:120px;left:300px;width:520px;height:360px;z-index:20;background:#fff">${inner}</div>`
+const entries = Array.from({ length: 4 }, (_, at) => `<div>${at + 1} hr <button>X</button> Bug fixes <button>New</button></div>`).join('')
+
+test('a board of entries drawn over the page is the page, unless a sheet covers the view behind it', async () => {
+  await page.setContent(`<main style="height:1600px">Time Report week</main>${lifted(entries)}`)
+  expect((await readFrames(page)).dialog).toBe('')
+  await page.setContent(`<main style="height:1600px">Time Report week</main><div style="position:fixed;inset:0;z-index:15;background:rgba(0,0,0,.4)"></div>${lifted(entries)}`)
+  expect((await readFrames(page)).dialog).toContain('Bug fixes')
+  await page.setContent(`<main style="height:1600px">Time Report week</main>${lifted('Submit the October report by the 31st. <button>OK</button>')}`)
+  expect((await readFrames(page)).dialog).toContain('Submit the October report')
+})
+
 test('the popup in front is read, and stops being read once closed', async () => {
   await page.setContent(`<main>Project list</main>${panel('', 'Choose a project')}`)
   expect((await readFrames(page)).dialog).toContain('Choose a project')

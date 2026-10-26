@@ -307,8 +307,14 @@ test('the same words in two places are refused with the numbers to choose from, 
   await page.setContent(`<html><head><style>#cal td{cursor:pointer}</style></head><body><main>
     <table id="week"><tr><td>Wed</td><td>13</td></tr></table>
     <table id="cal"><tbody><tr><td> <span>13</span> </td><td> <span>14</span> </td></tr></tbody></table>
-    <button id="inert">Inert</button></main></body></html>`)
-  const refused = await pressOn(page, '13')
+    <table id="next"><tbody><tr><td style="cursor:pointer"> <span>14</span> </td></tr></tbody></table>
+    <p id="picked">picked: none</p>
+    <button id="inert">Inert</button></main>
+    <script>document.getElementById('cal').addEventListener('click', (e) => { document.getElementById('picked').textContent = 'picked: ' + e.target.closest('td').textContent.trim() })</script></body></html>`)
+  // Text that only shows "13" beside the one control called "13" names that control.
+  expect(await pressOn(page, '13')).toMatchObject({ ok: true })
+  expect(await page.textContent('#picked')).toBe('picked: 13')
+  const refused = await pressOn(page, '14')
   expect(refused.ok).toBe(false)
   expect(refused.error).toContain('more than one place')
   expect(refused.error).toMatch(/#\d+/)
@@ -397,4 +403,21 @@ test('a commit is put to the person: they can let it go, or keep it for themselv
   expect(go.ok).toBe(true)
   expect(asked).toEqual(['Send'])
   await expect.poll(() => posted).toBe(1)
+})
+
+test('while studying, a press that would keep something is refused and passage still goes', async () => {
+  await page.setContent(`<html><body><main><button id="save" onclick="this.textContent='kept'">Save</button>
+    <button id="next" onclick="document.getElementById('where').textContent='page 2'">Next</button><p id="where">page 1</p></main></body></html>`)
+  const studying = Object.assign(async () => 'cancel' as const, { reading: () => true })
+  expect(await pressOn(page, 'Save', undefined, studying)).toMatchObject({ ok: false, refused: 'Save' })
+  expect(await page.textContent('#save')).toBe('Save')
+  expect(await chooseOption(page, 'Save', 'Next', undefined, studying)).toMatchObject({ ok: false, refused: 'Save' })
+  expect(await chooseOption(page, 'Next', 'Save', undefined, studying)).toMatchObject({ ok: false, refused: 'Save' })
+  for (const key of ['Enter', 'Space']) {
+    await page.locator('#save').focus()
+    expect(await pressKey(page, key, undefined, studying)).toMatchObject({ ok: false, refused: expect.any(String) })
+    expect(await page.textContent('#save')).toBe('Save')
+  }
+  expect(await pressOn(page, 'Next', undefined, studying)).toMatchObject({ ok: true })
+  expect(await page.textContent('#where')).toBe('page 2')
 })

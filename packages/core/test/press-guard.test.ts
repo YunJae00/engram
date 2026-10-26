@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pressCommits } from '../src/press-guard.js'
+import { pressCommits, pressKeeps } from '../src/press-guard.js'
 
 describe('a press that would be hard to take back is told apart from one that only moves', () => {
   it('asks about money, filing, destruction and publication, in either language', () => {
@@ -81,4 +81,9 @@ describe('a press that would be hard to take back is told apart from one that on
 it('reads a board or a post as a place, not the act of posting', () => {
   for (const words of ['게시판', '자유 게시판', '게시물 보기', '게시글']) expect(pressCommits({ submits: false, navigates: true, words })).toBe(false)
   for (const words of ['게시', '게시하기', '주문하기', '구매']) expect(pressCommits({ submits: false, navigates: true, words })).toBe(true)
+})
+
+it('while only studying, a press that keeps something is held back too, and passage still goes', () => {
+  for (const words of ['Save', '저장', '등록', 'New', '신청', 'Apply']) expect(pressKeeps(words)).toBe(true)
+  for (const words of ['확인', '조회', 'Activity 조회', 'Next', '메뉴', 'Back to List']) expect(pressKeeps(words)).toBe(false)
 })

@@ -13,13 +13,15 @@ describe('studying a job', () => {
     const guarded = studyGuard(tool, () => studying)
     expect(await guarded.run({}, { task: 'x' })).toBe('ok')
     studying = true
-    expect(() => guarded.run({}, { task: 'x' })).toThrow('read-only')
-    expect(() => guarded.runRich!({}, { task: 'x' })).toThrow('read-only')
-    for (const name of ['file_create_copy', 'run_procedure', 'schedule', 'outlook_draft', 'page_steps', 'unknown_write']) {
-      expect(() => studyGuard({ ...tool, name }, () => true).run({}, { task: 'x' })).toThrow('read-only')
+    expect(() => guarded.run({}, { task: 'x' })).toThrow('only reading and moving')
+    expect(() => guarded.runRich!({}, { task: 'x' })).toThrow('only reading and moving')
+    for (const name of ['file_create_copy', 'run_procedure', 'schedule', 'outlook_draft', 'app_do', 'unknown_write']) {
+      expect(() => studyGuard({ ...tool, name }, () => true).run({}, { task: 'x' })).toThrow('only reading and moving')
     }
     expect(calls).toBe(1)
     expect(await studyGuard({ ...tool, name: 'outlook_read' }, () => true).run({}, { task: 'x' })).toBe('ok')
+    // Records sit behind menus: moving through a page is allowed, its hands refuse what would keep anything.
+    expect(await studyGuard({ ...tool, name: 'page_steps' }, () => true).run({}, { task: 'x' })).toBe('ok')
     studying = false
     expect(await guarded.runRich!({}, { task: 'x' })).toEqual({ text: 'ok' })
   })
@@ -34,7 +36,8 @@ describe('studying a job', () => {
 
   it('studies reading only, in the language of the job', () => {
     const message = studyMessage({ what: '팀원별 Activity 조회 위치', where: ['TMS'], ask: '팀 타임리포트 정리해줘' })
-    expect(message).toContain('Never press anything that saves, sends, submits or deletes')
+    expect(message).toContain('never press anything that saves, sends, submits or deletes')
+    expect(message).toContain('Open menus, tabs, lists, dates and search forms')
     expect(message).toContain('Write to the person in Korean.')
     expect(message).toContain('Call study_findings only once you have followed the way to the end')
     expect(message).toContain('Start where the job is done - TMS')

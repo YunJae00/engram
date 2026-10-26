@@ -387,7 +387,7 @@ test('"@" offers only the apps turned on in settings and puts the chosen one in 
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('apps:list')
     ipcMain.handle('apps:list', () => [
-      { app: 'outlook', label: 'Outlook', hours: 3, days: 5, on: true },
+      { app: 'outlook', label: 'Outlook', hours: 3, days: 5, on: true, icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' },
       { app: 'onenote', label: 'OneNote', hours: 1, days: 2, on: false },
       { app: 'excel', label: 'Excel', hours: 2, days: 4, on: true },
     ])
@@ -407,14 +407,22 @@ test('"@" offers only the apps turned on in settings and puts the chosen one in 
   await composer.fill('')
   await composer.pressSequentially('sort it @o')
   await expect(menu.getByRole('option')).toHaveText(['@Outlook'])
+  await expect(menu.getByRole('option').locator('img.app-icon')).toHaveCount(1)
   await composer.press('Enter')
   await expect(composer).toHaveValue('sort it @Outlook ')
   await expect(menu).toBeHidden()
+  // The named app shows above the box with its icon, so the person sees it was taken.
+  const named = page.getByTestId('bots-input-named')
+  await expect(named).toHaveText('Outlook')
+  await expect(named.locator('img.app-icon')).toHaveCount(1)
   await composer.pressSequentially('and @')
   await expect(menu.getByRole('option')).toHaveText(['@Outlook', '@Excel'])
   await composer.press('ArrowDown')
   await composer.press('Tab')
   await expect(composer).toHaveValue('sort it @Outlook and @Excel ')
+  await expect(named.locator('.chat-mention-chip')).toHaveText(['Outlook', 'Excel'])
   await composer.pressSequentially('@zz')
   await expect(menu).toBeHidden()
+  await composer.fill('nothing named')
+  await expect(named).toBeHidden()
 })

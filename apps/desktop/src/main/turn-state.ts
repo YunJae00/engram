@@ -3,10 +3,11 @@ import type { StudyCheck } from './study-offers.js'
 // What each conversation's running turn holds besides the turn itself: the
 // words said to it, what it was asked and has done, and the checks after it.
 
-// While a comet studies nothing is changed: every press that would commit is refused.
+// While a comet studies nothing is changed: every press that would commit is
+// refused, and the page's hands hold to the stricter rule of a reader.
 export const studying = new Set<string>()
-export function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): (what: T) => Promise<R | 'cancel'> {
-  return (what) => studying.has(channel) ? Promise.resolve('cancel') : ask(what)
+export function unlessStudying<T, R>(channel: string, ask: (what: T) => Promise<R>): ((what: T) => Promise<R | 'cancel'>) & { reading: () => boolean } {
+  return Object.assign((what: T) => studying.has(channel) ? Promise.resolve('cancel' as const) : ask(what), { reading: () => studying.has(channel) })
 }
 
 export const afterChecks = new Set<StudyCheck>()

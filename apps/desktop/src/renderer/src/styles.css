@@ -1279,6 +1279,9 @@ body.bubble-host { background: transparent; }
 .chat-add-menu > button:hover:not(:disabled) { background: var(--hover-bg); }
 .chat-add-menu > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .chat-mention-menu > button.picked { background: var(--hover-bg); }
+.chat-write > .chat-mention-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 0; }
+.chat-mention-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 7px; border-radius: 13px; background: var(--hover-bg); color: var(--fg); font-size: var(--fs-small); }
+.chat-mention-chip > .app-icon, .chat-mention-menu .app-icon { width: 16px; height: 16px; flex: none; object-fit: contain; }
 @keyframes composer-menu-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .chat-add-menu:popover-open { animation: none; } }
 .chat-write-tools { display: flex; align-items: center; flex: 1; gap: 4px; min-width: 0; }

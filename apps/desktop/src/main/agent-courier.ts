@@ -129,7 +129,7 @@ export function agentCourier(
       // The press is bounded like every hand, except while the person is
       // answering whether it may go.
       let asking: Promise<unknown> | null = null
-      const held: typeof ask = ask && ((what) => { const answer = ask(what); asking = answer; return answer.finally(() => { asking = null }) })
+      const held: typeof ask = ask && Object.assign((what: Parameters<typeof ask>[0]) => { const answer = ask(what); asking = answer; return answer.finally(() => { asking = null }) }, ask.reading ? { reading: ask.reading } : {})
       return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, held), deps.awaitCompletion, () => asking), signal)
     },
     async typeText(target, text, enter, signal) {
@@ -142,7 +142,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal), deps.awaitCompletion), signal)
+      return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal, ask), deps.awaitCompletion), signal)
     },
     async scroll(to, signal) {
       await aside(signal)
@@ -160,7 +160,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return withinBudget(pressKey(page, key, signal), deps.awaitCompletion)
+      return withinBudget(pressKey(page, key, signal, ask), deps.awaitCompletion)
     },
     async reveal(word, signal) {
       await aside(signal)
@@ -188,11 +188,20 @@ export function agentCourier(
       if (shot) deps.onLook?.(page.url(), masked?.covered ?? 0)
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
-    async followRedirect(url, signal) {
-      const response = await net.fetch(url, { redirect: 'manual', ...(signal ? { signal } : {}) })
-      const target = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null
-      await response.body?.cancel().catch(() => undefined)
-      return target ? new URL(target, url).href : null
+    // net.fetch with a manual redirect throws instead of answering with the
+    // redirect, so the request is stopped at its first hop and read there.
+    followRedirect(url, signal) {
+      return new Promise((resolve) => {
+        if (signal?.aborted) { resolve(null); return }
+        const request = net.request({ url, redirect: 'manual' })
+        const done = (target: string | null) => { signal?.removeEventListener('abort', stop); resolve(target); request.abort() }
+        const stop = () => done(null)
+        signal?.addEventListener('abort', stop, { once: true })
+        request.on('redirect', (_status, _method, target) => { try { done(new URL(target, url).href) } catch { done(null) } })
+        request.on('response', () => done(null))
+        request.on('error', () => done(null))
+        request.end()
+      })
     },
     async fetchPage(url, signal) {
       const page = await withAbort(ensurePage(), signal)

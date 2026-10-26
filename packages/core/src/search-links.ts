@@ -4,7 +4,9 @@
 // itself when it carries one, or from the redirect the engine answers with.
 const TARGET_PARAMS = ['url', 'q', 'u', 'uddg', 'target', 'dest']
 const RESOLVE_AT_MOST = 12
-const RESOLVE_MS = 4_000
+// The links are followed together, and the first request a process makes can
+// wait seconds on its network setup before any answer.
+const RESOLVE_MS = 10_000
 
 type Link = { text: string; url: string }
 export type FollowRedirect = (url: string, signal?: AbortSignal) => Promise<string | null>

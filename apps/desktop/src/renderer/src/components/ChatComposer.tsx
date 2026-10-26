@@ -30,8 +30,13 @@ interface Props {
 // is asked once and again after settings change.
 const MENTION = /(?:^|\s)@([^\s@]{0,40})$/
 const MENTIONS_SHOWN = 6
-let mentionable: Promise<string[]> | null = null
-const allowedApps = () => mentionable ??= api.appsList().then(rows => rows.filter(one => one.on).map(one => one.label)).catch(() => [])
+interface Mentionable { label: string; icon?: string }
+let mentionable: Promise<Mentionable[]> | null = null
+const allowedApps = () => mentionable ??= api.appsList().then(rows => rows.filter(one => one.on).map(one => ({ label: one.label, ...(one.icon ? { icon: one.icon } : {}) }))).catch(() => [])
+// An app named in the box, shown with its icon so the person sees it was taken.
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const namedIn = (text: string, apps: Mentionable[]) => text.includes('@') ? apps.filter(app => new RegExp(`(?:^|\\s)@${escaped(app.label)}(?![A-Za-z0-9])`, 'i').test(text)) : []
+const appMark = (app: Mentionable, size: number) => app.icon ? <img className="app-icon" src={app.icon} alt="" /> : <AppWindow size={size} aria-hidden />
 
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
@@ -47,7 +52,11 @@ export const ChatComposer = memo(
     const [attaching, setAttaching] = useState(false)
     const [error, setError] = useState('')
     const mentionRef = useRef<HTMLDivElement>(null)
-    const [mention, setMention] = useState<{ at: number; options: string[]; pick: number } | null>(null)
+    const [mention, setMention] = useState<{ at: number; options: Mentionable[]; pick: number } | null>(null)
+    const [apps, setApps] = useState<Mentionable[]>([])
+    const hasAt = value.includes('@')
+    useEffect(() => { if (hasAt) void allowedApps().then(setApps) }, [hasAt])
+    const named = namedIn(value, apps)
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
 
@@ -80,7 +89,7 @@ export const ChatComposer = memo(
       if (!hit) { setMention(null); return }
       const query = (hit[1] ?? '').toLowerCase()
       void allowedApps().then(apps => {
-        const options = apps.filter(app => app.toLowerCase().includes(query)).slice(0, MENTIONS_SHOWN)
+        const options = apps.filter(app => app.label.toLowerCase().includes(query)).slice(0, MENTIONS_SHOWN)
         setMention(options.length ? { at: caret - query.length - 1, options, pick: 0 } : null)
       })
     }
@@ -122,7 +131,7 @@ export const ChatComposer = memo(
       if (mention && !event.nativeEvent.isComposing) {
         const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
         if (step) { event.preventDefault(); setMention({ ...mention, pick: (mention.pick + step + mention.options.length) % mention.options.length }); return }
-        if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); chooseMention(mention.options[mention.pick] ?? ''); return }
+        if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); chooseMention(mention.options[mention.pick]?.label ?? ''); return }
         if (event.key === 'Escape') { event.preventDefault(); setMention(null); return }
       }
       if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
@@ -140,6 +149,7 @@ export const ChatComposer = memo(
         void attach(Array.from(event.dataTransfer.files))
       }}>
         {attachments.length > 0 && <div className="chat-file-list" aria-label="Attached files">{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || (busy && !canQueue) || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
+        {named.length > 0 && <div className="chat-mention-list" aria-label="Apps named" data-testid={testId ? `${testId}-named` : undefined}>{named.map(app => <span key={app.label} className="chat-mention-chip">{appMark(app, 14)}<span>{app.label}</span></span>)}</div>}
         {(onAttachmentsChange || actions) && <>
           <button type="button" ref={addRef} className="chat-add-button" aria-label="Add to conversation" data-testid={testId ? `${testId}-add` : undefined} {...{ popovertarget: menuId }} onClick={placeMenu}><Plus size={18} aria-hidden /></button>
           <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label="Conversation actions" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
@@ -169,8 +179,8 @@ export const ChatComposer = memo(
         />
         <div ref={mentionRef} className="chat-add-menu chat-mention-menu" {...{ popover: 'manual' }} role="listbox" aria-label="Apps" data-testid={testId ? `${testId}-mentions` : undefined}>
           {mention?.options.map((app, index) => (
-            <button key={app} type="button" role="option" aria-selected={index === mention.pick} className={index === mention.pick ? 'picked' : undefined} onMouseDown={event => { event.preventDefault(); chooseMention(app) }}>
-              <AppWindow size={16} aria-hidden /><span>@{app}</span>
+            <button key={app.label} type="button" role="option" aria-selected={index === mention.pick} className={index === mention.pick ? 'picked' : undefined} onMouseDown={event => { event.preventDefault(); chooseMention(app.label) }}>
+              {appMark(app, 16)}<span>@{app.label}</span>
             </button>
           ))}
         </div>

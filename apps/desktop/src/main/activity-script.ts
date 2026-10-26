@@ -43,6 +43,16 @@ $seen = @{}
 foreach ($p in Get-Process | Where-Object { $_.MainWindowHandle -ne 0 }) {
   try { if (-not $seen.ContainsKey($p.ProcessName) -and $p.Path) { $seen[$p.ProcessName] = 1; Write-Output (':path|' + $p.ProcessName + '|' + $p.Path) } } catch {}
 }
+# An app not open now is found where installed programs register themselves.
+foreach ($root in 'HKCU:', 'HKLM:') {
+  foreach ($k in Get-ChildItem ($root + '\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths') -ErrorAction SilentlyContinue) {
+    try {
+      $name = [System.IO.Path]::GetFileNameWithoutExtension($k.PSChildName)
+      $exe = ('' + $k.GetValue('')).Trim('"')
+      if ($name -and -not $seen.ContainsKey($name) -and $exe -and (Test-Path -LiteralPath $exe)) { $seen[$name] = 1; Write-Output (':path|' + $name + '|' + $exe) }
+    } catch {}
+  }
+}
 $tick = 0
 $every = ${Math.max(1, Math.round(sampleMs / 1000))}
 while ($true) {

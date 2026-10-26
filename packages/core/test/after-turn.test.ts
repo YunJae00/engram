@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { afterTurnPrompt, parseAfterTurn } from '../src/after-turn.js'
+import { afterTurnPrompt, againMessage, parseAfterTurn } from '../src/after-turn.js'
 import { NO_PROGRESS_LIMIT, progressWatch } from '../src/no-progress.js'
 
 const added = ['부산도 같이 봐줘', '끝나면 두 도시 비교해서 한 줄로 정리해줘']
@@ -21,6 +21,15 @@ it('reads what was left and whether the job was done', () => {
   expect(parseAfterTurn('{"left":[],"done":false,"only_person":false,"blocked":"페이지 오류"}', added)).toEqual({ left: [], undone: { blocked: '페이지 오류' } })
   expect(parseAfterTurn('no idea', added)).toEqual({ left: [], undone: null })
   expect(parseAfterTurn(null, added)).toEqual({ left: [], undone: null })
+})
+
+it('sends an undone job on once more with what stopped it and the request it carries on', () => {
+  const message = againMessage('H-Link에서 연차 신청해줘', '날짜 선택 실패')
+  expect(message).toContain('날짜 선택 실패')
+  expect(message).toContain('Request: H-Link에서 연차 신청해줘')
+  expect(message).toContain('a way not tried yet')
+  expect(message).toContain('Do not repeat a step that already failed')
+  expect(message).toContain('only the person can give, ask for it and stop')
 })
 
 it('tells a turn going around in circles to stop and ask, and lets new findings reset it', () => {

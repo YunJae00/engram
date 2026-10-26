@@ -2,7 +2,8 @@ import { extractJson } from './engine/types.js'
 
 // When a turn ends, one short judgement of its answer: which words the person
 // added along the way it left undone (those go on as the next message), and
-// whether the job itself was done (an undone one is offered another way).
+// whether the job itself was done (an undone one gets one more pass, then is
+// offered another way).
 // A stop at a sign-in, or anything else only the person can give, counts as
 // done: looking for another way does not get past it.
 export interface AfterTurn { left: string[]; undone: { blocked: string } | null }
@@ -18,6 +19,18 @@ export function afterTurnPrompt(ask: string, added: readonly string[], answer: s
     `Request: ${ask.slice(0, 800)}`,
     `Added while it worked:\n${added.length ? added.map((words, at) => `${at + 1}. ${words.slice(0, 400)}`).join('\n') : '(nothing)'}`,
     `Final answer: ${answer.replace(/\s+/g, ' ').slice(0, 1500)}`,
+  ].join('\n\n')
+}
+
+// A job judged undone gets one more pass before it is handed back: from
+// where it stopped, by a way not taken yet, never repeating what already
+// failed or redoing what worked.
+export function againMessage(ask: string, blocked: string): string {
+  return [
+    `The answer above did not finish the request - ${blocked.slice(0, 200)}. Take one more pass at it before handing it back.`,
+    'Start from where it stopped and take a way not tried yet: another control on the same page (a list, select, tab, menu or date field), closing a message or error and trying that step again, or another page or source for the same thing.',
+    'Do not repeat a step that already failed the same way, and do not redo work that already succeeded. If what stops it is something only the person can give, ask for it and stop.',
+    `Request: ${ask.slice(0, 2000)}`,
   ].join('\n\n')
 }
 
