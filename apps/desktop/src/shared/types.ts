@@ -108,7 +108,7 @@ export interface MissionFrameDto {
   at?: number
 }
 
-export type EngineHealthReason = 'auth' | 'quota' | 'network' | 'timeout' | 'crash' | 'unknown'
+export type EngineHealthReason = 'auth' | 'quota' | 'outage' | 'network' | 'timeout' | 'crash' | 'unknown'
 
 export interface EngineHealthDto {
   healthy: boolean
@@ -308,7 +308,7 @@ export interface SweepReportDto {
   briefWritten: boolean
   // Set when the librarian STOPPED rather than finished: the deferred work is
   // kept and retried, and the user is told which of the two things happened.
-  haltReason?: 'quota' | 'auth'
+  haltReason?: 'quota' | 'auth' | 'outage'
 }
 
 export interface SearchHitDto {
@@ -457,7 +457,7 @@ export type EngramEvent =
         // thread shows as chips. Only sent when there are some.
         | { kind: 'asked'; question: string; options: string[] }
     }
-  | { type: 'chat:error'; channel: string; message: string }
+  | { type: 'chat:error'; channel: string; message: string; kind?: EngineHealthReason; provider?: string }
   // The comet's tool loop narrating one step of its work on this channel.
   // The agent browser's mirror: whether there is a page to show, and each
   // frame of it while a view is open. Frames are shown and dropped.

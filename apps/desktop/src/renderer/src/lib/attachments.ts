@@ -71,6 +71,12 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
   await sendNow(api, store, botId, draft, attachments)
 }
 
+// A message that failed is sent again where it stood, as if just written.
+export async function resendFailedCometMessage(api: ChatApi, store: CometThreadsStore, botId: string): Promise<void> {
+  const failed = store.takeFailed(botId)
+  if (failed) await sendCometMessage(api, store, botId, failed.text)
+}
+
 async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, draft: string, attachments: ChatAttachmentDto[], queued = false, shown = false): Promise<void> {
   const message = chatMessage(draft, attachments)
   seats(active, store).add(botId)

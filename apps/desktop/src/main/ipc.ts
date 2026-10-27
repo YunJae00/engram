@@ -25,6 +25,7 @@ import {
   daysOpen,
   daysUntilDue,
   EngineCallError,
+  helpersTool,
   QuotaError,
   engineCwd,
   expandQueries,
@@ -165,6 +166,7 @@ import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-j
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
 import { learningTools } from './learning-wiring.js'
+import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
@@ -325,6 +327,8 @@ export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 // per channel: a comet parked at a wall keeps the window for itself, and
 // another comet finishing does not let go of it.
 const WALL_HOLD_MS = 10 * 60_000
+// A provider failing on its side usually answers again within seconds to minutes.
+const OUTAGE_RESEND_MS = 15_000
 // Tools that change files or applications; plan mode leaves them off.
 const PLAN_BLOCKED = /^(file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence|keep_)/
 const wallHolds = new Map<string, () => void>()
@@ -1014,6 +1018,8 @@ export function registerIpc(ctx: VaultContext): void {
     return value
   })
   const resumeState = new Map<string, string>()
+  // Requests already sent again once after the provider failed on its side.
+  const outageRetried = new WeakSet<ChatRequestDto>()
   // How each comet's last turn ended, read by delegated tasks after each turn.
   const turnOutcomes = new Map<string, TurnOutcome>()
   const lastTurns = new Map<string, { message: string; steps: TurnStep[]; keepGoal?: string; execution?: NonNullable<Routine['task']>['execution']; scripts?: TurnScript[] }>()
@@ -2360,6 +2366,14 @@ export function registerIpc(ctx: VaultContext): void {
     deskActivityTool,
     notificationsTool(ctx),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
+    // Separate questions looked into at once, each on a tab of its own.
+    ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
+      look: (question, index, lookSignal) => lookAsHelper({
+        channel, engine, workdir: engineCwd(paths), guided,
+        toolsFor: (lane) => cometToolSet({ ...input, channel: lane, native: undefined, permission: 'plan' }),
+        onStep: (line) => broadcast({ type: 'comet:step', channel, line }),
+      }, question, index, lookSignal),
+    })] : []),
     ...(channel.startsWith('bot-') ? [offerStudyTool({ offer: (input) => offerStudy(channel.slice('bot-'.length), input, turnGoals.get(channel) ?? '') }), studyFindingsTool({ found: (draft) => studyFound(channel.slice('bot-'.length), draft) })] : []),
     // Offered every turn so a check runs in the same session as the work it checks.
     resultCheckTool(turn?.verification ? {
@@ -2606,6 +2620,7 @@ export function registerIpc(ctx: VaultContext): void {
             : ''
       const onScreen = [!webOnly && engine.desktopToolIsolation === true ? [settings.computerUse === true ? officeContext() : '', settings.computerUse === true ? desktopContext() : DESKTOP_CONSENT_CONTEXT].filter(Boolean).join(String.fromCharCode(10)) : '', browserScreen].filter(Boolean).join('\n')
       let switchTo: string | undefined
+      let resendAfterOutage = false
       let toolStarted = false
       let answerDelivered = false
       try {
@@ -2838,8 +2853,15 @@ export function registerIpc(ctx: VaultContext): void {
           await deliverAnswer(question)
           return
         }
-        if (switchTo) broadcast({ type: 'comet:step', channel, line: `switch: ${brainName(engine.id)} reached its usage limit; ${brainName(switchTo)} continues` })
-        else broadcast({ type: 'chat:error', channel, message: said })
+        // The provider failing on its side before anything was done is sent
+        // again once, after a short wait; a second failure is said plainly.
+        if (kind === 'outage' && !toolStarted && !outageRetried.has(request)) {
+          outageRetried.add(request)
+          resendAfterOutage = true
+          broadcast({ type: 'comet:step', channel, line: `outage: ${brainName(engine.id)}` })
+        }
+        else if (switchTo) broadcast({ type: 'comet:step', channel, line: `switch: ${brainName(engine.id)} reached its usage limit; ${brainName(switchTo)} continues` })
+        else broadcast({ type: 'chat:error', channel, message: said, kind, provider: brainName(engine.id) })
         void noteEngineFailure(engine, kind, ctx).then(() =>
           revalidateEngines(ctx),
         )
@@ -2854,7 +2876,11 @@ export function registerIpc(ctx: VaultContext): void {
         // or when the machine needs the memory.
         if (!wallHolds.has(channel)) armIdleClose()
       }
-      if (switchTo && !signal.aborted) {
+      if (resendAfterOutage && !signal.aborted) {
+        await delay(OUTAGE_RESEND_MS, undefined, { signal }).catch(() => undefined)
+        if (signal.aborted) { broadcast({ type: 'chat:done', channel, text: '' }); return }
+      }
+      if ((switchTo || resendAfterOutage) && !signal.aborted) {
         broadcast({ type: 'chat:token', channel, text: '', reset: true })
         return handleChatSend(request, signal, recovery, savedRoutine, turn)
       }

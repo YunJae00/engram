@@ -54,6 +54,7 @@ import { quickFileDialogOpen } from './quick-files.js'
 import { verifySetupConnection } from './setup-connection.js'
 import { aiSelection, chatEngine } from './ai-selection.js'
 import { activeAccountProfile } from './account-profiles.js'
+import { recordStalls } from './stall-recorder.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -115,6 +116,7 @@ const isDev = !!process.env['ELECTRON_RENDERER_URL']
 const isHidden = process.env['ENGRAM_HIDDEN'] === '1'
 
 let mainWin: BrowserWindow | null = null
+let noteStall: (ms: number) => void = () => undefined
 let quickWin: BrowserWindow | null = null
 let quickOpening = false
 let quickAnchor: Electron.Rectangle | null = null
@@ -300,6 +302,7 @@ async function createMainWindow(hash?: string): Promise<void> {
     logResponsiveness('renderer-unresponsive')
   })
   mainWin.webContents.on('responsive', () => logResponsiveness('renderer-responsive'))
+  noteStall = recordStalls(mainWin.webContents)
   // macOS fullscreen hides the traffic lights — tell the renderer so the top
   // bar can drop the left padding it reserves for them (and restore on exit).
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
@@ -456,7 +459,7 @@ function registerBaseIpc(): void {
   ipcMain.on('quick:hide', () => quickWin?.hide())
   // Renderer stalls never reach a profiler on a user's machine; the longest
   // frame-blocking tasks land in the same log everything else does.
-  ipcMain.on('ui:longtask', (_e, ms: unknown) => { if (typeof ms === 'number' && ms >= 200) flog('renderer-longtask', `${Math.round(ms)}ms`) })
+  ipcMain.on('ui:longtask', (_e, ms: unknown) => { if (typeof ms === 'number' && ms >= 200) { flog('renderer-longtask', `${Math.round(ms)}ms`); noteStall(ms) } })
 
   // "Restart now" on the update banner. `quitting` must be set first: the main
   // window's close handler hides to the tray instead of quitting, which would

@@ -231,6 +231,15 @@ export class AuthError extends EngineCallError {
   }
 }
 
+// Raised when the provider took the request and failed on its side. Retrying
+// at once meets the same failure, so callers wait before the next call.
+export class OutageError extends EngineCallError {
+  constructor(message = 'the AI provider is not answering') {
+    super(message, 'outage')
+    this.name = 'OutageError'
+  }
+}
+
 // Drains an engine run and returns the final text. Token events accumulate
 // as a fallback for engines that never emit an explicit result.
 export async function collectResult(engine: Engine, job: EngineJobInput): Promise<string> {
@@ -246,6 +255,7 @@ export async function collectResult(engine: Engine, job: EngineJobInput): Promis
       const kind = event.kind ?? classifyEngineError(event.message)
       if (kind === 'quota') throw new QuotaError(event.message, event.retryAfterMs)
       if (kind === 'auth') throw new AuthError(`[${engine.id}] ${event.message}`)
+      if (kind === 'outage') throw new OutageError(`[${engine.id}] ${event.message}`)
       throw new EngineCallError(`[${engine.id}] ${event.message}`, kind)
     }
   }

@@ -13,6 +13,7 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
     case 'done':
       if (status.haltReason === 'quota') return translate('topbar.sweepQuota', { n: status.deferred })
       if (status.haltReason === 'auth') return translate('topbar.sweepAuth', { n: status.deferred })
+      if (status.haltReason === 'outage') return translate('topbar.sweepOutage', { n: status.deferred })
       if (status.deferred > 0) return translate('topbar.sweepDeferred', { n: status.deferred })
       return translate('topbar.sweepDone', { executed: status.executed, skipped: status.skipped })
     case 'error':

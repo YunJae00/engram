@@ -9,6 +9,9 @@ import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../share
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
   error?: boolean
+  // Why it failed, when main could tell, and which AI it was.
+  errorKind?: string
+  provider?: string
   // A draft held while it is checked: still shown, until the checked answer takes its place.
   checking?: boolean
   // What the comet said and did on the way to this answer, kept with it so an
@@ -132,8 +135,14 @@ export function createCometThreads(initialSelected: string | null = null) {
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
     patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, ...extra })
-  const fail = (id: string, text: string) =>
-    settle(id, [...thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming)), { role: 'assistant', text, error: true }], { queued: [] })
+  // One failure is said once: a second report of the same turn's failure
+  // takes the place of the first instead of standing under it.
+  const fail = (id: string, text: string, kind?: string, provider?: string) => {
+    const kept = thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming))
+    const earlier = kept.at(-1)?.error ? kept.at(-1)! : undefined
+    const said: CometMessage = { role: 'assistant', text: text || earlier?.text || '', error: true, ...(kind ?? earlier?.errorKind ? { errorKind: kind ?? earlier?.errorKind } : {}), ...(provider ?? earlier?.provider ? { provider: provider ?? earlier?.provider } : {}) }
+    settle(id, [...(earlier ? kept.slice(0, -1) : kept), said], { queued: [] })
+  }
 
   // Every box showing a conversation hears its draft change, without the
   // conversation tree re-rendering per keystroke.
@@ -263,6 +272,15 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (thread(id).stopped) patch(id, { stopped: false })
     },
     fail,
+    // The failed message and its failure leave the thread, to be sent again
+    // in their place; null when the thread does not end in a failure.
+    takeFailed(id: string): { text: string; attachments: string[] } | null {
+      const messages = thread(id).messages
+      const failed = messages.at(-1), asked = messages.at(-2)
+      if (thread(id).busy || !failed?.error || asked?.role !== 'user') return null
+      patch(id, { messages: messages.slice(0, -2) })
+      return { text: asked.text, attachments: asked.attachments ?? [] }
+    },
     // A line in the running work, in the order it happened: what the person
     // said while it worked, and what the voice said back.
     noteWork(id: string, line: string): void {
@@ -353,7 +371,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         return id
       }
       if (event.type === 'chat:error') {
-        fail(id, event.message)
+        fail(id, event.message, event.kind, event.provider)
         return id
       }
       return null

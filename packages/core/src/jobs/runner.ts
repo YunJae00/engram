@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { AuthError, collectResult, engineCwd, QuotaError, type Engine, type EngineId } from '../engine/types.js'
+import { AuthError, collectResult, engineCwd, OutageError, QuotaError, type Engine, type EngineId } from '../engine/types.js'
 import type { VaultPaths } from '../vault.js'
 import type { JobKind } from './prompts.js'
 
@@ -46,7 +46,7 @@ export interface RunReport {
   // hear about: 'quota' resolves itself when the limit resets, 'auth' needs
   // them to log in again. Nothing rendered this before, which is precisely how
   // the librarian went quiet without ever saying why.
-  haltReason?: 'quota' | 'auth'
+  haltReason?: 'quota' | 'auth' | 'outage'
 }
 
 interface Journal {
@@ -232,9 +232,11 @@ export class JobRunner {
           // retry. Auth was previously an ordinary failure — it retried once,
           // landed in report.failed, and nothing rendered report.failed, so a
           // dead token meant 2N doomed spawns and total silence.
-          if (err instanceof QuotaError || err instanceof AuthError) {
-            const reason = err instanceof QuotaError ? 'quota' : 'auth'
-            const note = reason === 'quota' ? 'usage limit reached' : 'login expired'
+          // A provider failing on its side fails every job alike until it
+          // recovers, so it stops the run the same way.
+          if (err instanceof QuotaError || err instanceof AuthError || err instanceof OutageError) {
+            const reason = err instanceof QuotaError ? 'quota' : err instanceof AuthError ? 'auth' : 'outage'
+            const note = reason === 'quota' ? 'usage limit reached' : reason === 'auth' ? 'login expired' : 'provider not answering'
             if (err instanceof QuotaError && err.retryAfterMs !== undefined) report.quotaRetryAfterMs = err.retryAfterMs
             // Fixed substitution order: move to the next engine and retry this
             // job there; with no engine left, halt so the rest defers. The

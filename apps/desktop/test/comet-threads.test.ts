@@ -5,6 +5,20 @@ const BOT = 'bot-abc-1'
 const channel = cometChannel(BOT)
 
 describe('cometThreads', () => {
+  it('says one failure once, keeps its kind, and gives the message back to send again', () => {
+    const store = createCometThreads(BOT)
+    store.begin(BOT, 'Check Friday tables')
+    store.handleEvent({ type: 'comet:working', channel, working: true })
+    store.handleEvent({ type: 'chat:error', channel, message: 'stream disconnected before completion', kind: 'outage', provider: 'ChatGPT' })
+    store.fail(BOT, 'stream disconnected before completion')
+    const failed = store.thread(BOT).messages.filter(m => m.error)
+    expect(failed).toHaveLength(1)
+    expect(failed[0]).toMatchObject({ errorKind: 'outage', provider: 'ChatGPT' })
+    store.handleEvent({ type: 'comet:working', channel, working: false })
+    expect(store.takeFailed(BOT)).toEqual({ text: 'Check Friday tables', attachments: [] })
+    expect(store.thread(BOT).messages).toEqual([])
+    expect(store.takeFailed(BOT)).toBeNull()
+  })
   it('stops attributing model wait to a browser read that already completed', () => {
     const store = createCometThreads(BOT)
     store.begin(BOT, 'Inspect the report')

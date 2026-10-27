@@ -30,7 +30,6 @@ it('opens a later session with the first and recent earlier requests, not only t
   const history = ['Monday: use fixed rates EUR 1.10 and leave out refundable deposits.', 'Tuesday: tidy the attendee list.', 'Wednesday: convert the meeting times.']
     .flatMap((text) => [{ role: 'user' as const, text }, { role: 'assistant' as const, text: 'Done.' }])
   await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, 'Thursday: update the tracker with the same rules.', { history })
-  expect(opening).toContain('Earlier requests in this conversation')
-  expect(opening).toContain('Monday: use fixed rates EUR 1.10')
+  expect(opening).toContain('User: Monday: use fixed rates EUR 1.10')
   expect(opening.indexOf('Monday')).toBeLessThan(opening.indexOf('Tuesday'))
 })

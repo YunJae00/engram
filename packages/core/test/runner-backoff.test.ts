@@ -59,6 +59,19 @@ describe('the shared quota gate', () => {
     expect(backoff.blockedMs(T)).toBe(0)
   })
 
+  it('an outage waits a minute, then longer, and a success clears it', () => {
+    const backoff = new EngineBackoff(() => 1)
+    backoff.noteOutage(T)
+    expect(backoff.blockedMs(T)).toBe(60_000)
+    backoff.noteOutage(T)
+    expect(backoff.blockedMs(T)).toBe(120_000)
+    for (let i = 0; i < 10; i++) backoff.noteOutage(T)
+    expect(backoff.blockedMs(T)).toBe(10 * 60_000)
+    backoff.noteOk()
+    backoff.noteOutage(T)
+    expect(backoff.blockedMs(T)).toBe(60_000)
+  })
+
   it('repeat quotas back off exponentially, capped, and extension never shortens', () => {
     const backoff = new EngineBackoff(() => 1)
     backoff.noteQuota(undefined, T) // 2^1 → 10min

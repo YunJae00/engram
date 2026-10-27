@@ -17,7 +17,7 @@ import { threadLang, threadWords } from '../lib/threadLang.js'
 // at the foot that says what it is doing; and, when it is done, the replies
 // the person is likely to send next. The full view and the split tiles both
 // show a conversation through this, so they never drift apart.
-export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, children }: {
+export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, onResend, children }: {
   messages: CometMessage[]
   busy: boolean
   status: string
@@ -27,6 +27,8 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   // A question card is already offering the next moves.
   offerOpen?: boolean
   onReply(label: string): void
+  // Sends the last message again when it failed.
+  onResend?(): void
   // Cards waiting on the person sit under the answer, above the replies.
   children?: ReactNode
 }) {
@@ -34,6 +36,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   const failed = (message: CometMessage) => !!message.error || (message.role === 'assistant' && isProviderError(message.text))
   const last = messages[lastAssistant]
   const lang = threadLang(messages)
+  const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
   return <>
     {messages.map((m, i) => {
       if (m.role !== 'assistant') return <div key={i} className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
@@ -44,7 +47,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
       return <Fragment key={i}>
         <CometWork busy={live} lang={lang} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
         {failed(m)
-          ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} /></div>
+          ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(resendable && i === messages.length - 1 ? { onRetry: onResend } : {})} /></div>
           : m.text ? answerBubbles(m.text).map((part, k, parts) => (
             <div key={k} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`}>
               <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />

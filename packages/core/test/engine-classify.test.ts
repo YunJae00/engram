@@ -4,6 +4,7 @@ import {
   AuthError,
   collectResult,
   EngineCallError,
+  OutageError,
   QuotaError,
   type Engine,
   type EngineCwd,
@@ -97,6 +98,14 @@ describe('collectResult carries the kind through as a typed error', () => {
     await expect(collectResult(net, { prompt: '', workdir: CWD })).rejects.toMatchObject({ kind: 'network' })
     const empty = engineOf([{ type: 'result', text: '   ' }])
     await expect(collectResult(empty, { prompt: '', workdir: CWD })).rejects.toMatchObject({ kind: 'crash' })
+  })
+
+  it('reads a provider failing on its side as an outage, not a network fault', async () => {
+    const cut = engineOf([{ type: 'error', message: 'stream disconnected before completion: stream closed before response.completed' }])
+    await expect(collectResult(cut, { prompt: '', workdir: CWD })).rejects.toBeInstanceOf(OutageError)
+    expect(classifyEngineError('502 Bad Gateway')).toBe('outage')
+    expect(classifyEngineError('The server is overloaded')).toBe('outage')
+    expect(classifyEngineError('getaddrinfo ENOTFOUND api.openai.com')).toBe('network')
   })
 
   it('still throws an EngineCallError for an unrecognisable failure', async () => {

@@ -43,6 +43,8 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   file_read: arg => `Reading ${fileName(arg)}`, file_read_workbook: arg => `Reading the workbook ${fileName(arg)}`, file_read_package: arg => `Reading the document ${fileName(arg)}`,
   file_create_copy: arg => `Saving ${fileName(arg)}`, file_create_workbook: arg => `Saving ${fileName(arg)}`, file_edit_package: arg => `Updating ${fileName(arg)}`,
   find_files: arg => `Finding files named like “${arg}”`, open_skill: 'Reading a how-to it was shown',
+  look_in_parallel: 'Looking into several things at once',
+  outage: arg => `${arg} is not answering on its side; sending again shortly`,
   page_do: 'Working through the page', app_do: 'Working in the app', task_plan: 'Planning the steps', report_result_check: 'Reporting the check',
   artifact_read: arg => `Reading ${fileName(arg)}`,
 }
@@ -97,7 +99,7 @@ export function workLabel(line: string, lang: 'en' | 'ko' = 'en'): string {
 
 function englishWorkLabel(line: string): string {
   const tool = line.split(':', 1)[0] ?? ''
-  if (/^(search_web|open_page|read_open_page|read_pages|page_steps|page_do|look|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
+  if (/^(search_web|open_page|read_open_page|read_pages|page_steps|page_do|look|look_in_parallel|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
   if (/^app_(read|set|press|text|do)$/.test(tool)) return 'Working with an app'
   if (/^(desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps)/.test(tool)) return 'Using the computer'
   if (/^outlook_(mail|read|draft)$/.test(tool)) return 'Checking your mail'

@@ -113,6 +113,9 @@
 .answer-error-heading { display: flex; align-items: flex-start; gap: 10px; color: var(--fg-strong); }
 .answer-error-heading svg { flex: none; margin-top: 3px; color: var(--clay); }
 .answer-error p { margin: 0; }
+/* Not this app's fault: said calmly, without the alarm colour. */
+.answer-error.outage .answer-error-heading svg { color: var(--fg-dim); }
+.answer-error.outage p { color: var(--fg-dim); }
 .answer-error details { min-width: 0; color: var(--fg-dim); font-size: var(--fs-small); }
 .answer-error summary { cursor: pointer; padding: 4px 0; }
 .answer-error pre { margin: 8px 0 0; padding: 12px; border-radius: 8px; background: var(--panel-bg); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

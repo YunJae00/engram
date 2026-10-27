@@ -2,7 +2,7 @@ import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 import { officeReadEvidence } from './office-verification.js'
 
 // Fresh readings of the world: what a phase can be shown done by.
-const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look', 'open_page', 'search_web', 'search_memory', 'outlook_mail', 'outlook_read', 'outlook_calendar', 'find_files', 'schedule', 'desk_activity', 'notifications', 'search_chats'])
+const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look', 'open_page', 'search_web', 'search_memory', 'outlook_mail', 'outlook_read', 'outlook_calendar', 'find_files', 'schedule', 'desk_activity', 'notifications', 'search_chats', 'look_in_parallel'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
   if (step.tool === 'read_pages') return /^Batch read:/.test(step.observation)
   if (officeReadEvidence(step)) return true

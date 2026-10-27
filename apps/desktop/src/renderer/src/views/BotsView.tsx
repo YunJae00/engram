@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
-import { sendCometMessage } from '../lib/attachments.js'
+import { resendFailedCometMessage, sendCometMessage } from '../lib/attachments.js'
 import { api } from '../api.js'
 import { CometMessages } from '../components/CometMessages.js'
 import { ThreadOffers } from '../components/ThreadOffers.js'
@@ -114,9 +114,9 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
-              <CometMessages messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={(label) => void sendText(label)}>
+              <CometMessages messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={(label) => void sendText(label)} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
                 <ThreadOffers botId={selected.id} onSend={(label) => void sendText(label)} />
-                <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} />
+                <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
               </CometMessages>
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
