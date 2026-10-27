@@ -13,7 +13,8 @@ import { t } from './i18n.js'
 import { selectComet } from './lib/cometThreadsLive.js'
 import type { SettingsSection } from './components/SettingsNavigation.js'
 import { ArtifactSheet } from './components/ArtifactSheet.js'
-import type { UpdateCheckDto } from '../../shared/types.js'
+import type { FirstSetupDto, UpdateCheckDto } from '../../shared/types.js'
+import { FirstSetup } from './components/FirstSetup.js'
 
 // Only what the first screen needs is in the first bundle. An editor, a sky
 // full of stars, a settings sheet and a walkthrough are all real weight, and
@@ -113,8 +114,18 @@ function Shell() {
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
+  // A vault just made by setup waits for its first filing before the shell opens.
+  const [setup, setSetup] = useState<FirstSetupDto | null>(null)
   useEffect(() => {
-    if (!vaultReady || localStorage.getItem(TOUR_DONE_KEY)) return
+    if (!vaultReady) return
+    let alive = true
+    void api.firstSetupStatus().then(status => { if (alive) setSetup(status) }).catch(() => { if (alive) setSetup(null) })
+    const off = api.onEvent(event => { if (event.type === 'firstSetup:changed') setSetup(event.status) })
+    return () => { alive = false; off() }
+  }, [vaultReady])
+  const settingUp = !!setup?.waiting
+  useEffect(() => {
+    if (!vaultReady || settingUp || localStorage.getItem(TOUR_DONE_KEY)) return
     let cancelled = false
     void api.tourEligible().then((ok) => {
       if (!ok || cancelled) return
@@ -126,7 +137,7 @@ function Shell() {
     return () => {
       cancelled = true
     }
-  }, [vaultReady])
+  }, [vaultReady, settingUp])
 
   // useLayoutEffect, not useEffect: the shell paints (and advertises Cmd+L on
   // a button title) before passive effects commit, so a keypress in that gap
@@ -217,6 +228,8 @@ function Shell() {
       window.removeEventListener('engram:sky-focus', focusSky)
     }
   }, [])
+
+  if (settingUp && setup) return <FirstSetup status={setup} />
 
   return (
     <div

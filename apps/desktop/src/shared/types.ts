@@ -458,6 +458,7 @@ export type EngramEvent =
         | { kind: 'asked'; question: string; options: string[] }
     }
   | { type: 'chat:error'; channel: string; message: string; kind?: EngineHealthReason; provider?: string }
+  | { type: 'firstSetup:changed'; status: FirstSetupDto }
   // The comet's tool loop narrating one step of its work on this channel.
   // The agent browser's mirror: whether there is a page to show, and each
   // frame of it while a view is open. Frames are shown and dropped.
@@ -704,6 +705,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   tasksList(): Promise<DelegatedTaskDto[]>
   // The work map: when it was last built and how many work places it holds.
   workMapStatus(): Promise<WorkMapStatusDto>
+  firstSetupStatus(): Promise<FirstSetupDto>
+  firstSetupSkip(): Promise<void>
   workMapRefresh(): Promise<WorkMapStatusDto>
   // The apps used lately and whether Engram may learn from and work in each.
   appsList(): Promise<AppUseDto[]>
@@ -909,6 +912,17 @@ export interface AppSettingsDto {
 // One model the plan offers: the id the runtime takes, the name it shows,
 // and its own line about what the model is for.
 export interface WorkMapStatusDto { builtAt: string | null; places: number }
+// The first filing of a vault made by setup, while the window waits for it.
+export interface FirstSetupDto {
+  waiting: boolean
+  phase: 'ai' | 'map' | 'filing' | 'retrying' | 'done'
+  done: number
+  total: number
+  stage?: 'capture' | 'organize'
+  reason?: string
+  retryAt?: number
+  startedAt: number
+}
 export interface ScheduledDto { id: string; botId: string; name: string; goal: string; when: string; lastRunAt?: string }
 export interface StudyDto { id: string; botId: string; what: string; where: string[]; ask: string; state: 'offered' | 'studying' | 'review'; findings?: { title: string; description: string; body: string } }
 export interface NoticesDto { items: { id: string; kind: 'scheduled' | 'habit'; title: string; text: string; at: string; read: boolean; running: boolean }[]; scheduled: ScheduledDto[] }

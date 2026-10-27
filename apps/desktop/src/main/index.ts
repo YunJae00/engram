@@ -55,6 +55,7 @@ import { verifySetupConnection } from './setup-connection.js'
 import { aiSelection, chatEngine } from './ai-selection.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { recordStalls } from './stall-recorder.js'
+import { markFirstSetup } from './first-setup.js'
 
 // e2e isolation: must land before app.whenReady touches userData.
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
@@ -559,6 +560,7 @@ function registerBaseIpc(): void {
     if (payload.teamUrl) await joinTeam(payload.root, payload.teamUrl)
     const ctx = await bootVault(payload.root)
     await saveVaultRoot(payload.root)
+    await markFirstSetup(ctx)
     if (payload.importFolder) {
       await runImport(ctx.paths, payload.importFolder, {
         onProgress: (done, total) => broadcast({ type: 'import:progress', done, total }),
