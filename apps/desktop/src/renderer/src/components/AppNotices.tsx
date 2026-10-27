@@ -37,7 +37,9 @@ export const AppNotices = memo(function AppNotices({
     return () => { alive = false; off() }
   }, [])
   useEffect(() => setError(false), [update?.version, update?.state])
-  const unhealthy = engines.filter((engine) => engine.healthy === false)
+  // A provider failing on its side is said where it failed, in the conversation;
+  // the background work waits it out on its own.
+  const unhealthy = engines.filter((engine) => engine.healthy === false && engine.healthReason !== 'outage')
   const unhealthyIds = unhealthy.map((engine) => engine.id === 'codex' ? 'ChatGPT' : engine.id === 'claude' ? 'Claude' : engine.id).join(', ')
   const reason = unhealthy[0]?.healthReason
   const unhealthyText =

@@ -21,7 +21,7 @@ export type SweepStatus =
       executed: number
       skipped: number
       deferred: number
-      haltReason?: 'quota' | 'auth'
+      haltReason?: 'quota' | 'auth' | 'outage'
     }
   | { running: boolean; kind: 'error'; message: string }
 

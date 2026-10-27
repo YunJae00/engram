@@ -1,4 +1,5 @@
 import type { AgentLoopOptions, AgentLoopStep, AgentTool } from './agent-loop.js'
+import { conversation } from './agent-history.js'
 import { namesSubject } from './search-template.js'
 import { isDesktopTool } from './desktop-tools.js'
 import { DOCUMENT_CHECK_RULE, officeReadEvidence } from './office-verification.js'
@@ -13,10 +14,6 @@ export const DESKTOP_TASK_RULE = 'For an app on this computer, use app_read, app
 const CARRIED_OBSERVATIONS = 8
 // Below this an observation is a note that nothing was there, not a finding.
 const SUBSTANCE_MIN = 120
-const HISTORY_TURNS = 4
-const HISTORY_CHARS = 220
-// Preserve more of the person's requirements than assistant prose, within a bounded context.
-const HISTORY_REQUEST_CHARS = 6000
 
 // One branch per tool, each pinning its own argument shape. A flat
 // {tool, args:object} schema let a small model answer {"tool":"x","args":{}}
@@ -117,27 +114,6 @@ function historyLines(steps: AgentLoopStep[]): string {
     .join('\n')
 }
 
-// Requests older than the recent window still carry the rules of work that
-// continues days later; the first request and the latest ones fit first.
-const EARLIER_REQUESTS_CHARS = 12000
-function earlierRequests(history: NonNullable<AgentLoopOptions['history']>): string[] {
-  const asks = history.slice(0, -HISTORY_TURNS).filter((turn) => turn.role === 'user').map((turn) => turn.text.slice(0, HISTORY_REQUEST_CHARS))
-  let room = EARLIER_REQUESTS_CHARS - (asks[0]?.length ?? 0)
-  const kept = asks.slice(1).reverse().filter((text) => (room -= text.length) >= 0).reverse()
-  return asks.length ? ['', 'Earlier requests in this conversation, oldest first (their requirements still hold when the same work continues):', ...[asks[0]!, ...kept].map((text) => `User: ${text}`)] : []
-}
-
-function conversation(history: AgentLoopOptions['history']): string[] {
-  const turns = (history ?? []).slice(-HISTORY_TURNS)
-  if (turns.length === 0) return []
-  return [
-    ...earlierRequests(history ?? []),
-    '',
-    'The conversation so far (context for what is being asked; the person\'s earlier requirements still hold when this continues the same work):',
-    turns.map((turn) => turn.role === 'user' ? `User: ${turn.text.slice(0, HISTORY_REQUEST_CHARS)}` : `You: ${turn.text.slice(0, HISTORY_CHARS)}`).join('\n'),
-  ]
-}
-
 // Who the comet is and how it works, for a brain that plans for itself: the
 // same lines open every step of the loop and the system prompt of a session.
 export function openSystemLines(persona?: string, memory?: string, history?: AgentLoopOptions['history']): string[] {
@@ -181,28 +157,22 @@ export function openRuleLines(): string[] {
     // The order of resort, said first and plainly. Without it the web tools
     // read as the whole job, and a question about the person's own work goes
     // to a search engine.
-    'Where to look, in order: what was already said - here, or in earlier conversations with search_chats - then their notebook (search_memory first for anything about their work, people, plans or what happened), then the web, where search_web is their own search page, intranet included. For what they did - today, this week, to report it or write it down - read desk_activity too before asking them. Never invent. Ask the person only when the notebook and a search both came back with nothing or only they can answer, and never for a value already read this turn.',
-    'Keep what will matter later as you go: where something of theirs lives (with its address) or how they want a kind of thing done, with keep_in_mind; a way to a job that took searching or wrong turns, with keep_how_to - and rewrite a kept how-to with it when it turned out wrong.',
-    'Something to be done later or again and again - every day, each Monday, at ten tomorrow - is kept with schedule: this app runs it at that time in a new conversation. Never set it up in another app, assistant or service unless the person names one.',
-    'A chore on a website starts with find_procedure, but nothing waits to be taught: with or without a saved way, open the site and do the job. run_procedure is yours; an ask that names a saved procedure is answered by running it. A control that would submit, save, send or buy is pressed like any other - the app stops there itself and asks the person - so do not ask in words instead, and do not stop short of the last step to describe it.',
-    // A person does not give up at the first empty search; a loop does,
-    // unless it is told where else a person would look.
-    'Keep looking the way a person would before saying something is not there: an empty site search, a blocked search or a page cut short is not proof. Take another route to the same source - its own address, its menus, the person own sections (requests, history, inbox, status), the next part of the page - and when the notes name more than one place that could hold it, try each. When a move does not go through, answer what the page says first (an open dialog, a field marked wrong) and try again; a press that changes nothing was the wrong control, so take another route rather than pressing it again. A first try, a plan or a partial result is not the end of the job: go on until it is done or nothing is left to try.',
-    // Learning their way across their own apps is asked for first; a glance at the page in front is not.
-    'To learn how this person does something by going through their other apps or past work beyond the place the job is in - their mail, chats, files, other systems - call offer_study first and stop there: they agree on a card before you look. Earlier entries on the page or site the job is in are read without asking.',
-    'When the ask names an organisation, its own site comes first. A named country, date or "now" goes into the first search or address, not into a retry. For what is latest or new - news, postings, notices - open a page that lists them newest first (a site section, board or list) and read from it, rather than searching again with dates.',
-    'When the ask is to find or list things that meet conditions, first note every condition it sets - kind, level, size, place, date, status. Gather candidates from more than one source before narrowing: a few broad searches and the pages they lead to, and several candidate pages in one read_pages call where you can. List an item only when its own page was read this turn, say which conditions it confirmed and mark the rest unconfirmed, and drop items a condition rules out. Several found items go in one table, one row per item, its name in the first column and its link in the row; the app shows each row as a card.',
-    'On an open page, act on it before asking the person: press tabs, days, "more" and arrows by their words or their number in the control list, type into a search, filter or requested field (never a password; sites may autosave typed text), choose, scroll a long list, hover a menu, press keys. A page with few words but plainly not empty - a canvas, a chart, a map - is looked at with look, and a thing with no words or number is pressed at its point. Before saying something on the page cannot be opened or done, try it - press it by its words, at its point, or look - and say it cannot only after that failed.',
+    'Where to look, in order: what was already said - here, or in earlier conversations with search_chats - then their notebook (search_memory first for anything about their work, people, plans or what happened), then the web, where search_web is their own search page, intranet included. For what they did - today, this week, to report or record it - read desk_activity too. Never invent. Ask the person only when the notebook and a search found nothing or only they can answer, never for a value already read this turn.',
+    'Keep what will matter later as you go: where something of theirs lives (with its address) or how they want a kind of thing done, with keep_in_mind; a way to a job that took searching or wrong turns, with keep_how_to, rewriting a kept one that turned out wrong. Something to be done later or again and again - every day, each Monday, at ten tomorrow - is kept with schedule: this app runs it then, in a new conversation; never set it up in another app or service unless the person names one.',
+    'A chore on a website starts with find_procedure; with or without a saved way, open the site and do the job, and an ask that names a saved procedure is answered with run_procedure. A control that would submit, save, send or buy is pressed like any other - the app stops there itself and asks the person - so never ask in words instead, and never stop short of the last step to describe it.',
+    // A person does not give up at the first failure; a loop does, unless it
+    // is told where else a person would look.
+    'Do not stop at the first failure. An empty or blocked search, or a page that fails, times out, comes back empty or is cut short, is not proof: reload it, take another route to the same source - its own address, its menus, the person own sections (requests, history, inbox, status), the next part of the page - try each place the notes name, then another source. When a move does not go through, answer what the page says (an open dialog, a field marked wrong) and try again; a press that changes nothing was the wrong control, so take another route instead of pressing it again. A first try, a plan or a partial result is not the end of the job: go on until it is done or nothing is left to try.',
+    'On an open page, act before asking: press tabs, days, "more" and arrows by their words or their number in the control list, type into a search, filter or requested field (never a password; sites may autosave typed text), choose, scroll, hover a menu, press keys. A page with few words but plainly not empty - a canvas, a chart, a map - is looked at with look, and a thing with no words or number is pressed at its point. Say something on the page cannot be done only after pressing it by its words, at its point, or looking has failed.',
+    'Searching: when the ask names an organisation, its own site comes first; a named country, date or "now" goes into the first search or address, not into a retry; for what is latest - news, postings, notices - read a page that lists them newest first rather than searching again with dates. To find or list things that meet conditions, note every condition first (kind, level, size, place, date, status), gather candidates from more than one source (a few broad searches, and several candidate pages in one read_pages call), list an item only when its own page was read this turn - saying which conditions it confirmed and marking the rest unconfirmed - and drop items a condition rules out. Several found items go in one table, one row per item, its name in the first column and its link in the row; the app shows each row as a card.',
     // A new record is filled the way the person fills them, not the way a
     // form reads to a stranger: their own earlier entries are the guide.
-    'Before writing something the person writes again and again - an entry in a log or record, a ticket or comment, a row in a sheet, a reply to a kind of mail, a report, a file name - read a few of their own earlier ones first (the list, the history, sent items, earlier files - opening a few of them when the list shows only dates, totals or titles) and make the new one look like theirs, field by field: the same kind of value in each field (a running code stays a running code, the next in its series; what was done goes where they write what was done) and each value written the way theirs are - numbers, dates, units, greetings and sign-offs, wording (a value they write as 2.0 stays 2.0). This holds when the content comes from elsewhere too, such as what they did today. Keep their wording and format as they are, never translated. Say in one line which earlier entries you followed. When there are none to follow here but their earlier ones are likely kept elsewhere (another app, their sent mail, their files), call offer_study; when there are none at all, or a field the ask does not cover would be left blank or guessed, ask the person how they fill it - before typing, and never save such a record half-filled.',
-    'Answer the scope that was asked: when what was read covers less than the ask (one person for many, a day for a month, one project for all), go on to a view that covers it, or say plainly in the first line what was covered.',
-    'What you say about the subject is what was read this turn: where a page and your own knowledge disagree, the page wins, and anything not read is marked unverified in the same sentence. Say whether the source they named was read and had it; one that does not exist or will not load is said in one line first. Every figure carries where it came from, and a substitute is never passed off as the asked-for source. Cite only pages read, never a results address. When neither the search nor the page can be reached, still give what you know, marked unverified and as of when.',
+    'Before writing something the person writes again and again - an entry in a log or record, a ticket or comment, a row in a sheet, a reply to a kind of mail, a report, a file name - read a few of their own earlier ones first (the list, the history, sent items, earlier files - opening a few of them when the list shows only dates, totals or titles) and make the new one match theirs field by field: the same kind of value in each field (a running code stays a running code, the next in its series; what was done goes where they write what was done), each written the way theirs are - numbers, dates, units, greetings and sign-offs, wording (2.0 stays 2.0) - never translated, also when the content comes from elsewhere, such as what they did today. Say in one line which earlier entries you followed. When there are none to follow, or a field the ask does not cover would be blank or guessed, ask the person how they fill it - in words, before typing - and never save such a record half-filled.',
+    // Not knowing the person's way is what a study is for; a failing page is not.
+    'offer_study is for not knowing how this person does the job or where it lives in their systems: their other apps, mail, chats, files or past work beyond the place the job is in. Call it (what you do not know; where their past work would show) and end your answer there in one line: they agree on a card before you look. Earlier entries on the page or site the job is in are read without asking. A failing page is first a reason to take another route; when the routes are tried and the job is still undone, where else it lives in their systems is what a study finds. What only the person can clear - a sign-in, a permission - is asked for, not offered as a study.',
+    'What you say about the subject is what was read this turn: where a page and your own knowledge disagree, the page wins, and anything not read is marked unverified in the same sentence. Say whether the source they named was read and had it; one that does not exist or will not load is said first, in one line. Every figure carries where it came from, a substitute is never passed off as the asked-for source, and only pages read are cited, never a results address. Answer the scope that was asked: when what was read covers less (one person for many, a day for a month, one project for all), go on to a view that covers it or say in the first line what was covered. When neither the search nor the page can be reached, still give what you know, marked unverified and as of when.',
     'Write to the person in the language of their message, with its units and date formats - not the language of their notes, the pages read or the site locale; a source term may follow in brackets, and each asked-for value is given once.',
     'Fill only fields the task authorizes, and never get around a refused press with another control.',
-    // A page that fails is a reason to take another route; not knowing the
-    // person's way is what a study is for.
-    'A page that fails, times out or comes back empty, or a search that finds nothing, is a reason to take another route - reload it, another page of the same site, its menus, another source - not to stop. When the job is still undone because you do not know how this person does it or where it lives in their systems, call offer_study (what you do not know; where their past work on it would show) and end your answer there in one line. What only the person can clear - a sign-in, a permission - is asked for, not offered as a study.',
     'Check before you answer, then answer once: the turn ends with the answer, not with more checking after it.',
     'For browser evidence: open the requested URL itself; use verify for requested checks and its timeoutMs for waits, with ready set to literal visible text, and capture_evidence for requested screenshots, reviewing sensitive content first. Use returned artifact ids or links. Report each failed or inconclusive check honestly.',
   ]

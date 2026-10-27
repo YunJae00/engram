@@ -95,10 +95,11 @@ it('opens a fresh session with the person\'s earlier request whole and its own r
   const request = `Save decision.json with keys vendor, total and currency. ${'Keep this clause. '.repeat(40)}Final clause.`
   const engine = sessionBrain(async job => {
     expect(job.opening).toContain(request)
-    expect(job.opening).not.toContain('x'.repeat(221))
+    expect(job.opening).toContain('x'.repeat(2_000))
+    expect(job.opening).not.toContain('x'.repeat(2_001))
     return { answer: 'Done' }
   })
-  await runToolSession({ engine, workdir: WORKDIR, tools: [] }, 'Update it with the new fare', { history: [{ role: 'user', text: request }, { role: 'assistant', text: 'x'.repeat(400) }] })
+  await runToolSession({ engine, workdir: WORKDIR, tools: [] }, 'Update it with the new fare', { history: [{ role: 'user', text: request }, { role: 'assistant', text: 'x'.repeat(3_000) }] })
 })
 
 // A brain that holds its own loop: it calls the tools it is handed in the

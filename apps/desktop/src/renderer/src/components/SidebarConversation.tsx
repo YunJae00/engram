@@ -23,6 +23,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
     let last: { role: string; text: string } | undefined = bot.lastMessage
     for (let i = thread.messages.length - 1; i >= 0; i--) {
       const message = thread.messages[i]!
+      if (message.error) return message.errorKind === 'outage' ? `${message.provider || 'The AI'} did not answer` : 'Could not finish'
       if (message.text.trim()) { last = message; break }
     }
     return last ? `${last.role === 'user' ? 'You: ' : ''}${sidebarPreview(last.text)}` : sidebarPreview(bot.purpose) || 'Start a conversation'

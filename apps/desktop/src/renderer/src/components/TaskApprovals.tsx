@@ -12,7 +12,7 @@ import { DecisionCard } from './DecisionCard.js'
 // rest: each is decided here, and once all are decided the task continues.
 // A question or a pause the thread does not already show is a card too.
 
-export function TaskApprovals({ botId, questionShown }: { botId: string; questionShown?: string }) {
+export function TaskApprovals({ botId, questionShown, failureShown }: { botId: string; questionShown?: string; failureShown?: boolean }) {
   const [task, setTask] = useState<DelegatedTaskDto | null>(null)
   const [pendingDecision, setPendingDecision] = useState(false)
   const [error, setError] = useState('')
@@ -30,6 +30,8 @@ export function TaskApprovals({ botId, questionShown }: { botId: string; questio
     if (task?.state === 'waiting') webPane.attention(`bot-${botId}`)
   }, [task, botId])
   if (!task || !['running', 'waiting', 'failed'].includes(task.state)) return null
+  // A failure the thread already says needs no second card.
+  if (task.state === 'failed' && failureShown) return null
   if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
   if (task.state === 'running' && !pending.length) return null

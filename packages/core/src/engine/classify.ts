@@ -7,7 +7,7 @@
 // actions (log in / wait / fix the network / retry), and the only place that
 // can tell them apart is the boundary where the CLI's stderr and exit code
 // still exist — hence classification lives beside the adapter, not in the UI.
-export type EngineErrorKind = 'auth' | 'quota' | 'network' | 'timeout' | 'crash' | 'unknown'
+export type EngineErrorKind = 'auth' | 'quota' | 'outage' | 'network' | 'timeout' | 'crash' | 'unknown'
 
 // Order below is deliberate: a message can match several patterns and the
 // FIRST match wins, so the most actionable reading is tested first.
@@ -19,6 +19,11 @@ const QUOTA = /\b429\b|rate.?limit|quota|usage limit|too many requests/i
 // HTTP status when the API rejects the token outright.
 const AUTH =
   /invalid api key|please run\s+\/?login|\/login\b|not logged ?in|log ?in again|unauthori[sz]ed|authentication|credentials?\b|oauth|\b401\b|\b403\b|token (?:is |has )?expired|expired token|session expired/i
+
+// The provider took the request and failed on its side: a stream cut before
+// the response completed, a 5xx, an overloaded or unavailable service.
+const OUTAGE =
+  /stream (?:disconnected|closed) before|before response\.completed|\b50[0234]\b|bad gateway|service unavailable|temporarily unavailable|overloaded|internal server error|server_error|upstream (?:connect )?error/i
 
 // The request never reached Anthropic: DNS, TCP, proxy, or TLS interception.
 const NETWORK =
@@ -36,6 +41,7 @@ const CRASH =
 export function classifyEngineError(message: string, exitCode?: number | null): EngineErrorKind {
   if (QUOTA.test(message)) return 'quota'
   if (AUTH.test(message)) return 'auth'
+  if (OUTAGE.test(message)) return 'outage'
   if (NETWORK.test(message)) return 'network'
   if (TIMEOUT.test(message)) return 'timeout'
   if (CRASH.test(message)) return 'crash'

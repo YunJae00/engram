@@ -177,7 +177,7 @@ function sameArgs(a: Record<string, unknown>, b: Record<string, unknown>): boole
 // typed into a website: told that the procedure is called "work log upload",
 // the model typed that name into the log as the day's work, and it passed a
 // check that counted the loop's own scaffolding as reading.
-const CONTENT_TOOLS = new Set(['read_pages', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web'])
+const CONTENT_TOOLS = new Set(['read_pages', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'look_in_parallel'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')

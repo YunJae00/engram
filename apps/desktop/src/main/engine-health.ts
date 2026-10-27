@@ -117,6 +117,10 @@ export function noteRunOutcome(ctx: VaultContext, report: RunReport, engine = ct
     // Re-detect so ctx.engines stops carrying an engine nothing can use — the
     // shell then falls back to the honest "installed, just log in" banner.
     if (report.haltReason === 'auth') void revalidateEngines(ctx)
+    if (report.haltReason === 'outage') {
+      engineBackoff.noteOutage()
+      scheduleQuotaResume(ctx, engineBackoff.blockedMs())
+    }
     if (report.haltReason === 'quota') {
       // The DESKTOP owns the shared gate (a core-level gate blocked the
       // substitute engine and leaked across runs — reverted). Arm it with the
@@ -148,6 +152,14 @@ export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, c
     // and schedule the wake-up when the caller brought a ctx.
     engineBackoff.noteQuota()
     if (ctx) scheduleQuotaResume(ctx, engineBackoff.blockedMs() || QUOTA_RESUME_DEFAULT_MS)
+    return
+  }
+  // The provider failing on its side is said at once and waited out: the
+  // background work rests until it answers again.
+  if (kind === 'outage') {
+    setHealth(engine.id, { healthy: false, reason: 'outage' })
+    engineBackoff.noteOutage()
+    if (ctx) scheduleQuotaResume(ctx, engineBackoff.blockedMs())
     return
   }
   if (kind === 'auth') {

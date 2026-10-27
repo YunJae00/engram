@@ -118,6 +118,15 @@ describe('job runner', () => {
     expect(report.haltReason).toBe('quota')
   })
 
+  it('stops the run when the provider fails on its side instead of failing every job', async () => {
+    let calls = 0
+    const cut = () => { calls++; return [{ type: 'error', message: 'stream disconnected before completion: stream closed before response.completed' } as EngineEvent] }
+    const report = await new JobRunner(paths, [engineOf('codex', cut)]).runAll([job('J1', 'one', []), job('J1', 'two', []), job('J1', 'three', [])])
+    expect(report.haltReason).toBe('outage')
+    expect(report.failed).toHaveLength(0)
+    expect(calls).toBe(1)
+  })
+
   it('a substituted engine is not a halt — nothing to tell the user', async () => {
     const report = await new JobRunner(paths, [engineOf('claude', deadLogin), engineOf('mock', () => ok('r'))]).runAll([
       job('J1', 'one', []),
