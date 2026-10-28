@@ -165,6 +165,7 @@ import { notifyTask, surfaceComet } from './task-notify.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
+import { registerFirstSetupIpc } from './first-setup.js'
 import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
@@ -1745,6 +1746,7 @@ export function registerIpc(ctx: VaultContext): void {
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
+  registerFirstSetupIpc(ctx)
   startWorkMap(ctx, () => scheduleAutoTidy(ctx, 0))
   // What was gathered at setup is organized into Cosmos once, in the background.
   const firstFiling = new AbortController()

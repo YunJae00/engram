@@ -192,3 +192,13 @@
 .onboard-model-menu { animation: dev-popover-in 140ms var(--ease-out); transform-origin: top center; }
 .onboard-preferences[aria-busy='true'] { opacity: 0.6; pointer-events: none; transition: opacity 160ms ease; }
 @media (prefers-reduced-motion: reduce) { .onboard-model-reveal { transition: none; } .onboard-model-menu { animation: none; } }
+
+/* The wait after setup: the steps it is made of, one at a time. */
+.first-setup-lead { margin: 0 0 20px; color: var(--fg-dim); line-height: 1.6; }
+.first-setup-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.first-setup-steps > li { display: flex; align-items: center; gap: 10px; color: var(--fg-dim); line-height: 1.5; }
+.first-setup-steps > li[data-state="active"] { color: var(--fg-strong); font-weight: 550; }
+.first-setup-steps > li[data-state="done"] { color: var(--fg); }
+.first-setup-steps svg { flex: none; }
+.first-setup-dot { flex: none; width: 15px; height: 15px; display: inline-grid; place-items: center; }
+.first-setup-dot::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .5; }
