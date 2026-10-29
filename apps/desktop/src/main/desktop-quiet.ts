@@ -86,13 +86,9 @@ async function request<T>(binding: DesktopBinding, method: DesktopMethod, args: 
     if (desktopBinding(binding.lane) !== binding || !binding.readable || binding.stopped || binding.host.closed) throw new Error('This app connection changed. Read the app again.')
   }
   check()
-  const abort = () => binding.host.close()
-  signal?.addEventListener('abort', abort, { once: true })
-  try {
-    const result = await binding.host.request<T>(method, { ...scoped(binding), ...args })
-    check()
-    return result
-  } finally { signal?.removeEventListener('abort', abort) }
+  const result = await binding.host.request<T>(method, { ...scoped(binding), ...args }, signal)
+  check()
+  return result
 }
 
 export async function personBusyIn(binding: DesktopBinding, signal?: AbortSignal): Promise<boolean> {

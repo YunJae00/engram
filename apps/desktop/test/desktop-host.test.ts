@@ -359,15 +359,79 @@ describe('desktop transport failures', () => {
     expect(revoked).toHaveBeenCalledOnce()
   })
 
-  it.each(['ready', 'request'])('closes on the %s watchdog without retrying native input', async (phase) => {
+  it.each(['ready', 'request'])('only closes an unready helper on the %s watchdog', async (phase) => {
     const request = host.request('observe', target)
     const rejected = expect(request).rejects.toThrow(phase === 'ready' ? 'connection closed' : 'stopped responding')
     if (phase === 'request') await ready()
-    await vi.advanceTimersByTimeAsync(phase === 'ready' ? 25_001 : 8_001)
+    await vi.advanceTimersByTimeAsync(phase === 'ready' ? 25_001 : 30_001)
     await rejected
-    expect(child.kill).toHaveBeenCalledOnce()
-    expect(revoked).toHaveBeenCalledOnce()
+    expect(child.kill).toHaveBeenCalledTimes(phase === 'ready' ? 1 : 0)
+    expect(revoked).toHaveBeenCalledTimes(phase === 'ready' ? 1 : 0)
   })
+  it('times out one request, ignores its late reply and continues using the same helper', async () => {
+    const slow = host.request('quietScan', target)
+    const rejected = expect(slow).rejects.toThrow('within 30 seconds')
+    await ready()
+    const old = latest('quietScan')
+    await vi.advanceTimersByTimeAsync(20_000)
+    const next = host.request('quietRead', target)
+    await flush()
+    await vi.advanceTimersByTimeAsync(10_001)
+    await rejected
+    respond({ id: old, result: { snapshot: 'late' } })
+    respond({ id: latest('quietRead'), result: { text: 'still connected' } })
+    expect(await next).toEqual({ text: 'still connected' })
+    expect(host.closed).toBe(false)
+    expect(child.kill).not.toHaveBeenCalled()
+    expect(deps.spawn).toHaveBeenCalledOnce()
+  })
+
+  it('revokes a timed-out bind without killing the helper or unrelated reads', async () => {
+    Object.assign(child, { pid: 1234 })
+    const pending = host.request('bind', target)
+    const rejected = expect(pending).rejects.toThrow('within 30 seconds')
+    await ready()
+    respond({ id: latest('prepare'), result: { intervention: '42' } })
+    await flush()
+    const old = latest('bind')
+    await vi.advanceTimersByTimeAsync(20_000)
+    const reading = host.request('quietRead', target)
+    await flush()
+    await vi.advanceTimersByTimeAsync(10_001)
+    await rejected
+    expect(messages().at(-1)?.method).toBe('stop')
+    respond({ id: old, result: { lease: 'late-grant' } })
+    respond({ id: latest('quietRead'), result: { text: 'alive' } })
+    expect(await reading).toEqual({ text: 'alive' })
+    expect(host.closed).toBe(false)
+  })
+
+  it('fails only the bind when its preparation request times out', async () => {
+    Object.assign(child, { pid: 1234 })
+    const pending = host.request('bind', target)
+    const rejected = expect(pending).rejects.toThrow('within 30 seconds')
+    await ready()
+    await vi.advanceTimersByTimeAsync(30_001)
+    await rejected
+    expect(host.closed).toBe(false)
+    expect(messages().some(message => message.method === 'bind')).toBe(false)
+  })
+
+  it('cancels a request without killing the helper or another pending read', async () => {
+    const abort = new AbortController()
+    const canceled = host.request('quietScan', target, abort.signal)
+    const rejected = expect(canceled).rejects.toThrow('Stopped')
+    await ready()
+    const next = host.request('quietRead', target)
+    await flush()
+    abort.abort(new Error('Stopped'))
+    await rejected
+    respond({ id: latest('quietRead'), result: { text: 'ready' } })
+    expect(await next).toEqual({ text: 'ready' })
+    expect(host.closed).toBe(false)
+    expect(child.kill).not.toHaveBeenCalled()
+  })
+
   it('clears old request watchdogs when Stop supersedes their generation', async () => {
     await bind('old')
     const request = host.request('observe', target)

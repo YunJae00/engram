@@ -71,7 +71,7 @@ describe('quiet app access', () => {
     expect(changed.request.mock.calls.some(([method]) => method === 'quietSet')).toBe(false)
   })
 
-  it('closes only its helper when cancelled during a native operation', async () => {
+  it('passes request cancellation through without closing the helper', async () => {
     const { held, request } = binding({ foreground: false, idleMs: 9000 })
     let finish!: (value: unknown) => void
     request.mockImplementation(() => new Promise(resolve => { finish = resolve }))
@@ -79,7 +79,8 @@ describe('quiet app access', () => {
     const pending = quietScan('bot-one', 'Claude', undefined, controller.signal).catch((error: Error) => error.message)
     await vi.advanceTimersByTimeAsync(1)
     controller.abort(new Error('cancelled'))
-    expect(held.host.close).toHaveBeenCalledOnce()
+    expect(held.host.close).not.toHaveBeenCalled()
+    expect(request).toHaveBeenCalledWith('quietScan', expect.any(Object), controller.signal)
     finish({ snapshot: 'stale' })
     expect(await pending).toBe('cancelled')
   })
@@ -91,7 +92,7 @@ describe('quiet app access', () => {
     expect(deps.bind).not.toHaveBeenCalled()
     await quietScan('bot-one', 'Notes', undefined)
     expect(deps.bind).toHaveBeenCalledWith('bot-one', { app: 'Notes' })
-    expect(request).toHaveBeenCalledWith('quietScan', { window: '7', pid: 70, find: 'Send' })
+    expect(request).toHaveBeenCalledWith('quietScan', { window: '7', pid: 70, find: 'Send' }, undefined)
     expect(request.mock.calls.map(([method]) => method)).not.toContain('bind')
   })
 
@@ -109,7 +110,7 @@ describe('quiet app access', () => {
     busy.state.idleMs = 9_000
     await vi.advanceTimersByTimeAsync(600)
     await expect(pending).resolves.toMatchObject({ landed: true })
-    expect(busy.request).toHaveBeenLastCalledWith('quietSet', { window: '7', pid: 70, snapshot: 'f'.repeat(32), control: 'c1', text: 'hello', expected: 'old' })
+    expect(busy.request).toHaveBeenLastCalledWith('quietSet', { window: '7', pid: 70, snapshot: 'f'.repeat(32), control: 'c1', text: 'hello', expected: 'old' }, undefined)
     expect(deps.flog).toHaveBeenCalledWith('desktop-quiet', expect.stringContaining('waited'))
   })
 
