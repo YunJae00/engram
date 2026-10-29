@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openActivity } from './navigation.js'
+import { closeTestApp, openActivity } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -34,7 +34,12 @@ test.beforeAll(async () => {
   await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Browser preview' }).click()
 })
-test.afterAll(async () => { await app?.close(); server?.closeAllConnections(); await new Promise<void>(resolve => server?.close(() => resolve())) })
+test.afterAll(async () => {
+  try { await closeTestApp(app) } finally {
+    server?.closeAllConnections()
+    await new Promise<void>(resolve => server?.close(() => resolve()))
+  }
+})
 
 test('a manual empty browser offers address entry instead of indefinite loading', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))

@@ -610,6 +610,7 @@ export { withAbort as agentAbortable }
 // the person is being recorded in. A recording session owns the browser, so
 // an unforced close steps aside; memory pressure and quit pass force.
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
+  if (closing) return closing
   if (nativePagesVisible() && !options.force) return
   // Somebody is standing at the window - a recording, or a person typing their
   // password into a login wall. An unforced close waits for them; memory
