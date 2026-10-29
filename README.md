@@ -33,7 +33,7 @@ No Engram account. No Engram subscription.
 - **Cosmos** — every memory a star; brightness is memory strength, constellations are topics, gold halos mark recent recall. Chat is docked on its right edge: ask your memory, with hybrid retrieval (lexical + semantic + spreading activation) and instant source cards.
 - **Brain** — topics as readable pages, warm topics first, with the librarian's synthesis on top.
 - **List / Timeline** — the raw memories, filterable.
-- **Computer** (Windows, Claude connection) — enable computer use in Settings to let a comet work in an open app with your real mouse and keyboard. A screen glow and status pill identify the active connection; moving the mouse or typing pauses control, and work can resume after your hands are still. Esc or Stop ends control for the turn. Sign-in pages, passwords and security settings require manual interaction.
+- **Computer** (Windows and macOS, Claude connection) — enable computer use in Settings to let a comet work in an open app with your real mouse and keyboard. A screen glow and status pill identify the active connection; moving the mouse or typing pauses control, and work can resume after your hands are still. Esc or Stop ends control for the turn. Sign-in pages, passwords and security settings require manual interaction.
 - **Routines** — the pages and clicks you walk every day, saved once and replayed verbatim in a dedicated browser profile. No model runs, so a routine works on a machine too busy for inference; what it reads comes back as a review card, and one that types into a page asks before it repeats itself.
 - **MCP server** — connect AI tools to your memory: context injection, search, capture, and graph traversal over the Model Context Protocol.
 
@@ -56,7 +56,7 @@ Everything lands as markdown in a folder you choose. `private/` is never passed 
 
 Grab the installer from [Releases](../../releases). On first run you sign in to the brain you already pay for — Claude or ChatGPT — with your own account; the embedding model that connects your memories downloads once and runs on this machine.
 
-Currently supported: **Windows**. macOS support is planned; its packaging code remains available but releases do not publish macOS installers. Linux artifacts are not published.
+Release builds target **Windows** and **macOS (Apple Silicon and Intel)**. Linux artifacts are not published. Native computer control uses Windows UI Automation or macOS Accessibility. macOS requires Accessibility and Screen Recording permission; live Office automation requires installed, activated Office applications and Automation permission.
 
 The Windows installer is not yet code signed. SmartScreen may warn — **More info → Run anyway**. On managed devices, follow your organization's software installation policy.
 
@@ -74,7 +74,7 @@ If downloading fails, retry or use the **Official installation guide** link for 
 
 Direct captures and supported file imports enter the filing queue immediately. With the desk journal enabled, foreground application names and window titles are saved in five-minute segments and checked for filing every five minutes, with a five-minute settling window. Startup catches up on up to seven days of existing journal records. These are activity clues, not screenshots or proof that work was completed. Filing needs an available, connected AI; quota pauses leave captures queued on disk.
 
-Windows downloads updates in the background and installs them on the next quit. Managed-device installation blocks require your administrator's approval. macOS packaging and signing hooks remain in the source for future support.
+Windows downloads updates in the background and installs them on the next quit. Managed-device installation blocks require your administrator's approval. macOS builds use an ad-hoc signature and notify about updates with a download link; automatic installation requires Developer ID signing.
 
 ## Code signing policy
 
@@ -90,7 +90,7 @@ Since March 2024 a certificate alone does not silence Windows: SmartScreen decid
 
 ## Build from source
 
-Prerequisites: Node 22+, pnpm 9+.
+Prerequisites: Node **22.23.4+** (the tested version is in `.node-version`) and **pnpm 10.25.0**. Node 22.17 can fail during Playwright test collection; use the pinned version on both platforms.
 
 ```bash
 pnpm install
@@ -102,7 +102,7 @@ pnpm run test:e2e   # Playwright end-to-end suite
 pnpm run dist       # build the installer
 ```
 
-Quick checks are development feedback, not a release gate. Shared core changes may still affect many tests. Releases require the full check and end-to-end suite. CI runs the full Electron suite across two isolated Windows shards; both must pass. Local Electron tests remain sequential to avoid competing windows and memory guards.
+Quick checks are development feedback, not a release gate. Shared core changes may still affect many tests. Releases require the full check and end-to-end suite. CI runs the full Electron suite across two isolated shards on each of Windows and macOS; every shard must pass. Local Electron tests remain sequential to avoid competing windows and memory guards.
 
 ## Architecture
 
@@ -127,3 +127,33 @@ One author, one primary machine, roughly a year of daily use on a real vault. Th
 ## License
 
 [MIT](LICENSE)
+
+### Develop on Mac, release for Windows and Mac
+
+Run `pnpm install --frozen-lockfile`, then `pnpm dev` on either OS. Run
+`pnpm run check` and `pnpm run test:e2e` locally before sending changes to CI.
+The local tests exercise the current OS; Windows native behavior is tested on
+GitHub's Windows runner, including when the changes were written on a Mac.
+
+CI runs type checks, lint, unit tests and Electron E2E on Windows and macOS.
+The Windows native fixture and universal macOS native policy checks run separately. A tag-triggered release (or the
+Release workflow's explicit tag input) validates that tag on both platforms
+before building Windows `.exe` and macOS `.dmg`/`.zip` artifacts. Both builds
+must pass the packaged semantic-worker smoke check before publication.
+`pnpm dist` builds the current host's installers; it does not emulate Windows
+on a Mac. Windows installers are built on the Windows runner.
+
+For a Mac with Accessibility and Screen Recording permission, run:
+
+```sh
+node apps/desktop/scripts/build-desktop.mjs
+node apps/desktop/scripts/test-desktop-macos.mjs
+node apps/desktop/scripts/test-office-macos.mjs
+```
+
+The native fixture controls only its own test window. Office integration reports
+an explicit skip when an app is missing or its baseline document cannot be
+created and saved (for example, Office is not activated). Once the baseline
+succeeds, backend errors fail the test. Skips do not establish Office compatibility.
+Hosted macOS CI checks the universal native binary and its input policy; the
+interactive fixture needs an authorized graphical session.

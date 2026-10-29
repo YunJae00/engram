@@ -43,6 +43,7 @@ async function stop(): Promise<void> {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   vi.useFakeTimers()
   child = processDouble()
   deps.spawn.mockReturnValue(child)
@@ -397,4 +398,18 @@ describe('desktop transport failures', () => {
     expect(child.kill).toHaveBeenCalledOnce()
     expect(revoked).toHaveBeenCalledOnce()
   })
+})
+
+it('uses the Mac helper and prepares control without Windows foreground delegation', async () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  child.pid = 321
+  const request = host.request('bind', { ...target, grant: 'user-grant' })
+  await ready()
+  expect(deps.spawn.mock.calls[0]![0]).toMatch(/\/EngramDesktop$/)
+  expect(messages().map(message => message.method)).toEqual(['prepare'])
+  respond({ id: latest('prepare'), result: { intervention: '0' } })
+  await flush()
+  expect(deps.execFile).not.toHaveBeenCalled()
+  respond({ id: latest('bind'), result: { lease: 'mac-lease' } })
+  await expect(request).resolves.toEqual({ lease: 'mac-lease' })
 })

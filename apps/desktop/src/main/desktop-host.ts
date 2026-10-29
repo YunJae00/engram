@@ -41,16 +41,17 @@ export class DesktopHost {
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
   get closed(): boolean { return this.ended }
-  static available(): boolean { return process.platform === 'win32' && existsSync(DesktopHost.path()) }
+  static available(): boolean { return (process.platform === 'win32' || process.platform === 'darwin') && existsSync(DesktopHost.path()) }
   private static path(): string {
-    return app.isPackaged ? join(process.resourcesPath, 'bin', 'desktop', 'EngramDesktop.exe')
-      : fileURLToPath(new URL('../../native-bin/desktop/EngramDesktop.exe', import.meta.url))
+    const name = process.platform === 'darwin' ? 'EngramDesktop' : 'EngramDesktop.exe'
+    return app.isPackaged ? join(process.resourcesPath, 'bin', 'desktop', name)
+      : fileURLToPath(new URL(`../../native-bin/desktop/${name}`, import.meta.url))
   }
 
   private start(): Promise<void> {
     if (this.ended) throw new Error('Computer access ended. Reconnect the window to continue.')
     if (this.ready) return this.ready
-    if (!DesktopHost.available()) throw new Error('Computer control is available on Windows in this build.')
+    if (!DesktopHost.available()) throw new Error('The native computer-control helper is missing from this build.')
     const child = new ProcessClient(DesktopHost.path(), ['--owner-pid', String(process.pid)])
     this.child = child
     child.stderr.resume()
@@ -172,7 +173,7 @@ export class DesktopHost {
             if (this.pending.get(id) !== pending || this.ended) return
             line = JSON.stringify({ ...args, id, method, intervention: input.intervention }) + '\n'
           }
-          await new Promise<void>((done) => {
+          if (process.platform === 'win32') await new Promise<void>((done) => {
             execFile(DesktopHost.path(), ['--owner-pid', String(process.pid), '--grant-foreground', String(pid)],
               { windowsHide: true, timeout: 1500 }, (error) => {
                 if (error) flog('desktop-foreground-grant', 'Foreground delegation was unavailable; checking native activation.')

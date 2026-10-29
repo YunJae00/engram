@@ -1,3 +1,4 @@
+import { availableMemory } from './available-memory.js'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
@@ -139,7 +140,6 @@ import {
   type ErrandResult,
  appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
 import { randomUUID } from 'node:crypto'
-import os from 'node:os'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
@@ -1134,7 +1134,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     const minFree = ERRAND_MIN_FREE
     const webMinFree = ERRAND_WEB_MIN_FREE
-    const freeAtStart = os.freemem()
+    const freeAtStart = availableMemory()
     if (freeAtStart < minFree) {
       release()
       return {
@@ -1161,7 +1161,7 @@ export function registerIpc(ctx: VaultContext): void {
         // for a note it was already holding.
         retrieve: async (query, limit) => {
           const semantic =
-            os.freemem() > ROOM_FOR_EMBEDDER
+            availableMemory() > ROOM_FOR_EMBEDDER
               ? await semanticQuery(query, limit)
               : await semanticQueryIfLive(query, limit)
           // Which notes the embedder itself recognised. Carried through so the
@@ -1174,7 +1174,7 @@ export function registerIpc(ctx: VaultContext): void {
           // really has nothing" and "the embedder was asleep" is invisible.
           flog(
             'comet-retrieve',
-            `"${query.slice(0, 40)}" free=${(os.freemem() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
+            `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
           )
           const hits = activationRerank(
             hybridMerge(ctx.store.search(query), semantic, limit),
@@ -1447,7 +1447,7 @@ export function registerIpc(ctx: VaultContext): void {
       release()
       return { ok: false, error: 'No Chrome-family browser found — install Google Chrome to run routines.' }
     }
-    const free = os.freemem()
+    const free = availableMemory()
     if (free < ROUTINE_MIN_FREE) {
       release()
       return {
@@ -1721,7 +1721,7 @@ export function registerIpc(ctx: VaultContext): void {
       return { ok: true, botId: bot.id }
     },
     peek: peekWatch,
-  })
+  }, !app.isPackaged && process.env['ENGRAM_ENGINE'] === 'mock' && process.env['ENGRAM_USERDATA'] && process.env['ENGRAM_TEST_FAST_SCHEDULE'] === '1' ? 100 : undefined)
 
   // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
   // It resumes once the brains have had a moment to connect after start.
@@ -2349,13 +2349,13 @@ export function registerIpc(ctx: VaultContext): void {
         // comet has to tell "the notebook has nothing on this" from
         // "the words differ and the subject is the same".
         const semantic =
-          os.freemem() > ROOM_FOR_EMBEDDER
+          availableMemory() > ROOM_FOR_EMBEDDER
             ? await semanticQuery(query, limit)
             : await semanticQueryIfLive(query, limit)
         const closeness = new Map(semantic.map((one) => [one.id, one.score]))
         flog(
           'comet-retrieve',
-          `"${query.slice(0, 40)}" free=${(os.freemem() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
+          `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
         )
         const hits = activationRerank(
           hybridMerge(ctx.store.search(query), semantic, limit),

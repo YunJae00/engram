@@ -78,6 +78,7 @@ win:
     - "!node_modules/@openai/codex-linux-*/**"
     - "!node_modules/@openai/codex-win32-arm64/**"
 mac:
+  artifactName: ${productName}-${version}-${arch}.${ext}
   target:
     - target: dmg
       arch: [arm64, x64]
@@ -94,6 +95,9 @@ mac:
   # keychain prompt mid-build and an app that runs nowhere else. Null makes
   # both machines take one path, and afterPack seals it ad-hoc.
   identity: null
+  extendInfo:
+    NSAppleEventsUsageDescription: Engram uses app automation to read and edit documents you choose.
+    NSScreenCaptureUsageDescription: Engram captures selected app windows when you ask it to inspect them.
   category: public.app-category.productivity
   darkModeSupport: true
   files:

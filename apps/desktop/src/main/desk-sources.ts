@@ -9,6 +9,7 @@ import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { loadSettings } from './settings.js'
 import type { VaultContext } from './vault.js'
+import { readMacAppUse } from './mac-app-usage.js'
 import { historyCandidates } from './web-trail.js'
 
 // The desk half of the work map: the files, apps and downloads this computer
@@ -52,6 +53,7 @@ async function readRecentFiles(sinceMs: number, workspace: string): Promise<Rece
 }
 
 async function readUsedApps(): Promise<AppUse[]> {
+  if (process.platform === 'darwin') return readMacAppUse()
   if (process.platform !== 'win32') return []
   const { stdout } = await run('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist', '/s'], { encoding: 'latin1', maxBuffer: 8 * 1024 * 1024, windowsHide: true })
   return parseUserAssist(stdout)

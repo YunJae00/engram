@@ -49,8 +49,8 @@ function pruneOtherChip(context, app) {
       console.log(`adhoc-sign: pruned ${other} runtime ${dir}`)
     }
   }
-  const own = join(modules, '@anthropic-ai', `claude-agent-sdk-darwin-${arch}`)
-  if (!existsSync(own)) console.warn(`adhoc-sign: WARNING — no ${arch} engine runtime in the bundle`)
+  const own = join(modules, '@openai', `codex-darwin-${arch}`)
+  if (!existsSync(own)) throw new Error(`adhoc-sign: missing ${arch} Codex runtime in the bundle`)
 }
 
 function which(tool) {

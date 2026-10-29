@@ -14,6 +14,7 @@ export default tseslint.config(
       '**/playwright-report/**',
       // generated binary bundle (MinGit + the esbuild'd MCP server)
       'apps/desktop/bundle/**',
+      'apps/desktop/native-bin/**',
       'tmp/**',
       'fixtures/**',
       'coverage/**',

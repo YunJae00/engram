@@ -13,13 +13,21 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref }}
+
   build:
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             name: windows
+          - os: macos-latest
+            name: macos
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +36,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build installer
@@ -46,6 +54,8 @@ jobs:
           name: installers-${{ matrix.name }}
           path: |
             apps/desktop/dist/*.exe
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest*.yml
           retention-days: 7
@@ -72,7 +82,10 @@ jobs:
             echo
             echo "- **Windows** — [Engram-Setup-${version}.exe](${base}/Engram-Setup-${version}.exe)"
             echo
-            echo 'Windows is currently supported. macOS support is planned.'
+            echo "- **macOS Apple Silicon** — [Engram-${version}-arm64.dmg](${base}/Engram-${version}-arm64.dmg)"
+            echo "- **macOS Intel** — [Engram-${version}-x64.dmg](${base}/Engram-${version}-x64.dmg)"
+            echo
+            echo 'macOS builds are ad-hoc signed, not notarized. Computer control requires Accessibility and Screen Recording permissions; Office automation additionally requires installed, activated Office apps and Automation permission.'
             echo
             echo '- **Windows:** SmartScreen says it blocked an unrecognized app. The **Run anyway** button is hidden until you click **More info** first.'
             echo 'Claude is installed separately by the user from Settings → AI or during onboarding. The official Anthropic runtime and terms apply; it is not included in this installer.'

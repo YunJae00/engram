@@ -39,3 +39,15 @@ it.each([
   await expect(tools.find((t) => t.name === 'ppt_edit')!.run({ file, revision, edits: [{ kind: 'text', slide: 1, shape: 1, text: 'x' }], ...extra }, { task: 'edit' })).rejects.toThrow()
   expect(run).toHaveBeenCalledOnce()
 })
+
+it('accepts POSIX documents without merging case-sensitive identities', async () => {
+  const run = vi.fn().mockResolvedValue({ revision })
+  const tools = officeEditTools({ run })
+  const read = tools.find(t => t.name === 'word_read')!
+  const edit = tools.find(t => t.name === 'word_edit')!
+  await read.run({ file: '/Users/test/Reports/../Report.docx' }, { task: 'read' })
+  expect(run).toHaveBeenLastCalledWith('word.read', { file: '/Users/test/Report.docx' }, undefined)
+  await expect(edit.run({ file: '/Users/test/report.docx', revision, edits }, { task: 'edit' })).rejects.toThrow('Read this document')
+  await edit.run({ file: '/Users/test/Report.docx', revision, edits }, { task: 'edit' })
+  expect(run).toHaveBeenCalledTimes(2)
+})

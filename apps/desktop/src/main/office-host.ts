@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { OfficeOp } from 'core'
+import { macOfficeRequest, closeMacOffice } from './office-mac.js'
 import { OFFICE_HOST_SCRIPT } from './office-script.js'
 
 // One PowerShell process holds the Office applications for as long as a
@@ -27,7 +28,7 @@ let probed: Probe | null | undefined
 let stopping: Promise<void> = Promise.resolve()
 const pending = new Map<number, Pending>()
 
-export function officeSupported(): boolean { return process.platform === 'win32' }
+export function officeSupported(): boolean { return process.platform === 'win32' || process.platform === 'darwin' }
 
 // Which applications this machine registers. Asked once per app run; the
 // answer is what decides whether the office tools appear on the menu.
@@ -119,6 +120,7 @@ export function officeRequest(op: OfficeOp, args: Record<string, unknown>, signa
   const run = async (): Promise<unknown> => {
     signal?.throwIfAborted()
     assertActive?.()
+    if (process.platform === 'darwin') return macOfficeRequest(op, args, signal, activity, assertActive)
     await stopping
     await start()
     try { signal?.throwIfAborted(); assertActive?.() }
@@ -144,4 +146,4 @@ export function officeRequest(op: OfficeOp, args: Record<string, unknown>, signa
   return next
 }
 
-export function closeOfficeHost(): void { fail(new Error('The office host closed.')) }
+export function closeOfficeHost(): void { closeMacOffice(); fail(new Error('The office host closed.')) }

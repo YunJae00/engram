@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => ({
 }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.data }, shell: { readShortcutLink: (path: string) => ({ target: fake.targets.get(path.split(/[\\/]/).pop()!) ?? '' }) } }))
 vi.mock('node:child_process', () => ({ execFile: (_cmd: string, _args: string[], _options: object, done: (error: null, result: { stdout: string }) => void) => done(null, { stdout: fake.reg }) }))
+vi.mock('../src/main/mac-app-usage.js', () => ({ readMacAppUse: async () => [] }))
 vi.mock('../src/main/web-trail.js', () => ({ historyCandidates: () => [fake.history] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => fake.settings }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => undefined }))

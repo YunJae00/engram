@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test'
 
 export async function openActivity(page: Page, activity: string): Promise<void> {
   if (activity === 'routines') {
-    await page.keyboard.press('Control+Shift+P')
+    await page.keyboard.press('ControlOrMeta+Shift+P')
     await page.getByRole('option', { name: 'Run a routine…', exact: true }).click()
     return
   }

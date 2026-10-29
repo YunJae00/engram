@@ -1,0 +1,45 @@
+import {spawn, execFileSync} from 'node:child_process';
+import {createInterface} from 'node:readline';
+import {once} from 'node:events';
+import assert from 'node:assert/strict';
+import {mkdtempSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+if(process.platform !== 'darwin') throw new Error('This fixture requires macOS');
+const root=fileURLToPath(new URL('..',import.meta.url));
+const directory=mkdtempSync(join(tmpdir(),'engram-native-'));
+const fixturePath=join(directory,'EngramFixture');
+execFileSync('xcrun',['swiftc','-parse-as-library',join(root,'native/macos-test/Fixture.swift'),'-o',fixturePath]);
+const fixture=spawn(fixturePath,[]);
+const fixtureLines=createInterface({input:fixture.stdout});
+const [window]=await once(fixtureLines,'line');
+await new Promise(r=>setTimeout(r,700));
+const host=spawn(join(root,'native-bin/desktop/EngramDesktop'),['--owner-pid',String(process.pid)]);
+const pending=new Map(); let id=0;
+const ready=new Promise((resolve,reject)=>createInterface({input:host.stdout}).on('line',line=>{const m=JSON.parse(line); if(m.type==='ready')resolve(); if(m.type==='fatal')reject(Error(m.error)); if(m.id){const p=pending.get(m.id);pending.delete(m.id);if(m.error)p.reject(Error(m.error));else p.resolve(m.result)}}));
+host.stderr.on('data',d=>process.stderr.write(d));
+function request(method,args={}){return new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});host.stdin.write(JSON.stringify({id:n,method,window,pid:fixture.pid,...args})+'\n')})}
+try {
+ await ready;
+ const info=await request('inspectWindow');assert.equal(info.pid,fixture.pid);
+ const scan=await request('quietScan');assert(!JSON.stringify(scan).includes('fixture-secret-never-export'));
+ console.log('scan',scan.controls.length,scan.skippedControls);
+ const field=scan.controls.find(n=>n.name==='Fixture message');assert(field?.can.set);
+ const set=await request('quietSet',{snapshot:scan.snapshot,control:field.id,text:'changed by owned test',expected:'owned fixture initial'});assert(set.exact);
+ const observed=await request('observe');assert(observed.captureSafe);assert(observed.protectedBounds.length);
+ const capture=await request('capture',{snapshot:observed.snapshot});assert(capture.data.length);console.log('capture',capture.width,capture.height);
+ const grant=crypto.randomUUID();const pre=await request('prepare',{grant});const lease=(await request('bind',{grant,intervention:pre.intervention})).lease;
+ const active=await request('observe',{lease});
+ console.log('focus',active.focusedEditable,active.focusedControl);
+ await request('type',{lease,snapshot:active.snapshot,text:'한글🙂'});
+ await new Promise(r=>setTimeout(r,150));
+ const typed=await request('quietScan');
+ assert(typed.controls.some(n=>n.value.includes('한글🙂')));
+ const replacement=await request('observe',{lease});
+ const node=replacement.nodes.find(n=>n.name==='Fixture message');
+ await request('replace',{lease,snapshot:replacement.snapshot,element:node.id,expected:node.value,text:'replaced by owned test'});
+ await assert.rejects(request('replace',{lease,snapshot:replacement.snapshot,element:node.id,expected:'replaced by owned test',text:'stale'}));
+ await request('stop');
+ console.log('PASS owned Mac inspect, secure scan, quiet edit, masked capture, lease replacement, stale snapshot rejection');
+} finally {host.stdin.end();host.kill();fixture.kill();rmSync(directory,{recursive:true,force:true})}

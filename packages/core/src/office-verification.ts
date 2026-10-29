@@ -1,4 +1,4 @@
-import { win32 } from 'node:path'
+import { posix, win32 } from 'node:path'
 import type { AgentLoopResult, AgentLoopStep } from './agent-loop.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
@@ -20,6 +20,7 @@ function identity(tool: string, result: Record<string, unknown>): string | undef
   if (app === 'excel') return typeof result['workbook'] === 'string' && typeof result['sheet'] === 'string'
     ? JSON.stringify([app, result['workbook'].toLowerCase(), result['sheet'].toLowerCase()]) : undefined
   const path = result['file'] ?? result['saved']
+  if (typeof path === 'string' && posix.isAbsolute(path)) return `${app}:${posix.normalize(path)}`
   return typeof path === 'string' && win32.isAbsolute(path) ? `${app}:${win32.normalize(path).toLowerCase()}` : undefined
 }
 

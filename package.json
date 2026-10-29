@@ -1,12 +1,12 @@
 {
   "name": "engram-monorepo",
   "private": true,
-  "version": "0.8.85",
+  "version": "0.8.86",
   "description": "A second brain that keeps your memories on your machine",
   "author": "YunJae Kwon",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.23.4"
   },
   "packageManager": "pnpm@10.25.0",
   "pnpm": {

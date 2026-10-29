@@ -18,6 +18,7 @@ let notify: ReturnType<typeof vi.fn>
 
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); vi.useFakeTimers()
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   mock.packaged = true
   engine = (await import('electron-updater')).default.autoUpdater
   engine.removeAllListeners()
@@ -37,7 +38,7 @@ beforeEach(async () => {
   notify = vi.fn()
   updater.startUpdater(notify)
 })
-afterEach(() => { vi.useRealTimers() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 async function settle() { for (let i = 0; i < 8; i++) await Promise.resolve() }
 
 it('replaces a downloaded release and refuses restart until the latest bytes arrive', async () => {
@@ -97,4 +98,19 @@ it('does not check or download in a development build', async () => {
   expect(await updater.checkForUpdatesNow()).toMatchObject({ state: 'checking-unavailable' })
   expect(mock.check).not.toHaveBeenCalled()
   expect(mock.download).not.toHaveBeenCalled()
+})
+
+it('notifies on macOS without downloading an update that cannot be installed', async () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  vi.resetModules()
+  engine.removeAllListeners()
+  updater = await import('../src/main/updater.js')
+  updater.startUpdater(notify)
+  expect(await updater.checkForUpdatesNow()).toEqual({ state: 'available', version: latest, selfInstalls: false })
+  expect(mock.download).not.toHaveBeenCalled()
+  const quitting = vi.fn()
+  expect(await updater.installUpdateNow(quitting)).toEqual({ started: true })
+  expect(mock.open).toHaveBeenCalledWith('https://github.com/YunJae00/engram/releases/latest')
+  expect(mock.install).not.toHaveBeenCalled()
+  expect(quitting).not.toHaveBeenCalled()
 })

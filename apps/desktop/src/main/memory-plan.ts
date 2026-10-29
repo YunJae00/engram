@@ -1,4 +1,4 @@
-import os from 'node:os'
+import { availableMemory } from './available-memory.js'
 
 // What the machine can spare, honestly. Two heavyweights work here — the
 // browser and the embedder — and starting one against a stale measurement is
@@ -20,7 +20,7 @@ export function reserveRoom(bytes: number): () => void {
 }
 
 export function roomNow(): number {
-  return Math.max(0, os.freemem() - spokenFor)
+  return Math.max(0, availableMemory() - spokenFor)
 }
 
 // Cold admission includes its 1GB load budget. Once loaded, keep 1GB free

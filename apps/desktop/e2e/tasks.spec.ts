@@ -32,6 +32,7 @@ test.beforeAll(async () => {
       ENGRAM_NO_GIT: '1',
       ENGRAM_NO_AUTOTIDY: '1',
       ENGRAM_ENGINE: 'mock',
+      ENGRAM_TEST_FAST_SCHEDULE: '1',
       ENGRAM_MOCK_DIR: MOCK_DIR,
       ENGRAM_HIDDEN: '1',
     },
@@ -220,7 +221,7 @@ test('scheduled turns open new conversations, notify, and leave existing approva
   await addBotTask(paths, ready.id, { name: 'Due now', goal: 'Summarize the deploy procedure for the team', schedule })
   await page.getByTestId(`bot-${ready.id}`).click()
   await page.getByTestId('bots-input').fill('Keep my draft')
-  await expect.poll(async () => (await readNotices(paths)).filter(item => item.kind === 'scheduled' && !item.running).length, { timeout: 90_000 }).toBe(2)
+  await expect.poll(async () => (await readNotices(paths)).filter(item => item.kind === 'scheduled' && !item.running).length, { timeout: 15_000 }).toBe(2)
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
   expect((await listTasks(paths)).find(task => task.id === pending.id)?.state).toBe('waiting')
   expect((await loadBots(paths)).find(bot => bot.id === waiting.id)?.tasks).toHaveLength(0)

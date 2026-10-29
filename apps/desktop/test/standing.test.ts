@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { addBotTask, createBot, loadBots, type VaultPaths } from 'core'
-import { standingTick } from '../src/main/standing.js'
+import { standingTick, startStanding, stopStanding, STANDING_TICK_MS } from '../src/main/standing.js'
 
 async function tempPaths(): Promise<VaultPaths> {
   const dir = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -93,4 +93,25 @@ describe('standingTick', () => {
     ])
     expect((await loadBots(paths))[0]?.tasks?.[0]).toMatchObject({ seen: ['b', 'a', 'c9f'], chat: 'chat-1' })
   })
+})
+
+
+it('keeps the production minute interval and never overlaps ticks during a slow operation', async () => {
+  const paths = await tempPaths()
+  const bot = await createBot(paths, { name: 'Slow' })
+  await addBotTask(paths, bot.id, { name: 'Due', goal: 'Read', routineId: 'routine', schedule: { days: [2], hour: 9, minute: 0 } })
+  let release!: () => void
+  const runRoutine = vi.fn(() => new Promise<{ ok: boolean }>(resolve => { release = () => resolve({ ok: true }) }))
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    startStanding({ paths, runRoutine, now: () => new Date(2026, 7, 25, 9, 10) })
+    await vi.advanceTimersByTimeAsync(STANDING_TICK_MS - 1)
+    expect(runRoutine).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.waitFor(() => expect(runRoutine).toHaveBeenCalledOnce())
+    await vi.advanceTimersByTimeAsync(2 * STANDING_TICK_MS)
+    expect(runRoutine).toHaveBeenCalledOnce()
+    release()
+    await vi.waitFor(async () => expect((await loadBots(paths))[0]?.tasks?.[0]?.lastRunAt).toBeDefined())
+  } finally { stopStanding(); vi.useRealTimers() }
 })

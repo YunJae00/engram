@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       native_only:
@@ -17,20 +22,26 @@ on:
         default: windows-latest
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ inputs.native_only || false }}-${{ inputs.native_runner || 'windows-latest' }}
+  group: ci-${{ github.workflow }}-${{ inputs.ref || github.ref }}-${{ inputs.native_only || false }}-${{ inputs.native_runner || 'windows-latest' }}
   cancel-in-progress: true
 
 jobs:
   check:
     if: ${{ !inputs.native_only }}
-    name: typecheck · lint · unit
-    runs-on: ubuntu-latest
+    name: checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: npm run check
@@ -39,25 +50,28 @@ jobs:
 
   e2e-shards:
     if: ${{ !inputs.native_only }}
-    name: Electron shard ${{ matrix.shard }}/2
-    runs-on: windows-latest
+    name: Electron (${{ matrix.os }}) shard ${{ matrix.shard }}/2
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [windows-latest, macos-latest]
         shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report-${{ matrix.shard }}
+          name: playwright-report-${{ matrix.os }}-${{ matrix.shard }}
           path: apps/desktop/test-results
           retention-days: 7
 
@@ -78,9 +92,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
       - name: Native desktop control fixture
         run: node apps/desktop/scripts/test-desktop-native.mjs
         env:
@@ -99,3 +115,20 @@ jobs:
             tmp/desktop-medium-ci-*/child-events.json
           if-no-files-found: ignore
           retention-days: 7
+
+  desktop-native-macos:
+    if: ${{ !inputs.native_only }}
+    name: native macOS build and policy checks
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+      - run: node apps/desktop/scripts/build-desktop.mjs
+      - run: apps/desktop/native-bin/desktop/EngramDesktop --self-test
+      - name: Optional installed Office integration
+        run: node apps/desktop/scripts/test-office-macos.mjs

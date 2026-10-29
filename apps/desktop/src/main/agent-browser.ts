@@ -1,9 +1,9 @@
+import { availableMemory } from './available-memory.js'
 import type { WebPage } from 'core'
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
-import os from 'node:os'
 import { join } from 'node:path'
 import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
@@ -146,6 +146,12 @@ let usualBrowser: Promise<string | null> | undefined
 const execFileAsync = promisify(execFile)
 
 async function readDefaultBrowserName(): Promise<string | null> {
+  if (process.platform === 'darwin') {
+    try {
+      const { stdout } = await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', 'ObjC.import("AppKit"); ObjC.unwrap($.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL($.NSURL.URLWithString("https://example.com")).lastPathComponent)'], { encoding: 'utf8', timeout: 3000 })
+      return ['Google Chrome', 'Microsoft Edge', 'Brave'].find(name => stdout.trim() === `${name}.app` || (name === 'Brave' && stdout.trim() === 'Brave Browser.app')) ?? null
+    } catch { return null }
+  }
   if (process.platform !== 'win32') return null
   try {
     const { stdout: out } = await execFileAsync(
@@ -297,7 +303,7 @@ function armPressureWatch(): void {
   if (pressureTimer) return
   pressureTimer = setInterval(() => {
     if (!context) return
-    const free = os.freemem()
+    const free = availableMemory()
     if (free < PRESSURE_CLOSE_FLOOR) {
       flog('agent-browser', `memory pressure (${(free / 1e9).toFixed(1)}GB free) — closing`)
       void closeAgentBrowser({ force: true })
@@ -352,8 +358,8 @@ async function ensureContext(): Promise<Ctx> {
   const spokenFor = reserveRoom(LAUNCH_FOOTPRINT)
   opening = (async () => {
     if (closing) await closing.catch(() => undefined)
-    if (os.freemem() < LAUNCH_MIN_FREE)
-      throw new Error(`not enough free memory to open the agent browser (${(os.freemem() / 1e9).toFixed(1)}GB free)`)
+    if (availableMemory() < LAUNCH_MIN_FREE)
+      throw new Error(`not enough free memory to open the agent browser (${(availableMemory() / 1e9).toFixed(1)}GB free)`)
     if (nativeBrowserEnabled()) {
       const ctx = await openNativeBrowser()
       context = ctx
@@ -496,8 +502,8 @@ async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
   // The tab the browser opened with belongs to whoever asks first; after
   // that every lane gets a tab of its own, if the machine has room for one.
   const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
-  if (!spare && lanes.size > 0 && os.freemem() < LANE_MIN_FREE)
-    throw new Error(`not enough free memory for another page while other work is open (${(os.freemem() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
+  if (!spare && lanes.size > 0 && availableMemory() < LANE_MIN_FREE)
+    throw new Error(`not enough free memory for another page while other work is open (${(availableMemory() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
   let page = spare
   if (!page) {
     allocatingLane = lane

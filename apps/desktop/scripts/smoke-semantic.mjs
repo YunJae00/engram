@@ -11,7 +11,9 @@ async function main() {
   await mkdir(join(repo, 'tmp'), { recursive: true })
   const root = await mkdtemp(join(repo, 'tmp', 'semantic-smoke-'))
   const app = await _electron.launch({
-    executablePath: resolve(scriptDir, '../dist/win-unpacked/Engram.exe'),
+    executablePath: resolve(scriptDir, process.platform === 'darwin'
+      ? `../dist/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Engram.app/Contents/MacOS/Engram`
+      : '../dist/win-unpacked/Engram.exe'),
     args: ['--no-sandbox'], timeout: 180000,
     env: { ...process.env, ENGRAM_USERDATA: join(root, 'profile'), ENGRAM_VAULT: join(root, 'vault'), ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_INDEX_NOW: '1' },
   })

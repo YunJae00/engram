@@ -69,9 +69,14 @@ export async function standingTick(deps: StandingDeps): Promise<string[]> {
 
 let timer: NodeJS.Timeout | null = null
 
-export function startStanding(deps: StandingDeps): void {
+export function startStanding(deps: StandingDeps, intervalMs = STANDING_TICK_MS): void {
   stopStanding()
-  timer = setInterval(() => void standingTick(deps).catch(() => undefined), STANDING_TICK_MS)
+  let running = false
+  timer = setInterval(() => {
+    if (running) return
+    running = true
+    void standingTick(deps).catch(() => undefined).finally(() => { running = false })
+  }, intervalMs)
   timer.unref?.()
 }
 
