@@ -15,7 +15,7 @@ export function progressWatch(limit = NO_PROGRESS_LIMIT): ProgressWatch {
   let stale = 0, run = 0
   return {
     see(observation) {
-      const key = observation.replace(/\s+/g, ' ').trim().slice(0, 4000)
+      const key = observation.replace(/\s+/g, ' ').trim()
       // A call that did not work found nothing, whatever its error says.
       const failed = key.startsWith('that did not work')
       if (!failed && !seen.has(key)) { seen.add(key); stale = 0; run = 0; return null }

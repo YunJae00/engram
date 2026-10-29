@@ -271,6 +271,8 @@ export interface DelegatedTaskDto {
 }
 
 export interface ChatRequestDto {
+  // A mid-turn message already recorded when received, now being continued.
+  previouslySaid?: boolean
   engineId: string
   message: string
   history: ChatTurnDto[]

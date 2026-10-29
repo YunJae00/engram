@@ -4,7 +4,7 @@ export interface FrameReading {
   hidden: string
   hasPasswordField: boolean
   links: { text: string; url: string }[]
-  controls: { kind: string; name: string; state: string; ref?: string }[]
+  controls: { kind: string; name: string; state: string; ref?: string; context?: string }[]
   // What stands in front of the page right now: a dialog it has opened over
   // itself. Its own words, so it can be answered without hunting for them
   // among the page behind it.

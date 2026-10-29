@@ -96,7 +96,7 @@ it('opens a fresh session with the person\'s earlier request whole and its own r
   const engine = sessionBrain(async job => {
     expect(job.opening).toContain(request)
     expect(job.opening).toContain('x'.repeat(2_000))
-    expect(job.opening).not.toContain('x'.repeat(2_001))
+    expect(job.opening).toContain('x'.repeat(3_000))
     return { answer: 'Done' }
   })
   await runToolSession({ engine, workdir: WORKDIR, tools: [] }, 'Update it with the new fare', { history: [{ role: 'user', text: request }, { role: 'assistant', text: 'x'.repeat(3_000) }] })
@@ -244,8 +244,8 @@ describe('what the person said earlier is a source for a blank', () => {
   })
 })
 
-describe('looking comes before asking', () => {
-  it('the first question of a turn, before any search, is sent to the search; asked again after looking, it goes through', async () => {
+describe('questions are not replaced by searches', () => {
+  it('allows a clarification and blocks subsequent work while waiting', async () => {
     const heard: string[] = []
     const engine = sessionBrain(async (job) => {
       const ask = job.tools.find((t) => t.name === 'ask_person')!
@@ -257,9 +257,8 @@ describe('looking comes before asking', () => {
     })
     const withSearch: AgentTool[] = [...tools, { name: 'search_web', description: 'search', argsSchema: {}, run: async () => 'nothing came back' }]
     const result = await runToolSession({ engine, workdir: WORKDIR, tools: withSearch }, 'summarise the report', { guided: false })
-    expect(heard[0]).toContain('Look before you ask')
-    expect(heard[0]).toContain('search_web')
-    expect(heard[1]).toBe('nothing came back')
+    expect(heard[0]).toContain('The question is with the person')
+    expect(heard[1]).toContain('The question is already with the person')
     expect(result.asked).toBe(true)
     expect(result.answer).toBe('Which report?')
   })

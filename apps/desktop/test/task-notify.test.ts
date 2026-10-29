@@ -10,7 +10,7 @@ vi.mock('electron', () => ({
     show() { mocks.show() }
   },
 }))
-import { notifyTask, setTaskSurface } from '../src/main/task-notify.js'
+import { checkSettled, checkStarted, notifyTask, setTaskSurface } from '../src/main/task-notify.js'
 
 beforeEach(() => {
   mocks.supported = true; mocks.focused = false; mocks.click = undefined; mocks.show.mockClear()
@@ -42,4 +42,16 @@ it('uses an in-app notice when Engram is focused without exposing task contents'
   notifyTask({ state: 'done', goal: 'Private report', botId: 'bot-42' } as DelegatedTask, broadcast)
   expect(broadcast).toHaveBeenCalledWith({ type: 'task:notice', message: 'Task done' })
   expect(mocks.show).not.toHaveBeenCalled()
+})
+
+it('tells a finished answer only once the after-turn check and its extra pass have settled', () => {
+  checkStarted('bot-7')
+  notifyTask({ state: 'done', goal: 'A task', botId: 'bot-7' } as DelegatedTask, vi.fn())
+  expect(mocks.show).not.toHaveBeenCalled()
+  // The extra pass checks its own answer before the first check lets go.
+  checkStarted('bot-7')
+  checkSettled('bot-7')
+  expect(mocks.show).not.toHaveBeenCalled()
+  checkSettled('bot-7')
+  expect(mocks.show).toHaveBeenCalledOnce()
 })

@@ -31,7 +31,7 @@ describe('quiet app access', () => {
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('unknown')
     await quietScan('bot-one', 'Claude', undefined)
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('bare')
-    request.mockResolvedValueOnce({ controls: [{ id: 'c1' }], texts: [] })
+    request.mockResolvedValueOnce({ controls: [{ id: 'c1', name: 'Search', can: { set: true } }], texts: [] })
     await quietScan('bot-one', 'Claude', undefined)
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('covered')
     request.mockImplementation(async method => {

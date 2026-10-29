@@ -297,7 +297,7 @@ test('a day cell that only the pointer marks as pressable is numbered, and press
         if (cell) document.getElementById('picked').textContent = 'picked: ' + cell.textContent.trim()
       })
     </script></body></html>`)
-  const day = (await readFrames(page)).lines.find((line) => /\[clickable\] 13$/.test(line))
+  const day = (await readFrames(page)).lines.find((line) => /\[clickable\] 13(?: \| row:.*)?$/.test(line))
   expect(day).toBeTruthy()
   expect(await pressOn(page, day!.split(' ')[0]!)).toMatchObject({ ok: true })
   expect(await page.textContent('#picked')).toBe('picked: 13')

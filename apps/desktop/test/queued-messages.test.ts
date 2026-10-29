@@ -118,3 +118,12 @@ it('reads the words around a conversation in the language the person writes in',
   expect(threadT('en')('bots.thinking')).toBe('Thinking')
   expect(threadT('ko')('aside.next')).toBe('알겠어요. 지금 하던 거 끝나면 바로 할게요.')
 })
+
+it('empties the box after words sent mid-reply even when the box held spaces around them', async () => {
+  const store = createCometThreads()
+  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true, reply: 'Noted.', action: 'relay' as const, instruction: 'All of this month' })) }
+  await sendCometMessage(client, store, 'one', 'Find the report')
+  store.setDraft('one', 'All of this month \n')
+  await sendCometMessage(client, store, 'one', 'All of this month')
+  expect(store.thread('one').draft).toBe('')
+})

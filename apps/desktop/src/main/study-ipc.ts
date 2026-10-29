@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron'
+import { changeCheckpoint } from './comet-checkpoint.js'
 import { afterTurnPrompt, againMessage, changeStudies, installSkill, parseAfterTurn, readBotTranscript, readStudies, studyCandidate, studyMessage, type SkillDraft, type VaultPaths } from 'core'
 import type { ChatRequestDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
+import { checkSettled, checkStarted } from './task-notify.js'
 import { dismissStudyOffers, type StudyCheck } from './study-offers.js'
 import { afterChecks, answering, offeredIn, studying } from './turn-state.js'
 
@@ -23,6 +25,8 @@ export interface AfterTurnInput {
   answer: string
   // Words taken in while the turn worked.
   handed: string[]
+  // Only execution evidence may trigger automatic rework of the main task.
+  incomplete?: string
   signal: AbortSignal
   voice(prompt: string): Promise<string | null>
 }
@@ -107,17 +111,22 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
     passes.delete(channel)
     const passed = pass?.message === input.asked
     const asked = pass && passed ? pass.ask : input.asked
+    if (!handed.length && !input.incomplete) return
     const checking: StudyCheck = { controller: new AbortController(), channel }
     afterChecks.add(checking)
     const wasStudying = studying.has(channel)
+    let passing = false
+    checkStarted(botId)
     void (async () => {
       const judged = parseAfterTurn(await voice(afterTurnPrompt(asked, handed, answer)), handed)
       signal.throwIfAborted()
       checking.controller.signal.throwIfAborted()
+      if (judged.uncertain) return
+      await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: state.pending.filter(text => !handed.includes(text) || judged.left.includes(text)) }))
       if (judged.left.length) { flog('aside', `${judged.left.length} of ${handed.length} handed-over words left for the next turn`); broadcast({ type: 'chat:steer-returned', channel, texts: judged.left }); return }
-      if (!judged.undone || wasStudying || studying.has(channel) || offeredIn.has(channel) || checking.superseded || answering.has(channel)) return
+      if (!input.incomplete || !judged.undone || wasStudying || studying.has(channel) || offeredIn.has(channel) || checking.superseded || answering.has(channel)) return
       if (!passed && !deps.busy(channel)) {
-        const message = againMessage(asked, judged.undone.blocked)
+        const message = againMessage(asked, input.incomplete)
         flog('study', `another pass after an undone turn: ${judged.undone.blocked}`)
         const history = (await readBotTranscript(deps.paths, botId)).map(turn => ({ role: turn.role, text: turn.text }))
         signal.throwIfAborted()
@@ -125,16 +134,17 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
         if (checking.superseded || deps.busy(channel)) return
         const pass: { message: string; ask: string; running?: Promise<void> } = { message, ask: asked }
         passes.set(channel, pass)
+        passing = true
         broadcast({ type: 'comet:continue', channel, botId })
         pass.running = deps.sendQuiet({ engineId: '', botId, channel, message, history }).catch((error: unknown) => {
           if (passes.get(channel)?.message === message) passes.delete(channel)
           flog('study', `another pass: ${error instanceof Error ? error.message : String(error)}`)
-        }).finally(() => { delete pass.running })
+        }).finally(() => { delete pass.running; checkSettled(botId) })
         return
       }
       flog('study', `offered after an undone turn: ${judged.undone.blocked}`)
       await offerStudy(botId, { what: judged.undone.blocked, where: [] }, asked)
-    })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => afterChecks.delete(checking))
+    })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => { afterChecks.delete(checking); if (!passing) checkSettled(botId) })
   }
   return { offerStudy, setOffersAside, studyFound, checkAfterTurn, yieldPass }
 }

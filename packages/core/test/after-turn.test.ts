@@ -16,11 +16,11 @@ it('judges the added words and the job in one call', () => {
 it('reads what was left and whether the job was done', () => {
   expect(parseAfterTurn('{"left":[2,1,2,7],"done":true}', added)).toEqual({ left: added, undone: null })
   expect(parseAfterTurn('```json\n{"left":[],"done":false,"blocked":"페이지 접속 오류"}\n```', added)).toEqual({ left: [], undone: { blocked: '페이지 접속 오류' } })
-  expect(parseAfterTurn('{"done":false}', added)).toEqual({ left: [], undone: null })
+  expect(parseAfterTurn('{"done":false}', added)).toEqual({ left: added, undone: null, uncertain: true })
   expect(parseAfterTurn('{"left":[],"done":false,"only_person":true,"blocked":"로그인 필요"}', added)).toEqual({ left: [], undone: null })
   expect(parseAfterTurn('{"left":[],"done":false,"only_person":false,"blocked":"페이지 오류"}', added)).toEqual({ left: [], undone: { blocked: '페이지 오류' } })
-  expect(parseAfterTurn('no idea', added)).toEqual({ left: [], undone: null })
-  expect(parseAfterTurn(null, added)).toEqual({ left: [], undone: null })
+  expect(parseAfterTurn('no idea', added)).toEqual({ left: added, undone: null, uncertain: true })
+  expect(parseAfterTurn(null, added)).toEqual({ left: added, undone: null, uncertain: true })
 })
 
 it('sends an undone job on once more with what stopped it and the request it carries on', () => {
@@ -45,4 +45,17 @@ it('tells a turn going around in circles to take another way, and lets new findi
   expect(watch.idle()).toBe(0)
   expect(watch.see('page A')).toBeNull()
   expect(NO_PROGRESS_LIMIT).toBeGreaterThan(3)
+})
+
+it('judges the answer without the replies offered as buttons', () => {
+  const prompt = afterTurnPrompt('Read the mail', [], 'Here is the summary.\n\n```replies\nDraft a reply\n```')
+  expect(prompt).toContain('Final answer: Here is the summary.')
+  expect(prompt).not.toContain('Draft a reply')
+})
+
+it('sees the conclusion after a long answer and distinguishes new result tails', () => {
+  expect(afterTurnPrompt('Compare', ['Busan too'], 'Details '.repeat(500) + 'Busan was checked.')).toContain('Busan was checked.')
+  const watch = progressWatch()
+  for (let at = 0; at < 10; at++) watch.see('header '.repeat(1000) + `Result ${at}`)
+  expect(watch.idle()).toBe(0)
 })

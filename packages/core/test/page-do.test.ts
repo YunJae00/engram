@@ -20,6 +20,20 @@ const courier = (pages: WebPage[]) => {
 }
 const context = { task: 'Filter the orders' }
 
+it('can inspect controls beyond the first group without performing an extra action', async () => {
+  const controls = Array.from({ length: 220 }, (_, at) => `#${at + 1} [button] Item ${at + 1}`)
+  const hands = courier([page(controls)])
+  const result = JSON.parse(await pageDoTool(hands, picks('more', 'press #220', 'done'), { gate: 'off' })!.run({ goal: 'Open Item 220' }, context))
+  expect(result.status).toBe('done')
+  expect(hands.press).toHaveBeenCalledExactlyOnceWith('#220', undefined)
+})
+
+it('keeps row context separate from the action name used by approval checks', () => {
+  const controls = pageControls(page(['#1 [button] Open | row: Submitted expense 42']))
+  expect(controls[0]).toMatchObject({ name: 'Open', context: 'Submitted expense 42' })
+  expect(pageOptions(controls, undefined)['press #1']).toContain('Submitted expense 42')
+})
+
 describe('a short goal on the open page run by a decision model', () => {
   it('retains host commit evidence even when a control label did not reveal it', async () => {
     const hands = courier([page(['#1 [button] Continue'])])

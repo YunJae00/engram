@@ -24,7 +24,7 @@ export interface AuditEntry {
 const DIR = 'audit'
 const DETAIL_CAP = 200
 // What a step read back is longer than what it did, and still only its head.
-const RESULT_CAP = 600
+const RESULT_CAP = 30_000
 // A value after a secret's name never reaches the file, whatever page it came from.
 const SECRET = /((?:password|passwd|pwd|passcode|pin|otp|secret|token|api[_ -]?key|비밀번호|인증번호)\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi
 
@@ -45,7 +45,7 @@ export async function appendAudit(paths: VaultPaths, entry: Omit<AuditEntry, 'at
   const line: AuditEntry = {
     ...entry,
     at,
-    ...(entry.detail ? { detail: redactSecrets(entry.detail.replace(/\s+/g, ' ')).slice(0, entry.kind === 'result' ? RESULT_CAP : DETAIL_CAP) } : {}),
+    ...(entry.detail ? { detail: redactSecrets(entry.detail).slice(0, entry.kind === 'result' ? RESULT_CAP : DETAIL_CAP) } : {}),
   }
   const dir = auditDir(paths)
   await mkdir(dir, { recursive: true })

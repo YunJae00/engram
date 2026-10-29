@@ -122,6 +122,7 @@ export interface AgentLoopOptions {
 }
 
 export interface AgentLoopStep {
+  committed?: boolean
   tool: string
   args: Record<string, unknown>
   observation: string

@@ -6,6 +6,7 @@
 //   node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/eval-quick.mts [--brain=claude|codex|both] [--repeat=N] [--parallel=N] [--only=a,b]
 // Writes tmp/eval/<run>/report.json and adds one line per brain to tmp/eval/history.jsonl.
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { execFileSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
 import { appendFile, mkdir, mkdtemp, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -23,6 +24,8 @@ const cases = CASES.filter(one => !only || only.includes(one.id))
 const repo = fileURLToPath(new URL('../../../', import.meta.url))
 await mkdir(join(repo, 'tmp', 'eval'), { recursive: true })
 const out = await mkdtemp(join(repo, 'tmp', 'eval', `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-`))
+const codeRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8', windowsHide: true }).trim()
+const dirty = !!execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8', windowsHide: true }).trim()
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 async function serve(one: EvalCase, log: SiteLog): Promise<{ url: string; server: Server }> {
@@ -98,7 +101,7 @@ async function runCase(win: Page, brain: string, one: EvalCase, round: number): 
   server.close()
   const run: CaseRun = { answers, site: log, offers, tasks }
   const checks = one.grade(run)
-  return { brain, id: one.id, round, seconds: Math.round((Date.now() - started) / 1000), pass: !error && Object.values(checks).every(Boolean), checks, error, answer: answers.join('\n---\n').slice(0, 1500), visits: log.visits.length, steps: await win.evaluate(c => (window as any).__eval[c]?.steps ?? 0, channel) }
+  return { codeRevision, dirty, model: brain === 'claude' ? 'sonnet' : 'runtime-default', effort: 'runtime-default', brain, id: one.id, round, seconds: Math.round((Date.now() - started) / 1000), pass: !error && Object.values(checks).every(Boolean), checks, error, answer: answers.join('\n---\n').slice(0, 1500), visits: log.visits.length, steps: await win.evaluate(c => (window as any).__eval[c]?.steps ?? 0, channel) }
 }
 
 async function runBrain(brain: string): Promise<any[]> {
@@ -171,4 +174,4 @@ for (const line of summary) await appendFile(join(repo, 'tmp', 'eval', 'history.
 for (const line of summary) console.log(`${line.brain}: ${line.passed}/${line.runs} passed  ${Object.entries(line.byCase).map(([id, score]) => `${id} ${score}`).join(' | ')}`)
 console.log('report', join(out, 'report.json'))
 // Playwright's connection can keep the process alive after the apps are gone.
-process.exit(0)
+process.exit(rows.length === brains.length * cases.length * repeat && rows.every(row => row.pass) ? 0 : 1)

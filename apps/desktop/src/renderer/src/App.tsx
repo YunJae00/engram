@@ -114,16 +114,31 @@ function Shell() {
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
-  // A vault just made by setup waits for its first filing before the shell opens.
-  const [setup, setSetup] = useState<FirstSetupDto | null>(null)
+  // A vault just made by setup waits for its first filing before the shell
+  // opens. Nothing is drawn until that is known, so the shell never flashes
+  // first; once it is done, "ready" holds a moment and the shell fades in.
+  const [setup, setSetup] = useState<FirstSetupDto | null>()
+  const [leaving, setLeaving] = useState(false)
+  const [fromSetup, setFromSetup] = useState(false)
   useEffect(() => {
     if (!vaultReady) return
     let alive = true
-    void api.firstSetupStatus().then(status => { if (alive) setSetup(status) }).catch(() => { if (alive) setSetup(null) })
-    const off = api.onEvent(event => { if (event.type === 'firstSetup:changed') setSetup(event.status) })
+    let waited = false
+    void api.firstSetupStatus().then(status => { if (alive) { waited = status.waiting; setSetup(status) } }).catch(() => { if (alive) setSetup(null) })
+    const off = api.onEvent(event => {
+      if (event.type !== 'firstSetup:changed') return
+      if (waited && !event.status.waiting) { setLeaving(true); setFromSetup(true) }
+      waited = event.status.waiting
+      setSetup(event.status)
+    })
     return () => { alive = false; off() }
   }, [vaultReady])
-  const settingUp = !!setup?.waiting
+  useEffect(() => {
+    if (!leaving) return
+    const timer = window.setTimeout(() => setLeaving(false), 900)
+    return () => window.clearTimeout(timer)
+  }, [leaving])
+  const settingUp = !!setup?.waiting || leaving || (vaultReady && setup === undefined)
   useEffect(() => {
     if (!vaultReady || settingUp || localStorage.getItem(TOUR_DONE_KEY)) return
     let cancelled = false
@@ -229,11 +244,12 @@ function Shell() {
     }
   }, [])
 
-  if (settingUp && setup) return <FirstSetup status={setup} />
+  if (vaultReady && setup === undefined) return null
+  if (settingUp && setup) return <FirstSetup status={setup} leaving={leaving} />
 
   return (
     <div
-      className={`shell sidebar-${sidebarOpen ? 'open' : 'closed'}`}
+      className={`shell sidebar-${sidebarOpen ? 'open' : 'closed'}${fromSetup ? ' arriving' : ''}`}
       data-testid="shell"
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }}
       onDrop={(event) => event.preventDefault()}

@@ -1,11 +1,13 @@
+import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { registerAsideIpc } from './aside-ipc.js'
-import { afterChecks, answering, handedOver, heard, offeredIn, relayed, steers, studying, takeAsides, takeHeard, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
+import { afterChecks, answering, handedOver, heard, offeredIn, relayed, steers, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
+  withoutSecrets,
   updateRoutineGoal,
   activationRerank,
   fadingMemories,
@@ -1018,7 +1020,8 @@ export function registerIpc(ctx: VaultContext): void {
     broadcast({ type: 'bots:changed' })
     return value
   })
-  const resumeState = new Map<string, string>()
+  const requestReceived = new WeakMap<ChatRequestDto, string>()
+  const recordedRequests = new WeakSet<ChatRequestDto>()
   // Requests already sent again once after the provider failed on its side.
   const outageRetried = new WeakSet<ChatRequestDto>()
   // How each comet's last turn ended, read by delegated tasks after each turn.
@@ -1060,7 +1063,7 @@ export function registerIpc(ctx: VaultContext): void {
   // stuck; the plumbing existed, nothing ever called it from the UI.
   ipcMain.handle('chat:abort', async (_e, channel?: string) => {
     abortAllChat(channel)
-    if (channel) await tasks.stopChannel(channel)
+    if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
     else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
   })
   // Start this conversation over: the running turn stops, what was said is
@@ -1071,6 +1074,7 @@ export function registerIpc(ctx: VaultContext): void {
     const channel = `bot-${id}`
     abortAllChat(channel)
     await tasks.stopChannel(channel)
+    await changeCheckpoint(paths, id, () => ({ pending: [] }))
     releaseDesktop(channel)
     closeClaudeSession(id)
     closeCodexSession(id)
@@ -1325,7 +1329,7 @@ export function registerIpc(ctx: VaultContext): void {
     releaseDesktop(`bot-${id}`)
     await deleteBot(paths, id)
     await updateSettings(settings => { delete settings.aiSelections[`bot-${id}`]; return settings })
-    resumeState.delete(id)
+    await changeCheckpoint(paths, id, () => ({ pending: [] }))
     lastTurns.delete(id)
     broadcast({ type: 'bots:changed' })
   })
@@ -2217,6 +2221,7 @@ export function registerIpc(ctx: VaultContext): void {
     const controller = new AbortController()
     const entry = { controller, channel: request.channel ?? 'panel' }
     const started = performance.now()
+    if (!requestReceived.has(request)) requestReceived.set(request, new Date().toISOString())
     chatAborts.add(entry)
     answering.add(entry.channel)
     turnGoals.set(entry.channel, request.message)
@@ -2240,6 +2245,7 @@ export function registerIpc(ctx: VaultContext): void {
       if (untold?.length) { relayed.delete(entry.channel); broadcast({ type: 'chat:steer-returned', channel: entry.channel, texts: untold }) }
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel)
       heard.delete(entry.channel)
+      takeAsides(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
       releaseBrowser()
       if (savedRoutine?.task) {
@@ -2419,6 +2425,11 @@ export function registerIpc(ctx: VaultContext): void {
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
     const savedHistory = bot ? await readBotTranscript(paths, bot.id) : request.history
+    const alreadySaid = request.previouslySaid && savedHistory.some(row => row.role === 'user' && row.text === request.message)
+    if (bot && !recovery && !turn?.quiet && !alreadySaid && !recordedRequests.has(request)) {
+      await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
+      recordedRequests.add(request)
+    }
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     // What this conversation already saved, so a later day can reopen it.
@@ -2550,9 +2561,6 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        if (!recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at, ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) }).catch(() => undefined)
-        for (const text of takeHeard(channel)) await appendBotTurn(paths, bot.id, { role: 'user', text, at }).catch(() => undefined)
-        for (const turn of takeAsides(channel)) await appendBotTurn(paths, bot.id, { ...turn, at }).catch(() => undefined)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
@@ -2627,8 +2635,8 @@ export function registerIpc(ctx: VaultContext): void {
       let answerDelivered = false
       try {
         assertDesktopChatEngine(channel, engine)
-        const resume = resumeState.get(bot.id)
-        resumeState.delete(bot.id)
+        const stored = await readCheckpoint(paths, bot.id)
+        const resume = [stored.context, stored.pending.length ? `Unconfirmed requests from this conversation (check before repeating any action): ${JSON.stringify(stored.pending)}` : ''].filter(Boolean).join('\n')
         const skillLedger = await readSkillsLedger(paths)
         // The runtime's own tools, governed here: reads where the person
         // already lets it look, a work folder of its own, commands once allowed.
@@ -2644,6 +2652,10 @@ export function registerIpc(ctx: VaultContext): void {
           ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve', 90_000); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
+        const observedProgress: { tool: string; args: Record<string, unknown>; observation: string }[] = []
+        await changeCheckpoint(paths, bot.id, state => ({ ...state, context: resumeCheckpoint(request.message, { answer: '', steps: [], fellBack: false, incomplete: 'Turn started; inspect current state before resuming.' }) }))
+        flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-starting', model: aiSelection(settings, channel).model, preparationMs: Date.now() - Date.parse(requestReceived.get(request) ?? new Date().toISOString()) }))
+        let firstToken = true
         const result = await runComet(
           {
             engine,
@@ -2671,7 +2683,7 @@ export function registerIpc(ctx: VaultContext): void {
             // their own screen; without this the turn starts blind and goes
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
-            history: request.history.map((turn) => ({ role: turn.role, text: turn.text })),
+            history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text })),
             takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); const handed = [...said, ...told]; if (handed.length) handedOver.set(channel, [...(handedOver.get(channel) ?? []), ...handed]); return handed },
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
@@ -2682,9 +2694,13 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
+            onToken: (text) => { if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
             onReset: drop => broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}) }),
             onObservation: (tool: string, observation: string) => {
+              observedProgress.push({ tool, args: {}, observation })
+              if (observedProgress.length > 8) observedProgress.shift()
+              const context = resumeCheckpoint(request.message, { answer: '', steps: observedProgress, fellBack: false, incomplete: 'Interrupted work may have changed the app. Verify before repeating any action.' })
+              void changeCheckpoint(paths, bot.id, state => ({ ...state, context })).catch(error => flog('checkpoint', error))
               if (process.env['ENGRAM_STEP_DETAIL'] === '1')
                 broadcast({ type: 'comet:step', channel, line: `  <- ${tool}: ${observation.slice(0, 300).replace(/\n/g, ' ')}` })
               // The read has finished; the following model wait is not browser work.
@@ -2693,6 +2709,7 @@ export function registerIpc(ctx: VaultContext): void {
             },
           },
         )
+        flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) {
           return
         }
@@ -2759,10 +2776,8 @@ export function registerIpc(ctx: VaultContext): void {
           await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
           broadcast({ type: 'vault:changed' })
         }
-        // Keep only the latest unfinished checkpoint within this vault session.
         const checkpoint = resumeCheckpoint(request.message, result)
-        if (checkpoint) resumeState.set(bot.id, checkpoint)
-        else resumeState.delete(bot.id)
+        await changeCheckpoint(paths, bot.id, state => ({ ...state, context: checkpoint }))
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
@@ -2776,17 +2791,14 @@ export function registerIpc(ctx: VaultContext): void {
         // voice judges the answer - words taken in along the way that it left
         // undone go on as the next message, and a job left undone is offered
         // another way when the comet offered none.
-        const handed = handedOver.get(channel) ?? []
+        const handed = [...new Set([...stored.pending, ...(handedOver.get(channel) ?? [])])]
         handedOver.delete(channel)
         if (bot && !held && !result.stopped && result.answer.trim() && engine.quick) {
-          checkAfterTurn({ channel, botId: bot.id, asked: request.message, answer: result.answer, handed, signal, voice: (prompt) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null) })
+          checkAfterTurn({ channel, botId: bot.id, asked: request.message, answer: result.answer, handed, ...(result.incomplete ? { incomplete: result.incomplete } : {}), signal, voice: (prompt) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null) })
         }
         turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
           broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })
-          if (bot && !recovery && !turn?.quiet) await appendBotTurn(paths, bot.id, { role: 'user', text: request.message, at: new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) }).catch(() => undefined)
-          if (bot) for (const text of takeHeard(channel)) await appendBotTurn(paths, bot.id, { role: 'user', text, at: new Date().toISOString() }).catch(() => undefined)
-          if (bot) for (const turn of takeAsides(channel)) await appendBotTurn(paths, bot.id, { ...turn, at: new Date().toISOString() }).catch(() => undefined)
         } else {
           await deliverAnswer(
             `${result.answer}${note}`,
@@ -2798,6 +2810,7 @@ export function registerIpc(ctx: VaultContext): void {
           )
         }
         answerDelivered = true
+        flog('chat-phase', JSON.stringify({ channel, phase: 'answer-delivered', ms: Date.now() - nativeSince }))
         // What this turn did, held the moment the answer is out: a keep that
         // follows right away must find the path to record, not wait out the
         // offer-writing below.

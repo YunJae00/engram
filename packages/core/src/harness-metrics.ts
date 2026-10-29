@@ -1,7 +1,7 @@
 import type { WebCourier } from './errand.js'
 
 export interface HarnessMetric {
-  kind: 'browser' | 'tool' | 'model' | 'turn' | 'observation' | 'batch'
+  kind: 'browser' | 'tool' | 'model' | 'turn' | 'observation' | 'batch' | 'host'
   operation?: string
   ms?: number
   fullChars?: number

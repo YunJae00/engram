@@ -4,6 +4,7 @@ const fake = vi.hoisted(() => ({ studies: [] as { ask: string; what: string }[],
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), removeHandler: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
+vi.mock('../src/main/comet-checkpoint.js', () => ({ changeCheckpoint: vi.fn(async () => undefined) }))
 vi.mock('core', async (original) => ({
   ...await original<typeof import('core')>(),
   readBotTranscript: vi.fn(async () => [{ role: 'assistant', text: 'earlier' }]),
@@ -15,9 +16,19 @@ const { offeredIn } = await import('../src/main/turn-state.js')
 const { readBotTranscript } = await import('core')
 
 const undone = async () => '{"left":[],"done":false,"only_person":false,"blocked":"날짜를 고르지 못함"}'
-const turn = (asked: string, voice = undone) => ({ channel: 'bot-b1', botId: 'b1', asked, answer: '날짜를 고르지 못해 신청하지 못했어요.', handed: [], signal: new AbortController().signal, voice })
+const turn = (asked: string, voice = undone) => ({ channel: 'bot-b1', botId: 'b1', asked, answer: '날짜를 고르지 못해 신청하지 못했어요.', incomplete: '날짜를 고르지 못함', handed: [], signal: new AbortController().signal, voice })
 
 beforeEach(() => { fake.studies = []; offeredIn.clear() })
+
+it('does not ask a judge to invent more work after a completed request', async () => {
+  const voice = vi.fn(undone)
+  const sendQuiet = vi.fn(async () => undefined)
+  const { checkAfterTurn } = registerStudyIpc({ paths: {} as never, busy: () => false, sendQuiet, stop: () => undefined })
+  checkAfterTurn({ ...turn('Read the mail', voice), incomplete: undefined, answer: 'Summary.\n```replies\nDraft a reply\n```' })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(voice).not.toHaveBeenCalled()
+  expect(sendQuiet).not.toHaveBeenCalled()
+})
 
 it('does not start another pass when stopped while loading history', async () => {
   const input = turn('Read the report')

@@ -28,8 +28,10 @@ describe('the audit log', () => {
     await appendAudit(paths, { at: '2026-09-03T01:00:00.000Z', kind: 'result', channel: 'c', tool: 'read_open_page', detail: `Signed in.
   password: hunter2 token=abc123 ${'y'.repeat(1000)}` })
     const entry = (await readAudit(paths, '2026-09-03'))[0]!
-    expect(entry.detail).toHaveLength(600)
-    expect(entry.detail).toContain('Signed in. password: *** token=***')
+    expect(entry.detail).toContain('y'.repeat(1000))
+    expect(entry.detail).toContain('password: *** token=***')
+    expect(entry.detail).not.toContain('hunter2')
+    expect(entry.detail).not.toContain('abc123')
     expect(redactSecrets('비밀번호: 1234, api key = sk-1')).toBe('비밀번호: ***, api key = ***')
   })
 })

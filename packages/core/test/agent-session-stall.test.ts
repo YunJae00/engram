@@ -200,7 +200,7 @@ it('retains the repeat guard when only the observation revision changes on a rer
   expect(refused).toContain(`has already been made ${REPEAT_LIMIT} times with the same result`)
 })
 
-it('counts a refused repeat toward the call budget and reports the turn unfinished', async () => {
+it('respects an explicit call budget while still reporting unchanged actions as unfinished', async () => {
   const press = vi.fn(async () => ({ ok: true, changed: false }))
   const courier: WebCourier = {
     fetchPage: async () => { throw new Error('unexpected navigation') },
@@ -212,17 +212,17 @@ it('counts a refused repeat toward the call budget and reports the turn unfinish
     const open = job.tools.find(tool => tool.name === 'press')!
     for (let i = 0; i < 4; i++) said.push(String(await open.run({ target: 'Details' })))
   }, 3)
-  expect(press).toHaveBeenCalledTimes(2)
-  expect(said[2]).toContain('was not run again after two matching browser failures')
+  expect(press).toHaveBeenCalledTimes(3)
+  expect(said[2]).toContain('nothing on the page changed')
   expect(said[3]).toContain('No more calls this turn')
   expect(result.steps).toHaveLength(3)
-  expect(result.steps[2]!.observation).toContain('was not run again')
+  expect(result.steps[2]!.observation).toContain('nothing on the page changed')
   expect(successfulTurnSteps(result.steps)).toEqual([])
   expect(result.stopped).toBe('calls')
   expect(result.answer).toContain('Not verified as complete')
 })
 
-it('stops repeated unreadable-page actions across changed key arguments and intervening screenshots', async () => {
+it('allows a different key or search after failures instead of locking the entire page', async () => {
   const failure = new Error('The page has not exposed readable content after waiting.')
   const pressKey = vi.fn(async () => { throw failure })
   const readOpen = vi.fn(async () => { throw failure })
@@ -235,10 +235,10 @@ it('stops repeated unreadable-page actions across changed key arguments and inte
     }
     for (const find of ['Hours', 'Access', 'Schedule']) said.push(String(await call('read_open_page', { find })))
   })
-  expect(pressKey).toHaveBeenCalledTimes(2)
-  expect(readOpen).toHaveBeenCalledTimes(2)
-  expect(said[2]).toContain('was not run again')
-  expect(said[5]).toContain('was not run again')
+  expect(pressKey).toHaveBeenCalledTimes(3)
+  expect(readOpen).toHaveBeenCalledTimes(3)
+  expect(said[2]).toContain('has not exposed readable content')
+  expect(said[5]).toContain('has not exposed readable content')
 })
 
 it('does not count a permission card waiting on the person as a stall', async () => {

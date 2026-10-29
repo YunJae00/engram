@@ -63,9 +63,14 @@ function missing(target: string): PageMove {
 export async function signature(page: Page): Promise<string> {
   const read = page
     .evaluate(() => {
-      const text = (document.body?.innerText ?? '').slice(0, 200_000)
+      const states = Array.from(document.querySelectorAll('input, select, textarea, [aria-checked], [aria-selected], [aria-expanded], details')).map(el => {
+        const input = el as HTMLInputElement
+        return [el.tagName, input.type === 'password' ? '[protected]' : input.value, input.checked, input.disabled,
+          el.getAttribute('aria-checked'), el.getAttribute('aria-selected'), el.getAttribute('aria-expanded'), el.hasAttribute('open')]
+      })
+      const text = (document.body?.innerText ?? '').slice(0, 200_000) + JSON.stringify(states)
       let hash = 0
-      for (let i = 0; i < text.length; i += 7) hash = (hash * 31 + text.charCodeAt(i)) | 0
+      for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) | 0
       return `${location.href}|${document.title}|${text.length}|${hash}`
     })
     .catch(() => '')
@@ -78,7 +83,7 @@ const SIGNATURE_MS = 5_000
 // more and the numbers of everything that answers to them are handed back,
 // so the next call can point at exactly one.
 const CHOICES_LISTED = 8
-const controlName = (line: string) => line.replace(/^#\d+ \[[^\]]*\] /, '').replace(/ \([^)]*\)$/, '').toLowerCase()
+const controlName = (line: string) => line.split(' | row: ')[0]!.replace(/^#\d+ \[[^\]]*\] /, '').replace(/ \([^)]*\)$/, '').toLowerCase()
 async function choicesFor(page: Page, target: string): Promise<string[]> {
   const reading = await readFrames(page).catch(() => null)
   const wanted = target.toLowerCase()
@@ -320,8 +325,10 @@ export async function hoverOn(page: Page, target: string, signal?: AbortSignal):
 
 // A key to the page: Escape for a dialog, arrows in a picker, Tab along.
 // Activation keys inspect the current control, including framed/shadow content.
-export async function pressKey(page: Page, key: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
+export async function pressKey(page: Page, named: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   if (signal?.aborted) throw new Error('canceled')
+  // "ENTER" or "escape" mean the same key.
+  const key = [...KEYS].find(one => one.toLowerCase() === named.trim().toLowerCase()) ?? named
   if (!KEYS.has(key)) return { ok: false, error: `"${key}" is not a key that can be pressed here; one of ${[...KEYS].join(', ')}` }
   try {
     const before = await signature(page)

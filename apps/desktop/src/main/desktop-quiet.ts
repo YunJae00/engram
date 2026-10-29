@@ -122,7 +122,10 @@ export async function quietScan(lane: string, app: string, find: string | undefi
   showWorkFrame(binding)
   const result = await request<QuietObservationDto>(binding, 'quietScan', find ? { find } : {}, signal)
   signal?.throwIfAborted()
-  remember(lane, binding, result.controls.length > 0 ? 'covered' : 'bare')
+  // Window chrome does not establish access to the app's working area.
+  const chrome = /^(close|minimi[sz]e|maximi[sz]e|restore|닫기|최소화|최대화|복원)$/i
+  const actionable = result.controls.some(control => !chrome.test(control.name ?? '') && (control.can?.set || control.can?.press))
+  remember(lane, binding, actionable ? 'covered' : 'bare')
   named.set(result.snapshot, new Map(result.controls.map(control => [control.id, control.name])))
   while (named.size > NAMED_SNAPSHOTS) named.delete(named.keys().next().value!)
   return result

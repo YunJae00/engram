@@ -14,12 +14,17 @@ it('carries earlier answers whole while there is room, newest first', () => {
 })
 
 it('keeps the latest four turns and sends older ones as requests when the room runs out', () => {
-  const long = 'x'.repeat(5_000)
+  const long = 'x'.repeat(15_000)
   const history = Array.from({ length: 10 }, (_, at) => ({ role: (at % 2 ? 'assistant' : 'user') as 'user' | 'assistant', text: `${at} ${long}` }))
   const lines = conversation(history)
-  const recent = lines.at(-1)!.split('\n')
+  const recent = lines.at(-1)!.split('\n').filter(line => /^(User|You):/.test(line))
   expect(recent.length).toBeGreaterThanOrEqual(4)
   expect(recent.at(-1)).toMatch(/^You: 9 /)
   expect(lines.join('\n')).toContain('Earlier requests in this conversation')
   expect(lines.join('\n')).toContain('User: 0 ')
+})
+
+it('retains a verified URL and total beyond the former assistant cutoff', () => {
+  const text = 'explanation '.repeat(500) + '\nVerified total 393: https://example.test/report'
+  expect(conversation([{ role: 'assistant', text }]).join('\n')).toContain('Verified total 393: https://example.test/report')
 })

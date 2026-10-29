@@ -38,8 +38,8 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     const said = chatMessage(draft, attachments)
     const words = threadT(threadLang(store.thread(botId).messages))
     store.noteWork(botId, `you: ${said}`)
-    // The words left the box; anything typed since stays.
-    if (store.thread(botId).draft === draft) store.setDraft(botId, '')
+    // The words left the box (sent trimmed); a reply chip leaves what is typed alone.
+    if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
     // Files cannot join a turn already under way: they start the next one.
     if (attachments.length || !api.chatSay) {
       if (attachments.length) store.setAttachments(botId, [])
@@ -98,7 +98,7 @@ async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, dr
     else if (event.type === 'chat:error' && event.channel === channel) fail(event.message)
   })
   try {
-    await api.chatSend({ engineId: '', message, history, attachments: ids, channel, botId })
+    await api.chatSend({ engineId: '', message, history, attachments: ids, channel, botId, ...(shown ? { previouslySaid: true } : {}) })
   } catch (cause) { fail(cause instanceof Error ? cause.message : String(cause)) }
   finally { unsubscribe(); seats(active, store).delete(botId); void flushQueuedCometMessages(api, store, botId) }
 }

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
-import { asidePrompt, parseAside, readBotTranscript, type AsideAction, type VaultPaths } from 'core'
+import { appendBotTurn, asidePrompt, parseAside, readBotTranscript, withoutSecrets, type AsideAction, type VaultPaths } from 'core'
+import { changeCheckpoint } from './comet-checkpoint.js'
 import { broadcast, tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { answering, asides, relayed, STEER_CAP, steers, turnGoals, workSoFar } from './turn-state.js'
@@ -28,12 +29,18 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (!deps.busy(channel)) return { ok: false }
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
+    const earlier = await readBotTranscript(deps.paths, botId, 12).catch(() => [])
+    await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString() })
+    await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] }))
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    const earlier = await readBotTranscript(deps.paths, botId, 12).catch(() => [])
-    const quickly = await deps.voice(channel, asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: [...earlier, ...(asides.get(channel) ?? []).slice(0, -1)], message: said }), 12_000).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null })
+    const quickly = await deps.voice(channel, asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: earlier, message: said }), 12_000).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null })
     // Without a voice in seconds, the words still reach the work.
     const aside = parseAside(quickly) ?? { reply: '', action: 'relay' as const, instruction: said }
+    // Preserve the person's request; the voice may classify it, not rewrite it.
+    if (aside.action === 'relay' || aside.action === 'later') aside.instruction = said
+    if (aside.action !== 'relay' && aside.action !== 'later') await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: state.pending.filter(text => text !== said) }))
+    if (aside.reply) await appendBotTurn(deps.paths, botId, { role: 'assistant', text: withoutSecrets(aside.reply, said), at: new Date().toISOString() })
     if (aside.reply) asides.set(channel, [...(asides.get(channel) ?? []), { role: 'assistant', text: aside.reply }])
     const running = deps.busy(channel)
     if (aside.action === 'relay' && running) {
@@ -44,8 +51,12 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     return { ok: true, reply: aside.reply, action: aside.action === 'relay' && !running ? 'later' : aside.action, ...(aside.instruction ? { instruction: aside.instruction } : {}) }
   })
   // Words sent mid-turn join the work at its next step instead of waiting for it to finish.
-  ipcMain.handle('chat:steer', (_e, channel: unknown, text: unknown): boolean => {
+  ipcMain.handle('chat:steer', async (_e, channel: unknown, text: unknown): Promise<boolean> => {
     if (typeof channel !== 'string' || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP || !answering.has(channel)) return false
+    if (channel.startsWith('bot-')) {
+      await appendBotTurn(deps.paths, channel.slice(4), { role: 'user', text: withoutSecrets(text.trim(), text), at: new Date().toISOString() })
+      await changeCheckpoint(deps.paths, channel.slice(4), state => ({ ...state, pending: [...new Set([...state.pending, text.trim()])] }))
+    }
     steers.set(channel, [...(steers.get(channel) ?? []), text.trim()])
     broadcast({ type: 'comet:step', channel, line: `you: ${text.trim()}` })
     return true

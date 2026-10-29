@@ -15,7 +15,6 @@ import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
 import { resumeCheckpoint } from './agent-resume.js'
 import { pageDelta } from './page-delta.js'
-import { pageRecovery } from './page-recovery.js'
 import { progressWatch } from './no-progress.js'
 
 // A brain that can hold its own tool loop is handed the tools once and runs
@@ -117,7 +116,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const steps: AgentLoopStep[] = []
   let liveSteer: ((said: string[]) => Promise<boolean>) | null = null
   const compactPage = pageDelta()
-  const recovery = pageRecovery()
   const plan = taskPlan(steps)
   // File/browser work uses direct result checks. Desktop sequences retain
   // phase checkpoints for their control rules and bounded call allowance.
@@ -132,8 +130,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let asked: { question: string; options: string[] } | null = null
   // A card put to the person ends the work of the turn, as a question does.
   let carded = false
-  const canSearch = deps.tools.some((tool) => tool.name === 'search_web')
-  let lookedFirst = false
   let exhausted = false
   let extended = false
   let toolMs = 0
@@ -166,24 +162,16 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // earn the next bounded phase, but never exceed the total call ceiling.
       const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === budget && budget < Math.min(options.maxCalls ?? 120, 120)
         && Object.keys(args).length === 2 && typeof args['finding'] === 'string' && args['evidenceStep'] === steps.length
-      const finding = browser && !desktop && budget >= baseCalls && stuck.idle() < 2 && startedCalls + cost <= CALL_CEILING
+      const finding = browser && budget >= baseCalls && stuck.idle() < 2 && startedCalls + cost <= (options.maxCalls ?? CALL_CEILING)
       if (startedCalls + cost > budget && finding) extended = true
       if (startedCalls + cost > budget && !checkpoint && !finding) {
         exhausted = true
         return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
       }
-      // Looking comes before asking: the first question of a turn, put
-      // before the person's own search page was tried, is sent to the
-      // search instead. Asked again after looking, it goes through.
-      if (tool.name === 'ask_person' && !files && canSearch && !lookedFirst && !steps.some((step) => step.tool === 'search_web' || step.tool === 'open_page' || isDesktopTool(step.tool))) {
-        lookedFirst = true
-        return `Look before you ask: call search_web with {"query": "${task.slice(0, 80).replace(/"/g, "'")}"} first. Ask only if that comes back with nothing, or if the ask names no job at all.`
-      }
       startedCalls += cost
       const repeatKey = REPEAT_GUARDED.has(tool.name) ? `${tool.name}:${JSON.stringify(args)}` : ''
       if (PAGE_MOVES.has(tool.name) && repeat?.key !== repeatKey) repeat = undefined
       const repeated = !!repeatKey && repeat?.key === repeatKey && repeat.times >= REPEAT_LIMIT
-      const recoveryBlock = recovery.before(tool.name, args)
       options.onStep?.(`${tool.name}: ${desktopStepSummary(tool.name, args) ?? summarizeArgs(args)}`)
       let observation: string
       let modelObservation: string | undefined
@@ -196,8 +184,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         // the turn keeps, the picture goes to the brain and nowhere else.
         if (repeated) {
           observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach.`
-        } else if (recoveryBlock) {
-          observation = recoveryBlock
         } else if (tool.runRich) {
           const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }))
           observation = outcome.text
@@ -218,7 +204,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       signal.throwIfAborted()
       options.onObservation?.(tool.name, observation)
       steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation, ...(observedAfterAction ? { observedAfterAction: true } : {}), ...(committed ? { committed: true } : {}) })
-      if (!repeated && !recoveryBlock) recovery.after(tool.name, args, observation)
       if (repeatKey && !repeated) {
         const result = sameResult(observation)
         repeat = { key: repeatKey, result, times: repeat?.key === repeatKey && repeat.result === result ? repeat.times + 1 : 1 }
@@ -300,7 +285,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   }).finally(() => {
     clearInterval(watchdog)
     lifetime.abort(new Error('The tool session has ended.'))
-    options.onMetric?.({ kind: 'model', operation: 'session-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
+    options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   })
   if (options.signal?.aborted) throw new Error('canceled')
   if (asked) {

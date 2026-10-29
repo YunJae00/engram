@@ -1,4 +1,5 @@
 import type { AgentTool } from './agent-loop.js'
+import { contextExcerpt } from './context-excerpt.js'
 
 // Separate questions looked into at the same time, each by a helper that only
 // reads. What they bring back is data for the comet's own answer; anything
@@ -27,7 +28,7 @@ export function helpersTool(deps: { look(question: string, index: number, signal
         ...questions.flatMap((question, index) => {
           const one = found[index]!
           const said = one.status === 'fulfilled'
-            ? one.value.trim().slice(0, FOUND_CHARS) || 'Nothing found.'
+            ? contextExcerpt(one.value.trim(), FOUND_CHARS) || 'Nothing found.'
             : `Could not finish: ${one.reason instanceof Error ? one.reason.message : String(one.reason)}`
           return ['', `${index + 1}. ${question}`, said]
         }),

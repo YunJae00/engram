@@ -1,5 +1,6 @@
 import { expect, test, chromium, type Browser, type Page } from '@playwright/test'
 import { readFrames } from '../src/main/page-reader.js'
+import { pressOn, signature } from '../src/main/page-actions.js'
 
 // Pages keep closed popups in the document. Only the one a click would land
 // on is read as standing over the page. Real Chrome, a local page.
@@ -32,7 +33,7 @@ test('a board of entries drawn over the page is the page, unless a sheet covers 
   await page.setContent(`<main style="height:1600px">Time Report week</main><div style="position:fixed;inset:0;z-index:15;background:rgba(0,0,0,.4)"></div>${lifted(entries)}`)
   expect((await readFrames(page)).dialog).toContain('Bug fixes')
   await page.setContent(`<main style="height:1600px">Time Report week</main>${lifted('Submit the October report by the 31st. <button>OK</button>')}`)
-  expect((await readFrames(page)).dialog).toContain('Submit the October report')
+  expect((await readFrames(page)).dialog).toBe('')
 })
 
 test('the popup in front is read, and stops being read once closed', async () => {
@@ -40,4 +41,29 @@ test('the popup in front is read, and stops being read once closed', async () =>
   expect((await readFrames(page)).dialog).toContain('Choose a project')
   await page.locator('[role="dialog"]').evaluate((node) => { (node as HTMLElement).style.opacity = '0' })
   expect((await readFrames(page)).dialog).toBe('')
+})
+
+test('checkbox state changes count as progress even when text does not change', async () => {
+  await page.setContent('<label><input type="checkbox"> Include archived</label>')
+  const before = await signature(page)
+  await readFrames(page)
+  expect(await pressOn(page, '#1')).toMatchObject({ ok: true, changed: true })
+  expect(await signature(page)).not.toBe(before)
+  expect(await page.locator('input').isChecked()).toBe(true)
+})
+
+test('hidden password fields and floating calendars do not block a readable page', async () => {
+  await page.setContent(`<main>Report total: 393</main><input type="password" style="display:none">${lifted('October calendar <button>Next month</button>')}`)
+  expect(await readFrames(page)).toMatchObject({ hasPasswordField: false, dialog: '' })
+  await page.locator('input').evaluate(el => { (el as HTMLElement).style.display = 'block' })
+  expect((await readFrames(page)).hasPasswordField).toBe(true)
+})
+
+test('an unrelated iframe navigation does not invalidate main-document controls', async () => {
+  await page.setContent('<button onclick="this.textContent=\'Opened\'">Details</button><iframe srcdoc="Ad"></iframe>')
+  await readFrames(page)
+  await page.locator('iframe').evaluate(el => { (el as HTMLIFrameElement).srcdoc = 'New ad' })
+  await expect(page.frameLocator('iframe').locator('body')).toHaveText('New ad')
+  expect(await pressOn(page, '#1')).toMatchObject({ ok: true })
+  await expect(page.locator('button')).toHaveText('Opened')
 })

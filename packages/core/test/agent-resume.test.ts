@@ -4,7 +4,7 @@ import { resumeLines } from '../src/agent-prompt.js'
 
 it('retains bounded history for incomplete work and questions but not completed tasks', () => {
   const done = { answer: 'Done', steps: [], fellBack: false }
-  expect(resumeCheckpoint('first job', done)).toBeUndefined()
+  expect(resumeCheckpoint('first job', done)).toContain('Do not repeat completed actions')
   const held = resumeCheckpoint('first job', { ...done, incomplete: 'Verify total', answer: 'Result may be incomplete', steps: [{ tool: 'read', args: {}, observation: 'x'.repeat(30000) }] })!
   expect(held.length).toBeLessThan(10000)
   expect(JSON.parse(held)).toMatchObject({ request: 'first job', remaining: 'Verify total' })

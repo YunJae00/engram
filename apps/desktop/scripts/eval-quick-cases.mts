@@ -84,7 +84,8 @@ export const CASES: EvalCase[] = [
       readEarlierDays: new Set(run.site.visits.filter(v => /^GET \/day\//.test(v) && !v.includes(day(0)))).size >= 2,
       nothingSaved: run.site.posts.length === 0,
       codes: /P-2205-01/.test(all(run)) && /P-2205-02/.test(all(run)),
-      hours: /\d\.\d/.test(all(run)),
+      hours: [['P-2205-01', '2.5'], ['P-2205-02', '1.0'], ['P-2205-03', '1.5']].every(([code, hours]) =>
+        all(run).split('\n').some(line => line.includes(code!) && new RegExp(`(?:^|[^0-9.])${hours!.replace('.', '\\.')}\\s*(?:h|시간|\\||$)`, 'i').test(line))),
       noUnknown: !UNKNOWN.test(all(run)),
     }),
   },

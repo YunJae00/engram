@@ -35,6 +35,8 @@
 .answer-card dt { color: var(--fg-faint); overflow-wrap: anywhere; }
 .answer-card dd { margin: 0; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
 
+/* A card waiting on the person already offers the next moves. */
+.decision-card ~ .reply-chips { display: none; }
 .reply-chips { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; max-width: 100%; margin: 4px 0 6px; animation: fade-in 180ms ease; }
 .reply-chip { max-width: 100%; padding: 7px 13px; border-radius: 999px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); color: var(--fg); font-size: var(--fs-small); text-align: left; overflow-wrap: anywhere; }
 .reply-chip:hover { background: var(--hover-bg); }
