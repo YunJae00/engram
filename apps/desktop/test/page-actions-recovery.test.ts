@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest'
+vi.mock('../src/main/page-listeners.js', () => ({ readClickListeners: vi.fn(async () => {}) }))
 import type { Page } from 'playwright-core'
 import { pressOn, pressPoint, scrollPage } from '../src/main/page-actions.js'
 import { readFrames, type FrameReading } from '../src/main/page-reader.js'

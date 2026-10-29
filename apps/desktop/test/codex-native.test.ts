@@ -317,3 +317,16 @@ describe('a comet that takes a spare still starting', () => {
     } finally { closeCodexSessions() }
   })
 })
+
+it('keeps one Codex thread beyond forty turns', async () => {
+  const sent: { method: string; params: Data }[] = []
+  const rpc = fakeServer(async server => {
+    server.notify(...completed({ id: 'answer', type: 'agentMessage', text: 'ok' }))
+    server.notify('turn/completed', { turn: { status: 'completed' } })
+  }, sent)
+  const hands = native(async () => ({ behavior: 'allow' }))
+  try {
+    for (let i = 0; i < 42; i++) await runCodexNative({ ...job(hands), sessionKey: 'long', prompt: `Turn ${i}` }, spec(rpc))
+    expect(sent.filter(call => call.method === 'thread/start')).toHaveLength(1)
+  } finally { closeCodexSessions() }
+})

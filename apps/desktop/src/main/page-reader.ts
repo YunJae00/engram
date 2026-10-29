@@ -1,4 +1,5 @@
 import type { Frame, Page } from 'playwright-core'
+import { readClickListeners } from './page-listeners.js'
 import { takesRoom } from './page-frame-room.js'
 import type { FrameReading, PageReading } from './page-reading.js'
 export type { FrameReading, PageReading } from './page-reading.js'
@@ -40,7 +41,7 @@ const SUBFRAME_READ_MS = 4_000
 // order) is tagged so a locator can pick it up; the tag is taken off again
 // by the caller.
 export function readDocument(mark?: number): FrameReading {
-  const scope = globalThis as typeof globalThis & { __engramControlRefs?: { epoch: string; next: number; ids: WeakMap<Element, number> } }
+  const scope = globalThis as typeof globalThis & { __engramClickListeners?: WeakSet<Element>; __engramControlRefs?: { epoch: string; next: number; ids: WeakMap<Element, number> } }
   const refs = scope.__engramControlRefs ??= { epoch: `${performance.timeOrigin}-${Math.random()}`, next: 0, ids: new WeakMap() }
   const INTERACTIVE =
     'button, input, select, textarea, a[href], summary, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="checkbox"], [role="radio"], [role="combobox"], [role="switch"], [role="treeitem"], [role="textbox"], [role="searchbox"], [onclick], [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
@@ -91,8 +92,15 @@ export function readDocument(mark?: number): FrameReading {
   // outermost element that carries it - the words inside inherit it and are
   // the same control - and only where a press would actually land on it.
   const pressable = (el: Element, rect: DOMRect): boolean => {
+    const react = Object.keys(el).find(key => key.startsWith('__reactProps$'))
+    const props = react ? Object.getOwnPropertyDescriptor(el, react)?.value : undefined
+    const registered = scope.__engramClickListeners?.has(el) || typeof (el as HTMLElement).onclick === 'function' || typeof props?.onClick === 'function'
+    if (registered && !['HTML', 'BODY'].includes(el.tagName) && rect.width * rect.height < innerWidth * innerHeight * 0.5) return true
     if (!pointerOf.get(el)) return false
-    for (let up = parentOf(el); up; up = parentOf(up)) if (pointerOf.get(up)) return false
+    for (let up = parentOf(el); up; up = parentOf(up)) {
+      const box = up.getBoundingClientRect()
+      if (pointerOf.get(up) && !['HTML', 'BODY'].includes(up.tagName) && box.width * box.height <= innerWidth * innerHeight * 0.5) return false
+    }
     // Something covering half the page is a backdrop, not a control.
     if (rect.width * rect.height > innerWidth * innerHeight * 0.5) return false
     const x = rect.left + rect.width / 2
@@ -105,7 +113,7 @@ export function readDocument(mark?: number): FrameReading {
   }
   // The visible words: what the page shows, plus what its shadow trees show
   // (a host's own text leaves its shadow tree out).
-  const main = (document.querySelector('article, main') ?? document.body) as HTMLElement | null
+  const main = document.body
   let text = (main?.innerText ?? '').replace(/\n{3,}/g, '\n\n')
   for (const el of all)
     if (el.shadowRoot)
@@ -285,8 +293,18 @@ export function readDocument(mark?: number): FrameReading {
     // button) is one control, the outer one.
     const outer = el.parentElement?.closest(INTERACTIVE)
     if (outer && shown(outer) && nameOf(outer) === nameOf(el)) continue
-    const row = el.closest('tr, [role="row"], li, [role="listitem"]')
-    const rowName = row ? clean((row as HTMLElement).innerText).slice(0, 180) : ''
+    let row = el.closest('tr, [role="row"], li, [role="listitem"]')
+    if (!row) for (let parent = parentOf(el); parent && parent !== document.body; parent = parentOf(parent)) {
+      if (scope.__engramClickListeners?.has(parent) && clean((parent as HTMLElement).innerText).length <= 300) { row = parent; break }
+    }
+    const groups: string[] = []
+    for (let parent = parentOf(el); parent && parent !== document.body; parent = parentOf(parent)) {
+      if (!parent.matches('section, article, fieldset, [role="group"], [role="region"], [role="dialog"], [role="list"], [role="gridcell"]')) continue
+      const label = clean(parent.getAttribute('aria-label')) || textOfIds(parent.getAttribute('aria-labelledby')) || clean(parent.querySelector(':scope > legend, :scope > h1, :scope > h2, :scope > h3, :scope > h4')?.textContent)
+      if (label && !groups.includes(label)) groups.unshift(label.slice(0, 100))
+      if (groups.length >= 3) break
+    }
+    const rowName = [...groups, ...(row ? [clean((row as HTMLElement).innerText).slice(0, 180)] : [])].join(' > ')
     const controlName = nameOf(el)
     const kind = !declared
       ? 'clickable'
@@ -360,6 +378,7 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
   // in a loop, a page far too large) cost one wait between them, not one each.
   // A frame with no room on the page (an ad slot, a tracker) shows the person
   // nothing and is not waited for.
+  await readClickListeners(page)
   const readings = await Promise.all(frames.map(async (frame, at) => at === 0 ? readFrame(frame, FRAME_READ_MS) : await takesRoom(frame) ? readFrame(frame, SUBFRAME_READ_MS) : 'unseen' as const))
   // A late read must not overwrite controls from a newer observation.
   signal?.throwIfAborted()

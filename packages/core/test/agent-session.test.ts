@@ -147,7 +147,7 @@ it('gives desktop and web work the method rule without a separate discovery tool
   const available: AgentTool[] = ['read_desktop', 'desktop_sequence', 'open_page'].map(name => ({ name, description: name, argsSchema: {}, run: read }))
   const engine = sessionBrain(async job => {
     expect(job.system).toContain('not a fixed application recipe')
-    expect(job.tools.map(tool => tool.name)).toEqual(['read_desktop', 'desktop_sequence', 'open_page', 'task_plan'])
+    expect(job.tools.map(tool => tool.name)).toEqual(['read_desktop', 'desktop_sequence', 'open_page', 'collect_results', 'task_plan'])
     return { answer: 'Available methods inspected; no actions taken' }
   })
   await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: available }, 'Inspect available execution methods')
@@ -535,4 +535,70 @@ it('opens a session with the rules and tools sessionShape describes, and keeps t
   expect(seen!.system).toContain('C:/work/spare-1')
   expect(seen!.system).not.toContain('timesheet')
   expect(seen!.prompt).toContain('- timesheet: weekly hours')
+})
+
+
+it('continues an unfinished collection instead of delivering a two-of-eleven answer', async () => {
+  let pass = 0
+  const read: AgentTool = { name: 'open_page', description: 'Read entry', argsSchema: {}, run: async args => `Entry ${args.id}: Detail ${args.id}` }
+  const engine = sessionBrain(async job => {
+    const collect = job.tools.find(tool => tool.name === 'collect_results')!
+    if (pass === 0) await collect.run({ items: Array.from({ length: 11 }, (_, i) => `Entry ${i}`), fields: ['remark'] })
+    const first = pass++ === 0
+    for (let id = first ? 0 : 2; id < (first ? 2 : 11); id++) {
+      const observation = await job.tools.find(tool => tool.name === 'open_page')!.run({ id })
+      const evidenceStep = Number(/Observation step (\d+)/.exec(String(observation))![1])
+      await collect.run({ item: `Entry ${id}`, values: { remark: `Detail ${id}` }, evidenceStep })
+    }
+    if (!first) await collect.run({ status: 'complete', summary: 'All eleven remarks read', evidenceStep: 22 })
+    return { answer: first ? 'Only two checked.' : 'All eleven checked.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [read] }, 'Read all entries')
+  expect(pass).toBe(2)
+  expect(result.answer).toBe('All eleven checked.')
+  expect(result.incomplete).toBeUndefined()
+  expect(result.steps.filter(step => step.tool === 'open_page')).toHaveLength(11)
+})
+
+it('bounds collection continuation when no progress is possible', async () => {
+  let passes = 0
+  const engine = sessionBrain(async job => {
+    passes++
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ items: ['Entry'], fields: ['remark'] })
+    return { answer: 'The site is unavailable.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Unavailable' }] }, 'Read entries')
+  expect(passes).toBe(2)
+  expect(result.incomplete).toContain('0/1')
+})
+
+it('requires an outcome receipt even if the browser model skipped the collection tool', async () => {
+  let pass = 0
+  const engine = sessionBrain(async job => {
+    if (++pass === 1) {
+      await job.tools.find(tool => tool.name === 'open_page')!.run({})
+      return { answer: 'Finished without checking scope' }
+    }
+    expect(job.prompt).toContain('original requested outcomes')
+    expect(job.prompt).toContain('Result 42')
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'complete', summary: 'Requested value is 42', evidenceStep: 1 })
+    return { answer: '42' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Result 42' }] }, 'Read the value')
+  expect(pass).toBe(2)
+  expect(result.incomplete).toBeUndefined()
+  expect(result.answer).toBe('42')
+})
+
+it('does not retry a reported access barrier', async () => {
+  let pass = 0
+  const engine = sessionBrain(async job => {
+    pass++
+    await job.tools.find(tool => tool.name === 'open_page')!.run({})
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: 'Sign-in required', evidenceStep: 1 })
+    return { answer: 'Please sign in' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Sign-in required' }] }, 'Read the value')
+  expect(pass).toBe(1)
+  expect(result.incomplete).toBe('Sign-in required')
 })

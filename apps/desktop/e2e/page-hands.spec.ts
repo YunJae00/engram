@@ -64,7 +64,7 @@ test.beforeAll(async () => {
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('no site')
   siteUrl = `http://127.0.0.1:${address.port}/`
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-smooth-scrolling'] })
+  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-smooth-scrolling', '--disable-background-mode'] })
 })
 
 test.afterAll(async () => {
@@ -420,4 +420,37 @@ test('while studying, a press that would keep something is refused and passage s
   }
   expect(await pressOn(page, 'Next', undefined, studying)).toMatchObject({ ok: true })
   expect(await page.textContent('#where')).toBe('page 2')
+})
+
+
+test('event-listener cards remain separate from their nested delete buttons and all details are readable', async () => {
+  await page.setContent(`<main><h1>Entries</h1><section id="cards">${Array.from({length: 11}, (_, i) => `<div class="card" data-id="${i}" style="padding:8px;border:1px solid"><span>Entry ${i}</span><button>X</button></div>`).join('')}</section><dialog><h2 id="entry"></h2><textarea aria-label="Remark"></textarea><button id="cancel">Cancel</button></dialog></main><script>
+    document.querySelectorAll('.card').forEach(card => card.addEventListener('click', event => {
+      if(event.target.tagName === 'BUTTON') { window.deleted = true; return }
+      document.querySelector('#entry').textContent = 'Entry ' + card.dataset.id;
+      document.querySelector('textarea').value = 'Detail ' + card.dataset.id;
+      document.querySelector('dialog').showModal();
+    }));
+    document.querySelector('#cancel').onclick = () => document.querySelector('dialog').close();
+  </script>`)
+  const remarks: string[] = []
+  for (let i = 0; i < 11; i++) {
+    const reading = await readFrames(page)
+    const card = reading.lines.find(line => line.includes(`[clickable] Entry ${i}X`))
+    expect(card, `Entry ${i} has its own clickable target: ${reading.lines.join("; ")}`).toBeTruthy()
+    expect(await pressOn(page, card!.split(' ')[0]!)).toMatchObject({ ok: true })
+    const detail = await readFrames(page)
+    expect(detail.text).toContain(`Detail ${i}`)
+    remarks.push(await page.locator('textarea').inputValue())
+    expect(await pressOn(page, 'Cancel')).toMatchObject({ ok: true })
+  }
+  expect(new Set(remarks).size).toBe(11)
+  expect(await page.evaluate(() => (window as unknown as { deleted?: boolean }).deleted)).toBeUndefined()
+})
+
+test('keeps section identity and text outside the first main region', async () => {
+  await page.setContent('<main>Summary</main><section aria-label="Monday"><article><h3>Project A</h3><button>Open</button></article></section><section aria-label="Tuesday"><article><h3>Project A</h3><button>Open</button><p>Detail outside main</p></article></section>')
+  const reading = await readFrames(page)
+  expect(reading.text).toContain('Detail outside main')
+  expect(reading.lines.filter(control => control.includes('Open'))).toEqual(expect.arrayContaining([expect.stringContaining('Monday > Project A'), expect.stringContaining('Tuesday > Project A')]))
 })

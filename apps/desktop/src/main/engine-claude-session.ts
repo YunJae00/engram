@@ -43,7 +43,6 @@ export interface SessionSpec {
 }
 
 const IDLE_MS = 60 * 60_000
-const TURNS_MAX = 40
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -167,7 +166,7 @@ export class WarmSession {
   }
 
   get stale(): boolean {
-    return this.closed || this.turns >= TURNS_MAX || Date.now() - this.lastUsed > IDLE_MS
+    return this.closed || Date.now() - this.lastUsed > IDLE_MS
   }
 
   private async *input(): AsyncGenerator<SdkUserMessage> {

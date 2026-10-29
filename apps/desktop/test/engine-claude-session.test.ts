@@ -386,3 +386,12 @@ describe('a spare opened before any comet', () => {
     } finally { pool.closeAll(); vi.restoreAllMocks() }
   })
 })
+
+it('keeps the live runtime beyond forty turns instead of discarding its context', async () => {
+  const { sdk, processes } = fakeSdk([])
+  const pool = new SessionPool()
+  try {
+    for (let i = 0; i < 42; i++) await pool.run(job(`Turn ${i}`, { sessionKey: 'long' }), { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+    expect(processes()).toBe(1)
+  } finally { pool.closeAll() }
+})

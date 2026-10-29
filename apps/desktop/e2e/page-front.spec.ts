@@ -8,7 +8,7 @@ import { pressOn, signature } from '../src/main/page-actions.js'
 let browser: Browser
 let page: Page
 
-test.beforeAll(async () => { browser = await chromium.launch({ channel: 'chrome', headless: true }) })
+test.beforeAll(async () => { browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--disable-background-mode'] }) })
 test.afterAll(async () => { await browser?.close() })
 test.beforeEach(async () => { page = await browser.newPage({ viewport: { width: 1280, height: 800 } }) })
 test.afterEach(async () => { await page.close() })

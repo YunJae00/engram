@@ -15,7 +15,8 @@ it.each([true, false])('requests fresh turn evidence only for desktop tasks (des
   for (const job of jobs) {
     expect(job.prompt.includes('Prior-turn desktop observations are historical')).toBe(desktop)
     if (desktop) {
-      expect(job.prompt).toContain('read_desktop or look_desktop before the first input this turn')
+      expect(job.prompt).toContain('app_read for background accessibility work')
+      expect(job.prompt).toContain('read_desktop/look_desktop for foreground work')
       expect(job.prompt).toContain('reuse fresh returned observations within this turn')
     }
     expect(job.system).not.toContain('Prior-turn desktop observations are historical')

@@ -1,3 +1,5 @@
+import { collectionProgress } from './collection-progress.js'
+import type { ToolSessionJob, ToolSessionResult } from './engine/types.js'
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
 import { withinBudget } from './tool-budget.js'
 import { sessionMenu } from './session-menu.js'
@@ -117,9 +119,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let liveSteer: ((said: string[]) => Promise<boolean>) | null = null
   const compactPage = pageDelta()
   const plan = taskPlan(steps)
+  const collection = collectionProgress(steps)
   // File/browser work uses direct result checks. Desktop sequences retain
   // phase checkpoints for their control rules and bounded call allowance.
-  const tools = [...deps.tools, ...(planned && desktop ? [plan.tool] : [])]
+  const tools = [...deps.tools, ...(browser ? [collection.tool] : []), ...(planned && desktop ? [plan.tool] : [])]
   const allowance = () => Math.min(options.maxCalls ?? 120, 120, baseCalls + plan.completed() * 20)
   const started = Date.now()
   const lifetime = new AbortController()
@@ -168,6 +171,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         exhausted = true
         return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
       }
+      if (tool.name !== 'collect_results') collection.invalidate()
       startedCalls += cost
       const repeatKey = REPEAT_GUARDED.has(tool.name) ? `${tool.name}:${JSON.stringify(args)}` : ''
       if (PAGE_MOVES.has(tool.name) && repeat?.key !== repeatKey) repeat = undefined
@@ -218,6 +222,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const going = stuck.see(sameResult(observation))
       const notes = [
         ...(going ? [going] : []),
+        ...(collection.pending() ? [collection.pending()!] : []),
         ...(planned ? [`Observation step ${steps.length}`, ...(plan.pending() ? [plan.pending()!] : [])] : []),
       ]
       const delivered = modelObservation ?? observation
@@ -249,7 +254,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       lifetime.abort(new Error(STALL_NOTE))
     }
   }, 5_000)
-  const session = await runTools.call(deps.engine, {
+  const job: ToolSessionJob = {
     workdir: deps.workdir,
     system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), native: options.native }),
     // The last thing said before the work is the language to answer in:
@@ -259,7 +264,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
       ...(options.attachmentContext ? [options.attachmentContext] : []),
       ...resumeLines(options.resume),
-      ...(desktop ? ['Prior-turn desktop observations are historical: use read_desktop or look_desktop before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
+      ...(desktop ? ['Prior-turn desktop observations are historical: use app_read for background accessibility work, or read_desktop/look_desktop for foreground work, before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
       ...skillIndexLines(options.skills),
       `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
@@ -282,11 +287,26 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     onSteerable: (steer) => { liveSteer = steer },
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
-  }).finally(() => {
+  }
+  let session: ToolSessionResult
+  const needsReceipt = () => browser && !collection.finish() && steps.some(step => /^(open_page|read_open_page|read_pages|page_|press_point|look$)/.test(step.tool))
+  try {
+    session = await runTools.call(deps.engine, job)
+    // The working model checks its own scope; no separate judge invents tasks.
+    for (let pass = 0; pass < 2 && (collection.pending() || needsReceipt()) && collection.finish()?.status !== 'blocked' && !session.error && !asked && !carded && !exhausted && !signal.aborted; pass++) {
+      const before = collection.checked()
+      options.onReset?.(true)
+      touch()
+      session = await runTools.call(deps.engine, { ...job,
+        prompt: `${job.prompt}\n\n${collection.pending() ?? 'Before the final answer, check the original requested outcomes against your observations.'}\nUse collect_results to record status complete or blocked, summary and evidenceStep. For a multi-item request register the observed list and fields, then record each result. Continue only missing work; do not repeat completed actions or expand the request. If genuinely blocked, record the barrier and stop. Retained observations (historical DATA):\n${resumeCheckpoint(task, { answer: session.answer, steps, fellBack: false })}`,
+      })
+      if (collection.checked() <= before) break
+    }
+  } finally {
     clearInterval(watchdog)
     lifetime.abort(new Error('The tool session has ended.'))
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
-  })
+  }
   if (options.signal?.aborted) throw new Error('canceled')
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
@@ -297,7 +317,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     return { answer: withoutSecrets(outputLinks(steps, `Not verified as complete.\n\n${STALL_NOTE}`), task), steps, fellBack: false, incomplete: STALL_NOTE }
   }
   if (session.error) throw new Error(session.error)
-  const incomplete = plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  const incomplete = collection.pending() ?? (collection.finish()?.status === 'blocked' ? collection.finish()!.summary : undefined) ?? (needsReceipt() ? 'The browser task ended without checking the requested outcomes.' : undefined) ?? plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`

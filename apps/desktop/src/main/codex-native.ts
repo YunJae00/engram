@@ -16,7 +16,6 @@ const text = (value: unknown): string => typeof value === 'string' ? value : ''
 const commandOf = (data: Data): string => (Array.isArray(data['commandActions']) ? data['commandActions'] : []).map(action => text(object(action)['command'])).filter(Boolean).join('; ') || text(data['command'])
 const DECISION_MS = 120_000
 const IDLE_MS = 60 * 60_000
-const TURNS_MAX = 40
 
 export interface CodexRpc {
   initialize(): Promise<void>
@@ -69,7 +68,6 @@ class CodexSession {
   private turn: Turn | null = null
   private closed = false
   private readonly completedTurns = new Set<string>()
-  turns = 0
   lastUsed = Date.now()
 
   constructor(private readonly spec: CodexNativeSpec, private readonly cwd: string, readonly signature: string, private readonly onEnd: () => void) {
@@ -77,7 +75,7 @@ class CodexSession {
   }
 
   get busy(): boolean { return this.turn !== null }
-  get stale(): boolean { return this.closed || this.turns >= TURNS_MAX || Date.now() - this.lastUsed > IDLE_MS }
+  get stale(): boolean { return this.closed || Date.now() - this.lastUsed > IDLE_MS }
 
   async open(ready: boolean): Promise<void> {
     await this.rpc.initialize()
@@ -103,7 +101,6 @@ class CodexSession {
         },
       }
       this.turn = turn
-      this.turns++
       this.lastUsed = Date.now()
       if (job.signal?.aborted) { turn.cancel(); return }
       job.signal?.addEventListener('abort', turn.cancel, { once: true })

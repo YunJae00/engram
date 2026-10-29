@@ -33,3 +33,12 @@ it('says where a file the page sent was saved, before the page itself', () => {
   expect(report.indexOf('rules.hwp')).toBeLessThan(report.indexOf('page "Rules"'))
   expect(report).toContain('read it from there instead of looking for a downloads window')
 })
+
+
+it('makes controls beyond the first 120 reachable without pretending they are absent', () => {
+  const page = { title: 'Cards', text: 'Entries', controls: Array.from({ length: 150 }, (_, i) => `#${i + 1} [clickable] Entry ${i}`) }
+  expect(pageReport(page)).toContain('use read_open_page part 2')
+  expect(pageReport(page)).not.toContain('#150 ')
+  expect(pageReport(page, 2)).toContain('#150 [clickable] Entry 149')
+  expect(pageReport(page, 2)).not.toContain('#1 [')
+})
