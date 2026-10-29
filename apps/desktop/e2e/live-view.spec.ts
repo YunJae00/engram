@@ -1,5 +1,5 @@
 import { expect, test, chromium, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { openActivity } from './navigation.js'
+import { closeTestApp, openActivity } from './navigation.js'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
@@ -83,8 +83,10 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
-  await app?.close()
-  await new Promise<void>((resolve) => server.close(() => resolve()))
+  try { await closeTestApp(app) } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
 })
 
 test('a floating mirror watches automatic work without changing the website viewport', async () => {

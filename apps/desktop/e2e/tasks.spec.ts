@@ -48,6 +48,10 @@ test.afterAll(async () => {
   await app?.close()
 })
 
+test.beforeEach(async () => {
+  // Fixtures edit the task file; let the preceding app-owned writer finish first.
+  await expect.poll(() => page.evaluate(() => window.engram.chatActive()), { timeout: 30_000 }).toEqual([])
+})
 
 test('a quiet conversation leaves the list but stays reachable', async () => {
   const quiet = page.getByTestId(`bot-${quietId}`)
