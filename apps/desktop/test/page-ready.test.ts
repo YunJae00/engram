@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+vi.mock('../src/main/page-listeners.js', () => ({ readClickListeners: async () => {} }))
 import type { Page } from 'playwright-core'
 import { readWhenReady } from '../src/main/page-ready.js'
 import { readFrames, placeOf, type FrameReading } from '../src/main/page-reader.js'

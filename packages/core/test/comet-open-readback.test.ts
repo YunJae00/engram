@@ -81,10 +81,11 @@ it.each([false, true])('preserves actual open_page receipts in the loop (session
   const engine = new MockEngine({ 'COMET-STEP': () => JSON.stringify(moves[index++] ?? { tool: 'answer', args: { text: 'Checked the report' } }) })
   if (session) Object.assign(engine, { runTools: async (job: ToolSessionJob) => {
     for (const move of moves) await job.tools.find(tool => tool.name === 'open_page')!.run(move.args)
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: 'Invalid address', evidenceStep: 2 })
     return { answer: 'Checked the report' }
   } })
   const result = await runComet({ engine, workdir, tools: [open] }, context.task, { guided: false })
-  expect(result.steps.map(step => step.observedAfterAction)).toEqual([true, undefined])
+  expect(result.steps.filter(step => step.tool === 'open_page').map(step => step.observedAfterAction)).toEqual([true, undefined])
 })
 
 it.each([false, true])('preserves host receipts from automatic reads and clears them on failure (fails=%s)', async fails => {
