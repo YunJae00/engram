@@ -6,7 +6,7 @@ const fake = vi.hoisted(() => ({
   notes: [] as Array<{ front: { id: string; status: string; type: string; derived_from: string[] }; body: string }>,
   embed: vi.fn(),
 }))
-vi.mock('node:os', () => ({ default: { freemem: () => fake.free } }))
+vi.mock('../src/main/available-memory.js', () => ({ availableMemory: () => fake.free }))
 vi.mock('node:fs', () => ({ existsSync: () => false }))
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/test', getAppPath: () => '/test' }, ipcMain: {}, powerMonitor: {} }))
 vi.mock('../src/main/ipc.js', () => ({ broadcast: vi.fn(), isLibrarianBusy: () => false }))
