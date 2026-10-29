@@ -252,7 +252,19 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
     }
   }
   options.signal?.throwIfAborted()
-  while (starting) { await starting.catch(() => undefined); check() }
+  const until = Date.now() + 30_000
+  while (starting) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancel: () => void = () => {}
+    const waiting = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Another computer-control request is still starting. No input was sent by this request after waiting 30 seconds. Try again when it finishes.')), Math.max(0, until - Date.now()))
+      cancel = () => reject(options.signal?.reason ?? new Error('Computer control was cancelled.'))
+      options.signal?.addEventListener('abort', cancel, { once: true })
+    })
+    try { await Promise.race([starting.catch(() => undefined), waiting]) }
+    finally { clearTimeout(timer); options.signal?.removeEventListener('abort', cancel) }
+    check()
+  }
   const run = (async () => {
     const engine = await engineForControl(lane)
     check()

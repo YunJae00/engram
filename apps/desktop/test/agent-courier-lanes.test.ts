@@ -196,3 +196,25 @@ describe('courier new controls', () => {
     }
   })
 })
+
+it('isolates site queues by conversation and expires a blocked queued action without dispatching it later', async () => {
+  vi.useFakeTimers()
+  try {
+    browser.ensureAgentPage.mockResolvedValue({ url: () => 'https://same-site.test' })
+    let finish!: (value: { ok: boolean }) => void
+    vi.mocked(pressPoint).mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockResolvedValue({ ok: true })
+    const first = agentCourier({ lane: 'stuck-site', awaitCompletion: true })
+    const second = agentCourier({ lane: 'other-site', awaitCompletion: true })
+    const blocked = first.pressPoint!(0.1, 0.1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await second.pressPoint!(0.2, 0.2)).toEqual({ ok: true })
+    const queued = first.pressPoint!(0.3, 0.3)
+    const rejected = expect(queued).rejects.toThrow('within 30 seconds')
+    await vi.advanceTimersByTimeAsync(30_001)
+    await rejected
+    finish({ ok: true })
+    await blocked
+    await vi.advanceTimersByTimeAsync(0)
+    expect(pressPoint).toHaveBeenCalledTimes(2)
+  } finally { vi.useRealTimers() }
+})

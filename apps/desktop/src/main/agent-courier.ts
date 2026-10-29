@@ -39,24 +39,32 @@ function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: (
   }).finally(() => { settled = true; clearTimeout(timer) })
 }
 
-// Two comets sharing one browser share its sign-ins - and so, on one site,
-// its session. Reading side by side is fine; two hands changing the same
-// site's page at the same moment is how one of them ends up filling a form
-// the other just replaced. Changes on one host take turns; the host is all
-// the rule knows.
+// Changes to one conversation's site take turns without blocking other chats.
 const hostTurns = new Map<string, Promise<unknown>>()
-async function inTurnOn(url: string, work: () => Promise<PageMove>, signal?: AbortSignal): Promise<PageMove> {
-  let host = ''
-  try {
-    host = new URL(url).host
-  } catch {
+async function inTurnOn(lane: string, url: string, work: () => Promise<PageMove>, signal?: AbortSignal): Promise<PageMove> {
+  signal?.throwIfAborted()
+  let host: string
+  try { host = new URL(url).host } catch { return work() }
+  const key = JSON.stringify([lane, host])
+  const before = hostTurns.get(key) ?? Promise.resolve()
+  let expired = false, timer: ReturnType<typeof setTimeout> | undefined
+  let cancel: () => void = () => {}
+  const waiting = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { expired = true; reject(new Error('This conversation is still using this site. The queued action did not start within 30 seconds. Read the page before trying again.')) }, 30_000)
+    cancel = () => { expired = true; reject(signal?.reason ?? new Error('canceled')) }
+    signal?.addEventListener('abort', cancel, { once: true })
+  })
+  const run = () => {
+    clearTimeout(timer)
+    signal?.throwIfAborted()
+    if (expired) throw new Error('The queued browser action expired without running.')
     return work()
   }
-  const before = hostTurns.get(host) ?? Promise.resolve()
-  const run = () => { signal?.throwIfAborted(); return work() }
   const mine = before.then(run, run)
-  hostTurns.set(host, mine.catch(() => undefined))
-  return mine
+  const tail = mine.catch(() => undefined).finally(() => { if (hostTurns.get(key) === tail) hostTurns.delete(key) })
+  hostTurns.set(key, tail)
+  try { return await Promise.race([mine, waiting]) }
+  finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel) }
 }
 
 // One browser, one tab per lane. It knows how to open, read, type and click
@@ -130,19 +138,19 @@ export function agentCourier(
       // answering whether it may go.
       let asking: Promise<unknown> | null = null
       const held: typeof ask = ask && Object.assign((what: Parameters<typeof ask>[0]) => { const answer = ask(what); asking = answer; return answer.finally(() => { asking = null }) }, ask.reading ? { reading: ask.reading } : {})
-      return inTurnOn(page.url(), () => withinBudget(pressOn(page, target, signal, held), deps.awaitCompletion, () => asking), signal)
+      return inTurnOn(lane, page.url(), () => withinBudget(pressOn(page, target, signal, held), deps.awaitCompletion, () => asking), signal)
     },
     async typeText(target, text, enter, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(typeText(page, target, text, enter, signal), deps.awaitCompletion), signal)
+      return inTurnOn(lane, page.url(), () => withinBudget(typeText(page, target, text, enter, signal), deps.awaitCompletion), signal)
     },
     async choose(target, option, signal) {
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => withinBudget(chooseOption(page, target, option, signal, ask), deps.awaitCompletion), signal)
+      return inTurnOn(lane, page.url(), () => withinBudget(chooseOption(page, target, option, signal, ask), deps.awaitCompletion), signal)
     },
     async scroll(to, signal) {
       await aside(signal)
@@ -172,7 +180,7 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      return inTurnOn(page.url(), () => pressPoint(page, x, y, ask, signal), signal)
+      return inTurnOn(lane, page.url(), () => pressPoint(page, x, y, ask, signal), signal)
     },
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)
