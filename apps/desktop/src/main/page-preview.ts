@@ -29,7 +29,7 @@ export function withPreviewInput<T>(page: Page, input: () => Promise<T>): Promis
 // A screenshot temporarily resizes the compositor; its restore must finish
 // before a real viewport update, or it can put the old dimensions back.
 export function resizePreview(page: Page, size: { width: number; height: number }): Promise<boolean> {
-  return workFor(page).run(async () => {
+  return withPreviewInput(page, async () => {
     const current = page.viewportSize()
     if (current?.width === size.width && current.height === size.height) return false
     await page.setViewportSize(size)

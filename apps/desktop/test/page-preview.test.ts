@@ -52,6 +52,18 @@ describe('compositor previews', () => {
     expect(await changed).toBe(true)
     expect(resize).toHaveBeenCalledExactlyOnceWith({ width: 720, height: 600 })
   })
+  it('waits for capture restoration before resizing the same page', async () => {
+    vi.useFakeTimers()
+    const { page, cdp } = fixture()
+    page.setViewportSize = vi.fn(async () => undefined)
+    await captureSharpFrame(page, cdp)
+    const changed = resizePreview(page, { width: 720, height: 600 })
+    await vi.advanceTimersByTimeAsync(59)
+    expect(page.setViewportSize).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await changed).toBe(true)
+    expect(page.setViewportSize).toHaveBeenCalledExactlyOnceWith({ width: 720, height: 600 })
+  })
   it('waits for the real resize before measuring and capturing the next frame', async () => {
     const { page, cdp } = fixture()
     let finish!: () => void
