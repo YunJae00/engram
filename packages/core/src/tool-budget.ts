@@ -1,5 +1,6 @@
-// Approval waits have no deadline; document and reply tools get longer budgets.
+// ask_person has no deadline; input tools allow the five-minute hands-off wait.
 const DEFAULT_MS = 45_000
+const INPUT_MS = 7 * 60_000
 const BUDGETS: Record<string, number | null> = {
   app_text: 200_000,
   app_do: 320_000,
@@ -8,7 +9,10 @@ const BUDGETS: Record<string, number | null> = {
   page_each: 600_000,
   look_in_parallel: 600_000,
   ppt_build: 120_000, word_write: 120_000, excel_write: 120_000, compose_live_document: 120_000, edit_live_document: 120_000,
-  press: null, press_point: null, app_press: null, page_steps: null, desktop_action: null, desktop_sequence: null, upload_file: null, run_procedure: null, ask_person: null,
+  press: INPUT_MS, press_point: INPUT_MS, app_press: INPUT_MS, page_steps: INPUT_MS,
+  desktop_action: INPUT_MS, desktop_sequence: INPUT_MS, upload_file: INPUT_MS, run_procedure: INPUT_MS,
+  Bash: INPUT_MS,
+  ask_person: null,
 }
 
 export function toolBudgetMs(name: string): number | null {
@@ -24,14 +28,15 @@ export class ToolOverBudget extends Error {
 // Runs one call within its budget. The call gets its own signal, so a tool
 // that listens stops its work when the budget runs out.
 export async function withinBudget<T>(name: string, parent: AbortSignal, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  parent.throwIfAborted()
   const budget = toolBudgetMs(name)
-  if (budget === null) return run(parent)
   const own = new AbortController()
-  const stop = () => own.abort(parent.reason)
-  parent.addEventListener('abort', stop, { once: true })
+  let stop!: () => void
   let timer: ReturnType<typeof setTimeout> | undefined
   const over = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => { const error = new ToolOverBudget(name, budget); own.abort(error); reject(error) }, budget)
+    stop = () => { own.abort(parent.reason); reject(parent.reason ?? new Error('canceled')) }
+    parent.addEventListener('abort', stop, { once: true })
+    if (budget !== null) timer = setTimeout(() => { const error = new ToolOverBudget(name, budget); own.abort(error); reject(error) }, budget)
   })
   try { return await Promise.race([run(own.signal), over]) }
   finally { clearTimeout(timer); parent.removeEventListener('abort', stop) }

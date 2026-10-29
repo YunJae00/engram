@@ -261,3 +261,21 @@ it('does not count a permission card waiting on the person as a stall', async ()
   finish({ answer: '' })
   await pending
 })
+
+it('ends a native call with a missing result hook even when the engine ignores cancellation', async () => {
+  vi.useFakeTimers()
+  let job!: ToolSessionJob
+  const onResult = vi.fn()
+  const engine = { runTools: (next: ToolSessionJob) => { job = next; return new Promise(() => {}) } } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Run', {
+    native: { cwd: process.cwd(), readRoots: [], decide: async () => ({ behavior: 'allow' }), onResult },
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  job.native!.onCall!('Bash', {})
+  await vi.advanceTimersByTimeAsync(425_000)
+  expect((await pending).incomplete).toContain('Bash took longer than 420s')
+  expect(job.signal?.aborted).toBe(true)
+  job.native!.onResult!('Bash', true)
+  expect(onResult).not.toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
+})

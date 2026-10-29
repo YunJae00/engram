@@ -1429,7 +1429,9 @@ export function registerIpc(ctx: VaultContext): void {
   async function beginRoutine(
     id: string,
     opts: RoutineStartOptions = {},
+    parent?: AbortSignal,
   ): Promise<RoutineRunReply & { done?: Promise<RoutineRunResult> }> {
+    parent?.throwIfAborted()
     const lane = opts.lane ?? DEFAULT_LANE
     if (manualRoutineClaimed && !opts.manual) return { ok: false, error: 'A routine is already running.' }
     if (routineLanes.has(lane) || runningRoutineIds.has(id)) return { ok: false, error: 'A routine is already running.' }
@@ -1437,9 +1439,12 @@ export function registerIpc(ctx: VaultContext): void {
       return { ok: false, error: 'An errand is using the browser right now — try again when it finishes.' }
     // Claimed before the first await, or two fast clicks both get past this.
     const claim = new AbortController()
+    const abort = () => claim.abort(parent?.reason)
+    parent?.addEventListener('abort', abort, { once: true })
     routineLanes.set(lane, claim)
     runningRoutineIds.add(id)
     const release = (): void => {
+      parent?.removeEventListener('abort', abort)
       routineLanes.delete(lane)
       runningRoutineIds.delete(id)
     }
@@ -1596,13 +1601,13 @@ export function registerIpc(ctx: VaultContext): void {
   // model's context in one reading.
   const ROUTINE_READING_CAP = 1_200
 
-  async function runProcedureForComet(id: string, slots: Record<string, string>, again: boolean, lane: string): Promise<string> {
+  async function runProcedureForComet(id: string, slots: Record<string, string>, again: boolean, lane: string, signal?: AbortSignal): Promise<string> {
     const instruction = (await listRoutines(paths)).find(routine => routine.id === id)
     if (instruction?.task) {
       const blocked = again ? null : routineBlock(instruction)
       return blocked ? 'Check the previous run and ask the person before running this task again.' : routineTaskPrompt(instruction)
     }
-    const started = await beginRoutine(id, { slots, force: again, lane })
+    const started = await beginRoutine(id, { slots, force: again, lane }, signal)
     if (started.blocked === 'already-ran-today')
       return 'that procedure already ran today and it posts to a page — ask the person whether to run it again; once they say yes, call run_procedure once more with "again": true'
     if (started.blocked === 'unfinished-write')
@@ -2333,9 +2338,9 @@ export function registerIpc(ctx: VaultContext): void {
         }, WALL_HOLD_MS).unref()
       },
       searchTemplate: async () => (await loadSettings()).searchTemplate || null,
-      runProcedure: (id, slots, _signal, again) => recovery
+      runProcedure: (id, slots, signal, again) => recovery
         ? Promise.resolve('The saved replay already ran. Inspect the current page and continue only unfinished work; do not replay it again.')
-        : runProcedureForComet(id, slots, again === true, channel),
+        : runProcedureForComet(id, slots, again === true, channel, signal),
       remembered: () => remembered,
       guided,
       learnSearch: async (template) => {

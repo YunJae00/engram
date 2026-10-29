@@ -94,3 +94,13 @@ describe('native runtime permission hooks', () => {
     expect(decide).not.toHaveBeenCalled()
   })
 })
+
+it('clears calls and cancels pending permissions when a turn ends without result hooks', async () => {
+  const host = native(() => new Promise(() => {}))
+  const options = nativeOptions(() => host)
+  const pending = options.canUseTool('Write', {}, context('missing-result'))
+  options.reset()
+  expect((await pending).behavior).toBe('deny')
+  await options.hooks.PostToolUse[0]!.hooks[0]!({ tool_name: 'Write', tool_use_id: 'missing-result' })
+  expect(host.onResult).not.toHaveBeenCalled()
+})

@@ -10,10 +10,11 @@ const DECISION_MS = 120_000
 
 export function nativeOptions(current: () => NativeTools | undefined) {
   let owner: NativeTools | undefined
-  const calls = new Map<string, { name: string; input: string; decision: Promise<NativeDecision> }>()
+  const calls = new Map<string, { name: string; input: string; decision: Promise<NativeDecision>; cancel(): void }>()
+  const reset = () => { for (const call of calls.values()) call.cancel(); calls.clear(); owner = undefined }
   const decide = (name: string, input: Data, id: string, signal: AbortSignal): Promise<NativeDecision> => {
     const native = current()
-    if (owner !== native) { calls.clear(); owner = native }
+    if (owner !== native) { reset(); owner = native }
     if (!native || signal.aborted) return Promise.resolve(deny('No active call is running.'))
     if (name.startsWith(`mcp__${TOOL_SERVER}__`)) return Promise.resolve({ behavior: 'allow' })
     const encoded = JSON.stringify(input)
@@ -41,7 +42,7 @@ export function nativeOptions(current: () => NativeTools | undefined) {
       if (result.behavior === 'deny') flog('native-tools', `denied ${name}: ${result.message ?? ''}`)
       return result
     })
-    if (id) calls.set(id, { name, input: encoded, decision })
+    if (id) calls.set(id, { name, input: encoded, decision, cancel })
     return decision
   }
   const finished = (raw: Data, ok: boolean) => {
@@ -54,6 +55,7 @@ export function nativeOptions(current: () => NativeTools | undefined) {
     return {}
   }
   return {
+    reset,
     permissionMode: 'default',
     canUseTool: (name: string, input: unknown, options: { signal: AbortSignal; toolUseID?: string }) => decide(name, object(input), options.toolUseID ?? '', options.signal),
     hooks: {
