@@ -330,3 +330,25 @@ it('keeps one Codex thread beyond forty turns', async () => {
     expect(sent.filter(call => call.method === 'thread/start')).toHaveLength(1)
   } finally { closeCodexSessions() }
 })
+
+it('keeps Codex approval pending beyond two minutes and cancels an unresponsive decision on Stop', async () => {
+  vi.useFakeTimers()
+  try {
+    const abort = new AbortController()
+    let decisionSignal: AbortSignal | undefined
+    const hands = native(async (_name, _input, signal) => { decisionSignal = signal; return new Promise(() => {}) })
+    const answers: unknown[] = []
+    const pending = runCodexNative({ ...job(hands), signal: abort.signal }, spec(fakeServer(async server => {
+      answers.push(await server.request('item/commandExecution/requestApproval', { itemId: 'pending', kind: 'command', command: 'python report.py' }))
+    })))
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(decisionSignal).toBeDefined()
+    expect(decisionSignal?.aborted).toBe(false)
+    expect(answers).toEqual([])
+    abort.abort()
+    await vi.advanceTimersByTimeAsync(0)
+    await pending
+    expect(decisionSignal?.aborted).toBe(true)
+    expect(answers).toEqual([{ decision: 'decline' }])
+  } finally { closeCodexSessions(); vi.useRealTimers() }
+})

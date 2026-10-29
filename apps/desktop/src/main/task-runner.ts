@@ -78,6 +78,7 @@ export function taskRunner(deps: {
     if (channels.delete(channel)) deps.broadcast({ type: 'comet:working', channel, working: false })
   }
   const stopped = new Set<string>()
+  const waiting = new Map<string, number>()
   // The task each comet is working on, by channel; presses the person
   // approved, each good for one press; presses they declined, never asked again.
   const owners = new Map<string, string>()
@@ -285,43 +286,50 @@ export function taskRunner(deps: {
         logTask(t, t.question)
       })
     },
-    // The question a press would put to the person becomes an approval
-    // waiting in the task, one per page and control. The turn holds for it a
-    // while, since the person is often right there; unanswered, it goes on.
-    // waitMs: how long a call may hold for the card's answer before taking 'later'.
-    askFor(channel: string, confirm: Ask, waitMs = 0): Ask | undefined {
+    // Approvals wait for the person; explicit deferred callers may request 'later'.
+    waitingForPerson: (channel: string): boolean => (waiting.get(channel) ?? 0) > 0,
+    askFor(channel: string, confirm: Ask, waitMs = Infinity): Ask | undefined {
       const id = owners.get(channel)
       if (!id || !channels.has(channel)) return undefined
       return async ({ words, url }) => {
-        const cardWords = url.startsWith('file:') ? words : words.slice(0, 120)
-        if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
-        const current = (await listTasks(paths)).find(t => t.id === id)
-        if (current?.state !== 'running') return 'cancel'
-        const granted = approved.get(id) ?? []
-        const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
-        // The form may have changed since the card was created. Reconfirm on
-        // the live page rather than authorizing arbitrary data at the same URL.
-        if (index >= 0) { granted.splice(index, 1); return confirm({ words, url }) }
-        if (declined.get(id)?.has(`${url}\n${cardWords}`)) return 'cancel'
-        await edit(id, (t) => {
-          if (t.state !== 'running' || stopped.has(channel) || t.approvals.some((a) => !a.settled && a.url === url && a.words === cardWords)) return
-          t.approvals.push({ id: `a-${Date.now().toString(36)}-${t.approvals.length}`, words: cardWords, host: hostOf(url) ?? '', url, at: new Date().toISOString() })
-        })
-        // The person may be right there: the card can be answered while the turn runs.
-        for (const until = Date.now() + waitMs; Date.now() < until;) {
-          await new Promise((resolve) => setTimeout(resolve, 1000))
+        waiting.set(channel, (waiting.get(channel) ?? 0) + 1)
+        try {
+          const cardWords = url.startsWith('file:') ? words : words.slice(0, 120)
           if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
-          let answer: 'approve' | 'decline' | undefined
-          await edit(id, t => {
-            if (t.state !== 'running' || stopped.has(channel)) return
-            const card = t.approvals.find(a => a.url === url && a.words === cardWords && a.answer && !a.settled)
-            if (card) { answer = card.answer; card.settled = true }
+          const current = (await listTasks(paths)).find(t => t.id === id)
+          if (current?.state !== 'running') return 'cancel'
+          const granted = approved.get(id) ?? []
+          const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
+          // The form may have changed since the card was created. Reconfirm on
+          // the live page rather than authorizing arbitrary data at the same URL.
+          if (index >= 0) { granted.splice(index, 1); return confirm({ words, url }) }
+          if (declined.get(id)?.has(`${url}\n${cardWords}`)) return 'cancel'
+          await edit(id, (t) => {
+            if (t.state !== 'running' || stopped.has(channel) || t.approvals.some((a) => !a.settled && a.url === url && a.words === cardWords)) return
+            t.approvals.push({ id: `a-${Date.now().toString(36)}-${t.approvals.length}`, words: cardWords, host: hostOf(url) ?? '', url, at: new Date().toISOString() })
           })
-          if (!answer) continue
-          if (answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
-          return answer === 'approve' ? confirm({ words, url }) : 'cancel'
+          // The person may be right there: the card can be answered while the turn runs.
+          for (const until = Date.now() + waitMs; Date.now() < until;) {
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+            if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
+            const live = (await listTasks(paths)).find(t => t.id === id)
+            if (live?.state !== 'running') return 'cancel'
+            if (!live.approvals.some(a => a.url === url && a.words === cardWords && a.answer && !a.settled)) continue
+            let answer: 'approve' | 'decline' | undefined
+            await edit(id, t => {
+              if (t.state !== 'running' || stopped.has(channel)) return
+              const card = t.approvals.find(a => a.url === url && a.words === cardWords && a.answer && !a.settled)
+              if (card) { answer = card.answer; card.settled = true }
+            })
+            if (!answer) continue
+            if (answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
+            return answer === 'approve' ? confirm({ words, url }) : 'cancel'
+          }
+          return 'later'
+        } finally {
+          const left = (waiting.get(channel) ?? 1) - 1
+          if (left) waiting.set(channel, left); else waiting.delete(channel)
         }
-        return 'later'
       }
     },
     register(): void {

@@ -27,7 +27,7 @@ export class ToolOverBudget extends Error {
 
 // Runs one call within its budget. The call gets its own signal, so a tool
 // that listens stops its work when the budget runs out.
-export async function withinBudget<T>(name: string, parent: AbortSignal, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export async function withinBudget<T>(name: string, parent: AbortSignal, run: (signal: AbortSignal) => Promise<T>, waitingForPerson?: () => boolean): Promise<T> {
   parent.throwIfAborted()
   const budget = toolBudgetMs(name)
   const own = new AbortController()
@@ -36,7 +36,17 @@ export async function withinBudget<T>(name: string, parent: AbortSignal, run: (s
   const over = new Promise<never>((_, reject) => {
     stop = () => { own.abort(parent.reason); reject(parent.reason ?? new Error('canceled')) }
     parent.addEventListener('abort', stop, { once: true })
-    if (budget !== null) timer = setTimeout(() => { const error = new ToolOverBudget(name, budget); own.abort(error); reject(error) }, budget)
+    if (budget !== null) {
+      let remaining = budget, last = Date.now()
+      const tick = () => {
+        const now = Date.now()
+        if (!waitingForPerson?.()) remaining -= now - last
+        last = now
+        if (remaining <= 0) { const error = new ToolOverBudget(name, budget); own.abort(error); reject(error) }
+        else timer = setTimeout(tick, waitingForPerson ? Math.min(1000, remaining) : remaining)
+      }
+      timer = setTimeout(tick, waitingForPerson ? Math.min(1000, remaining) : remaining)
+    }
   })
   try { return await Promise.race([run(own.signal), over]) }
   finally { clearTimeout(timer); parent.removeEventListener('abort', stop) }

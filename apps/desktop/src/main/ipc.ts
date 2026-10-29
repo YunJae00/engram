@@ -692,6 +692,7 @@ let errandWallWaiter: ((verdict: 'resolved' | 'skip') => void) | null = null
 // and submit questions are held per running routine, so an answer reaches
 // the run that asked.
 const routineLanes = new Map<string, AbortController>()
+const routineWaiting = new Set<string>()
 const runningRoutineIds = new Set<string>()
 let manualRoutineClaimed = false
 const routineWallWaiters = new Map<string, (verdict: 'resolved' | 'skip') => void>()
@@ -736,6 +737,9 @@ const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
 export function abortAllChat(channel?: string): void {
+  for (const [lane, answer] of pressAskWaiters) {
+    if (channel === undefined || channel === lane) answer('cancel')
+  }
   if (channel) stopExternalLane(channel)
   else stopExternalCalls()
   if (channel) stopDesktopForLane(channel)
@@ -1445,6 +1449,7 @@ export function registerIpc(ctx: VaultContext): void {
     runningRoutineIds.add(id)
     const release = (): void => {
       parent?.removeEventListener('abort', abort)
+      routineWaiting.delete(lane)
       routineLanes.delete(lane)
       runningRoutineIds.delete(id)
     }
@@ -1491,10 +1496,12 @@ export function registerIpc(ctx: VaultContext): void {
       onWall: (wall) =>
         new Promise((resolve) => {
           if (signal.aborted) { resolve('skip'); return }
+          routineWaiting.add(lane)
           const keepOpen = holdAgentBrowser()
           const abort = () => routineWallWaiters.get(routine.id)?.('skip')
           signal.addEventListener('abort', abort, { once: true })
           routineWallWaiters.set(routine.id, (verdict) => {
+            routineWaiting.delete(lane)
             routineWallWaiters.delete(routine.id)
             signal.removeEventListener('abort', abort)
             keepOpen()
@@ -1516,10 +1523,12 @@ export function registerIpc(ctx: VaultContext): void {
         }
         return new Promise((resolve) => {
           if (signal.aborted) { resolve('cancel'); return }
+          routineWaiting.add(lane)
           const keepOpen = holdAgentBrowser()
           const abort = () => routineSubmitWaiters.get(routine.id)?.('cancel')
           signal.addEventListener('abort', abort, { once: true })
           routineSubmitWaiters.set(routine.id, (verdict) => {
+            routineWaiting.delete(lane)
             routineSubmitWaiters.delete(routine.id)
             signal.removeEventListener('abort', abort)
             keepOpen()
@@ -2295,7 +2304,7 @@ export function registerIpc(ctx: VaultContext): void {
     const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
-      ask: what => studying.has(channel) ? Promise.resolve('cancel') : tasks.askFor(channel, async () => 'approve', 90_000)?.(what) ?? Promise.resolve('cancel'),
+      ask: what => studying.has(channel) ? Promise.resolve('cancel') : tasks.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
     }) : []
     return [...cometTools({
       paths,
@@ -2313,7 +2322,7 @@ export function registerIpc(ctx: VaultContext): void {
       // a new comet never inherits the page an old one left open.
       courier: agentBrowserAvailable()
         ? agentCourier({
-            askBeforePress: unlessStudying(channel, tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail })), 90_000) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
+            askBeforePress: unlessStudying(channel, tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
             lane: channel,
             onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
             onAside: (phase) => {
@@ -2654,7 +2663,7 @@ export function registerIpc(ctx: VaultContext): void {
         takeTurnScripts(channel)
         const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve', 90_000); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const observedProgress: { tool: string; args: Record<string, unknown>; observation: string }[] = []
@@ -2671,6 +2680,7 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
+            waitingForPerson: () => tasks.waitingForPerson(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel),
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),

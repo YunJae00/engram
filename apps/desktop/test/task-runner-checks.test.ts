@@ -37,7 +37,7 @@ it('never delivers a held result after the person stops its check', async () => 
 it('continues a deferred approval answered before the turn finishes', async () => {
   const verdicts: string[] = []
   const t = await setup(async (request, turn, _extra, runner) => {
-    verdicts.push(await runner.askFor(request.channel!, async () => 'approve')!({ words: 'Send', url: 'https://example.test/draft' }))
+    verdicts.push(await runner.askFor(request.channel!, async () => 'approve', 0)!({ words: 'Send', url: 'https://example.test/draft' }))
     if (turn === 1) {
       const task = (await listTasks(t.paths))[0]!
       await t.call('tasks:decide', task.id, task.approvals[0]!.id, 'approve')
@@ -76,7 +76,7 @@ it('keeps the complete command visible and cannot reuse its approval for another
     expect(task.approvals[0]!.words).toBe(words)
     await t.call('tasks:decide', task.id, task.approvals[0]!.id, 'approve')
     expect(await waiting).toBe('approve')
-    expect(await runner.askFor(request.channel!, confirm)!({ words, url: 'file:///work#command-two' })).toBe('later')
+    expect(await runner.askFor(request.channel!, confirm, 0)!({ words, url: 'file:///work#command-two' })).toBe('later')
     return done('Ready')
   })
   await t.chat('Prepare a report')

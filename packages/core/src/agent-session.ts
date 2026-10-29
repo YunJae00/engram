@@ -131,6 +131,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let queued = 0
   const running = new Set<{ name: string; at: number; native: boolean }>()
   let unfinishedCalls = false
+  let deciding = 0
+  const waitingForPerson = () => deciding > 0 || options.waitingForPerson?.() === true
   let toolTail = Promise.resolve()
   let asked: { question: string; options: string[] } | null = null
   // A card put to the person ends the work of the turn, as a question does.
@@ -191,13 +193,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         if (repeated) {
           observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach.`
         } else if (tool.runRich) {
-          const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }))
+          const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }), waitingForPerson)
           observation = outcome.text
           image = outcome.image
           modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
           committed = outcome.committed === true
-        } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }))
+        } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }), waitingForPerson)
       } catch (err) {
         if (signal.aborted) throw err
         observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`
@@ -256,7 +258,15 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // what they want travel with each turn, and the conversation so far only
   // with the first.
   const opening = conversationLines(options.history).join('\n')
+  let checkedAt = Date.now()
   const watchdog = setInterval(() => {
+    const elapsed = Date.now() - checkedAt
+    checkedAt = Date.now()
+    if (waitingForPerson()) {
+      for (const call of running) call.at += elapsed
+      touch()
+      return
+    }
     const overdue = [...running].find(call => {
       const budget = toolBudgetMs(call.name)
       return budget !== null && Date.now() - call.at > budget
@@ -286,8 +296,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ...options.native,
       // A permission card waiting on the person is work in progress, not silence.
       decide: async (name, input, signal) => {
-        queued++; touch()
-        try { return await options.native!.decide(name, input, signal) } finally { queued = Math.max(0, queued - 1); touch() }
+        queued++; deciding++; touch()
+        try { return await options.native!.decide(name, input, signal) } finally { deciding--; queued = Math.max(0, queued - 1); touch() }
       },
       onCall: (name, input) => {
         if (signal.aborted) return

@@ -45,3 +45,19 @@ it('cancels even an unlimited tool that ignores its abort signal', async () => {
   parent.abort(new Error('Stopped by person'))
   await expect(pending).rejects.toThrow('Stopped by person')
 })
+
+it('excludes approval waiting time but still enforces the remaining execution budget', async () => {
+  vi.useFakeTimers()
+  try {
+    let waiting = false
+    const pending = withinBudget('press', new AbortController().signal, () => new Promise(() => {}), () => waiting)
+    const rejected = expect(pending).rejects.toThrow('press took longer than 420s')
+    await vi.advanceTimersByTimeAsync(300_000)
+    waiting = true
+    await vi.advanceTimersByTimeAsync(3_600_000)
+    waiting = false
+    await vi.advanceTimersByTimeAsync(120_000)
+    await rejected
+    expect(vi.getTimerCount()).toBe(0)
+  } finally { vi.useRealTimers() }
+})

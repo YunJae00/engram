@@ -14,7 +14,6 @@ const object = (value: unknown): Data => value && typeof value === 'object' && !
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
 // The runtime wraps each command in its shell; the person reads the command itself.
 const commandOf = (data: Data): string => (Array.isArray(data['commandActions']) ? data['commandActions'] : []).map(action => text(object(action)['command'])).filter(Boolean).join('; ') || text(data['command'])
-const DECISION_MS = 120_000
 const IDLE_MS = 60 * 60_000
 
 export interface CodexRpc {
@@ -151,20 +150,23 @@ class CodexSession {
     return true
   }
 
-  // One answer per call, bounded: a decision that does not come is a refusal.
+  // Only the person or turn cancellation ends a permission wait.
   private async decide(turn: Turn, name: string, input: Data): Promise<NativeDecision> {
     const call = new AbortController()
-    const stop = () => call.abort()
-    turn.controller.signal.addEventListener('abort', stop, { once: true })
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let stop!: () => void
+    const canceled = new Promise<NativeDecision>(resolve => {
+      stop = () => { call.abort(); resolve({ behavior: 'deny', message: 'The call was canceled.' }) }
+      turn.controller.signal.addEventListener('abort', stop, { once: true })
+      if (turn.controller.signal.aborted) stop()
+    })
     try {
-      const late = new Promise<NativeDecision>((done) => { timer = setTimeout(() => { call.abort(); done({ behavior: 'deny', message: 'No decision arrived in time.' }) }, DECISION_MS); timer.unref() })
-      const result = await Promise.race([turn.job.native.decide(name, input, call.signal), late])
-      if (call.signal.aborted && result.behavior === 'allow') return { behavior: 'deny', message: 'The call was canceled.' }
+      if (call.signal.aborted) return await canceled
+      const result = await Promise.race([turn.job.native.decide(name, input, call.signal), canceled])
+      if (call.signal.aborted) return { behavior: 'deny', message: 'The call was canceled.' }
       if (result.behavior === 'deny') flog('native-tools', `denied ${name}: ${result.message ?? ''}`)
       return result
     } catch { return { behavior: 'deny', message: 'The permission check failed.' } }
-    finally { clearTimeout(timer); turn.controller.signal.removeEventListener('abort', stop) }
+    finally { turn.controller.signal.removeEventListener('abort', stop) }
   }
 
   private notify(method: string, params: Data): void {

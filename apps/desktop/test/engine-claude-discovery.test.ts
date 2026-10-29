@@ -29,7 +29,7 @@ it.each([false, true])('discovers app tools in a spare and reused session with n
             const canUse = options['canUseTool'] as (name: string, args: unknown, context: { signal: AbortSignal; toolUseID: string }) => Promise<{ behavior: string }>
             const hooks = options['hooks'] as { PreToolUse: { hooks: ((input: object, id: string, context: { signal: AbortSignal }) => Promise<{ hookSpecificOutput: { permissionDecision: string } }>)[] }[] }
             expect((await canUse('ToolSearch', input, { signal, toolUseID: id })).behavior).toBe('allow')
-            expect((await hooks.PreToolUse[0]!.hooks[0]!({ tool_name: 'ToolSearch', tool_input: input, tool_use_id: id }, id, { signal })).hookSpecificOutput.permissionDecision).toBe('allow')
+            expect((await hooks.PreToolUse[0]!.hooks[0]!({ tool_name: 'ToolSearch', tool_input: input, tool_use_id: id }, id, { signal })).hookSpecificOutput.permissionDecision).toBe('ask')
           } else searches++
           expect(message.message.content).toContain('app')
           const result = await server.tools[0]!.handler({})
