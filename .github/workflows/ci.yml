@@ -48,6 +48,17 @@ jobs:
       # The model catalogue points at someone else's server; a renamed file
       # there is a 404 the first user with that much RAM discovers.
 
+  checks:
+    if: ${{ always() && !inputs.native_only }}
+    name: typecheck · lint · unit
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require checks on both operating systems
+        env:
+          RESULT: ${{ needs.check.result }}
+        run: test "$RESULT" = success
+
   e2e-shards:
     if: ${{ !inputs.native_only }}
     name: Electron (${{ matrix.os }}) shard ${{ matrix.shard }}/2
