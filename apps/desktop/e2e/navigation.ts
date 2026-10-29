@@ -25,7 +25,10 @@ export async function closeTestApp(app: ElectronApplication | undefined): Promis
   if (!app) return
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await Promise.race([app.close(), new Promise<never>((_, reject) => {
+    const closing = app.close()
+    // Trace flushing precedes Playwright's quit request; request normal quit independently.
+    void app.evaluate(({ app }) => { app.quit() }).catch(() => undefined)
+    await Promise.race([closing, new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('The test app did not shut down within 45 seconds.')), 45000)
     })])
   } catch (error) {
