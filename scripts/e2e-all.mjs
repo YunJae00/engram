@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 const desktop = fileURLToPath(new URL('../apps/desktop/', import.meta.url))
 // Specs that take the foreground, move the pointer, capture the screen or reach a live account.
 const SCREEN = new Set(['computer-control.spec.ts', 'appearance.spec.ts', 'live-view.spec.ts', 'native-browser.spec.ts', 'page-hands.spec.ts', 'browser-preview.spec.ts',
-  'work-evidence.spec.ts', 'evidence-live.spec.ts', 'developers-live.spec.ts', 'account-usage-live.spec.ts', 'app-reset.spec.ts'])
+  'onboarding.spec.ts', 'routines.spec.ts', 'work-evidence.spec.ts', 'evidence-live.spec.ts', 'developers-live.spec.ts', 'account-usage-live.spec.ts', 'app-reset.spec.ts'])
 const WORKERS = process.env['E2E_WORKERS'] ?? '3'
 
 const specs = readdirSync(join(desktop, 'e2e')).filter(name => name.endsWith('.spec.ts')).sort()

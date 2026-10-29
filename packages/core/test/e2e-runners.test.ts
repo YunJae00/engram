@@ -14,6 +14,8 @@ describe('e2e schedules', () => {
     expect([...quiet, ...screen].sort()).toEqual(all)
     expect(screen).toContain('computer-control.spec.ts')
     expect(screen).toContain('app-reset.spec.ts')
+    expect(screen).toContain('onboarding.spec.ts')
+    expect(screen).toContain('routines.spec.ts')
   })
 
   it('selects the affected area and explicit specs', () => {

@@ -16,7 +16,7 @@ import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
 import { registerSemanticIpc, semanticNotesChanged, startSemantic, stopSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
-import { closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
+import { agentBrowserRunning, closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { attachNativeLayout } from './native-layout.js'
 import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
@@ -796,7 +796,7 @@ app.on('before-quit', (event) => {
   stopDesktopControl('Engram is closing.')
   closeDesktopAccess()
   quitting = true
-  if (nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
+  if (agentBrowserRunning() || nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
     event.preventDefault()
     abortAllChat()
     // Whatever is still open gets a bounded chance; the quit itself is not held hostage.

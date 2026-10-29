@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Page } from '@playwright/test'
 
 export async function openActivity(page: Page, activity: string): Promise<void> {
   if (activity === 'routines') {
@@ -18,4 +18,18 @@ export async function openActivity(page: Page, activity: string): Promise<void> 
   const target = page.getByTestId(`activity-${activity}`)
   if (!await target.isVisible()) await page.getByTestId('workspace-switcher').click()
   await target.click()
+}
+
+// A broken shutdown should fail promptly instead of spending the whole test timeout in teardown.
+export async function closeTestApp(app: ElectronApplication | undefined): Promise<void> {
+  if (!app) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([app.close(), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('The test app did not shut down within 45 seconds.')), 45000)
+    })])
+  } catch (error) {
+    app.process().kill('SIGKILL')
+    throw error
+  } finally { clearTimeout(timer) }
 }

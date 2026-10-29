@@ -575,6 +575,8 @@ export function currentAgentPage(): Page | null {
   return lanePage(activeLane)
 }
 
+export function agentBrowserRunning(): boolean { return context !== null || opening !== null || closing !== null }
+
 export function agentBrowserAvailable(): boolean {
   if (nativeBrowserEnabled()) return true
   return (chosenPath !== null && existsSync(chosenPath)) || installedBrowsers().length > 0

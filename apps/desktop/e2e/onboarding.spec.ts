@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { openActivity } from './navigation.js'
+import { closeTestApp, openActivity } from './navigation.js'
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,7 +65,7 @@ test.beforeEach(async () => {
 })
 
 test.afterEach(async () => {
-  await app?.close()
+  await closeTestApp(app)
 })
 
 test('a fresh workspace requires verified AI before browsing', async () => {

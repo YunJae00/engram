@@ -405,7 +405,7 @@ it('uses the Mac helper and prepares control without Windows foreground delegati
   child.pid = 321
   const request = host.request('bind', { ...target, grant: 'user-grant' })
   await ready()
-  expect(deps.spawn.mock.calls[0]![0]).toMatch(/\/EngramDesktop$/)
+  expect(deps.spawn.mock.calls[0]![0]).toMatch(/[\\/]EngramDesktop$/)
   expect(messages().map(message => message.method)).toEqual(['prepare'])
   respond({ id: latest('prepare'), result: { intervention: '0' } })
   await flush()

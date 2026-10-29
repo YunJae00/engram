@@ -81,7 +81,7 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
       <button aria-label={minimized ? 'Restore browser preview' : 'Expand browser'} title={minimized ? 'Restore browser preview' : 'Expand browser'} onClick={() => { if (minimized) setMinimized(false); else if (onOpen) onOpen(); else webPane.expand(channel, true) }}><Maximize2 size={15} aria-hidden /></button>
     </div>
     {!minimized && <button className="browser-preview-picture" aria-label={compact ? 'Open full browser' : 'Open browser beside chat'} onClick={open} style={{ aspectRatio: `${size.width} / ${size.height}` } as CSSProperties}>
-      <FrameScreen key={channel} lane={channel} source={native ? source : frames} onSize={measureShape} />
+      <FrameScreen key={channel} lane={channel} source={native || !url || url === 'about:blank' ? source : frames} onSize={measureShape} />
       <span className="browser-preview-wait">{(!url || url === 'about:blank') && !busy ? 'Click to enter a website' : unavailable ? 'Preview unavailable · click to open' : 'Opening preview…'}</span>
     </button>}
   </aside>

@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openActivity } from './navigation.js'
+import { closeTestApp, openActivity } from './navigation.js'
 import { recordedSteps } from '../../../packages/core/src/routine-record.js'
 
 // Saved routines open fresh conversations and preserve the replay's gates.
@@ -98,8 +98,10 @@ test.afterAll(async () => {
     await page.evaluate(() => window.engram.chatAbort()).catch(() => undefined)
     await expect.poll(() => page.evaluate(() => window.engram.chatActive()), { timeout: 10_000 }).toEqual([]).catch(() => undefined)
   }
-  await app?.close()
-  await new Promise<void>((resolve) => server.close(() => resolve()))
+  try { await closeTestApp(app) } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
 })
 
 async function capture(name: string): Promise<void> {
@@ -149,9 +151,8 @@ async function resizeForRoutine(width: number): Promise<void> {
   const actual = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   console.info(`[routine layout] requested ${width}x720; actual ${actual.width}x${actual.height}`)
   expect(actual.width).toBeLessThanOrEqual(1180)
-  // The command palette restores visible content by removing aria-hidden,
-  // which is equivalent to false. Check visibility, not the attribute string.
-  if (actual.width <= 900 && await page.getByTestId('app-sidebar').isVisible()) {
+  // A closing sidebar stays visible during its animation; do not click it again.
+  if (actual.width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') !== 'true' && await page.getByTestId('app-sidebar').isVisible()) {
     await page.getByTestId('app-sidebar-close').click()
     await expect(page.getByTestId('app-sidebar')).toHaveAttribute('aria-hidden', 'true')
   }
