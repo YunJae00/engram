@@ -66,6 +66,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: installers-*
           path: artifacts
       # Keep installation and runtime notices attached to every release.
       - name: Compose the download section
