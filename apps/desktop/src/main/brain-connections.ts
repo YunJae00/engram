@@ -72,6 +72,15 @@ export function brainConnection(provider: BrainConnectionProvider, profile?: str
   return key ? { baseUrl: stored.baseUrl, model: stored.model, key } : null
 }
 
+export function decisionConnectionState(): { available: boolean; reason: string; model?: string } {
+  if (!cache) return { available: false, reason: loading ? 'loading' : 'not-loaded' }
+  const stored = cache.decision
+  if (!stored) return { available: false, reason: 'missing-connection' }
+  if (!storedFor('decision')) return { available: false, reason: 'profile-mismatch', model: stored.model }
+  if (!open(stored)) return { available: false, reason: 'key-unavailable', model: stored.model }
+  return { available: true, reason: 'ready', model: stored.model }
+}
+
 // What the settings screen may know: everything but the key itself.
 export function brainConnectionDto(provider: BrainConnectionProvider): BrainConnectionDto | null {
   const stored = storedFor(provider)

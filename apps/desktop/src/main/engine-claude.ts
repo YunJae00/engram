@@ -1,3 +1,4 @@
+import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
@@ -260,7 +261,7 @@ export class ClaudeEngine implements CloudEngine {
   runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
-    return Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()]).then(([sdk, model]) => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }))
+    return Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }) })
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.

@@ -1,5 +1,4 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,10 +14,10 @@ vi.mock('electron', () => ({
   },
 }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { brainConnection, brainConnectionDto, clearBrainConnection, codexProviderOverrides, connectionEnvironment, connectionModels, hasBrainConnection, loadBrainConnections, probeConnection, setBrainConnection, validateConnectionInput } from '../src/main/brain-connections.js'
+import { brainConnection, brainConnectionDto, decisionConnectionState, clearBrainConnection, codexProviderOverrides, connectionEnvironment, connectionModels, hasBrainConnection, loadBrainConnections, probeConnection, setBrainConnection, validateConnectionInput } from '../src/main/brain-connections.js'
 
 beforeEach(async () => {
-  fake.dir = await mkdtemp(join(tmpdir(), 'engram-connections-')); fake.encryption = true; fake.profile = 'system'; fake.decryptFailure = false
+  fake.dir = await mkdtemp(join(process.cwd(), 'tmp', 'engram-connections-')); fake.encryption = true; fake.profile = 'system'; fake.decryptFailure = false
   fake.fetch.mockReset().mockImplementation(async () => new Response(JSON.stringify({ type: 'message', content: [{ type: 'text', text: 'OK' }], status: 'completed', output: [{ content: [{ type: 'output_text', text: 'OK' }] }], answers: { next: { choice: 'ready' } } })))
 })
 afterEach(async () => { fake.profile = 'system'; for (const provider of ['claude', 'codex', 'decision'] as const) await clearBrainConnection(provider); await rm(fake.dir, { recursive: true, force: true }) })
@@ -134,4 +133,13 @@ describe('a brain reached by key', () => {
     const isolated = await import('../src/main/brain-connections.js')
     await expect(isolated.loadBrainConnections()).rejects.toThrow(/could not be read/)
   })
+})
+
+it('accepts the configured decision model ID and reports missing connections without exposing keys', async () => {
+  await loadBrainConnections()
+  expect(decisionConnectionState()).toMatchObject({ available: false, reason: 'missing-connection' })
+  await setBrainConnection('decision', { baseUrl: 'https://gateway.example/v1', key: 'decision-secret', model: 'jev-1.13.0' })
+  expect(decisionConnectionState()).toEqual({ available: true, reason: 'ready', model: 'jev-1.13.0' })
+  expect(brainConnection('decision')?.model).toBe('jev-1.13.0')
+  expect(JSON.stringify(decisionConnectionState())).not.toContain('decision-secret')
 })

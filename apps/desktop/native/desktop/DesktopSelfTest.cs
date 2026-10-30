@@ -157,6 +157,11 @@ internal static class DesktopSelfTest
                 Check(ControlPolicy.Chord(key).Length >= 2 && ControlPolicy.Chord(key).Length <= 3, "Editing chords have bounded modifiers");
             foreach (var key in new[] { "Control+V", "Control+C", "Alt+Tab", "Win+R", "Escape", "F12", "Control+Alt+Delete" })
                 Reject(delegate { ControlPolicy.Chord(key); }, "System and clipboard chords must be rejected");
+            foreach (var kind in new[] { "ControlType.Text", "ControlType.Document", "ControlType.Pane" })
+                Check(!ControlPolicy.IsSensitiveControl(false, kind, "Discuss terminal and 로그인 in this conversation", "conversation", "", false), "Conversation contents are not security surfaces");
+            Check(ControlPolicy.IsSensitiveControl(true, "ControlType.Edit", "Message", "", "", false), "Password fields stay protected");
+            Check(ControlPolicy.IsSensitiveControl(false, "ControlType.Pane", "Sign in", "", "", false), "An identified authentication group stays protected");
+            Check(ControlPolicy.IsSensitiveControl(false, "ControlType.Window", "Windows PowerShell", "", "", true), "Terminal windows stay protected");
             Check(ControlPolicy.IsSensitive("Sign in to account") && ControlPolicy.IsSensitive("비밀번호") && ControlPolicy.IsSensitive("Windows PowerShell"), "Sensitive surfaces must be recognized");
             Check(ControlPolicy.IsSensitive("Windows Security") && ControlPolicy.IsSensitive("User Account Control"), "Security application titles must require manual control");
             Console.WriteLine("Desktop pure safety tests passed: " + Assertions);

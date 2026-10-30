@@ -4,7 +4,7 @@ import type { EngineCwd, EngineEvent } from 'core'
 const fixture = vi.hoisted(() => ({
   ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(), providerConfig: vi.fn(), connectionEnv: vi.fn(),
 }))
-vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), codexProviderOverrides: fixture.providerConfig, connectionEnvironment: fixture.connectionEnv }))
+vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), decisionConnectionState: () => ({ available: false, reason: 'missing-connection' }), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), codexProviderOverrides: fixture.providerConfig, connectionEnvironment: fixture.connectionEnv }))
 vi.mock('../src/main/codex-native.js', () => ({ appServer: () => 'fixture-rpc', runCodexNative: fixture.native }))
 vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: fixture.ready, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('../src/main/codex-turn.js', () => ({

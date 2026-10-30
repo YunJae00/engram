@@ -1,3 +1,4 @@
+import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
@@ -246,6 +247,7 @@ export class CodexEngine implements CloudEngine {
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     if (job.signal?.aborted) return { answer: '', error: 'canceled' }
     await loadBrainConnections()
+    logSessionTools('codex', job)
     const binary = codexBinary()
     if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
     const abort = new AbortController()
