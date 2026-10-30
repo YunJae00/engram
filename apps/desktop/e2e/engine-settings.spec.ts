@@ -10,7 +10,7 @@ test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
-type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void; longModelLabel?: string }
+type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void; longModelLabel?: string; modelReplies?: Array<() => void> }
 type Global = typeof globalThis & { engineFixture: Fixture }
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
@@ -348,13 +348,19 @@ test('conversation and filing selections persist without changing each other', a
 test('a cached model menu remains usable after reload while the catalog request is stalled', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('models:list')
-    ipcMain.handle('models:list', () => new Promise(() => undefined))
+    // Keep the reply alive: Electron rejects an unreachable pending reply during GC.
+    const replies = (globalThis as Global).engineFixture.modelReplies = [] as Array<() => void>
+    ipcMain.handle('models:list', () => new Promise<void>(resolve => { replies.push(resolve) }))
   })
   await page.reload()
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   const picker = page.getByTestId('model-picker')
   await picker.click()
   await expect(page.getByTestId('model-pick-claude-deep')).toBeVisible({ timeout: 1000 })
+  await app.evaluate(() => {
+    process.getBuiltinModule('v8').setFlagsFromString('--expose_gc')
+    process.getBuiltinModule('vm').runInNewContext('gc')()
+  })
   await expect(page.getByTestId('model-picker-menu').getByRole('status')).toHaveText('Updating models…')
   await expect(page.getByTestId('model-picker-menu').locator('.computer-spinner')).toBeVisible()
   await page.getByTestId('model-pick-claude-deep').click()
