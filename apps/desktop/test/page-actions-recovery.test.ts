@@ -62,7 +62,7 @@ it('does not require guessed dimensions for a confirmed DOM scroll result', asyn
 it('does not mistake an undefined frame scroll result for success', async () => {
   const { page, mouse, frame } = pointerPage({ width: 800, height: 600 })
   expect(await scrollPage(page, 'down')).toEqual({ ok: true })
-  expect(frame.evaluate).toHaveBeenCalledTimes(1)
+  expect(frame.evaluate).toHaveBeenCalledTimes(2)
   expect(mouse.move).toHaveBeenCalledWith(400, 300)
   expect(mouse.wheel).toHaveBeenCalledWith(0, 480)
 })

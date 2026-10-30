@@ -130,7 +130,7 @@ it('answers with the draft when the check overruns its budget', async () => {
   expect(task.turns).toBe(2)
   expect(task.verified).not.toBe(true)
   expect(task.verificationIssue).toBe('The check ran out of time.')
-  expect(t.delivered).toEqual([`Saved [Report](engram-artifact:report.md)${'\n\n⚠ Checked; some of this could not be confirmed against the original.'}`])
+  expect(t.delivered).toEqual([`Saved [Report](engram-artifact:report.md)${'\n\n⚠ Checked; some of this could not be confirmed against the original.'} The check ran out of time.`])
 })
 
 it('does not demand a text read or a repeated recording for media-only evidence', async () => {

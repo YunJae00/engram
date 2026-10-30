@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import {
   continuationPrompt,
+  successfulTurnSteps,
   createTask,
   findPlaybook,
   hostOf,
@@ -22,7 +23,7 @@ import type { ChatRequestDto, EngramEvent } from '../shared/types.js'
 import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
-import { freshResultReadback, needsResultCheck } from './task-result-state.js'
+import { freshResultReadback, needsResultCheck, RESULT_CHANGES } from './task-result-state.js'
 
 // Every comet message is a task: its first turn is the ordinary chat turn the
 // person watches, and when that turn stops short of the goal the work goes on
@@ -139,7 +140,7 @@ export function taskRunner(deps: {
       if (!outcome && checking) {
         delete t.verificationPending
         t.verificationIssue = overran ? 'The check ran out of time.' : 'The check could not finish.'
-        t.result = `${draft ?? ''}${UNCONFIRMED}`
+        t.result = `${draft ?? ''}${UNCONFIRMED} ${t.verificationIssue}`
         t.state = 'done'; logTask(t, `Done, not fully confirmed: ${t.verificationIssue}`)
       }
       else if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
@@ -156,12 +157,9 @@ export function taskRunner(deps: {
           t.result = outcome.answer
           t.state = 'done'; logTask(t, 'Done')
         } else {
-          // One check, and the person gets the answer either way: what the
-          // check corrected if it saved anything new, else the draft, with what
-          // could not be confirmed kept here rather than in the thread.
           t.verificationIssue = outcome.check?.issues.join('; ') || (outcome.unfinished ? 'The check ended before the results were confirmed.' : reread ? 'The check reported no structured result.' : 'The check needs a fresh readback after the last change.')
-          const corrected = artifactLinks(outcome.answer).some((link) => !artifactLinks(draft).includes(link))
-          t.result = `${corrected || !draft ? outcome.answer : draft}${UNCONFIRMED}`
+          const corrected = successfulTurnSteps(steps).some(step => RESULT_CHANGES.test(step.tool) || step.committed) || artifactLinks(outcome.answer).some((link) => !artifactLinks(draft).includes(link))
+          t.result = `${corrected || !draft ? outcome.answer : draft}${UNCONFIRMED} ${t.verificationIssue.replace(/\s+/g, ' ')}`
           t.state = 'done'; logTask(t, `Done, not fully confirmed: ${t.verificationIssue}`)
         }
       } else if (outcome.unfinished) {

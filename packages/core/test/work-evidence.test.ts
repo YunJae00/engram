@@ -49,7 +49,7 @@ it('waits for a fresh successful read and stops on cancellation', async () => {
 it('keeps failed checks and uncertain uploads unverified', () => {
   const failed = step('verify', { verification: { status: 'failed' } }, check)
   const passed = step('verify', { verification: { status: 'passed' } }, check)
-  expect(evidenceFault([failed, { ...passed, args: { ...check, ready: 'Other' } }])).toBeDefined()
+  expect(evidenceFault([failed, { ...passed, args: { ...check, id: 'other-purpose', ready: 'Other' } }])).toBeDefined()
   expect(evidenceFault([failed, { ...passed, seeded: true }])).toBeDefined()
   expect(evidenceFault([failed, passed])).toBeUndefined()
   expect(evidenceFault([step('upload_file', { upload: { status: 'unconfirmed' } })])).toBeDefined()

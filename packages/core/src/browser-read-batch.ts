@@ -4,11 +4,20 @@ import type { HarnessMetric } from './harness-metrics.js'
 import { pageReport } from './page-report.js'
 import { checkPage } from './work-evidence.js'
 
+function normalizedUrl(value: string): string {
+  const url = new URL(value)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid page URL')
+  url.hostname = url.hostname.replace(/^www\./, '')
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/'
+  url.hash = ''
+  return url.href
+}
+
 // Known destinations only: no clicks, field input, inferred links or automatic retries.
 export function browserReadBatch(courier: WebCourier, wallMet?: (url: string) => void, emit?: (metric: HarnessMetric) => void): AgentTool {
   return {
     name: 'read_pages',
-    description: 'Read 1–4 known HTTP(S) addresses within this request in order, using fresh observations. Each needs literal ready text and may specify find. Stops at the first mismatch, login, dialog or error; never submits or replays input. This navigates the current tab. Use single-page tools for unknown destinations. Results are extracts, not proof of complete records.',
+    description: 'Read 1–4 known HTTP(S) addresses within this request in order, using fresh observations. Each needs literal ready text and may specify find. Stops at the first mismatch, login or error; never submits or replays input. This navigates the current tab. Use single-page tools for unknown destinations. Results are extracts, not proof of complete records.',
     argsSchema: { type: 'object', properties: { pages: { type: 'array', minItems: 1, maxItems: 4, items: {
       type: 'object', properties: { url: { type: 'string' }, ready: { type: 'string' }, find: { type: 'string' } }, required: ['url', 'ready'], additionalProperties: false,
     } } }, required: ['pages'], additionalProperties: false },
@@ -35,7 +44,8 @@ export function browserReadBatch(courier: WebCourier, wallMet?: (url: string) =>
           context.signal?.throwIfAborted()
           reports.push(`Source: ${page.url}\n${pageReport(page, 1, request.find)}`)
           if (page.wall) wallMet?.(page.url)
-          if (page.dialog || page.faults?.length || checkPage(page, { id: `page-${completed + 1}`, url: request.url, ready: request.ready }).status !== 'passed') {
+          const destinationMatches = normalizedUrl(page.url) === normalizedUrl(request.url) || page.requestedUrl === request.url
+          if (!destinationMatches || page.dialog && !page.text.trim() || page.status && page.status >= 400 || page.faults?.length || checkPage(page, { id: `page-${completed + 1}`, url: page.url, ready: request.ready }).status !== 'passed') {
             return `that did not work: Batch stopped: ${completed}/${requests.length} readiness checks passed. The current page is unexpected or needs attention. Inspect it; do not repeat completed work.\n\n${reports.join('\n\n')}`
           }
           completed++

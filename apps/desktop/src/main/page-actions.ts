@@ -5,21 +5,17 @@ import { scrollDirection } from './page-scroll.js'
 import { handOn, inspectControl, unmark } from './page-target.js'
 export { handOn, unmark } from './page-target.js'
 
-// The hands a reader has on a page: press, type into a search box, choose
-// from a list, scroll, hover, a key. Each moves around the page the way a
-// person would and commits nothing - a control that would submit, save,
-// send or buy is looked at before it is touched, and refused.
+
+function actionError(error: unknown): string {
+  console.error('[page-actions]', error)
+  return error instanceof Error ? error.message : String(error)
+}
 
 export const FIND_TIMEOUT_MS = 3_000
-// Bound document readiness; content reads separately retry delayed results.
 const SETTLE_LOAD_MS = 900
 const SETTLE_MS = 300
 const KEYS = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Space'])
 
-// A page is given its moment after a move: the navigation it may have
-// started, the requests that fill in what was pressed for, and a breath.
-// No networkidle wait: a live site with analytics or a socket never goes idle,
-// so that wait ran to its full timeout on every action and bought nothing.
 export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded', { timeout: SETTLE_LOAD_MS }).catch(() => undefined)
   await page.waitForTimeout(SETTLE_MS)
@@ -33,33 +29,22 @@ async function inspected(hand: Locator): Promise<ReturnType<typeof inspectContro
   }
 }
 
-// The person's answer to "may this go?": the host asks them, with the page
-// in front of them. No asker means the old refusal - nothing commits by
-// accident because a caller forgot to wire the question.
-// reading: the comet is only learning, so a press that keeps something is refused too.
 export type Ask = ((what: { words: string; url: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>) & { reading?: () => boolean }
 const commitsFor = (control: PressTarget, ask?: Ask) => pressCommits(control) || (ask?.reading?.() === true && pressKeeps(control.words))
 
 async function allowed(page: Page, words: string, ask?: Ask): Promise<'yes' | 'no' | 'theirs' | 'later'> {
   if (!ask) return 'no'
   const said = await ask({ words: words.slice(0, 80), url: page.url() }).catch(() => 'cancel' as const)
-  // 'always' is remembered by the host; here both mean the press may go.
   if (said === 'approve' || said === 'always') return 'yes'
   if (said === 'later') return 'later'
   return 'theirs'
 }
 
 function missing(target: string): PageMove {
-  // A number names the control as it was when the page was last read; if the
-  // page has moved on since, the number is out of date, not the control gone.
   if (/^#\d+/.test(target.trim())) return { ok: false, error: `"${target}" no longer matches the page you read - it has changed since, or has no such number. Call read_open_page for the current numbers, then name the control again` }
   return { ok: false, error: `could not find "${target}" on the page` }
 }
 
-// The page in one short string: where it is, what it is called, and a
-// sample of its words. Two of these being equal is what "nothing happened"
-// means - the cheap way to tell a press that worked from one that landed
-// on the wrong thing.
 export async function signature(page: Page): Promise<string> {
   const read = page
     .evaluate(() => {
@@ -74,14 +59,10 @@ export async function signature(page: Page): Promise<string> {
       return `${location.href}|${document.title}|${text.length}|${hash}`
     })
     .catch(() => '')
-  // A page too busy to say what it shows reads as unchanged rather than holding the hand.
   return Promise.race([read, new Promise<string>((resolve) => setTimeout(() => resolve(''), SIGNATURE_MS).unref())])
 }
 const SIGNATURE_MS = 5_000
 
-// Words that name more than one thing name nothing: the page is read once
-// more and the numbers of everything that answers to them are handed back,
-// so the next call can point at exactly one.
 const CHOICES_LISTED = 8
 const controlName = (line: string) => line.split(' | row: ')[0]!.replace(/^#\d+ \[[^\]]*\] /, '').replace(/ \([^)]*\)$/, '').toLowerCase()
 async function choicesFor(page: Page, target: string): Promise<string[]> {
@@ -89,8 +70,6 @@ async function choicesFor(page: Page, target: string): Promise<string[]> {
   const wanted = target.toLowerCase()
   return (reading?.lines ?? []).filter((line) => controlName(line) === wanted || controlName(line).includes(wanted))
 }
-// The same words shown in several places name one thing when exactly one of
-// them is a control called by just those words; the rest is text around it.
 async function soleControl(page: Page, target: string): Promise<string | null> {
   const exact = (await choicesFor(page, target)).filter(line => controlName(line) === target.toLowerCase())
   return exact.length === 1 ? /^#\d+/.exec(exact[0]!)?.[0] ?? null : null
@@ -106,10 +85,6 @@ async function ambiguity(page: Page, target: string): Promise<PageMove> {
   }
 }
 
-// Where a hand is about to land, told to whoever shows the page: a person
-// watching sees the pointer travel to the control before it is pressed,
-// the way they would see a colleague's hand, instead of the page simply
-// changing. Fractions of the viewport, so the picture can place it.
 type PointerSink = (page: Page, x: number, y: number, kind: 'move' | 'press') => void
 let pointerSink: PointerSink | null = null
 
@@ -124,10 +99,7 @@ async function showHand(page: Page, hand: Locator, kind: 'move' | 'press'): Prom
     const size = page.viewportSize()
     if (!box || !size) return
     pointerSink(page, (box.x + box.width / 2) / size.width, (box.y + box.height / 2) / size.height, kind)
-  } catch {
-    // A control that will not say where it is is still pressed; only the
-    // picture goes without the pointer.
-  }
+  } catch { return }
 }
 
 export async function pressOn(page: Page, target: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
@@ -153,21 +125,17 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
     await hand.scrollIntoViewIfNeeded({ timeout: FIND_TIMEOUT_MS })
     await showHand(page, hand, 'press')
     signal?.throwIfAborted()
-    // A click timeout can happen after dispatch. Never retry it as a DOM event.
     committed = commits
     await hand.click({ timeout: FIND_TIMEOUT_MS })
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before, ...(commits ? { committed: true } : {}) }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160), ...(committed ? { committed: true } : {}) }
+    return { ok: false, error: actionError(err), ...(committed ? { committed: true } : {}) }
   } finally {
     await unmark(page)
   }
 }
 
-// Words into a search or filter box. Enter goes with them only where it
-// asks a page for something (a form that gets); a form that posts is the
-// person's to send.
 export async function typeText(page: Page, target: string, text: string, enter: boolean, signal?: AbortSignal): Promise<PageMove> {
   const aim = await handOn(page, target, signal)
   if ('many' in aim) return ambiguity(page, target)
@@ -186,14 +154,12 @@ export async function typeText(page: Page, target: string, text: string, enter: 
     await settle(page)
     return enter ? { ok: true, changed: (await signature(page)) !== before } : { ok: true }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    return { ok: false, error: actionError(err) }
   } finally {
     await unmark(page)
   }
 }
 
-// One entry from a list: a select's option by its words, or a custom list
-// opened by a press and the entry pressed in it.
 export async function chooseOption(page: Page, target: string, option: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   const aim = await handOn(page, target, signal)
   if ('many' in aim) return ambiguity(page, target)
@@ -216,14 +182,13 @@ export async function chooseOption(page: Page, target: string, option: string, s
     await hand.click({ timeout: FIND_TIMEOUT_MS })
     await page.waitForTimeout(SETTLE_MS)
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    return { ok: false, error: actionError(err) }
   } finally {
     await unmark(page)
   }
   return pressOn(page, option, signal, ask?.reading?.() ? ask : undefined)
 }
 
-// Never guess the picture's dimensions when its frame is unavailable.
 async function viewport(page: Page): Promise<{ width: number; height: number } | null> {
   try {
     const size = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
@@ -233,8 +198,6 @@ async function viewport(page: Page): Promise<{ width: number; height: number } |
 
 const NO_VIEWPORT: PageMove = { ok: false, error: 'The page viewport is unavailable; no pointer action was made. Call read_open_page or look to re-observe it before trying again; if it stays unavailable, use another source or report the blocker.' }
 
-// Further down (or up) the page, or to where some words are, so a long or
-// endless list brings the next of itself in.
 export async function scrollPage(page: Page, to: string, signal?: AbortSignal): Promise<PageMove> {
   try {
     signal?.throwIfAborted()
@@ -259,18 +222,14 @@ export async function scrollPage(page: Page, to: string, signal?: AbortSignal): 
       if ('many' in aim) return ambiguity(page, to)
       if ('none' in aim) return missing(to)
       await aim.hand.scrollIntoViewIfNeeded({ timeout: FIND_TIMEOUT_MS })
-      await unmark(page)
     }
     await settle(page)
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
-  }
+    return { ok: false, error: actionError(err) }
+  } finally { await unmark(page) }
 }
 
-// A press where the picture shows it. The point is looked at first - what
-// sits there is inspected exactly as a named control would be - so this is
-// a way to reach a thing, never a way around the guard.
 export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, signal?: AbortSignal): Promise<PageMove> {
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return { ok: false, error: 'a point is given in fractions of the picture, between 0 and 1' }
   let committed = false
@@ -307,7 +266,7 @@ export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, si
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before, ...(commits ? { committed: true } : {}) }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160), ...(committed ? { committed: true } : {}) }
+    return { ok: false, error: actionError(err), ...(committed ? { committed: true } : {}) }
   }
 }
 
@@ -321,17 +280,14 @@ export async function hoverOn(page: Page, target: string, signal?: AbortSignal):
     await page.waitForTimeout(SETTLE_MS * 2)
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    return { ok: false, error: actionError(err) }
   } finally {
     await unmark(page)
   }
 }
 
-// A key to the page: Escape for a dialog, arrows in a picker, Tab along.
-// Activation keys inspect the current control, including framed/shadow content.
 export async function pressKey(page: Page, named: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {
   if (signal?.aborted) throw new Error('canceled')
-  // "ENTER" or "escape" mean the same key.
   const key = [...KEYS].find(one => one.toLowerCase() === named.trim().toLowerCase()) ?? named
   if (!KEYS.has(key)) return { ok: false, error: `"${key}" is not a key that can be pressed here; one of ${[...KEYS].join(', ')}` }
   let committed = false
@@ -381,6 +337,6 @@ export async function pressKey(page: Page, named: string, signal?: AbortSignal, 
     return { ok: true, changed: (await signature(page)) !== before, ...(committed ? { committed: true } : {}) }
   } catch (err) {
     if (signal?.aborted) throw new Error('canceled')
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160), ...(committed ? { committed: true } : {}) }
+    return { ok: false, error: actionError(err), ...(committed ? { committed: true } : {}) }
   }
 }

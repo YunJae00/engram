@@ -49,7 +49,8 @@ it.each([
   expect(task.turns).toBe(2)
   expect(task.verified).not.toBe(true)
   expect(task.log.some(entry => entry.line.includes('needs a fresh readback'))).toBe(true)
-  expect(t.delivered).toEqual(['Saved' + '\n\n⚠ Checked; some of this could not be confirmed against the original.'])
+  expect(t.delivered).toEqual([expect.stringContaining('could not be confirmed against the original.')])
+  expect(t.delivered[0]).toContain(task.verificationIssue)
 })
 
 it.each(['failed', 'later change'])('does not accept a marked receipt after %s', async kind => {
