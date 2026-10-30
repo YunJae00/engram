@@ -34,7 +34,7 @@ export interface PressTarget {
 // page into a queue of questions.
 // A board or a post is a place, though its name is built on the act of posting.
 const COMMIT_WORDS =
-  /\b(buy|purchase|pay|checkout|place (the )?order|order now|delete|remove|discard|publish|post|send|submit|withdraw|transfer|unsubscribe)\b|결제|구매|주문|삭제|제거|발송|전송|제출|게시(?!판|물|글)|송금|해지|탈퇴/i
+  /\b(buy|purchase|pay|checkout|place (the )?order|order now|delete|remove|discard|publish|post|send|submit|withdraw|transfer|unsubscribe)\b|결제|구매|주문|삭제|제거|발송|전송|보내기|제출|게시(?!판|물|글)|송금|해지|탈퇴/i
 
 // Unambiguous destinations are safe; link semantics alone cannot prove that
 // clicking does not send, publish or submit through a page's event handler.

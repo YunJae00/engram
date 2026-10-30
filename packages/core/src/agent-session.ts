@@ -69,7 +69,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
   let startedCalls = 0
   let queued = 0
-  const running = new Set<{ name: string; at: number; native: boolean }>()
+  const running = new Set<{ name: string; at: number; native: boolean; step?: AgentLoopStep }>()
   let unfinishedCalls = false
   let deciding = 0
   const waitingForPerson = () => deciding > 0 || options.waitingForPerson?.() === true
@@ -116,9 +116,16 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       let modelObservation: string | undefined
       let image: { data: string; mimeType: string } | undefined
       let observedAfterAction = false, committed = false
+      let committedStep: AgentLoopStep | undefined
       const toolStarted = performance.now()
       try {
-        const context = { task, steps: steps.slice(), read: readSoFar(steps, options.history), signal }
+        const context = { task, steps: steps.slice(), read: readSoFar(steps, options.history), signal, onCommitted: () => {
+          committed = true
+          if (!committedStep) {
+            committedStep = { tool: tool.name, args: desktopStepArgs(tool.name, args), observation: 'that did not work: Dispatched; completion is unconfirmed. Do not repeat this action.', committed: true }
+            steps.push(committedStep)
+          }
+        } }
         if (repeated) {
           observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach.`
         } else if (tool.runRich) {
@@ -127,7 +134,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
           image = outcome.image
           modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
-          committed = outcome.committed === true
+          committed ||= outcome.committed === true
         } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }), waitingForPerson)
       } catch (err) {
         if (signal.aborted) throw err
@@ -140,7 +147,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       options.onMetric?.({ kind: 'observation', fullChars: observation.length, sentChars: (modelObservation ?? observation).length })
       signal.throwIfAborted()
       options.onObservation?.(tool.name, observation)
-      steps.push({ tool: tool.name, args: desktopStepArgs(tool.name, args), observation, ...(observedAfterAction ? { observedAfterAction: true } : {}), ...(committed ? { committed: true } : {}) })
+      const completedStep = { tool: tool.name, args: desktopStepArgs(tool.name, args), observation, ...(observedAfterAction ? { observedAfterAction: true } : {}), ...(committed ? { committed: true } : {}) }
+      if (committedStep) Object.assign(committedStep, completedStep)
+      else steps.push(completedStep)
       if (repeatKey && !repeated) {
         const result = sameResult(observation)
         repeat = { key: repeatKey, result, times: repeat?.key === repeatKey && repeat.result === result ? repeat.times + 1 : 1 }
@@ -216,12 +225,16 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       },
       onCall: (name, input) => {
         if (signal.aborted) return
-        running.add({ name, at: Date.now(), native: true }); queued++; touch()
+        const step: AgentLoopStep | undefined = ['Bash', 'PowerShell', 'Shell', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(name)
+          ? { tool: name, args: { ...input }, observation: 'that did not work: Dispatched; completion is unconfirmed. Do not repeat this action.', committed: true } : undefined
+        if (step) steps.push(step)
+        running.add({ name, at: Date.now(), native: true, step }); queued++; touch()
         options.native!.onCall?.(name, input)
       },
       onResult: (name, ok) => {
         const active = [...running].find(call => call.native && call.name === name)
         if (!active) return
+        if (active.step) active.step.observation = ok ? 'Native action completed.' : 'that did not work: Native action did not report success; it may have partly happened. Inspect the current state and do not repeat it.'
         running.delete(active); queued = Math.max(0, queued - 1); touch(); options.native!.onResult?.(name, ok)
       },
     } } : {}),

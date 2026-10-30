@@ -140,6 +140,7 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
   if ('many' in aim) return ambiguity(page, target)
   if ('none' in aim) return missing(target)
   const hand = aim.hand
+  let committed = false
   try {
     const control = await inspected(hand)
     if (!control) return missing(target)
@@ -153,11 +154,12 @@ export async function pressOn(page: Page, target: string, signal?: AbortSignal, 
     await showHand(page, hand, 'press')
     signal?.throwIfAborted()
     // A click timeout can happen after dispatch. Never retry it as a DOM event.
+    committed = commits
     await hand.click({ timeout: FIND_TIMEOUT_MS })
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before, ...(commits ? { committed: true } : {}) }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160), ...(committed ? { committed: true } : {}) }
   } finally {
     await unmark(page)
   }
@@ -176,7 +178,7 @@ export async function typeText(page: Page, target: string, text: string, enter: 
     if (!control) return missing(target)
     if (control.secret) return { ok: false, refused: 'a password field' }
     if (!control.field) return { ok: false, error: `"${target}" is not a field to type into` }
-    if (enter && control.posts) return { ok: false, refused: `${control.words || target} - Enter here would post the form` }
+    if (enter && (control.posts || control.editable)) return { ok: false, refused: `${control.words || target} - Enter here could send or post content; type without Enter, then use press_key for approval` }
     const before = enter ? await signature(page) : ''
     await showHand(page, hand, 'move')
     await hand.fill(text, { timeout: FIND_TIMEOUT_MS })
@@ -271,6 +273,7 @@ export async function scrollPage(page: Page, to: string, signal?: AbortSignal): 
 // a way to reach a thing, never a way around the guard.
 export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, signal?: AbortSignal): Promise<PageMove> {
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return { ok: false, error: 'a point is given in fractions of the picture, between 0 and 1' }
+  let committed = false
   try {
     signal?.throwIfAborted()
     const size = await viewport(page)
@@ -299,11 +302,12 @@ export async function pressPoint(page: Page, x: number, y: number, ask?: Ask, si
     const before = await signature(page)
     signal?.throwIfAborted()
     pointerSink?.(page, x, y, 'press')
+    committed = commits
     await page.mouse.click(at.x, at.y)
     await settle(page)
     return { ok: true, changed: (await signature(page)) !== before, ...(commits ? { committed: true } : {}) }
   } catch (err) {
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160), ...(committed ? { committed: true } : {}) }
   }
 }
 
@@ -330,6 +334,7 @@ export async function pressKey(page: Page, named: string, signal?: AbortSignal, 
   // "ENTER" or "escape" mean the same key.
   const key = [...KEYS].find(one => one.toLowerCase() === named.trim().toLowerCase()) ?? named
   if (!KEYS.has(key)) return { ok: false, error: `"${key}" is not a key that can be pressed here; one of ${[...KEYS].join(', ')}` }
+  let committed = false
   try {
     const before = await signature(page)
     if (key === 'Enter' || key === 'Space') {
@@ -346,9 +351,22 @@ export async function pressKey(page: Page, named: string, signal?: AbortSignal, 
           const child = await hand.contentFrame()
           if (child) { frame = child; continue }
           const control = await hand.evaluate(inspectControl)
-          if (control.secret || control.posts || (!control.field && commitsFor(control, ask)))
+          const sends = key === 'Enter' && control.editable
+          if (control.secret || !sends && (control.posts || (!control.field && commitsFor(control, ask))))
             return { ok: false, refused: `${key} here could submit or commit something` }
+          if (sends) {
+            const url = page.url(), words = `Send using Enter in ${control.words || 'the editable field'}`
+            const verdict = await allowed(page, words, ask)
+            if (verdict !== 'yes') return { ok: false, refused: words, ...(verdict === 'later' ? { later: true } : verdict === 'theirs' ? { theirs: true } : {}) }
+            const focused = await hand.evaluate(node => {
+              let active = document.activeElement
+              while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+              return node.isConnected && (node === active || !!active && node.contains(active))
+            })
+            if (!focused || page.url() !== url || JSON.stringify(await hand.evaluate(inspectControl)) !== JSON.stringify(control)) return { ok: false, error: 'The approved input changed. Read the page and ask again.' }
+          }
           if (signal?.aborted) throw new Error('canceled')
+          committed = sends
           await hand.press(key, { timeout: FIND_TIMEOUT_MS })
           break
         } finally {
@@ -360,9 +378,9 @@ export async function pressKey(page: Page, named: string, signal?: AbortSignal, 
       await page.keyboard.press(key)
     }
     await settle(page)
-    return { ok: true, changed: (await signature(page)) !== before }
+    return { ok: true, changed: (await signature(page)) !== before, ...(committed ? { committed: true } : {}) }
   } catch (err) {
     if (signal?.aborted) throw new Error('canceled')
-    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160) }
+    return { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 160), ...(committed ? { committed: true } : {}) }
   }
 }

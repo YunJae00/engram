@@ -19,7 +19,9 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
   const readOpen = courier.readOpen
   if (!readOpen) return []
   // What came of a move: the page as it now stands, or why it did not move.
-  const after = async (move: PageMove, what: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string | ToolOutcome> => {
+  const after = async (move: PageMove, what: string, args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> => {
+    if (move.committed) context.onCommitted?.()
+    const signal = context.signal
     if (move.later)
       return `"${move.refused || what}" was not pressed: it waits for the person's approval in their task list. Continue with the rest of the work, and at the end list what waits for approval`
     if (move.theirs)
@@ -61,7 +63,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       async run(args, context) {
         const target = str(args, 'target')
         if (!target) return 'press needs the words on the thing to press, or its number (#12)'
-        return after(await press(target, context.signal), `press "${target}"`, args, context.signal)
+        return after(await press(target, context.signal), `press "${target}"`, args, context)
       },
     })
   }
@@ -76,7 +78,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         const target = str(args, 'target')
         const text = typeof args['text'] === 'string' ? args['text'] : ''
         if (!target || !text) return 'type_text needs the box (its words or #12) and the text'
-        return after(await typeText(target, text, args['enter'] === true, context.signal), `type into "${target}"`, args, context.signal)
+        return after(await typeText(target, text, args['enter'] === true, context.signal), `type into "${target}"`, args, context)
       },
     })
   }
@@ -90,7 +92,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         const target = str(args, 'target')
         const option = str(args, 'option')
         if (!target || !option) return 'choose needs the list (its words or #12) and the entry'
-        return after(await choose(target, option, context.signal), `choose "${option}" in "${target}"`, args, context.signal)
+        return after(await choose(target, option, context.signal), `choose "${option}" in "${target}"`, args, context)
       },
     })
   }
@@ -102,7 +104,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       argsSchema: { type: 'object', properties: { to: { type: 'string' }, find: { type: 'string' } }, required: ['to'] },
       async run(args, context) {
         const to = str(args, 'to') || 'down'
-        return after(await scroll(to, context.signal), `scroll ${to}`, args, context.signal)
+        return after(await scroll(to, context.signal), `scroll ${to}`, args, context)
       },
     })
   }
@@ -115,7 +117,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       async run(args, context) {
         const target = str(args, 'target')
         if (!target) return 'hover needs the words on the thing, or its number (#12)'
-        return after(await hover(target, context.signal), `hover "${target}"`, args, context.signal)
+        return after(await hover(target, context.signal), `hover "${target}"`, args, context)
       },
     })
   }
@@ -128,7 +130,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       async run(args, context) {
         const key = str(args, 'key')
         if (!key) return 'press_key needs the key'
-        return after(await pressKey(key, context.signal), `press ${key}`, args, context.signal)
+        return after(await pressKey(key, context.signal), `press ${key}`, args, context)
       },
     })
   }
@@ -142,7 +144,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       async run(args, context) {
         const word = str(args, 'find')
         if (!word) return 'reveal needs the words that are out of sight'
-        return after(await reveal(word, context.signal), `open the part holding "${word}"`, args, context.signal)
+        return after(await reveal(word, context.signal), `open the part holding "${word}"`, args, context)
       },
     })
   }
@@ -157,7 +159,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
         const x = typeof args['x'] === 'number' ? args['x'] : Number.NaN
         const y = typeof args['y'] === 'number' ? args['y'] : Number.NaN
         if (!Number.isFinite(x) || !Number.isFinite(y)) return 'press_point needs x and y as fractions of the picture, between 0 and 1'
-        return after(await pressPoint(x, y, context.signal), `press the point ${x.toFixed(2)},${y.toFixed(2)}`, args, context.signal)
+        return after(await pressPoint(x, y, context.signal), `press the point ${x.toFixed(2)},${y.toFixed(2)}`, args, context)
       },
     })
   }
@@ -190,17 +192,18 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
           const move = await makeMove(courier, step, context.signal)
           last = { move, what }
           committed ||= move.committed === true
+          if (move.committed) context.onCommitted?.()
           allMoved &&= move.changed !== false
           const stuck = !move.ok || move.later || move.theirs || move.refused !== undefined || (kind === 'press' && move.changed === false)
           if (stuck) {
-            const outcome = await after(move, what, args, context.signal)
+            const outcome = await after(move, what, args, context)
             const text = typeof outcome === 'string' ? outcome : outcome.text
             const stopped = `that did not work: Stopped at move ${index + 1} of ${steps.length} (${what}); the moves after it were not made.\n${done.length ? `Done in order: ${done.join('; ')}.\n` : ''}${text}`
             return committed ? { text: stopped, committed: true } : stopped
           }
           done.push(what)
         }
-        const outcome = await after(last!.move, `${done.length} moves`, args, context.signal)
+        const outcome = await after(last!.move, `${done.length} moves`, args, context)
         // The whole report, not a delta: the list of moves made travels with it.
         return {
           text: `Done in order: ${done.join('; ')}.\n${typeof outcome === 'string' ? outcome : outcome.text}`,
@@ -236,7 +239,6 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     run: async (args, context) => {
       const result = await tool.run(args, context)
       if (typeof result !== 'string' && result.observedAfterAction === true) context.onObservedAfterAction?.()
-      if (typeof result !== 'string' && result.committed === true) context.onCommitted?.()
       return typeof result === 'string' ? result : result.text
     },
     runRich: tool.runRich ?? (async (args, context) => {

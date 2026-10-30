@@ -54,6 +54,7 @@ export function pageEachTool(courier: WebCourier): (Omit<AgentTool, 'run'> & { r
         let failed = ''
         for (const step of steps) {
           const move = await makeMove(courier, filled(step, value), context.signal)
+          if (move.committed) context.onCommitted?.()
           if (move.committed) return { text: `Stopped at "${value}" after an approved action committed a change. The remaining moves and values were not run; verify the changed state before continuing.\n\n${read.join('\n\n')}`.slice(0, REPORT_CAP), committed: true }
           if (move.later || move.theirs || move.refused !== undefined) { stoppedAt = `"${value}": "${move.refused || 'a move'}" would commit something or needs the person, so it was not made and the values after it were left` ; break }
           if (!move.ok) { failed = move.error ?? 'a move did not work'; break }

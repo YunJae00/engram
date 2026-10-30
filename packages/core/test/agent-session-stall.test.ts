@@ -28,7 +28,8 @@ it.each([true, false])('counts native tool activity without treating it as verif
   expect(onResult).toHaveBeenCalledWith('Bash', ok)
   finish({ answer: 'Read' })
   const result = await pending
-  expect(result.steps).toEqual([])
+  expect(result.steps).toMatchObject([{ tool: 'Bash', args: { command: 'python report.py' }, committed: true }])
+  expect(successfulTurnSteps(result.steps)).toHaveLength(ok ? 1 : 0)
   expect(result.incomplete).toBeUndefined()
   expect(vi.getTimerCount()).toBe(0)
 })
