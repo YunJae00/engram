@@ -19,13 +19,9 @@ export async function missionFrames(requested: string[]): Promise<MissionFrameDt
     const held = pending.get(page)
     if (held) return held
     const capture = (async (): Promise<MissionFrameDto> => {
-      const cdp = await page.context().newCDPSession(page).catch(() => null)
-      if (!cdp) return { lane, on: false }
       let timer: ReturnType<typeof setTimeout> | undefined
       try {
-        // Capture the compositor directly: background tabs need not run
-        // layout/font readiness scripts before a monitoring frame arrives.
-        const shot = captureSharpFrame(page, cdp)
+        const shot = captureSharpFrame(page)
         const { data } = await Promise.race([
           shot,
           new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('preview capture timed out')), 5000) }),
@@ -37,7 +33,6 @@ export async function missionFrames(requested: string[]): Promise<MissionFrameDt
         return { lane, on: !page.isClosed(), url: page.isClosed() ? undefined : page.url() }
       } finally {
         clearTimeout(timer)
-        await cdp.detach().catch(() => undefined)
       }
     })()
     pending.set(page, capture)

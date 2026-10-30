@@ -6,9 +6,6 @@ import { serialWork } from './serial-work.js'
 export interface PreviewFrame { data: string; width: number; height: number }
 interface CastFrame { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
 
-// Keyed by page, not session: the pull API opens a fresh session per ask,
-// and a session-keyed cache would probe the scale again on every one.
-const captureScales = new WeakMap<Page, number>()
 const captures = new WeakMap<Page, Promise<PreviewFrame>>()
 const restoredAt = new WeakMap<Page, number>()
 const pageWork = new WeakMap<Page, ReturnType<typeof serialWork>>()
@@ -33,50 +30,27 @@ export function resizePreview(page: Page, size: { width: number; height: number 
     const current = page.viewportSize()
     if (current?.width === size.width && current.height === size.height) return false
     await page.setViewportSize(size)
-    captureScales.delete(page)
     return true
   })
 }
 
-async function capture(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
+async function capture(page: Page): Promise<PreviewFrame> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
-  const checkSize = () => {
-    const current = page.viewportSize()
-    if (current && (current.width !== size.width || current.height !== size.height)) {
-      captureScales.delete(page)
-      throw new Error('Browser viewport changed during capture')
-    }
+  // Use the page's owning session: another CDP session restores its own empty
+  // emulation settings after capture, overwriting the page's device scale.
+  const shot = await page.screenshot({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
+  const current = page.viewportSize()
+  if (current && (current.width !== size.width || current.height !== size.height)) {
+    throw new Error('Browser viewport changed during capture')
   }
-  const metrics = await cdp.send('Page.getLayoutMetrics')
-  const viewport = metrics.visualViewport ?? { pageX: 0, pageY: 0, scale: 1 }
-  let scale = captureScales.get(page) ?? 0
-  const zoom = viewport.scale || 1
-  // A scaled clip needs a larger render surface, otherwise its outer area is white.
-  const capture = () => cdp.send('Page.captureScreenshot', {
-    format: 'png', fromSurface: true, captureBeyondViewport: Boolean(scale),
-    ...(scale ? { clip: { x: viewport.pageX, y: viewport.pageY, width: size.width / zoom, height: size.height / zoom, scale: scale * zoom } } : {}),
-  })
-  let shot = await capture()
-  checkSize()
-  // CDP sessions do not all inherit the context's device scale. Measure
-  // the PNG rather than upscaling a low-resolution bitmap on the canvas.
-  if (shot.data.startsWith('iVBOR')) {
-    const width = Buffer.from(shot.data, 'base64').readUInt32BE(16)
-    if (width > 0 && Math.abs(width - size.width * 2) > 1) {
-      scale = (scale || 1) * size.width * 2 / width
-      captureScales.set(page, scale)
-      shot = await capture()
-      checkSize()
-    }
-  }
-  return { data: shot.data, ...size }
+  return { data: shot.toString('base64'), ...size }
 }
 
-export function captureSharpFrame(page: Page, cdp: CDPSession): Promise<PreviewFrame> {
+export function captureSharpFrame(page: Page): Promise<PreviewFrame> {
   const held = captures.get(page)
   if (held) return held
   const pending = workFor(page).run(async () => {
-    try { return await capture(page, cdp) }
+    try { return await capture(page) }
     finally { restoredAt.set(page, Date.now() + 60) }
   }).finally(() => { captures.delete(page) })
   captures.set(page, pending)
@@ -121,7 +95,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     capturing = true
     const revision = changed
     try {
-      const shot = await captureSharpFrame(page, cdp)
+      const shot = await captureSharpFrame(page)
       if (alive && revision === changed) {
         receive(shot)
         settled = true

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const deps = vi.hoisted(() => ({
-  native: false, active: 'bot-one', pages: new Map<string, unknown>(),
+  active: 'bot-one', pages: new Map<string, unknown>(),
   broadcast: vi.fn(), preview: vi.fn(), input: vi.fn(),
 }))
 vi.mock('../src/main/agent-browser.js', () => ({
@@ -12,7 +12,6 @@ vi.mock('../src/main/agent-browser.js', () => ({
   ensureAgentPage: async (lane: string) => deps.pages.get(lane),
   laneOf: (page: unknown) => [...deps.pages].find(([, held]) => held === page)?.[0],
 }))
-vi.mock('../src/main/native-browser.js', () => ({ isNativePage: () => deps.native, setNativeInputSink: vi.fn() }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
 vi.mock('../src/main/page-actions.js', () => ({ setPointerSink: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -40,7 +39,6 @@ beforeEach(() => {
   deps.input.mockImplementation(async (_page: unknown, input: () => Promise<unknown>) => input())
   deps.pages.clear()
   deps.active = 'bot-one'
-  deps.native = false
 })
 
 describe('browser view handoffs', () => {
@@ -126,29 +124,8 @@ describe('browser view handoffs', () => {
     await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000 }, 'bot-one')
     expect(cdp.send).toHaveBeenCalledTimes(2)
     expect(cdp.send).toHaveBeenNthCalledWith(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 348, y: 384, modifiers: 0 })
-    expect(cdp.send).toHaveBeenNthCalledWith(2, 'Input.synthesizeScrollGesture', { x: 348, y: 384, xDistance: -0, yDistance: -4000, gestureSourceType: 'mouse', speed: 10000, preventFling: true })
+    expect(cdp.send).toHaveBeenNthCalledWith(2, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: 348, y: 384, button: 'none', clickCount: 0, modifiers: 0, deltaX: 0, deltaY: 4000 })
     expect(view.touchedAt('bot-one')).toBe(0)
-  })
-
-  it('keeps the input pending until Chromium acknowledges scrolling, preserving modified and native-browser wheels', async () => {
-    const { cdp } = fixture('bot-one')
-    let finish!: () => void
-    cdp.send.mockImplementation(async method => {
-      if (method === 'Input.synthesizeScrollGesture') await new Promise<void>(resolve => { finish = resolve })
-    })
-    const view = await import('../src/main/agent-view.js')
-    await view.lookAtLane('bot-one')
-    let ended = false
-    const pending = view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 120 }, 'bot-one').then(() => { ended = true })
-    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
-    expect(ended).toBe(false)
-    finish()
-    await pending
-    await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 120, modifiers: 2 }, 'bot-one')
-    expect(cdp.send).toHaveBeenLastCalledWith('Input.dispatchMouseEvent', expect.objectContaining({ type: 'mouseWheel', modifiers: 2, deltaY: 120 }))
-    deps.native = true
-    await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 120 }, 'bot-one')
-    expect(cdp.send).toHaveBeenLastCalledWith('Input.dispatchMouseEvent', expect.objectContaining({ type: 'mouseWheel', modifiers: 0, deltaY: 120 }))
   })
 
   it('waits for painting before a wheel and drops it if the chat changes meanwhile', async () => {

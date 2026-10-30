@@ -61,7 +61,7 @@ async function shoot(m: Mirror, now = false): Promise<void> {
   m.shooting = true
   try {
     const revision = m.painted
-    const shot = await captureSharpFrame(m.page, m.cdp)
+    const shot = await captureSharpFrame(m.page)
     if (mirror !== m || revision !== m.painted) return
     m.painted = Date.now()
     m.width = shot.width
@@ -278,13 +278,7 @@ export async function agentViewInput(input: AgentInputDto, lane: string): Promis
           await painted()
           if (mirror !== m || activeLaneName() !== lane || m.page.isClosed()) return
         }
-        // Keep capture queued until Chromium acknowledges the scroll, not just its wheel event.
-        if (input.type === 'wheel' && !input.modifiers && !isNativePage(m.page)) {
-          await m.cdp.send('Input.synthesizeScrollGesture', {
-            x, y, xDistance: -(input.deltaX ?? 0), yDistance: -(input.deltaY ?? 0),
-            gestureSourceType: 'mouse', speed: 10000, preventFling: true,
-          })
-        } else await m.cdp.send('Input.dispatchMouseEvent', {
+        await m.cdp.send('Input.dispatchMouseEvent', {
           type,
           x,
           y,
