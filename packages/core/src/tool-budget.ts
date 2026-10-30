@@ -11,7 +11,7 @@ const BUDGETS: Record<string, number | null> = {
   ppt_build: 120_000, word_write: 120_000, excel_write: 120_000, compose_live_document: 120_000, edit_live_document: 120_000,
   press: INPUT_MS, press_point: INPUT_MS, app_press: INPUT_MS, page_steps: INPUT_MS,
   desktop_action: INPUT_MS, desktop_sequence: INPUT_MS, upload_file: INPUT_MS, run_procedure: INPUT_MS,
-  Bash: INPUT_MS,
+  Bash: INPUT_MS, PowerShell: INPUT_MS, Shell: INPUT_MS,
   ask_person: null,
 }
 

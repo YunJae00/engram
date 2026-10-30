@@ -4,7 +4,7 @@ import { HAND_MARK, placeOf, readDocument } from './page-reader.js'
 
 // What a control is, read off the page before it is touched. Runs inside
 // the page; nothing from outside is in scope.
-export function inspectControl(node: Element): PressTarget & { field: boolean; secret: boolean; posts: boolean; select: boolean } {
+export function inspectControl(node: Element): PressTarget & { field: boolean; editable: boolean; secret: boolean; posts: boolean; select: boolean } {
   const STATE_ROLES = ['tab', 'switch', 'radio', 'checkbox', 'option', 'menuitemradio', 'menuitemcheckbox', 'treeitem']
   const el = node.closest('a,button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"],[contenteditable="true"]') ?? node
   const tag = el.tagName.toLowerCase()
@@ -44,6 +44,7 @@ export function inspectControl(node: Element): PressTarget & { field: boolean; s
     shows,
     navigates,
     field,
+    editable: (el as HTMLElement).isContentEditable,
     secret: tag === 'input' && type === 'password',
     posts: form !== null && (form.getAttribute('method') ?? 'get').toLowerCase() === 'post',
     select: tag === 'select',
