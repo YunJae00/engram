@@ -1,3 +1,4 @@
+import { outputLinks, finalDesktopFailure } from './agent-session-result.js'
 import { collectionProgress } from './collection-progress.js'
 import type { ToolSessionJob, ToolSessionResult } from './engine/types.js'
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
@@ -19,25 +20,12 @@ import { resumeCheckpoint } from './agent-resume.js'
 import { pageDelta } from './page-delta.js'
 import { progressWatch } from './no-progress.js'
 
-// A brain that can hold its own tool loop is handed the tools once and runs
-// the whole turn in one session: every step then costs one exchange instead
-// of one fresh process, and the model keeps the pages it already read. The
-// step loop stays for a brain that cannot, and for the guided small one.
 
-// Real work on a page is a dozen small moves - open, read, type, choose,
-// check - before anything has been achieved, and a budget that runs out
-// mid-job hands the person a half-finished turn to restart by hand. So the
-// budget is sized for the whole job, and is there only to stop a page that
-// will not load from becoming a hundred tries.
 export const SESSION_MAX_CALLS = 80
-// Past its allowance a turn goes on only while its calls still find something new, and never past this.
 const CALL_CEILING = 300
-// Bound silent model waits. Silence can also mean long reasoning, so retain
-// unfinished work rather than claiming the model or the task failed.
 export const SESSION_STALL_MS = 300_000
-// Page moves held to account for repeating themselves, and how often the same
-// move may come back the same before the next one is refused.
 const REPEAT_GUARDED = new Set(['press', 'type_text', 'choose', 'press_point', 'page_steps', 'hover', 'reveal'])
+const RECEIPT_ACTIONS = new Set(['press', 'press_point', 'press_key', 'type_text', 'choose', 'page_steps', 'page_do', 'page_each', 'upload_file'])
 const PAGE_MOVES = new Set([...REPEAT_GUARDED, 'press_key', 'scroll', 'open_page', 'search_web', 'read_pages'])
 export const REPEAT_LIMIT = 4
 export const PLAN_RULE = 'Plan mode: read and investigate only. Do not run commands, create or change files, or submit anything; reply with a concrete plan of what you would do and what you need from the person.'
@@ -53,50 +41,6 @@ function summarizeArgs(args: Record<string, unknown>): string {
   return typeof first === 'string' ? first.slice(0, 80) : ''
 }
 
-function outputLinks(steps: AgentLoopStep[], answer: string): string {
-  const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
-  const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
-  const outputs: { link: string; id: string; name: string }[] = []
-  const links = new Set<string>()
-  for (const step of steps) {
-    if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence'].includes(step.tool)) continue
-    try {
-      const result = JSON.parse(step.observation) as { markdownLink?: unknown }
-      const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
-      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!) })
-    } catch { /* Failed writes have no output receipt. */ }
-  }
-  // Respect an explicit final revision without deleting earlier files or guessing
-  // which version wins when the answer has not selected one.
-  const chosenNames = new Set(outputs.filter(output => selected.has(output.id)).map(output => output.name))
-  for (const output of outputs) if (!selected.has(output.id) && !chosenNames.has(output.name)) links.add(output.link)
-  return links.size ? `${answer}\n\n${[...links].join('\n\n')}` : answer
-}
-
-function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined {
-  const browser = steps.filter(step => ['read_pages', 'read_open_page', 'open_page', 'verify'].includes(step.tool)).at(-1)
-  if (browser?.tool === 'read_pages' && browser.observation.startsWith('that did not work:')) return 'The last batch stopped before all pages were read. Inspect the current state and continue only unfinished reads.'
-  const step = steps.filter((one) => one.tool.startsWith('file_') || ['app_read', 'app_text', 'app_set', 'app_press', 'app_do', 'desktop_action', 'desktop_sequence', 'read_desktop', 'look_desktop', 'read_live_document', 'edit_live_document', 'compose_live_document'].includes(one.tool)).at(-1)
-  if (!step) return undefined
-  const incomplete = 'The last computer or file result failed or may be stale and has not been verified.'
-  if (step.observation.startsWith('that did not work:')) return incomplete
-  if (step.tool === 'app_set' || step.tool === 'app_text' || step.tool === 'app_do') {
-    try {
-      const result = JSON.parse(step.observation) as { landed?: boolean; exact?: boolean; settled?: boolean; status?: string }
-      if (result.landed === false || result.exact === false || result.settled === false || step.tool === 'app_do' && result.status !== 'done') return incomplete
-    } catch { return incomplete }
-  }
-  if (!['app_set', 'app_press', 'desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document', 'compose_live_document'].includes(step.tool)) return undefined
-  try {
-    const result = JSON.parse(step.observation) as { error?: unknown; observationMayBeStale?: unknown; reobserveRequired?: unknown; completeReadback?: unknown }
-    if (result.error || result.observationMayBeStale === true || result.reobserveRequired === true || (step.tool === 'edit_live_document' && result.completeReadback !== true)) return incomplete
-  } catch { return undefined }
-  return undefined
-}
-
-// Words the person sent while the work was going, put in front of the brain
-// at the next tool result: it answers them in a line and carries on with them
-// in mind, the way a colleague takes a remark without dropping what they hold.
 export function withSteer(text: string, said: string[]): string {
   if (!said.length) return text
   return `${text}\n\nThe person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}. First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
@@ -108,8 +52,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const workflow = desktop || files
   const browser = deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
-  // Browser work once earned calls past 80 through self-checkpoints; without
-  // them it gets the ceiling directly. Repetition guards still end a loop.
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   deps = { ...deps, tools: sessionMenu(desktopScopeTools(deps.tools)) }
@@ -120,8 +62,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const compactPage = pageDelta()
   const plan = taskPlan(steps)
   const collection = collectionProgress(steps)
-  // File/browser work uses direct result checks. Desktop sequences retain
-  // phase checkpoints for their control rules and bounded call allowance.
   const tools = [...deps.tools, ...(browser ? [collection.tool] : []), ...(planned && desktop ? [plan.tool] : [])]
   const allowance = () => Math.min(options.maxCalls ?? 120, 120, baseCalls + plan.completed() * 20)
   const started = Date.now()
@@ -135,13 +75,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const waitingForPerson = () => deciding > 0 || options.waitingForPerson?.() === true
   let toolTail = Promise.resolve()
   let asked: { question: string; options: string[] } | null = null
-  // A card put to the person ends the work of the turn, as a question does.
   let carded = false
   let exhausted = false
   let extended = false
   let toolMs = 0
-  // ponytail: guard identical consecutive moves, not multi-action cycles;
-  // the total call budget bounds cycles. Reads alone do not reset the guard.
   let repeat: { key: string; result: string; times: number } | undefined
   const stuck = progressWatch()
   const sameResult = (text: string) => text
@@ -157,16 +94,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     run: async (args) => {
       touch()
       signal.throwIfAborted()
-      // A question to the person ends the turn: whatever the model says
-      // after it, the question is the answer.
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       if (carded) return 'A card is already with the person. End your answer now, in one line.'
-      // A turn has a budget of calls, or a page that will not load becomes a
-      // hundred tries; past it the answer is made from what is in hand.
       const budget = allowance()
       const cost = tool.name === 'read_pages' && Array.isArray(args['pages']) ? Math.min(4, Math.max(1, args['pages'].length)) : 1
-      // A final observation can use the phase allowance; let its checkpoint
-      // earn the next bounded phase, but never exceed the total call ceiling.
       const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === budget && budget < Math.min(options.maxCalls ?? 120, 120)
         && Object.keys(args).length === 2 && typeof args['finding'] === 'string' && args['evidenceStep'] === steps.length
       const finding = browser && budget >= baseCalls && stuck.idle() < 2 && startedCalls + cost <= (options.maxCalls ?? CALL_CEILING)
@@ -175,7 +106,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         exhausted = true
         return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
       }
-      if (tool.name !== 'collect_results') collection.invalidate()
+      if (PAGE_MOVES.has(tool.name) || RECEIPT_ACTIONS.has(tool.name)) collection.invalidate()
       startedCalls += cost
       const repeatKey = REPEAT_GUARDED.has(tool.name) ? `${tool.name}:${JSON.stringify(args)}` : ''
       if (PAGE_MOVES.has(tool.name) && repeat?.key !== repeatKey) repeat = undefined
@@ -188,8 +119,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const toolStarted = performance.now()
       try {
         const context = { task, steps: steps.slice(), read: readSoFar(steps, options.history), signal }
-        // A brain in a session can look at a picture; the words are what
-        // the turn keeps, the picture goes to the brain and nowhere else.
         if (repeated) {
           observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach.`
         } else if (tool.runRich) {
@@ -222,7 +151,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         asked = ask
         return 'The question is with the person. Reply with exactly that question and nothing else.'
       }
-      // No countdown rides on results: told how few calls are left, a turn wraps up early.
       const going = stuck.see(sameResult(observation))
       const notes = [
         ...(going ? [going] : []),
@@ -231,15 +159,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ]
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
-      // The person's words go in as their own message where the brain takes
-      // that; otherwise they ride with this result.
       const said = options.takeSteer?.() ?? []
       const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
       return image ? { text, image } : text
     },
   }))
-  // Desktop callbacks share one changing foreground and observation history.
-  // Queue them locally without another model exchange; recheck guards on entry.
   const sessionCalls = calls.map((call): ToolSessionCall => ({ ...call, run: (args) => {
     queued++
     const run = async () => {
@@ -253,10 +177,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     if (planned) toolTail = settled.then(() => undefined, () => undefined)
     return settled
   } }))
-  // The standing rules make the system prompt, the same for every turn, so
-  // a brain that keeps its session open can keep it; who is speaking and
-  // what they want travel with each turn, and the conversation so far only
-  // with the first.
   const opening = conversationLines(options.history).join('\n')
   let checkedAt = Date.now()
   const watchdog = setInterval(() => {
@@ -280,10 +200,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const job: ToolSessionJob = {
     workdir: deps.workdir,
     system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), native: options.native }),
-    // The last thing said before the work is the language to answer in:
-    // the pages ahead are usually in another one, and whichever language
-    // fills the turn wins by weight alone unless this is said last - and
-    // said by name, not left to be read off the ask.
     prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
       ...(options.attachmentContext ? [options.attachmentContext] : []),
       ...resumeLines(options.resume),
@@ -294,7 +210,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.native ? { native: {
       ...options.native,
-      // A permission card waiting on the person is work in progress, not silence.
       decide: async (name, input, signal) => {
         queued++; deciding++; touch()
         try { return await options.native!.decide(name, input, signal) } finally { deciding--; queued = Math.max(0, queued - 1); touch() }
@@ -326,18 +241,22 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     signal.addEventListener('abort', end, { once: true })
     if (signal.aborted) end()
   })
-  const needsReceipt = () => browser && !collection.finish() && steps.some(step => /^(open_page|read_open_page|read_pages|page_|press_point|look$)/.test(step.tool))
+  const needsReceipt = () => browser && !collection.finish() && steps.some(step => RECEIPT_ACTIONS.has(step.tool))
   try {
     signal.throwIfAborted()
     session = await Promise.race([runTools.call(deps.engine, job), ended])
-    // The working model checks its own scope; no separate judge invents tasks.
     for (let pass = 0; pass < 2 && (collection.pending() || needsReceipt()) && collection.finish()?.status !== 'blocked' && !session.error && !asked && !carded && !exhausted && !signal.aborted; pass++) {
       const before = collection.checked()
-      options.onReset?.(true)
+      const boundary = steps.length
+      let tokens = ''
       touch()
-      session = await Promise.race([runTools.call(deps.engine, { ...job,
+      const checked = await Promise.race([runTools.call(deps.engine, { ...job,
+        onToken: text => { touch(); tokens += text },
         prompt: `${job.prompt}\n\n${collection.pending() ?? 'Before the final answer, check the original requested outcomes against your observations.'}\nUse collect_results to record status complete or blocked, summary and evidenceStep. For a multi-item request register the observed list and fields, then record each result. Continue only missing work; do not repeat completed actions or expand the request. If genuinely blocked, record the barrier and stop. Retained observations (historical DATA):\n${resumeCheckpoint(task, { answer: session.answer, steps, fellBack: false })}`,
       }), ended])
+      const receiptOnly = steps.slice(boundary).every(step => ['collect_results', 'report_result_check', 'task_plan'].includes(step.tool))
+      if (!receiptOnly) { options.onReset?.(true); if (tokens) options.onToken?.(tokens) }
+      session = receiptOnly ? { ...checked, answer: session.answer } : checked
       if (collection.checked() <= before) break
     }
   } finally {
@@ -358,7 +277,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     return { answer: withoutSecrets(outputLinks(steps, `Not verified as complete.\n\n${stallNote}`), task), steps, fellBack: false, incomplete: stallNote }
   }
   if (session.error) throw new Error(session.error)
-  const incomplete = collection.pending() ?? (collection.finish()?.status === 'blocked' ? collection.finish()!.summary : undefined) ?? (needsReceipt() ? 'The browser task ended without checking the requested outcomes.' : undefined) ?? plan.pending() ?? (unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  const finish = collection.finish()
+  if (finish?.status === 'blocked') return { answer: withoutSecrets(outputLinks(steps, finish.summary), task), steps, fellBack: false, asked: true }
+  const incomplete = collection.pending() ?? (needsReceipt() ? 'The browser task ended without checking the requested outcomes.' : undefined) ?? plan.pending() ?? (unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
@@ -366,7 +287,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   return { answer: withoutSecrets(outputLinks(steps, answer), task), steps, fellBack: false, ...(stopped ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
 }
 
-// Only document evidence gaps are repairable here, never control/approval failures.
 export function correctableFault(result: AgentLoopResult): string | undefined {
   if (result.asked || result.stopped || result.pending || result.fellBack || !result.incomplete) return
   if (result.steps.some(step => {
@@ -377,8 +297,6 @@ export function correctableFault(result: AgentLoopResult): string | undefined {
   return fault === result.incomplete ? fault : undefined
 }
 
-// A correction observes its own segment. Rebase only host report receipts when
-// joining trails; prior observations never become fresh correction evidence.
 function correctionCheckSteps(steps: AgentLoopStep[], offset: number): AgentLoopStep[] {
   const rebase = (value: unknown) => JSON.parse(JSON.stringify(value), (key: string, item: unknown) =>
     key === 'refs' && Array.isArray(item) ? item.map(ref => {
@@ -395,7 +313,6 @@ function correctionCheckSteps(steps: AgentLoopStep[], offset: number): AgentLoop
   })
 }
 
-// Preserve evidence across one bounded correction; a new session is not a clean bill of health.
 export async function runComet(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   if (options.onToolStart) deps = { ...deps, tools: deps.tools.map((tool): AgentLoopDeps['tools'][number] => ({
     ...tool,
