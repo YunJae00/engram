@@ -257,6 +257,10 @@ export function taskRunner(deps: {
           ? { context: `These instructions were supplied during the same task. Continue that task without treating them as an answer to a later question.\nOriginal task: ${task.goal}` }
           : asked
           ? { context: `This message answers your question in the task below; continue that task with it.\nThe task, verbatim:\n${asked.goal}` }
+          : request.scheduled ? { context: [
+            'This is a scheduled task. Start with the saved procedure and its known URLs, or the existing page in this conversation. Do not rediscover the same service with search_web. If no saved route is available, ask_person for the address. If login expired, ask_person to sign in and stop in waiting; do not search for another login page.',
+            playbook ? playbookContext(playbook) : '',
+          ].filter(Boolean).join('\n\n') }
           : playbook ? { context: playbookContext(playbook) } : undefined
         after = await turn(task.id, { ...request, channel }, extra)
         if (after?.state === 'running') await carryOn(after.id, nextReason(after), '', channel)

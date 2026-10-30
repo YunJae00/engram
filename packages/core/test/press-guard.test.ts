@@ -87,3 +87,13 @@ it('while only studying, a press that keeps something is held back too, and pass
   for (const words of ['Save', '저장', '등록', 'New', '신청', 'Apply']) expect(pressKeeps(words)).toBe(true)
   for (const words of ['확인', '조회', 'Activity 조회', 'Next', '메뉴', 'Back to List']) expect(pressKeeps(words)).toBe(false)
 })
+
+it('distinguishes Korean action buttons from request titles and navigation', () => {
+  for (const role of ['link', 'menuitem', 'text']) {
+    expect(pressCommits({ role, words: '공가(훈련등) 제출 | 공가(훈련등)', submits: false })).toBe(false)
+  }
+  for (const words of ['제출', '비용 제출하기', '보내기']) {
+    expect(pressCommits({ role: 'button', words, submits: false })).toBe(true)
+  }
+  expect(pressCommits({ role: 'button', words: '제출 내역 보기', submits: false })).toBe(false)
+})
