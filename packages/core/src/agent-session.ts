@@ -87,6 +87,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     .replace('; [new] = appeared since your last reading, such as an opened list or dialog', '')
   let lastActivity = Date.now(), stalled = false, stallNote = STALL_NOTE
   const touch = (): void => { lastActivity = Date.now() }
+  let pageStepCalls = 0
+  const decisionAvailable = deps.tools.some(tool => tool.name === 'page_do' || tool.name === 'app_do')
   const calls: ToolSessionCall[] = tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
@@ -108,6 +110,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       }
       if (PAGE_MOVES.has(tool.name) || RECEIPT_ACTIONS.has(tool.name)) collection.invalidate()
       startedCalls += cost
+      if (decisionAvailable && tool.name === 'page_steps' && ++pageStepCalls === 3) options.onMetric?.({ kind: 'host', operation: 'decision-bypass', completed: pageStepCalls, requested: 3 })
       const repeatKey = REPEAT_GUARDED.has(tool.name) ? `${tool.name}:${JSON.stringify(args)}` : ''
       if (PAGE_MOVES.has(tool.name) && repeat?.key !== repeatKey) repeat = undefined
       const repeated = !!repeatKey && repeat?.key === repeatKey && repeat.times >= REPEAT_LIMIT

@@ -1,10 +1,11 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { ipcMain } from 'electron'
-import { changeCheckpoint } from './comet-checkpoint.js'
+import { settleHanded } from './comet-checkpoint.js'
 import { afterTurnPrompt, againMessage, changeStudies, installSkill, parseAfterTurn, readBotTranscript, readStudies, studyCandidate, studyMessage, type SkillDraft, type VaultPaths } from 'core'
 import type { ChatRequestDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { checkSettled, checkStarted } from './task-notify.js'
+import { checkSettled, checkStarted, taskQueued, discardTaskNotice } from './task-notify.js'
 import { dismissStudyOffers, type StudyCheck } from './study-offers.js'
 import { afterChecks, answering, offeredIn, studying } from './turn-state.js'
 
@@ -118,12 +119,19 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
     let passing = false
     checkStarted(botId)
     void (async () => {
-      const judged = parseAfterTurn(await voice(afterTurnPrompt(asked, handed, answer)), handed)
+      const judged = parseAfterTurn(await withModelCallContext({ channel, purpose: 'after-turn' }, () => voice(afterTurnPrompt(asked, handed, answer))), handed)
       signal.throwIfAborted()
       checking.controller.signal.throwIfAborted()
-      if (judged.uncertain) return
-      await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: state.pending.filter(text => !handed.includes(text) || judged.left.includes(text)) }))
-      if (judged.left.length) { flog('aside', `${judged.left.length} of ${handed.length} handed-over words left for the next turn`); broadcast({ type: 'chat:steer-returned', channel, texts: judged.left }); return }
+      const returned = await settleHanded(deps.paths, botId, handed, judged.uncertain ? handed : judged.left, !judged.uncertain)
+      taskQueued(botId, returned.queued.length > 0)
+      if (returned.queued.length) {
+        broadcast({ type: 'chat:steer-returned', channel, texts: returned.queued })
+      }
+      if (returned.unapplied.length) {
+        discardTaskNotice(botId)
+        broadcast({ type: 'chat:steer-unapplied', channel, texts: returned.unapplied })
+      }
+      if (returned.queued.length || returned.unapplied.length || judged.uncertain) return
       if (!input.incomplete || !judged.undone || wasStudying || studying.has(channel) || offeredIn.has(channel) || checking.superseded || answering.has(channel)) return
       if (!passed && !deps.busy(channel)) {
         const message = againMessage(asked, input.incomplete)

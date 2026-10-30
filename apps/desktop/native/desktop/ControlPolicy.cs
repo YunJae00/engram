@@ -31,6 +31,15 @@ internal static class ControlPolicy
     };
 
     internal static bool IsSensitive(string value) { return value != null && Sensitive.IsMatch(value); }
+    private static readonly Regex SecurityIdentity = new Regex(@"^(sign[ -]?in|log[ -]?in|password|passkey|credential|authentication|verification code|security code|로그인|비밀번호|암호|인증)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    internal static bool IsSensitiveControl(bool password, string kind, string name, string identity, string className, bool root)
+    {
+        if (password) return true;
+        if (root || kind == "ControlType.Window")
+            return IsSensitive(name) || className == "Credential Dialog Xaml Host" || className == "ConsentUx";
+        if (kind == "ControlType.Text" || kind == "ControlType.Document") return false;
+        return SecurityIdentity.IsMatch(name ?? "") || SecurityIdentity.IsMatch(identity ?? "");
+    }
     internal static bool PassivePointer(int message, bool injected) { return message == 0x200 && !injected; }
     internal static bool HoldKeyboard(bool controlling, uint key, bool injected) { return controlling && key != 27 && !injected; }
     internal static bool HoldMouse(bool controlling, bool pointing, int message, bool injected)

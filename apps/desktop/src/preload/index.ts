@@ -148,6 +148,7 @@ const api: EngramApi = {
   brainFabric: () => ipcRenderer.invoke('brain:fabric'),
   chatAbort: (channel?: string) => ipcRenderer.invoke('chat:abort', channel),
   chatActive: () => ipcRenderer.invoke('chat:active'),
+  chatQueued: (botId: string, pending: boolean) => ipcRenderer.invoke('chat:queued', botId, pending),
   chatSteer: (channel: string, text: string) => ipcRenderer.invoke('chat:steer', channel, text),
   chatSay: (channel: string, text: string) => ipcRenderer.invoke('chat:say', channel, text),
   studyList: (botId: string) => ipcRenderer.invoke('study:list', botId),

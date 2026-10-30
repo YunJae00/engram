@@ -31,6 +31,12 @@ func rectangle(_ bounds: CGRect) -> [String: Double] {
 func sensitive(_ value: String) -> Bool {
     value.range(of: #"(?i)\b(sign[ -]?in|log[ -]?in|password|passkey|credential|authentication|verification code|security code|terminal|keychain|system settings|system preferences|security settings)\b|로그인|비밀번호|암호|인증"#, options: .regularExpression) != nil
 }
+func sensitiveControl(_ role: String, _ subrole: String, _ label: String) -> Bool {
+    if subrole == kAXSecureTextFieldSubrole { return true }
+    if role == kAXWindowRole { return sensitive(label) }
+    if role == kAXStaticTextRole || role == kAXTextAreaRole { return false }
+    return label.range(of: #"(?i)^(sign[ -]?in|log[ -]?in|password|passkey|credential|authentication|verification code|security code|로그인|비밀번호|암호|인증)$"#, options: .regularExpression) != nil
+}
 struct Target {
     let id: CGWindowID
     let pid: pid_t
@@ -100,7 +106,7 @@ func scan(_ target: Target) throws -> Snapshot {
         let role = stringAttribute(element, kAXRoleAttribute)
         let subrole = stringAttribute(element, kAXSubroleAttribute)
         let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute].map { stringAttribute(element, $0) }.first { !$0.isEmpty } ?? ""
-        let secret = inheritedSecret || subrole == kAXSecureTextFieldSubrole || sensitive(label)
+        let secret = inheritedSecret || sensitiveControl(role, subrole, label)
         var settable = DarwinBoolean(false)
         AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
         var actions: CFArray?

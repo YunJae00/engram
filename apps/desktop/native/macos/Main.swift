@@ -27,6 +27,10 @@ final class Connection: @unchecked Sendable {
                 let selectAll = try keyChord("Control+A")
                 precondition(selectAll.1 == .maskCommand)
                 precondition(sensitive("Password") && sensitive("비밀번호") && !sensitive("Quarterly report"))
+                precondition(!sensitiveControl(kAXTextAreaRole, "", "Discuss terminal and 로그인 here"))
+                precondition(!sensitiveControl(kAXStaticTextRole, "", "password"))
+                precondition(sensitiveControl(kAXTextFieldRole, kAXSecureTextFieldSubrole, "Message"))
+                precondition(sensitiveControl(kAXGroupRole, "", "Sign in"))
                 connection.send(["selfTest": "passed"])
             } catch { connection.send(["selfTest": "failed", "error": String(describing: error)]); exit(1) }
             return

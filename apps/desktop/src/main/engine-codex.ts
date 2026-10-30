@@ -1,3 +1,9 @@
+import { modelCall } from './model-call-metrics.js'
+import { availableMemory } from './available-memory.js'
+import { mkdir } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
@@ -8,18 +14,9 @@ import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { hasBrainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
 import { startToolServer, type ToolServer } from './codex-tool-server.js'
 import { CodexVoice } from './engine-codex-voice.js'
-import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareReady, runCodexNative, warmCodexSession } from './codex-native.js'
+import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareCount, codexSpareFolders, runCodexNative, warmCodexSession } from './codex-native.js'
 
-// ChatGPT, through the vendor's agent runtime bundled with this app. The
-// person signs in with their own plan in the vendor's flow. Every turn runs
-// read-only with web search off and the runtime's own tools switched off. A
-// tool session reaches the comet's tools, and nothing else, through a
-// loopback tool server.
 
-// Runtime features that act on their own: shell, account-connected apps,
-// browsers, computer use, plugins, hooks, image generation and file viewing.
-// The code-mode host stays on: current models reach every tool through it, and
-// it offers only those tools (no file, network or process access of its own).
 export const RUNTIME_TOOLS_OFF = [
   'apps', 'multi_agent', 'image_generation', 'shell_tool', 'unified_exec', 'plugins', 'remote_plugin', 'browser_use',
   'browser_use_external', 'computer_use', 'in_app_browser', 'goals', 'tool_suggest', 'skill_search',
@@ -30,8 +27,6 @@ export const RUNTIME_TOOLS_OFF = [
 const TOOL_SERVER = 'engram_comet'
 const TOOL_REACH = `Work only through the ${TOOL_SERVER} tools. The read-only sandbox applies to this runtime's own commands, not to those tools: they can read the approved files, save outputs and act in the browser and applications as their descriptions say.`
 const TOKEN_ENV = 'ENGRAM_COMET_TOOL_TOKEN'
-// With the runtime's own hands handed over: its shell and file edits stay on,
-// everything else that acts on its own stays off.
 const NATIVE_KEEP = new Set(['shell_tool', 'unified_exec', 'shell_snapshot', 'shell_snapshot_v2'])
 export const NATIVE_TOOLS_OFF = RUNTIME_TOOLS_OFF.filter(entry => entry !== 'include_apply_patch_tool=false' && !NATIVE_KEEP.has(entry.slice('features.'.length, -'=false'.length)))
   .concat('web_search="disabled"', 'notify=[]')
@@ -44,15 +39,11 @@ export function disableMcpOverrides(catalog: string, extra: Record<string, strin
     const key = typeof server?.transport?.url === 'string' ? 'url' : 'command'
     const transport = server?.transport?.[key]
     if (typeof server?.name !== 'string' || typeof transport !== 'string') throw new Error('Could not read the ChatGPT tool configuration.')
-    // Built-in servers may not exist in the user config; preserve their
-    // transport so the override remains valid, without starting it.
     return `${JSON.stringify(server.name)}={${key}=${JSON.stringify(transport)},enabled=false}`
   })
   return [`mcp_servers={${[...disabled, ...Object.entries(extra).map(([name, value]) => `${name}=${value}`)].join(',')}}`]
 }
 
-// Strict output requires every property; nullable fields represent omissions.
-// Free-key maps remain closed because this output format cannot accept them.
 export function strictSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(strictSchema)
   if (schema === null || typeof schema !== 'object') return schema
@@ -81,7 +72,6 @@ function allowsNull(schema: unknown): boolean {
     (Array.isArray(node['anyOf']) && node['anyOf'].some(allowsNull))
 }
 
-// Undo only nulls introduced for optional properties, never explicit null data.
 export function restoreOptionalFields(value: unknown, schema: unknown): unknown {
   if (!schema || typeof schema !== 'object' || value === null) return value
   const node = schema as Record<string, unknown>
@@ -99,8 +89,6 @@ export function restoreOptionalFields(value: unknown, schema: unknown): unknown 
   ).map(([key, item]) => [key, restoreOptionalFields(item, properties[key])]))
 }
 
-// "Not logged in" is the runtime's own wording; a status it printed anything
-// else for is a sign-in.
 export function readLoginStatus(out: string, code: number | null): EngineDetection {
   if (code === null) return { installed: true, loggedIn: false, conclusive: false }
   if (/not logged in/i.test(out)) return { installed: true, loggedIn: false, conclusive: true }
@@ -109,7 +97,6 @@ export function readLoginStatus(out: string, code: number | null): EngineDetecti
 }
 
 export class CodexEngine implements CloudEngine {
-  // Read fresh each time: a key connection added later must reach the next process.
   private get env(): NodeJS.ProcessEnv { return accountEnvironment('codex', this.accountProfile) }
   constructor(readonly accountProfile = activeAccountProfile('codex')) {}
   readonly id = 'codex' as const
@@ -118,10 +105,10 @@ export class CodexEngine implements CloudEngine {
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
 
-  // Short answers from a runtime kept open, for words said while a comet works.
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
-    return askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs)
+    const metric = modelCall('codex', prompt.length, 'low')
+    try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) } finally { metric.end() }
   }
   private async voiceFor(workdir: string): Promise<CodexVoice | undefined> {
     await loadBrainConnections()
@@ -151,8 +138,6 @@ export class CodexEngine implements CloudEngine {
     const account = new CodexAccount(options?.signal ?? new AbortController().signal, LOGIN_TIMEOUT_MS, this.env)
     try {
       await account.login((url) => options?.onUrl?.(url))
-      // The runtime reported the sign-in complete; a second status process
-      // would only add a cold start, and a slow one would report a failure.
       this.status.set({ installed: true, loggedIn: true, conclusive: true })
       return { ok: true }
     } finally { account.close() }
@@ -180,9 +165,9 @@ export class CodexEngine implements CloudEngine {
     const timer = setTimeout(() => abort.abort(), budget)
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
+    const metric = modelCall('codex', job.prompt.length, job.effort ?? (job.modelHint === 'fast' ? 'low' : undefined))
     try {
       const env = withHelpersOnPath(binary, this.env)
-      // Match the turn's directory so project-local servers are disabled too.
       const catalog = { out: await mcpCatalog(binary, job.workdir, env, abort.signal) }
       const configOverrides = [...disableMcpOverrides(catalog.out), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)]
       let text = await runCodexTurn({
@@ -195,8 +180,6 @@ export class CodexEngine implements CloudEngine {
         webSearchMode: 'disabled',
         networkAccessEnabled: false,
         ...(job.effort ? { modelReasoningEffort: job.effort } : job.modelHint === 'fast' ? { modelReasoningEffort: 'low' } : {}),
-        // The person's chosen model, if they named one; the runtime's own
-        // default - their plan's - otherwise.
         ...(codexModel ? { model: codexModel } : {}),
         },
         input: job.imagePaths?.length ? [{ type: 'text' as const, text: job.prompt }, ...job.imagePaths.map(path => ({ type: 'local_image' as const, path }))] : job.prompt,
@@ -215,44 +198,55 @@ export class CodexEngine implements CloudEngine {
       const message = err instanceof Error ? err.message : String(err)
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {
+      metric.end()
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
     }
   }
 
-  // A session opened ahead for the next comet, with a tool server of its own.
   async warm(job: ToolSessionJob): Promise<void> {
-    if (job.signal?.aborted) return
+    if (job.signal?.aborted || !job.native) return
     await loadBrainConnections()
     const binary = codexBinary()
-    if (!binary || !job.native || codexSpareReady()) return
-    const server = spareServer?.server ?? await startToolServer(job.tools, job.signal)
-    server.setTools(job.tools)
-    spareServer = { server, cwd: job.native.cwd }
-    const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
-    const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
-    const catalog = await mcpCatalog(binary, job.native.cwd, env, job.signal ?? new AbortController().signal)
-    const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
-    if (job.signal?.aborted) { await server.close(); if (spareServer?.server === server) spareServer = null; return }
-    await warmCodexSession({
-      rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
-      instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
-    }, job.native)
+    if (!binary) return
+    const live = new Set(codexSpareFolders())
+    for (const [cwd, server] of spareServers) if (!live.has(cwd)) { spareServers.delete(cwd); await server.close() }
+    const target = Math.min(4, Math.max(1, Math.floor(availableMemory() / 1_500_000_000)))
+    while (codexSpareCount() < target && !job.signal?.aborted) {
+      const cwd = codexSpareCount() === 0 ? job.native.cwd : join(dirname(job.native.cwd), `spare-${randomUUID()}`)
+      await mkdir(cwd, { recursive: true })
+      const server = await startToolServer(job.tools, job.signal)
+      spareServers.set(cwd, server)
+      const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
+      try {
+        const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
+        const catalog = await mcpCatalog(binary, cwd, env, job.signal ?? new AbortController().signal)
+        const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
+        job.signal?.throwIfAborted()
+        const warmed = await warmCodexSession({ rpc: appServer(binary), env,
+          config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
+          instructions: [job.system.replaceAll(job.native.cwd, cwd), NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
+        }, { ...job.native, cwd, readRoots: job.native.readRoots?.map(root => root === job.native!.cwd ? cwd : root) })
+        if (!warmed) { spareServers.delete(cwd); await server.close(); break }
+      } catch (error) { spareServers.delete(cwd); await server.close(); throw error }
+    }
   }
-  spareReady(): boolean { return codexSpareReady() }
+  spareReady(): boolean { return codexSpareCount() >= Math.min(4, Math.max(1, Math.floor(availableMemory() / 1_500_000_000))) }
   claimWorkFolder(channel: string, fallback: string): string { return claimCodexWorkFolder(channel, fallback) }
 
-  // One turn with the comet's tools. The person's other tool servers stay off.
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     if (job.signal?.aborted) return { answer: '', error: 'canceled' }
     await loadBrainConnections()
+    logSessionTools('codex', job)
     const binary = codexBinary()
     if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
+    const metric = modelCall('codex', job.prompt.length + job.system.length, job.effort, job.tools.length)
+    const onToken = job.onToken
+    job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
     const abort = new AbortController()
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
     let server: ToolServer | undefined
-    // A comet's tool server stays up with its session, so the next turn needs no new one.
     const pooled = job.native && job.sessionKey ? `${this.accountProfile}:${job.sessionKey}` : undefined
     try {
       server = pooled ? await toolServerFor(pooled, job.tools, job.native?.cwd) : await startToolServer(job.tools, abort.signal)
@@ -280,8 +274,6 @@ export class CodexEngine implements CloudEngine {
           ...(job.effort ? { modelReasoningEffort: job.effort } : {}),
           ...(codexModel ? { model: codexModel } : {}),
         },
-        // The runtime describes its own sandbox as read-only; that is about its
-        // commands, and a model that read it as its limit saved nothing.
         input: [job.system, TOOL_REACH, job.opening, job.prompt].filter(Boolean).join('\n\n'),
       }, abort.signal)
       abort.signal.throwIfAborted()
@@ -291,18 +283,13 @@ export class CodexEngine implements CloudEngine {
       if (job.signal?.aborted) return { answer: '', error: 'canceled' }
       return { answer: '', error: err instanceof Error ? err.message : String(err) }
     } finally {
+      metric.end()
       job.signal?.removeEventListener('abort', onAbort)
       if (!pooled) await server?.close()
     }
   }
 }
 
-// The runtime's tool catalog changes only when the person edits their
-// configuration; read it once in a while, not before every turn. A project
-// folder may add servers of its own and is read for itself; the folders the
-// app makes for its comets add none, so they share one reading, and comets
-// starting together wait on the same one rather than each starting a slow
-// read of their own.
 const CATALOG_MS = 10 * 60_000
 const catalogs = new Map<string, { out: string; at: number }>()
 const reading = new Map<string, Promise<string>>()
@@ -312,7 +299,6 @@ async function mcpCatalog(binary: string, cwd: string, env: Record<string, strin
   const held = catalogs.get(key)
   if (held && Date.now() - held.at < CATALOG_MS) return held.out
   const pending = reading.get(key) ?? (async () => {
-    // The shared reading is not stopped by any one comet that stops waiting for it.
     const catalog = await runText(binary, ['-C', cwd, 'mcp', 'list', '--json'], 60_000, env, { signal: new AbortController().signal })
     if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
     for (const [stored, value] of catalogs) if (Date.now() - value.at >= CATALOG_MS) catalogs.delete(stored)
@@ -329,16 +315,14 @@ async function mcpCatalog(binary: string, cwd: string, env: Record<string, strin
 }
 export function forgetCodexCatalog(): void { catalogs.clear() }
 
-// One loopback tool server per comet session, answering with the tools of the turn under way.
 const SERVER_IDLE_MS = 60 * 60_000
 const toolServers = new Map<string, { server: ToolServer; usedAt: number }>()
-// The tool server a spare session was opened with; the comet that takes the spare's folder takes it too.
-let spareServer: { server: ToolServer; cwd: string } | null = null
+const spareServers = new Map<string, ToolServer>()
 async function toolServerFor(key: string, tools: ToolSessionJob['tools'], cwd?: string): Promise<ToolServer> {
   const held = toolServers.get(key)
   if (held) { held.server.setTools(tools); held.usedAt = Date.now(); return held.server }
-  const server = spareServer && spareServer.cwd === cwd ? spareServer.server : await startToolServer(tools)
-  if (spareServer?.server === server) spareServer = null
+  const server = cwd && spareServers.get(cwd) || await startToolServer(tools)
+  if (cwd) spareServers.delete(cwd)
   server.setTools(tools)
   toolServers.set(key, { server, usedAt: Date.now() })
   return server
@@ -349,8 +333,8 @@ export function closeCodexSessions(): void {
   codexVoice?.close()
   for (const held of toolServers.values()) void held.server.close()
   toolServers.clear()
-  void spareServer?.server.close()
-  spareServer = null
+  for (const server of spareServers.values()) void server.close()
+  spareServers.clear()
 }
 export function closeCodexSession(key: string): void {
   closeCodexNativeSession(key)

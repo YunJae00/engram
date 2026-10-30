@@ -1,6 +1,8 @@
+import { withModelCallContext } from './model-call-metrics.js'
+import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-notify.js'
 import { ipcMain } from 'electron'
 import { appendBotTurn, asidePrompt, parseAside, readBotTranscript, withoutSecrets, type AsideAction, type VaultPaths } from 'core'
-import { changeCheckpoint } from './comet-checkpoint.js'
+import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { broadcast, tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { answering, asides, relayed, STEER_CAP, steers, turnGoals, workSoFar } from './turn-state.js'
@@ -17,6 +19,7 @@ export interface AsideIpcDeps {
 // Talking to a comet while it works: the voice that answers at once, and the
 // words that reach the running turn at its next step.
 export function registerAsideIpc(deps: AsideIpcDeps): void {
+  ipcMain.removeHandler('chat:queued')
   ipcMain.removeHandler('chat:say')
   ipcMain.removeHandler('chat:steer')
   tapBroadcast((event) => {
@@ -24,6 +27,16 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
   })
   // Said while the work runs: answered at once by a short call that sees what
   // the work has done, which also decides what the words mean for the work.
+  const watching = new Set<number>()
+  ipcMain.handle('chat:queued', (event, botId: string, pending: boolean) => {
+    if (typeof botId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(botId) || typeof pending !== 'boolean') return
+    const source = event.sender.id
+    if (!watching.has(source)) {
+      watching.add(source)
+      event.sender.once('destroyed', () => { watching.delete(source); clearClientTaskQueues(source) })
+    }
+    clientTaskQueued(botId, pending, source)
+  })
   ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: AsideAction; instruction?: string }> => {
     if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
     if (!deps.busy(channel)) return { ok: false }
@@ -31,10 +44,10 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const botId = channel.slice('bot-'.length)
     const earlier = await readBotTranscript(deps.paths, botId, 12).catch(() => [])
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString() })
-    await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] }))
+    await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])], returned: (state.returned ?? []).filter(text => text !== said), replayed: (state.replayed ?? []).filter(text => text !== said) }))
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    const quickly = await deps.voice(channel, asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: earlier, message: said }), 12_000).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null })
+    const quickly = await withModelCallContext({ channel, purpose: 'aside' }, () => deps.voice(channel, asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: earlier, message: said }), 12_000)).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null })
     // Without a voice in seconds, the words still reach the work.
     const aside = parseAside(quickly) ?? { reply: '', action: 'relay' as const, instruction: said }
     // Preserve the person's request; the voice may classify it, not rewrite it.
@@ -46,6 +59,8 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (aside.action === 'relay' && running) {
       relayed.set(channel, [...(relayed.get(channel) ?? []), aside.instruction!])
     }
+    const pending = await readCheckpoint(deps.paths, botId)
+    taskQueued(botId, !!(pending.pending.length || pending.returned?.length))
     flog('aside', `${channel}: ${aside.action}`)
     // A relay that found the work already finished goes on as the next message.
     return { ok: true, reply: aside.reply, action: aside.action === 'relay' && !running ? 'later' : aside.action, ...(aside.instruction ? { instruction: aside.instruction } : {}) }

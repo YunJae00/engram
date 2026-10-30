@@ -127,3 +127,19 @@ it('empties the box after words sent mid-reply even when the box held spaces aro
   await sendCometMessage(client, store, 'one', 'All of this month')
   expect(store.thread('one').draft).toBe('')
 })
+
+
+it('reports attachment queues to the host and clears them after the continuation', async () => {
+  const store = createCometThreads()
+  const client = { ...api(), chatQueued: vi.fn(async () => undefined) }
+  await sendCometMessage(client, store, 'one', 'First')
+  await sendCometMessage(client, store, 'one', 'Then the attached file', [{ id: 'file', name: 'report.txt', size: 1 }])
+  expect(client.chatQueued).toHaveBeenLastCalledWith('one', true)
+  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Done' })
+  await flushQueuedCometMessages(client, store, 'one')
+  expect(client.chatQueued).toHaveBeenLastCalledWith('one', false)
+  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Done' })
+  await sendCometMessage(client, store, 'one', 'Next')
+  await sendCometMessage(client, store, 'one', 'Another queued request')
+  expect(client.chatQueued).toHaveBeenLastCalledWith('one', true)
+})

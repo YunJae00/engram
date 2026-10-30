@@ -26,7 +26,7 @@ final class DesktopHost {
         let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute].map { stringAttribute(value.element, $0) }.first { !$0.isEmpty } ?? ""
         guard stringAttribute(value.element, kAXRoleAttribute) == value.role,
               stringAttribute(value.element, kAXSubroleAttribute) != kAXSecureTextFieldSubrole,
-              !sensitive(label), String(label.prefix(500)) == value.name,
+              !sensitiveControl(stringAttribute(value.element, kAXRoleAttribute), stringAttribute(value.element, kAXSubroleAttribute), label), String(label.prefix(500)) == value.name,
               (try? elementBounds(value.element)) == value.bounds else { throw DesktopFailure("Control changed. Read the app again") }
         return value
     }

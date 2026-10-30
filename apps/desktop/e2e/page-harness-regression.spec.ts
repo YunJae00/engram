@@ -1,5 +1,5 @@
 import { expect, test, chromium, type Browser, type Page } from '@playwright/test'
-import { handOn, pressKey } from '../src/main/page-actions.js'
+import { handOn, pressKey, pressOn } from '../src/main/page-actions.js'
 import { readFrames } from '../src/main/page-reader.js'
 
 let browser: Browser
@@ -31,4 +31,24 @@ test('approves contenteditable Enter exactly once and records the dispatch', asy
   await expect(page.locator('output')).toHaveText('0')
   expect(await pressKey(page, 'Enter', undefined, async () => 'approve')).toMatchObject({ ok: true, committed: true })
   await expect(page.locator('output')).toHaveText('1')
+})
+
+
+test('retains late calendar cards beyond the old control cap with stable numbered targets', async () => {
+  await page.setContent(Array.from({ length: 300 }, (_, i) => `<button>Earlier ${i}</button>`).join('') + '<section aria-label="October 30"><div role="button" tabindex="0">Training 17:00</div></section>')
+  const read = await readFrames(page)
+  const card = read.lines.find(line => line.includes('Training 17:00'))
+  expect(card).toContain('October 30')
+  const aim = await handOn(page, /^#\d+/.exec(card!)![0])
+  expect('hand' in aim && await aim.hand.innerText()).toBe('Training 17:00')
+})
+
+
+test('uses the approval callback for downloads and does not click after denial', async () => {
+  await page.setContent(`<button onclick="this.textContent='Downloaded'">Download report</button>`)
+  let approvals = 0
+  const result = await pressOn(page, 'Download report', undefined, async () => { approvals++; return 'cancel' })
+  expect(approvals).toBe(1)
+  expect(result.ok).toBe(false)
+  await expect(page.getByRole('button')).toHaveText('Download report')
 })

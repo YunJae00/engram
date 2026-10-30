@@ -1,3 +1,6 @@
+import { withModelCallContext } from './model-call-metrics.js'
+import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
+import { taskQueued, discardTaskNotice } from './task-notify.js'
 import { ipcMain } from 'electron'
 import {
   continuationPrompt,
@@ -25,26 +28,15 @@ import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { freshResultReadback, needsResultCheck, RESULT_CHANGES } from './task-result-state.js'
 
-// Every comet message is a task: its first turn is the ordinary chat turn the
-// person watches, and when that turn stops short of the goal the work goes on
-// by itself, turn after turn, until it is done, needs an answer or an
-// approval, or reaches its limits. A press that would commit something is not
-// made unattended: it waits in the task, and the rest of the work goes on.
 
 export interface TurnOutcome { answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
-// How the host runs one of the task's turns: extra context, and whether the
-// message is the task's own continuation rather than words the person said.
-// holdIf: the host keeps this turn's answer out of the thread when it says so (work that will be checked first).
 export interface TaskTurn { context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
-// Work worth writing down: several tool steps, or a saved file.
 const WORTH_KEEPING_STEPS = 3
 const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const UNCONFIRMED = '\n\n⚠ Checked; some of this could not be confirmed against the original.'
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const artifactLinks = (text = '') => [...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map((match) => match[1]!)
-// Captures already have consent, provenance and save receipts; this text and
-// document check must not demand a text read of a PNG or retake a recording.
 
 export function taskRunner(deps: {
   paths: VaultPaths
@@ -53,22 +45,16 @@ export function taskRunner(deps: {
   abort(channel: string): void
   broadcast(event: EngramEvent): void
   remember(text: string): Promise<void>
-  // A held answer, put in the thread once: after its check, or when the task stops for the person.
-  // since: when the task began, for finding revisions saved during it.
   deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence): Promise<void>
-  // How long a check may hold the answer back before the draft goes out as it is.
   checkBudgetMs?: number
-  // The person answered what a comet asked: what holds beyond this task is kept.
   learn?(question: string, answer: string): void
-  // The task stopped for the person: done, waiting on them, or failed.
   notify(task: DelegatedTask): void
-  // The turn offered the person another way to do the job, on a card of its own.
   offered?(channel: string): boolean
-  // How close in meaning texts are, for finding how a similar task was done.
   meaning?: MeaningScores
 }) {
   const { paths } = deps
   const running = new Set<string>()
+  const automatic = new Set<string>()
   const channels = new Set<string>()
   const acquire = (channel: string) => {
     if (channels.has(channel)) return
@@ -80,20 +66,15 @@ export function taskRunner(deps: {
   }
   const stopped = new Set<string>()
   const waiting = new Map<string, number>()
-  // The task each comet is working on, by channel; presses the person
-  // approved, each good for one press; presses they declined, never asked again.
   const owners = new Map<string, string>()
   const approved = new Map<string, { url: string; words: string }[]>()
   const declined = new Map<string, Set<string>>()
-  // Each task's steps across its turns, and tasks whose next turn is the check.
   const trails = new Map<string, TurnStep[]>()
-  // Tasks handed back with another way offered: the work stops there, and is not learned from.
   const handedBack = new Set<string>()
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
 
-  // One turn, then where the task stands: running (keep going), waiting, done or failed.
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
       if (stopped.has(channelOf(t)) || !['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; return }
@@ -110,19 +91,17 @@ export function taskRunner(deps: {
     const checking = started.verificationPending === true
     if (checking) {
       deps.broadcast({ type: 'comet:step', channel: channelOf(started), line: 'note: Checking the result against your request' })
-      // The draft stays out of the thread while it is checked: one answer, once it is done.
       deps.broadcast({ type: 'chat:token', channel: channelOf(started), text: '', reset: true, drop: true })
     }
     const earlier = trails.get(id) ?? []
     const holdIf = (answer: string, steps: TurnStep[]) => !started.verified && needsResultCheck(answer, [...earlier, ...steps])
-    // A check runs as long as it takes, unless a budget is set: past it, the draft is the answer.
     let overran = false, checkError: unknown
     let budget: ReturnType<typeof setTimeout> | undefined
     const deadline = checking && deps.checkBudgetMs ? new Promise<void>(resolve => {
       budget = setTimeout(() => { overran = true; deps.abort(channelOf(started)); resolve() }, deps.checkBudgetMs)
     }) : undefined
     try {
-      const sending = deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : { ...extra, holdIf })
+      const sending = withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: checking ? 'verify' : request.previouslySaid ? 'automatic-continuation' : 'task' }, () => deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : { ...extra, holdIf }))
       await (deadline ? Promise.race([sending, deadline]) : sending)
     } catch (error) {
       if (!checking) throw error
@@ -180,7 +159,6 @@ export function taskRunner(deps: {
     return after
   }
 
-  // Why the next unattended turn runs.
   const nextReason = (task: DelegatedTask): Reason => task.approvals.some(a => a.answer && !a.settled) ? 'approved' : task.verificationPending ? 'verify' : 'limit'
 
   async function takeDecisions(task: DelegatedTask): Promise<string> {
@@ -194,12 +172,12 @@ export function taskRunner(deps: {
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
     const trail = trails.get(task.id) ?? []
-    // A task waiting on the person resumes later; its steps so far still count.
     if (task.state !== 'waiting') trails.delete(task.id)
-    if (['done', 'waiting', 'failed'].includes(task.state)) {
+    if (!automatic.has(task.id) && ['done', 'waiting', 'failed'].includes(task.state)) {
+      const checkpoint = await readCheckpoint(paths, task.botId)
+      taskQueued(task.botId, !!(checkpoint.pending.length || checkpoint.returned?.length))
       try { deps.notify(task) } catch (error) { flog('task-notify', error) }
     }
-    // A result the check could not confirm is kept for the person, not learned from.
     if (handedBack.delete(task.id) || task.state !== 'done' || !task.result || task.verificationIssue) return
     await recordPlaybook(paths, task.goal, trail).catch((error) => flog('tasks', error))
     if ((task.work ?? 0) < WORTH_KEEPING_STEPS && !savedFile(task.result)) return
@@ -207,7 +185,6 @@ export function taskRunner(deps: {
       .catch((error) => flog('tasks', error))
   }
 
-  // Turns the person does not type: the thread shows them as the same work going on.
   async function carryOn(id: string, reason: Reason, detail = '', heldChannel?: string): Promise<void> {
     if (running.has(id)) return
     running.add(id)
@@ -236,7 +213,6 @@ export function taskRunner(deps: {
 
   return {
     activeChannels: (): string[] => [...channels],
-    // The person's message to a comet: an answer to what the comet asked, or new work.
     async chat(request: ChatRequestDto): Promise<void> {
       const botId = request.botId!, channel = `bot-${botId}`
       if (request.channel && request.channel !== channel) throw new Error('The conversation channel does not match.')
@@ -246,17 +222,46 @@ export function taskRunner(deps: {
       let task: DelegatedTask | undefined
       let after: DelegatedTask | undefined
       try {
-        const active = (await listTasks(paths)).filter((t) => t.botId === botId && ['queued', 'running', 'waiting'].includes(t.state))
+        const history = (await listTasks(paths)).filter(t => t.botId === botId)
+        const active = history.filter(t => ['queued', 'running', 'waiting'].includes(t.state))
         if (active.some((t) => t.state !== 'waiting')) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
         const asked = active.find((t) => t.question)
-        if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
+        if (request.previouslySaid) {
+          const previous = history.at(-1)
+          let repeated = false
+          await changeCheckpoint(paths, botId, state => {
+            repeated = (state.replayed ?? []).includes(request.message)
+            return { ...state, returned: (state.returned ?? []).filter(text => text !== request.message),
+              replayed: [...new Set([...(state.replayed ?? []), request.message])],
+              pending: state.pending.filter(text => text !== request.message) }
+          })
+          discardTaskNotice(botId)
+          if (asked || repeated || !previous || ['waiting', 'stopped', 'failed'].includes(previous.state) || previous.turns >= TASK_MAX_TURNS) {
+            deps.broadcast({ type: 'chat:steer-unapplied', channel, texts: [request.message] })
+            deps.broadcast({ type: 'chat:done', channel, text: asked?.question ?? previous?.result ?? '' })
+            return
+          }
+          task = previous
+          automatic.add(task.id)
+          await edit(task.id, t => { t.state = 'queued'; delete t.verified; logTask(t, 'Continuing with previously supplied instructions') })
+          await changeCheckpoint(paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, request.message])] }))
+        } else {
+          await changeCheckpoint(paths, botId, state => ({ ...state, returned: [], replayed: [] }))
+          if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
+          if (history.at(-1)?.goal.trim() === request.message.trim()) flog('tasks', 'The person explicitly repeated the previous goal')
+        }
         for (const t of active) if (t !== asked) await edit(t.id, (x) => { x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
-        task = asked ?? await createTask(paths, request.message, botId)
+        task ??= asked ?? await createTask(paths, request.message, botId)
         owners.set(channel, task.id)
-        // New work starts from how a similar task was done, when one was.
-        const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
-        const extra = asked
+        const playbook = asked || request.previouslySaid ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
+        const extra = request.previouslySaid
+          ? { context: `These instructions were supplied during the same task. Continue that task without treating them as an answer to a later question.\nOriginal task: ${task.goal}` }
+          : asked
           ? { context: `This message answers your question in the task below; continue that task with it.\nThe task, verbatim:\n${asked.goal}` }
+          : request.scheduled ? { context: [
+            'This is a scheduled task. Start with the saved procedure and its known URLs, or the existing page in this conversation. Do not rediscover the same service with search_web. If no saved route is available, ask_person for the address. If login expired, ask_person to sign in and stop in waiting; do not search for another login page.',
+            playbook ? playbookContext(playbook) : '',
+          ].filter(Boolean).join('\n\n') }
           : playbook ? { context: playbookContext(playbook) } : undefined
         after = await turn(task.id, { ...request, channel }, extra)
         if (after?.state === 'running') await carryOn(after.id, nextReason(after), '', channel)
@@ -265,7 +270,13 @@ export function taskRunner(deps: {
         if (task) await finished(await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = 'failed'; logTask(t, `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
         deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
         throw error
-      } finally { release(channel) }
+      } finally {
+        if (task) automatic.delete(task.id)
+        try {
+          const checkpoint = await readCheckpoint(paths, botId)
+          taskQueued(botId, !!(checkpoint.pending.length || checkpoint.returned?.length))
+        } finally { release(channel) }
+      }
     },
     stopChannel: async (channel: string): Promise<void> => {
       stopped.add(channel)
@@ -275,7 +286,6 @@ export function taskRunner(deps: {
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
-    // A crashed turn may already have committed an effect. Never replay it unattended.
     async resume(): Promise<void> {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
@@ -284,7 +294,6 @@ export function taskRunner(deps: {
         logTask(t, t.question)
       })
     },
-    // Approvals wait for the person; explicit deferred callers may request 'later'.
     waitingForPerson: (channel: string): boolean => (waiting.get(channel) ?? 0) > 0,
     askFor(channel: string, confirm: Ask, waitMs = Infinity): Ask | undefined {
       const id = owners.get(channel)
@@ -298,15 +307,12 @@ export function taskRunner(deps: {
           if (current?.state !== 'running') return 'cancel'
           const granted = approved.get(id) ?? []
           const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
-          // The form may have changed since the card was created. Reconfirm on
-          // the live page rather than authorizing arbitrary data at the same URL.
           if (index >= 0) { granted.splice(index, 1); return confirm({ words, url }) }
           if (declined.get(id)?.has(`${url}\n${cardWords}`)) return 'cancel'
           await edit(id, (t) => {
             if (t.state !== 'running' || stopped.has(channel) || t.approvals.some((a) => !a.settled && a.url === url && a.words === cardWords)) return
             t.approvals.push({ id: `a-${Date.now().toString(36)}-${t.approvals.length}`, words: cardWords, host: hostOf(url) ?? '', url, at: new Date().toISOString() })
           })
-          // The person may be right there: the card can be answered while the turn runs.
           for (const until = Date.now() + waitMs; Date.now() < until;) {
             await new Promise((resolve) => setTimeout(resolve, 1000))
             if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'

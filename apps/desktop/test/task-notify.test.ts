@@ -55,3 +55,29 @@ it('tells a finished answer only once the after-turn check and its extra pass ha
   checkSettled('bot-7')
   expect(mocks.show).toHaveBeenCalledOnce()
 })
+
+it('holds a done notice while a replay is queued and emits at most once per task', async () => {
+  const { taskQueued } = await import('../src/main/task-notify.js')
+  const task = { id: 'notice-once', state: 'done', botId: 'notice-bot' } as DelegatedTask
+  const broadcast = vi.fn()
+  taskQueued(task.botId, true)
+  checkStarted(task.botId)
+  notifyTask(task, broadcast)
+  checkSettled(task.botId)
+  expect(mocks.show).not.toHaveBeenCalled()
+  taskQueued(task.botId, false)
+  expect(mocks.show).toHaveBeenCalledOnce()
+  notifyTask(task, broadcast)
+  expect(mocks.show).toHaveBeenCalledOnce()
+})
+
+
+it('holds completion while the renderer has queued work even after host pending clears', async () => {
+  const { taskQueued, clientTaskQueued, clearClientTaskQueues } = await import('../src/main/task-notify.js')
+  clientTaskQueued('client-queue', true, 99)
+  notifyTask({ id: 'client-task', botId: 'client-queue', state: 'done' } as DelegatedTask, vi.fn())
+  taskQueued('client-queue', false)
+  expect(mocks.show).not.toHaveBeenCalled()
+  clearClientTaskQueues(99)
+  expect(mocks.show).toHaveBeenCalledOnce()
+})

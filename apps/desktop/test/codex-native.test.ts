@@ -352,3 +352,25 @@ it('keeps Codex approval pending beyond two minutes and cancels an unresponsive 
     expect(answers).toEqual([{ decision: 'decline' }])
   } finally { closeCodexSessions(); vi.useRealTimers() }
 })
+
+
+it('assigns three warmed sessions to different conversations and reuses them for verification', async () => {
+  const sent: { method: string; params: Data }[] = []
+  const rpc = fakeServer(async server => {
+    server.notify(...completed({ id: 'answer', type: 'agentMessage', text: 'Observed' }))
+    server.notify('turn/completed', { turn: { status: 'completed' } })
+  }, sent)
+  try {
+    for (let i = 0; i < 3; i++) await warmCodexSession(spec(rpc), { ...native(async () => ({ behavior: 'allow' })), cwd: `C:/work/spare-${i}` })
+    const folders = [0, 1, 2].map(i => claimCodexWorkFolder(`pool-${i}`, `C:/work/bot-${i}`))
+    expect(new Set(folders).size).toBe(3)
+    for (let i = 0; i < 3; i++) {
+      const hands = { ...native(async () => ({ behavior: 'allow' })), cwd: folders[i]! }
+      const work = { ...job(hands), sessionKey: `pool-${i}` }
+      await runCodexNative(work, spec(rpc))
+      await runCodexNative({ ...work, prompt: 'Verify the result', tools: [{ name: 'report_result_check', description: 'Check', argsSchema: {}, run: async () => 'Verified' }] }, spec(rpc))
+    }
+    expect(sent.filter(call => call.method === 'thread/start')).toHaveLength(3)
+    expect(sent.filter(call => call.method === 'turn/start')).toHaveLength(6)
+  } finally { closeCodexSessions() }
+})

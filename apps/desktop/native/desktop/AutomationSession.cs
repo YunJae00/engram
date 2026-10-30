@@ -237,14 +237,15 @@ internal sealed class AutomationSession : IDisposable
         using (DesktopProfile.Measure("safeAncestors"))
         {
         var cache = PropertyCache(AutomationElement.IsPasswordProperty, AutomationElement.NameProperty,
-            AutomationElement.AutomationIdProperty, AutomationElement.RuntimeIdProperty);
+            AutomationElement.AutomationIdProperty, AutomationElement.RuntimeIdProperty, AutomationElement.ControlTypeProperty, AutomationElement.ClassNameProperty);
         if (element != null) element = element.GetUpdatedCache(cache);
         for (var depth = 0; element != null && depth < 48; depth++, element = TreeWalker.RawViewWalker.GetParent(element, cache))
         {
             var info = element.Cached;
-            if (info.IsPassword || ControlPolicy.IsSensitive(info.Name) || ControlPolicy.IsSensitive(info.AutomationId))
+            var root = RuntimeId(element.GetCachedPropertyValue(AutomationElement.RuntimeIdProperty) as int[]) == rootId;
+            if (ControlPolicy.IsSensitiveControl(info.IsPassword, info.ControlType.ProgrammaticName, info.Name, info.AutomationId, info.ClassName, root))
                 throw new InvalidOperationException("Authentication, password, terminal, and security surfaces require manual control");
-            if (RuntimeId(element.GetCachedPropertyValue(AutomationElement.RuntimeIdProperty) as int[]) == rootId) return;
+            if (root) return;
         }
         throw new InvalidOperationException("The control is outside the selected application window");
         }

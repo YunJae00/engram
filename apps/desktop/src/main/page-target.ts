@@ -12,6 +12,7 @@ export function inspectControl(node: Element): PressTarget & { field: boolean; e
   const form = (el as HTMLInputElement | HTMLButtonElement).form ?? el.closest('form')
   const submits = (tag === 'button' && form !== null && type !== 'button' && type !== 'reset') || (tag === 'input' && (type === 'submit' || type === 'image'))
   const words = [(el as HTMLElement).innerText ?? el.textContent ?? '', el.getAttribute('aria-label') ?? '', el.getAttribute('value') ?? '', el.getAttribute('title') ?? '']
+    .filter((value, index, all) => value && all.indexOf(value) === index)
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -39,6 +40,8 @@ export function inspectControl(node: Element): PressTarget & { field: boolean; e
       tag === 'option' ||
       tag === 'summary')
   return {
+    role: role || (tag === 'button' || (tag === 'input' && /^(submit|button|image|reset)$/.test(type)) ? 'button' : tag === 'a' ? 'link' : tag),
+    download: el.hasAttribute('download') || (/^(button|link)$/.test(role) || tag === 'button' || tag === 'a') && /\bdownload\b|다운로드/i.test(words),
     submits,
     words,
     shows,
