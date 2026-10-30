@@ -61,7 +61,7 @@ async function shoot(m: Mirror, now = false): Promise<void> {
   m.shooting = true
   try {
     const revision = m.painted
-    const shot = await captureSharpFrame(m.page, m.cdp)
+    const shot = await captureSharpFrame(m.page)
     if (mirror !== m || revision !== m.painted) return
     m.painted = Date.now()
     m.width = shot.width

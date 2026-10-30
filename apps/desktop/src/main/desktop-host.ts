@@ -146,7 +146,8 @@ export class DesktopHost {
     }
   }
 
-  async request<T>(method: DesktopMethod, args: Record<string, unknown>): Promise<T> {
+  async request<T>(method: DesktopMethod, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted()
     if (!METHODS.has(method)) throw new Error('Unsupported computer action.')
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid computer action.')
     if (!UNSCOPED.has(method) && (typeof args['window'] !== 'string' || !/^\d{1,20}$/.test(args['window']) || !Number.isSafeInteger(args['pid']) || Number(args['pid']) < 0)) throw new Error('Choose a valid app window.')
@@ -158,9 +159,17 @@ export class DesktopHost {
     const id = ++this.serial
     let line = JSON.stringify({ ...args, id, method }) + '\n'
     if (line.length > 65536) throw new Error('The desktop request is too large.')
-    return new Promise<T>((resolve, reject) => {
+    let cancel: () => void = () => {}
+    const result = new Promise<T>((resolve, reject) => {
       const pending: PendingRequest = { method, generation, resolve: (value) => resolve(value as T), reject }
       this.pending.set(id, pending)
+      cancel = () => {
+        if (this.pending.get(id) !== pending) return
+        this.pending.delete(id)
+        clearTimeout(pending.timer)
+        reject(signal?.reason ?? new Error('Computer action was cancelled. It may have partly happened; read the app before retrying.'))
+      }
+      signal?.addEventListener('abort', cancel, { once: true })
       let ready: Promise<void>
       try { ready = this.start() }
       catch (error) { this.close(error instanceof Error ? error : new Error('The desktop helper could not start.')); return }
@@ -188,8 +197,15 @@ export class DesktopHost {
           return
         }
         pending.timer = setTimeout(() => {
-          if (this.pending.get(id) === pending) this.close(new Error('This app stopped responding. Computer control was stopped.'))
-        }, method === 'documentCompose' || method === 'listApps' || method === 'openApp' || method === 'listWindows' ? 30000 : 8000)
+          if (this.pending.get(id) !== pending) return
+          this.pending.delete(id)
+          // A late bind must not leave an unclaimed input grant in the helper.
+          if (method === 'bind') {
+            try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'stop' }) + '\n', error => { if (error) this.close(error) }) }
+            catch (error) { this.close(error instanceof Error ? error : new Error('The desktop connection failed.')) }
+          }
+          reject(new DOMException('This app stopped responding to this request within 30 seconds. It may have partly happened; read the app before retrying.', 'TimeoutError'))
+        }, 30000)
         try {
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }
@@ -199,12 +215,13 @@ export class DesktopHost {
         reject(error instanceof Error ? error : new Error('The desktop helper could not start.'))
       }).catch((error: unknown) => {
         if (this.pending.get(id) !== pending) return
-        if (error instanceof Error && recoverableDesktopFailure(error.message)) {
+        if (error instanceof Error && (error.name === 'TimeoutError' || recoverableDesktopFailure(error.message))) {
           this.pending.delete(id)
           reject(error)
         } else this.close(error instanceof Error ? error : new Error('Foreground delegation failed.'))
       })
     })
+    return signal ? result.finally(() => signal.removeEventListener('abort', cancel)) : result
   }
 
   close(error = new Error('Computer access ended.')): void {

@@ -48,15 +48,26 @@ jobs:
       # The model catalogue points at someone else's server; a renamed file
       # there is a 404 the first user with that much RAM discovers.
 
+  checks:
+    if: ${{ always() && !inputs.native_only }}
+    name: typecheck · lint · unit
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require checks on both operating systems
+        env:
+          RESULT: ${{ needs.check.result }}
+        run: test "$RESULT" = success
+
   e2e-shards:
     if: ${{ !inputs.native_only }}
-    name: Electron (${{ matrix.os }}) shard ${{ matrix.shard }}/2
+    name: Electron (${{ matrix.os }}) shard ${{ matrix.shard }}/4
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,7 +78,7 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

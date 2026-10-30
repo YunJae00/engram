@@ -242,7 +242,7 @@ export const DEFAULT_LANE = 'default'
 const lanes = new BrowserLanes((page, lane) => {
   for (const watcher of pageWatchers) watcher(page, lane)
 })
-let allocatingLane: string | null = null
+let allocatingPages = 0
 // The lane the person is looking at: the one the mirror follows, and the
 // one a tab opened by a link is handed to when its opener is not known.
 let activeLane = DEFAULT_LANE
@@ -366,10 +366,10 @@ async function ensureContext(): Promise<Ctx> {
       watchStalledScripts(ctx)
       ctx.on('close', () => { if (context === ctx) { context = null; lanes.clear() } })
       ctx.on('page', (page) => {
-        const requestedLane = allocatingLane
+        const requestedLane = allocatingPages === 0 ? activeLane : null
         void nativeOpener(page).catch(() => null).then((opener) => {
-          const lane = laneOf(page) ?? (opener && laneOf(opener)) ?? requestedLane ?? activeLane
-          if (!laneOf(page)) lanes.set(lane, page)
+          const lane = laneOf(page) ?? (opener && laneOf(opener)) ?? requestedLane
+          if (lane && !laneOf(page)) lanes.set(lane, page)
           for (const watcher of pageWatchers) watcher(page, lane)
         })
       })
@@ -450,7 +450,7 @@ async function ensureContext(): Promise<Ctx> {
       flog('agent-browser', 'closed')
     })
     ctx.on('page', (page) => {
-      const requestedLane = allocatingLane
+      const requestedLane = allocatingPages === 0 ? activeLane : null
       // A link that opened a new tab is followed there, by the lane whose
       // page opened it: the newest page is the one that lane now means.
       void page
@@ -462,8 +462,8 @@ async function ensureContext(): Promise<Ctx> {
           // back to the active lane here handed one comet's fresh tab to
           // whichever comet the person happened to be looking at.
           const claimed = laneOf(page)
-          const lane = claimed ?? (opener && laneOf(opener)) ?? requestedLane ?? activeLane
-          if (!claimed) lanes.set(lane, page)
+          const lane = claimed ?? (opener && laneOf(opener)) ?? requestedLane
+          if (lane && !claimed) lanes.set(lane, page)
           for (const watcher of pageWatchers) watcher(page, lane)
         })
     })
@@ -478,40 +478,47 @@ async function ensureContext(): Promise<Ctx> {
   return opening
 }
 
-let assigningPage: Promise<unknown> = Promise.resolve()
+const assigningPages = new Map<string, Promise<unknown>>()
 
 export function ensureAgentPage(lane = DEFAULT_LANE): Promise<Page> {
   const held = lanePage(lane)
-  if (held) return Promise.resolve(held)
-  const next = assigningPage.catch(() => undefined).then(() => assignAgentPage(lane))
-  assigningPage = next
-  return next
+  return held ? Promise.resolve(held) : assignAgentPage(lane)
 }
 
 export function addAgentPage(lane: string): Promise<Page> {
-  const next = assigningPage.catch(() => undefined).then(() => assignAgentPage(lane, true))
-  assigningPage = next
-  return next
+  return assignAgentPage(lane, true)
 }
 
 async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
-  if (fresh && lanePages(lane).length >= 8) throw new Error('Close a tab before opening another')
-  const ctx = await ensureContext()
-  const held = lanePage(lane)
-  if (held && !fresh) return held
-  // The tab the browser opened with belongs to whoever asks first; after
-  // that every lane gets a tab of its own, if the machine has room for one.
-  const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
-  if (!spare && lanes.size > 0 && availableMemory() < LANE_MIN_FREE)
-    throw new Error(`not enough free memory for another page while other work is open (${(availableMemory() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
-  let page = spare
-  if (!page) {
-    allocatingLane = lane
-    try { page = isNativeContext(ctx) ? await createNativePage(ctx) : await createWindowPage(ctx, { width: VIEW_WIDTH, height: viewHeight }) } finally { allocatingLane = null }
-  }
-  lanes.set(lane, page)
-  for (const watcher of pageWatchers) watcher(page, lane)
-  return page
+  const before = assigningPages.get(lane) ?? Promise.resolve()
+  let expired = false, timer: ReturnType<typeof setTimeout> | undefined
+  const waiting = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { expired = true; reject(new Error('This conversation is still opening a browser page. The queued page did not start within 30 seconds.')) }, 30_000)
+  })
+  const next = before.catch(() => undefined).then(async () => {
+    clearTimeout(timer)
+    if (expired) throw new Error('The queued browser page expired without opening.')
+    if (fresh && lanePages(lane).length >= 8) throw new Error('Close a tab before opening another')
+    const ctx = await ensureContext()
+    const held = lanePage(lane)
+    if (held && !fresh) return held
+    // The tab the browser opened with belongs to whoever asks first; after
+    // that every lane gets a tab of its own, if the machine has room for one.
+    const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
+    if (!spare && lanes.size > 0 && availableMemory() < LANE_MIN_FREE)
+      throw new Error(`not enough free memory for another page while other work is open (${(availableMemory() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
+    let page = spare
+    if (!page) {
+      allocatingPages++
+      try { page = isNativeContext(ctx) ? await createNativePage(ctx) : await createWindowPage(ctx, { width: VIEW_WIDTH, height: viewHeight }) } finally { allocatingPages-- }
+    }
+    lanes.set(lane, page)
+    for (const watcher of pageWatchers) watcher(page, lane)
+    return page
+  })
+  const tail = next.catch(() => undefined).finally(() => { if (assigningPages.get(lane) === tail) assigningPages.delete(lane) })
+  assigningPages.set(lane, tail)
+  try { return await Promise.race([next, waiting]) } finally { clearTimeout(timer) }
 }
 
 // What the page shows, through every frame and open shadow root, with its
@@ -603,6 +610,7 @@ export { withAbort as agentAbortable }
 // the person is being recorded in. A recording session owns the browser, so
 // an unforced close steps aside; memory pressure and quit pass force.
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
+  if (closing) return closing
   if (nativePagesVisible() && !options.force) return
   // Somebody is standing at the window - a recording, or a person typing their
   // password into a login wall. An unforced close waits for them; memory

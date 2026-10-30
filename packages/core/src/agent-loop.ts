@@ -67,6 +67,7 @@ export interface AgentLoopDeps {
 }
 
 export interface AgentLoopOptions {
+  waitingForPerson?(): boolean
   // Called before an offered tool starts, including calls whose receipt never arrives.
   onToolStart?(name: string): void
   // What the person wrote while this turn was working, handed over once at

@@ -261,3 +261,68 @@ it('does not count a permission card waiting on the person as a stall', async ()
   finish({ answer: '' })
   await pending
 })
+
+it('ends a native call with a missing result hook even when the engine ignores cancellation', async () => {
+  vi.useFakeTimers()
+  let job!: ToolSessionJob
+  const onResult = vi.fn()
+  const engine = { runTools: (next: ToolSessionJob) => { job = next; return new Promise(() => {}) } } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Run', {
+    native: { cwd: process.cwd(), readRoots: [], decide: async () => ({ behavior: 'allow' }), onResult },
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  job.native!.onCall!('Bash', {})
+  await vi.advanceTimersByTimeAsync(425_000)
+  expect((await pending).incomplete).toContain('Bash took longer than 420s')
+  expect(job.signal?.aborted).toBe(true)
+  job.native!.onResult!('Bash', true)
+  expect(onResult).not.toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+it('pauses the native in-flight deadline while its approval is waiting', async () => {
+  vi.useFakeTimers()
+  let job!: ToolSessionJob
+  let answer!: (decision: { behavior: 'allow' }) => void
+  const engine = { runTools: (next: ToolSessionJob) => { job = next; return new Promise(() => {}) } } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Write', {
+    native: { cwd: process.cwd(), readRoots: [], decide: () => new Promise(resolve => { answer = resolve }) },
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  job.native!.onCall!('Write', {})
+  const approval = job.native!.decide('Write', {}, new AbortController().signal)
+  await vi.advanceTimersByTimeAsync(3_600_000)
+  expect(job.signal?.aborted).toBe(false)
+  answer({ behavior: 'allow' })
+  await approval
+  await vi.advanceTimersByTimeAsync(50_000)
+  expect((await pending).incomplete).toContain('Write took longer than 45s')
+})
+
+it('pauses a running procedure at a human wall, then spends only its remaining execution budget', async () => {
+  vi.useFakeTimers()
+  let waiting = false
+  let signal: AbortSignal | undefined
+  let observation = ''
+  const tool = { name: 'run_procedure', description: 'replay', run: (_args: unknown, context: { signal: AbortSignal }) => {
+    signal = context.signal
+    return new Promise<string>(() => {})
+  } }
+  const engine = { runTools: async (job: ToolSessionJob) => {
+    observation = String(await job.tools[0]!.run({}))
+    return { answer: 'Stopped' }
+  } } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [tool] } as never, 'Replay', {
+    waitingForPerson: () => waiting,
+  })
+  await vi.advanceTimersByTimeAsync(300_000)
+  waiting = true
+  await vi.advanceTimersByTimeAsync(3_600_000)
+  expect(signal?.aborted).toBe(false)
+  waiting = false
+  await vi.advanceTimersByTimeAsync(120_000)
+  await pending
+  expect(signal?.aborted).toBe(true)
+  expect(observation).toContain('run_procedure took longer than 420s')
+  expect(vi.getTimerCount()).toBe(0)
+})

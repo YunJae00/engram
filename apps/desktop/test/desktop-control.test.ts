@@ -368,3 +368,22 @@ describe('acting', () => {
     await rejected
   })
 })
+
+it.each(['deadline', 'cancel'])('ends a desktop lease wait on %s without taking delayed control', async mode => {
+  binding(lane)
+  const second = binding(other)
+  let finish!: (value: { id: string; desktopToolIsolation: boolean }) => void
+  control.setDesktopEngineResolver(() => new Promise(resolve => { finish = resolve }))
+  const first = control.ensureDesktopControl(lane)
+  await vi.advanceTimersByTimeAsync(0)
+  const abort = new AbortController()
+  const waiting = control.ensureDesktopControl(other, { signal: abort.signal })
+  const rejected = expect(waiting).rejects.toThrow(mode === 'deadline' ? 'waiting 30 seconds' : 'Stopped')
+  if (mode === 'deadline') await vi.advanceTimersByTimeAsync(30_001)
+  else abort.abort(new Error('Stopped'))
+  await rejected
+  finish({ id: 'claude', desktopToolIsolation: true })
+  await first
+  await vi.advanceTimersByTimeAsync(0)
+  expect(grants(second.request)).toHaveLength(0)
+})

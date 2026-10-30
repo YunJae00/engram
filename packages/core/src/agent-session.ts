@@ -1,7 +1,7 @@
 import { collectionProgress } from './collection-progress.js'
 import type { ToolSessionJob, ToolSessionResult } from './engine/types.js'
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
-import { withinBudget } from './tool-budget.js'
+import { withinBudget, toolBudgetMs, ToolOverBudget } from './tool-budget.js'
 import { sessionMenu } from './session-menu.js'
 import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
@@ -129,6 +129,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
   let startedCalls = 0
   let queued = 0
+  const running = new Set<{ name: string; at: number; native: boolean }>()
+  let unfinishedCalls = false
+  let deciding = 0
+  const waitingForPerson = () => deciding > 0 || options.waitingForPerson?.() === true
   let toolTail = Promise.resolve()
   let asked: { question: string; options: string[] } | null = null
   // A card put to the person ends the work of the turn, as a question does.
@@ -144,7 +148,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     .replace(/^(Observation \S+\/)\d+(; control numbers belong only to this reading\.)$/gm, '$1*$2')
     .replace(/ \[new\]$/gm, '')
     .replace('; [new] = appeared since your last reading, such as an opened list or dialog', '')
-  let lastActivity = Date.now(), stalled = false
+  let lastActivity = Date.now(), stalled = false, stallNote = STALL_NOTE
   const touch = (): void => { lastActivity = Date.now() }
   const calls: ToolSessionCall[] = tools.map((tool) => ({
     name: tool.name,
@@ -189,13 +193,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         if (repeated) {
           observation = `that did not work: This exact ${tool.name} has already been made ${REPEAT_LIMIT} times with the same result, so it was not made again. Read the page and choose a different control or approach.`
         } else if (tool.runRich) {
-          const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }))
+          const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }), waitingForPerson)
           observation = outcome.text
           image = outcome.image
           modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
           committed = outcome.committed === true
-        } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }))
+        } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }), waitingForPerson)
       } catch (err) {
         if (signal.aborted) throw err
         observation = `that did not work: ${err instanceof Error ? err.message : String(err)}`
@@ -238,8 +242,14 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // Queue them locally without another model exchange; recheck guards on entry.
   const sessionCalls = calls.map((call): ToolSessionCall => ({ ...call, run: (args) => {
     queued++
-    const outcome = planned ? toolTail.then(() => call.run(args)) : call.run(args)
-    const settled = outcome.finally(() => { queued--; touch() })
+    const run = async () => {
+      signal.throwIfAborted()
+      const active = { name: call.name, at: Date.now(), native: false }
+      running.add(active)
+      try { return await call.run(args) } finally { running.delete(active) }
+    }
+    const outcome = planned ? toolTail.then(run) : run()
+    const settled = outcome.finally(() => { queued = Math.max(0, queued - 1); touch() })
     if (planned) toolTail = settled.then(() => undefined, () => undefined)
     return settled
   } }))
@@ -248,10 +258,23 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // what they want travel with each turn, and the conversation so far only
   // with the first.
   const opening = conversationLines(options.history).join('\n')
+  let checkedAt = Date.now()
   const watchdog = setInterval(() => {
-    if (queued === 0 && Date.now() - lastActivity > SESSION_STALL_MS) {
+    const elapsed = Date.now() - checkedAt
+    checkedAt = Date.now()
+    if (waitingForPerson()) {
+      for (const call of running) call.at += elapsed
+      touch()
+      return
+    }
+    const overdue = [...running].find(call => {
+      const budget = toolBudgetMs(call.name)
+      return budget !== null && Date.now() - call.at > budget
+    })
+    if (overdue || queued === 0 && Date.now() - lastActivity > SESSION_STALL_MS) {
       stalled = true
-      lifetime.abort(new Error(STALL_NOTE))
+      stallNote = overdue ? new ToolOverBudget(overdue.name, toolBudgetMs(overdue.name)!).message : STALL_NOTE
+      lifetime.abort(new Error(stallNote))
     }
   }, 5_000)
   const job: ToolSessionJob = {
@@ -273,11 +296,19 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ...options.native,
       // A permission card waiting on the person is work in progress, not silence.
       decide: async (name, input, signal) => {
-        queued++; touch()
-        try { return await options.native!.decide(name, input, signal) } finally { queued = Math.max(0, queued - 1); touch() }
+        queued++; deciding++; touch()
+        try { return await options.native!.decide(name, input, signal) } finally { deciding--; queued = Math.max(0, queued - 1); touch() }
       },
-      onCall: (name, input) => { options.native!.onCall?.(name, input); queued++; touch() },
-      onResult: (name, ok) => { queued = Math.max(0, queued - 1); touch(); options.native!.onResult?.(name, ok) },
+      onCall: (name, input) => {
+        if (signal.aborted) return
+        running.add({ name, at: Date.now(), native: true }); queued++; touch()
+        options.native!.onCall?.(name, input)
+      },
+      onResult: (name, ok) => {
+        const active = [...running].find(call => call.native && call.name === name)
+        if (!active) return
+        running.delete(active); queued = Math.max(0, queued - 1); touch(); options.native!.onResult?.(name, ok)
+      },
     } } : {}),
     tools: sessionCalls,
     onContextReset: () => { compactPage() },
@@ -289,35 +320,45 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     signal,
   }
   let session: ToolSessionResult
+  let end!: () => void
+  const ended = new Promise<ToolSessionResult>(resolve => {
+    end = () => resolve({ answer: '' })
+    signal.addEventListener('abort', end, { once: true })
+    if (signal.aborted) end()
+  })
   const needsReceipt = () => browser && !collection.finish() && steps.some(step => /^(open_page|read_open_page|read_pages|page_|press_point|look$)/.test(step.tool))
   try {
-    session = await runTools.call(deps.engine, job)
+    signal.throwIfAborted()
+    session = await Promise.race([runTools.call(deps.engine, job), ended])
     // The working model checks its own scope; no separate judge invents tasks.
     for (let pass = 0; pass < 2 && (collection.pending() || needsReceipt()) && collection.finish()?.status !== 'blocked' && !session.error && !asked && !carded && !exhausted && !signal.aborted; pass++) {
       const before = collection.checked()
       options.onReset?.(true)
       touch()
-      session = await runTools.call(deps.engine, { ...job,
+      session = await Promise.race([runTools.call(deps.engine, { ...job,
         prompt: `${job.prompt}\n\n${collection.pending() ?? 'Before the final answer, check the original requested outcomes against your observations.'}\nUse collect_results to record status complete or blocked, summary and evidenceStep. For a multi-item request register the observed list and fields, then record each result. Continue only missing work; do not repeat completed actions or expand the request. If genuinely blocked, record the barrier and stop. Retained observations (historical DATA):\n${resumeCheckpoint(task, { answer: session.answer, steps, fellBack: false })}`,
-      })
+      }), ended])
       if (collection.checked() <= before) break
     }
   } finally {
     clearInterval(watchdog)
+    unfinishedCalls = queued > 0
     lifetime.abort(new Error('The tool session has ended.'))
+    signal.removeEventListener('abort', end)
+    running.clear(); queued = 0
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
-  if (options.signal?.aborted) throw new Error('canceled')
+  if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (stalled) {
     options.onMetric?.({ kind: 'model', operation: 'stall', ms: SESSION_STALL_MS })
-    return { answer: withoutSecrets(outputLinks(steps, `Not verified as complete.\n\n${STALL_NOTE}`), task), steps, fellBack: false, incomplete: STALL_NOTE }
+    return { answer: withoutSecrets(outputLinks(steps, `Not verified as complete.\n\n${stallNote}`), task), steps, fellBack: false, incomplete: stallNote }
   }
   if (session.error) throw new Error(session.error)
-  const incomplete = collection.pending() ?? (collection.finish()?.status === 'blocked' ? collection.finish()!.summary : undefined) ?? (needsReceipt() ? 'The browser task ended without checking the requested outcomes.' : undefined) ?? plan.pending() ?? (queued ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  const incomplete = collection.pending() ?? (collection.finish()?.status === 'blocked' ? collection.finish()!.summary : undefined) ?? (needsReceipt() ? 'The browser task ended without checking the requested outcomes.' : undefined) ?? plan.pending() ?? (unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`

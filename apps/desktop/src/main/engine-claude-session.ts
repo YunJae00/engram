@@ -77,6 +77,7 @@ interface PartialEvent {
 }
 
 export class WarmSession {
+  private resetNative: () => void = () => {}
   private readonly startedAt = performance.now()
   readonly signature: string
   private readonly runtime: string
@@ -135,6 +136,8 @@ export class WarmSession {
         }),
       ),
     })
+    const { reset, ...native } = nativeOptions(() => this.native)
+    this.resetNative = reset
     const stream = spec.sdk.query({
       prompt: this.input(),
       options: {
@@ -145,7 +148,7 @@ export class WarmSession {
         abortController: this.abort,
         systemPrompt: job.system,
         // The runtime's own tools stay off unless the host hands them over.
-        ...(job.native ? { additionalDirectories: job.native.readRoots, ...nativeOptions(() => this.native) } : { tools: job.tools.length ? ['ToolSearch'] : [], permissionMode: 'dontAsk' }),
+        ...(job.native ? { additionalDirectories: job.native.readRoots, ...native } : { tools: job.tools.length ? ['ToolSearch'] : [], permissionMode: 'dontAsk' }),
         mcpServers: { [TOOL_SERVER]: server },
         strictMcpConfig: true,
         allowedTools: allowedToolNames(job.tools),
@@ -240,6 +243,7 @@ export class WarmSession {
     if (!turn) return
     this.turn = null
     this.native = undefined
+    this.resetNative()
     turn.detachAbort()
     turn.resolve(result)
   }

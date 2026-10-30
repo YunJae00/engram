@@ -2,7 +2,7 @@ import { expect, test, chromium, _electron as electron, type ElectronApplication
 import { closeTestApp, openActivity } from './navigation.js'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -21,12 +21,13 @@ let page: Page
 let server: Server
 let siteUrl: string
 let browserPort: number
+let userData: string
 const requests = new Map<string, number>()
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   const root = await mkdtemp(join(REPO_TMP, 'e2e-live-'))
-  const userData = await mkdtemp(join(REPO_TMP, 'e2e-live-userdata-'))
+  userData = await mkdtemp(join(REPO_TMP, 'e2e-live-userdata-'))
   // The mirror lives in a comet thread, so there has to be one to open.
   const paths = await initVault(root, { git: false })
   await createBot(paths, { name: 'Watching', purpose: '' })
@@ -42,7 +43,7 @@ test.beforeAll(async () => {
           '<a href="/clicked" style="position:fixed;left:0;top:0;width:100%;height:40%;display:block;background:#dfe">Back</a>' +
           '<main style="margin-top:45%"><h1>Typed</h1></main></body></html>',
       )
-    else if (req.url === '/scroll') res.end('<html><body style="margin:0"><div style="height:3000px;background:rgb(240,40,40)"></div><div style="height:6000px;background:rgb(30,80,220)"></div></body></html>')
+    else if (req.url === '/scroll') res.end('<html><body style="margin:0"><div style="height:3000px;background:rgb(240,40,40)"></div><div style="height:6000px;background:rgb(30,80,220)"></div><script>window.wheels=[];addEventListener("wheel",e=>wheels.push([e.deltaX,e.deltaY,e.clientX,e.clientY]),{passive:true})</script></body></html>')
     else if (req.url === '/motion') res.end('<html><body><h1>Sharp moving page</h1><div id="box" style="width:200px;height:200px;background:#3478f6"></div><script>function move(t){document.getElementById("box").style.transform="translateX("+(t/5%500)+"px)";requestAnimationFrame(move)}requestAnimationFrame(move)</script></body></html>')
     else if (req.url === '/clicked' || req.url === '/popup') res.end('<html><head><title>Clicked</title></head><body><main><h1>Clicked</h1></main></body></html>')
     else
@@ -83,7 +84,10 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
-  try { await closeTestApp(app) } finally {
+  try { await closeTestApp(app) } catch (error) {
+    console.log('shutdown log', await readFile(join(userData, 'logs/quit.log'), 'utf8').then(log => log.slice(-8000)).catch(() => 'unavailable'))
+    throw error
+  } finally {
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
@@ -329,6 +333,7 @@ test('mission control previews independent lanes and opens the chosen chat', asy
       const pixel = canvas.getContext('2d')!.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data
       return { format: canvas.dataset.format, width: canvas.width, pixel: Array.from(pixel) }
     }), { timeout: 20000 }).toEqual({ format: 'png', width: sharpWidth, pixel: [240, 40, 40, 255] })
+    expect((await page.evaluate(() => window.engram.agentState())).lane).toBe(`bot-${bots[3]!.id}`)
     await page.evaluate((id) => window.engram.agentInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000, deltaX: 0 }, `bot-${id}`), bots[3]!.id)
     await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node, width) => {
       const canvas = node as HTMLCanvasElement
@@ -336,11 +341,14 @@ test('mission control previews independent lanes and opens the chosen chat', asy
       return canvas.dataset.format === 'png' && canvas.width === width && pixel[2]! > 180 && pixel[0]! < 60
     }, sharpWidth), { timeout: 20000 }).toBe(true)
   } catch (error) {
+    console.log('input lane', JSON.stringify(await page.evaluate(() => window.engram.agentState())))
+    const profile = await app.evaluate(({ app }) => app.getPath('userData'))
+    console.log('input main log', await readFile(join(profile, 'logs/engram-main.log'), 'utf8').catch(() => 'unavailable'))
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${browserPort}`)
     try {
       const actual = browser.contexts()[0]!.pages().find((entry) => entry.url() === `${siteUrl}scroll`)!
       const cdp = await actual.context().newCDPSession(actual)
-      console.log('capture diagnostics', JSON.stringify({ viewport: actual.viewportSize(), metrics: await cdp.send('Page.getLayoutMetrics'), document: await actual.evaluate(() => ({ width: innerWidth, height: innerHeight, y: scrollY, scale: devicePixelRatio, html: document.body.innerHTML })) }))
+      console.log('capture diagnostics', JSON.stringify({ viewport: actual.viewportSize(), metrics: await cdp.send('Page.getLayoutMetrics'), document: await actual.evaluate(() => ({ width: innerWidth, height: innerHeight, y: scrollY, scale: devicePixelRatio, wheels: (window as unknown as { wheels?: number[][] }).wheels, html: document.body.innerHTML })) }))
       const mirror = await page.getByTestId('web-pane').locator('canvas').evaluate((node) => (node as HTMLCanvasElement).toDataURL().split(',')[1]!)
       await test.info().attach('mirrored-page', { body: Buffer.from(mirror, 'base64'), contentType: 'image/png' })
       const shot = await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true })

@@ -9,12 +9,13 @@ const native = (decide: NativeTools['decide'] = async () => ({ behavior: 'allow'
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks() })
 
 describe('native runtime permission hooks', () => {
-  it('decides once per call ID across both SDK permission paths, not once per input', async () => {
+  it('routes native hooks to the permission callback and decides once per call ID', async () => {
     const decide = vi.fn(async (): Promise<NativeDecision> => ({ behavior: 'allow' }))
     const host = native(decide), options = nativeOptions(() => host), input = { file_path: 'note.txt' }
     const pre = options.hooks.PreToolUse[0]!.hooks[0]!
     const hook = await pre({ tool_name: 'Read', tool_input: input, tool_use_id: 'a' }, 'a', context('a'))
-    expect(hook.hookSpecificOutput.permissionDecision).toBe('allow')
+    expect(hook.hookSpecificOutput.permissionDecision).toBe('ask')
+    expect(decide).not.toHaveBeenCalled()
     expect((await options.canUseTool('Read', input, context('a'))).behavior).toBe('allow')
     expect(decide).toHaveBeenCalledTimes(1)
     await options.canUseTool('Read', input, context('b'))
@@ -56,14 +57,18 @@ describe('native runtime permission hooks', () => {
     expect(host.onCall).not.toHaveBeenCalled()
   })
 
-  it('bounds an unresponsive decision at two minutes and keeps the SDK hook alive until then', async () => {
+  it('keeps approval pending beyond two minutes until the person answers or stops', async () => {
     vi.useFakeTimers()
     let signal: AbortSignal | undefined
+    const abort = new AbortController()
     const host = native(async (_name, _input, value) => { signal = value; return new Promise(() => {}) })
     const options = nativeOptions(() => host)
-    expect(options.hooks.PreToolUse[0]!.timeout).toBeGreaterThan(120)
-    const pending = options.canUseTool('Bash', {}, context('a'))
-    await vi.advanceTimersByTimeAsync(120_000)
+    let settled = false
+    const pending = options.canUseTool('Bash', {}, context('a', abort.signal)).then(result => { settled = true; return result })
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(settled).toBe(false)
+    expect(signal?.aborted).toBe(false)
+    abort.abort()
     expect((await pending).behavior).toBe('deny')
     expect(signal?.aborted).toBe(true)
     expect(vi.getTimerCount()).toBe(0)
@@ -93,4 +98,14 @@ describe('native runtime permission hooks', () => {
     expect((await options.canUseTool('mcp__engram__file_read', {}, context('b'))).behavior).toBe('allow')
     expect(decide).not.toHaveBeenCalled()
   })
+})
+
+it('clears calls and cancels pending permissions when a turn ends without result hooks', async () => {
+  const host = native(() => new Promise(() => {}))
+  const options = nativeOptions(() => host)
+  const pending = options.canUseTool('Write', {}, context('missing-result'))
+  options.reset()
+  expect((await pending).behavior).toBe('deny')
+  await options.hooks.PostToolUse[0]!.hooks[0]!({ tool_name: 'Write', tool_use_id: 'missing-result' })
+  expect(host.onResult).not.toHaveBeenCalled()
 })

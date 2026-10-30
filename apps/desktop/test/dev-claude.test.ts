@@ -43,9 +43,14 @@ function setup(mode: DevSession['mode'] = 'review') {
   const session: DevSession = { id: 'local', repoId: 'repo', provider: 'claude', model: '', mode, cwd: '.', title: 'Task', createdAt: 0, updatedAt: 0, state: 'idle', items: [], pending: [], usage: {} }
   const updates = { item: vi.fn(), usage: vi.fn(), finished: vi.fn() }
   const driver = new DevClaude(session, gate, updates)
-  const hook = (name: string, input: Record<string, unknown> = {}) => {
+  const hook = async (name: string, input: Record<string, unknown> = {}) => {
     const hooks = fake.options['hooks'] as { PreToolUse: { hooks: ((input: unknown, id: string, options: { signal: AbortSignal }) => Promise<{ hookSpecificOutput: { permissionDecision: string; updatedInput?: unknown } }>)[] }[] }
-    return hooks.PreToolUse[0]!.hooks[0]!({ tool_name: name, tool_input: input }, 'tool', { signal: new AbortController().signal })
+    const signal = new AbortController().signal
+    const pre = await hooks.PreToolUse[0]!.hooks[0]!({ tool_name: name, tool_input: input }, 'tool', { signal })
+    expect(pre.hookSpecificOutput.permissionDecision).toBe('ask')
+    const canUse = fake.options['canUseTool'] as (name: string, input: Record<string, unknown>, options: { signal: AbortSignal }) => Promise<{ behavior: string; updatedInput?: unknown }>
+    const decision = await canUse(name, input, { signal })
+    return { hookSpecificOutput: { permissionDecision: decision.behavior, updatedInput: decision.updatedInput } }
   }
   return { driver, gate, shown: () => shown, hook, updates }
 }
@@ -97,4 +102,20 @@ it('treats an already closed interrupt channel as normal cleanup', async () => {
   fake.interrupt.mockImplementationOnce(() => { fake.end(); throw new Error('Query closed before response received') })
   await expect(test.driver.stop()).resolves.toBeUndefined()
   expect((fake.options['abortController'] as AbortController).signal.aborted).toBe(true)
+})
+
+it('keeps development approval open beyond the SDK hook deadline until Stop', async () => {
+  vi.useFakeTimers()
+  const test = setup()
+  try {
+    await test.driver.start()
+    let settled = false
+    const pending = test.hook('Bash', { command: 'python report.py' }).then(result => { settled = true; return result })
+    await vi.advanceTimersByTimeAsync(3_600_000)
+    expect(test.shown()).toHaveLength(1)
+    expect(settled).toBe(false)
+    await test.driver.stop()
+    expect((await pending).hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(test.shown()).toHaveLength(0)
+  } finally { vi.useRealTimers() }
 })

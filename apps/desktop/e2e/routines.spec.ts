@@ -93,6 +93,16 @@ test.beforeAll(async () => {
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
+// Each scenario owns its pages; retaining old runs exhausts an 8GB test Mac.
+test.afterEach(async () => {
+  if (!page || page.isClosed()) return
+  await page.evaluate(async () => {
+    await window.engram.chatAbort()
+    for (const bot of await window.engram.botsList()) await window.engram.agentReset(`bot-${bot.id}`)
+    await window.engram.agentReset('default')
+  })
+})
+
 test.afterAll(async () => {
   if (page && !page.isClosed()) {
     await page.evaluate(() => window.engram.chatAbort()).catch(() => undefined)

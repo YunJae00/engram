@@ -4,26 +4,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { captureSharpFrame, resizePreview, startPagePreview, withPreviewInput } from '../src/main/page-preview.js'
 
 function fixture() {
-  const cdp = Object.assign(new EventEmitter(), { send: vi.fn(async () => ({ data: 'lossless' })), detach: vi.fn(async () => undefined) })
-  const page = Object.assign(new EventEmitter(), { context: () => ({ newCDPSession: async () => cdp }), viewportSize: () => ({ width: 1280, height: 860 }) })
-  return { cdp, page: page as unknown as Page }
+  const cdp = Object.assign(new EventEmitter(), { send: vi.fn(async () => ({ data: Buffer.from('lossless').toString('base64') })), detach: vi.fn(async () => undefined) })
+  const shot = vi.fn(async () => Buffer.from('lossless'))
+  const page = Object.assign(new EventEmitter(), { screenshot: shot }, { context: () => ({ newCDPSession: async () => cdp }), viewportSize: () => ({ width: 1280, height: 860 }) })
+  return { cdp, shot, page: page as unknown as Page }
 }
 
 afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
   it('holds input until capture restores the compositor without blocking other pages', async () => {
     vi.useFakeTimers()
-    const { page, cdp } = fixture()
+    const { page, shot } = fixture()
     let finish!: () => void
-    cdp.send.mockImplementation(async () => { await new Promise<void>(resolve => { finish = resolve }); return { data: 'frame' } })
-    const frame = captureSharpFrame(page, cdp)
+    shot.mockImplementation(async () => { await new Promise<void>(resolve => { finish = resolve }); return Buffer.from('frame') })
+    const frame = captureSharpFrame(page)
     await vi.advanceTimersByTimeAsync(1)
     const input = vi.fn(async () => undefined)
     const dispatched = withPreviewInput(page, input)
     await withPreviewInput(fixture().page, async () => undefined)
     expect(input).not.toHaveBeenCalled()
-    finish()
-    await vi.advanceTimersByTimeAsync(1)
     finish()
     await frame
     await vi.advanceTimersByTimeAsync(59)
@@ -33,27 +32,36 @@ describe('compositor previews', () => {
     expect(input).toHaveBeenCalledOnce()
   })
   it('orders viewport updates after capture restoration without blocking other pages', async () => {
-    const { page, cdp } = fixture()
+    const { page, shot } = fixture()
     let finish!: () => void
-    cdp.send.mockImplementation(async () => { await new Promise<void>((resolve) => { finish = resolve }); return { data: 'frame' } })
+    shot.mockImplementation(async () => { await new Promise<void>((resolve) => { finish = resolve }); return Buffer.from('frame') })
     const resize = vi.fn(async () => undefined)
     page.setViewportSize = resize
-    const frame = captureSharpFrame(page, cdp)
+    const frame = captureSharpFrame(page)
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
     const changed = resizePreview(page, { width: 720, height: 600 })
     expect(resize).not.toHaveBeenCalled()
     const other = fixture()
-    await expect(captureSharpFrame(other.page, other.cdp)).resolves.toMatchObject({ data: 'lossless' })
-    finish()
-    await vi.waitFor(() => expect(cdp.send).toHaveBeenCalledTimes(2))
-    expect(resize).not.toHaveBeenCalled()
+    await expect(captureSharpFrame(other.page)).resolves.toMatchObject({ data: Buffer.from('lossless').toString('base64') })
     finish()
     await frame
     expect(await changed).toBe(true)
     expect(resize).toHaveBeenCalledExactlyOnceWith({ width: 720, height: 600 })
   })
+  it('waits for capture restoration before resizing the same page', async () => {
+    vi.useFakeTimers()
+    const { page } = fixture()
+    page.setViewportSize = vi.fn(async () => undefined)
+    await captureSharpFrame(page)
+    const changed = resizePreview(page, { width: 720, height: 600 })
+    await vi.advanceTimersByTimeAsync(59)
+    expect(page.setViewportSize).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await changed).toBe(true)
+    expect(page.setViewportSize).toHaveBeenCalledExactlyOnceWith({ width: 720, height: 600 })
+  })
   it('waits for the real resize before measuring and capturing the next frame', async () => {
-    const { page, cdp } = fixture()
+    const { page, shot } = fixture()
     let finish!: () => void
     page.setViewportSize = async () => {
       await new Promise<void>((resolve) => { finish = resolve })
@@ -61,8 +69,8 @@ describe('compositor previews', () => {
     }
     const changed = resizePreview(page, { width: 720, height: 600 })
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
-    const frame = captureSharpFrame(page, cdp)
-    expect(cdp.send).not.toHaveBeenCalled()
+    const frame = captureSharpFrame(page)
+    expect(shot).not.toHaveBeenCalled()
     finish()
     await changed
     expect(await frame).toMatchObject({ width: 720, height: 600 })
@@ -70,58 +78,51 @@ describe('compositor previews', () => {
   })
   it('refreshes a settled shared stream when the pane resizes without a compositor event', async () => {
     vi.useFakeTimers()
-    const { page, cdp } = fixture()
+    const { page, cdp, shot } = fixture()
     const receive = vi.fn()
     const stop = await startPagePreview(page, receive)
     await vi.advanceTimersByTimeAsync(500)
     vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 360, height: 296 })
-    cdp.send.mockResolvedValue({ data: 'resized' })
+    shot.mockResolvedValue(Buffer.from('resized'))
     await vi.advanceTimersByTimeAsync(1200)
-    expect(receive).toHaveBeenLastCalledWith({ data: 'resized', width: 360, height: 296 })
+    expect(receive).toHaveBeenLastCalledWith({ data: Buffer.from('resized').toString('base64'), width: 360, height: 296 })
     expect(cdp.send).toHaveBeenCalledWith('Page.stopScreencast')
     stop()
     await vi.advanceTimersByTimeAsync(200)
   })
   it('rejects a capture measured against a viewport that changed while capturing', async () => {
-    const { page, cdp } = fixture()
-    cdp.send.mockImplementation(async () => {
+    const { page, shot } = fixture()
+    shot.mockImplementation(async () => {
       vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 360, height: 296 })
-      return { data: 'stale' }
+      return Buffer.from('stale')
     })
-    await expect(captureSharpFrame(page, cdp)).rejects.toThrow('viewport changed')
+    await expect(captureSharpFrame(page)).rejects.toThrow('viewport changed')
   })
-  it('renders the full high-resolution clip instead of clipping it to the unscaled surface', async () => {
-    const { page, cdp } = fixture()
-    const png = Buffer.alloc(24)
-    Buffer.from('89504e470d0a1a0a', 'hex').copy(png)
-    png.writeUInt32BE(1280, 16)
-    cdp.send.mockResolvedValue({ data: png.toString('base64') })
-    await captureSharpFrame(page, cdp)
-    expect(cdp.send).toHaveBeenLastCalledWith('Page.captureScreenshot', expect.objectContaining({
-      captureBeyondViewport: true, clip: { x: 0, y: 0, width: 1280, height: 860, scale: 2 },
-    }))
+  it('captures at device resolution through the owning page without resetting another session’s emulation', async () => {
+    const { page, cdp, shot } = fixture()
+    await captureSharpFrame(page)
+    expect(shot).toHaveBeenCalledExactlyOnceWith({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
+    expect(cdp.send).not.toHaveBeenCalled()
   })
-  it('shares a sharp capture between consumers with separate CDP sessions', async () => {
-    const { page, cdp } = fixture()
-    const other = fixture().cdp
-    const [first, second] = await Promise.all([captureSharpFrame(page, cdp), captureSharpFrame(page, other)])
+  it('shares a sharp capture between consumers', async () => {
+    const { page, shot } = fixture()
+    const [first, second] = await Promise.all([captureSharpFrame(page), captureSharpFrame(page)])
     expect(first).toEqual(second)
-    expect(other.send).not.toHaveBeenCalled()
-    expect(cdp.send.mock.calls.filter(([method]) => method === 'Page.captureScreenshot')).toHaveLength(1)
+    expect(shot).toHaveBeenCalledOnce()
   })
 
   it('refreshes a settled navigation frame when the deferred document becomes ready', async () => {
     vi.useFakeTimers()
-    const { page, cdp } = fixture()
-    cdp.send.mockResolvedValue({ data: 'before-content' })
+    const { page, shot } = fixture()
+    shot.mockResolvedValue(Buffer.from('before-content'))
     const receive = vi.fn()
     const stop = await startPagePreview(page, receive)
     await vi.advanceTimersByTimeAsync(61)
-    expect(receive.mock.calls.at(-1)?.[0].data).toBe('before-content')
-    cdp.send.mockResolvedValue({ data: 'document-content' })
+    expect(receive.mock.calls.at(-1)?.[0].data).toBe(Buffer.from('before-content').toString('base64'))
+    shot.mockResolvedValue(Buffer.from('document-content'))
     page.emit('domcontentloaded')
     await vi.advanceTimersByTimeAsync(500)
-    expect(receive.mock.calls.at(-1)?.[0].data).toBe('document-content')
+    expect(receive.mock.calls.at(-1)?.[0].data).toBe(Buffer.from('document-content').toString('base64'))
     stop()
     await vi.advanceTimersByTimeAsync(200)
     expect(page.listenerCount('domcontentloaded')).toBe(0)
@@ -129,12 +130,12 @@ describe('compositor previews', () => {
 
   it('delivers lossless stills, limits motion frames, and stops encoding when hidden', async () => {
     vi.useFakeTimers()
-    const { page, cdp } = fixture()
+    const { page, cdp, shot } = fixture()
     const receive = vi.fn()
     const stop = await startPagePreview(page, receive)
     await vi.advanceTimersByTimeAsync(61)
-    expect(cdp.send).toHaveBeenCalledWith('Page.captureScreenshot', expect.objectContaining({ format: 'png' }))
-    expect(receive).toHaveBeenCalledWith({ data: 'lossless', width: 1280, height: 860 })
+    expect(shot).toHaveBeenCalledWith(expect.objectContaining({ type: 'png' }))
+    expect(receive).toHaveBeenCalledWith({ data: Buffer.from('lossless').toString('base64'), width: 1280, height: 860 })
     const frame = (data: string) => cdp.emit('Page.screencastFrame', { data, sessionId: 1, metadata: { deviceWidth: 2560, deviceHeight: 1720 } })
     receive.mockClear()
     frame('first')
@@ -150,10 +151,10 @@ describe('compositor previews', () => {
     expect(receive).toHaveBeenCalledTimes(3)
     expect(receive.mock.calls[1]?.[0].data).toBe('second')
     await vi.advanceTimersByTimeAsync(500)
-    expect(receive.mock.calls.at(-1)?.[0].data).toBe('lossless')
-    const captures = cdp.send.mock.calls.filter((args) => args[0] === 'Page.captureScreenshot').length
+    expect(receive.mock.calls.at(-1)?.[0].data).toBe(Buffer.from('lossless').toString('base64'))
+    const captures = shot.mock.calls.length
     await vi.advanceTimersByTimeAsync(1000)
-    expect(cdp.send.mock.calls.filter((args) => args[0] === 'Page.captureScreenshot')).toHaveLength(captures)
+    expect(shot).toHaveBeenCalledTimes(captures)
     stop()
     await vi.advanceTimersByTimeAsync(200)
     expect(cdp.detach).toHaveBeenCalledOnce()
@@ -169,7 +170,7 @@ describe('compositor previews', () => {
     const frame = (data: string) => cdp.emit('Page.screencastFrame', { data, sessionId: 1, metadata: { deviceWidth: 1280, deviceHeight: 860 } })
     frame('stable')
     await vi.advanceTimersByTimeAsync(390)
-    expect(receive.mock.calls.at(-1)?.[0].data).toBe('lossless')
+    expect(receive.mock.calls.at(-1)?.[0].data).toBe(Buffer.from('lossless').toString('base64'))
     receive.mockClear()
     frame('temporary capture surface')
     frame('stable')

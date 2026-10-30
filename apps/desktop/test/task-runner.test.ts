@@ -268,7 +268,7 @@ it('lets a card be answered while the turn runs, for a call that waits on it', a
 it('leaves committing presses for the person, one per page, and makes exactly the approved ones', async () => {
   const verdicts: string[] = []
   const t = await setup(async (request, turn, _extra, runner) => {
-    const ask = runner.askFor(request.channel!, async () => 'approve')!
+    const ask = runner.askFor(request.channel!, async () => 'approve', 0)!
     for (const n of [1, 2]) verdicts.push(await ask({ words: 'Place on hold', url: `https://portal.example/invoices/${n}` }))
     return done(turn === 1 ? 'Everything else done' : 'Hold placed', 6)
   })
@@ -321,7 +321,7 @@ it('consumes duplicate decisions once and reconfirms a deferred action on the li
   const confirm = vi.fn(async () => 'cancel' as const)
   const verdicts: string[] = []
   const t = await setup(async (request, _turn, _extra, runner) => {
-    verdicts.push(await runner.askFor(request.channel!, confirm)!({ words: 'Send', url: 'https://example.test/draft' }))
+    verdicts.push(await runner.askFor(request.channel!, confirm, 0)!({ words: 'Send', url: 'https://example.test/draft' }))
     return done('Draft prepared', 1)
   })
   await t.chat('Prepare a draft')
@@ -350,4 +350,29 @@ it('stops where a turn offered another way, instead of carrying on beside the ca
   expect(t.sent).toHaveLength(1)
   expect(task.log.at(-1)?.line).toContain('another way offered')
   expect(t.remembered).toEqual([])
+})
+
+it('keeps a running approval card past two minutes and resumes the same turn', async () => {
+  let settled = false
+  const t = await setup(async (request, _turn, _extra, runner) => {
+    const result = await runner.askFor(request.channel!, async () => 'approve')!({ words: 'Send', url: 'https://example.test/draft' })
+    settled = true
+    return done(result)
+  })
+  const running = t.chat('Send the draft')
+  const waiting = await vi.waitFor(async () => {
+    const task = (await listTasks(t.paths)).at(-1)!
+    expect(task?.approvals).toHaveLength(1)
+    return task
+  })
+  const now = Date.now()
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 180_000)
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1100))
+    expect(settled).toBe(false)
+    expect((await listTasks(t.paths)).at(-1)!.approvals[0]!.answer).toBeUndefined()
+    await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, 'approve')
+    await running
+    expect((await t.settle('done')).result).toBe('approve')
+  } finally { clock.mockRestore() }
 })

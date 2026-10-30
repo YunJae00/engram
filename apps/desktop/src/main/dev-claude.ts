@@ -72,11 +72,10 @@ export class DevClaude {
       settingSources: this.session.mode === 'full-access' && this.session.loadProjectSettings ? ['user', 'project', 'local'] : [], strictMcpConfig: !(this.session.mode === 'full-access' && this.session.loadProjectSettings), permissionMode: 'default',
       ...(this.session.model ? { model: this.session.model } : {}), ...(this.session.effort ? { effort: this.session.effort } : {}),
       ...(this.session.runtimeId ? { resume: this.session.runtimeId, forkSession: fork } : {}),
-      hooks: { PreToolUse: [{ hooks: [async (raw: Data, _id: string, options: { signal: AbortSignal }) => {
-        if (raw['tool_name'] === 'AskUserQuestion') return {}
-        const decision = await this.permission(text(raw['tool_name']), object(raw['tool_input']), options.signal)
-        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision.behavior, permissionDecisionReason: decision.message, ...(decision.updatedInput ? { updatedInput: decision.updatedInput } : {}) } }
-      }] }] },
+      // Human approval must outlive the SDK's hook deadline.
+      hooks: { PreToolUse: [{ hooks: [async (_raw: Data, _id: string, options: { signal: AbortSignal }) => ({
+        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: this.closed || this.abort.signal.aborted || options.signal.aborted ? 'deny' : 'ask' },
+      })] }] },
       canUseTool: async (name: string, input: Data, options: { signal: AbortSignal }) => this.permission(name, input, options.signal),
     } })
     void this.pump(this.query)
