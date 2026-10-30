@@ -256,18 +256,12 @@ const BUTTON = { left: 'left', right: 'right', middle: 'middle', none: 'none' } 
 
 export async function agentViewInput(input: AgentInputDto, lane: string): Promise<void> {
   const m = mirror
-  if (!m || m.lane !== lane || activeLaneName() !== lane) {
-    if (input.kind === 'mouse' && input.type === 'wheel') flog('agent-view', `wheel ignored: requested=${lane} mirror=${m?.lane} active=${activeLaneName()}`)
-    return
-  }
+  if (!m || m.lane !== lane || activeLaneName() !== lane) return
   const hands = input.kind === 'key' || input.kind === 'text' || (input.kind === 'mouse' && (input.type === 'pressed' || input.type === 'released'))
   if (hands) touched.set(laneOf(m.page) ?? activeLaneName(), Date.now())
   try {
     await withPreviewInput(m.page, async () => {
-      if (mirror !== m || activeLaneName() !== lane || m.page.isClosed()) {
-        if (input.kind === 'mouse' && input.type === 'wheel') flog('agent-view', `wheel superseded: mirrorSame=${mirror === m} active=${activeLaneName()} requested=${lane}`)
-        return
-      }
+      if (mirror !== m || activeLaneName() !== lane || m.page.isClosed()) return
       if (input.kind === 'mouse') {
         const size = m.page.viewportSize() ?? { width: m.width, height: m.height }
         const x = Math.round(Math.min(1, Math.max(0, input.x)) * size.width)
@@ -276,18 +270,21 @@ export async function agentViewInput(input: AgentInputDto, lane: string): Promis
         // Capture restores asynchronously; let hit testing settle before the wheel,
         // and let the scroll paint before another capture takes the compositor.
         const painted = () => m.page.evaluate(() => new Promise<void>(resolve => {
-          const timer = setTimeout(resolve, 1000)
+          const timer = setTimeout(resolve, 100)
           requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(timer); resolve() }))
         }))
         if (input.type === 'wheel') {
           await m.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: input.modifiers ?? 0 })
           await painted()
-          if (mirror !== m || activeLaneName() !== lane || m.page.isClosed()) {
-            flog('agent-view', `wheel superseded after paint: mirrorSame=${mirror === m} active=${activeLaneName()} requested=${lane}`)
-            return
-          }
+          if (mirror !== m || activeLaneName() !== lane || m.page.isClosed()) return
         }
-        await m.cdp.send('Input.dispatchMouseEvent', {
+        // Keep capture queued until Chromium acknowledges the scroll, not just its wheel event.
+        if (input.type === 'wheel' && !input.modifiers && !isNativePage(m.page)) {
+          await m.cdp.send('Input.synthesizeScrollGesture', {
+            x, y, xDistance: -(input.deltaX ?? 0), yDistance: -(input.deltaY ?? 0),
+            gestureSourceType: 'mouse', speed: 10000, preventFling: true,
+          })
+        } else await m.cdp.send('Input.dispatchMouseEvent', {
           type,
           x,
           y,
