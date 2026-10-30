@@ -9,7 +9,7 @@ const fileName = (arg: string): string => {
   return arg.trim().split(/[\\/]/).pop() || 'a file'
 }
 
-export const KO: Partial<Record<StringKey, string>> = {
+export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'bots.thinking': '생각하는 중',
   'bots.stepFindProcedure': '전에 배운 방법이 있는지 보는 중',
   'bots.stepSearchMemory': '기억에서 “{arg}” 찾는 중',
@@ -45,6 +45,7 @@ export const KO: Partial<Record<StringKey, string>> = {
   'outage.details': '자세히',
   'card.replyBelow': '아래 입력창에 답해 주시면 이어서 할게요.',
   'aside.passed': '전달했어요. 하던 일에 반영할게요.',
+  'aside.unapplied': '이 말은 반영되지 않았어요. 다시 보내려면 선택하세요.',
   'aside.next': '알겠어요. 지금 하던 거 끝나면 바로 할게요.',
   'habit.label': '일하는 방식',
   'study.offerLabel': '다른 방법을 찾아볼까요?',

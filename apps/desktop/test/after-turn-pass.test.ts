@@ -4,7 +4,7 @@ const fake = vi.hoisted(() => ({ studies: [] as { ask: string; what: string }[],
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), removeHandler: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: fake.broadcast }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-vi.mock('../src/main/comet-checkpoint.js', () => ({ changeCheckpoint: vi.fn(async () => undefined) }))
+vi.mock('../src/main/comet-checkpoint.js', () => ({ settleHanded: vi.fn(async () => ({ queued: [], unapplied: [] })) }))
 vi.mock('core', async (original) => ({
   ...await original<typeof import('core')>(),
   readBotTranscript: vi.fn(async () => [{ role: 'assistant', text: 'earlier' }]),

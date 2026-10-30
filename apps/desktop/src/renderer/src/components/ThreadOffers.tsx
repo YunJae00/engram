@@ -9,7 +9,7 @@ import { CometOffer } from './CometOffer.js'
 // What a finished answer leaves for the person - choices for its question,
 // or an offer to keep, run or repeat the job - wherever the conversation is
 // shown, the full view or a split tile, with the same answers behind them.
-export function ThreadOffers({ botId, onSend }: { botId: string; onSend(message: string): void }) {
+function CurrentOffer({ botId, onSend }: { botId: string; onSend(message: string): void }) {
   const { routine, startRoutine } = useCometState()
   const { showToast } = useShellState()
   const offer = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).offer)
@@ -34,4 +34,16 @@ export function ThreadOffers({ botId, onSend }: { botId: string; onSend(message:
       onDismiss={() => cometThreads.clearOffer(botId)}
     />
   )
+}
+
+export function ThreadOffers({ botId, onSend }: { botId: string; onSend(message: string): void }) {
+  const unapplied = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).unapplied)
+  const t = useThreadT(botId)
+  return <>
+    {unapplied.length > 0 && <section aria-label={t('aside.unapplied')}>
+      <p>{t('aside.unapplied')}</p>
+      <Choices options={unapplied} t={t} onPick={text => { cometThreads.clearUnapplied(botId, text); onSend(text) }} />
+    </section>}
+    <CurrentOffer botId={botId} onSend={onSend} />
+  </>
 }

@@ -6,12 +6,31 @@ export function chatMessage(draft: string, attachments: ChatAttachmentDto[]): st
   return [draft.trim(), attachments.length ? `Attached: ${attachments.map(one => one.name).join(', ')}` : ''].filter(Boolean).join('\n\n')
 }
 
-type ChatApi = Pick<EngramApi, 'chatSend' | 'onEvent'> & Partial<Pick<EngramApi, 'chatActive' | 'chatAbort' | 'chatSteer' | 'chatSay'>>
+type ChatApi = Pick<EngramApi, 'chatSend' | 'onEvent'> & Partial<Pick<EngramApi, 'chatActive' | 'chatAbort' | 'chatSteer' | 'chatSay' | 'chatQueued'>>
 const active = new WeakMap<CometThreadsStore, Set<string>>()
 const draining = new WeakMap<CometThreadsStore, Set<string>>()
 const seats = (map: WeakMap<CometThreadsStore, Set<string>>, store: CometThreadsStore) => { let set = map.get(store); if (!set) { set = new Set(); map.set(store, set) } return set }
 
+const queueWatches = new WeakMap<CometThreadsStore, () => void>()
+function watchQueue(api: ChatApi, store: CometThreadsStore): void {
+  if (!api.chatQueued || queueWatches.has(store)) return
+  const sent = new Map<string, boolean>()
+  const report = () => {
+    const threads = store.getSnapshot().threads
+    for (const id of new Set([...sent.keys(), ...Object.keys(threads)])) {
+      const pending = !!threads[id]?.queued.length || seats(draining, store).has(id)
+      if (sent.get(id) === pending) continue
+      sent.set(id, pending)
+      void api.chatQueued!(id, pending).catch(() => sent.delete(id))
+    }
+  }
+  queueWatches.set(store, report)
+  store.subscribe(report)
+  report()
+}
+
 export async function flushQueuedCometMessages(api: ChatApi, store: CometThreadsStore, botId: string): Promise<void> {
+  watchQueue(api, store)
   const current = store.thread(botId)
   if (current.busy || !current.queued.length || seats(active, store).has(botId) || seats(draining, store).has(botId)) return
   seats(draining, store).add(botId)
@@ -25,13 +44,14 @@ export async function flushQueuedCometMessages(api: ChatApi, store: CometThreads
     const message = store.takeQueued(botId)
     if (message) await sendNow(api, store, botId, message.draft, message.attachments, true, message.shown)
   } catch { /* What could not start is not kept waiting out of sight. */ }
-  finally { seats(draining, store).delete(botId); if (!store.thread(botId).busy && store.thread(botId).queued.length) setTimeout(() => void flushQueuedCometMessages(api, store, botId), retry ? 500 : 0) }
+  finally { seats(draining, store).delete(botId); queueWatches.get(store)?.(); if (!store.thread(botId).busy && store.thread(botId).queued.length) setTimeout(() => void flushQueuedCometMessages(api, store, botId), retry ? 500 : 0) }
 }
 
 // Nothing waits in a queue the person can see. Said while a comet works, the
 // words show at once at the foot of the conversation and the voice answers
 // them; whatever is for after this turn starts by itself when it ends.
 export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, botId: string, draft: string, attachments: ChatAttachmentDto[] = []): Promise<void> {
+  watchQueue(api, store)
   if (!chatMessage(draft, attachments)) return
   if (store.thread(botId).busy) {
     const stopCount = store.thread(botId).stopCount
