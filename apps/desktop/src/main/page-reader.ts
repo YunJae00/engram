@@ -4,14 +4,7 @@ import { takesRoom } from './page-frame-room.js'
 import type { FrameReading, PageReading } from './page-reading.js'
 export type { FrameReading, PageReading } from './page-reading.js'
 
-// A page read the way a person sees it: the words on it, the controls in
-// the order they sit on it - each with a number, so an icon with no words
-// can still be named - and the words a page keeps folded away, so a search
-// for them can say where they are. Frames and open shadow roots are part
-// of the page, not exceptions to it.
 
-// Where each numbered control lives, so a press by number lands on the
-// element the reading meant: which frame, and which one there.
 type ControlPlace = { frame: Frame; local: number; control: string }
 const placed = new WeakMap<Page, Map<number, ControlPlace>>()
 const observations = new WeakMap<Page, { page: string; document: number; revision: number }>()
@@ -32,15 +25,14 @@ export function observationOf(page: Page): { page: string; document: number; rev
 
 export const HAND_MARK = 'data-engram-hand'
 const FRAME_READ_MS = 12_000
-// An embedded frame is most often an ad or a tracker; it gets less patience.
 const SUBFRAME_READ_MS = 4_000
 
-// Runs inside a document. Self-contained: nothing from outside is in scope,
-// not even this module's own constants.
-// With `mark`, the control at that number (1-based, this document's own
-// order) is tagged so a locator can pick it up; the tag is taken off again
-// by the caller.
 export function readDocument(mark?: number): FrameReading {
+  const roots: (Document | ShadowRoot)[] = [document]
+  for (const root of roots) for (const el of Array.from(root.querySelectorAll('*'))) {
+    el.removeAttribute('data-engram-hand')
+    if (el.shadowRoot) roots.push(el.shadowRoot)
+  }
   const scope = globalThis as typeof globalThis & { __engramClickListeners?: WeakSet<Element>; __engramControlRefs?: { epoch: string; next: number; ids: WeakMap<Element, number> } }
   const refs = scope.__engramControlRefs ??= { epoch: `${performance.timeOrigin}-${Math.random()}`, next: 0, ids: new WeakMap() }
   const INTERACTIVE =
@@ -57,9 +49,6 @@ export function readDocument(mark?: number): FrameReading {
     const rect = node.getBoundingClientRect()
     return rect.width > 0 && rect.height > 0
   }
-  // Every element in document order, through open shadow roots - parents
-  // before their children, which is what lets folded-ness be inherited in
-  // one pass. A page of tens of thousands of nodes is read to a cap.
   const ELEMENT_CAP = 30_000
   const all: Element[] = []
   const walk = (root: Document | ShadowRoot | Element): void => {
@@ -71,9 +60,6 @@ export function readDocument(mark?: number): FrameReading {
   }
   walk(document)
   const parentOf = (el: Element): Element | null => el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)
-  // One pass for what every element's style says: whether it is folded away,
-  // and whether the browser offers it to a pointer. Folded-ness is inherited
-  // from the nearest folded ancestor, which is why parents come first.
   const foldedOf = new Map<Element, boolean>()
   const ownFolded = new Map<Element, boolean>()
   const pointerOf = new Map<Element, boolean>()
@@ -86,11 +72,6 @@ export function readDocument(mark?: number): FrameReading {
     const parent = parentOf(el)
     foldedOf.set(el, own || (parent ? (foldedOf.get(parent) ?? false) : false))
   }
-  // A page can hang one listener on a table and leave its cells plain: the
-  // cells then declare nothing, and the only thing that says "press me" is
-  // the pointer the browser shows over them. That hint is taken, for the
-  // outermost element that carries it - the words inside inherit it and are
-  // the same control - and only where a press would actually land on it.
   const pressable = (el: Element, rect: DOMRect): boolean => {
     const react = Object.keys(el).find(key => key.startsWith('__reactProps$'))
     const props = react ? Object.getOwnPropertyDescriptor(el, react)?.value : undefined
@@ -101,18 +82,13 @@ export function readDocument(mark?: number): FrameReading {
       const box = up.getBoundingClientRect()
       if (pointerOf.get(up) && !['HTML', 'BODY'].includes(up.tagName) && box.width * box.height <= innerWidth * innerHeight * 0.5) return false
     }
-    // Something covering half the page is a backdrop, not a control.
     if (rect.width * rect.height > innerWidth * innerHeight * 0.5) return false
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
-    // Off the screen there is nothing to test against; it is kept, and a
-    // press scrolls to it first.
     if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return true
     const at = document.elementFromPoint(x, y)
     return at === null || at === el || el.contains(at) || at.contains(el)
   }
-  // The visible words: what the page shows, plus what its shadow trees show
-  // (a host's own text leaves its shadow tree out).
   const main = document.body
   let text = (main?.innerText ?? '').replace(/\n{3,}/g, '\n\n')
   for (const el of all)
@@ -121,8 +97,6 @@ export function readDocument(mark?: number): FrameReading {
         const words = (child as HTMLElement).innerText ?? ''
         if (words.trim()) text += `\n${words}`
       }
-  // The folded words: each outermost hidden element's text, so "is it on
-  // this page at all" can be answered without opening every tab.
   const hidden: string[] = []
   let hiddenLength = 0
   for (const el of all) {
@@ -135,7 +109,6 @@ export function readDocument(mark?: number): FrameReading {
     hiddenLength += Math.min(words.length, 2_000)
     if (hiddenLength > HIDDEN_CAP) break
   }
-  // Every link that goes somewhere else, with the words on it.
   const seen = new Set<string>()
   const links: { text: string; url: string }[] = []
   for (const el of all) {
@@ -152,9 +125,6 @@ export function readDocument(mark?: number): FrameReading {
     links.push({ text: label.slice(0, 120), url: href })
     if (links.length >= 25) break
   }
-  // What a control is called: every place a page puts a name, in the order
-  // a person would find one; an icon with no words at all is named by the
-  // hint in its class, or left nameless and known by its number.
   const textOfIds = (ids: string | null): string =>
     (ids ?? '')
       .split(/\s+/)
@@ -197,9 +167,6 @@ export function readDocument(mark?: number): FrameReading {
     )
     return hint ? `(icon: ${hint[1]!.toLowerCase()})` : ''
   }
-  // A dialog standing over the page: one the page declares, else a lifted
-  // panel with controls. Closed popups stay in the document (see-through, off
-  // screen, underneath), so one counts only where a click would land on it.
   const inFront = (el: Element): boolean => {
     for (let up: Element | null = el; up; up = up.parentElement) if (getComputedStyle(up).opacity === '0') return false
     const r = el.getBoundingClientRect(), left = Math.max(r.left, 0), top = Math.max(r.top, 0), width = Math.min(r.right, innerWidth) - left, height = Math.min(r.bottom, innerHeight) - top
@@ -209,10 +176,6 @@ export function readDocument(mark?: number): FrameReading {
       return hit === el
     })
   }
-  // A lifted panel that names no dialog stands over the page when a sheet
-  // covers the view behind it - what a click beside it lands on - or when it
-  // is a short notice. A board of entries drawn on top (a timetable, a
-  // floating list) is still the page itself.
   const behindSheet = (el: Element): boolean => {
     const r = el.getBoundingClientRect()
     const beside = [[0.02, 0.02], [0.98, 0.02], [0.02, 0.98], [0.98, 0.98], [0.5, 0.02], [0.5, 0.98]]
@@ -250,9 +213,6 @@ export function readDocument(mark?: number): FrameReading {
   const openDialog = dialogOf()
   const dialog = openDialog ? clean((openDialog as HTMLElement).innerText).slice(0, 1_200) : ''
 
-  // What the page says is wrong with what was entered. Every signal is the
-  // page's own: the aria contract for an invalid field, the browser's own
-  // validity state, and the message the field points at.
   const faults: string[] = []
   const faultSeen = new Set<string>()
   for (const el of all) {
@@ -289,8 +249,6 @@ export function readDocument(mark?: number): FrameReading {
     const tag = el.tagName.toLowerCase()
     const type = (el.getAttribute('type') ?? '').toLowerCase()
     if (tag === 'input' && type === 'hidden') continue
-    // A control wrapped in a control (an image inside a link inside a
-    // button) is one control, the outer one.
     const outer = el.parentElement?.closest(INTERACTIVE)
     if (outer && shown(outer) && nameOf(outer) === nameOf(el)) continue
     let row = el.closest('tr, [role="row"], li, [role="listitem"]')
@@ -365,8 +323,6 @@ function frameName(frame: Frame): string {
   return frame.name() || frame.url().slice(0, 80)
 }
 
-// The whole page: every frame read, the controls numbered straight through,
-// and where each number lives kept for the next press.
 export async function readFrames(page: Page, signal?: AbortSignal): Promise<PageReading> {
   signal?.throwIfAborted()
   const observation = observationOf(page)
@@ -374,20 +330,13 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
   const frames = [page.mainFrame(), ...page.frames().filter((frame) => frame !== page.mainFrame())]
   const map = new Map<number, ControlPlace>()
   const whole: PageReading = { text: '', hidden: '', hasPasswordField: false, links: [], controls: [], lines: [], dialog: '', faults: [] }
-  // Every frame is asked at once, so frames that will not answer (a script
-  // in a loop, a page far too large) cost one wait between them, not one each.
-  // A frame with no room on the page (an ad slot, a tracker) shows the person
-  // nothing and is not waited for.
   await readClickListeners(page)
   const readings = await Promise.all(frames.map(async (frame, at) => at === 0 ? readFrame(frame, FRAME_READ_MS) : await takesRoom(frame) ? readFrame(frame, SUBFRAME_READ_MS) : 'unseen' as const))
-  // A late read must not overwrite controls from a newer observation.
   signal?.throwIfAborted()
   for (const [at, frame] of frames.entries()) {
     const reading = readings[at]
     if (reading === 'unseen') continue
     if (!reading) {
-      // The page itself unread is a fault; an embedded frame unread is said
-      // where it sits, so the rest of the page still counts as read.
       if (at === 0) whole.faults.push('A frame could not be read. This extract is incomplete; reobserve before claiming all requested fields were checked.')
       else whole.text += `
 
@@ -398,8 +347,6 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
     whole.text += (whole.text && reading.text.trim() ? `\n\n[frame: ${frameName(frame)}]\n` : '') + reading.text
     whole.hidden += (whole.hidden && reading.hidden ? '\n' : '') + reading.hidden
     whole.hasPasswordField ||= reading.hasPasswordField
-    // A dialog anywhere in the page - including inside a frame - is what is
-    // in front of the person; the first one found wins.
     if (!whole.dialog && reading.dialog) whole.dialog = reading.dialog
     whole.faults.push(...reading.faults)
     whole.links.push(...reading.links)
@@ -418,7 +365,6 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
   return whole
 }
 
-// The frame and local number behind a control number from the last reading.
 export function placeOf(page: Page, index: number): ControlPlace | null {
   return placed.get(page)?.get(index) ?? null
 }

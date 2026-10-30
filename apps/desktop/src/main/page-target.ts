@@ -82,6 +82,7 @@ function locators(root: Page | Frame, text: string): Locator[] {
 type Aim = { hand: Locator } | { none: true } | { many: true }
 
 export async function handOn(page: Page, target: string, signal?: AbortSignal, selectors: string[] = []): Promise<Aim> {
+  await unmark(page)
   for (const selector of selectors.map(value => value.trim()).filter(Boolean)) {
     const matches = []
     for (const frame of page.frames()) {
@@ -138,6 +139,10 @@ function frameAnswer<T>(work: Promise<T>, fallback: T): Promise<T> {
 
 export async function unmark(page: Page): Promise<void> {
   await Promise.all(page.frames().map((frame) => frameAnswer(frame.evaluate((mark) => {
-    for (const el of Array.from(document.querySelectorAll(`[${mark}]`))) el.removeAttribute(mark)
+    const roots: (Document | ShadowRoot)[] = [document]
+    for (const root of roots) for (const el of Array.from(root.querySelectorAll('*'))) {
+      el.removeAttribute(mark)
+      if (el.shadowRoot) roots.push(el.shadowRoot)
+    }
   }, HAND_MARK), undefined)))
 }

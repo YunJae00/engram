@@ -225,7 +225,7 @@ export function agentCourier(
       if (read - started > SLOW_OPEN_MS) flog('browser', `slow open ${new URL(url).host}: loaded ${Math.round(loaded - started)}ms, read ${Math.round(read - loaded)}ms`)
       armIdleClose()
       const reading = markReading(result)
-      return status >= 400 ? { ...reading, status } : reading
+      return { ...reading, requestedUrl: url, ...(status >= 400 ? { status } : {}) }
     },
   }
 }

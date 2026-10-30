@@ -38,7 +38,7 @@ export function evidenceFault(steps: AgentLoopStep[]): string | undefined {
     if (!['verify', 'wait_for', 'upload_file', 'capture_evidence'].includes(step.tool) || step.seeded) continue
     let artifact = step.args.artifact
     if (step.tool === 'upload_file') { try { artifact = artifactId(artifact) } catch { /* Invalid references never establish success. */ } }
-    const key = JSON.stringify(step.tool === 'capture_evidence' ? ['capture', step.args.name, step.args.url] : step.tool === 'upload_file' ? ['upload', artifact, step.args.url, step.args.target, step.args.confirmation] : ['check', step.args.id, step.args.url, step.args.ready, step.args.present, step.args.absent])
+    const key = JSON.stringify(step.tool === 'capture_evidence' ? ['capture', step.args.name, step.args.url] : step.tool === 'upload_file' ? ['upload', artifact, step.args.url, step.args.target, step.args.confirmation] : ['check', step.args.id, step.args.url])
     try { const receipt = JSON.parse(step.observation); checks.set(key, step.tool === 'capture_evidence' ? typeof receipt.artifact === 'string' && typeof receipt.sha256 === 'string' : step.tool === 'upload_file' ? receipt.upload?.status === 'confirmed' : receipt.verification?.status === 'passed') }
     catch { checks.set(key, false) }
   }

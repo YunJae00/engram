@@ -1,183 +1,19 @@
+import type { ErrandRetrievedNote, WebFinding, WebPage, ErrandDeps, ErrandState, ErrandResult, ErrandOptions, ErrandPhase } from './errand-types.js'
+export type { ErrandRetrievedNote, WebFinding, WebPage, PageMove, WebCourier, ErrandDeps, ErrandPhase, ErrandState, ErrandResult, ErrandOptions } from './errand-types.js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createCard, type Card } from './cards.js'
-import { collectResult, extractJson, type Engine, type EngineCwd } from './engine/types.js'
+import { createCard } from './cards.js'
+import { collectResult, extractJson } from './engine/types.js'
 import { noteTitle, type Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-// An errand is one delegated goal ("gather what we decided about X and write
-// it up"). Open-ended agent loops drift — multi-turn drift, hallucinated
-// state, format breakage — so the shape of the work is FIXED code and the
-// model only fills slots, one stateless call per phase:
-//
-//   plan     goal → search queries + a note title   (schema-constrained)
-//   gather   run the queries through the host's retrieval — no model
-//   web      search + read pages through the host's courier — no model
-//   distill  each batch of notes / each page → cited bullets (schema-constrained)
-//   compose  points → a markdown note body           (prose)
-//
-// The result is never a direct write: it lands as a new-note proposal card,
-// the same approval surface as every librarian suggestion. State is persisted
-// after each phase so a closed laptop resumes instead of restarting.
-
-export interface ErrandRetrievedNote {
-  id: string
-  title: string
-  body: string
-  created: string
-  // How close the embedder put this note to the question, 0 when it said
-  // nothing about it. Presence alone means nothing - the embedder returns its
-  // top few for any question at all - so it is the height that decides whether
-  // "housework" and "things to do at home" are one subject or two.
-  meaning?: number
-}
-
-// One web search result, as the courier saw it.
-export interface WebFinding {
-  url: string
-  title: string
-  snippet: string
-}
-
-// One fetched page. `wall` marks a page a machine cannot pass (login screen,
-// human check) — the errand pauses there and asks its human.
-export interface WebPage {
-  observation?: { page: string; document: number; revision: number }
-  url: string
-  title: string
-  text: string
-  // Where this page can take you. A results page is a list of links whatever
-  // engine produced it, so reading the links is how the comet follows one
-  // without this codebase knowing a single search engine.
-  links?: { text: string; url: string }[]
-  // The page's buttons, fields and menus, one short line each, so the next
-  // move can be picked without the whole page.
-  controls?: string[]
-  // Words the page keeps folded away - a closed tab, a collapsed section -
-  // so a search can say they are there without opening every part.
-  hidden?: string
-  // A dialog the page has opened over itself, in its own words.
-  dialog?: string
-  // What the page itself says is wrong with what was entered.
-  faults?: string[]
-  // Files the page sent since the last reading, where they were saved.
-  downloads?: string[]
-  wall?: 'login' | 'captcha'
-  // The site's own answer when it was an error: a missing or refused address.
-  status?: number
-}
-
-// What came of a hand on the page: it moved, it was refused because the
-// control would commit something (with the words on it), or it failed.
-export interface PageMove {
-  ok: boolean
-  refused?: string
-  error?: string
-  // The move happened, but the page is exactly as it was: what was touched
-  // was probably not what was meant.
-  changed?: boolean
-  // The person was asked and said they would rather do it themselves.
-  theirs?: boolean
-  // Left for the person's approval in a delegated task; the work goes on.
-  later?: boolean
-  // The press was one that commits something, and the person allowed it.
-  committed?: boolean
-}
-
-// Injected by the host (the desktop drives a real browser); core stays pure
-// Node and tests hand in a fake. No courier = vault-only errand.
-export interface WebCourier {
-  // Where to look is never decided here: the caller names an address. Which
-  // site, which engine, which language is the model's judgement, so it can be
-  // sent somewhere nobody wrote into this codebase.
-  fetchPage(url: string, signal?: AbortSignal): Promise<WebPage>
-  // The page as it stands after typing or clicking changed it.
-  readOpen?(signal?: AbortSignal): Promise<WebPage>
-  // Where a redirecting link leads, read from the redirect itself without opening a page.
-  followRedirect?(url: string, signal?: AbortSignal): Promise<string | null>
-  typeInto?(field: string, text: string, signal?: AbortSignal): Promise<{ ok: boolean }>
-  clickOn?(target: string, signal?: AbortSignal): Promise<{ ok: boolean }>
-  // The hands on a page, each moving around it without committing anything:
-  // a press on a tab, a day, an arrow; words into a search box (Enter only
-  // where the form gets, never posts); an entry from a list; a scroll; a
-  // hover; a key. A move that would commit comes back refused with the
-  // words on the control, and nothing done.
-  press?(target: string, signal?: AbortSignal): Promise<PageMove>
-  typeText?(target: string, text: string, enter: boolean, signal?: AbortSignal): Promise<PageMove>
-  choose?(target: string, option: string, signal?: AbortSignal): Promise<PageMove>
-  scroll?(to: string, signal?: AbortSignal): Promise<PageMove>
-  hover?(target: string, signal?: AbortSignal): Promise<PageMove>
-  pressKey?(key: string, signal?: AbortSignal): Promise<PageMove>
-  // Asked before a press that would commit something: the person is shown
-  // the page and says whether it goes. Absent, such a press is refused.
-  askBeforePress?(what: { words: string; url: string }): Promise<'approve' | 'always' | 'cancel'>
-  // A press where the picture shows it, in fractions of that picture. The
-  // way through for what the page never named: a day drawn in a grid, a
-  // point on a chart, a control inside a frame nothing can reach into.
-  pressPoint?(x: number, y: number, signal?: AbortSignal): Promise<PageMove>
-  // Open whatever part of the page is holding some words out of sight - a
-  // closed section, a summary, a tab that is not the open one.
-  reveal?(word: string, signal?: AbortSignal): Promise<PageMove>
-  // The page as a picture, for a brain that can see one: what a canvas, a
-  // chart or an image says that the words do not.
-  look?(signal?: AbortSignal): Promise<{ data: string; mimeType: string } | null>
-}
-
-export interface ErrandDeps {
-  engine: Engine
-  workdir: EngineCwd
-  // Host-injected hybrid retrieval (lexical + semantic + activation) — core
-  // stays pure and the errand searches exactly like chat does.
-  retrieve(query: string, limit: number): Promise<ErrandRetrievedNote[]>
-  courier?: WebCourier | null
-}
-
-export type ErrandPhase = 'plan' | 'gather' | 'web' | 'distill' | 'compose' | 'done' | 'failed'
-
-export interface ErrandState {
-  goal: string
-  startedAt: string
-  phase: ErrandPhase
-  plan?: { queries: string[]; startUrls: string[]; noteTitle: string }
-  gathered?: ErrandRetrievedNote[]
-  web?: { url: string; title: string; text: string }[]
-  skipped?: { url: string; reason: string }[]
-  points?: { text: string; sources: string[] }[]
-  error?: string
-}
-
-export interface ErrandResult {
-  ok: boolean
-  card?: Card
-  title?: string
-  sources: string[]
-  pages: { url: string; title: string }[]
-  skipped: { url: string; reason: string }[]
-  error?: string
-}
-
-export interface ErrandOptions {
-  signal?: AbortSignal
-  onPhase?: (state: ErrandState) => void
-  // A walled page pauses the errand: the host asks the user to clear it in
-  // the agent's own window. 'resolved' refetches once; 'skip' moves on.
-  onWall?: (page: { url: string; wall: 'login' | 'captcha' }) => Promise<'resolved' | 'skip'>
-  // Resume from a previously persisted state (loadErrandState). Phases that
-  // already completed are skipped — their outputs ride in the state.
-  resume?: ErrandState
-  now?: () => Date
-}
 
 const MAX_QUERIES = 5
 const NOTES_PER_QUERY = 8
 const MAX_NOTES = 12
-// With web evidence aboard the vault rides lighter: fewer notes means fewer
-// distill calls on an 8GB machine, and the web is the point of such errands.
 const MAX_NOTES_WEB = 6
 const PAGE_MAX = 3
 const PAGE_TEXT_CHARS = 5_000
-// A page with less text than this is a shell (consent wall, JS-only app) —
-// distilling it would waste a whole inference call.
 const PAGE_TEXT_MIN = 200
 const DISTILL_BATCH = 4
 const BODY_CHARS = 700
@@ -188,9 +24,6 @@ const PLAN_SCHEMA = {
   type: 'object',
   properties: {
     queries: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: MAX_QUERIES },
-    // Where to look, as addresses. Nothing here names an engine: whichever
-    // site actually holds the answer is a judgement, and one baked into code
-    // can never be told about the place this particular answer lives.
     start_urls: { type: 'array', items: { type: 'string' }, maxItems: MAX_QUERIES },
     note_title: { type: 'string' },
   },
@@ -256,15 +89,10 @@ function webDistillPrompt(goal: string, page: { url: string; title: string; text
   ].join('\n')
 }
 
-// Note ids are vault plumbing; an answer that parrots "(n-lz3k9x-a1b2c3)"
-// reads like a database dump. The model is told not to; this makes sure.
 export function stripNoteIds(text: string): string {
   return text.replace(/\s*\((?:id:\s*)?n-[0-9a-z]+-[0-9a-z]{4,8}\)/gi, '').replace(/\(\s*\)/g, '')
 }
 
-// Unique by URL, breadth-first by host: three pages from three sites beat
-// three pages from one.
-// Addresses the model proposed, kept only if they are really addresses.
 export function cleanUrls(raw: string[] | undefined): string[] {
   const out: string[] = []
   for (const one of raw ?? []) {
@@ -362,8 +190,6 @@ function cleanQueries(raw: unknown): string[] {
   )
 }
 
-// Points keep their text even when the model cites an id that does not exist
-// — a wrong citation is dropped, the fact is not.
 function cleanPoints(raw: unknown, known: Set<string>): { text: string; sources: string[] }[] {
   const list = Array.isArray((raw as { points?: unknown })?.points) ? ((raw as { points: unknown[] }).points) : []
   const out: { text: string; sources: string[] }[] = []
@@ -428,14 +254,10 @@ export async function runErrand(
           if (!seen.has(note.id)) seen.set(note.id, note)
         }
       }
-      // The plan's paraphrases can all miss what the goal itself would hit —
-      // one direct try before concluding the vault has nothing.
       if (seen.size === 0) {
         for (const note of await deps.retrieve(goal, NOTES_PER_QUERY)) seen.set(note.id, note)
       }
       state.gathered = [...seen.values()].slice(0, cap)
-      // An empty vault only ends a vault-only errand — with a courier the
-      // web can still answer alone.
       if (state.gathered.length === 0 && !deps.courier) return fail('nothing in the vault matched the errand')
     }
 
@@ -487,8 +309,6 @@ export async function runErrand(
         const raw = extractJson(await call(deps, distillPrompt(goal, batch), DISTILL_SCHEMA, options.signal))
         points.push(...cleanPoints(raw, known))
       }
-      // Pages distill one at a time — a page is an order of magnitude bigger
-      // than a note and two per call would blow the local context window.
       for (const page of state.web ?? []) {
         if (options.signal?.aborted) return fail('canceled')
         const raw = await call(deps, webDistillPrompt(goal, page), DISTILL_SCHEMA, options.signal)
@@ -511,8 +331,6 @@ export async function runErrand(
     const sources = [...new Set(state.points.flatMap((p) => p.sources))]
     const pages = (state.web ?? []).map((p) => ({ url: p.url, title: p.title }))
     const cited = pages.filter((p) => sources.includes(p.url))
-    // Sources are appended by code, not requested from the model — a small
-    // model asked for a source list invents one.
     const sourceBlock =
       cited.length > 0 ? `\n\n## Sources\n${cited.map((p) => `- [${p.title}](${p.url})`).join('\n')}` : ''
     const body = `${stripNoteIds(composed)}${sourceBlock}`
@@ -543,8 +361,6 @@ export async function runErrand(
   }
 }
 
-// The gather phase needs bodies; hosts that retrieve ids/titles only can lift
-// bodies from their store with this helper.
 export function toRetrievedNote(note: Note): ErrandRetrievedNote {
   return { id: note.front.id, title: noteTitle(note), body: note.body, created: note.front.created }
 }
