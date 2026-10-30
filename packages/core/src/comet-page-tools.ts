@@ -30,7 +30,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     const page = await readOpen(signal)
     if (page.wall) {
       deps.wallMet?.(page.url)
-      return 'the page now needs a person - say so, and that it stays open in the thread for them to do it; ask them to tell you when it is done'
+      return 'The page needs the person to sign in or pass a check. It stays open in this thread. Call ask_person with this question: Can you complete the sign-in or check in the open page and tell me when it is done? Then stop and wait.'
     }
     if (!page.text.trim() && !page.dialog && !page.controls?.length && !page.faults?.length && !page.downloads?.length)
       return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`
