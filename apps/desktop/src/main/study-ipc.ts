@@ -1,3 +1,4 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { ipcMain } from 'electron'
 import { settleHanded } from './comet-checkpoint.js'
 import { afterTurnPrompt, againMessage, changeStudies, installSkill, parseAfterTurn, readBotTranscript, readStudies, studyCandidate, studyMessage, type SkillDraft, type VaultPaths } from 'core'
@@ -118,7 +119,7 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
     let passing = false
     checkStarted(botId)
     void (async () => {
-      const judged = parseAfterTurn(await voice(afterTurnPrompt(asked, handed, answer)), handed)
+      const judged = parseAfterTurn(await withModelCallContext({ channel, purpose: 'after-turn' }, () => voice(afterTurnPrompt(asked, handed, answer))), handed)
       signal.throwIfAborted()
       checking.controller.signal.throwIfAborted()
       const returned = await settleHanded(deps.paths, botId, handed, judged.uncertain ? handed : judged.left, !judged.uncertain)

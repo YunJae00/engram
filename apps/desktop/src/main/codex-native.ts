@@ -252,10 +252,10 @@ class CodexSession {
 // One session per comet, kept between turns; a job without a session key gets its own, closed after the turn.
 const sessions = new Map<string, CodexSession>()
 // A session opened ahead in a folder of its own: the comet that takes the folder takes the session.
-let spare: { session: CodexSession; cwd: string; opening: Promise<boolean>; owner?: string } | null = null
+const spares = new Map<string, { session: CodexSession; cwd: string; opening: Promise<boolean>; owner?: string }>()
 const claimed = new Map<string, string>()
 const sweep = (): void => {
-  if (spare?.session.stale) { spare.session.close(); spare = null }
+  for (const [cwd, spare] of spares) if (spare.session.stale) { spare.session.close(); spares.delete(cwd) }
   for (const [key, session] of sessions) if (session.stale && !session.busy) { session.close(); sessions.delete(key) }
 }
 const signatureOf = (native: NativeTools, spec: CodexNativeSpec): string => JSON.stringify([native.cwd, native.mode, native.readRoots, spec.config, spec.instructions, spec.model, spec.env])
@@ -264,22 +264,26 @@ export function claimCodexWorkFolder(channel: string, fallback: string): string 
   const key = `${dirname(fallback)}:${channel}`
   const held = claimed.get(key)
   if (held) return held
-  if (!spare || dirname(spare.cwd) !== dirname(fallback) || spare.owner && spare.owner !== channel || spare.session.stale || spare.session.busy) return fallback
+  const spare = [...spares.values()].find(one => dirname(one.cwd) === dirname(fallback) && (!one.owner || one.owner === channel) && !one.session.stale && !one.session.busy)
+  if (!spare) return fallback
   spare.owner = channel
   claimed.set(key, spare.cwd)
   return spare.cwd
 }
-export const codexSpareReady = (): boolean => !!spare && !spare.session.stale && !spare.session.busy
+export function codexSpareFolders(): string[] { sweep(); return [...spares.keys()] }
+export const codexSpareCount = (): number => [...spares.values()].filter(one => !one.owner && !one.session.stale && !one.session.busy).length
+export const codexSpareReady = (): boolean => codexSpareCount() > 0
 
-export async function warmCodexSession(spec: CodexNativeSpec, native: NativeTools): Promise<void> {
+export async function warmCodexSession(spec: CodexNativeSpec, native: NativeTools): Promise<boolean> {
   sweep()
-  if (codexSpareReady()) return
-  const session = new CodexSession(spec, native.cwd, signatureOf(native, spec), () => { if (spare?.session === session) spare = null })
+  if (spares.has(native.cwd) || spares.size >= 4) return false
+  const session = new CodexSession(spec, native.cwd, signatureOf(native, spec), () => { if (spares.get(native.cwd)?.session === session) spares.delete(native.cwd) })
   let failure: unknown
   const opening = session.open(false).then(() => true, (error: unknown) => { failure = error; session.close(); return false })
-  spare = { session, cwd: native.cwd, opening }
+  spares.set(native.cwd, { session, cwd: native.cwd, opening })
   flog('engine-codex', `warming a spare session in ${native.cwd}`)
   if (!(await opening)) throw failure
+  return true
 }
 
 export function closeCodexSession(key: string): void {
@@ -289,8 +293,8 @@ export function closeCodexSession(key: string): void {
 export function closeCodexSessions(): void {
   for (const session of sessions.values()) session.close()
   sessions.clear()
-  spare?.session.close()
-  spare = null
+  for (const spare of spares.values()) spare.session.close()
+  spares.clear()
   claimed.clear()
 }
 
@@ -305,10 +309,11 @@ export async function runCodexNative(job: Job, spec: CodexNativeSpec): Promise<N
   const fresh = !session
   let opened = !!session
   let opening: Promise<boolean> | undefined
-  if (spare?.cwd === native.cwd && spare.session.signature !== signature) { spare.session.close(); spare = null }
+  let spare = spares.get(native.cwd)
+  if (spare && spare.session.signature !== signature) { spare.session.close(); spares.delete(native.cwd); spare = undefined }
   if (!session && key && spare && spare.cwd === native.cwd && spare.session.signature === signature && !spare.session.busy && !spare.session.stale) {
     const taken = spare
-    spare = null
+    spares.delete(native.cwd)
     session = taken.session
     sessions.set(key, session)
     opening = taken.opening

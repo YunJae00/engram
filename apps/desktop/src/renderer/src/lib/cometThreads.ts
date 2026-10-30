@@ -80,10 +80,8 @@ export function createCometThreads(initialSelected: string | null = null) {
   const emit = () => {
     for (const listener of listeners) listener()
   }
-  const soon: (run: () => void) => number =
-    typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (run) => setTimeout(run, 16) as unknown as number
-  const cancel: (handle: number) => void =
-    typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : (handle) => clearTimeout(handle)
+  const soon = (run: () => void): number => setTimeout(run, 80) as unknown as number
+  const cancel = (handle: number): void => clearTimeout(handle)
   let framed = 0
   const emitSoon = () => {
     if (framed) return

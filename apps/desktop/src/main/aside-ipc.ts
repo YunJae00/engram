@@ -1,3 +1,4 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-notify.js'
 import { ipcMain } from 'electron'
 import { appendBotTurn, asidePrompt, parseAside, readBotTranscript, withoutSecrets, type AsideAction, type VaultPaths } from 'core'
@@ -46,7 +47,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])], returned: (state.returned ?? []).filter(text => text !== said), replayed: (state.replayed ?? []).filter(text => text !== said) }))
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    const quickly = await deps.voice(channel, asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: earlier, message: said }), 12_000).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null })
+    const quickly = await withModelCallContext({ channel, purpose: 'aside' }, () => deps.voice(channel, asidePrompt({ goal: turnGoals.get(channel) ?? '', work: workSoFar.get(channel) ?? [], said: earlier, message: said }), 12_000)).catch((error: unknown) => { flog('aside', `quick: ${error instanceof Error ? error.message : String(error)}`); return null })
     // Without a voice in seconds, the words still reach the work.
     const aside = parseAside(quickly) ?? { reply: '', action: 'relay' as const, instruction: said }
     // Preserve the person's request; the voice may classify it, not rewrite it.

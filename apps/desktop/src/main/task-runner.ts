@@ -1,3 +1,4 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { taskQueued, discardTaskNotice } from './task-notify.js'
 import { ipcMain } from 'electron'
@@ -100,7 +101,7 @@ export function taskRunner(deps: {
       budget = setTimeout(() => { overran = true; deps.abort(channelOf(started)); resolve() }, deps.checkBudgetMs)
     }) : undefined
     try {
-      const sending = deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : { ...extra, holdIf })
+      const sending = withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: checking ? 'verify' : request.previouslySaid ? 'automatic-continuation' : 'task' }, () => deps.send(request, checking ? { ...extra, verification: { result: started.result ?? '' }, context: [extra?.context, continuationPrompt(started, 'verify')].filter(Boolean).join('\n\n') } : { ...extra, holdIf }))
       await (deadline ? Promise.race([sending, deadline]) : sending)
     } catch (error) {
       if (!checking) throw error
