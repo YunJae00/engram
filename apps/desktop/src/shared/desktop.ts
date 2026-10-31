@@ -1,3 +1,4 @@
+export interface WorkPreviewDto { id: string; title: string; at: number; data?: string }
 export interface DesktopWindowDto { id: string; name: string; foreground?: boolean }
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {

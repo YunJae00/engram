@@ -24,7 +24,7 @@ export function formatScan(observation: QuietObservationDto, find: string | unde
   const shown = find ? observation.texts : observation.texts.slice(-TEXT_TAIL)
   const hidden = observation.texts.length - shown.length + observation.skippedTexts
   const lines = [
-    `${observation.title} — snapshot ${observation.snapshot} (${personLine(observation.state)}${find ? `, find ${quote(find)}` : ''})`,
+    `${observation.title} [window:${observation.window}:0] — snapshot ${observation.snapshot} (${personLine(observation.state)}${find ? `, find ${quote(find)}` : ''})`,
     `controls (${observation.controls.length}${observation.skippedControls ? `; ${observation.skippedControls} more not shown, narrow with find` : ''}):`,
     ...observation.controls.map(controlLine),
     `text (${shown.length}${hidden ? ` of ${observation.texts.length + observation.skippedTexts}; app_text reads it all` : ''}):`,

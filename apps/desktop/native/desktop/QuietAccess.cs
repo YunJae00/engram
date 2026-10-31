@@ -299,7 +299,10 @@ internal sealed class QuietAccess : IDisposable
         check();
         RequireIdle(target);
         var foreground = GetForegroundWindow();
-        value.SetValue(text);
+        QuietPatterns.Set(target, element, text, delegate {
+            check(); RequireIdle(target); Validate(target); Control(target, snapshot, control);
+            if ((value.Current.Value ?? "") != before) throw new InvalidOperationException("The field changed. Read the app again");
+        });
         var landed = false;
         string after = null;
         while (watch.ElapsedMilliseconds < LandMs)
@@ -326,15 +329,16 @@ internal sealed class QuietAccess : IDisposable
         var foreground = GetForegroundWindow();
         object pattern;
         string how;
-        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) { ((InvokePattern)pattern).Invoke(); how = "invoke"; }
-        else if (element.TryGetCurrentPattern(TogglePattern.Pattern, out pattern)) { ((TogglePattern)pattern).Toggle(); how = "toggle"; }
-        else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) { ((SelectionItemPattern)pattern).Select(); how = "select"; }
+        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) { how = "invoke"; }
+        else if (element.TryGetCurrentPattern(TogglePattern.Pattern, out pattern)) { how = "toggle"; }
+        else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) { how = "select"; }
         else if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out pattern))
         {
             var fold = (ExpandCollapsePattern)pattern;
-            if (fold.Current.ExpandCollapseState == ExpandCollapseState.Expanded) { fold.Collapse(); how = "collapse"; } else { fold.Expand(); how = "expand"; }
+            how = fold.Current.ExpandCollapseState == ExpandCollapseState.Expanded ? "collapse" : "expand";
         }
         else throw new InvalidOperationException("This control cannot be pressed without the mouse; use desktop_action for it");
+        QuietPatterns.Press(target, element, how, delegate { check(); RequireIdle(target); Validate(target); Control(target, snapshot, control); });
         Guard.Same(target);
         return new { pressed = how, control = control, foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
     }

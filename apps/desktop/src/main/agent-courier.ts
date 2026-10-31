@@ -1,4 +1,5 @@
 import { net } from 'electron'
+import { showBrowserWorkPreview } from './work-preview.js'
 import { markNewControls, type PageMove, type WebCourier, type WebPage } from 'core'
 import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, laneLastUrl, lanePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
@@ -99,6 +100,8 @@ export function agentCourier(
   let seen: { at: string; names: Set<string> } | null = null
   const placeOf = (url: string) => { try { const parsed = new URL(url); return parsed.origin + parsed.pathname } catch { return url } }
   const markReading = (read: WebPage): WebPage => {
+    const page = lanePage(lane)
+    if (page) showBrowserWorkPreview(lane, page)
     if (!read.controls?.length) { seen = null; return read }
     const at = placeOf(read.url)
     const marked = markNewControls(read.controls, seen?.at === at ? seen.names : undefined)

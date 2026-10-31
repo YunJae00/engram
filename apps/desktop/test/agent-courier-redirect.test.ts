@@ -1,3 +1,4 @@
+vi.mock('../src/main/work-preview.js', () => ({ showBrowserWorkPreview: vi.fn() }))
 import { EventEmitter } from 'node:events'
 import { expect, it, vi } from 'vitest'
 

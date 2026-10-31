@@ -89,7 +89,7 @@ describe('desktop image consent and capture validation', () => {
     const tools = desktopAgentTools('bot-one')
     expect(tools.map((tool) => tool.name)).toEqual(['app_read', 'app_set', 'app_press', 'app_text', 'list_apps', 'open_app', 'list_windows', 'read_desktop', 'look_desktop', 'desktop_action', 'desktop_sequence', 'read_live_document', 'edit_live_document', 'compose_live_document'])
     expect(desktopContext()).toContain('that is what takes control')
-    expect(await tools.find((tool) => tool.name === 'list_windows')!.run({}, { task: 'Inspect the fixture' })).toBe('- Fixture (in front)' + String.fromCharCode(10) + '- Notes')
+    expect(await tools.find((tool) => tool.name === 'list_windows')!.run({}, { task: 'Inspect the fixture' })).toBe('- window:42:0 Fixture (in front)' + String.fromCharCode(10) + '- window:43:0 Notes')
     expect(fake.binding.host.request).not.toHaveBeenCalled()
   })
   it('a look names the app to bring forward and takes control before capturing', async () => {
@@ -101,7 +101,7 @@ describe('desktop image consent and capture validation', () => {
   it('masks using client coordinates and returns the latest snapshot', async () => {
     fake.read.mockResolvedValueOnce(observation('before')).mockResolvedValueOnce(observation('after'))
     const result = await look()
-    expect(fake.binding.host.request).toHaveBeenCalledWith('capture', { window: '42', pid: 55, snapshot: 'before' })
+    expect(fake.binding.host.request).toHaveBeenCalledWith('capture', { window: '42', pid: 55, snapshot: 'before' }, undefined)
     expect(fake.read).toHaveBeenCalledTimes(2)
     expect(result.text).toContain('"snapshot":"after"')
     expect(result.image?.mimeType).toBe('image/jpeg')

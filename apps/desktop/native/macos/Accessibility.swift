@@ -86,7 +86,7 @@ struct Control {
     var value: String { secret ? "" : String(stringAttribute(element, kAXValueAttribute).prefix(20000)) }
 }
 struct Snapshot {
-    let id = UUID().uuidString
+    let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     let target: Target
     let bounds: CGRect
     let controls: [Control]

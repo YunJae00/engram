@@ -31,6 +31,14 @@ final class Connection: @unchecked Sendable {
                 precondition(!sensitiveControl(kAXStaticTextRole, "", "password"))
                 precondition(sensitiveControl(kAXTextFieldRole, kAXSecureTextFieldSubrole, "Message"))
                 precondition(sensitiveControl(kAXGroupRole, "", "Sign in"))
+                let input = InputMonitor()
+                let initial = input.inputVersion(100)
+                input.noteInput(pid: 200, escape: false)
+                precondition(input.inputVersion(100) == initial)
+                input.noteInput(pid: 100, escape: false)
+                precondition(input.inputVersion(100) > initial)
+                input.noteInput(pid: 200, escape: true)
+                precondition(input.state().escaped)
                 connection.send(["selfTest": "passed"])
             } catch { connection.send(["selfTest": "failed", "error": String(describing: error)]); exit(1) }
             return

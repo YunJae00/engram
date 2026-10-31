@@ -69,6 +69,13 @@ describe('binding the app the comet needs', () => {
     expect((await bindDesktopForLane(lane, { app: 'Excel' })).window).toBe('100')
   })
 
+  it('requires an exact identity for overlapping app titles instead of following the foreground', async () => {
+    fake.windows.push({ window: '103', pid: 203, title: 'Other workbook - Excel', minimized: false })
+    await expect(bindDesktopForLane(lane, { app: 'Excel' })).rejects.toThrow('window:103:0')
+    expect((await bindDesktopForLane(lane, { app: 'window:103:0' })).window).toBe('103')
+    expect((await bindDesktopForLane(lane, { app: 'Quarterly workbook - Excel' })).window).toBe('100')
+  })
+
   it('says which app is missing instead of guessing', async () => {
     await expect(bindDesktopForLane(lane, { app: 'Figma' })).rejects.toThrow('No open window matches "Figma"')
     fake.windows = fake.windows.map((one) => ({ ...one, foreground: false }))

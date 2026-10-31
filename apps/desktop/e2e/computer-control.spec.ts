@@ -231,3 +231,28 @@ test('settings show computer use state without a permission switch', async () =>
   await control({ state: 'idle' })
   await expect(settings).toContainText('Ready')
 })
+
+
+test('four background previews fit the work area without accepting keyboard focus', async () => {
+  const target = page.url().split('#')[0]! + '#work-preview'
+  const next = app.waitForEvent('window')
+  const id = await app.evaluate(async ({ BrowserWindow }, { target, preload }) => {
+    const preview = new BrowserWindow({ width: 268, height: 536, frame: false, focusable: false, show: false,
+      webPreferences: { preload, contextIsolation: true, sandbox: false } })
+    preview.setIgnoreMouseEvents(true)
+    await preview.loadURL(target)
+    preview.showInactive()
+    return preview.id
+  }, { target, preload: fileURLToPath(new URL('../out/preload/index.mjs', import.meta.url)) })
+  const preview = await next
+  try {
+    await expect(preview.locator('.work-preview')).toBeVisible()
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.webContents.send('engram:event', {
+      type: 'desktop:preview', frames: Array.from({ length: 4 }, (_, i) => ({ id: String(i), title: `Background app ${i}`, at: Date.now() })),
+    }), id)
+    await expect(preview.locator('.work-preview-card')).toHaveCount(4)
+    expect(await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.isFocusable(), id)).toBe(false)
+    expect(await preview.locator('.work-preview-card').evaluateAll(cards => cards.every(card => card.getBoundingClientRect().bottom <= innerHeight))).toBe(true)
+    await preview.screenshot({ path: join(TMP, 'background-work-four-previews.png') })
+  } finally { await preview.close() }
+})

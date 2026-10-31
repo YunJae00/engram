@@ -28,6 +28,7 @@ const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ defa
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
+const WorkPreview = lazy(() => import('./views/WorkPreview.js').then(m => ({ default: m.WorkPreview })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
 const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
 const RoutinesView = lazy(() => import('./views/RoutinesView.js').then((m) => ({ default: m.RoutinesView })))
@@ -365,6 +366,7 @@ export function App() {
         <ControlOverlay />
       </Suspense>
     )
+  if (window.location.hash === '#work-preview') return <Suspense fallback={null}><WorkPreview /></Suspense>
   if (window.location.hash === '#overlay-pill')
     return (
       <Suspense fallback={null}>
