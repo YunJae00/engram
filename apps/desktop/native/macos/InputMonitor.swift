@@ -5,6 +5,7 @@ final class InputMonitor: @unchecked Sendable {
     private let lock = NSLock()
     private var counter: UInt64 = 0
     private var lastInput = Date.distantPast
+    private var appInput: [pid_t: UInt64] = [:]
     private var escaped = false
     private var lease: String?
     private var expires = Date.distantPast
@@ -16,6 +17,11 @@ final class InputMonitor: @unchecked Sendable {
     func state() -> (intervention: UInt64, idle: Int, escaped: Bool, lease: String?) {
         lock.lock(); defer { lock.unlock() }
         return (counter, min(86_400_000, Int(Date().timeIntervalSince(lastInput) * 1000)), escaped, lease)
+    }
+    func inputVersion(_ pid: pid_t) -> UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        if appInput[pid] == nil && appInput.count < 256 { appInput[pid] = counter }
+        return appInput[pid] ?? counter
     }
     func stop(_ reason: String) {
         lock.lock()
@@ -39,6 +45,16 @@ final class InputMonitor: @unchecked Sendable {
             throw DesktopFailure("Computer control stopped or user input changed. Request fresh control")
         }
     }
+    func noteInput(pid: pid_t?, escape: Bool) {
+        lock.lock()
+        counter &+= 1
+        if let pid = pid, appInput[pid] != nil { appInput[pid] = counter }
+        lastInput = Date()
+        escaped = escaped || escape
+        let stoppedByEscape = escaped
+        lock.unlock()
+        stop(stoppedByEscape ? "Escape pressed" : "User input changed")
+    }
     func start() throws {
         let ready = DispatchSemaphore(value: 0)
         Thread.detachNewThread { [self] in
@@ -49,13 +65,8 @@ final class InputMonitor: @unchecked Sendable {
                     monitor.stop("Input monitoring was interrupted")
                     if let tap = monitor.tap { CGEvent.tapEnable(tap: tap, enable: true) }
                 } else if event.getIntegerValueField(.eventSourceUserData) != monitor.marker {
-                    monitor.lock.lock()
-                    monitor.counter &+= 1
-                    monitor.lastInput = Date()
-                    if type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53 { monitor.escaped = true }
-                    let escape = monitor.escaped
-                    monitor.lock.unlock()
-                    monitor.stop(escape ? "Escape pressed" : "User input changed")
+                    monitor.noteInput(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                                      escape: type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53)
                 }
                 return Unmanaged.passUnretained(event)
             }, userInfo: Unmanaged.passUnretained(self).toOpaque())

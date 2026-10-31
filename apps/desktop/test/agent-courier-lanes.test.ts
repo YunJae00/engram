@@ -1,3 +1,4 @@
+vi.mock('../src/main/work-preview.js', () => ({ showBrowserWorkPreview: vi.fn() }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCourier } from '../src/main/agent-courier.js'
 import { handOn, pressOn, pressPoint } from '../src/main/page-actions.js'

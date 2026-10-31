@@ -2,6 +2,7 @@ import type { QuietObservationDto, QuietPressResultDto, QuietReadResultDto, Quie
 import { bindDesktopForLane, desktopBinding, type DesktopBinding } from './desktop-access.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import type { DesktopMethod } from './desktop-host.js'
+import { showWorkPreview } from './work-preview.js'
 import { flog } from './flog.js'
 
 // Provider calls avoid injected input and requested focus. A mutation waits
@@ -71,7 +72,7 @@ async function windowFor(lane: string, app: string, signal?: AbortSignal): Promi
   assertDesktopTurnNotStopped(lane)
   // The window bound for this chat is kept while its title still matches: listing windows again costs up to seconds and re-selects every window.
   const current = desktopBinding(lane)
-  const binding = current && current.readable && !current.stopped && !current.host.closed && current.name.toLocaleLowerCase().includes(app.trim().toLocaleLowerCase()) ? current : await bindDesktopForLane(lane, { app })
+  const binding = current && current.readable && !current.stopped && !current.host.closed && (current.source === app.trim() || current.name.toLocaleLowerCase() === app.trim().toLocaleLowerCase()) ? current : await bindDesktopForLane(lane, { app })
   signal?.throwIfAborted()
   if (!binding.readable || binding.stopped || binding.host.closed) throw new Error(`"${binding.name}" is not readable by this chat right now.`)
   return binding
@@ -121,6 +122,7 @@ export async function quietScan(lane: string, app: string, find: string | undefi
   // Window chrome does not establish access to the app's working area.
   const chrome = /^(close|minimi[sz]e|maximi[sz]e|restore|닫기|최소화|최대화|복원)$/i
   const actionable = result.controls.some(control => !chrome.test(control.name ?? '') && (control.can?.set || control.can?.press))
+  showWorkPreview(binding)
   remember(lane, binding, actionable ? 'covered' : 'bare')
   named.set(result.snapshot, new Map(result.controls.map(control => [control.id, control.name])))
   while (named.size > NAMED_SNAPSHOTS) named.delete(named.keys().next().value!)

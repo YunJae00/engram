@@ -122,7 +122,12 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
   try {
     const windows = await nativeWindows(host)
     const wanted = pick.app?.trim().toLocaleLowerCase()
-    const candidates = wanted ? windows.filter((one) => one.title.toLocaleLowerCase().includes(wanted)) : windows.filter((one) => one.foreground)
+    const exactId = wanted && /^window:(\d+):0$/.exec(wanted)?.[1]
+    const matches = wanted ? windows.filter((one) => exactId ? one.window === exactId : one.title.toLocaleLowerCase().includes(wanted)) : windows.filter((one) => one.foreground)
+    const exact = matches.filter(one => one.title.toLocaleLowerCase() === wanted)
+    const candidates = exact.length ? exact : matches
+    const visible = candidates.filter(one => !one.minimized)
+    if (wanted && !exactId && visible.length > 1) throw new Error(`Several windows match "${pick.app}". Choose an exact window ID: ${visible.map(one => `window:${one.window}:0 ${one.title}`).join(', ')}`)
     const target = candidates.find((one) => !one.minimized && one.foreground) ?? candidates.find((one) => !one.minimized) ?? candidates[0]
     // The open windows travel with the miss, so the next call can name one without a separate listing.
     const open = windows.map((one) => one.title).filter(Boolean).slice(0, 40).map((title) => `"${title}"`).join(', ')

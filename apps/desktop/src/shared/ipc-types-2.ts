@@ -34,6 +34,7 @@ export interface BrowserTabDto { id: string; url: string; title?: string; active
 export type EngramEvent =
   | { type: 'dev:changed'; update: DevUpdate | null }
   | { type: 'agent:tabs'; lane: string; tabs: BrowserTabDto[] }
+  | { type: 'desktop:preview'; frames: import('./desktop.js').WorkPreviewDto[] }
   | { type: 'desktop:changed' }
   | { type: 'desktop:visibility'; visible: boolean }
   | { type: 'desktop:control'; control: DesktopControlStatusDto }

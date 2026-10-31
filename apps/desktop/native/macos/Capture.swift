@@ -11,7 +11,7 @@ extension DesktopHost {
                   fresh.controls.filter({ $0.secret }).compactMap({ $0.bounds }) == reading.controls.filter({ $0.secret }).compactMap({ $0.bounds }) else { throw DesktopFailure("Protected controls changed. Observe again") }
         }
         try verifyProtection()
-        let intervention = monitor.state().intervention
+        let intervention = monitor.inputVersion(window.pid)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -27,7 +27,7 @@ extension DesktopHost {
         guard child.terminationStatus == 0, let source = NSImage(contentsOf: file), let bitmap = NSBitmapImageRep(data: try Data(contentsOf: file)) else { throw DesktopFailure("Screen capture failed") }
         try verifyProtection()
         try requireCurrent(reading, target: resolveWindow(window.id, pid: window.pid))
-        guard monitor.state().intervention == intervention else { throw DesktopFailure("The screen changed during capture") }
+        guard monitor.inputVersion(window.pid) == intervention else { throw DesktopFailure("The screen changed during capture") }
         if let lease = request["lease"] as? String { try monitor.check(lease, window: window) }
         let ratio = Double(bitmap.pixelsWide) / Double(bitmap.pixelsHigh)
         guard abs(ratio - reading.bounds.width / reading.bounds.height) < 0.02 else { throw DesktopFailure("Capture geometry changed") }

@@ -21,7 +21,7 @@ describe('quiet readings for the brain', () => {
   it('keeps the text tail and says how much more there is', () => {
     const texts = Array.from({ length: 50 }, (_, i) => ({ id: `t${i}`, text: `line ${i}` }))
     const out = formatScan(observation({ controls: [control({})], texts, skippedTexts: 10 }), undefined)
-    expect(out).toContain('Claude — snapshot ' + 'a'.repeat(32) + ' (person elsewhere)')
+    expect(out).toContain('Claude [window:7:0] — snapshot ' + 'a'.repeat(32) + ' (person elsewhere)')
     expect(out).toContain('controls (1):')
     expect(out).toContain('text (40 of 60; app_text reads it all):')
     expect(out).toContain('t49: line 49')

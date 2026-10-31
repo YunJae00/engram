@@ -9,6 +9,7 @@
 @import './sidebar-organization.css';
 @import './notices.css';
 @import './desktop.css';
+@import './views/work-preview.css';
 @import './settings.css';
 @import './settings-layout.css';
 @import './provider-picker.css';

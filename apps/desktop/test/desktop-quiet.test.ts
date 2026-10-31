@@ -4,6 +4,7 @@ import type { DesktopMethod } from '../src/main/desktop-host.js'
 const deps = vi.hoisted(() => ({ bind: vi.fn(), current: vi.fn(), stopped: vi.fn(), flog: vi.fn() }))
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: deps.bind, desktopBinding: deps.current }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: deps.stopped }))
+vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: deps.flog }))
 import { awaitPersonAway, forgetQuietCoverage, quietScan, quietSet, quietText, quietVerdict } from '../src/main/desktop-quiet.js'
 

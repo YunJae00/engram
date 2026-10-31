@@ -22,6 +22,7 @@ final class DesktopHost {
         return value
     }
     func control(_ snapshot: Snapshot, id: String) throws -> Control {
+        let id = id.first == "c" || id.first == "e" ? String(id.dropFirst()) : id
         guard let value = snapshot.controls.first(where: { $0.id == id }), value.enabled, !value.secret else { throw DesktopFailure("Control is unavailable or protected") }
         let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute].map { stringAttribute(value.element, $0) }.first { !$0.isEmpty } ?? ""
         guard stringAttribute(value.element, kAXRoleAttribute) == value.role,
@@ -41,11 +42,11 @@ final class DesktopHost {
         if quiet {
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "snapshot": result.id,
                 "controls": result.controls.map { node -> [String: Any] in
-                    ["id": node.id, "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
+                    ["id": "c" + node.id, "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
                      "offscreen": node.bounds.map { !$0.intersects(result.bounds) } ?? true,
                      "focused": attribute(node.element, kAXFocusedAttribute) as? Bool ?? false, "secret": node.secret,
                      "can": ["set": node.settable, "press": node.pressable, "text": !node.secret]]
-                }, "texts": result.controls.filter { !$0.secret && !$0.value.isEmpty }.map { ["id": $0.id, "text": $0.value] },
+                }, "texts": result.controls.filter { !$0.secret && !$0.value.isEmpty }.map { ["id": "c" + $0.id, "text": $0.value] },
                 "skippedControls": result.complete ? 0 : 1, "skippedTexts": result.complete ? 0 : 1, "ms": 0, "state": state(window)]
         }
         let focus = try? focused(result, editable: false)
@@ -55,7 +56,7 @@ final class DesktopHost {
             "protectedBounds": protected.map(rectangle), "truncated": !result.complete, "captureSafe": result.complete,
             "nodes": result.controls.filter { !focusedOnly || (focus != nil && CFEqual($0.element, focus!.element)) }.compactMap { node -> [String: Any]? in
                 guard let bounds = node.bounds else { return nil }
-                return ["id": node.id, "runtimeId": String(CFHash(node.element)), "name": node.name, "controlType": node.role, "value": node.value,
+                return ["id": "e" + node.id, "runtimeId": String(CFHash(node.element)), "name": node.name, "controlType": node.role, "value": node.value,
                         "enabled": node.enabled, "password": node.secret, "bounds": rectangle(bounds),
                         "offscreen": !bounds.intersects(result.bounds), "actions": ["type": node.settable, "replace": node.settable]]
             }]
@@ -71,7 +72,7 @@ final class DesktopHost {
         if method == "openApp" {
             let id = try text(request, "app", limit: 64)
             guard let entry = catalog().first(where: { $0.id == id }), !monitor.state().escaped else { throw DesktopFailure("Choose an app from the catalog") }
-            guard NSWorkspace.shared.open(entry.url) else { throw DesktopFailure("The app could not open") }
+            _ = try NSWorkspace.shared.launchApplication(at: entry.url, options: [.withoutActivation, .async], configuration: [:])
             return ["requested": true, "name": entry.name, "requiresObservation": true]
         }
         if method == "listWindows" {
@@ -108,12 +109,13 @@ final class DesktopHost {
         if method == "quietRead" {
             let reading: Snapshot
             if request["snapshot"] != nil { reading = try snapshot(request, window: window) } else { reading = try scan(window) }
-            let selected = request["control"] as? String
+            let selected = (request["control"] as? String).map { $0.first == "c" ? String($0.dropFirst()) : $0 }
             let value = reading.controls.filter { !$0.secret && (selected == nil || $0.id == selected) }.map { $0.value.isEmpty ? $0.name : $0.value }.joined(separator: "\n")
             return ["text": String(value.suffix(20000)), "chars": value.count, "headClipped": value.count > 20000]
         }
         if method == "quietSet" || method == "quietPress" {
             let before = monitor.state()
+            let inputVersion = monitor.inputVersion(window.pid)
             guard !before.escaped, !(window.foreground && before.idle < 4000) else { throw DesktopFailure("The person is using this app") }
             let reading = try snapshot(request, window: window)
             let node = try control(reading, id: text(request, "control", limit: 32))
@@ -122,16 +124,21 @@ final class DesktopHost {
             if method == "quietSet" {
                 guard node.settable else { throw DesktopFailure("This control does not take text") }
                 let value = try text(request, "text")
-                if let expected = request["expected"] as? String, expected != node.value { throw DesktopFailure("The field changed. Read it again") }
-                guard monitor.state().intervention == before.intervention else { throw DesktopFailure("User input changed") }
+                let existing = node.value
+                if let expected = request["expected"] as? String {
+                    guard expected == existing else { throw DesktopFailure("The field changed. Read it again") }
+                } else if !existing.isEmpty { throw DesktopFailure("The field already holds text. Pass its exact value as expected to replace it") }
+                guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
+                      !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
                 guard AXUIElementSetAttributeValue(node.element, kAXValueAttribute as CFString, value as CFString) == .success else { throw DesktopFailure("This control does not take text") }
                 let actual = node.value
-                return ["landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier]
+                return ["landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier]
             }
             guard node.pressable else { throw DesktopFailure("This control cannot be pressed") }
-            guard monitor.state().intervention == before.intervention else { throw DesktopFailure("User input changed") }
+            guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
+                      !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
             guard AXUIElementPerformAction(node.element, kAXPressAction as CFString) == .success else { throw DesktopFailure("This control cannot be pressed") }
-            return ["pressed": node.name, "control": node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier]
+            return ["pressed": node.name, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier]
         }
         if method == "prepare" {
             let grant = try text(request, "grant", limit: 64)
