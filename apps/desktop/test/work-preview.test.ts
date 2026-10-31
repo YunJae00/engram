@@ -87,3 +87,13 @@ it('defers browser rendering and captures until a read/action chain settles', as
   expect(fake.windows).toHaveLength(1)
   closeWorkPreview()
 })
+
+it('cancels deferred browser startup when the application closes', async () => {
+  const { showBrowserWorkPreview, closeWorkPreview } = await import('../src/main/work-preview.js')
+  const page = { isClosed: () => false, url: () => 'https://example.com/' } as unknown as import('playwright-core').Page
+  showBrowserWorkPreview('bot', page)
+  closeWorkPreview()
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(fake.windows).toHaveLength(0)
+  expect(fake.frame).not.toHaveBeenCalled()
+})

@@ -89,6 +89,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
 
 export function showBrowserWorkPreview(lane: string, page: Page): void {
   if (!app?.isReady?.() || quitting || page.isClosed()) return
+  if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
   const key = `${lane}:browser-start`
   clearTimeout(refresh.get(key))
   // Let fast read/action chains finish before starting another renderer or screenshot.
