@@ -88,6 +88,15 @@ export function showWorkPreview(binding: DesktopBinding): void {
 
 
 export function showBrowserWorkPreview(lane: string, page: Page): void {
+  if (!app?.isReady?.() || quitting || page.isClosed()) return
+  if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
+  const key = `${lane}:browser-start`
+  clearTimeout(refresh.get(key))
+  // Let fast read/action chains finish before starting another renderer or screenshot.
+  refresh.set(key, setTimeout(() => { refresh.delete(key); captureBrowserWorkPreview(lane, page) }, 4000).unref())
+}
+
+function captureBrowserWorkPreview(lane: string, page: Page): void {
   if (!app?.isReady?.() || quitting || page.isClosed() || !/^https?:/.test(page.url())) return
   const key = `${lane}:browser`
   const url = page.url()
