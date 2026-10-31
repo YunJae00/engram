@@ -6,10 +6,11 @@
   width: min(280px, calc(100% - 24px));
   max-height: calc(100% - 112px);
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel-bg);
-  box-shadow: 0 6px 28px #00000016;
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel-bg) 78%, transparent);
+  backdrop-filter: blur(22px) saturate(1.15);
+  box-shadow: 0 14px 38px -14px #152c3b30, 0 2px 8px #152c3b08;
   transform-origin: top right;
   animation: browser-preview-in 240ms var(--ease-out);
 }
@@ -23,9 +24,9 @@
 .mission-browser-dialog .dialog-title { font-size: var(--fs-body); }
 .mission-browser-dialog > .orbit-surface { flex: 1; min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .mission-browser-dialog[open] { animation: none; } }
-.browser-preview-bar { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 4px 8px; cursor: grab; touch-action: none; user-select: none; }
+.browser-preview-bar { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 8px; cursor: grab; touch-action: none; user-select: none; }
 .browser-preview-bar:active { cursor: grabbing; }
-.browser-preview-grip { opacity: .4; flex-shrink: 0; }
+.browser-preview-grip { opacity: .2; flex-shrink: 0; }
 /* Its own layer: the turn keeps spinning evenly while the page thread is busy. */
 .browser-preview-bar .computer-spinner { display: block; flex-shrink: 0; transform-origin: 50% 50%; will-change: transform; }
 .browser-preview-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
