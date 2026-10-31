@@ -55,11 +55,19 @@ async function captureScaled(page: Page, size: { width: number; height: number }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     // CDP-attached contexts have no device scale option; scale the capture, not the page layout.
-    const result = await Promise.race([
-      session.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { x: 0, y: 0, ...size, scale } }),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Browser preview capture timed out')), 5000) }),
-    ])
-    return Buffer.from(result.data, 'base64')
+    const expired = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Browser preview capture timed out')), 5000) })
+    const metrics = await Promise.race([session.send('Page.getLayoutMetrics'), expired])
+    const viewport = metrics.cssVisualViewport ?? metrics.visualViewport
+    const origin = { x: viewport?.pageX ?? 0, y: viewport?.pageY ?? 0 }
+    const take = async (factor: number) => {
+      const result = await Promise.race([session.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { ...origin, ...size, scale: factor } }), expired])
+      const image = Buffer.from(result.data, 'base64')
+      if (image.length < 24 || image.readUInt32BE(16) === 0) throw new Error('Browser preview returned an invalid PNG')
+      return image
+    }
+    const image = await take(1)
+    const wanted = Math.round(size.width * scale)
+    return image.readUInt32BE(16) === wanted ? image : await take(wanted / image.readUInt32BE(16))
   } finally { clearTimeout(timer); await session.detach().catch(() => undefined) }
 }
 

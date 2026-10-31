@@ -17,10 +17,24 @@ describe('compositor previews', () => {
   it('captures CDP-attached pages at the requested resolution without changing their viewport', async () => {
     scaled.value = 2
     const { page, cdp, shot } = fixture()
+    const png = Buffer.alloc(24); png.writeUInt32BE(2560, 16)
+    cdp.send.mockImplementation(async (method: string) => method === 'Page.getLayoutMetrics'
+      ? { cssVisualViewport: { pageX: 10, pageY: 3000 } } as never : { data: png.toString('base64') })
     await expect(captureSharpFrame(page)).resolves.toMatchObject({ width: 1280, height: 860 })
     expect(shot).not.toHaveBeenCalled()
-    expect(cdp.send).toHaveBeenCalledWith('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { x: 0, y: 0, width: 1280, height: 860, scale: 2 } })
+    expect(cdp.send).toHaveBeenCalledWith('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { x: 10, y: 3000, width: 1280, height: 860, scale: 1 } })
+    expect(cdp.send).toHaveBeenCalledTimes(2)
     expect(cdp.detach).toHaveBeenCalledOnce()
+  })
+
+  it('compensates for a different native display scale instead of assuming Retina', async () => {
+    scaled.value = 2
+    const { page, cdp } = fixture()
+    const one = Buffer.alloc(24); one.writeUInt32BE(1280, 16)
+    const two = Buffer.alloc(24); two.writeUInt32BE(2560, 16)
+    cdp.send.mockResolvedValueOnce({} as never).mockResolvedValueOnce({ data: one.toString('base64') }).mockResolvedValueOnce({ data: two.toString('base64') })
+    expect((await captureSharpFrame(page)).data).toBe(two.toString('base64'))
+    expect(cdp.send).toHaveBeenLastCalledWith('Page.captureScreenshot', expect.objectContaining({ clip: expect.objectContaining({ scale: 2 }) }))
   })
 
   it('bounds CDP capture and detaches its session when the compositor stalls', async () => {
