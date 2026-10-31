@@ -3,9 +3,9 @@ import type { BrowserContext } from 'playwright-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWindowPage } from '../src/main/browser-window-page.js'
 
-function fixture(announce = true, hasWindow = true) {
+function fixture(announce = true) {
   const existing = { isClosed: () => false }
-  const wanted = { isClosed: () => false, id: 'allocated', setViewportSize: vi.fn(async () => {}) }
+  const wanted = { isClosed: () => false, id: 'allocated' }
   const popup = { isClosed: () => false, id: 'unrelated' }
   const detach = vi.fn(async () => undefined)
   const send = vi.fn(async (method: string) => {
@@ -17,8 +17,7 @@ function fixture(announce = true, hasWindow = true) {
     return { success: true }
   })
   const context = Object.assign(new EventEmitter(), {
-    pages: () => hasWindow ? [existing] : [],
-    browser: () => ({ newBrowserCDPSession: async () => ({ send, detach }) }),
+    pages: () => [existing],
     newCDPSession: async (page: typeof existing | typeof wanted) => page === existing ? { send, detach } : {
       send: async () => ({ targetInfo: { targetId: (page as typeof wanted).id } }), detach,
     },
@@ -33,18 +32,10 @@ describe('independent browser windows', () => {
     const { typed, context, wanted, send } = fixture()
     expect(await createWindowPage(typed, { width: 1280, height: 860 })).toBe(wanted)
     expect(send).toHaveBeenCalledWith('Target.createTarget', expect.objectContaining({
-      newWindow: true, background: true, focus: false, left: -4000, top: -4000, width: 1280, height: 860,
+      newWindow: true, focus: false, left: -4000, top: -4000, width: 1280, height: 860,
     }))
     expect(context.listenerCount('page')).toBe(0)
     expect(context.listenerCount('close')).toBe(0)
-  })
-
-  it('creates the first page without opening a foreground startup window', async () => {
-    const { typed, wanted, send } = fixture(true, false)
-    expect(await createWindowPage(typed, { width: 1280, height: 860 })).toBe(wanted)
-    expect(send).toHaveBeenCalledWith('Target.createTarget', expect.objectContaining({
-      background: true, focus: false, windowState: process.platform === 'darwin' ? 'minimized' : 'normal',
-    }))
   })
 
   it('closes only its own target when the new page never arrives', async () => {

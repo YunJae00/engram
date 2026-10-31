@@ -2,8 +2,6 @@ import { EventEmitter } from 'node:events'
 import type { Page } from 'playwright-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { captureSharpFrame, resizePreview, startPagePreview, withPreviewInput } from '../src/main/page-preview.js'
-const scaled = vi.hoisted(() => ({ value: undefined as number | undefined }))
-vi.mock('../src/main/browser-macos.js', () => ({ macBrowserScale: () => scaled.value }))
 
 function fixture() {
   const cdp = Object.assign(new EventEmitter(), { send: vi.fn(async () => ({ data: Buffer.from('lossless').toString('base64') })), detach: vi.fn(async () => undefined) })
@@ -12,39 +10,18 @@ function fixture() {
   return { cdp, shot, page: page as unknown as Page }
 }
 
-afterEach(() => { vi.useRealTimers(); scaled.value = undefined })
+afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
-  it('captures CDP-attached pages at the requested resolution without changing their viewport', async () => {
-    scaled.value = 2
-    const { page, cdp, shot } = fixture()
-    const png = Buffer.alloc(24); png.writeUInt32BE(2560, 16)
-    cdp.send.mockImplementation(async (method: string) => method === 'Page.getLayoutMetrics'
-      ? { cssVisualViewport: { pageX: 10, pageY: 3000 } } as never : { data: png.toString('base64') })
-    await expect(captureSharpFrame(page)).resolves.toMatchObject({ width: 1280, height: 860 })
-    expect(shot).not.toHaveBeenCalled()
-    expect(cdp.send).toHaveBeenCalledWith('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { x: 10, y: 3000, width: 1280, height: 860, scale: 1 } })
-    expect(cdp.send).toHaveBeenCalledTimes(2)
-    expect(cdp.detach).toHaveBeenCalledOnce()
-  })
-
-  it('compensates for a different native display scale instead of assuming Retina', async () => {
-    scaled.value = 2
+  it('sizes the Mac headless surface before opening and restarting the stream', async () => {
+    vi.useFakeTimers()
     const { page, cdp } = fixture()
-    const one = Buffer.alloc(24); one.writeUInt32BE(1280, 16)
-    const two = Buffer.alloc(24); two.writeUInt32BE(2560, 16)
-    cdp.send.mockResolvedValueOnce({} as never).mockResolvedValueOnce({ data: one.toString('base64') }).mockResolvedValueOnce({ data: two.toString('base64') })
-    expect((await captureSharpFrame(page)).data).toBe(two.toString('base64'))
-    expect(cdp.send).toHaveBeenLastCalledWith('Page.captureScreenshot', expect.objectContaining({ clip: expect.objectContaining({ scale: 2 }) }))
-  })
-
-  it('bounds CDP capture and detaches its session when the compositor stalls', async () => {
-    vi.useFakeTimers(); scaled.value = 2
-    const { page, cdp } = fixture()
-    cdp.send.mockImplementation(() => new Promise(() => {}))
-    const failed = expect(captureSharpFrame(page)).rejects.toThrow('capture timed out')
-    await vi.advanceTimersByTimeAsync(5000)
-    await failed
-    expect(cdp.detach).toHaveBeenCalledOnce()
+    const stop = await startPagePreview(page, vi.fn())
+    if (process.platform === 'darwin') expect(cdp.send).toHaveBeenCalledWith('Emulation.setVisibleSize', { width: 1280, height: 860 })
+    else expect(cdp.send).not.toHaveBeenCalledWith('Emulation.setVisibleSize', expect.anything())
+    vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 720, height: 600 })
+    await vi.advanceTimersByTimeAsync(1200)
+    if (process.platform === 'darwin') expect(cdp.send).toHaveBeenCalledWith('Emulation.setVisibleSize', { width: 720, height: 600 })
+    await stop()
   })
   it('holds input until capture restores the compositor without blocking other pages', async () => {
     vi.useFakeTimers()

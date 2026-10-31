@@ -8,16 +8,18 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
 
 test('background browser windows preserve native conversation focus and the draft', async () => {
-  test.skip(process.platform !== 'darwin', 'Exercises the macOS background Chrome launcher')
+  test.skip(process.platform !== 'darwin', 'Exercises the macOS background browser')
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
   const run = await mkdtemp(join(tmp, 'browser-focus-'))
   const paths = await initVault(join(run, 'vault'), { git: false })
   const bot = await createBot(paths, { name: 'Background work' })
   const second = await createBot(paths, { name: 'Second conversation' })
-  const server = createServer((_request, response) => {
+  let popups = 0
+  const server = createServer((request, response) => {
     response.setHeader('content-type', 'text/html')
-    response.end('<html><title>Background browser check</title><h1>Background page is ready</h1><p>The conversation keeps keyboard focus.</p></html>')
+    if (request.url === '/popup') { popups++; response.end('<html><h1>Background popup is ready</h1><script>window.focus()</script></html>'); return }
+    response.end('<html><title>Background browser check</title><button style="position:fixed;inset:0 0 70%;width:100%" onclick="window.open(\'/popup\',\'task\',\'width=600,height=500\')?.focus()">Open background popup</button><p>The conversation keeps keyboard focus.</p></html>')
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -52,13 +54,17 @@ test('background browser windows preserve native conversation focus and the draf
       expect(await focused()).toBe(true)
     }
     await expect(page.locator('.browser-preview canvas[data-painted]')).toBeVisible()
+    await page.evaluate(async lane => {
+      for (const type of ['pressed', 'released'] as const) await window.engram.agentInput({ kind: 'mouse', type, x: 0.5, y: 0.1, button: 'left', clicks: 1 }, lane)
+    }, `bot-${bot.id}`)
+    await expect.poll(() => popups).toBeGreaterThan(0)
     expect(await focused()).toBe(true)
     await expect(page.getByTestId('bots-input')).toHaveValue(draft)
     const focusLosses = await app.evaluate(() => (globalThis as unknown as { focusLosses: number }).focusLosses)
     expect(focusLosses).toBe(0)
     await page.screenshot({ path: join(run, 'conversation.png') })
     if (process.env['ENGRAM_CAPTURE_DESKTOP'] === '1') execFileSync('/usr/sbin/screencapture', ['-x', join(run, 'desktop.png')])
-    await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, nativeFocusLosses: focusLosses, draftPreserved: true }))
+    await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, nativeFocusLosses: focusLosses, draftPreserved: true, popupLoaded: true }))
     console.log('Native focus evidence:', run)
   } finally {
     try { await closeTestApp(app) } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }

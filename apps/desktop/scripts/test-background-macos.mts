@@ -33,7 +33,7 @@ await build({
   stdin: { contents: `
 import { app, BrowserWindow } from 'electron';
 import { agentCourier } from './apps/desktop/src/main/agent-courier.ts';
-import { closeAgentBrowser } from './apps/desktop/src/main/agent-browser.ts';
+import { closeAgentBrowser, ensureAgentPage } from './apps/desktop/src/main/agent-browser.ts';
 import { desktopAgentTools } from './apps/desktop/src/main/desktop-agent.ts';
 import { closeDesktopAccess } from './apps/desktop/src/main/desktop-access.ts';
 import { closeWorkPreview } from './apps/desktop/src/main/work-preview.ts';
@@ -50,6 +50,13 @@ globalThis.backgroundTool = async (name,args) => {
  return await tool.run(args,{task:'Read and edit the owned fixture draft without sending anything'});
 };
 globalThis.backgroundBrowser = (lane = 'bot-background-fixture') => agentCourier({lane}).fetchPage(${JSON.stringify(browserUrl)});
+globalThis.backgroundPopup = async () => {
+ const page = await ensureAgentPage('bot-background-fixture');
+ const waiting = page.waitForEvent('popup');
+ await page.evaluate(() => window.open('/popup', 'popup', 'width=600,height=500'));
+ const popup = await waiting; await popup.waitForLoadState('domcontentloaded');
+ await popup.evaluate(() => window.focus());
+};
 globalThis.backgroundClose = async () => {closeWorkPreview();closeDesktopAccess();await closeAgentBrowser({force:true});};
 }).catch(error => {console.error(error);app.exit(1);});
 `, resolveDir: root },
@@ -92,6 +99,8 @@ try {
   assert.equal(await nativeFocus(), true, 'Browser startup stole the typing window focus')
   await app.evaluate(async () => (globalThis as unknown as {backgroundBrowser(lane: string): Promise<unknown>}).backgroundBrowser('bot-background-second'))
   assert.equal(await nativeFocus(), true, 'Another conversation browser stole native focus')
+  await app.evaluate(async () => (globalThis as unknown as {backgroundPopup(): Promise<void>}).backgroundPopup())
+  assert.equal(await nativeFocus(), true, 'A website popup stole native focus')
   const windows = await tool('list_windows', {}) as string
   await writeFile(join(run, 'windows.txt'), windows)
   const calculatorId = windows.split('\n').filter(line => /계산기|Calculator/.test(line) && !line.includes(' Window —')).map(line => /^- (window:\d+:0) /.exec(line)?.[1]).find(Boolean)

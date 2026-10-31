@@ -2,7 +2,6 @@ import type { CDPSession, Page } from 'playwright-core'
 import { flog } from './flog.js'
 import { createPreviewPool } from './preview-pool.js'
 import { serialWork } from './serial-work.js'
-import { macBrowserScale } from './browser-macos.js'
 
 export interface PreviewFrame { data: string; width: number; height: number }
 interface CastFrame { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
@@ -39,36 +38,12 @@ async function capture(page: Page): Promise<PreviewFrame> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
   // Use the page's owning session: another CDP session restores its own empty
   // emulation settings after capture, overwriting the page's device scale.
-  const scale = macBrowserScale(page.context())
-  const shot = scale === undefined
-    ? await page.screenshot({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
-    : await captureScaled(page, size, scale)
+  const shot = await page.screenshot({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
   const current = page.viewportSize()
   if (current && (current.width !== size.width || current.height !== size.height)) {
     throw new Error('Browser viewport changed during capture')
   }
   return { data: shot.toString('base64'), ...size }
-}
-
-async function captureScaled(page: Page, size: { width: number; height: number }, scale: number): Promise<Buffer> {
-  const session = await page.context().newCDPSession(page)
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    // CDP-attached contexts have no device scale option; scale the capture, not the page layout.
-    const expired = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Browser preview capture timed out')), 5000) })
-    const metrics = await Promise.race([session.send('Page.getLayoutMetrics'), expired])
-    const viewport = metrics.cssVisualViewport ?? metrics.visualViewport
-    const origin = { x: viewport?.pageX ?? 0, y: viewport?.pageY ?? 0 }
-    const take = async (factor: number) => {
-      const result = await Promise.race([session.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { ...origin, ...size, scale: factor } }), expired])
-      const image = Buffer.from(result.data, 'base64')
-      if (image.length < 24 || image.readUInt32BE(16) === 0) throw new Error('Browser preview returned an invalid PNG')
-      return image
-    }
-    const image = await take(1)
-    const wanted = Math.round(size.width * scale)
-    return image.readUInt32BE(16) === wanted ? image : await take(wanted / image.readUInt32BE(16))
-  } finally { clearTimeout(timer); await session.detach().catch(() => undefined) }
 }
 
 export function captureSharpFrame(page: Page): Promise<PreviewFrame> {
@@ -137,6 +112,12 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   }
   // Bound motion bandwidth; the settled frame retains lossless text detail.
   const CAST = { format: 'jpeg', quality: 80, maxWidth: 1920, maxHeight: 2400, everyNthFrame: 1 } as const
+  const startCast = async () => {
+    const size = page.viewportSize()
+    // Headless Chrome on macOS can retain a surface smaller than its viewport.
+    if (process.platform === 'darwin' && size) await cdp.send('Emulation.setVisibleSize', size)
+    await cdp.send('Page.startScreencast', CAST)
+  }
   // A screencast survives the page being laid out to a new shape but goes on
   // delivering surfaces of the OLD shape (measured, whether the layout came
   // before or after the cast began), so the cast is begun again whenever a
@@ -151,7 +132,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     lastStream = ''
     clearTimeout(motionTimer)
     motionFrame = undefined
-    void cdp.send('Page.stopScreencast').then(() => (alive ? cdp.send('Page.startScreencast', CAST) : undefined)).catch(() => undefined)
+    void cdp.send('Page.stopScreencast').then(() => (alive ? startCast() : undefined)).catch(() => undefined)
   }
   const deliver = (frame: CastFrame) => {
     const size = page.viewportSize()
@@ -214,7 +195,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   }
   page.once('close', stop)
   try {
-    await cdp.send('Page.startScreencast', CAST)
+    await startCast()
     void still()
   } catch (error) { await stop(); throw error }
   return stop

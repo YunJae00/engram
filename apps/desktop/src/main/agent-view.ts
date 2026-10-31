@@ -331,10 +331,10 @@ export async function agentViewGo(url: string, lane = activeLaneName()): Promise
 export async function showAgentWindow(show: boolean): Promise<void> {
   const m = mirror
   if (!m) return
-  if (isNativePage(m.page)) return
+  if (isNativePage(m.page) || process.platform === 'darwin') return
   try {
     const { windowId } = (await m.cdp.send('Browser.getWindowForTarget')) as { windowId: number }
-    await m.cdp.send('Browser.setWindowBounds', { windowId, bounds: !show && process.platform === 'darwin' ? { windowState: 'minimized' } : { ...(show ? ON_SCREEN : OFF_SCREEN), windowState: 'normal' } })
+    await m.cdp.send('Browser.setWindowBounds', { windowId, bounds: { ...(show ? ON_SCREEN : OFF_SCREEN), windowState: 'normal' } })
     if (show) await m.page.bringToFront().catch(() => undefined)
   } catch (err) {
     flog('agent-view', `window move failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
