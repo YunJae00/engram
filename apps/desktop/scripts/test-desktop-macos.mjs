@@ -27,8 +27,11 @@ try {
  assert.match(scan.snapshot,/^[a-f0-9]{32}$/);
  assert(scan.controls.every(n=>/^c[0-9]+$/.test(n.id)));
  console.log('scan',scan.controls.length,scan.skippedControls);
- const field=scan.controls.find(n=>n.name==='Fixture message');assert(field?.can.set);
- const set=await request('quietSet',{snapshot:scan.snapshot,control:field.id,text:'changed by owned test',expected:'owned fixture initial'});assert(set.exact);
+ let recent=scan;
+ for(let i=0;i<20;i++){const next=await request('quietScan');await request('quietRead',{snapshot:recent.snapshot});recent=next}
+ const fresh=await request('quietScan');
+ const field=fresh.controls.find(n=>n.name==='Fixture message');assert(field?.can.set);
+ const set=await request('quietSet',{snapshot:fresh.snapshot,control:field.id,text:'changed by owned test',expected:'owned fixture initial'});assert(set.exact);
  const reread=await request('quietScan');
  const filled=reread.controls.find(n=>n.name==='Fixture message');
  await assert.rejects(request('quietSet',{snapshot:reread.snapshot,control:filled.id,text:'unapproved overwrite'}),/already holds text/);

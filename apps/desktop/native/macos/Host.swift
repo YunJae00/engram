@@ -37,7 +37,7 @@ final class DesktopHost {
     func observe(_ window: Target, quiet: Bool, focusedOnly: Bool = false) throws -> [String: Any] {
         let result = try scan(window)
         snapshots = snapshots.filter { Date().timeIntervalSince($0.value.at) < 30 }
-        if snapshots.count >= 16 { snapshots.removeAll() }
+        if snapshots.count >= 16, let oldest = snapshots.min(by: { $0.value.at < $1.value.at })?.key { snapshots.removeValue(forKey: oldest) }
         snapshots[result.id] = result
         if quiet {
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "snapshot": result.id,
