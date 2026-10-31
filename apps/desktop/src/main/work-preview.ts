@@ -28,7 +28,7 @@ function publish(): void {
     if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
     const work = screen.getPrimaryDisplay().workArea
     window = new BrowserWindow({
-      x: work.x + work.width - 284, y: work.y + 16, width: 268, height: Math.min(720, work.height - 32),
+      x: work.x + work.width - Math.min(376, work.width), y: work.y + 12, width: Math.min(360, work.width - 16), height: Math.min(380, work.height - 24),
       frame: false, transparent: true, focusable: false, alwaysOnTop: true, skipTaskbar: true,
       hasShadow: false, resizable: false, show: false,
       webPreferences: { preload: join(import.meta.dirname, '../preload/index.mjs'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },

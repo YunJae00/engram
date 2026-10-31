@@ -252,7 +252,20 @@ test('four background previews fit the work area without accepting keyboard focu
     }), id)
     await expect(preview.locator('.work-preview-card')).toHaveCount(4)
     expect(await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.isFocusable(), id)).toBe(false)
-    expect(await preview.locator('.work-preview-card').evaluateAll(cards => cards.every(card => card.getBoundingClientRect().bottom <= innerHeight))).toBe(true)
+    await expect.poll(() => preview.locator('.work-preview-card').evaluateAll(cards => cards.every(card => {
+      const box = card.getBoundingClientRect()
+      return box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
+    }))).toBe(true)
+    await expect.poll(() => preview.locator('.work-preview-card').first().evaluate(card => Number(getComputedStyle(card).opacity))).toBe(1)
+    const layers = await preview.locator('.work-preview-card').evaluateAll(cards => cards.map(card => ({
+      top: card.getBoundingClientRect().top, bottom: card.getBoundingClientRect().bottom,
+      blur: getComputedStyle(card).filter, opacity: Number(getComputedStyle(card).opacity),
+    })))
+    expect(layers[1]!.top).toBeLessThan(layers[0]!.bottom)
+    expect(layers[0]!.blur).toBe('blur(0px)')
+    expect(layers[3]!.opacity).toBeLessThan(layers[0]!.opacity)
+    await preview.emulateMedia({ reducedMotion: 'reduce' })
+    expect(await preview.locator('.work-preview-card').first().evaluate(card => getComputedStyle(card).transitionDuration)).toBe('0s')
     await preview.screenshot({ path: join(TMP, 'background-work-four-previews.png') })
   } finally { await preview.close() }
 })
