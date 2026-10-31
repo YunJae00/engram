@@ -1,14 +1,11 @@
 import { expect, it } from 'vitest'
-import { done, pressed, setup } from './task-runner-fixture.js'
+import { listTasks } from 'core'
+import { done, setup } from './task-runner-fixture.js'
 
-it('delivers corrections without artifact links and summarizes unconfirmed checks', async () => {
-  const t = await setup(async (_request, turn) => turn === 1
-    ? { ...done('Original total 800', 1), trail: [pressed('Save')] }
-    : { ...done('Corrected total 900', 1), trail: [pressed('Save corrected total')], check: { accepted: false, issues: ['The remote receipt could not be read.'] } }, false)
-  await t.chat('Correct the total')
-  const task = await t.settle('done')
-  expect(task.result).toContain('Corrected total 900')
-  expect(task.result).not.toContain('Original total 800')
-  expect(task.result).toContain('The remote receipt could not be read.')
-  expect(t.delivered).toEqual([task.result])
+it('preserves the engine answer and reported limitations without another judge', async () => {
+  const answer = 'Updated the report. The external source is unavailable.'
+  const t = await setup(async () => ({ ...done(answer, 1), check: { accepted: false, issues: ['Source unavailable'] } }))
+  await t.chat('Update the report')
+  expect(t.sent).toHaveLength(1)
+  expect((await listTasks(t.paths))[0]?.result).toBe(answer)
 })

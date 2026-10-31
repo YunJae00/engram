@@ -78,7 +78,6 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     // A stop is said where the work ends; anything else in the running work.
     if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? ''); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
     store.noteWork(botId, `said: ${answer.reply || words('aside.passed')}`)
-    if (answer.action === 'later' && answer.instruction) store.enqueue(botId, answer.instruction, [], true)
     void flushQueuedCometMessages(api, store, botId)
     return
   }
@@ -118,7 +117,7 @@ async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, dr
     else if (event.type === 'chat:error' && event.channel === channel) fail(event.message)
   })
   try {
-    await api.chatSend({ engineId: '', message, history, attachments: ids, channel, botId, ...(shown ? { previouslySaid: true } : {}) })
+    await api.chatSend({ engineId: '', message, history, attachments: ids, channel, botId })
   } catch (cause) { fail(cause instanceof Error ? cause.message : String(cause)) }
   finally { unsubscribe(); seats(active, store).delete(botId); void flushQueuedCometMessages(api, store, botId) }
 }

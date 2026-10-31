@@ -1,7 +1,7 @@
 import { successfulTurnSteps, type AgentLoopResult, type TurnStep } from 'core'
 
 export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' | 'asked' | 'pending' | 'stopped' | 'incomplete'>, turn?: { verification?: unknown; holdIf?: (answer: string, steps: TurnStep[]) => boolean }): boolean {
-  return !result.asked && !result.pending && !!turn && (!!turn.verification || !!result.incomplete || !!result.stopped || !!turn.holdIf?.(result.answer, result.steps))
+  return !result.asked && !result.pending && !!turn?.verification
 }
 
 export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/

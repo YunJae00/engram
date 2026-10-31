@@ -258,14 +258,6 @@ export function createCometThreads(initialSelected: string | null = null) {
         patch(id, { offer: event.offer })
         return id
       }
-      if (event.type === 'chat:steer-unapplied') {
-        patch(id, { unapplied: [...new Set([...current.unapplied, ...event.texts])] })
-        return id
-      }
-      if (event.type === 'chat:steer-returned') {
-        patch(id, { queued: [...current.queued, ...event.texts.filter(text => !current.queued.some(one => one.draft === text)).map(text => ({ id: `q-${Date.now()}-${++queueSerial}`, draft: text, attachments: [], shown: true }))] })
-        return id
-      }
       if (!current.busy) return null
       if (event.type === 'comet:observed') {
         patch(id, { awaitingModel: true })

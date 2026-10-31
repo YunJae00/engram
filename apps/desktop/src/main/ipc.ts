@@ -1,5 +1,5 @@
 import { availableMemory } from './available-memory.js'
-import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
+import { acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { registerAsideIpc } from './aside-ipc.js'
@@ -1091,18 +1091,22 @@ export function registerIpc(ctx: VaultContext): void {
   // before the done event arrives.
   ipcMain.handle('chat:active', (): string[] => [...new Set([...answering, ...tasks.activeChannels()])])
   setDesktopLaneWorking(lane => answering.has(lane) || tasks.activeChannels().includes(lane))
-  const { offerStudy, setOffersAside, studyFound, checkAfterTurn, yieldPass } = registerStudyIpc({
+  const { offerStudy, setOffersAside, studyFound } = registerStudyIpc({
     paths,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
     sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
     stop: (channel) => abortAllChat(channel),
   })
+  const liveInputs = new Map<string, (messages: string[]) => Promise<boolean>>()
   registerAsideIpc({
     paths,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
-    voice: async (channel, prompt, timeoutMs) => {
-      const engine = await chatEngine(channel, ctx.engines)
-      return engine?.quick ? engine.quick(prompt, { workdir: engineCwd(paths), timeoutMs }) : null
+    deliver: async (channel, text) => {
+      const steer = liveInputs.get(channel)
+      if (!steer || !await steer([text])) return false
+      handedOver.set(channel, [...(handedOver.get(channel) ?? []), text])
+      if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), state => ({ ...state, pending: state.pending.filter(message => message !== text) })).catch(error => flog('checkpoint', error))
+      return true
     },
     setOffersAside,
   })
@@ -2225,7 +2229,6 @@ export function registerIpc(ctx: VaultContext): void {
   // done (task-runner.ts). Skill commands stay plain turns.
   ipcMain.handle('chat:send', async (_e, request: ChatRequestDto) => {
     if (request.botId) void setOffersAside(request.botId).catch(error => flog('study', error))
-    await yieldPass(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))
     return request.botId && !request.message.trim().startsWith('/') ? tasks.chat(request) : sendChat(request)
   })
 
@@ -2252,11 +2255,8 @@ export function registerIpc(ctx: VaultContext): void {
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
-      // Words the turn ended before taking in are not lost: they go on as the next message.
-      const untaken = steers.get(entry.channel)
-      if (untaken?.length) { steers.delete(entry.channel); broadcast({ type: 'chat:steer-returned', channel: entry.channel, texts: untaken }) }
-      const untold = relayed.get(entry.channel)
-      if (untold?.length) { relayed.delete(entry.channel); broadcast({ type: 'chat:steer-returned', channel: entry.channel, texts: untold }) }
+      steers.delete(entry.channel)
+      relayed.delete(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel)
       heard.delete(entry.channel)
       takeAsides(entry.channel)
@@ -2439,8 +2439,7 @@ export function registerIpc(ctx: VaultContext): void {
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
     const savedHistory = bot ? await readBotTranscript(paths, bot.id) : request.history
-    const alreadySaid = request.previouslySaid && savedHistory.some(row => row.role === 'user' && row.text === request.message)
-    if (bot && !recovery && !turn?.quiet && !alreadySaid && !recordedRequests.has(request)) {
+    if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request)) {
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
     }
@@ -2650,7 +2649,7 @@ export function registerIpc(ctx: VaultContext): void {
       try {
         assertDesktopChatEngine(channel, engine)
         const stored = await readCheckpoint(paths, bot.id)
-        const resume = [stored.context, stored.pending.length ? `Unconfirmed requests from this conversation (check before repeating any action): ${JSON.stringify(stored.pending)}` : ''].filter(Boolean).join('\n')
+        const resume = [stored.context, stored.pending.length ? `User messages saved for this model call: ${JSON.stringify(stored.pending)}` : ''].filter(Boolean).join('\n')
         const skillLedger = await readSkillsLedger(paths)
         // The runtime's own tools, governed here: reads where the person
         // already lets it look, a work folder of its own, commands once allowed.
@@ -2670,6 +2669,7 @@ export function registerIpc(ctx: VaultContext): void {
         await changeCheckpoint(paths, bot.id, state => ({ ...state, context: resumeCheckpoint(request.message, { answer: '', steps: [], fellBack: false, incomplete: 'Turn started; inspect current state before resuming.' }) }))
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-starting', model: aiSelection(settings, channel).model, preparationMs: Date.now() - Date.parse(requestReceived.get(request) ?? new Date().toISOString()) }))
         let firstToken = true
+        let tokensUsed = 0
         const result = await runComet(
           {
             engine,
@@ -2680,6 +2680,8 @@ export function registerIpc(ctx: VaultContext): void {
           request.message,
           {
             signal,
+            tokenBudget: turn?.tokenBudget,
+            onUsage: tokens => { tokensUsed += tokens },
             waitingForPerson: () => tasks.waitingForPerson(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel),
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
@@ -2699,6 +2701,7 @@ export function registerIpc(ctx: VaultContext): void {
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
             history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text })),
+            onSteerable: steer => { if (steer) liveInputs.set(channel, steer); else liveInputs.delete(channel) },
             takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); const handed = [...said, ...told]; if (handed.length) handedOver.set(channel, [...(handedOver.get(channel) ?? []), ...handed]); return handed },
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
@@ -2741,15 +2744,12 @@ export function registerIpc(ctx: VaultContext): void {
           }
         }
         let check: TurnOutcome['check']
-        if (turn?.verification) {
+        if (result.steps.some(step => step.tool === 'report_result_check')) {
           const outputs = latestResultOutputs(result.steps, await priorOutputs(artifactDirectory(paths), [
-            { role: 'assistant', text: turn.verification.result },
             { role: 'assistant', text: result.answer },
           ]))
           const report = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
           check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(report ? { report } : {}) }
-          // A confirmed answer carries the latest file links once. A rejected
-          // check delivers nothing from here: the task runner answers with the draft.
           // Only the files the answer itself hands over, at their latest revision; all of them if it named none.
           const named = new Set([...result.answer.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')] } catch { return [] } }))
           const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs
@@ -2792,7 +2792,7 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'vault:changed' })
         }
         const checkpoint = resumeCheckpoint(request.message, result)
-        await changeCheckpoint(paths, bot.id, state => ({ ...state, context: checkpoint }))
+        await acknowledgeHanded(paths, bot.id, [...stored.pending, ...(handedOver.get(channel) ?? [])], checkpoint)
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
@@ -2800,18 +2800,8 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'bots:changed' })
         }
         signal.throwIfAborted()
-        // Work that will be checked, and the check itself, stay out of the
-        // thread: the task runner delivers one answer when the check is done.
-        // Nothing said is lost and no job ends without a way forward: the
-        // voice judges the answer - words taken in along the way that it left
-        // undone go on as the next message, and a job left undone is offered
-        // another way when the comet offered none.
-        const handed = [...new Set([...stored.pending, ...(handedOver.get(channel) ?? [])])]
         handedOver.delete(channel)
-        if (bot && !held && !result.stopped && result.answer.trim() && engine.quick) {
-          checkAfterTurn({ channel, botId: bot.id, asked: request.message, answer: result.answer, handed, ...(result.incomplete ? { incomplete: result.incomplete } : {}), signal, voice: (prompt) => engine.quick?.(prompt, { workdir: engineCwd(paths), timeoutMs: 30_000 }) ?? Promise.resolve(null) })
-        }
-        turnOutcomes.set(channel, { answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
+        turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
           broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })
         } else {

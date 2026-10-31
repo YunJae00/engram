@@ -1,10 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { REPEAT_LIMIT, runToolSession, SESSION_STALL_MS } from '../src/agent-session.js'
+import { runToolSession } from '../src/agent-session.js'
 import type { Engine, ToolSessionJob } from '../src/engine/types.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { pageReport } from '../src/page-report.js'
 import type { WebCourier } from '../src/errand.js'
 import { successfulTurnSteps } from '../src/routine-record.js'
+
+const SESSION_STALL_MS = 300_000
+const REPEAT_LIMIT = 4
 
 afterEach(() => { vi.useRealTimers() })
 
@@ -55,56 +58,21 @@ it('counts model tokens without a UI subscriber and does not interrupt an active
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it('ends a turn whose model has gone silent, keeping it unfinished so the task can go on', async () => {
+it('allows a silent model to keep working until the user stops it', async () => {
   vi.useFakeTimers()
-  let signal: AbortSignal | undefined
-  const engine = {
-    id: 'claude', desktopToolIsolation: true,
-    detect: async () => ({ installed: true, loggedIn: true }),
-    async *run() { yield { type: 'result', text: '' } },
-    runTools: (job: ToolSessionJob) => new Promise(resolve => {
-      signal = job.signal
-      void job.tools[0]!.run({})
-      job.signal?.addEventListener('abort', () => resolve({ answer: '', error: 'canceled' }), { once: true })
-    }),
-  } as unknown as Engine
-  const tools = [{ name: 'file_create_copy', description: 'save', run: async () => JSON.stringify({ markdownLink: '[Draft](engram-artifact:draft.txt)' }) }]
-  const pending = runToolSession({ engine, workdir: process.cwd(), tools } as never, 'Prepare a draft')
-  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS - 10_000)
-  expect(signal?.aborted).toBe(false)
-  await vi.advanceTimersByTimeAsync(20_000)
-  const result = await pending
-  expect(signal?.aborted).toBe(true)
-  expect(result.incomplete).toContain('stopped responding')
-  expect(result.answer).toContain('Not verified as complete')
-  expect(result.answer).toContain('[Draft](engram-artifact:draft.txt)')
-  expect(result.steps).toHaveLength(1)
-})
-
-it('counts host-only progress without visible tokens, but still stops when that progress goes silent', async () => {
-  vi.useFakeTimers()
+  const controller = new AbortController()
   let job!: ToolSessionJob
-  const onToken = vi.fn()
-  const engine = { id: 'claude', runTools: (next: ToolSessionJob) => new Promise(resolve => {
-    job = next
-    job.signal?.addEventListener('abort', () => resolve({ answer: '', error: 'canceled' }), { once: true })
-  }) } as unknown as Engine
-  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Read', { onToken })
-  for (let i = 0; i < 3; i++) {
-    await vi.advanceTimersByTimeAsync(SESSION_STALL_MS - 10_000)
-    job.onProgress?.()
-    await vi.advanceTimersByTimeAsync(5_000)
-    expect(job.signal?.aborted).toBe(false)
-  }
-  expect(onToken).not.toHaveBeenCalled()
-  await vi.advanceTimersByTimeAsync(SESSION_STALL_MS + 10_000)
-  const result = await pending
-  expect(job.signal?.aborted).toBe(true)
-  expect(result.incomplete).toContain('stopped responding')
+  const engine = { runTools: (next: ToolSessionJob) => { job = next; return new Promise(() => {}) } } as unknown as Engine
+  const pending = runToolSession({ engine, workdir: process.cwd(), tools: [] } as never, 'Think', { signal: controller.signal })
+  const stopped = expect(pending).rejects.toThrow('Stopped by user')
+  await vi.advanceTimersByTimeAsync(30 * 60_000)
+  expect(job.signal?.aborted).toBe(false)
+  controller.abort(new Error('Stopped by user'))
+  await stopped
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it('refuses a page move once it came back the same several times, and lets a different move through', async () => {
+it('returns repeated tool results without host progress judgement', async () => {
   let presses = 0
   const said: string[] = []
   const press = { name: 'press', description: 'press', argsSchema: {}, run: async () => { presses++; return `Observation page-1/0/${presses}; control numbers belong only to this reading.\npage "Form": nothing changed\n#3 [button] Save` } }
@@ -120,8 +88,8 @@ it('refuses a page move once it came back the same several times, and lets a dif
     },
   } as unknown as Engine
   await runToolSession({ engine, workdir: process.cwd(), tools: [press] } as never, 'Save the form')
-  expect(presses).toBe(REPEAT_LIMIT + 1)
-  expect(said[REPEAT_LIMIT]).toContain(`has already been made ${REPEAT_LIMIT} times with the same result`)
+  expect(presses).toBe(REPEAT_LIMIT + 2)
+  expect(said[REPEAT_LIMIT]).toContain('nothing changed')
   expect(said[REPEAT_LIMIT + 1]).toContain('nothing changed')
 })
 
@@ -178,7 +146,7 @@ it('allows retrying Save after correcting the validation fault', async () => {
   expect(press).toHaveBeenCalledTimes(3)
 })
 
-it('retains the repeat guard when only the observation revision changes on a reread', async () => {
+it('lets the model decide after repeated observations', async () => {
   let revision = 0
   const press = vi.fn(async () => ({ ok: true, changed: false }))
   const courier: WebCourier = {
@@ -197,8 +165,8 @@ it('retains the repeat guard when only the observation revision changes on a rer
     }
     refused = String(await open.run({ target: 'Details' }))
   })
-  expect(press).toHaveBeenCalledTimes(REPEAT_LIMIT)
-  expect(refused).toContain(`has already been made ${REPEAT_LIMIT} times with the same result`)
+  expect(press).toHaveBeenCalledTimes(REPEAT_LIMIT + 1)
+  expect(refused).toContain('nothing on the page changed')
 })
 
 it('respects an explicit call budget while still reporting unchanged actions as unfinished', async () => {
@@ -258,7 +226,7 @@ it('does not count a permission card waiting on the person as a stall', async ()
   answer({ behavior: 'allow' })
   expect(await decided).toEqual({ behavior: 'allow' })
   await vi.advanceTimersByTimeAsync(SESSION_STALL_MS + 10_000)
-  expect(job.signal?.aborted).toBe(true)
+  expect(job.signal?.aborted).toBe(false)
   finish({ answer: '' })
   await pending
 })

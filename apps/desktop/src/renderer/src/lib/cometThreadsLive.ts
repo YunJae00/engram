@@ -73,7 +73,7 @@ api.onEvent((event) => {
     }
     if (event.type === 'comet:working' && !event.working && pendingReloads.delete(handled) && !cometThreads.thread(handled).stopped)
       void reloadFromDisk(handled).then(() => flushQueuedCometMessages(api, cometThreads, handled))
-    else if ((event.type === 'chat:done' && !adoptedBefore) || (event.type === 'comet:working' && !event.working) || event.type === 'chat:steer-returned')
+    else if ((event.type === 'chat:done' && !adoptedBefore) || (event.type === 'comet:working' && !event.working))
       void flushQueuedCometMessages(api, cometThreads, handled)
     return
   }

@@ -67,12 +67,15 @@ export interface AgentLoopDeps {
 }
 
 export interface AgentLoopOptions {
+  tokenBudget?: number
+  onUsage?(tokens: number): void
   waitingForPerson?(): boolean
   // Called before an offered tool starts, including calls whose receipt never arrives.
   onToolStart?(name: string): void
   // What the person wrote while this turn was working, handed over once at
   // the next tool result, so the work can take it in without stopping.
   takeSteer?(): string[]
+  onSteerable?(steer: ((messages: string[]) => Promise<boolean>) | null): void
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal
@@ -135,6 +138,8 @@ export interface AgentLoopStep {
 }
 
 export interface AgentLoopResult {
+  tokensUsed?: number
+  budgetExhausted?: boolean
   answer: string
   steps: AgentLoopStep[]
   // Two broken outputs in a row forced the plain-answer path.

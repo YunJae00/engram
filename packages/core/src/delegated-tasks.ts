@@ -30,6 +30,7 @@ export interface DelegatedTask {
   botId: string
   state: TaskState
   turns: number
+  tokensUsed?: number
   // Tool steps taken across its turns: how much the task actually did.
   work?: number
   // The one check turn before it is reported done has run.
@@ -49,9 +50,9 @@ export interface DelegatedTask {
   log: { at: string; line: string }[]
 }
 
-// A delegated task takes as long as its work does; only the number of
-// turns is bounded, so it can never loop forever.
-export const TASK_MAX_TURNS = 12
+// Turn count is a fallback for engines that do not report token usage.
+export const TASK_MAX_TURNS = 50
+export const TASK_TOKEN_BUDGET = 1_000_000
 const LOG_LINES = 60
 const KEEP_FINISHED = 100
 
@@ -60,7 +61,7 @@ const file = (paths: VaultPaths) => join(paths.cache, 'tasks.json')
 async function readTasks(paths: VaultPaths): Promise<DelegatedTask[]> {
   try {
     const raw = JSON.parse(await readFile(file(paths), 'utf8')) as { tasks?: unknown }
-    if (!Array.isArray(raw.tasks) || raw.tasks.some(t => typeof t?.id !== 'string' || typeof t?.goal !== 'string' || typeof t?.botId !== 'string' || !['queued', 'running', 'waiting', 'done', 'failed', 'stopped'].includes(t.state) || !Number.isInteger(t.turns) || t.turns < 0 || !Number.isFinite(Date.parse(t.createdAt)) || !Number.isFinite(Date.parse(t.updatedAt)) || !Array.isArray(t.approvals) || !Array.isArray(t.log))) throw new Error('Invalid saved tasks; the file was preserved.')
+    if (!Array.isArray(raw.tasks) || raw.tasks.some(t => typeof t?.id !== 'string' || typeof t?.goal !== 'string' || typeof t?.botId !== 'string' || !['queued', 'running', 'waiting', 'done', 'failed', 'stopped'].includes(t.state) || !Number.isInteger(t.turns) || t.turns < 0 || t.tokensUsed !== undefined && (!Number.isSafeInteger(t.tokensUsed) || t.tokensUsed < 0) || !Number.isFinite(Date.parse(t.createdAt)) || !Number.isFinite(Date.parse(t.updatedAt)) || !Array.isArray(t.approvals) || !Array.isArray(t.log))) throw new Error('Invalid saved tasks; the file was preserved.')
     return raw.tasks as DelegatedTask[]
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []

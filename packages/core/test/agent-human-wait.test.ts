@@ -20,7 +20,7 @@ it.each(['read_open_page', 'read_pages', 'look'])('finishes %s without a receipt
   expect(result.incomplete).toBeUndefined()
 })
 
-it('keeps the streamed answer when a retry only records its receipt', async () => {
+it('keeps the streamed answer without retrying for a missing receipt', async () => {
   let turns = 0
   const reset = vi.fn(), token = vi.fn()
   const run = vi.fn(async (job: ToolSessionJob) => {
@@ -34,7 +34,7 @@ it('keeps the streamed answer when a retry only records its receipt', async () =
     return { answer: 'Receipt recorded.' }
   })
   const result = await runToolSession({ engine: engine(run), workdir, tools: [tool('open_page'), tool('page_steps')] }, 'Save the result', { onReset: reset, onToken: token })
-  expect(run).toHaveBeenCalledTimes(2)
+  expect(run).toHaveBeenCalledTimes(1)
   expect(reset).not.toHaveBeenCalled()
   expect(token.mock.calls).toEqual([['The requested result is saved.']])
   expect(result.answer).toBe('The requested result is saved.')

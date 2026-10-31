@@ -162,6 +162,7 @@ export interface NativeTools {
 }
 
 export interface ToolSessionJob {
+  onUsage?(tokens: number): void
   // The runtime's own tools, when the host hands them over.
   native?: NativeTools
   onContextReset?(): void

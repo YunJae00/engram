@@ -1,13 +1,10 @@
-import { withModelCallContext } from './model-call-metrics.js'
 import { ipcMain } from 'electron'
-import { settleHanded } from './comet-checkpoint.js'
-import { afterTurnPrompt, againMessage, changeStudies, installSkill, parseAfterTurn, readBotTranscript, readStudies, studyCandidate, studyMessage, type SkillDraft, type VaultPaths } from 'core'
+import { changeStudies, installSkill, readBotTranscript, readStudies, studyCandidate, studyMessage, type SkillDraft, type VaultPaths } from 'core'
 import type { ChatRequestDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { checkSettled, checkStarted, taskQueued, discardTaskNotice } from './task-notify.js'
-import { dismissStudyOffers, type StudyCheck } from './study-offers.js'
-import { afterChecks, answering, offeredIn, studying } from './turn-state.js'
+import { dismissStudyOffers } from './study-offers.js'
+import { afterChecks, offeredIn, studying } from './turn-state.js'
 
 export interface StudyIpcDeps {
   paths: VaultPaths
@@ -17,19 +14,6 @@ export interface StudyIpcDeps {
   sendQuiet(request: ChatRequestDto): Promise<void>
   // Stops whatever runs in the conversation.
   stop(channel: string): void
-}
-
-export interface AfterTurnInput {
-  channel: string
-  botId: string
-  asked: string
-  answer: string
-  // Words taken in while the turn worked.
-  handed: string[]
-  // Only execution evidence may trigger automatic rework of the main task.
-  incomplete?: string
-  signal: AbortSignal
-  voice(prompt: string): Promise<string | null>
 }
 
 export function registerStudyIpc(deps: StudyIpcDeps) {
@@ -90,69 +74,5 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
     }
     throw new Error('That study is not waiting for this answer.')
   })
-  // The one more pass each conversation's undone job got: the words it was
-  // sent with, the request they carry on, and the turn while it runs.
-  const passes = new Map<string, { message: string; ask: string; running?: Promise<void> }>()
-  // The person did not ask for the pass, so it gives way the moment they write.
-  const yieldPass = async (channel: string): Promise<void> => {
-    const running = passes.get(channel)?.running
-    if (!running) return
-    passes.delete(channel)
-    flog('study', 'another pass gave way to the person')
-    deps.stop(channel)
-    await running.catch(() => undefined)
-  }
-  // When a turn ends with an answer, the voice judges it once: words taken in
-  // along the way that it left undone go on as the next message, and a job
-  // left undone gets one more pass, then is offered another way when the
-  // comet offered none. A turn the person has moved on from since never does.
-  const checkAfterTurn = (input: AfterTurnInput): void => {
-    const { channel, botId, answer, handed, signal, voice } = input
-    const pass = passes.get(channel)
-    passes.delete(channel)
-    const passed = pass?.message === input.asked
-    const asked = pass && passed ? pass.ask : input.asked
-    if (!handed.length && !input.incomplete) return
-    const checking: StudyCheck = { controller: new AbortController(), channel }
-    afterChecks.add(checking)
-    const wasStudying = studying.has(channel)
-    let passing = false
-    checkStarted(botId)
-    void (async () => {
-      const judged = parseAfterTurn(await withModelCallContext({ channel, purpose: 'after-turn' }, () => voice(afterTurnPrompt(asked, handed, answer))), handed)
-      signal.throwIfAborted()
-      checking.controller.signal.throwIfAborted()
-      const returned = await settleHanded(deps.paths, botId, handed, judged.uncertain ? handed : judged.left, !judged.uncertain)
-      taskQueued(botId, returned.queued.length > 0)
-      if (returned.queued.length) {
-        broadcast({ type: 'chat:steer-returned', channel, texts: returned.queued })
-      }
-      if (returned.unapplied.length) {
-        discardTaskNotice(botId)
-        broadcast({ type: 'chat:steer-unapplied', channel, texts: returned.unapplied })
-      }
-      if (returned.queued.length || returned.unapplied.length || judged.uncertain) return
-      if (!input.incomplete || !judged.undone || wasStudying || studying.has(channel) || offeredIn.has(channel) || checking.superseded || answering.has(channel)) return
-      if (!passed && !deps.busy(channel)) {
-        const message = againMessage(asked, input.incomplete)
-        flog('study', `another pass after an undone turn: ${judged.undone.blocked}`)
-        const history = (await readBotTranscript(deps.paths, botId)).map(turn => ({ role: turn.role, text: turn.text }))
-        signal.throwIfAborted()
-        checking.controller.signal.throwIfAborted()
-        if (checking.superseded || deps.busy(channel)) return
-        const pass: { message: string; ask: string; running?: Promise<void> } = { message, ask: asked }
-        passes.set(channel, pass)
-        passing = true
-        broadcast({ type: 'comet:continue', channel, botId })
-        pass.running = deps.sendQuiet({ engineId: '', botId, channel, message, history }).catch((error: unknown) => {
-          if (passes.get(channel)?.message === message) passes.delete(channel)
-          flog('study', `another pass: ${error instanceof Error ? error.message : String(error)}`)
-        }).finally(() => { delete pass.running; checkSettled(botId) })
-        return
-      }
-      flog('study', `offered after an undone turn: ${judged.undone.blocked}`)
-      await offerStudy(botId, { what: judged.undone.blocked, where: [] }, asked)
-    })().catch(error => flog('study', `after-check: ${error instanceof Error ? error.message : String(error)}`)).finally(() => { afterChecks.delete(checking); if (!passing) checkSettled(botId) })
-  }
-  return { offerStudy, setOffersAside, studyFound, checkAfterTurn, yieldPass }
+  return { offerStudy, setOffersAside, studyFound }
 }

@@ -48,7 +48,7 @@ it('checks a queued phase checkpoint only after the cited observation completes'
     expect(await checkpoint).toContain('"completed":1')
   }), tools: [read(async () => { await Promise.resolve(); return 'Fresh observation' })] }, 'Inspect and verify the workspace')
   expect(result.steps.map((step) => step.tool)).toEqual(['task_plan', 'read_desktop', 'task_plan'])
-  expect(result.incomplete).toContain('2/2')
+  expect(result.incomplete).toBeUndefined()
 })
 
 it('does not dispatch a queued desktop call after cancellation', async () => {
@@ -121,7 +121,7 @@ it('keeps concurrent callbacks within the total ceiling after verified phase all
   }), tools: [read(async () => { await Promise.resolve(); return 'Fresh observation' })] }, 'Perform the requested changes')
   expect(result.steps).toHaveLength(120)
   expect(result.stopped).toBe('calls')
-  expect(result.incomplete).toContain('5/5')
+  expect(result.incomplete).toBeUndefined()
 })
 
 it.each(['unverified', 'exhausted'] as const)('labels an unsupported completion claim explicitly when %s', async (state) => {
@@ -145,5 +145,5 @@ it('does not admit a plan revision at the exhausted phase boundary', async () =>
   }), tools: [read(async () => 'Fresh observation')] }, 'Change the field')
   expect(revision).toContain('No more calls')
   expect(result.steps).toHaveLength(SESSION_MAX_CALLS)
-  expect(result.incomplete).toContain('Prepare')
+  expect(result.incomplete).toBeUndefined()
 })

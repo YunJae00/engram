@@ -62,6 +62,7 @@ interface Turn {
 }
 
 class CodexSession {
+  private totalTokens = 0
   private readonly rpc: CodexRpc
   private threadId = ''
   private turn: Turn | null = null
@@ -175,6 +176,15 @@ class CodexSession {
     const eventTurn = text(params['turnId']) || text(object(params['turn'])['id'])
     if (eventTurn && (this.completedTurns.has(eventTurn) || turn.turnId && eventTurn !== turn.turnId)) return
     const { job, recorded } = turn
+    if (method === 'thread/tokenUsage/updated') {
+      const total = object(object(params['tokenUsage'])['total'])['totalTokens']
+      if (typeof total === 'number' && Number.isSafeInteger(total) && total >= 0) {
+        const delta = Math.max(0, total - this.totalTokens)
+        this.totalTokens = total
+        if (delta) job.onUsage?.(delta)
+      }
+      return
+    }
     job.onProgress?.()
     if (method === 'item/agentMessage/delta') { job.onToken?.(text(params['delta'])); return }
     const item = object(params['item']), id = text(item['id']), type = text(item['type'])

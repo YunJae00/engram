@@ -374,3 +374,20 @@ it('assigns three warmed sessions to different conversations and reuses them for
     expect(sent.filter(call => call.method === 'turn/start')).toHaveLength(6)
   } finally { closeCodexSessions() }
 })
+
+it('reports only new tokens across notifications and reused turns', async () => {
+  const onUsage = vi.fn()
+  let total = 0
+  const rpc = fakeServer(async server => {
+    total += 60
+    server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: total } } })
+    server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: total } } })
+    server.notify('turn/completed', { turn: { status: 'completed' } })
+  })
+  const request = { ...job(native(async () => ({ behavior: 'allow' }))), sessionKey: 'token-budget', onUsage }
+  try {
+    await runCodexNative(request, spec(rpc))
+    await runCodexNative(request, spec(rpc))
+    expect(onUsage.mock.calls).toEqual([[60], [60]])
+  } finally { closeCodexSessions() }
+})
