@@ -5,6 +5,7 @@ import { claudeSessionStarted } from './claude-runtime.js'
 import { dirname } from 'node:path'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
+import { claudeTokenUsage } from './claude-token-usage.js'
 
 // Reuse an idle runtime only while its account, model and tool scope match.
 
@@ -67,6 +68,7 @@ interface Turn {
   onProgress?: () => void
   onReset?: () => void
   onContextReset?: () => void
+  onUsage?: (tokens: number) => void
 }
 
 // The pieces of a reply as the runtime writes it.
@@ -96,6 +98,7 @@ export class WarmSession {
   private native: NativeTools | undefined
   private query: { interrupt(): Promise<unknown> } | null = null
   private readonly abort = new AbortController()
+  private readonly usage = claudeTokenUsage()
 
   constructor(
     private readonly spec: SessionSpec,
@@ -188,6 +191,10 @@ export class WarmSession {
   private async pump(stream: AsyncIterable<SdkMessage>): Promise<void> {
     try {
       for await (const message of stream) {
+        if (this.turn) {
+          const tokens = this.usage(message)
+          if (tokens) this.turn.onUsage?.(tokens)
+        }
         if (message.type === 'system') {
           const system = message as { subtype?: string; estimated_tokens_delta?: unknown }
           if (system.subtype === 'compact_boundary') this.turn?.onContextReset?.()
@@ -272,6 +279,7 @@ export class WarmSession {
       const now = performance.now()
       const turn: Turn = { resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
+      turn.onUsage = job.onUsage
       job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()

@@ -19,6 +19,7 @@ it('keeps a message saved during turn completion for the next call without resen
   const paths = { cache } as VaultPaths
   let calls = 0
   registerAsideIpc({ paths, busy: () => ++calls === 1, setOffersAside: async () => {} })
+  expect(handlers.has('chat:steer')).toBe(false)
   try {
     expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay', instruction: 'Do not submit' })
     expect(relayed.has('bot-late')).toBe(false)

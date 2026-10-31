@@ -69,7 +69,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   studyAnswer(id: string, answer: 'go' | 'later' | 'keep' | 'wrong'): Promise<{ ask?: string }>
   chatSay(channel: string, text: string): Promise<{ ok: boolean; reply?: string; action?: 'relay' | 'stop' | 'later' | 'none'; instruction?: string }>
   chatQueued(botId: string, pending: boolean): Promise<void>
-  chatSteer(channel: string, text: string): Promise<boolean>
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
   siteIcon(origin: string, shortcut?: boolean): Promise<string | null>
