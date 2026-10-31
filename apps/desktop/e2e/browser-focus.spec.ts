@@ -51,6 +51,8 @@ test('background browser windows preserve native conversation focus and the draf
       await page.evaluate(async ({ lane, url }) => window.engram.agentGo(url, lane), { lane: `bot-${id}`, url })
       expect(await focused()).toBe(true)
     }
+    await expect(page.locator('.browser-preview canvas[data-painted]')).toBeVisible()
+    expect(await focused()).toBe(true)
     await expect(page.getByTestId('bots-input')).toHaveValue(draft)
     const focusLosses = await app.evaluate(() => (globalThis as unknown as { focusLosses: number }).focusLosses)
     expect(focusLosses).toBe(0)
