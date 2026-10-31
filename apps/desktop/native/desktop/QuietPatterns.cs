@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Automation;
 
 internal static class QuietPatterns
@@ -77,8 +78,34 @@ internal static class QuietPatterns
     internal static void Set(DesktopTarget target, AutomationElement element, string text, Action check)
     { Run(target, element, ValuePattern.Pattern.Id, pattern => ((Value)pattern).SetValue(text), check); }
 
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wparam, IntPtr lparam, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder name, int length);
+
+    private static bool PressNativeButton(DesktopTarget target, AutomationElement element, Action check)
+    {
+        if (element.Current.ControlType != ControlType.Button) return false;
+        var window = new IntPtr(unchecked((long)(uint)element.Current.NativeWindowHandle));
+        if (window == IntPtr.Zero) return false;
+        var name = new StringBuilder(256);
+        if (GetClassName(window, name, name.Capacity) == 0) return false;
+        var cls = name.ToString();
+        if (cls != "Button" && !cls.StartsWith("WindowsForms10.BUTTON.", StringComparison.Ordinal)) return false;
+        check();
+        uint pid;
+        GetWindowThreadProcessId(window, out pid);
+        if (pid != target.Pid || DesktopNative.GetAncestor(window, 2) != target.Handle || element.Current.NativeWindowHandle != window.ToInt32())
+            throw new InvalidOperationException("The button changed. Read the app again");
+        // Legacy button accessibility providers focus explicitly; BM_CLICK invokes that same button without synthetic keyboard or pointer input.
+        UIntPtr result;
+        if (SendMessageTimeout(window, 0x00F5, UIntPtr.Zero, IntPtr.Zero, 2, 1500, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("The button did not acknowledge its action. Read the app before any further action");
+        return true;
+    }
+
     internal static void Press(DesktopTarget target, AutomationElement element, string how, Action check)
     {
+        if (how == "invoke" && PressNativeButton(target, element, check)) return;
         if (how == "invoke") Run(target, element, InvokePattern.Pattern.Id, pattern => ((Invoke)pattern).Press(), check);
         else if (how == "toggle") Run(target, element, TogglePattern.Pattern.Id, pattern => ((Toggle)pattern).Press(), check);
         else if (how == "select") Run(target, element, SelectionItemPattern.Pattern.Id, pattern => ((Selection)pattern).Select(), check);
