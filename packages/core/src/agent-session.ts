@@ -230,7 +230,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     onContextReset: () => { compactPage() },
     maxCalls: options.maxCalls ?? (browser ? CALL_CEILING : planned ? 120 : SESSION_MAX_CALLS),
     onToken: (text: string) => { if (text) options.onToken?.(text) },
-    onSteerable: (steer) => { liveSteer = steer },
+    onSteerable: (steer) => { liveSteer = steer; options.onSteerable?.(steer) },
     ...(options.onReset ? { onReset: options.onReset } : {}),
     signal,
   }
@@ -245,6 +245,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     signal.throwIfAborted()
     session = await Promise.race([runTools.call(deps.engine, job), ended])
   } finally {
+    options.onSteerable?.(null)
     clearInterval(watchdog)
     unfinishedCalls = queued > 0
     lifetime.abort(new Error('The tool session has ended.'))

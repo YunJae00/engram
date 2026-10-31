@@ -77,7 +77,7 @@ export function taskRunner(deps: {
       if ((t.tokensUsed ?? 0) >= TASK_TOKEN_BUDGET || t.turns >= TASK_MAX_TURNS) {
         t.state = 'failed'; logTask(t, 'Stopped at the task budget or fallback turn limit.'); return
       }
-      t.state = 'running'; delete t.question; t.turns++
+      t.state = 'running'; delete t.question; delete t.verified; delete t.verificationIssue; t.turns++
     })
     if (!started || started.state !== 'running' || stopped.has(channelOf(started))) {
       if (started?.state === 'failed') deps.broadcast({ type: 'chat:done', channel: channelOf(started), text: started.log.at(-1)?.line ?? 'Task stopped.' })

@@ -10,6 +10,7 @@ export interface AsideIpcDeps {
   paths: VaultPaths
   // A turn is running, or a task is still finishing, in this conversation.
   busy(channel: string): boolean
+  deliver?(channel: string, text: string): Promise<boolean>
   setOffersAside(botId: string): Promise<void>
 }
 
@@ -39,7 +40,8 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] }))
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    if (deps.busy(channel)) relayed.set(channel, [...(relayed.get(channel) ?? []), said])
+    const delivered = await deps.deliver?.(channel, said).catch(error => { flog('aside', error); return false })
+    if (!delivered && deps.busy(channel)) relayed.set(channel, [...(relayed.get(channel) ?? []), said])
     const pending = await readCheckpoint(deps.paths, botId)
     taskQueued(botId, pending.pending.length > 0)
     return { ok: true, action: 'relay', instruction: said }
@@ -51,7 +53,8 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
       await appendBotTurn(deps.paths, channel.slice(4), { role: 'user', text: withoutSecrets(text.trim(), text), at: new Date().toISOString() })
       await changeCheckpoint(deps.paths, channel.slice(4), state => ({ ...state, pending: [...new Set([...state.pending, text.trim()])] }))
     }
-    steers.set(channel, [...(steers.get(channel) ?? []), text.trim()])
+    const delivered = await deps.deliver?.(channel, text.trim()).catch(error => { flog('aside', error); return false })
+    if (!delivered && answering.has(channel)) steers.set(channel, [...(steers.get(channel) ?? []), text.trim()])
     broadcast({ type: 'comet:step', channel, line: `you: ${text.trim()}` })
     return true
   })

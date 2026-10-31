@@ -13,3 +13,17 @@ it('stops at reported token usage even when the engine ignores cancellation', as
   expect(result.budgetExhausted).toBe(true)
   expect(result.tokensUsed).toBe(100)
 })
+
+it('exposes engine input delivery without waiting for an Engram tool call', async () => {
+  const delivered: string[][] = []
+  let receive: ((messages: string[]) => Promise<boolean>) | null = null
+  const engine = { runTools: async (job: ToolSessionJob) => {
+    job.onSteerable?.(async messages => { delivered.push(messages); return true })
+    expect(await receive?.(['Only read'])).toBe(true)
+    return { answer: 'Read only' }
+  } } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [] }, 'Inspect', { onSteerable: steer => { receive = steer } })
+  expect(result.answer).toBe('Read only')
+  expect(delivered).toEqual([['Only read']])
+  expect(receive).toBeNull()
+})

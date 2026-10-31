@@ -1097,9 +1097,17 @@ export function registerIpc(ctx: VaultContext): void {
     sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
     stop: (channel) => abortAllChat(channel),
   })
+  const liveInputs = new Map<string, (messages: string[]) => Promise<boolean>>()
   registerAsideIpc({
     paths,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
+    deliver: async (channel, text) => {
+      const steer = liveInputs.get(channel)
+      if (!steer || !await steer([text])) return false
+      handedOver.set(channel, [...(handedOver.get(channel) ?? []), text])
+      if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), state => ({ ...state, pending: state.pending.filter(message => message !== text) })).catch(error => flog('checkpoint', error))
+      return true
+    },
     setOffersAside,
   })
 
@@ -2693,6 +2701,7 @@ export function registerIpc(ctx: VaultContext): void {
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
             history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text })),
+            onSteerable: steer => { if (steer) liveInputs.set(channel, steer); else liveInputs.delete(channel) },
             takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); const handed = [...said, ...told]; if (handed.length) handedOver.set(channel, [...(handedOver.get(channel) ?? []), ...handed]); return handed },
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,

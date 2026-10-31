@@ -75,6 +75,7 @@ export interface AgentLoopOptions {
   // What the person wrote while this turn was working, handed over once at
   // the next tool result, so the work can take it in without stopping.
   takeSteer?(): string[]
+  onSteerable?(steer: ((messages: string[]) => Promise<boolean>) | null): void
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal
