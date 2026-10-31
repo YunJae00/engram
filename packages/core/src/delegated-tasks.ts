@@ -52,7 +52,7 @@ export interface DelegatedTask {
 
 // Turn count is a fallback for engines that do not report token usage.
 export const TASK_MAX_TURNS = 50
-export const TASK_TOKEN_BUDGET = 1_000_000
+export const TASK_TOKEN_BUDGET = 300_000
 const LOG_LINES = 60
 const KEEP_FINISHED = 100
 

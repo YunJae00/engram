@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { listTasks } from 'core'
+import { listTasks, TASK_TOKEN_BUDGET } from 'core'
 import { done, setup, pressed } from './task-runner-fixture.js'
 
 it.each(['Saved', '[Report](engram-artifact:report.md)'])('delivers %s without a separate verification turn', async answer => {
@@ -21,10 +21,10 @@ it('allows turn thirteen while token budget remains', async () => {
 })
 
 it('persists reported token usage and does not restart an exhausted task', async () => {
-  const t = await setup(async () => ({ ...done('Token budget reached'), tokensUsed: 1_000_000, budgetExhausted: true }))
+  const t = await setup(async () => ({ ...done('Token budget reached'), tokensUsed: TASK_TOKEN_BUDGET, budgetExhausted: true }))
   await t.chat('Long job')
   expect(t.sent).toHaveLength(1)
-  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed', tokensUsed: 1_000_000 })
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed', tokensUsed: TASK_TOKEN_BUDGET })
 })
 
 it('continues paused work only on user input and never learns it as a question answer', async () => {

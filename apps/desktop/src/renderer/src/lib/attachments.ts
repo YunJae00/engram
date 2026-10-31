@@ -6,7 +6,7 @@ export function chatMessage(draft: string, attachments: ChatAttachmentDto[]): st
   return [draft.trim(), attachments.length ? `Attached: ${attachments.map(one => one.name).join(', ')}` : ''].filter(Boolean).join('\n\n')
 }
 
-type ChatApi = Pick<EngramApi, 'chatSend' | 'onEvent'> & Partial<Pick<EngramApi, 'chatActive' | 'chatAbort' | 'chatSteer' | 'chatSay' | 'chatQueued'>>
+type ChatApi = Pick<EngramApi, 'chatSend' | 'onEvent'> & Partial<Pick<EngramApi, 'chatActive' | 'chatAbort' | 'chatSay' | 'chatQueued'>>
 const active = new WeakMap<CometThreadsStore, Set<string>>()
 const draining = new WeakMap<CometThreadsStore, Set<string>>()
 const seats = (map: WeakMap<CometThreadsStore, Set<string>>, store: CometThreadsStore) => { let set = map.get(store); if (!set) { set = new Set(); map.set(store, set) } return set }

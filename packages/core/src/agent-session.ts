@@ -17,6 +17,7 @@ import { officeWriteUnverified } from './office-verification.js'
 import { officeArithmeticFault } from './office-arithmetic.js'
 import { evidenceFault } from './work-evidence.js'
 import { pageDelta } from './page-delta.js'
+import { TASK_TOKEN_BUDGET } from './delegated-tasks.js'
 
 
 export const SESSION_MAX_CALLS = 80
@@ -63,6 +64,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const lifetime = new AbortController()
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
   let tokensUsed = 0, budgetExhausted = false
+  const tokenBudget = options.tokenBudget ?? TASK_TOKEN_BUDGET
+  const budgetNote = `The task token budget (${tokenBudget.toLocaleString('en-US')} tokens available for this turn) was reached.`
   let startedCalls = 0
   let queued = 0
   const running = new Set<{ name: string; at: number; native: boolean; step?: AgentLoopStep }>()
@@ -190,9 +193,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!Number.isSafeInteger(tokens) || tokens <= 0) return
       tokensUsed += tokens
       options.onUsage?.(tokens)
-      if (tokensUsed >= (options.tokenBudget ?? 1_000_000)) {
+      if (tokensUsed >= tokenBudget) {
         budgetExhausted = true
-        lifetime.abort(new Error('The task token budget was reached.'))
+        lifetime.abort(new Error(budgetNote))
       }
     },
     workdir: deps.workdir,
@@ -254,7 +257,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
-  if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, 'The task token budget was reached. Work so far is preserved; inspect the current state before continuing.'), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: 'The task token budget was reached.' }
+  if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, `${budgetNote} Work so far is preserved; inspect the current state before continuing.`), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
