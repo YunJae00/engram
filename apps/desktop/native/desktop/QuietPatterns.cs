@@ -94,7 +94,7 @@ internal static class QuietPatterns
         check();
         uint pid;
         GetWindowThreadProcessId(window, out pid);
-        if (pid != target.Pid || DesktopNative.GetAncestor(window, 2) != target.Handle || element.Current.NativeWindowHandle != window.ToInt32())
+        if (pid != target.Pid || DesktopNative.GetAncestor(window, 2) != target.Handle || element.Current.NativeWindowHandle != unchecked((int)window.ToInt64()))
             throw new InvalidOperationException("The button changed. Read the app again");
         // Legacy button accessibility providers focus explicitly; BM_CLICK invokes that same button without synthetic keyboard or pointer input.
         UIntPtr result;
