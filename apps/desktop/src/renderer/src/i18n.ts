@@ -162,7 +162,7 @@ const en = {
   'outage.again': 'Send again',
   'outage.details': 'Details',
   'card.replyBelow': 'Reply in the message box below to continue.',
-  'aside.passed': 'Got it - I will take that into the work.',
+  'aside.passed': 'Saved in the conversation.',
   'aside.next': 'Got it - I will do that as soon as this is done.',
   'habit.label': 'Your way of working',
   'study.offerLabel': 'Shall I find another way?',

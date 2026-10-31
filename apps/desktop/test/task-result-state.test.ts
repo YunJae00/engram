@@ -6,11 +6,11 @@ import { done, pressed, readback, setup } from './task-runner-fixture.js'
 
 const read: TurnStep = { tool: 'read_open_page', args: {}, observation: 'Current saved state' }
 
-it('holds incomplete read-only answers while continuing instead of publishing two results', () => {
+it('does not hide incomplete answers for an automatic continuation', () => {
   const draft = { answer: 'Same result', steps: [read] }
   const turn = { holdIf: () => false }
-  expect(holdTaskResult({ ...draft, incomplete: 'The page check was not confirmed.' }, turn)).toBe(true)
-  expect(holdTaskResult({ ...draft, stopped: 'calls' }, turn)).toBe(true)
+  expect(holdTaskResult({ ...draft, incomplete: 'The page check was not confirmed.' }, turn)).toBe(false)
+  expect(holdTaskResult({ ...draft, stopped: 'calls' }, turn)).toBe(false)
   expect(holdTaskResult(draft, turn)).toBe(false)
   expect(holdTaskResult({ ...draft, asked: true, incomplete: 'Need input' }, turn)).toBe(false)
   expect(holdTaskResult({ ...draft, pending: 'run_procedure' }, turn)).toBe(false)
@@ -54,15 +54,13 @@ it('defers even an accepted held check to task completion, and validates non-hel
   expect(canLearnTurn(result([{ ...read, seeded: true }]), false, { accepted: true })).toBe(false)
 })
 
-it('still records verified task memory after the runner confirms completion', async () => {
-  const t = await setup(async (_request, turn) => turn === 1
-    ? { ...done('Draft', 3), trail: [pressed('Save')] }
-    : readback('Confirmed final result'))
+it('records verified evidence from the original turn without an extra check', async () => {
+  const t = await setup(async () => ({ ...done('Confirmed final result', 3), trail: [pressed('Save'), ...readback('').trail!], check: { accepted: true, issues: [] } }))
   await t.chat('Save the requested fields')
   expect((await t.settle('done')).verified).toBe(true)
+  expect(t.sent).toHaveLength(1)
   await vi.waitFor(() => expect(t.remembered).toHaveLength(1))
   expect(t.remembered[0]).toContain('Confirmed final result')
-  expect(t.remembered[0]).not.toContain('Draft')
 })
 
 it.each<Partial<AgentLoopResult>>([{ asked: true }, { stopped: 'calls' }, { pending: 'run_procedure' }, { incomplete: 'More work remains' }])('does not learn an unfinished turn %j', extra => {

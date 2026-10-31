@@ -225,7 +225,6 @@ export interface DelegatedTaskDto {
 }
 
 export interface ChatRequestDto {
-  previouslySaid?: boolean
   engineId: string
   message: string
   history: ChatTurnDto[]

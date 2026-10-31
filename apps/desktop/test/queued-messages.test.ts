@@ -23,7 +23,7 @@ it('ignores a late voice reply after stop, even after its done echo', async () =
   expect(client.chatSend).toHaveBeenCalledTimes(1)
 })
 
-it('starts a late follow-up after completion and preserves the newer draft', async () => {
+it('keeps a recorded late follow-up out of automatic resend and preserves the newer draft', async () => {
   const store = createCometThreads()
   let reply!: (answer: { ok: true; action: 'later'; instruction: string }) => void
   const client = { ...api(), chatSay: () => new Promise<{ ok: true; action: 'later'; instruction: string }>(resolve => { reply = resolve }) }
@@ -33,7 +33,7 @@ it('starts a late follow-up after completion and preserves the newer draft', asy
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Done' })
   reply({ ok: true, action: 'later', instruction: 'Then this' })
   await pending
-  expect(client.chatSend).toHaveBeenCalledTimes(2)
+  expect(client.chatSend).toHaveBeenCalledTimes(1)
   expect(store.thread('one').draft).toBe('Still typing')
 })
 
@@ -51,23 +51,17 @@ it('shows words sent mid-reply at once in the running work and answers them ther
   expect(store.thread('one').queued).toEqual([])
 })
 
-it('keeps what is for after this turn out of sight, and starts it when the turn ends without showing the words twice', async () => {
+it('queues actual attachments but does not resend recorded aside instructions', async () => {
   const store = createCometThreads()
-  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true, reply: 'That comes next.', action: 'later' as const, instruction: 'Summarize the mail' })) }
+  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true, action: 'relay' as const })) }
   await sendCometMessage(client, store, 'one', 'Find the postings')
   await sendCometMessage(client, store, 'one', 'Then sum up my mail')
   const file = { id: 'file-one', name: 'notes.txt', size: 5 }
   await sendCometMessage(client, store, 'one', 'Look at this too', [file])
-  expect(store.thread('one').workLines).toEqual(['you: Then sum up my mail', 'said: That comes next.', 'you: Look at this too\n\nAttached: notes.txt', `said: ${threadT('en')('aside.next')}`])
-  expect(store.thread('one').queued.map(one => [one.draft, one.shown])).toEqual([['Summarize the mail', true], ['Look at this too', true]])
+  expect(store.thread('one').queued.map(one => one.draft)).toEqual(['Look at this too'])
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Postings found' })
   await flushQueuedCometMessages(client, store, 'one')
-  expect(client.chatSend.mock.calls[1]?.[0]).toMatchObject({ message: 'Summarize the mail' })
-  // Already said in the conversation: no second bubble for it.
-  expect(store.thread('one').messages.filter(m => m.role === 'user').map(m => m.text)).toEqual(['Find the postings'])
-  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Mail summed up' })
-  await flushQueuedCometMessages(client, store, 'one')
-  expect(client.chatSend.mock.calls[2]?.[0]).toMatchObject({ message: 'Look at this too\n\nAttached: notes.txt', attachments: ['file-one'] })
+  expect(client.chatSend.mock.calls[1]?.[0]).toMatchObject({ message: 'Look at this too\n\nAttached: notes.txt', attachments: ['file-one'] })
 })
 
 it('stops where it is when told to, and what was set to follow stops with it', async () => {
@@ -92,7 +86,7 @@ it('acknowledges at once without a voice, and the words go on after this turn', 
   expect(store.thread('two').queued.map(message => message.draft)).toEqual(['Nothing running to take this'])
   store.setDraft('two', 'still typing')
   store.handleEvent({ type: 'chat:steer-returned', channel: 'bot-two', texts: ['Too late for that turn'] })
-  expect(store.thread('two').queued.map(message => [message.draft, message.shown])).toEqual([['Nothing running to take this', true], ['Too late for that turn', true]])
+  expect(store.thread('two').queued.map(message => [message.draft, message.shown])).toEqual([['Nothing running to take this', true]])
   expect(store.thread('two').draft).toBe('still typing')
 })
 

@@ -74,19 +74,19 @@ it.each([false, true])('marks tool dispatch before an interrupted receipt (rich=
   expect(effects).toBe(1)
 })
 
-it('gives browser work the 120-call ceiling without self-checkpoints', async () => {
+it('gives browser work a fallback call ceiling without progress judgement', async () => {
   const engine = sessionBrain(async job => {
-    expect(job.maxCalls).toBe(120)
+    expect(job.maxCalls).toBe(300)
     expect(job.tools.map(tool => tool.name)).not.toContain('task_plan')
     expect(job.system).not.toContain('task_plan')
     const read = job.tools.find(tool => tool.name === 'read_open_page')!
-    for (let i = 0; i < 120; i++) await read.run({})
+    for (let i = 0; i < 300; i++) await read.run({})
     expect(await read.run({})).toContain('No more calls this turn')
     return { answer: 'Read' }
   })
   const available = ['open_page', 'read_open_page'].map(name => ({ name, description: name, argsSchema: {}, run: async () => 'Fresh report observation' }))
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: available }, 'Read all entries and verify the total')
-  expect(result.steps).toHaveLength(120)
+  expect(result.steps).toHaveLength(300)
   expect(result.stopped).toBe('calls')
 })
 
@@ -275,7 +275,7 @@ it('retains an incomplete phase and stops unproductive calls without granting a 
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return 'Observed workspace' } }] }, 'Perform the requested changes')
   expect(reads).toBe(SESSION_MAX_CALLS - 1)
   expect(result.stopped).toBe('calls')
-  expect(result.incomplete).toContain('Prepare workspace')
+  expect(result.incomplete).toBeUndefined()
 })
 
 it('adds bounded execution room after an observed phase, retaining one session', async () => {

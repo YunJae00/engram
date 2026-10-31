@@ -154,6 +154,7 @@ export function skillIndexLines(skills?: { name: string; description: string }[]
 // follows some and drops the rest.
 export function openRuleLines(): string[] {
   return [
+    'Keep going until the requested task is completely resolved. Persist through execution and verification within the current turn; do not stop at analysis, a plan, or a partial change. When a tool fails, inspect the result and try an appropriate alternative within the authorized scope. Resolve obstacles yourself where possible. End only when the requested outcomes are achieved, the person stops you, or a genuine blocker requires their input or approval. For a human blocker, call ask_person and wait. Do not invent success, repeat completed side effects, or expand the request. Before finishing, verify the result using available evidence and clearly state any unresolved limitation.',
     // The order of resort, said first and plainly. Without it the web tools
     // read as the whole job, and a question about the person's own work goes
     // to a search engine.

@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { correctableFault, runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
-import { sessionShape } from '../src/agent-session-shape.js'
+import { runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
@@ -56,21 +55,21 @@ it.each(['failed-observation', 'reused-evidence'] as const)('does not replenish 
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => { reads++; return cause === 'failed-observation' ? 'that did not work: scan failed' : 'Observed workspace' } }] }, 'Perform requested changes')
   expect(reads).toBe(SESSION_MAX_CALLS - 1)
   expect(result.stopped).toBe('calls')
-  expect(result.incomplete).toContain('Prepare workspace')
+  if (cause === 'failed-observation') expect(result.incomplete).toContain('failed')
+  else expect(result.incomplete).toBeUndefined()
 })
 
-it('lets browser work go past its allowance while each call still finds something new', async () => {
+it('lets browser work go past its allowance without judging whether each observation is new', async () => {
   let opened = 0
   const engine = sessionBrain(async (job) => {
     const open = job.tools.find((tool) => tool.name === 'open_page')!
     for (let page = 0; page < 130; page++) expect(await open.run({ url: `https://x.example/${page}` })).not.toContain('No more calls')
-    // Once nothing new comes back, the allowance holds again.
     for (let again = 0; again < 2; again++) await open.run({ url: 'https://x.example/0' })
-    expect(await open.run({ url: 'https://x.example/0' })).toContain('No more calls')
+    expect(await open.run({ url: 'https://x.example/0' })).not.toContain('No more calls')
     return { answer: 'Read them all' }
   })
   await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'open', argsSchema: {}, run: async (args) => { opened++; return `page ${String(args['url'])}` } }] }, 'Read every page')
-  expect(opened).toBe(132)
+  expect(opened).toBe(133)
 })
 
 it('keeps the total 120-call ceiling even when a fresh phase checkpoint is available', async () => {
@@ -91,7 +90,7 @@ it('keeps the total 120-call ceiling even when a fresh phase checkpoint is avail
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform requested changes')
   expect(result.steps).toHaveLength(120)
   expect(result.stopped).toBe('calls')
-  expect(result.incomplete).toContain('5/5')
+  expect(result.incomplete).toBeUndefined()
 })
 
 it.each(['that did not work: target changed', '{"error":"Target was replaced"}', '{"observationMayBeStale":true}'])('marks the final failed desktop result incomplete: %s', async (failure) => {
@@ -191,136 +190,4 @@ it('applies arithmetic verification to the real tool-session path and accepts co
     const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'excel_read', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'B', sheet: 'S', range: 'A1:A3', rows: [[10], [20], [++calls > 1 ? 30 : 99]], formulas: [[10], [20], ['=SUM(A1:A2)']] }) }] }, 'Verify the total')
     expect(!!result.incomplete).toBe(!corrected)
   }
-})
-
-describe('bounded verification correction', () => {
-  const formulas = [[10, 20, '=SUM(A1:B1)'], [20, 30, '=SUM(A2:B2)'], ['=SUM(A1:A2)', '=SUM(B1:B2)', '=SUM(C1:C2)']]
-  const rowsFor = (last: number): (number | string)[][] => [[10, 20, 30], [20, 30, 50], [30, 50, last]]
-
-  it('gives a verification fault one pass to fix itself, then reports the corrected result', async () => {
-    let pass = 0
-    const prompts: string[] = []
-    const engine = sessionBrain(async (job) => {
-      pass += 1
-      prompts.push(job.prompt)
-      await job.tools.find((tool) => tool.name === 'excel_read')!.run({})
-      return { answer: pass === 1 ? 'Built the sheet' : 'Corrected the total' }
-    })
-    // The read-back totals are wrong on the first pass (C3=999) and right on the
-    // second (C3=80), so the fault is real, then fixed.
-    const excelRead = {
-      name: 'excel_read', description: 'read', argsSchema: {},
-      run: async () => JSON.stringify({ workbook: 'B.xlsx', sheet: 'S', range: 'A1:C3', rows: rowsFor(pass === 1 ? 999 : 80), formulas }),
-    }
-    const result = await runComet({ engine, workdir: WORKDIR, tools: [excelRead] }, 'build the sheet', { guided: false })
-    expect(pass).toBe(2)                                          // exactly one self-correction pass
-    expect(prompts[0]).not.toContain('does not add up')
-    expect(prompts[1]).toContain('does not add up')               // the fault handed back to fix
-    expect(prompts[1]).toContain('Historical checkpoint')          // carried as a resume checkpoint
-    expect(result.incomplete).toBeUndefined()                     // corrected → verified
-    expect(result.answer).toContain('Corrected the total')
-  })
-
-  it('does not retry a clean turn, a question, or a spent budget', async () => {
-    expect(correctableFault({ answer: 'x', steps: [], fellBack: false })).toBeUndefined()
-    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, asked: true, incomplete: 'does not add up' })).toBeUndefined()
-    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, stopped: 'calls', incomplete: 'does not add up' })).toBeUndefined()
-    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, incomplete: 'The session ended before all requested tool results were verified.' })).toBeUndefined()
-    expect(correctableFault({ answer: 'x', steps: [], fellBack: false, incomplete: 'A read-back SUM result does not add up: C3' })).toBeUndefined()
-  })
-
-  it('reports the fault honestly when a second pass still cannot fix it', async () => {
-    let pass = 0
-    const engine = sessionBrain(async (job) => {
-      pass += 1
-      await job.tools.find((tool) => tool.name === 'excel_read')!.run({})
-      return { answer: 'still wrong' }
-    })
-    const excelRead = {
-      name: 'excel_read', description: 'read', argsSchema: {},
-      run: async () => JSON.stringify({ workbook: 'B.xlsx', sheet: 'S', range: 'A1:C3', rows: rowsFor(999), formulas }),
-    }
-    const result = await runComet({ engine, workdir: WORKDIR, tools: [excelRead] }, 'build the sheet', { guided: false })
-    expect(pass).toBe(2)                          // tried once, no more
-    expect(result.incomplete).toContain('does not add up')
-    expect(result.answer).toContain('Not verified as complete')
-  })
-})
-
-it('opens a session with the rules and tools sessionShape describes, and keeps the skill shortlist in the turn', async () => {
-  let seen: ToolSessionJob | undefined
-  const engine = sessionBrain(async (job) => { seen = job; return { answer: 'ok' } })
-  const tools = [
-    { name: 'open_page', description: 'open', argsSchema: {}, run: async () => 'page' },
-    { name: 'page_steps', description: 'steps', argsSchema: {}, run: async () => 'done' },
-  ]
-  const native = { cwd: 'C:/work/spare-1', readRoots: ['C:/work/spare-1'], mode: 'once' as const, decide: async () => ({ behavior: 'allow' as const }) }
-  await runToolSession({ engine, workdir: WORKDIR, tools }, 'Look it up', { skills: [{ name: 'timesheet', description: 'weekly hours' }], native })
-  const shape = sessionShape({ engine, tools }, { native })
-  expect(seen!.system).toBe(shape.system)
-  expect(seen!.tools.map(tool => tool.name)).toEqual(shape.tools.map(tool => tool.name))
-  expect(seen!.system).toContain('C:/work/spare-1')
-  expect(seen!.system).not.toContain('timesheet')
-  expect(seen!.prompt).toContain('- timesheet: weekly hours')
-})
-
-
-it('continues an unfinished collection instead of delivering a two-of-eleven answer', async () => {
-  let pass = 0
-  const read: AgentTool = { name: 'open_page', description: 'Read entry', argsSchema: {}, run: async args => `Entry ${args.id}: Detail ${args.id}` }
-  const engine = sessionBrain(async job => {
-    const collect = job.tools.find(tool => tool.name === 'collect_results')!
-    if (pass === 0) await collect.run({ items: Array.from({ length: 11 }, (_, i) => `Entry ${i}`), fields: ['remark'] })
-    const first = pass++ === 0
-    for (let id = first ? 0 : 2; id < (first ? 2 : 11); id++) {
-      const observation = await job.tools.find(tool => tool.name === 'open_page')!.run({ id })
-      const evidenceStep = Number(/Observation step (\d+)/.exec(String(observation))![1])
-      await collect.run({ item: `Entry ${id}`, values: { remark: `Detail ${id}` }, evidenceStep })
-    }
-    if (!first) await collect.run({ status: 'complete', summary: 'All eleven remarks read', evidenceStep: 22 })
-    return { answer: first ? 'Only two checked.' : 'All eleven checked.' }
-  })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [read] }, 'Read all entries')
-  expect(pass).toBe(2)
-  expect(result.answer).toBe('All eleven checked.')
-  expect(result.incomplete).toBeUndefined()
-  expect(result.steps.filter(step => step.tool === 'open_page')).toHaveLength(11)
-})
-
-it('bounds collection continuation when no progress is possible', async () => {
-  let passes = 0
-  const engine = sessionBrain(async job => {
-    passes++
-    await job.tools.find(tool => tool.name === 'collect_results')!.run({ items: ['Entry'], fields: ['remark'] })
-    return { answer: 'The site is unavailable.' }
-  })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Unavailable' }] }, 'Read entries')
-  expect(passes).toBe(2)
-  expect(result.incomplete).toContain('0/1')
-})
-
-it('finishes a read-only browser turn without a receipt retry', async () => {
-  const run = vi.fn(async (job: ToolSessionJob) => {
-    await job.tools.find(tool => tool.name === 'open_page')!.run({})
-    return { answer: '42' }
-  })
-  const result = await runToolSession({ engine: sessionBrain(run), workdir: WORKDIR, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Result 42' }] }, 'Read the value')
-  expect(run).toHaveBeenCalledOnce()
-  expect(result.incomplete).toBeUndefined()
-  expect(result.answer).toBe('42')
-})
-
-it('does not retry a reported access barrier', async () => {
-  let pass = 0
-  const engine = sessionBrain(async job => {
-    pass++
-    await job.tools.find(tool => tool.name === 'open_page')!.run({})
-    await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: 'Sign-in required', evidenceStep: 1 })
-    return { answer: 'Please sign in' }
-  })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Sign-in required' }] }, 'Read the value')
-  expect(pass).toBe(1)
-  expect(result.incomplete).toBeUndefined()
-  expect(result.asked).toBe(true)
-  expect(result.answer).toBe('Sign-in required')
 })

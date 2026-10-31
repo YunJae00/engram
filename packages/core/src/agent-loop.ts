@@ -67,6 +67,8 @@ export interface AgentLoopDeps {
 }
 
 export interface AgentLoopOptions {
+  tokenBudget?: number
+  onUsage?(tokens: number): void
   waitingForPerson?(): boolean
   // Called before an offered tool starts, including calls whose receipt never arrives.
   onToolStart?(name: string): void
@@ -135,6 +137,8 @@ export interface AgentLoopStep {
 }
 
 export interface AgentLoopResult {
+  tokensUsed?: number
+  budgetExhausted?: boolean
   answer: string
   steps: AgentLoopStep[]
   // Two broken outputs in a row forced the plain-answer path.
