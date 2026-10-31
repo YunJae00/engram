@@ -238,7 +238,7 @@ test('four background previews fit the work area without accepting keyboard focu
   const next = app.waitForEvent('window')
   const id = await app.evaluate(async ({ BrowserWindow }, { target, preload }) => {
     const preview = new BrowserWindow({ width: 268, height: 536, frame: false, focusable: false, show: false,
-      webPreferences: { preload, contextIsolation: true } })
+      webPreferences: { preload, contextIsolation: true, sandbox: false } })
     preview.setIgnoreMouseEvents(true)
     await preview.loadURL(target)
     preview.showInactive()
