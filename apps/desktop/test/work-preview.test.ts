@@ -63,9 +63,27 @@ it('drops a browser capture when its page navigates before capture completes', a
   let url = 'https://example.com/first'
   const page = { isClosed: () => false, url: () => url } as unknown as import('playwright-core').Page
   showBrowserWorkPreview('bot', page)
+  await vi.advanceTimersByTimeAsync(4000)
   url = 'https://example.com/second'
   finish(Buffer.from('stale'))
   await vi.advanceTimersByTimeAsync(1000)
   expect(fake.windows[0].webContents.send.mock.lastCall[1].frames[0].data).toBeUndefined()
+  closeWorkPreview()
+})
+
+it('defers browser rendering and captures until a read/action chain settles', async () => {
+  const { showBrowserWorkPreview, closeWorkPreview } = await import('../src/main/work-preview.js')
+  fake.frame.mockResolvedValue(Buffer.from('safe'))
+  const page = { isClosed: () => false, url: () => 'https://example.com/' } as unknown as import('playwright-core').Page
+  showBrowserWorkPreview('bot', page)
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(fake.windows).toHaveLength(0)
+  expect(fake.frame).not.toHaveBeenCalled()
+  showBrowserWorkPreview('bot', page)
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(fake.frame).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fake.frame).toHaveBeenCalledTimes(1)
+  expect(fake.windows).toHaveLength(1)
   closeWorkPreview()
 })
