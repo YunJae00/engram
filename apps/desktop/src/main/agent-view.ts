@@ -331,7 +331,7 @@ export async function agentViewGo(url: string, lane = activeLaneName()): Promise
 export async function showAgentWindow(show: boolean): Promise<void> {
   const m = mirror
   if (!m) return
-  if (isNativePage(m.page)) return
+  if (isNativePage(m.page) || process.platform === 'darwin') return
   try {
     const { windowId } = (await m.cdp.send('Browser.getWindowForTarget')) as { windowId: number }
     await m.cdp.send('Browser.setWindowBounds', { windowId, bounds: { ...(show ? ON_SCREEN : OFF_SCREEN), windowState: 'normal' } })

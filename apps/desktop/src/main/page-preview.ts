@@ -112,6 +112,12 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   }
   // Bound motion bandwidth; the settled frame retains lossless text detail.
   const CAST = { format: 'jpeg', quality: 80, maxWidth: 1920, maxHeight: 2400, everyNthFrame: 1 } as const
+  const startCast = async () => {
+    const size = page.viewportSize()
+    // Headless Chrome on macOS can retain a surface smaller than its viewport.
+    if (process.platform === 'darwin' && size) await cdp.send('Emulation.setVisibleSize', size)
+    await cdp.send('Page.startScreencast', CAST)
+  }
   // A screencast survives the page being laid out to a new shape but goes on
   // delivering surfaces of the OLD shape (measured, whether the layout came
   // before or after the cast began), so the cast is begun again whenever a
@@ -126,7 +132,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     lastStream = ''
     clearTimeout(motionTimer)
     motionFrame = undefined
-    void cdp.send('Page.stopScreencast').then(() => (alive ? cdp.send('Page.startScreencast', CAST) : undefined)).catch(() => undefined)
+    void cdp.send('Page.stopScreencast').then(() => (alive ? startCast() : undefined)).catch(() => undefined)
   }
   const deliver = (frame: CastFrame) => {
     const size = page.viewportSize()
@@ -189,7 +195,7 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   }
   page.once('close', stop)
   try {
-    await cdp.send('Page.startScreencast', CAST)
+    await startCast()
     void still()
   } catch (error) { await stop(); throw error }
   return stop

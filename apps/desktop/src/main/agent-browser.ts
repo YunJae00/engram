@@ -389,7 +389,8 @@ async function ensureContext(): Promise<Ctx> {
     const ctx = await launchPatiently(() =>
       chromium.launchPersistentContext(profileDir, {
       executablePath,
-      headless: false,
+      // Keep startup, popups and script focus inside Engram on macOS.
+      headless: process.platform === 'darwin',
       // The driver's default drops the sandbox, and the browser says so in a
       // banner on every page; a person's window keeps its sandbox.
       chromiumSandbox: true,
@@ -420,9 +421,7 @@ async function ensureContext(): Promise<Ctx> {
         // page; a test-typed process is spared the banner and changes nothing
         // else they can see. Measured: the banner names that flag alone.
         '--test-type',
-        // The window opens off the screen: the person watches and works in
-        // its mirror inside the app, and can call the window over when the
-        // mirror is not enough. Parked there it still paints.
+        // Windows keeps an off-screen window; macOS renders inside Engram.
         '--window-position=-4000,-4000',
         // Test harness hook: exposes a CDP endpoint so an e2e run can stand in
         // for the person's hands in the agent window. Never set in production.

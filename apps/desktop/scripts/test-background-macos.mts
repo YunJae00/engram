@@ -33,7 +33,7 @@ await build({
   stdin: { contents: `
 import { app, BrowserWindow } from 'electron';
 import { agentCourier } from './apps/desktop/src/main/agent-courier.ts';
-import { closeAgentBrowser } from './apps/desktop/src/main/agent-browser.ts';
+import { closeAgentBrowser, ensureAgentPage } from './apps/desktop/src/main/agent-browser.ts';
 import { desktopAgentTools } from './apps/desktop/src/main/desktop-agent.ts';
 import { closeDesktopAccess } from './apps/desktop/src/main/desktop-access.ts';
 import { closeWorkPreview } from './apps/desktop/src/main/work-preview.ts';
@@ -41,13 +41,22 @@ app.setPath('userData', ${JSON.stringify(join(run, 'userdata'))});
 app.whenReady().then(async () => {
 const win = new BrowserWindow({width: 600, height: 360, title: 'Engram foreground typing fixture', webPreferences: {contextIsolation: true}});
 await win.loadURL('data:text/html,<html><body style="font:20px system-ui;padding:30px"><h2>Engram foreground typing fixture</h2><textarea id="typing" autofocus style="width:100%;height:120px"></textarea></body></html>');
-win.show();win.focus();
+win.show();app.focus({steal:true});win.focus();
+globalThis.backgroundFocusLosses = 0;
+win.on('blur', () => globalThis.backgroundFocusLosses++);
 globalThis.backgroundTool = async (name,args) => {
  const tool=desktopAgentTools('bot-background-fixture').find(t=>t.name===name);
  if(!tool)throw Error('Tool unavailable: '+name);
  return await tool.run(args,{task:'Read and edit the owned fixture draft without sending anything'});
 };
-globalThis.backgroundBrowser = () => agentCourier({lane:'bot-background-fixture'}).fetchPage(${JSON.stringify(browserUrl)});
+globalThis.backgroundBrowser = (lane = 'bot-background-fixture') => agentCourier({lane}).fetchPage(${JSON.stringify(browserUrl)});
+globalThis.backgroundPopup = async () => {
+ const page = await ensureAgentPage('bot-background-fixture');
+ const waiting = page.waitForEvent('popup');
+ await page.evaluate(() => window.open('/popup', 'popup', 'width=600,height=500'));
+ const popup = await waiting; await popup.waitForLoadState('domcontentloaded');
+ await popup.evaluate(() => window.focus());
+};
 globalThis.backgroundClose = async () => {closeWorkPreview();closeDesktopAccess();await closeAgentBrowser({force:true});};
 }).catch(error => {console.error(error);app.exit(1);});
 `, resolveDir: root },
@@ -69,6 +78,8 @@ try {
   app.process().stderr?.on('data', data => process.stderr.write(data))
   const page = await app.firstWindow({ timeout: 20000 })
   await page.locator('#typing').focus()
+  const nativeFocus = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Engram foreground typing fixture')?.isFocused())
+  assert.equal(await nativeFocus(), true, 'The foreground fixture must have native focus before testing')
   const tool = (name: string, args: Record<string, unknown>) => app.evaluate(async (_, { name, args }) => (globalThis as unknown as { backgroundTool(name: string, args: Record<string, unknown>): Promise<unknown> }).backgroundTool(name, args), { name, args })
   const read = await tool('app_read', { app: `window:${target}:0` }) as string
   assert.match(read, /snapshot [a-f0-9]{32}/)
@@ -85,7 +96,11 @@ try {
   assert.equal(await page.evaluate(() => document.hasFocus()), true)
   const browserResult = await app.evaluate(async () => (globalThis as unknown as {backgroundBrowser(): Promise<unknown>}).backgroundBrowser())
   assert.match(JSON.stringify(browserResult), /Engram browser background fixture/)
-  assert.equal(await page.evaluate(() => document.hasFocus()), true, 'Browser startup stole the typing window focus')
+  assert.equal(await nativeFocus(), true, 'Browser startup stole the typing window focus')
+  await app.evaluate(async () => (globalThis as unknown as {backgroundBrowser(lane: string): Promise<unknown>}).backgroundBrowser('bot-background-second'))
+  assert.equal(await nativeFocus(), true, 'Another conversation browser stole native focus')
+  await app.evaluate(async () => (globalThis as unknown as {backgroundPopup(): Promise<void>}).backgroundPopup())
+  assert.equal(await nativeFocus(), true, 'A website popup stole native focus')
   const windows = await tool('list_windows', {}) as string
   await writeFile(join(run, 'windows.txt'), windows)
   const calculatorId = windows.split('\n').filter(line => /계산기|Calculator/.test(line) && !line.includes(' Window —')).map(line => /^- (window:\d+:0) /.exec(line)?.[1]).find(Boolean)
@@ -105,14 +120,16 @@ try {
   }
   await continuingInput
   assert.match(calculatorRead, /579/)
-  assert.equal(await page.evaluate(() => document.hasFocus()), true, 'Calculator stole focus')
+  assert.equal(await nativeFocus(), true, 'Calculator stole focus')
+  const focusLosses = await app.evaluate(() => (globalThis as unknown as {backgroundFocusLosses: number}).backgroundFocusLosses)
+  assert.equal(focusLosses, 0, 'A background action briefly took native focus')
   assert.equal(await page.locator('#typing').inputValue(), input.repeat(3) + ' Calculator stays in the background.')
   const frames = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().includes('work-preview')).map(w => ({ focusable: w.isFocusable(), visible: w.isVisible() })))
   assert(frames.length === 1 && !frames[0]!.focusable)
   await page.screenshot({ path: join(run, 'foreground-input.png') })
   const preview = app.windows().find(w => w.url().includes('work-preview'))
   if (preview) { await new Promise(resolve => setTimeout(resolve, 3000)); await preview.locator('.work-preview-card').first().waitFor({ timeout: 10000 }); await preview.screenshot({ path: join(run, 'work-preview.png') }) }
-  await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, target, backgroundEdit: result.exact, foregroundChanged: result.foregroundChanged, inputPreserved: true, calculator: '123+456=579', browserRead: true, frames }, null, 2))
+  await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, target, backgroundEdit: result.exact, foregroundChanged: result.foregroundChanged, nativeFocusLosses: focusLosses, inputPreserved: true, calculator: '123+456=579', browserRead: true, frames }, null, 2))
   console.log('PASS background app_set through public tool, Korean readback, concurrent foreground typing and nonfocusable preview', run)
 } catch (error) { console.error(error); throw error } finally {
   await app.evaluate(() => (globalThis as unknown as { backgroundClose(): void }).backgroundClose()).catch(() => {})

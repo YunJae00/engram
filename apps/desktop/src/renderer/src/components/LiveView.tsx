@@ -285,7 +285,7 @@ export function LiveView({ open = false, keep = false, children }: { open?: bool
               <div className="live-panel-bar">
                 <Address key={lane} url={url} lane={lane} />
                 <BrowserActions lane={lane} url={url} live={on} />
-                {!native && <button className="secondary live-panel-window" onClick={callWindow}>
+                {!native && api.platform !== 'darwin' && <button className="secondary live-panel-window" onClick={callWindow}>
                   <AppWindow size={12} aria-hidden /> {t(windowOut ? 'live.hideWindow' : 'live.openWindow')}
                 </button>}
                 <button className="sheet-close" aria-label={t('live.close')} onClick={() => setBig(false)}>

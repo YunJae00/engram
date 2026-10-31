@@ -12,6 +12,17 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers())
 describe('compositor previews', () => {
+  it('sizes the Mac headless surface before opening and restarting the stream', async () => {
+    vi.useFakeTimers()
+    const { page, cdp } = fixture()
+    const stop = await startPagePreview(page, vi.fn())
+    if (process.platform === 'darwin') expect(cdp.send).toHaveBeenCalledWith('Emulation.setVisibleSize', { width: 1280, height: 860 })
+    else expect(cdp.send).not.toHaveBeenCalledWith('Emulation.setVisibleSize', expect.anything())
+    vi.spyOn(page, 'viewportSize').mockReturnValue({ width: 720, height: 600 })
+    await vi.advanceTimersByTimeAsync(1200)
+    if (process.platform === 'darwin') expect(cdp.send).toHaveBeenCalledWith('Emulation.setVisibleSize', { width: 720, height: 600 })
+    await stop()
+  })
   it('holds input until capture restores the compositor without blocking other pages', async () => {
     vi.useFakeTimers()
     const { page, shot } = fixture()
