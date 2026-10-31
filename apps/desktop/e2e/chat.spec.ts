@@ -433,7 +433,8 @@ test('"@" offers only the apps turned on in settings and puts the chosen one in 
   await composer.fill('')
   await composer.pressSequentially('@')
   await expect(menu.getByRole('option')).toHaveCount(12)
-  expect((await menu.boundingBox())!.height).toBeLessThanOrEqual(320)
+  // Chromium transforms can round a CSS pixel boundary by a tiny fraction.
+  expect((await menu.boundingBox())!.height).toBeLessThanOrEqual(320.01)
   for (let i = 0; i < 11; i++) await composer.press('ArrowDown')
   await expect(menu.getByRole('option').last()).toBeInViewport()
   await composer.press('Tab')
