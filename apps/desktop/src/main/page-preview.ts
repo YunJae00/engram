@@ -2,6 +2,7 @@ import type { CDPSession, Page } from 'playwright-core'
 import { flog } from './flog.js'
 import { createPreviewPool } from './preview-pool.js'
 import { serialWork } from './serial-work.js'
+import { macBrowserScale } from './browser-macos.js'
 
 export interface PreviewFrame { data: string; width: number; height: number }
 interface CastFrame { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
@@ -38,12 +39,28 @@ async function capture(page: Page): Promise<PreviewFrame> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
   // Use the page's owning session: another CDP session restores its own empty
   // emulation settings after capture, overwriting the page's device scale.
-  const shot = await page.screenshot({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
+  const scale = macBrowserScale(page.context())
+  const shot = scale === undefined
+    ? await page.screenshot({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
+    : await captureScaled(page, size, scale)
   const current = page.viewportSize()
   if (current && (current.width !== size.width || current.height !== size.height)) {
     throw new Error('Browser viewport changed during capture')
   }
   return { data: shot.toString('base64'), ...size }
+}
+
+async function captureScaled(page: Page, size: { width: number; height: number }, scale: number): Promise<Buffer> {
+  const session = await page.context().newCDPSession(page)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    // CDP-attached contexts have no device scale option; scale the capture, not the page layout.
+    const result = await Promise.race([
+      session.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { x: 0, y: 0, ...size, scale } }),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Browser preview capture timed out')), 5000) }),
+    ])
+    return Buffer.from(result.data, 'base64')
+  } finally { clearTimeout(timer); await session.detach().catch(() => undefined) }
 }
 
 export function captureSharpFrame(page: Page): Promise<PreviewFrame> {

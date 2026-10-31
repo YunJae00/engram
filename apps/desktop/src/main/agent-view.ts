@@ -334,7 +334,7 @@ export async function showAgentWindow(show: boolean): Promise<void> {
   if (isNativePage(m.page)) return
   try {
     const { windowId } = (await m.cdp.send('Browser.getWindowForTarget')) as { windowId: number }
-    await m.cdp.send('Browser.setWindowBounds', { windowId, bounds: { ...(show ? ON_SCREEN : OFF_SCREEN), windowState: 'normal' } })
+    await m.cdp.send('Browser.setWindowBounds', { windowId, bounds: !show && process.platform === 'darwin' ? { windowState: 'minimized' } : { ...(show ? ON_SCREEN : OFF_SCREEN), windowState: 'normal' } })
     if (show) await m.page.bringToFront().catch(() => undefined)
   } catch (err) {
     flog('agent-view', `window move failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)

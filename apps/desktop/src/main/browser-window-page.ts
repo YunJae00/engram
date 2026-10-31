@@ -4,8 +4,8 @@ import type { BrowserContext, Page } from 'playwright-core'
 // They still share the same browser context, profile and session cookies.
 export async function createWindowPage(context: BrowserContext, size: { width: number; height: number }): Promise<Page> {
   const existing = context.pages().find((page) => !page.isClosed())
-  if (!existing) return context.newPage()
-  const cdp = await context.newCDPSession(existing)
+  const cdp = existing ? await context.newCDPSession(existing) : await context.browser()?.newBrowserCDPSession()
+  if (!cdp) throw new Error('Browser is not connected')
   const candidates = new Set<Page>()
   let targetId: string | undefined
   let resolvePage!: (page: Page) => void
@@ -33,11 +33,13 @@ export async function createWindowPage(context: BrowserContext, size: { width: n
   try {
     const created = await cdp.send('Target.createTarget', {
       url: 'about:blank', newWindow: true, left: -4000, top: -4000,
-      ...size, windowState: 'normal', background: false, focus: false,
+      ...size, windowState: process.platform === 'darwin' ? 'minimized' : 'normal', background: true, focus: false,
     })
     targetId = created.targetId
     for (const page of candidates) void inspect(page)
-    return await ready
+    const page = await ready
+    if (process.platform === 'darwin') await page.setViewportSize(size)
+    return page
   } catch (error) {
     if (targetId) await cdp.send('Target.closeTarget', { targetId }).catch(() => undefined)
     throw error

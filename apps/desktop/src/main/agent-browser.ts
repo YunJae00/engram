@@ -12,6 +12,7 @@ import { markAgentProfile } from './agent-profile.js'
 import { reserveRoom } from './memory-plan.js'
 import { observationOf, readFrames } from './page-reader.js'
 import { createWindowPage } from './browser-window-page.js'
+import { launchMacBrowser } from './browser-macos.js'
 import { BrowserLanes } from './browser-lanes.js'
 import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
 import { nativePagesVisible } from './native-layout.js'
@@ -387,7 +388,7 @@ async function ensureContext(): Promise<Ctx> {
     await markAgentProfile(profileDir).catch(() => undefined)
     flog('agent-browser', `launching ${executablePath}`)
     const ctx = await launchPatiently(() =>
-      chromium.launchPersistentContext(profileDir, {
+      (process.platform === 'darwin' ? launchMacBrowser : chromium.launchPersistentContext.bind(chromium))(profileDir, {
       executablePath,
       headless: false,
       // The driver's default drops the sandbox, and the browser says so in a

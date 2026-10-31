@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events'
 import type { Page } from 'playwright-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { captureSharpFrame, resizePreview, startPagePreview, withPreviewInput } from '../src/main/page-preview.js'
+const scaled = vi.hoisted(() => ({ value: undefined as number | undefined }))
+vi.mock('../src/main/browser-macos.js', () => ({ macBrowserScale: () => scaled.value }))
 
 function fixture() {
   const cdp = Object.assign(new EventEmitter(), { send: vi.fn(async () => ({ data: Buffer.from('lossless').toString('base64') })), detach: vi.fn(async () => undefined) })
@@ -10,8 +12,26 @@ function fixture() {
   return { cdp, shot, page: page as unknown as Page }
 }
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.useRealTimers(); scaled.value = undefined })
 describe('compositor previews', () => {
+  it('captures CDP-attached pages at the requested resolution without changing their viewport', async () => {
+    scaled.value = 2
+    const { page, cdp, shot } = fixture()
+    await expect(captureSharpFrame(page)).resolves.toMatchObject({ width: 1280, height: 860 })
+    expect(shot).not.toHaveBeenCalled()
+    expect(cdp.send).toHaveBeenCalledWith('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false, clip: { x: 0, y: 0, width: 1280, height: 860, scale: 2 } })
+    expect(cdp.detach).toHaveBeenCalledOnce()
+  })
+
+  it('bounds CDP capture and detaches its session when the compositor stalls', async () => {
+    vi.useFakeTimers(); scaled.value = 2
+    const { page, cdp } = fixture()
+    cdp.send.mockImplementation(() => new Promise(() => {}))
+    const failed = expect(captureSharpFrame(page)).rejects.toThrow('capture timed out')
+    await vi.advanceTimersByTimeAsync(5000)
+    await failed
+    expect(cdp.detach).toHaveBeenCalledOnce()
+  })
   it('holds input until capture restores the compositor without blocking other pages', async () => {
     vi.useFakeTimers()
     const { page, shot } = fixture()
