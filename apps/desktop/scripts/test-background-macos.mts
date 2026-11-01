@@ -47,7 +47,8 @@ win.on('blur', () => globalThis.backgroundFocusLosses++);
 globalThis.backgroundTool = async (name,args) => {
  const tool=desktopAgentTools('bot-background-fixture').find(t=>t.name===name);
  if(!tool)throw Error('Tool unavailable: '+name);
- return await tool.run(args,{task:'Read and edit the owned fixture draft without sending anything'});
+ const context={task:'Read and edit the owned fixture draft without sending anything'};
+ return await (tool.runRich ? tool.runRich(args,context) : tool.run(args,context));
 };
 globalThis.backgroundBrowser = (lane = 'bot-background-fixture') => agentCourier({lane}).fetchPage(${JSON.stringify(browserUrl)});
 globalThis.backgroundPopup = async () => {
@@ -86,11 +87,13 @@ try {
   const snapshot = /snapshot ([a-f0-9]{32})/.exec(read)![1]
   const control = /^(c\d+) .*"Fixture message"/m.exec(read)![1]
   const input = 'I keep typing while Engram edits another app. '
-  const typing = page.locator('#typing').pressSequentially(input.repeat(3), { delay: 45 })
+  const typing = page.locator('#typing').pressSequentially(input.repeat(3), { delay: 45 }).catch(error => error)
   const passive = await tool('read_desktop', { app: `window:${target}:0` })
   assert.match(String(passive), /snapshot/)
   assert.equal(await nativeFocus(), true, 'Background observation stole focus')
-  assert.match(String(await tool('look_desktop', { app: `window:${target}:0` })), /Screenshot of/)
+  const screenshot = await tool('look_desktop', { app: `window:${target}:0` }) as { text: string; image?: { data: string } }
+  assert.match(screenshot.text, /Screenshot of/)
+  assert(screenshot.image?.data.length, 'The vision observation must contain an actual image')
   assert.equal(await nativeFocus(), true, 'Background screenshot stole focus')
   const refusal = JSON.parse(await tool('desktop_action', { kind: 'type', snapshot: JSON.parse(String(passive)).snapshot, text: 'must not arrive' }) as string)
   assert.equal(refusal.error, 'policy_denied')
@@ -100,7 +103,8 @@ try {
   assert.equal(result.exact, true)
   assert.equal(result.foregroundChanged, false)
   assert.match(result.appNow, /한글 초안/)
-  await typing
+  const typingError = await typing
+  if (typingError instanceof Error) throw typingError
   assert.equal(await page.locator('#typing').inputValue(), input.repeat(3))
   assert.equal(await page.evaluate(() => document.hasFocus()), true)
   const browserResult = await app.evaluate(async () => (globalThis as unknown as {backgroundBrowser(): Promise<unknown>}).backgroundBrowser())
