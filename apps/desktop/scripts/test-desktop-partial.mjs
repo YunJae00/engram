@@ -6,9 +6,17 @@ import { testDesktopUia } from './test-desktop-uia.mjs'
 export async function testDesktopPartial(helper, fixture, target, result, until, desktop, output) {
   result.stage = 'partial-capture'
   await fixture.request('dense')
-  const partialView = await helper.request('observe', target)
+  let partialView = await helper.request('observe', target)
   assert.equal(partialView.truncated, true)
   assert.equal(partialView.captureSafe, true)
+  const region = partialView.nodes.find(node => node.controlType === 'Button' && node.runtimeId !== partialView.focusedControl && !node.password)
+  assert.ok(region, 'The dense fixture must expose a separate button region')
+  const drill = await helper.request('observe', { ...target, root: region.id, snapshot: partialView.snapshot })
+  assert.equal(drill.root, region.id)
+  assert.ok(drill.nodes.some(node => node.name === region.name))
+  assert.equal(drill.focusedEditable, false, 'A subtree must not authorize typing outside that region')
+  await assert.rejects(helper.request('observe', { ...target, root: region.id, snapshot: '0'.repeat(32) }), /snapshot/)
+  partialView = await helper.request('observe', target)
   await helper.request('capture', { ...target, snapshot: partialView.snapshot })
   result.stage = 'accessibility-backends'
   result.uiaNormal = testDesktopUia(desktop, output, target, false)
