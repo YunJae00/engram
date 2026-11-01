@@ -229,62 +229,40 @@ test('settings show computer use state without a permission switch', async () =>
 })
 
 
-test('four background previews fit the work area without accepting keyboard focus', async () => {
-  const target = page.url().split('#')[0]! + '#work-preview'
-  const next = app.waitForEvent('window')
-  const id = await app.evaluate(async ({ BrowserWindow }, { target, preload }) => {
-    const preview = new BrowserWindow({ width: 268, height: 536, frame: false, focusable: false, show: false,
-      webPreferences: { preload, contextIsolation: true, sandbox: false } })
-    preview.setIgnoreMouseEvents(true)
-    await preview.loadURL(target)
-    preview.showInactive()
-    return preview.id
-  }, { target, preload: fileURLToPath(new URL('../out/preload/index.mjs', import.meta.url)) })
-  const preview = await next
-  try {
-    await expect(preview.locator('.work-preview')).toBeVisible()
-    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.webContents.send('engram:event', {
-      type: 'desktop:preview', frames: Array.from({ length: 4 }, (_, i) => ({ id: String(i), title: `Background app ${i}`, at: Date.now() })),
-    }), id)
-    await expect(preview.locator('.work-preview-card')).toHaveCount(4)
-    expect(await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)!.isFocusable(), id)).toBe(false)
-    await expect.poll(() => preview.locator('.work-preview-card').evaluateAll(cards => cards.every(card => {
-      const box = card.getBoundingClientRect()
-      return box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
-    }))).toBe(true)
-    await expect.poll(() => preview.locator('.work-preview-card').first().evaluate(card => Number(getComputedStyle(card).opacity))).toBe(1)
-    const layers = await preview.locator('.work-preview-card').evaluateAll(cards => cards.map(card => ({
-      top: card.getBoundingClientRect().top, bottom: card.getBoundingClientRect().bottom,
-      blur: getComputedStyle(card).filter, opacity: Number(getComputedStyle(card).opacity),
-    })))
-    expect(layers[1]!.top).toBeLessThan(layers[0]!.bottom)
-    expect(layers[0]!.blur).toBe('blur(0px)')
-    expect(layers[3]!.opacity).toBeLessThan(layers[0]!.opacity)
-    await preview.emulateMedia({ reducedMotion: 'reduce' })
-    expect(await preview.locator('.work-preview-card').first().evaluate(card => getComputedStyle(card).transitionDuration)).toBe('0s')
-    await preview.screenshot({ path: join(TMP, 'background-work-four-previews.png') })
-  } finally { await preview.close() }
-})
-
-
-test('computer controls open only on request and preview placement is reachable', async () => {
+test('session app previews stay inside the conversation and preserve drafts', async () => {
   await orbit()
   await page.getByTestId('mission-tile-0').locator('.mission-enter').click()
-  const dialog = page.getByTestId('computer-dialog')
-  await expect(dialog).toHaveCount(0)
+  const bots = await page.evaluate(() => window.engram.botsList())
+  const one = bots.find(bot => bot.name === 'Computer review')!
+  const two = bots.find(bot => bot.name === 'Planning review')!
+  const windows = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)
   await page.getByTestId('bots-input').fill('Keep my draft')
+  await page.getByTestId('bots-input').focus()
+  const frames = [one, two].map((bot, i) => ({ id: `frame-${i}`, lane: `bot-${bot.id}`, title: `Owned app ${i}`, at: Date.now() }))
+  await app.evaluate(({ BrowserWindow }, frames) => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'desktop:preview', frames })
+  }, frames)
+  const preview = page.getByTestId('work-preview')
+  await expect(preview).toHaveAttribute('data-lane', `bot-${one.id}`)
+  await expect(page.getByTestId('bots-input')).toBeFocused()
+  await preview.getByRole('button', { name: 'Expand app activity' }).click()
+  await expect(preview).toContainText('Owned app 0')
+  await expect(preview).not.toContainText('Owned app 1')
+  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(windows)
+  expect(await preview.evaluate(element => {
+    const box = element.getBoundingClientRect(), parent = element.closest('.bots-chat')!.getBoundingClientRect()
+    return box.left >= parent.left && box.right <= parent.right && box.top >= parent.top && box.bottom <= parent.bottom
+  })).toBe(true)
+  await preview.getByRole('button', { name: 'Hide app activity' }).click()
+  await expect(preview).toHaveCount(0)
+  await page.getByTestId('work-preview-reopen').click()
+  await expect(preview).toBeVisible()
+  await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
   await page.getByTestId('bots-input-add').click()
   await page.getByTestId('computer-controls-open').click()
+  const dialog = page.getByTestId('computer-dialog')
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('combobox').selectOption('hidden')
-  expect(await page.evaluate(() => window.engram.desktopPreviewPlacement())).toBe('hidden')
-  await dialog.getByRole('combobox').selectOption('bottom-left')
-  expect(await page.evaluate(() => window.engram.desktopPreviewPlacement())).toBe('bottom-left')
-  await page.screenshot({ path: join(TMP, 'desktop-quality', 'computer-controls.png') })
   await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
-  await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
-  await page.evaluate(() => window.engram.desktopPreviewPlacement('top-right'))
 })
 
 test('foreground access requires the explicit session control button', async () => {

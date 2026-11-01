@@ -10,6 +10,8 @@ describe('pendingStatus', () => {
       { type: 'tools', lines: [lines[3]] }, { type: 'said', text: 'I will compare the results.' },
     ])
     expect(workLabel('desktop_sequence: internal arguments')).toBe('Using the computer')
+    expect(workLabel('← find_procedure: nothing has been saved')).toBe('Using your memory')
+    expect(workLabel('  <- app_read: internal snapshot')).toBe('Working with an app')
     expect(workLabel('some_new_tool: details')).toBe('Some new tool')
   })
   it('says the step the work is on', () => {
