@@ -5,7 +5,9 @@ export interface DesktopFailureObservation {
   hint: string
 }
 
-const PRECONDITIONS: { pattern: RegExp; code: DesktopFailureObservation['error'] }[] = [
+const PRECONDITIONS: { pattern: RegExp; code: DesktopFailureObservation['error']; hint?: string }[] = [
+  { pattern: /exposes its controls: use app_read|Read the app with app_read first/i, code: 'policy_denied', hint: 'Read the app with app_read and use its provider controls; use the screen lane only when the reading reports sparse controls.' },
+  { pattern: /^Invalid desktop action\.|^Desktop action arguments must|^Use an exact accessible name and controlType|^Use an element ID from the starting observation/i, code: 'action_failed', hint: 'Correct the arguments to match the tool schema and the latest observed target before retrying.' },
   { pattern: /snapshot is (?:stale|no longer held)|snapshot belongs to a different window|read the app before acting|window changed\. Read it again before acting|control changed\. Read the app again|selected control changed\. Observe|field changed\. Read/i, code: 'stale_snapshot' },
   { pattern: /unknown control ID|control is no longer there|control is no longer available\. Observe/i, code: 'element_not_found' },
   { pattern: /window identity is ambiguous|more than one .*window|planned control changed or is ambiguous|next target is ambiguous/i, code: 'ambiguous' },
@@ -24,6 +26,7 @@ export function desktopFailure(error: unknown, options: { preparing?: boolean; d
   return {
     error: timeout ? 'timeout' : known?.code ?? 'action_failed', delivery, retry: safe ? 'safe' : 'unsafe',
     hint: options.container ? 'Read the app to check the effect, then target an inner actionable cell or button with the same name instead of repeating the container press.'
+      : known?.hint ? known.hint
       : known?.code === 'policy_denied' ? 'Ask the person to handle the protected surface; do not bypass the restriction.'
       : safe ? 'Read the app again and select a fresh matching control before retrying.'
       : 'Read the app and check whether the action took effect before deciding what remains to do.',

@@ -21,3 +21,8 @@ it('limits transient recovery to preparation and preserves stop', () => {
   expect(desktopFailure('The pointer target changed').retry).toBe('unsafe')
   expect(recoverablePreparation('Stopped by the user; window or desktop changed')).toBe(false)
 })
+
+it('preserves actionable guidance for provider routing and invalid arguments', () => {
+  expect(desktopFailure('Fixture exposes its controls: use app_read')).toMatchObject({ error: 'policy_denied', retry: 'safe', hint: expect.stringContaining('app_read') })
+  expect(desktopFailure('Invalid desktop action. Use one target.')).toMatchObject({ delivery: 'not_delivered', retry: 'safe', hint: expect.stringContaining('arguments') })
+})

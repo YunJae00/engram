@@ -185,7 +185,7 @@ describe('the quiet lane keeps the apps it has read', () => {
     const context = { task: 'Inspect the fixture' }
     await expect(tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Fixture' }, context)).rejects.toThrow(/use app_read, app_set, app_press and app_text/)
     await expect(tools.find((tool) => tool.name === 'look_desktop')!.runRich!({ app: 'Fixture' }, context)).rejects.toThrow(/exposes its controls/)
-    expect(JSON.parse(await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context))).toMatchObject({ error: 'action_failed', retry: 'unsafe' })
+    expect(JSON.parse(await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context))).toMatchObject({ error: 'policy_denied', retry: 'safe' })
     expect(fake.read).not.toHaveBeenCalled()
     expect(fake.act).not.toHaveBeenCalled()
     await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
