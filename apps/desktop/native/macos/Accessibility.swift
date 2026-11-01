@@ -31,6 +31,9 @@ func rectangle(_ bounds: CGRect) -> [String: Double] {
 func sensitive(_ value: String) -> Bool {
     value.range(of: #"(?i)\b(sign[ -]?in|log[ -]?in|password|passkey|credential|authentication|verification code|security code|terminal|keychain|system settings|system preferences|security settings)\b|로그인|비밀번호|암호|인증"#, options: .regularExpression) != nil
 }
+func protectedApplication(_ identifier: String) -> Bool {
+    ["com.apple.systempreferences", "com.apple.securityagent", "com.apple.loginwindow"].contains(identifier.lowercased()) || sensitive(identifier)
+}
 func sensitiveControl(_ role: String, _ subrole: String, _ label: String) -> Bool {
     if subrole == kAXSecureTextFieldSubrole { return true }
     if role == kAXWindowRole { return sensitive(label) }
@@ -60,7 +63,7 @@ func resolveWindow(_ id: CGWindowID, pid: pid_t) throws -> Target {
           let rawBounds = info[kCGWindowBounds as String] as? NSDictionary,
           let bounds = CGRect(dictionaryRepresentation: rawBounds),
           !sensitive(application.localizedName ?? ""),
-          !sensitive(application.bundleIdentifier ?? "") else { throw DesktopFailure("This window is unavailable or requires manual control") }
+          !protectedApplication(application.bundleIdentifier ?? "") else { throw DesktopFailure("This window is unavailable or requires manual control") }
     let app = AXUIElementCreateApplication(owner)
     AXUIElementSetMessagingTimeout(app, 1)
     guard let candidates = attribute(app, kAXWindowsAttribute) as? [AXUIElement] else { throw DesktopFailure("This app did not expose its windows") }
@@ -171,6 +174,12 @@ func appAliases(url: URL?) -> [String] {
     for key in ["CFBundleDisplayName", "CFBundleName", "CFBundleExecutable"] {
         values.append(bundle.infoDictionary?[key] as? String ?? "")
         values.append(bundle.localizedInfoDictionary?[key] as? String ?? "")
+    }
+    for locale in bundle.localizations.prefix(64) {
+        guard let path = bundle.path(forResource: "InfoPlist", ofType: "strings", inDirectory: nil, forLocalization: locale),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { continue }
+        for key in ["CFBundleDisplayName", "CFBundleName"] { values.append(info[key] as? String ?? "") }
     }
     return Array(Set(values.filter { !$0.isEmpty }))
 }
