@@ -86,7 +86,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
       entry.at = Date.now(); entry.unavailable = false
     } else { delete entry.data; entry.unavailable = true }
   }).catch(() => {
-    if (entries.get(key) === entry) { delete entry.data; entry.unavailable = true }
+    if (entries.get(key) === entry && desktopBinding(binding.lane) === binding) { delete entry.data; entry.unavailable = true }
   }).finally(() => {
     clearTimeout(timeout)
     if (pending.get(key) === controller) pending.delete(key)

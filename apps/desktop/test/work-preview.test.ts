@@ -67,3 +67,18 @@ it('keeps prior snapshots in the same session until access is revoked without re
   next.readable = false
   expect(workPreviews(first.lane)).toEqual([])
 })
+
+it('preserves a confirmed snapshot when its refresh fails after switching targets', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const first = binding(1); showWorkPreview(first); await vi.advanceTimersByTimeAsync(3000)
+  const at = workPreviews(first.lane)[0]!.at
+  let reject!: (error: Error) => void
+  fake.image.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
+  showWorkPreview(first)
+  const next = { ...first, source: 'window:2:0', name: 'Other app' }
+  fake.bindings.set(first.lane, next); showWorkPreview(next)
+  reject(new Error('The app changed before the screenshot was ready.'))
+  await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(first.lane)).toHaveLength(2)
+  expect(workPreviews(first.lane)[1]).toMatchObject({ at, data: 'data:image/jpeg;base64,safe', unavailable: false })
+})
