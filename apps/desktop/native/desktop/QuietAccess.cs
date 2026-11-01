@@ -28,7 +28,7 @@ internal sealed class QuietSnapshot
     internal readonly Dictionary<string, QuietControl> Controls = new Dictionary<string, QuietControl>();
 }
 
-internal sealed class QuietAccess : IDisposable
+internal sealed partial class QuietAccess : IDisposable
 {
     [StructLayout(LayoutKind.Sequential)] private struct LastInput { internal uint Size; internal uint Time; }
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LastInput info);
@@ -111,107 +111,6 @@ internal sealed class QuietAccess : IDisposable
             AutomationElement.IsTextPatternAvailableProperty, AutomationElement.RuntimeIdProperty, AutomationElement.IsKeyboardFocusableProperty, ValuePattern.IsReadOnlyProperty }) cache.Add(property);
         cache.Add(ValuePattern.Pattern);
         return cache;
-    }
-
-    // What the app shows and offers: editable fields and pressable items first, then the text on screen.
-    // A Chromium app exposes its tree only once a client has asked, and re-lays it out after a press, so a
-    // sparse or faltering first read is tried again a moment later rather than reported as the app.
-    internal object Scan(DesktopTarget target, string find)
-    {
-        object result = null;
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            int nodes;
-            try { result = ScanOnce(target, find, out nodes); }
-            catch (ElementNotAvailableException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
-            catch (System.Runtime.InteropServices.COMException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
-            if (nodes >= SparseNodes || attempt == 2) break;
-            System.Threading.Thread.Sleep(400);
-        }
-        return result;
-    }
-    private object ScanOnce(DesktopTarget target, string find, out int nodes)
-    {
-        if (target.Minimized) throw new InvalidOperationException("Restore this window before reading it");
-        var root = Validate(target);
-        var snapshot = new QuietSnapshot { Id = Guid.NewGuid().ToString("N"), Target = target, RootRuntime = AutomationSession.RuntimeId(root) };
-        var wanted = string.IsNullOrWhiteSpace(find) ? null : find.Trim();
-        var watch = Stopwatch.StartNew();
-        AutomationElementCollection interactive, textual;
-        using (Cache().Activate())
-        {
-            interactive = root.FindAll(TreeScope.Descendants, TypeCondition(Interactive));
-            textual = root.FindAll(TreeScope.Descendants, TypeCondition(Textual));
-        }
-        var controls = new List<object>();
-        var texts = new List<object>();
-        var remaining = ReadLimit;
-        var seen = new HashSet<string>();
-        var skippedControls = 0;
-        var ordered = new List<AutomationElement>();
-        foreach (AutomationElement element in interactive)
-            if (Has(element, AutomationElement.IsValuePatternAvailableProperty) && (element.Cached.ControlType == ControlType.Edit || element.Cached.ControlType == ControlType.Document)) ordered.Add(element);
-        foreach (AutomationElement element in interactive)
-            if (!(Has(element, AutomationElement.IsValuePatternAvailableProperty) && (element.Cached.ControlType == ControlType.Edit || element.Cached.ControlType == ControlType.Document))) ordered.Add(element);
-        foreach (var element in ordered)
-        {
-            var info = element.Cached;
-            // A field the person could type into: links and radio buttons carry a value too, but take none.
-            var editable = Has(element, AutomationElement.IsValuePatternAvailableProperty) && !info.IsPassword && !ReadOnly(element)
-                && (info.ControlType == ControlType.Edit || (info.ControlType == ControlType.Document && info.IsKeyboardFocusable));
-            var name = Clip(info.Name, Math.Min(NameLimit, remaining));
-            string value = null;
-            object pattern;
-            if (editable && element.TryGetCachedPattern(ValuePattern.Pattern, out pattern))
-            {
-                try { value = Clip(((ValuePattern)pattern).Current.Value, Math.Min(ValueLimit, remaining)); } catch (ElementNotAvailableException) { value = null; }
-            }
-            if (wanted != null && !editable && (name.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0) && (value == null || value.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0)) continue;
-            if (controls.Count >= MaxControls || remaining <= 0) { skippedControls++; continue; }
-            var id = Register(snapshot, element, seen, "c", controls.Count);
-            if (id == null) continue;
-            var placeholder = value != null && value.Trim().Length > 0 && Flat(value) == Flat(info.Name);
-            controls.Add(new
-            {
-                id = id, type = info.ControlType.ProgrammaticName.Replace("ControlType.", ""), name = name,
-                value = value, placeholder = placeholder ? name : null,
-                can = new
-                {
-                    set = editable, press = Has(element, AutomationElement.IsInvokePatternAvailableProperty) || Has(element, AutomationElement.IsTogglePatternAvailableProperty)
-                        || Has(element, AutomationElement.IsSelectionItemPatternAvailableProperty) || Has(element, AutomationElement.IsExpandCollapsePatternAvailableProperty),
-                    text = Has(element, AutomationElement.IsTextPatternAvailableProperty),
-                },
-                enabled = info.IsEnabled, offscreen = info.IsOffscreen, focused = info.HasKeyboardFocus, secret = info.IsPassword,
-            });
-            remaining = Math.Max(0, remaining - name.Length - (value == null ? 0 : value.Length));
-        }
-        var lines = new List<AutomationElement>();
-        foreach (AutomationElement element in textual)
-        {
-            var name = element.Cached.Name;
-            if (string.IsNullOrWhiteSpace(name)) continue;
-            if (wanted != null && name.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0) continue;
-            lines.Add(element);
-        }
-        // The end of a conversation is what matters most; keep the tail when there is too much.
-        var skippedTexts = Math.Max(0, lines.Count - MaxTexts);
-        foreach (var element in lines.Skip(skippedTexts))
-        {
-            if (remaining <= 0) { skippedTexts++; continue; }
-            var id = Register(snapshot, element, seen, "t", texts.Count);
-            if (id == null) continue;
-            var text = Clip(element.Cached.Name, Math.Min(NameLimit, remaining));
-            texts.Add(new { id = id, text = text });
-            remaining = Math.Max(0, remaining - text.Length);
-        }
-        Guard.Same(target);
-        Remember(snapshot);
-        nodes = controls.Count + texts.Count;
-        return new
-        {
-            window = target.Id, pid = target.Pid, title = target.Title, snapshot = snapshot.Id, controls = controls, texts = texts,
-            skippedControls = skippedControls, skippedTexts = skippedTexts, ms = watch.ElapsedMilliseconds, state = State(target),
-        };
     }
 
     private static string Register(QuietSnapshot snapshot, AutomationElement element, HashSet<string> seen, string prefix, int index)

@@ -1,3 +1,5 @@
+import { sparseDesktopTree, SCREEN_HINT } from './desktop-sparse.js'
+import { appNameMatch, type DesktopReadOptions } from 'core'
 import type { QuietObservationDto, QuietPressResultDto, QuietReadResultDto, QuietSetResultDto, QuietStateDto } from '../shared/desktop.js'
 import { bindDesktopForLane, desktopBinding, type DesktopBinding } from './desktop-access.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
@@ -16,7 +18,7 @@ const SETTLE_POLL_MS = 1_000
 // tools are turned away from these, since the person would lose the mouse for
 // nothing the providers could not do.
 const COVERED_MS = 15 * 60_000
-const covered = new Map<string, Map<string, { title: string; at: number; verdict: 'covered' | 'bare' }>>()
+const covered = new Map<string, Map<string, { title: string; aliases?: string[]; at: number; verdict: 'covered' | 'bare' }>>()
 
 // What the quiet lane last found in a window: 'covered' when it exposed controls (the hands tools stay away),
 // 'bare' when it exposed none or a provider refused to act (the hands tools may step in), 'unknown' before any read.
@@ -26,7 +28,7 @@ export function quietVerdict(lane: string, app?: string): { verdict: 'covered' |
   const wanted = app?.trim().toLocaleLowerCase()
   for (const [window, entry] of windows) {
     if (Date.now() - entry.at > COVERED_MS) { windows.delete(window); continue }
-    if (!wanted || entry.title.toLocaleLowerCase().includes(wanted)) return { verdict: entry.verdict, title: entry.title }
+    if (!wanted || `window:${window}:0` === wanted || appNameMatch({ name: entry.title, aliases: entry.aliases }, wanted)) return { verdict: entry.verdict, title: entry.title }
   }
   return { verdict: 'unknown' }
 }
@@ -35,8 +37,8 @@ export function quietCovers(lane: string, app?: string): string | null {
   return found.verdict === 'covered' ? found.title ?? null : null
 }
 function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'bare'): void {
-  const windows = covered.get(lane) ?? new Map<string, { title: string; at: number; verdict: 'covered' | 'bare' }>()
-  windows.set(binding.window, { title: binding.name, at: Date.now(), verdict })
+  const windows = covered.get(lane) ?? new Map<string, { title: string; aliases?: string[]; at: number; verdict: 'covered' | 'bare' }>()
+  windows.set(binding.window, { title: binding.name, aliases: binding.aliases, at: Date.now(), verdict })
   covered.set(lane, windows)
 }
 // A provider that offers a control but will not act on it hands the window to the hands tools.
@@ -72,7 +74,7 @@ async function windowFor(lane: string, app: string, signal?: AbortSignal): Promi
   assertDesktopTurnNotStopped(lane)
   // The window bound for this chat is kept while its title still matches: listing windows again costs up to seconds and re-selects every window.
   const current = desktopBinding(lane)
-  const binding = current && current.readable && !current.stopped && !current.host.closed && (current.source === app.trim() || current.name.toLocaleLowerCase() === app.trim().toLocaleLowerCase()) ? current : await bindDesktopForLane(lane, { app })
+  const binding = current && current.readable && !current.stopped && !current.host.closed && (current.source === app.trim() || appNameMatch(current, app, true)) ? current : await bindDesktopForLane(lane, { app })
   signal?.throwIfAborted()
   if (!binding.readable || binding.stopped || binding.host.closed) throw new Error(`"${binding.name}" is not readable by this chat right now.`)
   return binding
@@ -111,20 +113,23 @@ export async function awaitPersonAway(binding: DesktopBinding, signal?: AbortSig
 
 // Control names by snapshot, so an action can be judged by what it pressed.
 const NAMED_SNAPSHOTS = 12
-const named = new Map<string, Map<string, string>>()
-export function quietControlName(snapshot: string, control: string): string | undefined { return named.get(snapshot)?.get(control) }
+const named = new Map<string, QuietObservationDto>()
+export function quietSnapshot(snapshot: string): QuietObservationDto | undefined { return named.get(snapshot) }
+export function quietControlName(snapshot: string, control: string): string | undefined { return named.get(snapshot)?.controls.find(item => item.id === control)?.name }
 
-export async function quietScan(lane: string, app: string, find: string | undefined, signal?: AbortSignal): Promise<QuietObservationDto> {
+export async function quietScan(lane: string, app: string, find: string | undefined, signal?: AbortSignal, options: DesktopReadOptions = {}): Promise<QuietObservationDto> {
   const binding = await windowFor(lane, app, signal)
   showWorkFrame(binding)
-  const result = await request<QuietObservationDto>(binding, 'quietScan', find ? { find } : {}, signal)
+  const result = await request<QuietObservationDto>(binding, 'quietScan', { ...options, ...(find ? { find } : {}) }, signal)
   signal?.throwIfAborted()
   // Window chrome does not establish access to the app's working area.
   const chrome = /^(close|minimi[sz]e|maximi[sz]e|restore|닫기|최소화|최대화|복원)$/i
   const actionable = result.controls.some(control => !chrome.test(control.name ?? '') && (control.can?.set || control.can?.press))
   showWorkPreview(binding)
-  remember(lane, binding, actionable ? 'covered' : 'bare')
-  named.set(result.snapshot, new Map(result.controls.map(control => [control.id, control.name])))
+  result.sparseTree = !find && sparseDesktopTree(result)
+  if (result.sparseTree) result.hint = SCREEN_HINT
+  if (!find && !options.root && options.mode !== 'skeleton') remember(lane, binding, actionable && !result.sparseTree ? 'covered' : 'bare')
+  named.set(result.snapshot, result)
   while (named.size > NAMED_SNAPSHOTS) named.delete(named.keys().next().value!)
   return result
 }

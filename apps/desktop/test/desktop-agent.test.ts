@@ -3,14 +3,14 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
-  quietScan: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
+  quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
   lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false,
 }))
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
 vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ readControlledDesktop: fake.read, actOnDesktop: fake.act, ensureDesktopControl: fake.ensure, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c9' ? 'Send' : 'New chat' }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -27,6 +27,7 @@ beforeEach(() => {
   fake.lookup.mockImplementation(() => fake.binding)
   fake.available = true
   fake.covered = false
+  fake.quietSnapshot.mockReturnValue(undefined)
   fake.ensure.mockImplementation(async () => fake.binding)
   fake.windows.mockResolvedValue([{ id: 'window:42:0', name: 'Fixture', foreground: true }, { id: 'window:43:0', name: 'Notes' }])
   fake.read.mockResolvedValue(observation())
@@ -50,7 +51,7 @@ describe('desktop image consent and capture validation', () => {
     fake.act.mockClear(); fake.read.mockClear()
     fake.read.mockRejectedValueOnce(new Error('Readback unavailable'))
     expect(JSON.parse(await tool.run(args, { task: 'Replace the entire field' }))).toEqual({
-      dispatched: true, error: 'Readback unavailable', observationMayBeStale: true, requiresVerification: true,
+      dispatched: true, error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe', hint: expect.any(String), observationMayBeStale: true, requiresVerification: true,
     })
     expect(fake.act).toHaveBeenCalledOnce()
     expect(fake.read).toHaveBeenCalledOnce()
@@ -78,7 +79,7 @@ describe('desktop image consent and capture validation', () => {
     expect(await tool.run({ kind: 'key', snapshot: 'before', key: 'Escape' }, { task: 'Stop' })).toContain('ended')
     expect(fake.read).not.toHaveBeenCalled()
     fake.act.mockRejectedValueOnce(new Error('First native failure'))
-    await expect(tool.run({ kind: 'key', snapshot: 'before', key: 'Home' }, { task: 'Move' })).rejects.toThrow('First native failure')
+    expect(JSON.parse(await tool.run({ kind: 'key', snapshot: 'before', key: 'Home' }, { task: 'Move' }))).toMatchObject({ error: 'action_failed', delivery: 'delivery_uncertain', retry: 'unsafe' })
     expect(fake.read).not.toHaveBeenCalled()
   })
   it('offers the computer whenever this build can drive it, and never without the helper', async () => {
@@ -184,7 +185,7 @@ describe('the quiet lane keeps the apps it has read', () => {
     const context = { task: 'Inspect the fixture' }
     await expect(tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Fixture' }, context)).rejects.toThrow(/use app_read, app_set, app_press and app_text/)
     await expect(tools.find((tool) => tool.name === 'look_desktop')!.runRich!({ app: 'Fixture' }, context)).rejects.toThrow(/exposes its controls/)
-    await expect(tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context)).rejects.toThrow(/exposes its controls/)
+    expect(JSON.parse(await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context))).toMatchObject({ error: 'action_failed', retry: 'unsafe' })
     expect(fake.read).not.toHaveBeenCalled()
     expect(fake.act).not.toHaveBeenCalled()
     await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
@@ -215,8 +216,22 @@ describe('a quiet press', () => {
       fake.quietScan.mockRejectedValueOnce(new Error('Readback unavailable'))
       const failedRead = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c3' }, { task: 'Open a chat', onObservedAfterAction: observed })
       await vi.advanceTimersByTimeAsync(400)
-      expect(JSON.parse(await failedRead)).toMatchObject({ pressed: 'invoke', observationMayBeStale: true, error: expect.stringContaining('Readback unavailable') })
+      expect(JSON.parse(await failedRead)).toMatchObject({ pressed: 'invoke', observationMayBeStale: true, error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe' })
       expect(observed).not.toHaveBeenCalled()
     } finally { vi.useRealTimers() }
   })
+})
+
+it('returns an unsafe unverified receipt when a container press leaves the app unchanged', async () => {
+  const previous = { window: '7', pid: 70, title: 'Fixture', snapshot: 'a'.repeat(32),
+    controls: [{ id: 'c3', type: 'TreeItem', name: 'Entry', can: { set: false, press: true, text: false }, enabled: true, offscreen: false, focused: false, secret: false }],
+    texts: [], skippedControls: 0, skippedTexts: 0, ms: 1, state: { foreground: false, idleMs: 9000, minimized: false } }
+  fake.quietSnapshot.mockReturnValue(previous)
+  fake.quietPress.mockResolvedValue({ pressed: 'select', control: 'c3' })
+  fake.quietScan.mockResolvedValue({ ...previous, snapshot: 'b'.repeat(32) })
+  const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
+  const result = JSON.parse(await press.run({ app: 'Fixture', snapshot: previous.snapshot, control: 'c3' }, { task: 'Open the entry' }))
+  expect(result).toMatchObject({ delivery: 'delivered_unverified', retry: 'unsafe', appNow: expect.any(String), hint: expect.stringContaining('inner actionable cell or button') })
+  expect(fake.quietPress).toHaveBeenCalledOnce()
+  expect(fake.quietScan).toHaveBeenCalledOnce()
 })

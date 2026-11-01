@@ -153,3 +153,6 @@ export * from './notices.js'
 export * from './study.js'
 export * from './learning-tools.js'
 export * from './helper-tool.js'
+
+export { type DesktopReadOptions } from './desktop-read-options.js'
+export { appNameMatch, similarApps } from './app-names.js'

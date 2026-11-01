@@ -17,13 +17,14 @@ export function controlLine(control: QuietControlDto): string {
   const can = [control.can.set ? 'set' : '', control.can.press ? 'press' : '', control.can.text && control.type !== 'Text' ? 'text' : ''].filter(Boolean)
   const flags = [!control.enabled ? 'disabled' : '', control.offscreen ? 'offscreen' : '', control.focused ? 'focused' : '', control.secret ? 'secret' : ''].filter(Boolean)
   const value = control.can.set ? control.value ? ` = ${quote(control.value)}` : control.placeholder ? ' (empty, shows placeholder)' : ' (empty)' : ''
-  return `${control.id} ${control.type} ${quote(control.name)}${can.length ? ` [${can.join(',')}]` : ''}${value}${flags.length ? ` {${flags.join(',')}}` : ''}`
+  return `${control.id}${control.depth === undefined ? '' : ` depth:${control.depth}`} ${control.type} ${quote(control.name)}${can.length ? ` [${can.join(',')}]` : ''}${value}${flags.length ? ` {${flags.join(',')}}` : ''}${control.subtreeTruncated ? ` [truncated; children:${control.childCount ?? 'unknown'}]` : ''}`
 }
 
 export function formatScan(observation: QuietObservationDto, find: string | undefined): string {
   const shown = find ? observation.texts : observation.texts.slice(-TEXT_TAIL)
   const hidden = observation.texts.length - shown.length + observation.skippedTexts
   const lines = [
+    ...(observation.mode || observation.truncated || observation.sparseTree ? [JSON.stringify({ mode: observation.mode ?? 'full', root: observation.root, ...(observation.sparseTree ? { sparseTree: true, hint: observation.hint } : {}), truncated: observation.truncated ?? false })] : []),
     `${observation.title} [window:${observation.window}:0] — snapshot ${observation.snapshot} (${personLine(observation.state)}${find ? `, find ${quote(find)}` : ''})`,
     `controls (${observation.controls.length}${observation.skippedControls ? `; ${observation.skippedControls} more not shown, narrow with find` : ''}):`,
     ...observation.controls.map(controlLine),

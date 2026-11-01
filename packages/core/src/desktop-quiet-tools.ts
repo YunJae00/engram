@@ -1,10 +1,11 @@
+import { desktopReadOptions, DESKTOP_READ_PROPERTIES, DESKTOP_READ_GUIDANCE, type DesktopReadOptions } from './desktop-read-options.js'
 import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { exactKeys, plainRecord, printable, requirePublicText } from './tool-args.js'
 
 // Provider actions avoid capture and injected input; foreground tools remain
 // a fallback for controls without a usable provider action.
 export interface QuietCourier {
-  scan(app: string, find: string | undefined, signal?: AbortSignal): Promise<string>
+  scan(app: string, find: string | undefined, signal?: AbortSignal, options?: DesktopReadOptions): Promise<string>
   set(app: string, snapshot: string, control: string, text: string, expected: string | undefined, context: AgentToolContext): Promise<string>
   press(app: string, snapshot: string, control: string, context: AgentToolContext): Promise<string>
   text(app: string, snapshot: string | undefined, control: string | undefined, settleSeconds: number, signal?: AbortSignal): Promise<string>
@@ -51,15 +52,17 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
   return [
     {
       name: 'app_read',
-      description: `Read an app on this computer: its editable fields and pressable controls (each with a control ID and what it accepts: set text, press, text) and the text on screen, with a snapshot ID for acting on them. app is an exact window ID from list_windows (window:123:0), or an unambiguous window title. find narrows the result to controls and text containing a phrase. ${QUIET_NOTE}`,
-      argsSchema: { type: 'object', additionalProperties: false, required: ['app'], properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, find: { type: 'string', minLength: 1, maxLength: 200 } } },
+      description: `Read an app on this computer: its editable fields and pressable controls (each with a control ID and what it accepts: set text, press, text) and the text on screen, with a snapshot ID for acting on them. app is an exact window ID from list_windows (window:123:0), or an unambiguous window title. ${DESKTOP_READ_GUIDANCE} find narrows the result to controls and text containing a phrase. ${QUIET_NOTE}`,
+      argsSchema: { type: 'object', additionalProperties: false, required: ['app'], properties: { ...DESKTOP_READ_PROPERTIES, app: { type: 'string', minLength: 1, maxLength: APP_CAP }, find: { type: 'string', minLength: 1, maxLength: 200 } } },
       async run(args, context) {
         context.signal?.throwIfAborted()
-        if (!plainRecord(args) || !exactKeys(args, 'find' in args ? ['app', 'find'] : ['app'])) return 'app_read takes app and an optional find.'
+        if (!plainRecord(args) || !Reflect.ownKeys(args).every(key => typeof key === 'string' && ['app', 'find', 'mode', 'root', 'snapshot'].includes(key))) return 'app_read takes app and an optional find.'
         const app = appOf(args['app'])
         const find = 'find' in args ? textOf(args['find'], 200) : undefined
+        const options = desktopReadOptions(args)
+        if (!options) return 'Use mode full or skeleton, or root with its snapshot; root cannot be combined with skeleton.'
         if (!app || find === null) return 'app_read takes app: a word from the window title, and an optional find phrase.'
-        return courier.scan(app, find?.trim() || undefined, context.signal)
+        return courier.scan(app, find?.trim() || undefined, context.signal, ...(Object.keys(options).length ? [options] : []))
       },
     },
     {

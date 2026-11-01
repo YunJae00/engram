@@ -56,7 +56,7 @@ internal static class DesktopApps
                     if (string.IsNullOrEmpty(identity)) identity = path;
                     if (!Allowed(name, identity, target)) continue;
                     var id = Id(identity + "\n" + target + "\n" + path);
-                    if (wanted == null) result.Add(new { id = id, name = name });
+                    if (wanted == null) result.Add(new { id = id, name = name, aliases = new[] { identity, Path.GetFileNameWithoutExtension(target ?? "") } });
                     else if (wanted == id)
                     {
                         if (!permitted()) throw new InvalidOperationException("The app launch was cancelled.");

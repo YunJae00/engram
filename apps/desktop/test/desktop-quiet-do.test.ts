@@ -70,7 +70,7 @@ describe('a short goal run by a decision model', () => {
     expect((await quietDo(request, vi.fn().mockImplementation(decided('press c1', 0.2)))).status).toBe('unsure')
     const looping = await quietDo(request, vi.fn().mockImplementation(decided('press c1')))
     expect(looping.status).toBe('blocked')
-    expect(looping.steps.at(-1)!.outcome).toContain('has not changed')
+    expect(JSON.parse(looping.steps.at(-1)!.outcome)).toMatchObject({ delivery: 'delivered_unverified', retry: 'unsafe' })
     let serial = 0
     fake.scan.mockImplementation(async () => screen([control('c1', 'Next'), composer], [`page ${++serial}`], serial.toString(16).padStart(32, '0')))
     const exhausted = await quietDo({ ...request, maxSteps: 3 }, vi.fn().mockImplementation(decided('press c1')))
@@ -117,4 +117,18 @@ describe('a short goal run by a decision model', () => {
     expect(replyAfter('Sidebar chat\nAsk it\nAnswer: 2\nFooter', 'Ask it')).toBe('Answer: 2\nFooter')
     expect(replyAfter('no mark here', 'Ask it')).toBe('no mark here')
   })
+})
+
+it('drills a truncated region without dispatching input and offers screenshot fallback for sparse trees', async () => {
+  const partial = { ...screen([control('c1', 'Results', { type: 'Group', subtreeTruncated: true, childCount: 30 })], []), truncated: true }
+  fake.scan.mockResolvedValueOnce(partial).mockResolvedValueOnce(screen([control('c2', 'Result')], ['Found']))
+  const decide = vi.fn().mockImplementationOnce(decided('DRILL c1')).mockImplementationOnce(decided('done'))
+  expect((await quietDo(request, decide)).status).toBe('done')
+  expect(fake.scan).toHaveBeenLastCalledWith(request.lane, request.app, undefined, expect.any(AbortSignal), { root: 'c1', snapshot: partial.snapshot })
+  expect(fake.press).not.toHaveBeenCalled()
+  expect(buildOptions(partial, false).criteria).toHaveProperty('WIDEN')
+  const sparse = { ...partial, sparseTree: true }
+  expect(Object.keys(buildOptions(sparse, false).criteria)).toEqual(['done', 'blocked', 'SCREEN'])
+  fake.scan.mockResolvedValue(sparse)
+  expect((await quietDo(request, vi.fn().mockImplementation(decided('SCREEN')))).status).toBe('needs-screen')
 })

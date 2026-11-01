@@ -14,6 +14,23 @@ import AppKit
         secret.setAccessibilityLabel("Private password")
         window.contentView?.addSubview(text)
         window.contentView?.addSubview(secret)
+        let region = NSView(frame: NSRect(x: 30, y: 40, width: 420, height: 60))
+        region.setAccessibilityElement(true)
+        region.setAccessibilityRole(.group)
+        region.setAccessibilityLabel("Fixture region")
+        window.contentView?.addSubview(region)
+        var parent = region
+        for _ in 0..<6 {
+            let wrapper = NSView(frame: parent.bounds)
+            wrapper.setAccessibilityElement(true)
+            wrapper.setAccessibilityRole(.group)
+            parent.addSubview(wrapper)
+            parent = wrapper
+        }
+        let nested = NSTextField(labelWithString: "Nested result")
+        nested.frame = parent.bounds
+        nested.setAccessibilityLabel("Nested result")
+        parent.addSubview(nested)
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
         window.makeFirstResponder(text)

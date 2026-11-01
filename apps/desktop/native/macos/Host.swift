@@ -34,15 +34,16 @@ final class DesktopHost {
     func state(_ window: Target) -> [String: Any] {
         ["foreground": window.foreground, "idleMs": monitor.state().idle, "minimized": window.minimized]
     }
-    func observe(_ window: Target, quiet: Bool, focusedOnly: Bool = false) throws -> [String: Any] {
-        let result = try scan(window)
+    func observe(_ window: Target, quiet: Bool, focusedOnly: Bool = false, root: AXUIElement? = nil, skeleton: Bool = false) throws -> [String: Any] {
+        let result = try scan(window, root: root, skeleton: skeleton)
         snapshots = snapshots.filter { Date().timeIntervalSince($0.value.at) < 30 }
         if snapshots.count >= 16, let oldest = snapshots.min(by: { $0.value.at < $1.value.at })?.key { snapshots.removeValue(forKey: oldest) }
         snapshots[result.id] = result
         if quiet {
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "snapshot": result.id,
+                "bounds": rectangle(result.bounds), "mode": skeleton ? "skeleton" : "full", "truncated": !result.complete,
                 "controls": result.controls.map { node -> [String: Any] in
-                    ["id": "c" + node.id, "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
+                    ["depth": node.depth, "childCount": node.childCount, "subtreeTruncated": node.subtreeTruncated, "id": "c" + node.id, "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
                      "offscreen": node.bounds.map { !$0.intersects(result.bounds) } ?? true,
                      "focused": attribute(node.element, kAXFocusedAttribute) as? Bool ?? false, "secret": node.secret,
                      "can": ["set": node.settable, "press": node.pressable, "text": !node.secret]]
@@ -51,14 +52,14 @@ final class DesktopHost {
         }
         let focus = try? focused(result, editable: false)
         let protected = result.controls.filter { $0.secret }.compactMap { $0.bounds }
-        return ["snapshot": result.id, "scope": focusedOnly ? "focus" : "window", "bounds": rectangle(result.bounds), "captureBounds": rectangle(result.bounds),
+        return ["mode": skeleton ? "skeleton" : "full", "snapshot": result.id, "scope": focusedOnly ? "focus" : "window", "bounds": rectangle(result.bounds), "captureBounds": rectangle(result.bounds),
             "focusedEditable": focus?.settable ?? false, "focusedControl": focus.map { String(CFHash($0.element)) } ?? "",
             "protectedBounds": protected.map(rectangle), "truncated": !result.complete, "captureSafe": result.complete,
             "nodes": result.controls.filter { !focusedOnly || (focus != nil && CFEqual($0.element, focus!.element)) }.compactMap { node -> [String: Any]? in
                 guard let bounds = node.bounds else { return nil }
-                return ["id": "e" + node.id, "runtimeId": String(CFHash(node.element)), "name": node.name, "controlType": node.role, "value": node.value,
+                return ["depth": node.depth, "childCount": node.childCount, "subtreeTruncated": node.subtreeTruncated, "id": "e" + node.id, "runtimeId": String(CFHash(node.element)), "name": node.name, "controlType": node.role, "value": node.value,
                         "enabled": node.enabled, "password": node.secret, "bounds": rectangle(bounds),
-                        "offscreen": !bounds.intersects(result.bounds), "actions": ["type": node.settable, "replace": node.settable]]
+                        "offscreen": !bounds.intersects(result.bounds), "actions": ["click": node.pressable, "type": node.settable, "replace": node.settable]]
             }]
     }
     func receive(_ request: [String: Any]) throws -> Any {
@@ -68,7 +69,7 @@ final class DesktopHost {
             let current = monitor.state()
             return ["intervention": String(current.intervention), "idleMs": current.idle, "escaped": current.escaped, "working": current.lease != nil]
         }
-        if method == "listApps" { return catalog().map { ["id": $0.id, "name": $0.name] } }
+        if method == "listApps" { return catalog().map { ["id": $0.id, "name": $0.name, "aliases": $0.aliases] as [String: Any] } }
         if method == "openApp" {
             let id = try text(request, "app", limit: 64)
             guard let entry = catalog().first(where: { $0.id == id }), !monitor.state().escaped else { throw DesktopFailure("Choose an app from the catalog") }
@@ -80,7 +81,7 @@ final class DesktopHost {
             return ["windows": windows.compactMap { item -> [String: Any]? in
                 guard item[kCGWindowLayer as String] as? Int == 0, let id = item[kCGWindowNumber as String] as? UInt32,
                       let window = try? resolveWindow(id, pid: 0) else { return nil }
-                return ["window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
+                return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
             }]
         }
         let window = try target(request)
@@ -104,7 +105,13 @@ final class DesktopHost {
         if method == "quietScan" || method == "observe" {
             if let focused = request["focusedOnly"], !(focused is Bool) { throw DesktopFailure("Invalid observation scope") }
             if request["focusedOnly"] as? Bool == true && request["lease"] == nil { throw DesktopFailure("Focused observation requires computer control") }
-            return try observe(window, quiet: method == "quietScan", focusedOnly: request["focusedOnly"] as? Bool == true)
+            let mode = request["mode"] as? String ?? "full"
+            guard mode == "full" || mode == "skeleton", request["mode"] == nil || request["mode"] is String,
+                  (request["root"] == nil) == (request["snapshot"] == nil), !(mode == "skeleton" && request["root"] != nil) else { throw DesktopFailure("Invalid observation mode or root") }
+            let root: AXUIElement?
+            if request["root"] != nil { root = try control(snapshot(request, window: window), id: text(request, "root", limit: 32)).element }
+            else { root = nil }
+            return try observe(window, quiet: method == "quietScan", focusedOnly: request["focusedOnly"] as? Bool == true, root: root, skeleton: mode == "skeleton")
         }
         if method == "quietRead" {
             let reading: Snapshot

@@ -43,8 +43,15 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /control changed/)
 
   await fixture.request('dense')
+  const outline = await helper.request('quietScan', { ...target, mode: 'skeleton' })
+  assert.ok(outline.controls.every(control => control.depth <= 3))
+  const region = outline.controls.find(control => control.childCount > 0 && !control.secret)
+  assert.ok(region)
+  const drilled = await helper.request('quietScan', { ...target, snapshot: outline.snapshot, root: region.id })
+  assert.equal(drilled.root, region.id)
+  await assert.rejects(helper.request('quietScan', { ...target, snapshot: '0'.repeat(32), root: region.id }), /snapshot/)
   const dense = await scan()
-  assert.ok(dense.skippedTexts > 0)
+  assert.ok(dense.truncated)
   assert.ok(JSON.stringify(dense).length < 60000)
   await fixture.request('sparse')
 

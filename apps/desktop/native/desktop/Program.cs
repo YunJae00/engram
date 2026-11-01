@@ -62,7 +62,7 @@ internal static class Program
         };
         check();
         if (method == "quietState") return quiet.State(target);
-        if (method == "quietScan") return quiet.Scan(target, Optional(request, "find", 200));
+        if (method == "quietScan") return quiet.Scan(target, Optional(request, "find", 200), Optional(request, "mode", 16), Optional(request, "root", 32), Optional(request, "snapshot", 100));
         if (method == "quietRead") return quiet.Read(target, Optional(request, "snapshot", 100), Optional(request, "control", 32));
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         if (method == "quietSet") return quiet.Set(target, Text(request, "snapshot", 100), Text(request, "control", 32), Text(request, "text", 2000), Optional(request, "expected", 2000), check);
@@ -184,7 +184,7 @@ internal static class Program
                 if (request.TryGetValue("focusedOnly", out focus) && !(focus is bool)) throw new ArgumentException("Invalid observation scope");
                 var focusedOnly = focus is bool && (bool)focus;
                 if (focusedOnly) lease.Require(state);
-                var observation = automation.Observe(target, state, focusedOnly);
+                var observation = automation.Observe(target, state, focusedOnly, Optional(request, "mode", 16), Optional(request, "root", 32), Optional(request, "snapshot", 100));
                 if (state != null) lease.Require(state);
                 Send(new { id = id, result = observation });
                 return;
