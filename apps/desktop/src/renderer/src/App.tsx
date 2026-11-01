@@ -109,8 +109,6 @@ function Shell() {
     })
   }, [openNote, showToast])
 
-  // First-run coach marks: once, after the first vault opens, real installs
-  // only (the main process gates it so e2e clicks are never intercepted).
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
@@ -142,15 +140,21 @@ function Shell() {
   useEffect(() => {
     if (!vaultReady || settingUp || localStorage.getItem(TOUR_DONE_KEY)) return
     let cancelled = false
+    let timer: number | undefined
+    const cancel = () => { cancelled = true; window.clearTimeout(timer) }
+    window.addEventListener('pointerdown', cancel, { capture: true, once: true })
+    window.addEventListener('keydown', cancel, { capture: true, once: true })
     void api.tourEligible().then((ok) => {
       if (!ok || cancelled) return
       // let the shell settle so every anchor exists and has its real position
-      window.setTimeout(() => {
+      timer = window.setTimeout(() => {
         if (!cancelled) setTourOpen(true)
       }, 900)
     })
     return () => {
-      cancelled = true
+      cancel()
+      window.removeEventListener('pointerdown', cancel, true)
+      window.removeEventListener('keydown', cancel, true)
     }
   }, [vaultReady, settingUp])
 
