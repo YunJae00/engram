@@ -181,7 +181,7 @@ internal sealed class AutomationSession : IDisposable
             throw new InvalidOperationException("The window changed while reading. Observe it again.");
         if (nodes.Count == 0) throw new InvalidOperationException("This window does not expose readable accessibility controls");
         var focused = AutomationElement.FocusedElement;
-        var focusedInside = Inside(focused, rootId);
+        var focusedInside = Inside(focused, rootControl == null ? rootId : RuntimeId(readingRoot));
         var focusedEditable = focusedInside && Editable(focused);
         observation.FocusedRuntime = focusedInside ? RuntimeId(focused) : null;
         Observation = observation;
