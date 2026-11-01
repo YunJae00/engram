@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { createBot, initVault } from 'core'
+import { appendBotTurn, createBot, initVault, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -8,12 +8,12 @@ import { closeTestApp, openActivity } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-let app: ElectronApplication, page: Page, server: Server, url: string, lane: string, shots: string
+let app: ElectronApplication, page: Page, server: Server, url: string, lane: string, shots: string, paths: VaultPaths
 
 test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-preview-vault-'))
-  const paths = await initVault(vault, { git: false })
+  paths = await initVault(vault, { git: false })
   lane = `bot-${(await createBot(paths, { name: 'Browser preview' })).id}`
   shots = await mkdtemp(join(tmp, 'browser-preview-shots-'))
   server = createServer((_req, response) => {
@@ -176,7 +176,14 @@ test('finished work minimizes its preview so the result remains readable', async
     contents.send('engram:event', { type: 'comet:step', channel: lane, line: 'read_open_page: Final page' })
   }, lane)
   await expect(page.locator('.browser-preview')).not.toHaveClass(/minimized/)
-  await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'chat:done', channel: lane, text: 'The result is ready to read.' }), lane)
+  await appendBotTurn(paths, lane.slice(4), { role: 'assistant', text: 'The result is ready to read.', at: new Date().toISOString() })
+  await app.evaluate(({ BrowserWindow }, lane) => {
+    const win = BrowserWindow.getAllWindows()[0]!
+    win.setSize(1400, 900)
+    win.webContents.send('engram:event', { type: 'chat:done', channel: lane, text: 'The result is ready to read.' })
+    win.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false })
+  }, lane)
+  await expect(page.getByTestId('bots-thread')).toContainText('The result is ready to read.')
   await expect(page.locator('.browser-preview')).toHaveClass(/minimized/)
   await page.screenshot({ path: join(shots, 'preview-finished.png') })
   await page.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
