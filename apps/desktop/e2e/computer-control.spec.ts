@@ -253,6 +253,12 @@ test('session app previews stay inside the conversation and preserve drafts', as
     const box = element.getBoundingClientRect(), parent = element.closest('.bots-chat')!.getBoundingClientRect()
     return box.left >= parent.left && box.right <= parent.right && box.top >= parent.top && box.bottom <= parent.bottom
   })).toBe(true)
+  await page.setViewportSize({ width: 1000, height: 600 })
+  expect(await preview.locator('.work-preview-caption').evaluate(element => {
+    const box = element.getBoundingClientRect(), parent = element.closest('.work-preview')!.getBoundingClientRect()
+    return box.bottom <= parent.bottom
+  })).toBe(true)
+  await page.setViewportSize({ width: 1440, height: 900 })
   await preview.getByRole('button', { name: 'Hide app activity' }).click()
   await expect(preview).toHaveCount(0)
   await page.getByTestId('work-preview-reopen').click()

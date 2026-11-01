@@ -63,6 +63,7 @@ test('connected conversations deliver visible results with isolated work surface
       if (index === 2) await expect(page.getByTestId('work-preview').locator('img').first()).toBeVisible({ timeout: 60000 })
       await page.screenshot({ path: join(data, `session-${index}-active.png`) })
       await expect.poll(() => events.some(e => ['chat:done', 'chat:error'].includes((e as { type: string }).type) && (e as { channel?: string }).channel === `bot-${scenario.bot.id}`), { timeout: 150000 }).toBe(true)
+      await expect.poll(() => page.locator('.bubble-msg.assistant .answer-actions').count()).toBe(await page.locator('.bubble-msg.assistant').count())
       if (await page.getByTestId('tour-skip').isVisible()) await page.getByTestId('tour-skip').click()
       await page.screenshot({ path: join(data, `session-${index}-result.png`) })
       const preview = page.getByTestId('work-preview')
