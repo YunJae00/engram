@@ -1,10 +1,10 @@
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
-const fields = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'] as const
-const modelFields = ['inputTokens', 'outputTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens'] as const
+const fields = ['input_tokens', 'output_tokens', 'cache_creation_input_tokens'] as const
+const modelFields = ['inputTokens', 'outputTokens', 'cacheCreationInputTokens'] as const
 const valid = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 
-export function claudeTokenUsage(): (message: unknown) => number {
+export function claudeTokenUsage(onReported?: (message: unknown, freshDelta: number) => void): (message: unknown) => number {
   const messages = new Map<string, Record<string, number>>()
   const streams = new Map<string, string>()
   let reported = 0, turnReported = 0
@@ -49,6 +49,7 @@ export function claudeTokenUsage(): (message: unknown) => number {
     }
     if (!Number.isSafeInteger(reported + delta)) return 0
     reported += delta
+    if (delta) onReported?.(raw, delta)
     return delta
   }
 }

@@ -1,3 +1,4 @@
+import { finalDesktopFailure } from '../src/agent-session-result.js'
 import { expect, it } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
@@ -190,4 +191,22 @@ it('applies arithmetic verification to the real tool-session path and accepts co
     const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'excel_read', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'B', sheet: 'S', range: 'A1:A3', rows: [[10], [20], [++calls > 1 ? 30 : 99]], formulas: [[10], [20], ['=SUM(A1:A2)']] }) }] }, 'Verify the total')
     expect(!!result.incomplete).toBe(!corrected)
   }
+})
+
+
+it('discloses registered collection items left without a finish receipt', async () => {
+  const engine = sessionBrain(async job => {
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ items: ['Movie'], fields: ['showtime'] })
+    return { answer: 'All done.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'Movie' }] }, 'Read movie showtimes')
+  expect(result.incomplete).toContain('collection items remain unverified')
+  expect(result.answer).toContain('Not verified as complete')
+})
+
+it('distinguishes an attempted last-page failure from unfinished batch reads', () => {
+  const pages = [{ url: 'https://example.test/a', ready: true, observation: 'A' }, { url: 'https://example.test/b', ready: false, observation: 'HTTP 403' }]
+  const step = (requested: number) => [{ tool: 'read_pages', args: {}, observation: JSON.stringify({ completed: 1, requested, pages }) }]
+  expect(finalDesktopFailure(step(2))).toBeUndefined()
+  expect(finalDesktopFailure(step(3))).toContain('stopped before all pages')
 })

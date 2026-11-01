@@ -1,6 +1,7 @@
 import { AlertTriangle, CircleHelp, PauseCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DelegatedTaskDto } from '../../../shared/types.js'
+import { threadWords } from '../lib/threadLang.js'
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
 import { useThreadT } from '../lib/useThreadT.js'
@@ -37,14 +38,15 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
   if (task.state === 'running' && !pending.length) return null
   if (!pending.length || task.question) {
     // A one-line question is the card's title; a longer one is read below it.
-    const said = answerText(task.question ?? task.log.at(-1)?.line ?? 'Task paused.').trim()
+    const log = task.log.at(-1)?.line
+    const said = answerText(task.question ?? (log === 'Stopped at the task token budget.' ? threadWords(t.lang).budgetStop : log) ?? 'Task paused.').trim()
     const short = !said.includes('\n') && said.length <= 140
     return (
       <div className="chat-approval decision-stack">
         <DecisionCard
           role="status"
           icon={task.question ? <CircleHelp size={14} /> : <PauseCircle size={14} />}
-          label={task.question ? t('card.answerNeeded') : t('card.paused')}
+          label={task.state === 'failed' ? threadWords(t.lang).stopped : task.question ? t('card.answerNeeded') : t('card.paused')}
           title={short ? said : undefined}
           sub={task.question ? t('card.replyBelow') : undefined}
         >

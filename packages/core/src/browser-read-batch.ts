@@ -4,6 +4,16 @@ import type { HarnessMetric } from './harness-metrics.js'
 import { pageReport } from './page-report.js'
 import { checkPage } from './work-evidence.js'
 
+export function parseReadBatch(observation: string): { completed: number; requested: number; pages: { url: string; ready: boolean; observation: string; status?: number }[] } | undefined {
+  try {
+    const result = JSON.parse(observation.replace(/^that did not work: /, ''))
+    if (!Array.isArray(result.pages) || !Number.isInteger(result.requested) || result.requested < 1 || result.requested > 4
+      || !result.pages.every((page: { url?: unknown; ready?: unknown; observation?: unknown }) => typeof page.url === 'string' && typeof page.ready === 'boolean' && typeof page.observation === 'string')
+      || result.completed !== result.pages.filter((page: { ready: boolean }) => page.ready).length || result.pages.length > result.requested) return undefined
+    return result
+  } catch { return undefined }
+}
+
 function normalizedUrl(value: string): string {
   const url = new URL(value)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid page URL')
@@ -17,7 +27,7 @@ function normalizedUrl(value: string): string {
 export function browserReadBatch(courier: WebCourier, wallMet?: (url: string) => void, emit?: (metric: HarnessMetric) => void): AgentTool {
   return {
     name: 'read_pages',
-    description: 'Read 1–4 known HTTP(S) addresses within this request in order, using fresh observations. Each needs literal ready text and may specify find. Stops at the first mismatch, login or error; never submits or replays input. This navigates the current tab. Use single-page tools for unknown destinations. Results are extracts, not proof of complete records.',
+    description: 'Read 1–4 known HTTP(S) addresses within this request in order, using fresh observations. Each needs literal ready text and may specify find. Stops at the first mismatch, login or error; never submits or replays input. This navigates the current tab. Use single-page tools for unknown destinations. Earlier successful reads remain usable when a later page fails; cite only their own observed values. Results are extracts, not proof of complete records.',
     argsSchema: { type: 'object', properties: { pages: { type: 'array', minItems: 1, maxItems: 4, items: {
       type: 'object', properties: { url: { type: 'string' }, ready: { type: 'string' }, find: { type: 'string' } }, required: ['url', 'ready'], additionalProperties: false,
     } } }, required: ['pages'], additionalProperties: false },
@@ -35,25 +45,26 @@ export function browserReadBatch(courier: WebCourier, wallMet?: (url: string) =>
         if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Only HTTP(S) URLs without embedded credentials are allowed')
         return { url: parsed.href, ready, find: typeof find === 'string' ? find : '' }
       })
-      const reports: string[] = []
+      const reports: { url: string; ready: boolean; status?: number; observation: string }[] = []
       let completed = 0
       try {
         for (const request of requests) {
           context.signal?.throwIfAborted()
           const page = await courier.fetchPage(request.url, context.signal)
           context.signal?.throwIfAborted()
-          reports.push(`Source: ${page.url}\n${pageReport(page, 1, request.find)}`)
           if (page.wall) wallMet?.(page.url)
           const destinationMatches = normalizedUrl(page.url) === normalizedUrl(request.url) || page.requestedUrl === request.url
-          if (!destinationMatches || page.dialog && !page.text.trim() || page.status && page.status >= 400 || page.faults?.length || checkPage(page, { id: `page-${completed + 1}`, url: page.url, ready: request.ready }).status !== 'passed') {
-            return `that did not work: Batch stopped: ${completed}/${requests.length} readiness checks passed. The current page is unexpected or needs attention. Inspect it; do not repeat completed work.\n\n${reports.join('\n\n')}`
+          const failed = !destinationMatches || page.dialog && !page.text.trim() || page.status && page.status >= 400 || page.faults?.length || checkPage(page, { id: `page-${completed + 1}`, url: page.url, ready: request.ready }).status !== 'passed'
+          reports.push({ url: page.url, ready: !failed, ...(page.status ? { status: page.status } : {}), observation: pageReport(page, 1, request.find) })
+          if (failed) {
+            return `${completed ? '' : 'that did not work: '}${JSON.stringify({ summary: `Batch stopped: ${completed}/${requests.length} readiness checks passed. Inspect the failed page; do not repeat completed reads.`, completed, requested: requests.length, pages: reports })}`
           }
           completed++
         }
-        return `Batch read: ${completed}/${requests.length} readiness checks passed. These checks establish page readiness only, not task completion.\n\n${reports.join('\n\n')}`
+        return JSON.stringify({ summary: `Batch read: ${completed}/${requests.length} readiness checks passed. Page readiness is not task completion.`, completed, requested: requests.length, pages: reports })
       } catch (error) {
         context.signal?.throwIfAborted()
-        return `that did not work: Batch stopped: ${completed}/${requests.length} readiness checks passed; the next read failed. Continue only unfinished reads.\n${error instanceof Error ? error.message : String(error)}\n\n${reports.join('\n\n')}`
+        return `${completed ? '' : 'that did not work: '}${JSON.stringify({ summary: `Batch stopped: ${completed}/${requests.length} readiness checks passed; the next read failed. Continue only unfinished reads.`, error: error instanceof Error ? error.message : String(error), completed, requested: requests.length, pages: reports })}`
       } finally { emit?.({ kind: 'batch', completed, requested: requests.length }) }
     },
   }

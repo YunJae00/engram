@@ -28,7 +28,13 @@ export function threadT(lang: ThreadLang): ThreadTranslate {
 
 // Short words the conversation shows around the comet's own messages.
 const WORDS = {
-  en: { done: (count: number) => `Done · ${count} ${count === 1 ? 'action' : 'actions'}`, total: (seconds: number) => `Total ${seconds}s`, scheduled: 'Scheduled', kept: (count: number) => `${count} scheduled` },
+  en: { computerAccessChecking: 'Checking computer access…', computerAccessUnavailable: 'Computer access is unavailable', computerAccessFallback: 'App access is unavailable in this session. Browser work remains available.', tryAgain: 'Try again', partialResult: 'Some results could not be confirmed.', resultsSoFar: 'Results so far:', budgetStop: 'This task reached its processing limit and stopped. Your progress is saved. Review the results below before continuing.', stopped: 'Task stopped', computerControls: 'Computer controls', closeComputer: 'Close computer controls', checkStatus: { pass: 'Confirmed', fail: 'Failed', unknown: 'Not verified' }, checkSummary: (pending: number, total: number) => pending ? `${pending} of ${total} not verified` : `${total} of ${total} confirmed`, sourceGrounding: 'Claims match the sources', sources: 'Read', preview: 'Work previews', previewCorners: ['Top right', 'Top left', 'Bottom right', 'Bottom left', 'Hidden'], done: (count: number) => `Recorded · ${count} ${count === 1 ? 'action' : 'actions'}`, total: (seconds: number) => `Total ${seconds}s`, scheduled: 'Scheduled', kept: (count: number) => `${count} scheduled` },
   ko: KO_WORDS,
 } as const
 export const threadWords = (lang: ThreadLang) => WORDS[lang]
+
+
+export function displayTaskAnswer(text: string, lang: ThreadLang): string {
+  if (text.startsWith('Not verified as complete.')) text = text.replace(/^Not verified as complete\./, threadWords(lang).partialResult).replace('Unverified response:', threadWords(lang).resultsSoFar)
+  return text.replace(/^The task token budget \([\d,]+ (?:new )?tokens available for this turn\) was reached\. Work so far is preserved; inspect the current state before continuing\./, threadWords(lang).budgetStop)
+}

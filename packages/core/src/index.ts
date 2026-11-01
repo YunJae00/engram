@@ -66,7 +66,7 @@ export { markNewControls, pageReport, linkReport, partsWith, PAGE_TEXT_CAP, type
 export { pageTools, type PageToolDeps } from './comet-page-tools.js'
 export { pageDoTool, type DecidePage, type PageDoOptions, type PageDoStep } from './page-do.js'
 export { stepGate, type GateMode, type StepGate } from './step-gate.js'
-export { browserReadBatch } from './browser-read-batch.js'
+export { browserReadBatch, parseReadBatch } from './browser-read-batch.js'
 export { pageDelta } from './page-delta.js'
 export { measuredCourier, type HarnessMetric } from './harness-metrics.js'
 export * from './parsers.js'

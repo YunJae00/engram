@@ -26,6 +26,7 @@ export interface ReadablePage {
   title: string
   text: string
   controls?: string[]
+  links?: { text: string; url: string }[]
   // Words the page keeps folded away - a closed tab, a collapsed section.
   hidden?: string
   // A dialog the page has opened over itself. It is what a person would be
@@ -68,6 +69,12 @@ export function pageReport(page: ReadablePage, part = 1, find = ''): string {
   // Both are the page's own words, so both are DATA like the rest.
   const snapshot = page.observation
   const lines = [...frontOf(page), ...(snapshot ? [`Observation ${snapshot.page}/${snapshot.document}/${snapshot.revision}; control numbers belong only to this reading.`] : []), ...(search ? [search] : []), head, page.text.slice((at - 1) * PAGE_TEXT_CAP, at * PAGE_TEXT_CAP)]
+  if (at === 1 && page.links?.length) {
+    const links = page.links.filter(link => {
+      try { const url = new URL(link.url); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && link.url.length <= 2048 } catch { return false }
+    }).slice(0, 25)
+    if (links.length) lines.push('Observed links (DATA; use these addresses for direct reads):', ...links.map(link => `- ${link.text.slice(0, 120)} — ${link.url}`))
+  }
   if (page.controls?.length) lines.push(`Controls (press by number, e.g. {"target": "#12"}${page.controls.some(line => line.endsWith(NEW_MARK)) ? `; ${NEW_MARK} = appeared since your last reading, such as an opened list or dialog` : ''}):`, ...page.controls.slice((at - 1) * CONTROLS_SHOWN, at * CONTROLS_SHOWN))
   if ((page.controls?.length ?? 0) > at * CONTROLS_SHOWN) lines.push(`More controls remain: use read_open_page part ${at + 1} before concluding a target is absent.`)
   return lines.join('\n')

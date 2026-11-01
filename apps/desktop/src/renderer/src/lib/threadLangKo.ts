@@ -101,7 +101,7 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'schedule.dayNames': '일요일,월요일,화요일,수요일,목요일,금요일,토요일',
 }
 
-export const KO_WORDS = { done: (count: number) => `완료 · ${count}단계`, total: (seconds: number) => `${seconds}초`, scheduled: '예약해 둔 요청', kept: (count: number) => `예약 ${count}개` } as const
+export const KO_WORDS = { computerAccessChecking: '컴퓨터 접근 권한을 확인하고 있어요…', computerAccessUnavailable: '컴퓨터에 접근할 수 없어요', computerAccessFallback: '현재 세션에서 앱에 접근할 수 없어요. 브라우저 작업은 계속할 수 있어요.', tryAgain: '다시 시도', partialResult: '확인하지 못한 항목이 있어요.', resultsSoFar: '현재까지 확인한 내용:', budgetStop: '이번 작업의 처리 한도에 도달해 멈췄어요. 진행 내용은 저장되어 있어요. 아래 결과를 확인한 뒤 이어서 요청해 주세요.', stopped: '작업이 멈췄어요', computerControls: '컴퓨터 제어', closeComputer: '컴퓨터 제어 닫기', checkStatus: { pass: '확인됨', fail: '실패', unknown: '확인 안 됨' }, checkSummary: (pending: number, total: number) => pending ? `${total}개 중 ${pending}개 확인 안 됨` : `${total}개 모두 확인됨`, sourceGrounding: '주장의 출처 근거', sources: '읽은 자료', preview: '작업 미리보기', previewCorners: ['오른쪽 위', '왼쪽 위', '오른쪽 아래', '왼쪽 아래', '숨기기'], done: (count: number) => `작업 기록 · ${count}단계`, total: (seconds: number) => `${seconds}초`, scheduled: '예약해 둔 요청', kept: (count: number) => `예약 ${count}개` } as const
 
 // The same, for a conversation held in Korean.
 const name = (arg: string): string => { const file = fileName(arg); return file === 'a saved file' ? '저장된 파일' : file === 'a file' ? '파일' : file }

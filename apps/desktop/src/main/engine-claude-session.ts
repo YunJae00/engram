@@ -98,7 +98,10 @@ export class WarmSession {
   private native: NativeTools | undefined
   private query: { interrupt(): Promise<unknown> } | null = null
   private readonly abort = new AbortController()
-  private readonly usage = claudeTokenUsage()
+  private readonly usage = claudeTokenUsage((raw, freshDelta) => {
+    const message = raw as { type?: string; usage?: unknown; modelUsage?: unknown; message?: { usage?: unknown }; event?: { usage?: unknown; message?: { usage?: unknown } } }
+    flog('token-usage', JSON.stringify({ engine: 'claude', freshDelta, usage: message.usage ?? message.message?.usage ?? message.event?.usage ?? message.event?.message?.usage, modelUsage: message.modelUsage }))
+  })
 
   constructor(
     private readonly spec: SessionSpec,

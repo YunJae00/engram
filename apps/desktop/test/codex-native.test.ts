@@ -375,13 +375,14 @@ it('assigns three warmed sessions to different conversations and reuses them for
   } finally { closeCodexSessions() }
 })
 
-it('reports only new tokens across notifications and reused turns', async () => {
+it('budgets fresh tokens across cached notifications and reused turns', async () => {
   const onUsage = vi.fn()
   let total = 0
   const rpc = fakeServer(async server => {
+    for (const stale of [total - 10, -1, NaN]) server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: stale } } })
     total += 60
-    server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: total } } })
-    server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: total } } })
+    server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: total + 1000, cachedInputTokens: 1000 } } })
+    server.notify('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: total + 1000, cachedInputTokens: 1000 } } })
     server.notify('turn/completed', { turn: { status: 'completed' } })
   })
   const request = { ...job(native(async () => ({ behavior: 'allow' }))), sessionKey: 'token-budget', onUsage }

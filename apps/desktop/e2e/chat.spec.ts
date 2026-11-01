@@ -4,21 +4,13 @@ import { appendBotTurn, createBot, createNote, initVault, recordBotSites, type V
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
-// The comets tab is the app's conversation surface now: create a comet, ask
-// it a question, watch the MockEngine's canned answer stream in, and confirm
-// the conversation survives leaving the tab (transcripts persist in main).
-
 test.describe.configure({ mode: 'serial' })
-
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const MOCK_DIR = fileURLToPath(new URL('../../../fixtures/mock-responses', import.meta.url))
-
 let app: ElectronApplication
 let page: Page
 let paths: VaultPaths
-
 async function screenshot(name: string) {
   await expect(page.locator('#boot')).toHaveCount(0)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -36,20 +28,16 @@ async function screenshot(name: string) {
   await writeFile(join(REPO_TMP, name), Buffer.from(png, 'base64'))
   await page.emulateMedia({ reducedMotion: 'no-preference' })
 }
-
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   const root = await mkdtemp(join(REPO_TMP, 'e2e-comet-'))
   paths = await initVault(root, { git: false })
   await createNote(paths, { id: 'n-deploy-0001', body: '# Deploy procedure\n\nFully automated to production.' })
-
   app = await electron.launch({
     args: [MAIN_ENTRY, '--no-sandbox'],
     env: {
       ...process.env,
       ENGRAM_VAULT: root,
-      // Its own userData - shared state with the installed app is how a test
-      // boots against a vault that app is holding open.
       ENGRAM_USERDATA: await mkdtemp(join(REPO_TMP, 'e2e-chat-userdata-')),
       ENGRAM_NO_GIT: '1',
       ENGRAM_NO_AUTOTIDY: '1',
@@ -67,35 +55,24 @@ test.beforeAll(async () => {
   })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
-
 test.afterAll(async () => {
   await app?.close()
 })
-
 test('create a comet, ask it, and watch the answer stream in', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
-  // Ctrl+L is the door to the comets tab; the listener attaches on mount, so
-  // an early press can be lost — re-press until the view is up.
   await expect(async () => {
     await page.keyboard.press('ControlOrMeta+l')
     await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
-
   const composer = page.getByTestId('welcome-input')
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
   await composer.press('Enter')
-  // A comet made with one press takes its name from its first words.
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?', { timeout: 60_000 })
-
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
-  // Wait for the END of the canned answer, not its start — only then has the
-  // stream fully rendered.
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 30_000 })
 })
-
 test('starts fresh without losing chats, sends from welcome, and renders long titles and code', async () => {
   const previous = await page.evaluate(() => window.engram.botsList())
   await page.reload()
@@ -153,7 +130,6 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   expect((await page.evaluate(() => window.engram.settingsGet())).computerUse).toBe(true)
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
 })
-
 test('welcome model choices stay inside the main surface at every window size', async () => {
   await page.reload()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
@@ -186,19 +162,13 @@ test('welcome model choices stay inside the main surface at every window size', 
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
 })
-
 test('the conversation survives leaving and re-entering the tab', async () => {
   await openActivity(page, 'sky')
-  // The view stays mounted and hidden now - coming back is instant and the
-  // thread is exactly where it was.
   await expect(page.getByTestId('bots-view')).toBeHidden()
   await openActivity(page, 'bots')
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
-  // The thread is held outside the view and refreshed from the transcript
-  // main persists — this is what makes a comet a colleague, not a popup.
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 15_000 })
 })
-
 test('composer tools stay in the chat surface and open away from the sidebar', async () => {
   await expect(page.locator('.bots-head button')).toHaveCount(0)
   const memory = page.getByTestId('bots-memory-toggle')
@@ -215,7 +185,6 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
   expect(memoryBox!.y + memoryBox!.height).toBeLessThanOrEqual(composerBox!.y)
   await page.getByTestId('bots-input-add').click()
   await memory.click()
-
   const picker = page.getByTestId('model-picker')
   if (await picker.isEnabled()) {
     await picker.click()
@@ -225,21 +194,16 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
     expect(menuBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
     await page.keyboard.press('Escape')
   }
-
   await expect(page.locator('.bots-write').getByRole('button', { name: 'Permissions' })).toHaveCount(0)
 })
-
 test('the selected comet is remembered across tabs', async () => {
   const count = await page.locator('.bots-row').count()
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.locator('.bots-row')).toHaveCount(count)
-  // Pick the comet that is NOT first in the rail, then leave and come back.
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
   await openActivity(page, 'list')
-  // The view stays mounted and hidden now - coming back is instant and the
-  // thread is exactly where it was.
   await expect(page.getByTestId('bots-view')).toBeHidden()
   await openActivity(page, 'bots')
   await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
@@ -247,13 +211,11 @@ test('the selected comet is remembered across tabs', async () => {
     'Record this if you want it kept',
   )
 })
-
 test('a question just sent and a draft not yet sent both survive a tab switch', async () => {
   const composer = page.locator('.bots-write textarea')
   await expect(composer).toHaveCount(1)
   await composer.fill('Where do we deploy from?')
   await composer.press('Enter')
-  // Leave at once - before main has written anything to disk.
   await openActivity(page, 'list')
   // The view stays mounted and hidden now - coming back is instant and the
   // thread is exactly where it was.
@@ -269,8 +231,6 @@ test('a question just sent and a draft not yet sent both survive a tab switch', 
   await openActivity(page, 'bots')
   await expect(page.locator('.bots-write textarea')).toHaveValue('unsent thought')
 })
-
-
 test('conversation keeps narration between compact activity groups and shows visited website icons', async () => {
   await expect(page.getByTestId('bots-new')).toBeEnabled({ timeout: 60_000 })
   const bot = await createBot(paths, { name: 'Research and review' })
@@ -312,7 +272,7 @@ test('conversation keeps narration between compact activity groups and shows vis
   await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
     type: 'chat:done', channel: `bot-${id}`, text: '## The review is ready\n\nThe options are compared and the source is available for your review.\n\n- Check the assumptions before choosing.\n- Keep the original document unchanged.\n\nhttps://example.com/research\n\nBackup: `검토_결과.pptx.e1b9abd7fa904dd291589bfd2e0d7de6.bak`',
   }), bot.id)
-  await expect(page.getByTestId('comet-work-done')).toContainText('Done · 3 actions')
+  await expect(page.getByTestId('comet-work-done')).toContainText('Recorded · 3 actions')
   const done = page.getByTestId('comet-work-done')
   await done.getByTestId('comet-work-toggle').click()
   await expect(done.locator('.work-group')).toHaveCount(2)
@@ -336,7 +296,6 @@ test('conversation keeps narration between compact activity groups and shows vis
   expect(await page.locator('.bots-thread').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
   await screenshot('ui-conversation-activity-compact.png')
 })
-
 test('request errors keep readable padding, expandable details and working copy in both themes', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
@@ -382,7 +341,6 @@ test('request errors keep readable padding, expandable details and working copy 
   await expect(error).toContainText('not a usage limit')
   await expect(error.locator('pre')).toBeHidden()
 })
-
 test('"@" offers only the apps turned on in settings and puts the chosen one in the message', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('apps:list')

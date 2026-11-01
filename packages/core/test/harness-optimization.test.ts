@@ -82,6 +82,8 @@ it('validates every batch member before navigating and preserves partial results
   const result = await tool.run({ pages: ['one', 'two', 'three'].map(name => ({ url: `https://example.com/${name}`, ready: 'Ready' })) }, { task: 'Read' })
   expect(fetchPage).toHaveBeenCalledTimes(2)
   expect(result).toContain('Batch stopped: 1/3')
+  expect(JSON.parse(result).pages[0].ready).toBe(true)
+  expect(JSON.parse(result).pages[1].ready).toBe(false)
   expect(result).toContain('Result one.')
 })
 

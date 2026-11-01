@@ -64,8 +64,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const lifetime = new AbortController()
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
   let tokensUsed = 0, budgetExhausted = false
+  let budgetWarning: string | undefined
+  let budgetWarned = false
   const tokenBudget = options.tokenBudget ?? TASK_TOKEN_BUDGET
-  const budgetNote = `The task token budget (${tokenBudget.toLocaleString('en-US')} tokens available for this turn) was reached.`
+  const budgetNote = `The task token budget (${tokenBudget.toLocaleString('en-US')} new tokens available for this turn) was reached.`
   let startedCalls = 0
   let queued = 0
   const running = new Set<{ name: string; at: number; native: boolean; step?: AgentLoopStep }>()
@@ -145,7 +147,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         asked = ask
         return 'The question is with the person. Reply with exactly that question and nothing else.'
       }
+      const warning = budgetWarning
+      budgetWarning = undefined
       const notes = [
+        ...(warning ? [warning] : []),
         ...(collection.pending() ? [collection.pending()!] : []),
         ...(planned ? [`Observation step ${steps.length}`, ...(plan.pending() ? [plan.pending()!] : [])] : []),
       ]
@@ -193,6 +198,15 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!Number.isSafeInteger(tokens) || tokens <= 0) return
       tokensUsed += tokens
       options.onUsage?.(tokens)
+      if (!budgetWarned && tokensUsed >= tokenBudget * 0.8 && tokensUsed < tokenBudget) {
+        budgetWarned = true
+        const warning = `Token budget nearly exhausted (${tokenBudget - tokensUsed} new tokens remaining). Stop exploring, report what you have with report_result_check if offered (fail/unknown where unverified) or collect_results partial/blocked, and finish.`
+        budgetWarning = warning
+        if (liveSteer) {
+          budgetWarning = undefined
+          void liveSteer([warning]).then(delivered => { if (!delivered) budgetWarning = warning }).catch(() => { budgetWarning = warning })
+        }
+      }
       if (tokensUsed >= tokenBudget) {
         budgetExhausted = true
         lifetime.abort(new Error(budgetNote))
@@ -257,7 +271,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
-  if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, `${budgetNote} Work so far is preserved; inspect the current state before continuing.`), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
+  if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n")), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
@@ -268,8 +282,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   }
   if (session.error) throw new Error(session.error)
   const finish = collection.finish()
-  if (finish?.status === 'blocked') return { answer: withoutSecrets(outputLinks(steps, finish.summary), task), steps, fellBack: false, asked: true }
-  const incomplete = (unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  if (finish?.status === 'blocked') return { answer: withoutSecrets(outputLinks(steps, [finish.summary, collection.unverified()].filter(Boolean).join('\n\n')), task), steps, fellBack: false, asked: true }
+  const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
