@@ -26,7 +26,8 @@ test('a connected conversation edits an owned app while another conversation rec
   await writeFile(join(data, 'settings.json'), JSON.stringify({ defaultEngine: 'codex', codexModel: 'gpt-5.6-terra', computerUse: true, nativeTools: true }))
   await writeFile(join(data, 'candidate.json'), JSON.stringify({ id: process.env.ENGRAM_CANDIDATE_ID ?? 'development', model: process.env.ENGRAM_LIVE_MODEL ?? 'gpt-5.6-terra', window: 'visible', profile: 'isolated tmp', input: 'synthetic' }))
   const events: { type: string; channel?: string; text?: string }[] = []
-  const app = await electron.launch({ args: [join(root, 'apps/desktop/out/main/index.js')], env: {
+  const executablePath = process.env.ENGRAM_PACKAGED_APP
+  const app = await electron.launch({ ...(executablePath ? { executablePath } : { args: [join(root, 'apps/desktop/out/main/index.js')] }), env: {
     ...process.env, ENGRAM_VAULT: paths.root, ENGRAM_USERDATA: data, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'auto', ENGRAM_HIDDEN: '0', ENGRAM_STEP_DETAIL: '1',
   } })
   try {
@@ -89,7 +90,8 @@ test('a connected conversation edits an owned app while another conversation rec
     expect(events.find(e => e.type === 'chat:done' && e.channel === `bot-${worker.id}`)?.text).toContain('Background draft verified')
     const windows = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(w => w.webContents.getURL()))
     expect(windows).toHaveLength(1)
-    await writeFile(join(data, 'result.json'), JSON.stringify({ passed: true, focusLosses, windows, input: 'Synthetic Playwright typing; not physical human input', permission: 'CLI inherited; not standalone packaged authorization', setupIntervention: 'Focused the owned test Engram window before measuring; no activation after task start', events }, null, 2))
+    const metadata = await app.evaluate(({ app }) => ({ version: app.getVersion(), packaged: app.isPackaged }))
+    await writeFile(join(data, 'result.json'), JSON.stringify({ passed: true, metadata, focusLosses, windows, input: 'Synthetic Playwright typing; not physical human input', permission: 'CLI inherited; not standalone packaged authorization', setupIntervention: 'Focused the owned test Engram window before measuring; no activation after task start', events }, null, 2))
     console.log('BACKGROUND_CONVERSATION_EVIDENCE', data)
   } catch (error) {
     await writeFile(join(data, 'failure.txt'), error instanceof Error ? error.stack ?? error.message : String(error))

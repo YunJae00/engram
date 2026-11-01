@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron } from 'playwright-core'
+import { execFile } from 'node:child_process'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 
@@ -11,7 +12,7 @@ async function main() {
   await mkdir(join(repo, 'tmp'), { recursive: true })
   const root = await mkdtemp(join(repo, 'tmp', 'semantic-smoke-'))
   const app = await _electron.launch({
-    executablePath: resolve(scriptDir, process.platform === 'darwin'
+    executablePath: process.env.ENGRAM_PACKAGED_APP ?? resolve(scriptDir, process.platform === 'darwin'
       ? `../dist/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Engram.app/Contents/MacOS/Engram`
       : '../dist/win-unpacked/Engram.exe'),
     args: ['--no-sandbox'], timeout: 180000,
@@ -32,6 +33,15 @@ async function main() {
     const metadata = JSON.parse(await readFile(join(root, 'vault/workspace/.engram/vectors.json'), 'utf8'))
     assert.equal(metadata.dim, 1024)
     assert.equal(metadata.model, 'Xenova/bge-m3')
+    const runtime = await app.evaluate(({ app }) => ({ executable: process.execPath, script: `${app.getAppPath()}/out/main/codex-worker.js` }))
+    const reply = await new Promise((resolve, reject) => {
+      const child = execFile(runtime.executable, [runtime.script], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 15000 }, (error, stdout) => {
+        if (error) reject(error)
+        else { try { resolve(JSON.parse(stdout)) } catch (error) { reject(error) } }
+      })
+      child.stdin.end(JSON.stringify({ options: { codexPathOverride: join(root, 'missing-runtime') }, thread: { workingDirectory: root, skipGitRepoCheck: true }, input: 'Unused fixture input' }) + '\n')
+    })
+    assert.match(reply.error, /ENOENT/)
     console.log(JSON.stringify({ root, status, dimensions: metadata.dim }))
   } finally { await app.close() }
 }
