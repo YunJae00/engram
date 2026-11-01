@@ -38,10 +38,10 @@ it('counts streamed deltas and cumulative results once across warm turns', async
   const job: ToolSessionJob = { workdir: 'tmp' as EngineCwd, system: '', prompt: 'Work', tools: [], maxCalls: 10, onUsage }
   try {
     await f.run(job)
-    expect(onUsage.mock.calls.flat()).toEqual([122, 3, 10])
+    expect(onUsage.mock.calls.flat()).toEqual([102, 3, 10])
     onUsage.mockClear()
     await f.run(job)
-    expect(onUsage.mock.calls.flat()).toEqual([52])
+    expect(onUsage.mock.calls.flat()).toEqual([32])
     onUsage.mockClear()
     await f.run(job)
     expect(onUsage.mock.calls.flat()).toEqual([13])
@@ -49,22 +49,22 @@ it('counts streamed deltas and cumulative results once across warm turns', async
 })
 
 it('interrupts the Claude stream as soon as reported usage exhausts the task budget', async () => {
-  const f = fixture([[start('a', 100), delta(35), result(999, 999)]])
+  const f = fixture([[start('a', 100), delta(55), result(999, 999)]])
   const onUsage = vi.fn()
   try {
     const engine = { id: 'claude', runTools: f.run } as unknown as Engine
     const output = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [] }, 'Work', { tokenBudget: 150, onUsage })
-    expect(onUsage.mock.calls.flat()).toEqual([122, 33])
+    expect(onUsage.mock.calls.flat()).toEqual([102, 53])
     expect(output).toMatchObject({ budgetExhausted: true, tokensUsed: 155 })
-    expect(output.answer).toContain('150 tokens available for this turn')
+    expect(output.answer).toContain('150 new tokens available for this turn')
     expect(f.interrupt).toHaveBeenCalledOnce()
   } finally { f.pool.closeAll() }
 })
 
 it('ignores invalid and regressing counts and isolates interleaved subagent streams', () => {
   const usage = claudeTokenUsage()
-  expect(usage(start('a', 100))).toBe(122)
-  expect(usage(start('b', 10, 'tool-1'))).toBe(32)
+  expect(usage(start('a', 100))).toBe(102)
+  expect(usage(start('b', 10, 'tool-1'))).toBe(12)
   expect(usage(delta(5))).toBe(3)
   expect(usage(delta(4, 'tool-1'))).toBe(2)
   for (const invalid of [-1, NaN, Infinity, 2.5, 1]) expect(usage(delta(invalid))).toBe(0)
@@ -72,4 +72,12 @@ it('ignores invalid and regressing counts and isolates interleaved subagent stre
   expect(usage(result(-1, 10))).toBe(0)
   expect(usage({ type: 'result', subtype: 'success' })).toBe(0)
   expect(usage({ type: 'result', usage: { input_tokens: 10, output_tokens: 2 } })).toBe(12)
+})
+
+it('excludes cache reads from result-only usage while charging cache creation', () => {
+  const usage = claudeTokenUsage()
+  const message = result(40, 10, 900)
+  message.modelUsage.model.cacheCreationInputTokens = 20
+  expect(usage(message)).toBe(70)
+  expect(usage(message)).toBe(0)
 })

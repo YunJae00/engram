@@ -42,3 +42,13 @@ it('makes controls beyond the first 120 reachable without pretending they are ab
   expect(pageReport(page, 2)).toContain('#150 [clickable] Entry 149')
   expect(pageReport(page, 2)).not.toContain('#1 [')
 })
+
+
+it('exposes observed HTTP destinations without embedded credentials or executable links', () => {
+  const report = pageReport({ title: 'Movies', text: 'Movies', links: [
+    { text: 'Movie A', url: 'https://example.test/a' }, { text: 'Private', url: 'https://user:secret@example.test/' }, { text: 'Script', url: 'javascript:alert(1)' },
+  ] })
+  expect(report).toContain('Movie A — https://example.test/a')
+  expect(report).not.toContain('secret')
+  expect(report).not.toContain('javascript:')
+})

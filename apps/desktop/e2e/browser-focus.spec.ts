@@ -47,24 +47,35 @@ test('background browser windows preserve native conversation focus and the draf
       state.focusLosses = 0
       BrowserWindow.getAllWindows()[0]!.on('blur', () => state.focusLosses++)
     })
+    await page.evaluate(() => {
+      const events: string[] = []
+      ;(window as unknown as { focusTargets: string[] }).focusTargets = events
+      document.addEventListener('focusin', event => events.push((event.target as HTMLElement).getAttribute('data-testid') ?? (event.target as HTMLElement).tagName))
+    })
     const focused = () => app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => !w.webContents.getURL().includes('work-preview'))?.isFocused())
     expect(await focused()).toBe(true)
+    const concurrentDraft = ' Continuing to type during background navigation.'
+    const typing = page.getByTestId('bots-input').pressSequentially(concurrentDraft, { delay: 65 })
     for (const id of [bot.id, second.id]) {
       await page.evaluate(async ({ lane, url }) => window.engram.agentGo(url, lane), { lane: `bot-${id}`, url })
       expect(await focused()).toBe(true)
     }
+    await typing
+    const focusTargets = await page.evaluate(() => (window as unknown as { focusTargets: string[] }).focusTargets)
+    await writeFile(join(run, 'focus-targets.json'), JSON.stringify(focusTargets))
+    expect(focusTargets.filter(target => target !== 'bots-input')).toEqual([])
     await expect(page.locator('.browser-preview canvas[data-painted]')).toBeVisible()
     await page.evaluate(async lane => {
       for (const type of ['pressed', 'released'] as const) await window.engram.agentInput({ kind: 'mouse', type, x: 0.5, y: 0.1, button: 'left', clicks: 1 }, lane)
     }, `bot-${bot.id}`)
     await expect.poll(() => popups).toBeGreaterThan(0)
     expect(await focused()).toBe(true)
-    await expect(page.getByTestId('bots-input')).toHaveValue(draft)
+    await expect(page.getByTestId('bots-input')).toHaveValue(draft + concurrentDraft)
     const focusLosses = await app.evaluate(() => (globalThis as unknown as { focusLosses: number }).focusLosses)
     expect(focusLosses).toBe(0)
     await page.screenshot({ path: join(run, 'conversation.png') })
     if (process.env['ENGRAM_CAPTURE_DESKTOP'] === '1') execFileSync('/usr/sbin/screencapture', ['-x', join(run, 'desktop.png')])
-    await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, nativeFocusLosses: focusLosses, draftPreserved: true, popupLoaded: true }))
+    await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, nativeFocusLosses: focusLosses, draftPreserved: true, popupLoaded: true, inputSource: 'Playwright synthetic input, not physical human typing', concurrentInputCharacters: concurrentDraft.length }))
     console.log('Native focus evidence:', run)
   } finally {
     try { await closeTestApp(app) } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }

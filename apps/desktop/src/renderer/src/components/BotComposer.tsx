@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Orbit } from 'lucide-react'
+import { Monitor, Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
 import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
+import { ComputerDialog } from './ComputerDialog.js'
+import { threadLang, threadWords } from '../lib/threadLang.js'
 import { WebPaneButton } from './WebPaneButton.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
@@ -22,6 +24,9 @@ interface Props {
 }
 
 export function BotComposer({ botId, botName, initialDraft, busy, locked, memoryOpen, onToggleMemory, onSend, onStop }: Props) {
+  const [computerOpen, setComputerOpen] = useState(false)
+  const lang = threadLang(cometThreads.thread(botId).messages)
+  const words = threadWords(lang)
   const [value, setValue] = useState(initialDraft)
   const attachments = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).attachments)
   const valueRef = useRef(value)
@@ -93,6 +98,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
 
   return (
     <div className="bots-write conversation-dock" ref={rootRef}>
+      {computerOpen && <ComputerDialog lane={cometChannel(botId)} lang={lang} onClose={() => setComputerOpen(false)} />}
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
       <ChatComposer
         testId="bots-input"
@@ -122,6 +128,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
               <Orbit size={16} strokeWidth={1.8} aria-hidden />
               <span>{t('bots.memory')}</span>
             </button>
+            <button className="composer-web" data-testid="computer-controls-open" onClick={() => setComputerOpen(true)}><Monitor size={16} aria-hidden /><span>{words.computerControls}</span></button>
             <WebPaneButton busy={busy} lane={cometChannel(botId)} />
           </>
         }

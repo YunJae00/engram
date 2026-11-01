@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { createBot, initVault } from 'core'
+import { appendBotTurn, createBot, initVault, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -8,12 +8,12 @@ import { closeTestApp, openActivity } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-let app: ElectronApplication, page: Page, server: Server, url: string, lane: string, shots: string
+let app: ElectronApplication, page: Page, server: Server, url: string, lane: string, shots: string, paths: VaultPaths
 
 test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-preview-vault-'))
-  const paths = await initVault(vault, { git: false })
+  paths = await initVault(vault, { git: false })
   lane = `bot-${(await createBot(paths, { name: 'Browser preview' })).id}`
   shots = await mkdtemp(join(tmp, 'browser-preview-shots-'))
   server = createServer((_req, response) => {
@@ -115,6 +115,8 @@ test('automatic work keeps chat wide and switches between preview, split and ful
 })
 
 test('small windows open from the composer as a preview and expand only on request', async () => {
+  await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: true }), lane)
+  await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
   await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
@@ -149,7 +151,10 @@ test('preview stays within a narrow window, is draggable and supports dark and r
   await page.screenshot({ path: join(shots, 'preview-dark.png') })
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 600); win.setSize(620, 800) })
   if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
+  await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'press:ask', channel: lane, words: 'Submit report', host: 'example.com' }), lane)
   const preview = page.locator('.browser-preview'), bar = page.locator('.browser-preview-bar')
+  await expect(preview).toHaveClass(/minimized/)
+  await page.getByTestId('press-ask').getByRole('button', { name: 'Go ahead', exact: true }).click({ trial: true })
   const before = (await bar.boundingBox())!
   await page.mouse.move(before.x + 16, before.y + 18)
   await page.mouse.down(); await page.mouse.move(before.x - 800, before.y + 1000); await page.mouse.up()
@@ -161,4 +166,26 @@ test('preview stays within a narrow window, is draggable and supports dark and r
   await expect(preview).toHaveCSS('animation-name', 'none')
   await page.screenshot({ path: join(shots, 'preview-narrow.png') })
   console.log(`Browser preview screenshots: ${shots}`)
+})
+
+
+test('finished work minimizes its preview so the result remains readable', async () => {
+  await app.evaluate(({ BrowserWindow }, lane) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    contents.send('engram:event', { type: 'comet:working', channel: lane, working: true })
+    contents.send('engram:event', { type: 'comet:step', channel: lane, line: 'read_open_page: Final page' })
+  }, lane)
+  await expect(page.locator('.browser-preview')).not.toHaveClass(/minimized/)
+  await appendBotTurn(paths, lane.slice(4), { role: 'assistant', text: 'The result is ready to read.', at: new Date().toISOString() })
+  await app.evaluate(({ BrowserWindow }, lane) => {
+    const win = BrowserWindow.getAllWindows()[0]!
+    win.setSize(1400, 900)
+    win.webContents.send('engram:event', { type: 'chat:done', channel: lane, text: 'The result is ready to read.' })
+    win.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false })
+  }, lane)
+  await expect(page.getByTestId('bots-thread')).toContainText('The result is ready to read.')
+  await expect(page.locator('.browser-preview')).toHaveClass(/minimized/)
+  await page.screenshot({ path: join(shots, 'preview-finished.png') })
+  await page.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
+  await expect(page.locator('.browser-preview canvas')).toHaveAttribute('data-painted', '')
 })

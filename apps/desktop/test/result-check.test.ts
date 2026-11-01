@@ -28,7 +28,7 @@ describe('result check receipt', () => {
   it('requires a verdict, but leaves evidence references optional', async () => {
     expect(verifyResult([read()], outputs, [source]).issues.join(' ')).toContain('verdict is missing')
     expect(verifyResult([], [], []).accepted).toBe(false)
-    expect(checkResult([read(), await recorded()], outputs, [source])).toEqual({ accepted: true, issues: [] })
+    expect(checkResult([read(), await recorded()], outputs, [source])).toEqual({ accepted: true, verified: true, issues: [] })
     expect(checkResult([read(), await recorded(payload(['step:99', 'whatever']))], outputs, [source]).accepted).toBe(true)
   })
 
@@ -57,7 +57,8 @@ describe('result check receipt', () => {
   it.each(['fail', 'unknown'])('keeps %s verdicts unresolved despite good readback', async status => {
     const value = payload(); value.grounding.status = status
     const result = checkResult([read(), await recorded(value)], outputs, [source])
-    expect(result.accepted).toBe(false)
+    expect(result.accepted).toBe(true)
+    expect(result.verified).toBe(false)
     expect(result.issues.join(' ')).toContain(`Source grounding: ${status}`)
   })
 
@@ -73,7 +74,7 @@ describe('result check receipt', () => {
     const missing = JSON.parse(await tool.run(payload(), { task: 'Check proposal', steps: [] })).validation
     expect(missing.accepted).toBe(false)
     expect(missing.issues.join(' ')).toContain('proposal.md')
-    expect(JSON.parse(await tool.run(payload(), { task: 'Check proposal', steps: [read()] })).validation).toEqual({ accepted: true, issues: [] })
+    expect(JSON.parse(await tool.run(payload(), { task: 'Check proposal', steps: [read()] })).validation).toEqual({ accepted: true, verified: true, issues: [] })
   })
 })
 
@@ -213,4 +214,37 @@ describe('the check, read back for the person', () => {
     expect(checkReport([read()])).toBeUndefined()
     expect(checkReport([{ tool: 'report_result_check', args: {}, observation: '{"resultCheck":{"checks":[]}}' }])).toBeUndefined()
   })
+})
+
+it('accepts an honest inaccessible source without verifying its claims', async () => {
+  const value = payload()
+  value.grounding.status = 'unknown'
+  value.checks[0]!.status = 'fail'
+  const result = verifyResult([{ tool: 'open_page', args: {}, observation: 'HTTP 403' }, await recorded(value)], [], [], true)
+  expect(result.accepted).toBe(true)
+  expect(result.verified).toBe(false)
+  expect(result.issues).toHaveLength(2)
+})
+
+it('ends identical rejections on the third report while keeping defects visible and unverified', async () => {
+  const tool = resultCheckTool({ outputs, sources: [source] })
+  const steps: TurnStep[] = []
+  for (let i = 0; i < 3; i++) {
+    const observation = await tool.run(payload(), { task: 'Check', steps })
+    const validation = JSON.parse(observation).validation
+    expect(validation.accepted).toBe(i === 2)
+    expect(validation.verified).toBe(false)
+    steps.push({ tool: tool.name, args: payload(), observation })
+  }
+  expect(verifyResult(steps, outputs, [source]).accepted).toBe(true)
+  expect(checkReport(steps)?.checks.some(check => check.status === 'unknown' && check.basis.includes('Reread'))).toBe(true)
+})
+
+it('uses successful structured batch pages as sources but rejects a wholly failed batch', async () => {
+  for (const ready of [true, false]) {
+    const batch: TurnStep = { tool: 'read_pages', args: {}, observation: JSON.stringify({ completed: ready ? 1 : 0, requested: 1, pages: [{ url: 'https://example.test', ready, observation: ready ? 'Actual source text' : '403 Forbidden' }] }) }
+    const result = verifyResult([batch, await recorded()], [], [], true)
+    expect(result.accepted).toBe(ready)
+    expect(result.verified).toBe(ready)
+  }
 })

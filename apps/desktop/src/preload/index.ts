@@ -48,6 +48,7 @@ const api: EngramApi = {
   artifactReveal: (id) => ipcRenderer.invoke('artifact:reveal', id),
   artifactOpen: (id) => ipcRenderer.invoke('artifact:open', id),
   artifactRead: (id) => ipcRenderer.invoke('artifact:read', id),
+  desktopPreviewPlacement: value => ipcRenderer.invoke('desktop:previewPlacement', value),
   desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
   desktopVisible: () => ipcRenderer.invoke('desktop:visible'),
   desktopWindows: () => ipcRenderer.invoke('desktop:windows'),

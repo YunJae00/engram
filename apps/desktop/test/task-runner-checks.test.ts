@@ -37,3 +37,11 @@ it('continues paused work only on user input and never learns it as a question a
   expect(t.learned).toEqual([])
   expect(t.sent[1]?.extra?.context).toContain('Original task: Read the report')
 })
+
+it('never promotes accepted unresolved reports to verified tasks', async () => {
+  const t = await setup(async () => ({ ...done('Source unavailable'),
+    check: { accepted: true, verified: false, issues: ['Source grounding: unknown — HTTP 403'] },
+    trail: [{ tool: 'read_open_page', args: {}, observation: 'Alternate source read' }] }))
+  await t.chat('Check the source')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', verified: false, verificationIssue: expect.stringContaining('unknown') })
+})

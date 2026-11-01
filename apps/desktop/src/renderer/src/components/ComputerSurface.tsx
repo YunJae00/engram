@@ -1,3 +1,4 @@
+import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { AppWindow, ChevronDown, Eye, LoaderCircle, Monitor, Pause, RefreshCw, ShieldCheck, Square, TextSearch, Unplug, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { DesktopWindowDto } from '../../../shared/desktop.js'
@@ -6,13 +7,16 @@ import { desktopError, hasDesktopGrant, refreshDesktop, stopComputerControl, use
 import { DesktopControls } from './DesktopControls.js'
 import { DesktopVideo } from './DesktopVideo.js'
 
-export function ComputerSurface({ lane }: { lane: string }) {
+export function ComputerSurface({ lane, lang = 'en' }: { lane: string; lang?: ThreadLang }) {
   const { available, controlSupported, bindings, control, error: statusError } = useDesktopSession()
   const binding = bindings.find((item) => item.lane === lane)
   const reconnect = Boolean(binding?.stopped)
   const owner = control && control.state !== 'idle' ? control : null
   const reserved = hasDesktopGrant(control)
   const mine = owner?.lane === lane
+  const words = threadWords(lang)
+  const [preview, setPreview] = useState('top-right')
+  useEffect(() => { void api.desktopPreviewPlacement().then(setPreview).catch(() => {}) }, [])
   const [picking, setPicking] = useState(false)
   const [windows, setWindows] = useState<DesktopWindowDto[]>([])
   const [query, setQuery] = useState('')
@@ -52,15 +56,18 @@ export function ComputerSurface({ lane }: { lane: string }) {
     return () => { document.removeEventListener('keydown', close); document.removeEventListener('pointerdown', outside) }
   }, [picking])
   if (available !== true) return <div className="computer-empty" data-testid="computer-unavailable">
-    <Monitor size={30} strokeWidth={1.4} aria-hidden /><strong>{available === null ? 'Checking computer access…' : 'Computer access is unavailable'}</strong>
-    <p>{statusError || 'This build supports app access on Windows. Browser work remains available in the Browser tab.'}</p>
-    {statusError && <button className="computer-secondary" onClick={() => void refreshDesktop()}>Try again</button>}
+    <Monitor size={30} strokeWidth={1.4} aria-hidden /><strong>{available === null ? words.computerAccessChecking : words.computerAccessUnavailable}</strong>
+    <p>{statusError || words.computerAccessFallback}</p>
+    {statusError && <button className="computer-secondary" onClick={() => void refreshDesktop()}>{words.tryAgain}</button>}
   </div>
   const ownedElsewhere = reserved && !mine
   const visibleWindows = windows.filter((item) => item.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
   const state = mine ? owner.state : binding?.readable ? 'read' : 'view'
   return <div className="computer-surface" data-state={state} data-testid="computer-surface">
     <header className="computer-window-bar">
+      <label>{words.preview}<select aria-label={words.preview} value={preview} onChange={event => { const value = event.target.value; void run(async () => setPreview(await api.desktopPreviewPlacement(value))) }}>
+        {['top-right', 'top-left', 'bottom-right', 'bottom-left', 'hidden'].map((value, index) => <option key={value} value={value}>{words.previewCorners[index]}</option>)}
+      </select></label>
       <button ref={pickerTrigger} className="computer-window-choice" disabled={busy || reserved} onClick={pick} aria-expanded={picking} aria-label={binding ? `Change window: ${binding.name}` : 'Choose an app window'}>
         <AppWindow size={14} aria-hidden /><span>{binding?.name || 'Choose an app window'}</span><ChevronDown size={13} aria-hidden />
       </button>

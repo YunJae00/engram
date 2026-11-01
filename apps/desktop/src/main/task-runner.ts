@@ -28,7 +28,7 @@ import { flog } from './flog.js'
 import { freshResultReadback } from './task-result-state.js'
 
 
-export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
+export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
 export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 const WORTH_KEEPING_STEPS = 3
@@ -95,7 +95,7 @@ export function taskRunner(deps: {
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
-        t.verified = outcome.check.accepted && freshResultReadback(outcome.trail ?? [])
+        t.verified = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !outcome.budgetExhausted && freshResultReadback(outcome.trail ?? [])
         if (!t.verified) t.verificationIssue = outcome.check.issues.join('; ') || 'The result has no fresh readback.'
         else delete t.verificationIssue
       }
@@ -107,6 +107,7 @@ export function taskRunner(deps: {
       else if (deps.offered?.(channelOf(t))) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
+      else if (outcome.check && !t.verified && !outcome.asked) { t.state = 'waiting'; logTask(t, 'The report is recorded, but unresolved checks remain. Waiting for your next instruction.') }
       else if (outcome.unfinished) {
         t.state = 'waiting'
         logTask(t, 'The turn ended with unfinished work; waiting for your next instruction.')

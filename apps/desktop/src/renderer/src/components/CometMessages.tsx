@@ -9,7 +9,7 @@ import { ErrorAnswer, isProviderError } from './ErrorAnswer.js'
 import { UserMessage } from './ChatAttachment.js'
 import { ReplyChips } from './ReplyChips.js'
 import { Thinking } from './Thinking.js'
-import { threadLang, threadWords } from '../lib/threadLang.js'
+import { displayTaskAnswer, threadLang, threadWords } from '../lib/threadLang.js'
 
 // One conversation, read the way a chat with an assistant reads: the
 // person's words on the right; the comet's words, each turn's work card and
@@ -48,10 +48,10 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
         <CometWork busy={live} lang={lang} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
         {failed(m)
           ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(resendable && i === messages.length - 1 ? { onRetry: onResend } : {})} /></div>
-          : m.text ? answerBubbles(m.text).map((part, k, parts) => (
+          : m.text ? answerBubbles(displayTaskAnswer(m.text, lang)).map((part, k, parts) => (
             <div key={k} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`}>
               <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />
-              {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} />}
+              {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} lang={lang} />}
             </div>
           )) : null}
       </Fragment>

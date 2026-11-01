@@ -70,7 +70,7 @@ it.each(['docx', 'pptx'])('checks real %s copies from full content-part reads, n
   expect(verify([...sources, made, partial, ...others]).accepted).toBe(false)
   const rest = await readParts(output.path, [main], { [main]: JSON.parse(partial.observation).nextOffset })
   const finalReads = [partial, ...others, ...rest]
-  expect(verify([...sources, made, ...finalReads])).toEqual({ accepted: true, issues: [] })
+  expect(verify([...sources, made, ...finalReads])).toEqual({ accepted: true, verified: true, issues: [] })
   expect(verify([...sources, ...finalReads, made]).accepted).toBe(false)
   expect(verify([...sources, made, ...finalReads.map(step => ({ ...step, seeded: true }))]).accepted).toBe(false)
   const changed = { ...partial, observation: JSON.stringify({ ...JSON.parse(partial.observation), sha256: 'b'.repeat(64) }) }

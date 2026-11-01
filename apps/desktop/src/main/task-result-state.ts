@@ -26,8 +26,8 @@ export function freshResultReadback(steps: TurnStep[]): boolean {
   return successfulTurnSteps(steps.slice(Math.max(0, lastChange))).some(step => READBACK.test(step.tool) || step.observedAfterAction === true)
 }
 
-export function canLearnTurn(result: Pick<AgentLoopResult, 'asked' | 'stopped' | 'pending' | 'incomplete' | 'steps'>, held: boolean, check?: { accepted: boolean }): boolean {
+export function canLearnTurn(result: Pick<AgentLoopResult, 'asked' | 'stopped' | 'pending' | 'incomplete' | 'steps'>, held: boolean, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
   // Held tasks are learned only after the runner confirms their final state.
   if (held || result.asked || result.stopped || result.pending || result.incomplete) return false
-  return !check || check.accepted && freshResultReadback(result.steps)
+  return !check || check.accepted && check.verified !== false && !check.issues?.length && freshResultReadback(result.steps)
 }

@@ -10,8 +10,7 @@ export interface LedgerEntry {
 }
 
 // win32 process creation time drifts from Date.now() stamped in the parent —
-// AV scans and disk pressure delay the child's real start (orca uses the same
-// tolerance).
+// AV scans and disk pressure delay the child's real start.
 const CREATED_AT_TOLERANCE_MS = 10_000
 const PROBE_TIMEOUT_MS = 5_000
 const execFileAsync = promisify(execFile)

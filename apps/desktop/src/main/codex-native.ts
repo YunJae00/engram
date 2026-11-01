@@ -148,6 +148,7 @@ class CodexSession {
   private async steer(turn: Turn, said: string[]): Promise<boolean> {
     if (turn.settled || this.turn !== turn || !turn.turnId) return false
     await this.rpc.send('turn/steer', { threadId: this.threadId, expectedTurnId: turn.turnId, input: said.map((words) => ({ type: 'text', text: words, text_elements: [] })) }, 5_000)
+    flog('input-delivery', JSON.stringify({ engine: 'codex', messages: said.length, accepted: true }))
     return true
   }
 
@@ -177,11 +178,13 @@ class CodexSession {
     if (eventTurn && (this.completedTurns.has(eventTurn) || turn.turnId && eventTurn !== turn.turnId)) return
     const { job, recorded } = turn
     if (method === 'thread/tokenUsage/updated') {
-      const total = object(object(params['tokenUsage'])['total'])['totalTokens']
+      const usage = object(object(params['tokenUsage'])['total'])
+      const total = usage['totalTokens'], cached = usage['cachedInputTokens']
       if (typeof total === 'number' && Number.isSafeInteger(total) && total >= 0) {
-        const delta = Math.max(0, total - this.totalTokens)
-        this.totalTokens = total
-        if (delta) job.onUsage?.(delta)
+        const fresh = total - (typeof cached === 'number' && Number.isSafeInteger(cached) && cached >= 0 && cached <= total ? cached : 0)
+        const delta = Math.max(0, fresh - this.totalTokens)
+        this.totalTokens = Math.max(this.totalTokens, fresh)
+        if (delta) { flog('token-usage', JSON.stringify({ engine: 'codex', freshDelta: delta, freshTotal: fresh, contextTotal: total, cachedTotal: cached, last: object(params['tokenUsage'])['last'] })); job.onUsage?.(delta) }
       }
       return
     }

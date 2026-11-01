@@ -86,3 +86,14 @@ it('lets a phase be completed right after a rejected plan call, and says when th
   steps.push({ tool: 'task_plan', args: {}, observation: 'that did not work: Supply evidenceStep and a nonempty finding' })
   await expect(plan.tool.run({ evidenceStep: 1, finding: 'The week is shown' }, { task: '' })).resolves.toContain('"completed":1')
 })
+
+it('accepts structured batch reads only when a page passed readiness', async () => {
+  const steps: AgentLoopStep[] = []
+  const plan = taskPlan(steps)
+  await plan.tool.run({ phases: ['Read source', 'Write answer'] }, { task: '' })
+  steps.push({ tool: 'read_pages', args: {}, observation: JSON.stringify({ completed: 0, requested: 1, pages: [{ url: 'https://example.test', ready: false, observation: '403' }] }) })
+  await expect(plan.tool.run({ evidenceStep: 1, finding: 'Read' }, { task: '' })).rejects.toThrow()
+  steps.push({ tool: 'read_pages', args: {}, observation: JSON.stringify({ completed: 1, requested: 1, pages: [{ url: 'https://example.test', ready: true, observation: 'Source text' }] }) })
+  await plan.tool.run({ evidenceStep: 2, finding: 'Read the source text' }, { task: '' })
+  expect(plan.completed()).toBe(1)
+})

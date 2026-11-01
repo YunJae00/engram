@@ -256,3 +256,19 @@ test('the bell cancels schedules and opens a habit only once with a localized de
   await expect(page.getByTestId('habit-ask-done')).toBeVisible()
   expect((await readHabits(paths)).fixture?.state).toBe('dismissed')
 })
+
+
+test('a budget stop stays stopped with preserved progress and no completion claim', async () => {
+  const bot = await createBot(paths, { name: 'Processing limit' })
+  const task = await createTask(paths, 'Read the sources', bot.id)
+  await updateTask(paths, task.id, saved => { saved.state = 'failed'; saved.log.push({ at: new Date().toISOString(), line: 'Stopped at the task token budget.' }) })
+  await appendBotTurn(paths, bot.id, { role: 'user', text: 'Read the sources', at: new Date().toISOString() })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'The task token budget (300,000 tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.\n\nMovie A: 14:00; Movie B: Not verified — HTTP 403', at: new Date().toISOString() })
+  await page.reload()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  await expect(page.locator('.bots-view')).toContainText('This task reached its processing limit and stopped.')
+  await expect(page.locator('.bots-view')).toContainText('Task stopped')
+  await expect(page.locator('.bots-view')).toContainText('Movie B: Not verified')
+  await expect(page.locator('.bots-view')).not.toContainText('tokens available')
+  await expect(page.locator('.bots-view')).not.toContainText('Done ·')
+})

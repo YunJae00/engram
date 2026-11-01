@@ -1,6 +1,6 @@
 import { app, BrowserWindow, screen, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { desktopBinding, keptOut, type DesktopBinding } from './desktop-access.js'
+import { desktopBinding, desktopOwner, keptOut, type DesktopBinding } from './desktop-access.js'
 import type { DesktopObservationDto, WorkPreviewDto } from '../shared/desktop.js'
 import { desktopImage } from './desktop-image.js'
 import type { Page } from 'playwright-core'
@@ -18,17 +18,34 @@ let timer: ReturnType<typeof setInterval> | undefined
 let quitting = false
 let hooked = false
 const MAX_AGE = 15_000
+let placement = 'top-right'
+export function configureWorkPreview(value?: string): string {
+  if (value !== undefined) {
+    if (!['top-right', 'top-left', 'bottom-right', 'bottom-left', 'hidden'].includes(value)) throw new Error('Choose a preview corner or hidden.')
+    placement = value
+    if (window && !window.isDestroyed()) {
+      const work = screen.getDisplayMatching(desktopOwner()?.getBounds() ?? window.getBounds()).workArea
+      const bounds = window.getBounds()
+      window.setPosition(placement.endsWith('left') ? work.x + 16 : work.x + work.width - bounds.width - 16,
+        placement.startsWith('bottom') ? work.y + work.height - bounds.height - 12 : work.y + 12)
+    }
+    publish()
+  }
+  return placement
+}
 
 function publish(): void {
+  if (placement === 'hidden') { window?.hide(); return }
   for (const [id, entry] of entries) if (Date.now() - entry.at > MAX_AGE || !valid.get(id)?.()) {
     entries.delete(id); lastCapture.delete(id); valid.delete(id); browserSources.delete(id)
   }
   if (!entries.size) { window?.hide(); window?.destroy(); window = undefined; clearInterval(timer); timer = undefined; return }
   if (!window || window.isDestroyed()) {
     if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
-    const work = screen.getPrimaryDisplay().workArea
+    const owner = desktopOwner()?.getBounds()
+    const work = (owner ? screen.getDisplayMatching(owner) : screen.getPrimaryDisplay()).workArea
     window = new BrowserWindow({
-      x: work.x + work.width - Math.min(376, work.width), y: work.y + 12, width: Math.min(360, work.width - 16), height: Math.min(380, work.height - 24),
+      x: placement.endsWith('left') ? work.x + 16 : work.x + work.width - Math.min(376, work.width), y: placement.startsWith('bottom') ? work.y + work.height - Math.min(380, work.height - 24) - 12 : work.y + 12, width: Math.min(360, work.width - 16), height: Math.min(380, work.height - 24),
       frame: false, transparent: true, focusable: false, alwaysOnTop: true, skipTaskbar: true,
       hasShadow: false, resizable: false, show: false,
       webPreferences: { preload: join(import.meta.dirname, '../preload/index.mjs'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
@@ -41,7 +58,7 @@ function publish(): void {
     view.webContents.on('will-navigate', guard)
     view.webContents.on('will-redirect', guard)
     // React subscribes after did-finish-load; renew the frame on the timer too.
-    view.webContents.on('did-finish-load', () => { if (entries.size && !quitting) view.showInactive() })
+    view.webContents.on('did-finish-load', () => { if (entries.size && !quitting && placement !== 'hidden') view.showInactive() })
     const dev = process.env['ELECTRON_RENDERER_URL']
     void (dev ? view.loadURL(`${dev}#work-preview`) : view.loadFile(join(import.meta.dirname, '../renderer/index.html'), { hash: 'work-preview' })).catch(() => view.destroy())
   }
@@ -60,7 +77,7 @@ export function closeWorkPreview(): void {
 }
 
 export function showWorkPreview(binding: DesktopBinding): void {
-  if (quitting || binding.host.closed || binding.stopped || !binding.readable) return
+  if (placement === 'hidden' || quitting || binding.host.closed || binding.stopped || !binding.readable) return
   const key = `${binding.lane}:${binding.source}`
   valid.set(key, () => { const current = desktopBinding(binding.lane); return Boolean(current?.host === binding.host && current.readable && !current.stopped && !current.host.closed && binding.readable && !binding.stopped && !keptOut(binding.name)) })
   const prior = entries.get(key)
@@ -88,7 +105,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
 
 
 export function showBrowserWorkPreview(lane: string, page: Page): void {
-  if (!app?.isReady?.() || quitting || page.isClosed()) return
+  if (placement === 'hidden' || !app?.isReady?.() || quitting || page.isClosed()) return
   if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
   const key = `${lane}:browser-start`
   clearTimeout(refresh.get(key))
@@ -97,12 +114,12 @@ export function showBrowserWorkPreview(lane: string, page: Page): void {
 }
 
 function captureBrowserWorkPreview(lane: string, page: Page): void {
-  if (!app?.isReady?.() || quitting || page.isClosed() || !/^https?:/.test(page.url())) return
+  if (placement === 'hidden' || !app?.isReady?.() || quitting || page.isClosed() || !/^https?:/.test(page.url())) return
   const key = `${lane}:browser`
   const url = page.url()
   const same = browserSources.get(key)?.page === page && browserSources.get(key)?.url === url
   browserSources.set(key, { page, url })
-  valid.set(key, () => !page.isClosed())
+  valid.set(key, () => !page.isClosed() && page.url() === url)
   const prior = same ? entries.get(key) : undefined
   entries.delete(key)
   entries.set(key, { id: key, title: new URL(page.url()).hostname, at: Date.now(), ...(prior?.data ? { data: prior.data } : {}) })

@@ -62,3 +62,11 @@ it('brings chat back for approvals and questions without interrupting the work',
   expect(webPane.getSnapshot('a').floating).toBe(false)
   expect(webPane.getSnapshot('b').wanted).toBe(false)
 })
+
+it('clears attention when the next task starts without changing the chosen layout', () => {
+  webPane.preview('a')
+  webPane.attention('a')
+  expect(webPane.getSnapshot('a').attention).toBe(true)
+  webPane.handleEvent({ type: 'comet:working', channel: 'a', working: true })
+  expect(webPane.getSnapshot('a')).toMatchObject({ attention: false, floating: true })
+})

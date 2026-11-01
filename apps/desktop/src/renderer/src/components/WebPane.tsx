@@ -49,7 +49,6 @@ export function BrowserAddress({ url, channel }: { url?: string; channel: string
       data-testid="live-address"
       aria-label="Website address"
       placeholder="Search or type a URL"
-      autoFocus={!url || url === 'about:blank'}
       value={shown}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}

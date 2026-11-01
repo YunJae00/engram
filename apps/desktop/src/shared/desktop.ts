@@ -92,6 +92,7 @@ export interface DesktopControlStatusDto {
   resumable?: boolean
 }
 export interface DesktopApi {
+  desktopPreviewPlacement(value?: string): Promise<string>
   desktopAvailable(): Promise<boolean>
   desktopVisible(): Promise<boolean>
   desktopWindows(): Promise<DesktopWindowDto[]>
