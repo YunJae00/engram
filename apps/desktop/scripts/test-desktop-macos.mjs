@@ -9,6 +9,9 @@ if(process.platform !== 'darwin') throw new Error('This fixture requires macOS')
 const root=fileURLToPath(new URL('..',import.meta.url));
 const testRoot=join(root,'../../tmp');mkdirSync(testRoot,{recursive:true});
 const directory=mkdtempSync(join(testRoot,'engram-native-'));
+const checksPath=join(directory,'ObservationChecks');
+execFileSync('xcrun',['swiftc','-parse-as-library',join(root,'native/macos/Accessibility.swift'),join(root,'native/macos-test/ObservationChecks.swift'),'-o',checksPath]);
+execFileSync(checksPath,[],{stdio:'inherit'});
 const fixturePath=join(directory,'EngramFixture');
 execFileSync('xcrun',['swiftc','-parse-as-library',join(root,'native/macos-test/Fixture.swift'),'-o',fixturePath]);
 const fixture=spawn(fixturePath,[]);
@@ -27,6 +30,15 @@ try {
  assert.match(scan.snapshot,/^[a-f0-9]{32}$/);
  assert(scan.controls.every(n=>/^c[0-9]+$/.test(n.id)));
  console.log('scan',scan.controls.length,scan.skippedControls);
+ const outline=await request('quietScan',{mode:'skeleton'});
+ assert(outline.controls.every(n=>n.depth<=3));
+ assert(outline.controls.some(n=>n.name==='Fixture region'));
+ assert(outline.controls.some(n=>n.name==='Nested result'), 'Empty groups must not spend skeleton depth');
+ const region=outline.controls.find(n=>n.name==='Fixture message');assert(region);
+ const drill=await request('quietScan',{root:region.id,snapshot:outline.snapshot});
+ assert(drill.controls.some(n=>n.name==='Fixture message'));
+ assert(!drill.controls.some(n=>n.name==='Private password'));
+ await assert.rejects(request('quietScan',{root:region.id,snapshot:'0'.repeat(32)}));
  let recent=scan;
  for(let i=0;i<20;i++){const next=await request('quietScan');await request('quietRead',{snapshot:recent.snapshot});recent=next}
  const fresh=await request('quietScan');

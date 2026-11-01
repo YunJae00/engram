@@ -1,11 +1,12 @@
+import { appNameMatch, similarApps } from 'core'
 import { BrowserWindow, desktopCapturer, type DesktopCapturerSource } from 'electron'
 import type { DesktopBindingDto, DesktopWindowDto } from '../shared/desktop.js'
 import { DesktopHost } from './desktop-host.js'
 import { broadcast } from './engine-health.js'
 
-export interface DesktopBinding extends DesktopBindingDto { window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
+export interface DesktopBinding extends DesktopBindingDto { aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
 type Binding = DesktopBinding
-interface NativeWindow { window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+interface NativeWindow { aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
 const bindings = new Map<string, Binding>()
 const choices = new Map<string, number>()
 let generation = 0
@@ -102,7 +103,7 @@ export function catalogHost(): DesktopHost {
 export function closeCatalogHost(): void { if (catalog) { clearTimeout(catalog.timer); catalog.host.close(); catalog = null } }
 export async function desktopWindows(): Promise<DesktopWindowDto[]> {
   if (!DesktopHost.available()) return []
-  return (await nativeWindows(catalogHost())).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.foreground ? { foreground: true } : {}) }))
+  return (await nativeWindows(catalogHost())).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.aliases ? { aliases: one.aliases } : {}), ...(one.foreground ? { foreground: true } : {}) }))
 }
 async function nativeWindows(host: DesktopHost): Promise<NativeWindow[]> {
   const own = new Set(BrowserWindow.getAllWindows().map((window) => window.getNativeWindowHandle().readBigUInt64LE().toString()))
@@ -123,14 +124,14 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     const windows = await nativeWindows(host)
     const wanted = pick.app?.trim().toLocaleLowerCase()
     const exactId = wanted && /^window:(\d+):0$/.exec(wanted)?.[1]
-    const matches = wanted ? windows.filter((one) => exactId ? one.window === exactId : one.title.toLocaleLowerCase().includes(wanted)) : windows.filter((one) => one.foreground)
-    const exact = matches.filter(one => one.title.toLocaleLowerCase() === wanted)
+    const matches = wanted ? windows.filter((one) => exactId ? one.window === exactId : appNameMatch({ name: one.title, aliases: one.aliases }, wanted)) : windows.filter((one) => one.foreground)
+    const exact = matches.filter(one => !!wanted && appNameMatch({ name: one.title, aliases: one.aliases }, wanted, true))
     const candidates = exact.length ? exact : matches
     const visible = candidates.filter(one => !one.minimized)
     if (wanted && !exactId && visible.length > 1) throw new Error(`Several windows match "${pick.app}". Choose an exact window ID: ${visible.map(one => `window:${one.window}:0 ${one.title}`).join(', ')}`)
     const target = candidates.find((one) => !one.minimized && one.foreground) ?? candidates.find((one) => !one.minimized) ?? candidates[0]
     // The open windows travel with the miss, so the next call can name one without a separate listing.
-    const open = windows.map((one) => one.title).filter(Boolean).slice(0, 40).map((title) => `"${title}"`).join(', ')
+    const open = similarApps(windows.map(one => ({ ...one, name: one.title })), wanted ?? '').map(one => one.title).map((title) => `"${title}"`).join(', ')
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     if (keptOut(target.title)) throw new Error(`The person keeps "${target.title}" out of Engram's reach in Settings. Do not work in it; say so, and that they can allow it in Settings.`)
@@ -138,10 +139,10 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     // A window stays with a chat only while that chat is working in it.
     if (taken && laneWorking(taken.lane)) throw new Error(`"${target.title}" belongs to another chat right now.`)
     if (taken) releaseDesktop(taken.lane)
-    if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; return current }
+    if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; current.aliases = target.aliases; return current }
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     if (current && current.host !== host) current.host.close()
-    const binding: Binding = { lane, source: `window:${target.window}:0`, name: target.title, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
+    const binding: Binding = { lane, source: `window:${target.window}:0`, name: target.title, aliases: target.aliases, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
     bindings.set(lane, binding)
     changed()
     return binding

@@ -1,13 +1,15 @@
+import { SCREEN_HINT } from './desktop-sparse.js'
 import type { QuietControlDto, QuietObservationDto } from '../shared/desktop.js'
 import { decideChoice, type ChoiceDecision } from './decision-provider.js'
 import { controlLine } from './desktop-quiet-format.js'
 import { quietPress, quietScan, quietSet, quietText } from './desktop-quiet.js'
+import { desktopFailure } from './desktop-failure.js'
 import { flog } from './flog.js'
 
 // Bounded provider actions; uncertain or consequential outcomes stop the loop.
 export interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; send?: boolean; maxSteps: number; signal?: AbortSignal }
 export interface QuietDoStep { action: string; control?: string; name?: string; confidence: number; ms: number; outcome: string }
-export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean; committed?: boolean; reply?: string; settled?: boolean; stillAnswering?: string }
+export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure' | 'needs-screen'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean; committed?: boolean; reply?: string; settled?: boolean; stillAnswering?: string }
 
 const IRREVERSIBLE = /\b(send|submit|post|publish|delete|remove|pay|purchase|buy|save|apply|confirm order|sign out|log out)\b|보내기|전송|제출|게시|삭제|제거|결제|구매|저장|적용|주문|로그아웃/i
 const OPTION_CAP = 250
@@ -52,6 +54,15 @@ export function buildOptions(observation: QuietObservationDto, hasText: boolean)
     blocked: 'Nothing on this screen leads to the goal, or it needs the person (a sign-in, a choice only they can make).',
   }
   const controls = new Map<string, QuietControlDto>()
+  if (observation.sparseTree) { criteria['SCREEN'] = SCREEN_HINT; return { criteria, controls } }
+  if (observation.truncated) {
+    criteria['WIDEN'] = 'Read the full window skeleton to locate a different region.'
+    for (const control of usable.filter(control => control.subtreeTruncated)) {
+      if (Object.keys(criteria).length >= OPTION_CAP) break
+      criteria[`DRILL ${control.id}`] = `Read only the subtree of ${controlLine(control)}`
+      controls.set(`DRILL ${control.id}`, control)
+    }
+  }
   for (const control of settable) { if (Object.keys(criteria).length >= OPTION_CAP) break; criteria[`set ${control.id}`] = `Put the text into ${controlLine(control)}`; controls.set(`set ${control.id}`, control) }
   for (const control of pressable) { if (Object.keys(criteria).length >= OPTION_CAP) break; criteria[`press ${control.id}`] = `Press ${controlLine(control)}`; controls.set(`press ${control.id}`, control) }
   return { criteria, controls }
@@ -97,7 +108,15 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     if (decision.choice === 'done' && request.send) { steps.push({ action: 'done', confidence: decision.confidence, ms: decision.ms, outcome: 'not sent yet; sending ends the goal' }); continue }
     if (decision.choice === 'done') { steps.push({ action: 'done', confidence: decision.confidence, ms: decision.ms, outcome: 'the screen shows the goal met' }); return finish('done') }
     if (decision.choice === 'blocked') { steps.push({ action: 'blocked', confidence: decision.confidence, ms: decision.ms, outcome: 'nothing on this screen leads further' }); return finish('blocked') }
-    const control = controls.get(decision.choice)!
+    if (decision.choice === 'SCREEN' && observation.sparseTree) { steps.push({ action: 'SCREEN', confidence: decision.confidence, ms: decision.ms, outcome: SCREEN_HINT }); return finish('needs-screen') }
+    if (decision.choice in criteria && (decision.choice === 'WIDEN' || decision.choice.startsWith('DRILL '))) {
+      const options = decision.choice === 'WIDEN' ? { mode: 'skeleton' as const } : { root: controls.get(decision.choice)!.id, snapshot: observation.snapshot }
+      observation = await quietScan(request.lane, request.app, undefined, request.signal, options)
+      steps.push({ action: decision.choice, confidence: decision.confidence, ms: decision.ms, outcome: 'read a fresh observation' })
+      continue
+    }
+    const control = controls.get(decision.choice)
+    if (!control) return finish('unsure')
     const [kind, id] = decision.choice.split(' ') as ['set' | 'press', string]
     // A screen that did not change after the same action was already delivered is a loop, not progress; a
     // display that updates while the buttons stay the same (a calculator) is not.
@@ -105,7 +124,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     const unchanged = current === lastFingerprint && decision.choice === lastChoice
     lastFingerprint = current
     lastChoice = decision.choice
-    if (unchanged) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'the screen has not changed; do not repeat the delivered action' }); return finish('blocked') }
+    if (unchanged) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(desktopFailure('No observed effect', { delivered: true, container: /treeitem|row|group|cell/i.test(control.type) })) }); return finish('blocked') }
     const sends = kind === 'press' && request.send && textSet && SEND.test(control.name)
     if (kind === 'press' && irreversibleName(control.name) && !sends) {
       steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'looks irreversible; left for the person to approve' })
@@ -135,7 +154,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
       }
     } catch (error) {
       request.signal?.throwIfAborted()
-      steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: error instanceof Error ? error.message : String(error) })
+      steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(desktopFailure(error)) })
       return finish('blocked')
     }
     steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome })
@@ -152,5 +171,5 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
 }
 
 export function formatDo(result: QuietDoResult): string {
-  return JSON.stringify({ ...result, requiresVerification: true, ...(result.status === 'done' ? {} : { error: 'The automatic routine did not complete. Read the app and continue only unfinished work within the user request.' }) })
+  return JSON.stringify({ ...result, requiresVerification: true, ...(result.status === 'done' ? {} : desktopFailure('Routine incomplete', { delivered: result.pressed })) })
 }

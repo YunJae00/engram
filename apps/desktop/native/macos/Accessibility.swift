@@ -75,6 +75,9 @@ func resolveWindow(_ id: CGWindowID, pid: pid_t) throws -> Target {
 }
 struct Control {
     let id: String
+    var depth = 0
+    var childCount = 0
+    var subtreeTruncated = false
     let element: AXUIElement
     let role: String
     let name: String
@@ -94,13 +97,16 @@ struct Snapshot {
     let complete: Bool
     let at = Date()
 }
-func scan(_ target: Target) throws -> Snapshot {
+func transparentGroup(role: String, name: String, value: String, identifier: String, actionable: Bool) -> Bool {
+    role == kAXGroupRole && name.isEmpty && value.isEmpty && identifier.isEmpty && !actionable
+}
+func scan(_ target: Target, root: AXUIElement? = nil, skeleton: Bool = false) throws -> Snapshot {
     let bounds = try target.bounds
-    var stack = [(target.element, 0, false)], controls: [Control] = [], visited: [AXUIElement] = []
+    var stack = [(root ?? target.element, 0, false)], controls: [Control] = [], visited: [AXUIElement] = []
     let deadline = Date().addingTimeInterval(2)
     var complete = true
     while let (element, depth, inheritedSecret) = stack.popLast() {
-        if Date() > deadline || controls.count >= 500 || depth > 40 { complete = false; break }
+        if Date() > deadline || controls.count >= 500 { complete = false; break }
         guard !visited.contains(where: { CFEqual($0, element) }) else { continue }
         visited.append(element)
         let role = stringAttribute(element, kAXRoleAttribute)
@@ -113,16 +119,25 @@ func scan(_ target: Target) throws -> Snapshot {
         let hasActions = AXUIElementCopyActionNames(element, &actions) == .success
         let press = hasActions && ((actions as? [String]) ?? []).contains(kAXPressAction)
         if secret && (try? elementBounds(element)) == nil { complete = false }
-        controls.append(Control(id: String(controls.count + 1), element: element, role: role, name: secret ? "Protected control" : String(label.prefix(500)), secret: secret, bounds: try? elementBounds(element), enabled: attribute(element, kAXEnabledAttribute) as? Bool ?? true, settable: settable.boolValue && !secret, pressable: press && !secret))
+        let skip = hasActions && !secret && transparentGroup(role: role, name: label, value: stringAttribute(element, kAXValueAttribute),
+            identifier: stringAttribute(element, kAXIdentifierAttribute), actionable: settable.boolValue || !((actions as? [String]) ?? []).isEmpty)
+        if !skip { controls.append(Control(id: String(controls.count + 1), depth: depth, element: element, role: role, name: secret ? "Protected control" : String(label.prefix(500)), secret: secret, bounds: try? elementBounds(element), enabled: attribute(element, kAXEnabledAttribute) as? Bool ?? true, settable: settable.boolValue && !secret, pressable: press && !secret)) }
         var rawChildren: CFTypeRef?
         let status = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren)
         if status == .success, let children = rawChildren as? [AXUIElement] {
-            for child in children.reversed() { stack.append((child, depth + 1, secret)) }
+            if !skip { controls[controls.count - 1].childCount = children.count }
+            if !skip && depth >= (skeleton ? 3 : 40) && !children.isEmpty {
+                controls[controls.count - 1].subtreeTruncated = true
+                complete = false
+            } else { for child in children.reversed() { stack.append((child, depth + (skip ? 0 : 1), secret)) } }
         } else if status != .attributeUnsupported && status != .noValue { complete = false }
+    }
+    if !stack.isEmpty {
+        for index in controls.indices where controls[index].childCount > 0 { controls[index].subtreeTruncated = true }
     }
     let rawFocus = attribute(AXUIElementCreateApplication(target.pid), kAXFocusedUIElementAttribute)
     let focus = rawFocus.flatMap { value -> AXUIElement? in CFGetTypeID(value) == AXUIElementGetTypeID() ? unsafeBitCast(value, to: AXUIElement.self) : nil }
-    return Snapshot(target: target, bounds: bounds, controls: controls, focus: focus, complete: complete)
+    return Snapshot(target: target, bounds: bounds, controls: controls, focus: focus, complete: complete && root == nil)
 }
 func requireCurrent(_ snapshot: Snapshot, target: Target) throws {
     guard snapshot.target.id == target.id, snapshot.target.pid == target.pid,
@@ -131,8 +146,8 @@ func requireCurrent(_ snapshot: Snapshot, target: Target) throws {
         throw DesktopFailure("The window changed. Read it again before acting")
     }
 }
-func catalog() -> [(id: String, name: String, url: URL)] {
-    var result: [(String, String, URL)] = []
+func catalog() -> [(id: String, name: String, url: URL, aliases: [String])] {
+    var result: [(String, String, URL, [String])] = []
     for root in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
         guard let iterator = FileManager.default.enumerator(at: URL(fileURLWithPath: root), includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { continue }
         for case let url as URL in iterator {
@@ -142,10 +157,20 @@ func catalog() -> [(id: String, name: String, url: URL)] {
                 let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? url.deletingPathExtension().lastPathComponent
                 if sensitive(name) || sensitive(identity) { continue }
                 let id = SHA256.hash(data: Data(url.path.utf8)).map { String(format: "%02x", $0) }.joined()
-                result.append((id, name, url))
+                result.append((id, name, url, appAliases(url: url)))
                 if result.count >= 4096 { return result }
             }
         }
     }
     return result
+}
+
+func appAliases(url: URL?) -> [String] {
+    guard let url = url, let bundle = Bundle(url: url) else { return [] }
+    var values = [bundle.bundleIdentifier ?? "", url.deletingPathExtension().lastPathComponent]
+    for key in ["CFBundleDisplayName", "CFBundleName", "CFBundleExecutable"] {
+        values.append(bundle.infoDictionary?[key] as? String ?? "")
+        values.append(bundle.localizedInfoDictionary?[key] as? String ?? "")
+    }
+    return Array(Set(values.filter { !$0.isEmpty }))
 }

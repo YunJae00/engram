@@ -1,6 +1,8 @@
+import { markSparseObservation } from './desktop-sparse.js'
+import { desktopInputArgs } from './desktop-input-args.js'
 import { screen } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type Engine } from 'core'
+import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type DesktopReadOptions, type Engine } from 'core'
 import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } from '../shared/desktop.js'
 import { bindDesktopForLane, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
 import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
@@ -9,7 +11,6 @@ import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
 import { replacementTarget } from './desktop-guarded-sequence.js'
 import { recoverableDesktopFailure } from './desktop-recovery.js'
-// Esc/Stop ends the turn's lease; native control separates physical and agent input.
 const LEASE_TTL_MS = 60 * 60_000
 const HANDS_STILL_MS = 4_000
 const HANDS_AT_MOST_MS = 5 * 60_000
@@ -101,9 +102,7 @@ export function stopDesktopFromUi(): void {
   if (paused && !paused.resumable && !active) { cancellation++; paused.release?.(); lease.reset(); paused = undefined; announce() }
   else stopDesktopControl()
 }
-
 export function resumeDesktopControl(): void { paused?.release?.() }
-
 export function stopDesktopForLane(lane: string, reason = 'This chat stopped.', resumable = false): void {
   if (lease.state().lane === lane || active?.binding.lane === lane || startingLane === lane || launching?.lane === lane) stopDesktopControl(reason, resumable)
 }
@@ -132,7 +131,6 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     host.close()
   }
 }
-
 export function endDesktopTurn(lane: string): void {
   stoppedTurns.delete(lane)
   if (active?.binding.lane !== lane && lease.state().lane !== lane && startingLane !== lane) return
@@ -177,7 +175,6 @@ async function beginNative(held: NonNullable<typeof active>): Promise<void> {
   } finally { held.bindingNative = false }
 }
 
-// Release physical input between calls while keeping the loop's observation and banner.
 export async function withDesktopActivity<T>(lane: string, run: () => Promise<T>): Promise<T> {
   const previous = operations.get(lane)
   const operation = (async () => {
@@ -241,7 +238,6 @@ async function takeControl(lane: string, engine: DesktopEngineId, check: () => v
   return binding
 }
 
-// Serialize grants so concurrent calls cannot bind twice.
 export async function ensureDesktopControl(lane: string, options: { app?: string; signal?: AbortSignal } = {}): Promise<DesktopBinding> {
   const epoch = cancellation
   const check = () => {
@@ -272,8 +268,6 @@ export async function ensureDesktopControl(lane: string, options: { app?: string
     if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
     const id = engineOf(engine.id)
     if ((active && active.binding.lane !== lane) || (paused?.resumable && paused.lane !== lane)) throw new Error('Another chat is using the computer right now. Wait for it to finish.')
-    // A hold the comet gives up itself - it expired, or it is moving to
-    // another app - is no one's hands: nothing to wait out before retaking.
     if (active && lease.state().state !== 'running') { stopDesktopControl('Computer control expired.', true); paused = undefined }
     if (active) {
       const wanted = options.app?.trim().toLocaleLowerCase()
@@ -304,28 +298,29 @@ export async function startDesktopControl(lane: string): Promise<DesktopControlS
   return desktopControlStatus()
 }
 
-async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false): Promise<DesktopObservationDto> {
+async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false, options: DesktopReadOptions = {}): Promise<DesktopObservationDto> {
   signal?.throwIfAborted()
   const binding = agent ? await ensureDesktopControl(lane, { ...(app ? { app } : {}), ...(signal ? { signal } : {}) }) : desktopBinding(lane)
   if (!binding?.readable) throw new Error('No app is connected to this chat yet.')
   const revision = binding.revision
   const held = active?.binding === binding ? active : undefined
   const read = () => binding.host.request<DesktopObservationDto>('observe', {
-    window: binding.window, pid: binding.pid, ...(held?.native ? { lease: held.native } : {}), ...(focusedOnly ? { focusedOnly: true } : {}),
+    ...options, window: binding.window, pid: binding.pid, ...(held?.native ? { lease: held.native } : {}), ...(focusedOnly ? { focusedOnly: true } : {}),
   })
   const result = agent && held ? await lease.run(held.token, lane, read) : await read()
   signal?.throwIfAborted()
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('The app changed while it was being read. Observe it again.')
   if (!result || typeof result.snapshot !== 'string' || !Array.isArray(result.nodes) || !result.bounds || ![result.bounds.x, result.bounds.y, result.bounds.width, result.bounds.height].every(Number.isFinite) || result.bounds.width <= 0 || result.bounds.height <= 0) throw new Error('This app did not provide a valid observation.')
+  markSparseObservation(result, options)
   observations.set(lane, result)
   observationTimes.set(result, Date.now())
   return result
 }
 
-export async function readControlledDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false): Promise<DesktopObservationDto> {
+export async function readControlledDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false, options: DesktopReadOptions = {}): Promise<DesktopObservationDto> {
   const stop = () => { if (active?.binding.lane === lane) stopDesktopForLane(lane, 'This chat was cancelled.') }
   if (agent) signal?.addEventListener('abort', stop, { once: true })
-  try { return await readBoundDesktop(lane, signal, agent, app, focusedOnly) }
+  try { return await readBoundDesktop(lane, signal, agent, app, focusedOnly, options) }
   catch (error) {
     if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.', recoverableDesktopFailure(String(error)))
     throw error
@@ -389,19 +384,7 @@ export async function actOnDesktop(lane: string, action: DesktopAction, signal?:
   try {
     return await lease.run(token, lane, async () => {
       signal?.throwIfAborted()
-      const args: Record<string, unknown> = { window: held.binding.window, pid: held.binding.pid, lease: held.native, snapshot: action.snapshot }
-      if (action.kind === 'click') {
-        if ('element' in action) args['element'] = action.element
-        else {
-          const bounds = observation.captureBounds
-          if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width <= 0 || bounds.height <= 0) throw new Error('Observe an app with verified client coordinates before clicking by position.')
-          args['x'] = Math.round(bounds.x + action.x * (bounds.width - 1))
-          args['y'] = Math.round(bounds.y + action.y * (bounds.height - 1))
-        }
-      } else if (action.kind === 'replace') Object.assign(args, { element: action.element, expected: action.expected, text: action.text })
-      else if (action.kind === 'type') args['text'] = action.text
-      else if (action.kind === 'scroll') args['delta'] = action.delta
-      else args['key'] = action.key
+      const args = desktopInputArgs(action, observation, { window: held.binding.window, pid: held.binding.pid, lease: held.native })
       await held.binding.host.request(action.kind, args)
       signal?.throwIfAborted()
       if (action.kind === 'click') {

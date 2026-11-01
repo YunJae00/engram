@@ -80,6 +80,11 @@ internal static class DesktopNative
         for (var key = 1; key < 255; key++)
             if ((GetAsyncKeyState(key) & 0x8000) != 0) throw new InvalidOperationException("Release your keyboard and mouse before allowing control");
     }
+    internal static string[] AppAliases(int pid)
+    {
+        try { using (var process = System.Diagnostics.Process.GetProcessById(pid)) return new[] { process.ProcessName }; }
+        catch (System.Exception) { return new string[0]; }
+    }
     internal static List<object> List(WindowGuard guard)
     {
         var result = new List<object>();
@@ -90,7 +95,7 @@ internal static class DesktopNative
                 if (!guard.ListCandidate(handle)) return true;
                 var target = guard.Describe(handle);
                 if (!string.IsNullOrWhiteSpace(target.Title))
-                    result.Add(new { window = target.Id, pid = target.Pid, title = target.Title, minimized = target.Minimized, foreground = handle == GetForegroundWindow() });
+                    result.Add(new { window = target.Id, pid = target.Pid, title = target.Title, aliases = AppAliases(target.Pid), minimized = target.Minimized, foreground = handle == GetForegroundWindow() });
             }
             catch (InvalidOperationException) { }
             catch (ArgumentException) { }

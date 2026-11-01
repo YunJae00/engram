@@ -1,8 +1,11 @@
 export interface WorkPreviewDto { id: string; title: string; at: number; data?: string }
-export interface DesktopWindowDto { id: string; name: string; foreground?: boolean }
+export interface DesktopWindowDto { aliases?: string[]; id: string; name: string; foreground?: boolean }
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {
   id: string
+  depth?: number
+  childCount?: number
+  subtreeTruncated?: boolean
   runtimeId?: string
   name: string
   controlType: string
@@ -14,11 +17,15 @@ export interface DesktopNodeDto {
   offscreen?: boolean
   password?: boolean
   isPassword?: boolean
-  actions?: { type?: boolean; replace?: boolean }
+  actions?: { click?: boolean; type?: boolean; replace?: boolean }
   bounds: { x: number; y: number; width: number; height: number }
 }
 export interface DesktopObservationDto {
   snapshot: string
+  sparseTree?: boolean
+  hint?: string
+  mode?: 'full' | 'skeleton'
+  root?: string
   scope?: 'focus' | 'window'
   nodes: DesktopNodeDto[]
   bounds: { x: number; y: number; width: number; height: number }
@@ -33,6 +40,9 @@ export interface DesktopObservationDto {
 export interface QuietControlDto {
   id: string
   type: string
+  depth?: number
+  childCount?: number
+  subtreeTruncated?: boolean
   name: string
   value?: string | null
   placeholder?: string | null
@@ -48,6 +58,12 @@ export interface QuietObservationDto {
   pid: number
   title: string
   snapshot: string
+  sparseTree?: boolean
+  hint?: string
+  mode?: 'full' | 'skeleton'
+  root?: string
+  truncated?: boolean
+  bounds?: { x: number; y: number; width: number; height: number }
   controls: QuietControlDto[]
   texts: { id: string; text: string }[]
   skippedControls: number

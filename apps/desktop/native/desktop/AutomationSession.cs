@@ -88,7 +88,7 @@ internal sealed class AutomationSession : IDisposable
         return info.ControlType == ControlType.Edit && info.IsKeyboardFocusable;
         }
     }
-    private static object Node(AutomationElement element, string id, string runtime, int depth, ref int remaining, out string replaceValue)
+    private static object Node(AutomationElement element, string id, string runtime, int depth, int childCount, bool subtreeTruncated, ref int remaining, out string replaceValue)
     {
         replaceValue = null;
         var current = element.Current;
@@ -109,92 +109,90 @@ internal sealed class AutomationSession : IDisposable
             value = TextBudget(text, 4096, ref remaining);
             valueTruncated = text != null && text.Length > value.Length;
         }
-        return new
+        return new Dictionary<string, object>
         {
-            id = id, runtimeId = runtime, name = current.IsPassword ? "Password field" : TextBudget(current.Name, 512, ref remaining),
-            controlType = current.ControlType.ProgrammaticName.Replace("ControlType.", ""),
-            acceleratorKey = current.IsPassword ? "" : TextBudget(current.AcceleratorKey, 80, ref remaining),
-            accessKey = current.IsPassword ? "" : TextBudget(current.AccessKey, 80, ref remaining),
-            value = value, valueTruncated = valueTruncated, bounds = Bounds(current.BoundingRectangle), enabled = current.IsEnabled,
-            password = current.IsPassword, isPassword = current.IsPassword, offscreen = current.IsOffscreen, depth = depth,
-            actions = new { click = current.IsEnabled && !current.IsPassword && !current.IsOffscreen,
-                type = Editable(element), replace = replaceValue != null, scroll = element.TryGetCurrentPattern(ScrollPattern.Pattern, out pattern) }
+            { "id", id }, { "runtimeId", runtime }, { "name", current.IsPassword ? "Password field" : TextBudget(current.Name, 512, ref remaining) },
+            { "controlType", current.ControlType.ProgrammaticName.Replace("ControlType.", "") },
+            { "acceleratorKey", current.IsPassword ? "" : TextBudget(current.AcceleratorKey, 80, ref remaining) },
+            { "accessKey", current.IsPassword ? "" : TextBudget(current.AccessKey, 80, ref remaining) },
+            { "childCount", childCount }, { "subtreeTruncated", subtreeTruncated },
+            { "value", value }, { "valueTruncated", valueTruncated }, { "bounds", Bounds(current.BoundingRectangle) }, { "enabled", current.IsEnabled },
+            { "password", current.IsPassword }, { "isPassword", current.IsPassword }, { "offscreen", current.IsOffscreen }, { "depth", depth },
+            { "actions", new { click = current.IsEnabled && !current.IsPassword && !current.IsOffscreen,
+                type = Editable(element), replace = replaceValue != null, scroll = element.TryGetCurrentPattern(ScrollPattern.Pattern, out pattern) } }
         };
     }
-    internal object Observe(DesktopTarget target, LeaseState lease, bool focusedOnly = false)
+
+    internal object Observe(DesktopTarget target, LeaseState lease, bool focusedOnly = false, string mode = null, string rootControl = null, string previous = null)
     {
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading its contents");
         var root = AutomationElement.FromHandle(target.Handle);
         var rootId = RuntimeId(root);
+        var skeleton = ObservationTree.Skeleton(mode, rootControl, previous);
+        var readingRoot = root;
+        if (rootControl != null)
+        {
+            var held = Observation;
+            ObservedElement node;
+            if (held == null || held.Id != previous || held.Target.Id != target.Id || held.Target.Pid != target.Pid || held.Target.Started != target.Started
+                || (Stopwatch.GetTimestamp() - held.Created) * 1000.0 / Stopwatch.Frequency > 15000 || !held.Elements.TryGetValue(rootControl, out node))
+                throw new InvalidOperationException("This snapshot is stale. Read the app again");
+            var info = node.Element.Current;
+            if (RuntimeId(node.Element) != node.Runtime || info.Name != node.Name || info.AutomationId != node.AutomationId || info.ControlType.Id != node.ControlType || info.BoundingRectangle != node.Bounds)
+                throw new InvalidOperationException("Control changed. Read the app again");
+            SafeAncestors(node.Element, rootId);
+            readingRoot = node.Element;
+        }
         var observation = new DesktopObservation { Id = Guid.NewGuid().ToString("N"), Target = target, FocusedOnly = focusedOnly,
             Bounds = DesktopNative.Bounds(target.Handle), CaptureBounds = DesktopCapture.Bounds(target.Handle), Created = Stopwatch.GetTimestamp(), Epoch = lease == null ? 0 : lease.Epoch };
         var nodes = new List<object>();
         var protectedBounds = new List<object>();
-        var pending = new Queue<Tuple<AutomationElement, int>>();
-        var seen = new HashSet<string>();
-        pending.Enqueue(Tuple.Create(root, 0));
-        var watch = Stopwatch.StartNew();
-        try
+        AutomationElement priority = null;
+        if (rootControl == null && !skeleton)
         {
-            var initialFocus = AutomationElement.FocusedElement;
-            if (initialFocus != null)
-            {
-                SafeAncestors(initialFocus, rootId);
-                pending.Enqueue(Tuple.Create(initialFocus, 1));
-            }
+            try { priority = AutomationElement.FocusedElement; if (priority != null) SafeAncestors(priority, rootId); }
+            catch (ElementNotAvailableException) { priority = null; }
+            catch (InvalidOperationException) { priority = null; }
         }
-        catch (ElementNotAvailableException) { /* Traverse the remaining controls when focus disappears. */ }
-        catch (InvalidOperationException) { /* Do not prioritize controls inside protected or foreign paths. */ }
         var limited = false;
         var remaining = 32768;
-        while (pending.Count > 0 && nodes.Count < MaxNodes && watch.ElapsedMilliseconds < DeadlineMs)
+        var tree = ObservationTree.Read(readingRoot, MaxNodes, focusedOnly ? 0 : skeleton ? 3 : 32, DeadlineMs,
+            root.Current.ClassName == "Chrome_WidgetWin_1", priority, item =>
         {
-            var item = pending.Dequeue();
-            var element = item.Item1;
+            var element = item.Element;
             try
             {
                 var runtime = RuntimeId(element);
-                if (!seen.Add(runtime)) continue;
                 var id = "e" + nodes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 string replaceValue;
-                nodes.Add(Node(element, id, runtime, item.Item2, ref remaining, out replaceValue));
+                nodes.Add(Node(element, id, runtime, item.Depth, item.ChildCount, item.Truncated, ref remaining, out replaceValue));
                 var info = element.Current;
                 observation.Elements.Add(id, new ObservedElement { Element = element, Runtime = runtime, Name = info.Name,
                     AutomationId = info.AutomationId, ControlType = info.ControlType.Id, Bounds = info.BoundingRectangle, ReplaceValue = replaceValue });
-                if (element.Current.IsPassword)
-                {
-                    if (!element.Current.IsOffscreen) protectedBounds.Add(Bounds(element.Current.BoundingRectangle));
-                    continue;
-                }
-                if (focusedOnly) continue;
-                if (item.Item2 >= 32) { limited = true; continue; }
-                var child = Walker.GetFirstChild(element);
-                while (child != null && nodes.Count + pending.Count < MaxNodes && watch.ElapsedMilliseconds < DeadlineMs)
-                {
-                    pending.Enqueue(Tuple.Create(child, item.Item2 + 1));
-                    child = Walker.GetNextSibling(child);
-                }
-                if (child != null) limited = true;
+                if (info.IsPassword && !info.IsOffscreen) protectedBounds.Add(Bounds(info.BoundingRectangle));
             }
             catch (ElementNotAvailableException) { limited = true; }
-        }
+        });
+        limited |= tree.Truncated;
+        if (tree.Truncated) foreach (Dictionary<string, object> node in nodes)
+            if ((int)node["childCount"] > 0) node["subtreeTruncated"] = true;
         Guard.Same(target);
         if (RuntimeId(AutomationElement.FromHandle(target.Handle)) != rootId || DesktopNative.Bounds(target.Handle) != observation.Bounds)
             throw new InvalidOperationException("The window changed while reading. Observe it again.");
         if (nodes.Count == 0) throw new InvalidOperationException("This window does not expose readable accessibility controls");
         var focused = AutomationElement.FocusedElement;
-        var focusedInside = Inside(focused, rootId);
+        var focusedInside = Inside(focused, rootControl == null ? rootId : RuntimeId(readingRoot));
         var focusedEditable = focusedInside && Editable(focused);
         observation.FocusedRuntime = focusedInside ? RuntimeId(focused) : null;
         Observation = observation;
-        observation.Partial = focusedOnly || limited || remaining == 0 || pending.Count > 0 || watch.ElapsedMilliseconds >= DeadlineMs;
+        observation.Partial = focusedOnly || rootControl != null || limited || remaining == 0;
         return new
         {
             window = target.Id, pid = target.Pid, title = target.Title, snapshot = observation.Id,
             expiresInMs = 15000, bounds = Bounds(observation.Bounds), captureBounds = Bounds(observation.CaptureBounds), nodes = nodes, protectedBounds = protectedBounds,
             focusedEditable = focusedEditable,
             focusedControl = observation.FocusedRuntime,
-            truncated = observation.Partial, scope = focusedOnly ? "focus" : "window",
+            mode = mode ?? "full", root = rootControl, truncated = observation.Partial, scope = focusedOnly ? "focus" : "window",
             captureSafe = !focusedOnly && (!observation.Partial || CanCapturePartial(target))
         };
     }
