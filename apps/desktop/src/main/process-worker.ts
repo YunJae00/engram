@@ -6,6 +6,7 @@ const child = spawn(workerData.command, workerData.args, {
   cwd: workerData.cwd, env: workerData.env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], detached: workerData.killTree && process.platform !== 'win32',
 })
 let stopping = false
+let exited = false
 function stop(signal: NodeJS.Signals = 'SIGTERM'): void {
   if (stopping || child.exitCode !== null || child.signalCode !== null) return
   stopping = true
@@ -30,14 +31,16 @@ child.on('error', (error: NodeJS.ErrnoException) => port.postMessage({ type: 'er
 child.stdin.on('error', error => port.postMessage({ type: 'inputError', error: error.message }))
 for (const stream of ['stdout', 'stderr'] as const) {
   child[stream].on('data', data => {
-    child[stream].pause()
+    if (!exited) child[stream].pause()
     port.postMessage({ type: 'data', stream, data })
   })
   child[stream].on('end', () => port.postMessage({ type: 'end', stream }))
 }
 child.on('exit', (code, signal) => {
+  exited = true
   port.postMessage({ type: 'exit', code, signal })
   if (stopping && workerData.killTree) { child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy() }
+  else { child.stdout.resume(); child.stderr.resume() }
 })
 child.on('close', (code, signal) => {
   port.postMessage({ type: 'close', code, signal })

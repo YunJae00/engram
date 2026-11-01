@@ -202,3 +202,19 @@ it('keeps a running approval card past two minutes and resumes the same turn', a
     expect((await t.settle('done')).result).toBe('approve')
   } finally { clock.mockRestore() }
 })
+
+
+it.each(['empty', 'throw'])('keeps user Stop authoritative when cancellation returns %s', async mode => {
+  const t = await setup(async () => {
+    await new Promise<void>(resolve => { t.aborted.resolve = resolve })
+    if (mode === 'throw') throw new Error('Cancelled')
+    return undefined
+  })
+  const running = t.chat('Read a delayed page')
+  await vi.waitFor(() => expect(t.aborted.resolve).toBeDefined())
+  await t.runner.stopChannel('bot-bot-1')
+  await running
+  expect((await t.settle('stopped')).log.at(-1)?.line).toBe('Stopped by you')
+  expect(t.events.some(event => event.type === 'chat:error')).toBe(false)
+  expect(t.notified.some(line => line.startsWith('failed:'))).toBe(false)
+})

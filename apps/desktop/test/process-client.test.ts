@@ -23,6 +23,12 @@ it('streams through a worker, preserves exit/errors, and cancels during startup'
   expect(child.exitCode).toBe(0)
   expect(child.kill()).toBe(false)
 
+  const unread = new ProcessClient(process.execPath, ['-e', "process.stdout.write('x'.repeat(50000))"])
+  unread.stderr.resume()
+  await unread.waitForClose(5000)
+  expect(unread.exitCode).toBe(0)
+  expect(unread.stdout.read()?.toString()).toBe('x'.repeat(50000))
+
   const missing = new ProcessClient(join(outdir, 'missing-executable'), [])
   const failed = new Promise<void>(resolve => missing.once('close', () => resolve()))
   const error = once(missing, 'error')

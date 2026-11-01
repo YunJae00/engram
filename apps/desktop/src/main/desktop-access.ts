@@ -6,7 +6,7 @@ import { broadcast } from './engine-health.js'
 
 export interface DesktopBinding extends DesktopBindingDto { aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
 type Binding = DesktopBinding
-interface NativeWindow { aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+interface NativeWindow { protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
 const bindings = new Map<string, Binding>()
 const choices = new Map<string, number>()
 let generation = 0
@@ -103,7 +103,7 @@ export function catalogHost(): DesktopHost {
 export function closeCatalogHost(): void { if (catalog) { clearTimeout(catalog.timer); catalog.host.close(); catalog = null } }
 export async function desktopWindows(): Promise<DesktopWindowDto[]> {
   if (!DesktopHost.available()) return []
-  return (await nativeWindows(catalogHost())).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.aliases ? { aliases: one.aliases } : {}), ...(one.foreground ? { foreground: true } : {}) }))
+  return (await nativeWindows(catalogHost())).filter(one => !one.protected).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.aliases ? { aliases: one.aliases } : {}), ...(one.foreground ? { foreground: true } : {}) }))
 }
 async function nativeWindows(host: DesktopHost): Promise<NativeWindow[]> {
   const own = new Set(BrowserWindow.getAllWindows().map((window) => window.getNativeWindowHandle().readBigUInt64LE().toString()))
@@ -133,6 +133,7 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     // The open windows travel with the miss, so the next call can name one without a separate listing.
     const open = similarApps(windows.map(one => ({ ...one, name: one.title })), wanted ?? '').map(one => one.title).map((title) => `"${title}"`).join(', ')
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
+    if (target.protected) throw new Error('This application surface requires manual control. Ask the person to complete sign-in or security steps in the app, then read it again.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     if (keptOut(target.title)) throw new Error(`The person keeps "${target.title}" out of Engram's reach in Settings. Do not work in it; say so, and that they can allow it in Settings.`)
     const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)

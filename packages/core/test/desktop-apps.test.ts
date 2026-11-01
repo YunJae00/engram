@@ -24,7 +24,8 @@ describe('desktop app launch tools', () => {
     const several = JSON.parse(await launch.run({ app: 'Outlook' }, { task: 'Open Outlook' }))
     expect(several.matches.map((app: { name: string }) => app.name)).toEqual(['Outlook (classic)', 'Outlook (new)'])
     const none = JSON.parse(await launch.run({ app: 'Paint' }, { task: 'Open Paint' }))
-    expect(none).toMatchObject({ opened: false, apps: expect.arrayContaining(['Calculator', 'Outlook (classic)', 'Outlook (new)']) })
+    expect(none).toMatchObject({ opened: false, catalogCount: 3, suggestions: expect.arrayContaining(['Calculator', 'Outlook (classic)', 'Outlook (new)']) })
+    expect(none.reason).toContain('does not prove the app is uninstalled')
     expect(open).toHaveBeenCalledTimes(1)
   })
   it.each([{ app: '../calc.exe' }, { app: 'calculator', args: '/x' }, { app: 'calc & cmd' }, {}])('rejects non-ID arguments %j', async (args) => {

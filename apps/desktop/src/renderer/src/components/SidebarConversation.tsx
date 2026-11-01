@@ -7,6 +7,7 @@ import { CometAvatar } from './CometAvatar.js'
 import { CometActivityIndicator } from './CometActivityIndicator.js'
 import { SiteIcon } from './SiteIcon.js'
 import { sidebarPreview } from '../lib/sidebarPreview.js'
+import { displayTaskAnswer, threadLang } from '../lib/threadLang.js'
 
 const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
 const calendar = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
@@ -18,7 +19,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
     if (thread.busy) {
       if (thread.messages.at(-1)?.text) return 'Writing a reply…'
       const step = thread.workLines.at(-1)
-      return step ? sidebarPreview(isSaidLine(step) ? step.slice(6) : workLabel(step)) : 'Thinking…'
+      return step ? sidebarPreview(isSaidLine(step) ? step.slice(6) : workLabel(step, threadLang(thread.messages))) : 'Thinking…'
     }
     let last: { role: string; text: string } | undefined = bot.lastMessage
     for (let i = thread.messages.length - 1; i >= 0; i--) {
@@ -26,7 +27,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
       if (message.error) return message.errorKind === 'outage' ? `${message.provider || 'The AI'} did not answer` : 'Could not finish'
       if (message.text.trim()) { last = message; break }
     }
-    return last ? `${last.role === 'user' ? 'You: ' : ''}${sidebarPreview(last.text)}` : sidebarPreview(bot.purpose) || 'Start a conversation'
+    return last ? `${last.role === 'user' ? 'You: ' : ''}${sidebarPreview(displayTaskAnswer(last.text, threadLang(thread.messages)))}` : sidebarPreview(bot.purpose) || 'Start a conversation'
   }, [thread, state, bot.lastMessage, bot.purpose])
   const date = new Date(bot.lastMessage?.at ?? bot.createdAt)
   const valid = Number.isFinite(date.getTime())

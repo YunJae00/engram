@@ -98,7 +98,7 @@ export function workLabel(line: string, lang: 'en' | 'ko' = 'en'): string {
 }
 
 function englishWorkLabel(line: string): string {
-  const tool = line.split(':', 1)[0] ?? ''
+  const tool = (line.split(':', 1)[0] ?? '').replace(/^\s*(?:←|<-)\s*/, '')
   if (/^(search_web|open_page|read_open_page|read_pages|page_steps|page_do|look|look_in_parallel|press|type_text|choose|scroll|hover|press_key|press_point|reveal)$/.test(tool)) return 'Browsing the web'
   if (/^app_(read|set|press|text|do)$/.test(tool)) return 'Working with an app'
   if (/^(desktop_|read_desktop|look_desktop|list_windows|open_app|list_apps)/.test(tool)) return 'Using the computer'

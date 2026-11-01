@@ -1,140 +1,95 @@
-import { app, BrowserWindow, screen, nativeImage } from 'electron'
-import { join } from 'node:path'
+import { app, nativeImage } from 'electron'
 import { desktopBinding, desktopOwner, keptOut, type DesktopBinding } from './desktop-access.js'
 import type { DesktopObservationDto, WorkPreviewDto } from '../shared/desktop.js'
 import { desktopImage } from './desktop-image.js'
-import type { Page } from 'playwright-core'
-import { maskedFrame } from './masked-frame.js'
-import { allowNavigation } from './security.js'
+import { tapBroadcast } from './engine-health.js'
 
 const entries = new Map<string, WorkPreviewDto>()
-const browserSources = new Map<string, { page: Page; url: string }>()
 const valid = new Map<string, () => boolean>()
-const refresh = new Map<string, ReturnType<typeof setTimeout>>()
-const pending = new Set<string>()
+const pending = new Map<string, AbortController>()
+const deferred = new Map<string, ReturnType<typeof setTimeout>>()
+const active = new Set<string>()
 const lastCapture = new Map<string, number>()
-let window: BrowserWindow | undefined
 let timer: ReturnType<typeof setInterval> | undefined
 let quitting = false
 let hooked = false
-const MAX_AGE = 15_000
-let placement = 'top-right'
-export function configureWorkPreview(value?: string): string {
-  if (value !== undefined) {
-    if (!['top-right', 'top-left', 'bottom-right', 'bottom-left', 'hidden'].includes(value)) throw new Error('Choose a preview corner or hidden.')
-    placement = value
-    if (window && !window.isDestroyed()) {
-      const work = screen.getDisplayMatching(desktopOwner()?.getBounds() ?? window.getBounds()).workArea
-      const bounds = window.getBounds()
-      window.setPosition(placement.endsWith('left') ? work.x + 16 : work.x + work.width - bounds.width - 16,
-        placement.startsWith('bottom') ? work.y + work.height - bounds.height - 12 : work.y + 12)
-    }
-    publish()
-  }
-  return placement
-}
 
-function publish(): void {
-  if (placement === 'hidden') { window?.hide(); return }
-  for (const [id, entry] of entries) if (Date.now() - entry.at > MAX_AGE || !valid.get(id)?.()) {
-    entries.delete(id); lastCapture.delete(id); valid.delete(id); browserSources.delete(id)
-  }
-  if (!entries.size) { window?.hide(); window?.destroy(); window = undefined; clearInterval(timer); timer = undefined; return }
-  if (!window || window.isDestroyed()) {
-    if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
-    const owner = desktopOwner()?.getBounds()
-    const work = (owner ? screen.getDisplayMatching(owner) : screen.getPrimaryDisplay()).workArea
-    window = new BrowserWindow({
-      x: placement.endsWith('left') ? work.x + 16 : work.x + work.width - Math.min(376, work.width), y: placement.startsWith('bottom') ? work.y + work.height - Math.min(380, work.height - 24) - 12 : work.y + 12, width: Math.min(360, work.width - 16), height: Math.min(380, work.height - 24),
-      frame: false, transparent: true, focusable: false, alwaysOnTop: true, skipTaskbar: true,
-      hasShadow: false, resizable: false, show: false,
-      webPreferences: { preload: join(import.meta.dirname, '../preload/index.mjs'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
-    })
-    const view = window
-    view.setIgnoreMouseEvents(true)
-    view.setContentProtection(true)
-    view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    const guard = (e: { preventDefault(): void }, url: string) => { if (!allowNavigation(url, process.env['ELECTRON_RENDERER_URL'])) e.preventDefault() }
-    view.webContents.on('will-navigate', guard)
-    view.webContents.on('will-redirect', guard)
-    // React subscribes after did-finish-load; renew the frame on the timer too.
-    view.webContents.on('did-finish-load', () => { if (entries.size && !quitting && placement !== 'hidden') view.showInactive() })
-    const dev = process.env['ELECTRON_RENDERER_URL']
-    void (dev ? view.loadURL(`${dev}#work-preview`) : view.loadFile(join(import.meta.dirname, '../renderer/index.html'), { hash: 'work-preview' })).catch(() => view.destroy())
-  }
-  window.webContents.send('engram:event', { type: 'desktop:preview', frames: [...entries.values()].reverse() })
-  if (!window.webContents.isLoading()) window.showInactive()
-  if (!timer) timer = setInterval(publish, 1000).unref()
+function remove(id: string): void {
+  entries.delete(id); valid.delete(id); lastCapture.delete(id)
+  clearTimeout(deferred.get(id)); deferred.delete(id)
+  pending.get(id)?.abort(); pending.delete(id)
 }
-
-export function closeWorkPreview(): void {
-  quitting = true
-  entries.clear(); lastCapture.clear(); valid.clear(); browserSources.clear()
-  for (const handle of refresh.values()) clearTimeout(handle)
-  refresh.clear()
-  clearInterval(timer); timer = undefined
-  window?.destroy(); window = undefined
+function publish(pruneOnly = false): void {
+  const count = entries.size
+  for (const [id, entry] of entries) if (!valid.get(id)?.() || Date.now() - entry.at > 180_000) remove(id)
+  if (pruneOnly && count === entries.size) return
+  const owner = desktopOwner()
+  if (owner) owner.webContents.send('engram:event', { type: 'desktop:preview', frames: [...entries.values()].reverse() })
+  if (!entries.size) { clearInterval(timer); timer = undefined }
 }
-
-export function showWorkPreview(binding: DesktopBinding): void {
-  if (placement === 'hidden' || quitting || binding.host.closed || binding.stopped || !binding.readable) return
-  const key = `${binding.lane}:${binding.source}`
-  valid.set(key, () => { const current = desktopBinding(binding.lane); return Boolean(current?.host === binding.host && current.readable && !current.stopped && !current.host.closed && binding.readable && !binding.stopped && !keptOut(binding.name)) })
-  const prior = entries.get(key)
-  entries.delete(key)
-  entries.set(key, { id: key, title: binding.name, at: Date.now(), ...(prior?.data ? { data: prior.data } : {}) })
-  while (entries.size > 4) { const oldest = entries.keys().next().value!; entries.delete(oldest); lastCapture.delete(oldest); valid.delete(oldest); browserSources.delete(oldest) }
+export function workPreviews(lane: string): WorkPreviewDto[] {
   publish()
-  if (pending.has(key) || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
-    if (!refresh.has(key)) refresh.set(key, setTimeout(() => { refresh.delete(key); if (valid.get(key)?.() && desktopBinding(binding.lane) === binding) showWorkPreview(binding) }, 2100).unref())
+  return [...entries.values()].filter(frame => frame.lane === lane).reverse()
+}
+export function closeWorkPreview(): void {
+  quitting = true; active.clear()
+  for (const id of entries.keys()) remove(id)
+  clearInterval(timer); timer = undefined
+}
+export function showWorkPreview(binding: DesktopBinding): void {
+  if (quitting || desktopBinding(binding.lane) !== binding || binding.host.closed || binding.stopped || !binding.readable) return
+  if (!hooked) {
+    hooked = true
+    app.once('before-quit', closeWorkPreview)
+    tapBroadcast(event => {
+      if ((event.type === 'chat:done' || event.type === 'chat:error') && event.channel) {
+        active.delete(event.channel)
+        for (const [id, frame] of entries) if (frame.lane === event.channel) {
+          pending.get(id)?.abort(); pending.delete(id)
+          clearTimeout(deferred.get(id)); deferred.delete(id)
+        }
+      }
+    })
+  }
+  active.add(binding.lane)
+  const key = `${binding.lane}:${binding.source}`
+  if (valid.has(key) && !valid.get(key)!()) remove(key)
+  valid.set(key, () => {
+    const current = desktopBinding(binding.lane)
+    return !!current?.readable && !current.stopped && !binding.stopped && !binding.host.closed && !keptOut(binding.name)
+      && (current === binding || !!entries.get(key)?.data)
+  })
+  const previous = entries.get(key)
+  const entry: WorkPreviewDto = previous ?? { id: key, lane: binding.lane, title: binding.name, at: Date.now() }
+  entries.delete(key); entries.set(key, entry)
+  const laneEntries = [...entries.values()].filter(frame => frame.lane === binding.lane)
+  for (const oldest of laneEntries.slice(0, -4)) remove(oldest.id)
+  while (entries.size > 64) remove(entries.keys().next().value!)
+  publish()
+  if (!timer) timer = setInterval(() => publish(true), 1000).unref()
+  if (pending.has(key)) return
+  if (Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
+    if (!deferred.has(key)) deferred.set(key, setTimeout(() => {
+      deferred.delete(key)
+      if (active.has(binding.lane) && valid.get(key)?.()) showWorkPreview(binding)
+    }, 2100).unref())
     return
   }
-  pending.add(key)
-  lastCapture.set(key, Date.now())
   const controller = new AbortController()
+  pending.set(key, controller); lastCapture.set(key, Date.now())
   const timeout = setTimeout(() => controller.abort(), 5000)
   const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal)
   void desktopImage(binding, observe, controller.signal).then(result => {
-    const entry = entries.get(key)
-    if (entry && !quitting && !binding.host.closed && !binding.stopped && binding.readable && result.image) entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 500 }).toDataURL()
-  }).catch(() => { const entry = entries.get(key); if (entry) delete entry.data }).finally(() => {
-    clearTimeout(timeout); pending.delete(key)
-    if (!quitting && entries.has(key)) publish()
-  })
-}
-
-
-export function showBrowserWorkPreview(lane: string, page: Page): void {
-  if (placement === 'hidden' || !app?.isReady?.() || quitting || page.isClosed()) return
-  if (!hooked) { hooked = true; app.once('before-quit', closeWorkPreview) }
-  const key = `${lane}:browser-start`
-  clearTimeout(refresh.get(key))
-  // Let fast read/action chains finish before starting another renderer or screenshot.
-  refresh.set(key, setTimeout(() => { refresh.delete(key); captureBrowserWorkPreview(lane, page) }, 4000).unref())
-}
-
-function captureBrowserWorkPreview(lane: string, page: Page): void {
-  if (placement === 'hidden' || !app?.isReady?.() || quitting || page.isClosed() || !/^https?:/.test(page.url())) return
-  const key = `${lane}:browser`
-  const url = page.url()
-  const same = browserSources.get(key)?.page === page && browserSources.get(key)?.url === url
-  browserSources.set(key, { page, url })
-  valid.set(key, () => !page.isClosed() && page.url() === url)
-  const prior = same ? entries.get(key) : undefined
-  entries.delete(key)
-  entries.set(key, { id: key, title: new URL(page.url()).hostname, at: Date.now(), ...(prior?.data ? { data: prior.data } : {}) })
-  while (entries.size > 4) { const oldest = entries.keys().next().value!; entries.delete(oldest); valid.delete(oldest); lastCapture.delete(oldest); browserSources.delete(oldest) }
-  publish()
-  if (pending.has(key) || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
-    if (!refresh.has(key)) refresh.set(key, setTimeout(() => { refresh.delete(key); if (browserSources.get(key)?.page === page && !page.isClosed()) showBrowserWorkPreview(lane, page) }, 2100).unref())
-    return
-  }
-  pending.add(key); lastCapture.set(key, Date.now())
-  void maskedFrame(page, new URL(page.url()).origin, []).then(data => {
-    const entry = entries.get(key)
-    if (entry && !quitting && !page.isClosed() && page.url() === url && browserSources.get(key)?.page === page && browserSources.get(key)?.url === url) entry.data = nativeImage.createFromBuffer(data).resize({ width: 500 }).toDataURL()
-  }).catch(() => { const entry = entries.get(key); if (entry) delete entry.data }).finally(() => {
-    pending.delete(key)
-    if (!quitting && entries.has(key)) publish()
+    if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding || !valid.get(key)?.() || controller.signal.aborted || quitting) return
+    if (result.image) {
+      entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 700 }).toDataURL()
+      entry.at = Date.now(); entry.unavailable = false
+    } else { delete entry.data; entry.unavailable = true }
+  }).catch(() => {
+    if (entries.get(key) === entry && desktopBinding(binding.lane) === binding) { delete entry.data; entry.unavailable = true }
+  }).finally(() => {
+    clearTimeout(timeout)
+    if (pending.get(key) === controller) pending.delete(key)
+    if (!quitting) publish()
   })
 }

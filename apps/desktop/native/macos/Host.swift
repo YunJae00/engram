@@ -80,9 +80,17 @@ final class DesktopHost {
             guard AXIsProcessTrusted() else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Accessibility") }
             let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
             return ["windows": windows.compactMap { item -> [String: Any]? in
-                guard item[kCGWindowLayer as String] as? Int == 0, let id = item[kCGWindowNumber as String] as? UInt32,
-                      let window = try? resolveWindow(id, pid: 0) else { return nil }
-                return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
+                guard item[kCGWindowLayer as String] as? Int == 0, let id = item[kCGWindowNumber as String] as? UInt32 else { return nil }
+                do {
+                    let window = try resolveWindow(id, pid: 0)
+                    return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
+                } catch {
+                    guard String(describing: error) == "This application surface requires manual control",
+                          let pid = item[kCGWindowOwnerPID as String] as? Int32,
+                          let app = NSRunningApplication(processIdentifier: pid) else { return nil }
+                    return ["aliases": appAliases(url: app.bundleURL), "window": String(id), "pid": pid,
+                            "title": app.localizedName ?? "App", "minimized": false, "protected": true]
+                }
             }]
         }
         let window = try target(request)

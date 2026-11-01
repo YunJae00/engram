@@ -186,7 +186,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
         if (near.length === 1) return await open(near[0]!.id, context.signal)
         return JSON.stringify(near.length
           ? { opened: false, reason: `Several apps match "${asked}"; call open_app again with the ID of the one meant.`, matches: near.slice(0, APP_MATCHES) }
-          : { opened: false, reason: `No app is named like "${asked}". These can be opened:`, apps: similarApps(listed, asked).map(app => app.name) })
+          : { opened: false, reason: `No catalog name matches "${asked}". This does not prove the app is uninstalled. These are only similar-name suggestions, not the full catalog. Try its other display name or bundle identity.`, catalogCount: listed.length, suggestions: similarApps(listed, asked).map(app => app.name) })
       } finally { context.signal?.throwIfAborted() }
     },
   })

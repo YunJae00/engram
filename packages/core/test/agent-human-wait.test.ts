@@ -49,12 +49,13 @@ it('parks a partial collection at its reported barrier and retains it through ou
       await job.tools.find(t => t.name === 'open_page')!.run({})
       await collect.run({ item: String(i), values: { value: 'Visible result' }, evidenceStep: 2 + i * 2 })
     }
-    await collect.run({ status: 'blocked', summary: 'Please sign in to read the remaining seven items.', evidenceStep: 6 })
+    await job.tools.find(t => t.name === 'read_open_page')!.run({})
+    await collect.run({ status: 'blocked', summary: 'Please sign in to read the remaining seven items.', evidenceStep: 8 })
     await job.tools.find(t => t.name === 'file_create_copy')!.run({})
     await job.tools.find(t => t.name === 'report_result_check')!.run({})
     return { answer: 'Continuing' }
   })
-  const result = await runToolSession({ engine: engine(run), workdir, tools: [tool('open_page'), tool('file_create_copy', '{}'), tool('report_result_check', '{}')] }, 'Read ten items')
+  const result = await runToolSession({ engine: engine(run), workdir, tools: [tool('open_page'), tool('read_open_page', 'HTTP 401: Sign in to read the remaining items.'), tool('file_create_copy', '{}'), tool('report_result_check', '{}')] }, 'Read ten items')
   expect(run).toHaveBeenCalledOnce()
   expect(result).toMatchObject({ asked: true, answer: 'Please sign in to read the remaining seven items.' })
   expect(result.incomplete).toBeUndefined()

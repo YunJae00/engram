@@ -1,4 +1,4 @@
-export interface WorkPreviewDto { id: string; title: string; at: number; data?: string }
+export interface WorkPreviewDto { id: string; lane: string; title: string; at: number; data?: string; unavailable?: boolean }
 export interface DesktopWindowDto { aliases?: string[]; id: string; name: string; foreground?: boolean }
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {
@@ -92,7 +92,7 @@ export interface DesktopControlStatusDto {
   resumable?: boolean
 }
 export interface DesktopApi {
-  desktopPreviewPlacement(value?: string): Promise<string>
+  desktopPreviews(lane: string): Promise<WorkPreviewDto[]>
   desktopAvailable(): Promise<boolean>
   desktopVisible(): Promise<boolean>
   desktopWindows(): Promise<DesktopWindowDto[]>

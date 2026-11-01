@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { Worker } from 'node:worker_threads'
+import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +30,13 @@ test('built backup worker initializes, commits and reads status without losing e
 
 test('built model worker reports a missing runtime instead of leaving a pending request', async () => {
   const missing = fileURLToPath(new URL('../../../tmp/absent-test-runtime', import.meta.url))
-  const reply = await request('codex-worker', { options: { codexPathOverride: missing }, thread: { skipGitRepoCheck: true }, input: 'Unused fixture input' })
+  const output = await new Promise<string>((resolve, reject) => {
+    const child = execFile(process.execPath, [fileURLToPath(new URL('../out/main/codex-worker.js', import.meta.url))], { timeout: 10000 }, (error, stdout) => {
+      if (error) reject(error)
+      else resolve(stdout)
+    })
+    child.stdin!.end(JSON.stringify({ options: { codexPathOverride: missing }, thread: { skipGitRepoCheck: true }, input: 'Unused fixture input' }) + '\n')
+  })
+  const reply = JSON.parse(output) as { error?: string }
   expect(reply.error).toContain('ENOENT')
 })

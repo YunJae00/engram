@@ -1,112 +1,84 @@
 import type { DesktopBinding } from '../src/main/desktop-access.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const fake = vi.hoisted(() => ({ bindings: new Map(), windows: [] as { webContents: { send: ReturnType<typeof vi.fn> }; setIgnoreMouseEvents: ReturnType<typeof vi.fn>; setContentProtection: ReturnType<typeof vi.fn>; showInactive: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn> }[], image: vi.fn(), frame: vi.fn(), options: [] as unknown[] }))
-vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => undefined, desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: () => undefined }))
+const fake = vi.hoisted(() => ({ bindings: new Map(), send: vi.fn(), image: vi.fn(), window: vi.fn(), tap: vi.fn() }))
+vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: () => undefined }))
 vi.mock('../src/main/desktop-image.js', () => ({ desktopImage: fake.image }))
-vi.mock('../src/main/masked-frame.js', () => ({ maskedFrame: fake.frame }))
-vi.mock('electron', () => ({
-  nativeImage: { createFromBuffer: () => ({ resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) },
-  app: { once: vi.fn(), isReady: () => true }, screen: { getDisplayMatching: () => ({ workArea: { x: 1280, y: 0, width: 1280, height: 800 } }), getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1280, height: 800 } }) },
-  BrowserWindow: class {
-    webContents = { send: vi.fn(), setWindowOpenHandler: vi.fn(), on: vi.fn(), isLoading: () => false }
-    showInactive = vi.fn(); hide = vi.fn(); destroy = vi.fn(); setIgnoreMouseEvents = vi.fn(); setContentProtection = vi.fn()
-    getBounds = () => ({ x: 0, y: 0, width: 360, height: 380 }); setPosition = vi.fn()
-    isDestroyed = () => false
-    loadFile = async () => {}; loadURL = async () => {}
-    constructor(options: unknown) { fake.options.push(options); fake.windows.push(this) }
-  },
-}))
-
-beforeEach(() => { vi.useFakeTimers(); vi.resetModules(); vi.clearAllMocks(); fake.bindings.clear(); fake.windows.length = 0; fake.options.length = 0; fake.image.mockResolvedValue({ image: { mimeType: 'image/jpeg', data: 'safe' } }) })
+vi.mock('../src/main/engine-health.js', () => ({ tapBroadcast: fake.tap }))
+vi.mock('electron', () => ({ nativeImage: { createFromBuffer: () => ({ resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) }, app: { once: vi.fn() }, BrowserWindow: fake.window }))
+beforeEach(() => { vi.useFakeTimers(); vi.resetModules(); vi.clearAllMocks(); fake.bindings.clear(); fake.image.mockResolvedValue({ image: { mimeType: 'image/jpeg', data: 'safe' } }) })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
-const binding = (i: number) => {
+function binding(i: number): DesktopBinding {
   const held = { lane: `bot-${i}`, source: `window:${i}:0`, name: `App ${i}`, readable: true, host: { closed: false }, stopped: false }
   fake.bindings.set(held.lane, held)
   return held as unknown as DesktopBinding
 }
-
-it('shows bounded previews without focus or mouse interception and expires them', async () => {
-  const { showWorkPreview } = await import('../src/main/work-preview.js')
-  for (let i = 1; i <= 6; i++) showWorkPreview(binding(i))
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(fake.options).toHaveLength(1)
-  expect(fake.options[0]).toMatchObject({ focusable: false, show: false, skipTaskbar: true })
-  const win = fake.windows[0]
-  expect(win.setIgnoreMouseEvents).toHaveBeenCalledWith(true)
-  expect(win.setContentProtection).toHaveBeenCalledWith(true)
-  expect(win.showInactive).toHaveBeenCalled()
-  expect(win.webContents.send.mock.lastCall[1].frames).toHaveLength(4)
-  await vi.advanceTimersByTimeAsync(25000)
-  expect(win.hide).toHaveBeenCalled()
+it('keeps frames in their own sessions without creating an OS window', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  for (let i = 1; i <= 6; i++) { showWorkPreview(binding(i)); await vi.advanceTimersByTimeAsync(1) }
+  expect(fake.window).not.toHaveBeenCalled()
+  expect(workPreviews('bot-1')).toEqual([expect.objectContaining({ lane: 'bot-1', title: 'App 1', data: 'data:image/jpeg;base64,safe' })])
+  expect(workPreviews('bot-6')).toHaveLength(1)
+  expect(workPreviews('other')).toEqual([])
+})
+it('does not discard an in-flight image when a second read uses the same binding', async () => {
+  let finish!: (value: unknown) => void
+  fake.image.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); showWorkPreview(held)
+  finish({ image: { data: 'safe' } }); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)[0]?.data).toBeDefined()
+})
+it('does not refresh timestamps without a captured image and marks failed capture unavailable', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  const at = workPreviews(held.lane)[0]!.at
+  await vi.advanceTimersByTimeAsync(3000); fake.image.mockRejectedValue(new Error('protected window'))
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ at, unavailable: true })
+  expect(workPreviews(held.lane)[0]?.data).toBeUndefined()
+})
+it('drops delayed images after the target changes or access is revoked', async () => {
+  let finish!: (value: unknown) => void
+  fake.image.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); binding(1)
+  finish({ image: { data: 'stale' } }); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)).toEqual([])
+})
+it('cancels pending capture when the turn ends and never resurrects closed previews', async () => {
+  fake.image.mockImplementation((_binding, _observe, signal: AbortSignal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))))
+  const { showWorkPreview, workPreviews, closeWorkPreview } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held)
+  fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
+  await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)[0]?.unavailable).toBe(true)
+  closeWorkPreview(); showWorkPreview(binding(2))
+  expect(workPreviews('bot-2')).toEqual([])
 })
 
-it('never publishes an unsafe image or resurrects a revoked preview', async () => {
-  const { showWorkPreview, closeWorkPreview } = await import('../src/main/work-preview.js')
-  fake.image.mockRejectedValue(new Error('protected geometry changed'))
-  const held = binding(1)
-  showWorkPreview(held)
-  await vi.advanceTimersByTimeAsync(1000)
-  const win = fake.windows[0]
-  expect(win.webContents.send.mock.lastCall[1].frames[0].data).toBeUndefined()
-  held.readable = false
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(win.hide).toHaveBeenCalled()
-  closeWorkPreview()
-  showWorkPreview(binding(2))
-  expect(fake.windows).toHaveLength(1)
+it('keeps prior snapshots in the same session until access is revoked without recapturing old targets', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const first = binding(1); showWorkPreview(first); await vi.advanceTimersByTimeAsync(1)
+  const next = { ...first, source: 'window:2:0', name: 'Other app' }
+  fake.bindings.set(first.lane, next)
+  showWorkPreview(next); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(first.lane).map(frame => frame.title)).toEqual(['Other app', 'App 1'])
+  next.readable = false
+  expect(workPreviews(first.lane)).toEqual([])
 })
 
-it('drops a browser capture when its page navigates before capture completes', async () => {
-  const { showBrowserWorkPreview, closeWorkPreview } = await import('../src/main/work-preview.js')
-  let finish!: (data: Buffer) => void
-  fake.frame.mockImplementation(() => new Promise(resolve => { finish = resolve }))
-  let url = 'https://example.com/first'
-  const page = { isClosed: () => false, url: () => url } as unknown as import('playwright-core').Page
-  showBrowserWorkPreview('bot', page)
-  await vi.advanceTimersByTimeAsync(4000)
-  url = 'https://example.com/second'
-  finish(Buffer.from('stale'))
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(fake.windows[0].hide).toHaveBeenCalled()
-  closeWorkPreview()
-})
-
-it('defers browser rendering and captures until a read/action chain settles', async () => {
-  const { showBrowserWorkPreview, closeWorkPreview } = await import('../src/main/work-preview.js')
-  fake.frame.mockResolvedValue(Buffer.from('safe'))
-  const page = { isClosed: () => false, url: () => 'https://example.com/' } as unknown as import('playwright-core').Page
-  showBrowserWorkPreview('bot', page)
-  await vi.advanceTimersByTimeAsync(3000)
-  expect(fake.windows).toHaveLength(0)
-  expect(fake.frame).not.toHaveBeenCalled()
-  showBrowserWorkPreview('bot', page)
-  await vi.advanceTimersByTimeAsync(3000)
-  expect(fake.frame).not.toHaveBeenCalled()
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(fake.frame).toHaveBeenCalledTimes(1)
-  expect(fake.windows).toHaveLength(1)
-  closeWorkPreview()
-})
-
-it('cancels deferred browser startup when the application closes', async () => {
-  const { showBrowserWorkPreview, closeWorkPreview } = await import('../src/main/work-preview.js')
-  const page = { isClosed: () => false, url: () => 'https://example.com/' } as unknown as import('playwright-core').Page
-  showBrowserWorkPreview('bot', page)
-  closeWorkPreview()
-  await vi.advanceTimersByTimeAsync(5000)
-  expect(fake.windows).toHaveLength(0)
-  expect(fake.frame).not.toHaveBeenCalled()
-})
-
-it('lets the person move or hide previews without activating a window', async () => {
-  const { showWorkPreview, configureWorkPreview } = await import('../src/main/work-preview.js')
-  showWorkPreview(binding(1))
-  expect(configureWorkPreview('bottom-left')).toBe('bottom-left')
-  expect(configureWorkPreview('hidden')).toBe('hidden')
-  expect(fake.windows[0].hide).toHaveBeenCalled()
-  const before = fake.image.mock.calls.length
-  showWorkPreview(binding(2))
-  expect(fake.image).toHaveBeenCalledTimes(before)
-  expect(() => configureWorkPreview('invalid')).toThrow()
+it('preserves a confirmed snapshot when its refresh fails after switching targets', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const first = binding(1); showWorkPreview(first); await vi.advanceTimersByTimeAsync(3000)
+  const at = workPreviews(first.lane)[0]!.at
+  let reject!: (error: Error) => void
+  fake.image.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
+  showWorkPreview(first)
+  const next = { ...first, source: 'window:2:0', name: 'Other app' }
+  fake.bindings.set(first.lane, next); showWorkPreview(next)
+  reject(new Error('The app changed before the screenshot was ready.'))
+  await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(first.lane)).toHaveLength(2)
+  expect(workPreviews(first.lane)[1]).toMatchObject({ at, data: 'data:image/jpeg;base64,safe', unavailable: false })
 })

@@ -1,4 +1,3 @@
-vi.mock('../src/main/work-preview.js', () => ({ showBrowserWorkPreview: vi.fn() }))
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtemp, mkdir, readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'

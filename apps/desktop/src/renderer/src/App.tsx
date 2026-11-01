@@ -28,7 +28,6 @@ const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ defa
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
-const WorkPreview = lazy(() => import('./views/WorkPreview.js').then(m => ({ default: m.WorkPreview })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
 const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
 const RoutinesView = lazy(() => import('./views/RoutinesView.js').then((m) => ({ default: m.RoutinesView })))
@@ -110,8 +109,6 @@ function Shell() {
     })
   }, [openNote, showToast])
 
-  // First-run coach marks: once, after the first vault opens, real installs
-  // only (the main process gates it so e2e clicks are never intercepted).
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
   const [tourOpen, setTourOpen] = useState(false)
@@ -143,15 +140,21 @@ function Shell() {
   useEffect(() => {
     if (!vaultReady || settingUp || localStorage.getItem(TOUR_DONE_KEY)) return
     let cancelled = false
+    let timer: number | undefined
+    const cancel = () => { cancelled = true; window.clearTimeout(timer) }
+    window.addEventListener('pointerdown', cancel, { capture: true, once: true })
+    window.addEventListener('keydown', cancel, { capture: true, once: true })
     void api.tourEligible().then((ok) => {
       if (!ok || cancelled) return
       // let the shell settle so every anchor exists and has its real position
-      window.setTimeout(() => {
+      timer = window.setTimeout(() => {
         if (!cancelled) setTourOpen(true)
       }, 900)
     })
     return () => {
-      cancelled = true
+      cancel()
+      window.removeEventListener('pointerdown', cancel, true)
+      window.removeEventListener('keydown', cancel, true)
     }
   }, [vaultReady, settingUp])
 
@@ -366,7 +369,6 @@ export function App() {
         <ControlOverlay />
       </Suspense>
     )
-  if (window.location.hash === '#work-preview') return <Suspense fallback={null}><WorkPreview /></Suspense>
   if (window.location.hash === '#overlay-pill')
     return (
       <Suspense fallback={null}>

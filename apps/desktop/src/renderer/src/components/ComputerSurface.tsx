@@ -15,8 +15,6 @@ export function ComputerSurface({ lane, lang = 'en' }: { lane: string; lang?: Th
   const reserved = hasDesktopGrant(control)
   const mine = owner?.lane === lane
   const words = threadWords(lang)
-  const [preview, setPreview] = useState('top-right')
-  useEffect(() => { void api.desktopPreviewPlacement().then(setPreview).catch(() => {}) }, [])
   const [picking, setPicking] = useState(false)
   const [windows, setWindows] = useState<DesktopWindowDto[]>([])
   const [query, setQuery] = useState('')
@@ -65,9 +63,7 @@ export function ComputerSurface({ lane, lang = 'en' }: { lane: string; lang?: Th
   const state = mine ? owner.state : binding?.readable ? 'read' : 'view'
   return <div className="computer-surface" data-state={state} data-testid="computer-surface">
     <header className="computer-window-bar">
-      <label>{words.preview}<select aria-label={words.preview} value={preview} onChange={event => { const value = event.target.value; void run(async () => setPreview(await api.desktopPreviewPlacement(value))) }}>
-        {['top-right', 'top-left', 'bottom-right', 'bottom-left', 'hidden'].map((value, index) => <option key={value} value={value}>{words.previewCorners[index]}</option>)}
-      </select></label>
+
       <button ref={pickerTrigger} className="computer-window-choice" disabled={busy || reserved} onClick={pick} aria-expanded={picking} aria-label={binding ? `Change window: ${binding.name}` : 'Choose an app window'}>
         <AppWindow size={14} aria-hidden /><span>{binding?.name || 'Choose an app window'}</span><ChevronDown size={13} aria-hidden />
       </button>

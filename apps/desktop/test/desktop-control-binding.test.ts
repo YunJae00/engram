@@ -57,3 +57,12 @@ it('still honours Stop during native window discovery before the first bind', as
   await expect(control.readControlledDesktop(lane, undefined, true, 'Untitled')).rejects.toThrow('cancelled')
   expect(fake.request.mock.calls.some(([method]) => method === 'bind')).toBe(false)
 })
+
+
+it('reports a protected app as a manual boundary without binding or exposing it in the picker', async () => {
+  fake.request.mockResolvedValue({ windows: [{ window: '104', pid: 204, title: 'Chat app', aliases: ['ChatApp'], minimized: false, protected: true }] })
+  expect(await access.desktopWindows()).toEqual([])
+  await expect(access.bindDesktopForLane(lane, { app: 'ChatApp' })).rejects.toThrow('surface requires manual control')
+  expect(access.desktopBinding(lane)).toBeUndefined()
+  expect(fake.request.mock.calls.every(([method]) => method === 'listWindows')).toBe(true)
+})

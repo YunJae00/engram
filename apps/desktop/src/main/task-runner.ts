@@ -91,6 +91,7 @@ export function taskRunner(deps: {
     trails.set(id, trail)
     const after = await edit(id, (t) => {
       if (t.state !== 'running') return
+      if (stopped.has(channelOf(t))) { t.state = 'stopped'; logTask(t, 'Stopped by you'); return }
       t.tokensUsed = (t.tokensUsed ?? 0) + Math.max(0, outcome?.tokensUsed ?? 0)
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
       if (outcome) t.result = outcome.answer
@@ -164,7 +165,9 @@ export function taskRunner(deps: {
         why = nextReason(after); note = ''
       }
     } catch (error) {
-      await finished(await edit(id, (t) => { if (t.state === 'running') { t.state = 'failed'; logTask(t, `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
+      const cancelled = !!channel && stopped.has(channel)
+      await finished(await edit(id, (t) => { if (t.state === 'running') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
+      if (cancelled) return
       if (channel) deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }
@@ -202,7 +205,9 @@ export function taskRunner(deps: {
         if (after?.state === 'running') await carryOn(after.id, nextReason(after), '', channel)
         else await finished(after)
       } catch (error) {
-        if (task) await finished(await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = 'failed'; logTask(t, `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
+        const cancelled = stopped.has(channel)
+        if (task) await finished(await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
+        if (cancelled) return
         deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
         throw error
       } finally {

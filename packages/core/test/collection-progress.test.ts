@@ -32,7 +32,7 @@ it('does not accept a failed read or a fabricated observation from the ledger', 
 })
 
 it('rejects completion with missing items or missing evidence, and allows an observed barrier', async () => {
-  const steps = [{ tool: 'open_page', args: {}, observation: 'Sign in to read entries' }]
+  const steps = [{ tool: 'open_page', args: {}, observation: 'HTTP 401: Sign in to read entries' }]
   const ledger = collectionProgress(steps)
   const run = (args: Record<string, unknown>) => ledger.tool.run(args, { task: 'Read entries' })
   await expect(run({ status: 'complete', summary: 'Done', evidenceStep: 9 })).rejects.toThrow('observation')
@@ -56,14 +56,18 @@ it('records inaccessible items without inventing values and ends partial', async
   const result = JSON.parse(await run({ status: 'partial', summary: 'Showtimes could not be verified: HTTP 403', evidenceStep: 1 }))
   expect(result.missing).toEqual(['Movie'])
   expect(result.unverified.Movie.basis).toContain('403')
+  expect(result.unverified.Movie.basis).not.toContain('does not establish')
   expect(result.finish.status).toBe('partial')
 })
 
 
-it('rejects unrelated successful evidence for an unverified item', async () => {
+it('accepts an unverified report without treating another item as proof', async () => {
   const ledger = collectionProgress([{ tool: 'read_open_page', args: {}, observation: 'Movie A starts at 14:00' }])
-  await ledger.tool.run({ items: ['Movie B'], fields: ['showtime'] }, { task: 'Read' })
-  await expect(ledger.tool.run({ item: 'Movie B', unverified: 'Unavailable', evidenceStep: 1 }, { task: 'Read' })).rejects.toThrow('shows this item')
+  await ledger.tool.run({ items: ['Movie A', 'Movie B'], fields: ['showtime'] }, { task: 'Read' })
+  await ledger.tool.run({ item: 'Movie B', unverified: 'Unavailable', evidenceStep: 1 }, { task: 'Read' })
+  expect(ledger.checked()).toBe(0)
+  expect(ledger.summary()).toContain('Not verified')
+  expect(ledger.summary()).toContain('does not establish')
 })
 
 
@@ -77,8 +81,48 @@ it('uses successful batch sections without accepting values from a failed page',
   expect(ledger.checked()).toBe(1)
 })
 
-it('does not use another failed batch page to hide an observed item', async () => {
+it('an unverified batch report never becomes checked', async () => {
   const ledger = collectionProgress([{ tool: 'read_pages', args: {}, observation: JSON.stringify({ completed: 1, requested: 2, pages: [{ url: 'https://example.test/c', ready: true, observation: 'Movie C: 18:00' }, { url: 'https://example.test/b', ready: false, observation: 'HTTP 403' }] }) }])
   await ledger.tool.run({ items: ['Movie C'], fields: ['showtime'] }, { task: 'Read' })
-  await expect(ledger.tool.run({ item: 'Movie C', unverified: 'HTTP 403', evidenceStep: 1 }, { task: 'Read' })).rejects.toThrow('shows this item')
+  await ledger.tool.run({ item: 'Movie C', unverified: 'HTTP 403', evidenceStep: 1 }, { task: 'Read' })
+  expect(ledger.checked()).toBe(0)
+  expect(ledger.open()).toBe(true)
+  expect(ledger.summary()).toContain('does not establish')
+})
+
+it('accepts partial completion with unresolved items and preserves their visible uncertainty', async () => {
+  const ledger = collectionProgress([])
+  await ledger.tool.run({ items: ['A', 'B'], fields: ['availability'] }, { task: 'Read' })
+  const result = JSON.parse(await ledger.tool.run({ status: 'partial', summary: 'Availability cannot be checked', evidenceStep: 99 }, { task: 'Read' }))
+  expect(result.finish.status).toBe('partial')
+  expect(result.checked).toBe(0)
+  expect(result.unverified.A.basis).toContain('No verified result')
+  expect(ledger.summary()).toContain('B: Not verified')
+  expect(ledger.pending()).toBeUndefined()
+  expect(result.next).toContain('do not resubmit')
+})
+it('accepts a mixed limitation report without validating its supplied values', async () => {
+  const ledger = collectionProgress([])
+  await ledger.tool.run({ items: ['A'], fields: ['availability'] }, { task: 'Read' })
+  await ledger.tool.run({ item: 'A', values: { availability: 'yes' }, unverified: 'Cannot confirm', evidenceStep: 99 }, { task: 'Read' })
+  expect(ledger.checked()).toBe(0)
+  expect(ledger.summary()).toContain('Unverified supplied fields: availability')
+  expect(ledger.summary()).toContain('No supporting observation was linked')
+})
+
+it('retains an evidenced field without promoting missing fields to success', async () => {
+  const ledger = collectionProgress([{ tool: 'read_open_page', args: {}, observation: 'Movie A at 14:00. Availability not published.' }])
+  const run = (args: Record<string, unknown>) => ledger.tool.run(args, { task: 'Read' })
+  await run({ items: ['A'], fields: ['time', 'availability'] })
+  const result = JSON.parse(await run({ item: 'A', values: { time: '14:00', availability: 'available' }, unverified: 'Availability not published', evidenceStep: 1 }))
+  expect(result.verifiedFields.A).toEqual({ time: '14:00' })
+  expect(result.checked).toBe(0)
+  expect(ledger.summary()).toContain('Confirmed fields: time: 14:00')
+  await expect(run({ status: 'complete', summary: 'Done', evidenceStep: 1 })).rejects.toThrow('Unverified')
+})
+
+it('does not present an invented access barrier as observed', async () => {
+  const ledger = collectionProgress([{ tool: 'read_open_page', args: {}, observation: 'Accessible content, room 1403. Log in for preferences.' }])
+  await ledger.tool.run({ status: 'blocked', summary: 'Cannot continue', evidenceStep: 1 }, { task: 'Read' })
+  expect(ledger.finish()).toMatchObject({ status: 'partial', summary: expect.stringContaining('No access barrier was observed') })
 })

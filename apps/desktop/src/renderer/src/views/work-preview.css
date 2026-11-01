@@ -1,29 +1,24 @@
-body.work-preview-host, .work-preview-host #root { background: transparent !important; overflow: hidden; }
-.work-preview { position: relative; height: 100vh; pointer-events: none; isolation: isolate; }
-.work-preview-card {
-  position: absolute; top: 18px; right: 18px; width: min(var(--preview-width, 224px), calc(100vw - 112px)); margin: 0;
-  overflow: hidden; border: 1px solid #ffffffa6; border-radius: 14px;
-  background: #f8fafbd9; box-shadow: 0 12px 28px -12px #14243345, 0 2px 6px #14243312;
-  backdrop-filter: blur(22px) saturate(1.15);
-  transform-origin: top right;
-  transform: translate(calc(var(--depth) * -29px), calc(var(--depth) * 31px)) scale(calc(1 - var(--depth) * .055));
-  filter: blur(calc(var(--depth) * .65px)); opacity: calc(1 - var(--depth) * .14);
-  z-index: calc(4 - var(--depth));
-  transition: width 480ms cubic-bezier(.2,.8,.2,1), transform 480ms cubic-bezier(.2,.8,.2,1), filter 480ms ease, opacity 480ms ease;
-  animation: work-preview-arrive 360ms ease-out;
-}
-.work-preview-card:nth-child(3) { rotate: -2deg; }
-.work-preview-card:nth-child(4) { rotate: 1.5deg; }
-.work-preview-card figcaption { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; color: #39464b; font: 10px system-ui; white-space: nowrap; }
-.work-preview-dot { flex-shrink: 0; width: 5px; height: 5px; border-radius: 50%; background: #718e8a; }
-.work-preview-card:first-child .work-preview-dot { background: #369b82; box-shadow: 0 0 0 3px #369b8212; }
-.work-preview-card img { display: block; width: 100%; height: auto; max-height: min(230px, calc(100vh - 150px)); object-fit: contain; }
-.work-preview-placeholder { display: grid; place-items: center; height: 110px; color: #75858c; font: 12px system-ui; }
-.work-preview-title { overflow: hidden; text-overflow: ellipsis; }
-@keyframes work-preview-arrive { from { opacity: 0; translate: 0 8px; } to { translate: 0 0; } }
-@media (prefers-color-scheme: dark) {
-  .work-preview-card { background: #263038d9; border-color: #ffffff26; box-shadow: 0 14px 30px -10px #0007; }
-  .work-preview-card figcaption { color: #d5dfe3; }
-  .work-preview-placeholder { color: #a7b7bf; }
-}
-@media (prefers-reduced-motion: reduce) { .work-preview-card { transition: none; animation: none; } }
+.work-preview { flex: 0 0 auto; align-self: flex-end; position: relative; box-sizing: border-box; width: min(390px, 100%); max-width: 100%; min-width: min(240px, 100%); max-height: 40%; margin: 8px 0; overflow: hidden; resize: horizontal; isolation: isolate; border: 1px solid var(--border-soft); border-radius: 18px; background: color-mix(in srgb, var(--panel-bg) 88%, transparent); box-shadow: 0 8px 24px -16px #14243340; }
+.work-preview.collapsed { width: min(320px, 100%); min-height: 38px; resize: none; }
+.work-preview-bar { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 8px; color: var(--fg-dim); font-size: var(--fs-badge); }
+.work-preview-bar > span { flex: 1; }
+.work-preview-bar small { font-size: 10px; color: var(--fg-faint); }
+.work-preview-bar button { display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: inherit; width: 26px; height: 28px; cursor: pointer; }
+.work-preview-bar button:hover { background: var(--hover-bg); }
+.work-preview-deck { position: relative; height: 214px; overflow: hidden; background: radial-gradient(ellipse at 65% 30%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%); }
+.work-preview-card { position: absolute; top: 7px; right: 12px; width: 72%; height: 174px; margin: 0; overflow: hidden; border: 1px solid var(--border-soft); border-radius: 13px; background: var(--panel-bg); box-shadow: 0 10px 24px -12px #14243350; transform-origin: top right; transform: translate(calc(var(--depth) * -16px), calc(var(--depth) * 10px)) rotate(calc(var(--depth) * -1deg)) scale(calc(1 - var(--depth) * .05)); filter: blur(calc(var(--depth) * .6px)); opacity: calc(1 - var(--depth) * .14); z-index: calc(4 - var(--depth)); transition: transform 300ms ease, opacity 300ms ease; }
+.work-preview-card figcaption { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; font-size: 11px; color: var(--fg-dim); }
+.work-preview-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-preview-card figcaption small { font-size: 9px; white-space: nowrap; color: var(--fg-faint); }
+.work-preview-card img { display: block; width: 100%; height: 148px; object-fit: contain; }
+.work-preview-placeholder { display: grid; place-items: center; height: 148px; color: var(--fg-faint); font-size: var(--fs-badge); }
+.work-preview-tabs { display: flex; gap: 4px; padding: 0 8px; overflow-x: auto; }
+.work-preview-tabs button, .work-preview-reopen { border: 1px solid var(--border-soft); border-radius: 9px; background: var(--panel-bg); color: var(--fg-dim); font-size: 10px; padding: 4px 8px; cursor: pointer; }
+.work-preview-tabs button { max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.work-preview-tabs button[aria-pressed="true"] { background: var(--hover-bg); color: var(--fg); }
+.work-preview-reopen { align-self: flex-end; display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.work-preview-caption { margin: 0; padding: 6px 10px 8px; font-size: 10px; color: var(--fg-faint); }
+.work-preview button:focus-visible, .work-preview-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bots-chat, .mini-chat { overflow: hidden; }
+@media (max-height: 650px) { .work-preview-deck { height: 150px; } .work-preview-card { height: 125px; } .work-preview-card img, .work-preview-placeholder { height: 99px; } }
+@media (prefers-reduced-motion: reduce) { .work-preview-card { transition: none; } }

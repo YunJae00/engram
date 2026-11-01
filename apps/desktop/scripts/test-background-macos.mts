@@ -138,12 +138,10 @@ try {
   assert.equal(focusLosses, 0, 'A background action briefly took native focus')
   assert.equal(await page.locator('#typing').inputValue(), input.repeat(3) + ' Calculator stays in the background.')
   const frames = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().includes('work-preview')).map(w => ({ focusable: w.isFocusable(), visible: w.isVisible() })))
-  assert(frames.length === 1 && !frames[0]!.focusable)
+  assert.equal(frames.length, 0, 'Work previews must not create OS windows')
   await page.screenshot({ path: join(run, 'foreground-input.png') })
-  const preview = app.windows().find(w => w.url().includes('work-preview'))
-  if (preview) { await new Promise(resolve => setTimeout(resolve, 3000)); await preview.locator('.work-preview-card').first().waitFor({ timeout: 10000 }); await preview.screenshot({ path: join(run, 'work-preview.png') }) }
   await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, inputSource: 'Playwright synthetic input, not physical human typing', observationWithoutHandover: true, foregroundActionRefused: true, target, backgroundEdit: result.exact, foregroundChanged: result.foregroundChanged, nativeFocusLosses: focusLosses, inputPreserved: true, calculator: '123+456=579', browserRead: true, frames }, null, 2))
-  console.log('PASS background app_set through public tool, Korean readback, concurrent foreground typing and nonfocusable preview', run)
+  console.log('PASS background app_set through public tool, Korean readback, concurrent foreground typing without OS preview windows', run)
 } catch (error) { console.error(error); throw error } finally {
   await app.evaluate(() => (globalThis as unknown as { backgroundClose(): void }).backgroundClose()).catch(() => {})
   await app.close()
