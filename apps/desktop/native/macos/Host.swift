@@ -77,6 +77,7 @@ final class DesktopHost {
             return ["requested": true, "name": entry.name, "requiresObservation": true]
         }
         if method == "listWindows" {
+            guard AXIsProcessTrusted() else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Accessibility") }
             let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
             return ["windows": windows.compactMap { item -> [String: Any]? in
                 guard item[kCGWindowLayer as String] as? Int == 0, let id = item[kCGWindowNumber as String] as? UInt32,

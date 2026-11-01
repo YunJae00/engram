@@ -1,7 +1,7 @@
 import { Globe, GripVertical, LoaderCircle, Maximize2, Minus } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { api } from '../api.js'
-import { webPane } from '../lib/webPane.js'
+import { useWebPane, webPane } from '../lib/webPane.js'
 import { FrameScreen, type FrameSource } from './FrameScreen.js'
 
 export function BrowserPreview({ channel, url, native, live, visible, busy, width, height, compact, elementRef, onOpen, frames }: {
@@ -16,7 +16,14 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
   const [position, setPosition] = useState<{ right: number; top: number } | null>(null)
   const [shape, setShape] = useState<{ width: number; height: number } | null>(null)
   const [unavailable, setUnavailable] = useState(false)
-  const [minimized, setMinimized] = useState(false)
+  const [collapsed, setMinimized] = useState(false)
+  const { attention, phase } = useWebPane(channel)
+  const previousPhase = useRef(phase)
+  useEffect(() => {
+    if (phase === 'idle' && previousPhase.current !== 'idle') setMinimized(true)
+    previousPhase.current = phase
+  }, [phase])
+  const minimized = collapsed || Boolean(compact && attention)
   const cached = useRef<{ data: string; url?: string } | null>(null)
   // Reuse the canvas decode so resized frames never keep an old aspect ratio.
   const measureShape = useCallback((width: number, height: number) => setShape(before => before?.width === width && before.height === height ? before : { width, height }), [])
@@ -68,7 +75,13 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
   let site = 'Browser'
   try { if (url && url !== 'about:blank') site = new URL(url).hostname } catch { /* Keep the generic title. */ }
   const size = native && shape ? shape : { width, height }
-  const open = () => { if (onOpen) onOpen(); else if (compact) webPane.expand(channel, true); else webPane.open(channel) }
+  const focusAddress = () => {
+    if (!url || url === 'about:blank') requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="live-address"]')?.focus())
+  }
+  const open = () => {
+    if (onOpen) onOpen(); else if (compact) webPane.expand(channel, true); else webPane.open(channel)
+    focusAddress()
+  }
   return <aside ref={element => { card.current = element; elementRef(element) }} className={`browser-preview${minimized ? ' minimized' : ''}`} data-testid="web-pane" aria-label="Browser preview" style={position ? { right: position.right, top: position.top } : undefined}>
     <div className="browser-preview-bar" onPointerDown={drag} onPointerMove={event => {
       const from = dragFrom.current
@@ -78,7 +91,7 @@ export function BrowserPreview({ channel, url, native, live, visible, busy, widt
       {busy ? <LoaderCircle size={14} className="computer-spinner" aria-label="Browser working" /> : <Globe size={14} aria-hidden />}
       <span className="browser-preview-title" title={site}>{site}</span>
       {!minimized && <button aria-label="Minimize browser" title="Minimize browser" onClick={() => setMinimized(true)}><Minus size={15} aria-hidden /></button>}
-      <button aria-label={minimized ? 'Restore browser preview' : 'Expand browser'} title={minimized ? 'Restore browser preview' : 'Expand browser'} onClick={() => { if (minimized) setMinimized(false); else if (onOpen) onOpen(); else webPane.expand(channel, true) }}><Maximize2 size={15} aria-hidden /></button>
+      <button aria-label={minimized ? 'Restore browser preview' : 'Expand browser'} title={minimized ? 'Restore browser preview' : 'Expand browser'} onClick={() => { if (minimized && !(compact && attention)) setMinimized(false); else if (onOpen) onOpen(); else webPane.expand(channel, true); focusAddress() }}><Maximize2 size={15} aria-hidden /></button>
     </div>
     {!minimized && <button className="browser-preview-picture" aria-label={compact ? 'Open full browser' : 'Open browser beside chat'} onClick={open} style={{ aspectRatio: `${size.width} / ${size.height}` } as CSSProperties}>
       <FrameScreen key={channel} lane={channel} source={native || !url || url === 'about:blank' ? source : frames} onSize={measureShape} />

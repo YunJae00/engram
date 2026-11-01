@@ -6,10 +6,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { DesktopControlStatusDto } from '../src/shared/desktop.js'
 
-// The computer is taken by the comet, not chosen by the person: there is no
-// window picker anywhere, and the only controls a person meets are the banner
-// that names the brain at work and the way to take the computer back.
-
 interface DesktopMock { available: boolean; control: DesktopControlStatusDto; stops: number; resumes: number }
 type MockGlobal = typeof globalThis & { desktopMock: DesktopMock }
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -268,4 +264,54 @@ test('four background previews fit the work area without accepting keyboard focu
     expect(await preview.locator('.work-preview-card').first().evaluate(card => getComputedStyle(card).transitionDuration)).toBe('0s')
     await preview.screenshot({ path: join(TMP, 'background-work-four-previews.png') })
   } finally { await preview.close() }
+})
+
+
+test('computer controls open only on request and preview placement is reachable', async () => {
+  await orbit()
+  await page.getByTestId('mission-tile-0').locator('.mission-enter').click()
+  const dialog = page.getByTestId('computer-dialog')
+  await expect(dialog).toHaveCount(0)
+  await page.getByTestId('bots-input').fill('Keep my draft')
+  await page.getByTestId('bots-input-add').click()
+  await page.getByTestId('computer-controls-open').click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('combobox').selectOption('hidden')
+  expect(await page.evaluate(() => window.engram.desktopPreviewPlacement())).toBe('hidden')
+  await dialog.getByRole('combobox').selectOption('bottom-left')
+  expect(await page.evaluate(() => window.engram.desktopPreviewPlacement())).toBe('bottom-left')
+  await page.screenshot({ path: join(TMP, 'desktop-quality', 'computer-controls.png') })
+  await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
+  await page.evaluate(() => window.engram.desktopPreviewPlacement('top-right'))
+})
+
+test('foreground access requires the explicit session control button', async () => {
+  const bot = await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.name === 'Computer review')!)
+  await app.evaluate(({ ipcMain, BrowserWindow }, lane) => {
+    ipcMain.removeHandler('desktop:bindings')
+    ipcMain.handle('desktop:bindings', () => [{ lane, source: 'window:fixture:0', name: 'Draft fixture', readable: true }])
+    ipcMain.removeHandler('desktop:controlStart')
+    ipcMain.handle('desktop:controlStart', (_event, requested) => {
+      if (requested !== lane) throw new Error('Wrong conversation')
+      const state = (globalThis as MockGlobal).desktopMock
+      state.resumes++
+      state.control = { state: 'ready', lane }
+      BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'desktop:control', control: state.control })
+      return state.control
+    })
+  }, `bot-${bot.id}`)
+  await page.reload()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  expect((await state()).resumes).toBe(0)
+  await page.getByTestId('bots-input-add').click()
+  await page.getByTestId('computer-controls-open').click()
+  const dialog = page.getByTestId('computer-dialog')
+  await expect(dialog.getByTestId('computer-control-start')).toBeEnabled()
+  expect((await state()).resumes).toBe(0)
+  await dialog.getByTestId('computer-control-start').click()
+  await expect.poll(async () => (await state()).control.state).toBe('ready')
+  expect((await state()).resumes).toBe(1)
+  await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
 })

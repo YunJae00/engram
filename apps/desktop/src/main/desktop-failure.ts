@@ -6,6 +6,8 @@ export interface DesktopFailureObservation {
 }
 
 const PRECONDITIONS: { pattern: RegExp; code: DesktopFailureObservation['error']; hint?: string }[] = [
+  { pattern: /Allow Engram in System Settings.*Accessibility/, code: 'policy_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Accessibility, then read the app again; do not bypass this permission.' },
+  { pattern: /Foreground input requires a deliberate handover/, code: 'policy_denied', hint: 'Ask the person to choose Allow control for this session under + → Computer controls, then read the app again; do not retry global input until they hand it over.' },
   { pattern: /exposes its controls: use app_read|Read the app with app_read first/i, code: 'policy_denied', hint: 'Read the app with app_read and use its provider controls; use the screen lane only when the reading reports sparse controls.' },
   { pattern: /^Invalid desktop action\.|^Desktop action arguments must|^Use an exact accessible name and controlType|^Use an element ID from the starting observation/i, code: 'action_failed', hint: 'Correct the arguments to match the tool schema and the latest observed target before retrying.' },
   { pattern: /snapshot is (?:stale|no longer held)|snapshot belongs to a different window|read the app before acting|window changed\. Read it again before acting|control changed\. Read the app again|selected control changed\. Observe|field changed\. Read/i, code: 'stale_snapshot' },

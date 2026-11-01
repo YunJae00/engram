@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { EngramEvent } from '../../../shared/types.js'
 
 interface WebPaneState {
+  attention?: boolean
   folded: boolean
   wanted: boolean
   expanded: boolean
@@ -15,7 +16,7 @@ function state(lane: string): WebPaneState { return lanes.get(lane) ?? EMPTY }
 function set(lane: string, change: Partial<WebPaneState>): void {
   const before = state(lane)
   const next = { ...before, ...change }
-  if (next.folded === before.folded && next.wanted === before.wanted && next.phase === before.phase && next.expanded === before.expanded && next.floating === before.floating) return
+  if (next.attention === before.attention && next.folded === before.folded && next.wanted === before.wanted && next.phase === before.phase && next.expanded === before.expanded && next.floating === before.floating) return
   lanes.set(lane, next)
   for (const listener of listeners) listener()
 }
@@ -32,11 +33,12 @@ export const webPane = {
   preview(lane: string): void { set(lane, { folded: false, wanted: true, floating: true, expanded: false }) },
   fold(lane: string): void { set(lane, { folded: true, expanded: false }) },
   expand(lane: string, expanded: boolean): void { set(lane, { folded: false, wanted: true, floating: false, expanded }) },
-  attention(lane: string): void { if (state(lane).expanded) set(lane, { expanded: false, floating: true }) },
+  attention(lane: string): void { set(lane, { attention: true, ...(state(lane).expanded ? { expanded: false, floating: true } : {}) }) },
   // Tool names are the protocol, not the human-readable step summary.
   handleEvent(event: EngramEvent): boolean {
     if (!('channel' in event) || !event.channel) return false
     const lane = event.channel
+    if (event.type === 'comet:working' && event.working) set(lane, { attention: false })
     if (event.type === 'press:ask' || event.type === 'routine:submit' || ((event.type === 'chat:done' || event.type === 'chat:offer') && event.offer?.kind === 'asked')) webPane.attention(lane)
     if (event.type === 'chat:done' || event.type === 'chat:error') set(lane, { phase: 'idle' })
     if (event.type === 'routine:step') {

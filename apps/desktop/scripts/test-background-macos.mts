@@ -87,6 +87,15 @@ try {
   const control = /^(c\d+) .*"Fixture message"/m.exec(read)![1]
   const input = 'I keep typing while Engram edits another app. '
   const typing = page.locator('#typing').pressSequentially(input.repeat(3), { delay: 45 })
+  const passive = await tool('read_desktop', { app: `window:${target}:0` })
+  assert.match(String(passive), /snapshot/)
+  assert.equal(await nativeFocus(), true, 'Background observation stole focus')
+  assert.match(String(await tool('look_desktop', { app: `window:${target}:0` })), /Screenshot of/)
+  assert.equal(await nativeFocus(), true, 'Background screenshot stole focus')
+  const refusal = JSON.parse(await tool('desktop_action', { kind: 'type', snapshot: JSON.parse(String(passive)).snapshot, text: 'must not arrive' }) as string)
+  assert.equal(refusal.error, 'policy_denied')
+  assert.equal(refusal.delivery, 'not_delivered')
+  assert.equal(await nativeFocus(), true, 'A refused foreground action stole focus')
   const result = JSON.parse(await tool('app_set', { app: `window:${target}:0`, snapshot, control, text: '한글 초안 🙂 — background edit', expected: 'owned fixture initial' }) as string)
   assert.equal(result.exact, true)
   assert.equal(result.foregroundChanged, false)
@@ -129,7 +138,7 @@ try {
   await page.screenshot({ path: join(run, 'foreground-input.png') })
   const preview = app.windows().find(w => w.url().includes('work-preview'))
   if (preview) { await new Promise(resolve => setTimeout(resolve, 3000)); await preview.locator('.work-preview-card').first().waitFor({ timeout: 10000 }); await preview.screenshot({ path: join(run, 'work-preview.png') }) }
-  await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, target, backgroundEdit: result.exact, foregroundChanged: result.foregroundChanged, nativeFocusLosses: focusLosses, inputPreserved: true, calculator: '123+456=579', browserRead: true, frames }, null, 2))
+  await writeFile(join(run, 'result.json'), JSON.stringify({ passed: true, inputSource: 'Playwright synthetic input, not physical human typing', observationWithoutHandover: true, foregroundActionRefused: true, target, backgroundEdit: result.exact, foregroundChanged: result.foregroundChanged, nativeFocusLosses: focusLosses, inputPreserved: true, calculator: '123+456=579', browserRead: true, frames }, null, 2))
   console.log('PASS background app_set through public tool, Korean readback, concurrent foreground typing and nonfocusable preview', run)
 } catch (error) { console.error(error); throw error } finally {
   await app.evaluate(() => (globalThis as unknown as { backgroundClose(): void }).backgroundClose()).catch(() => {})
