@@ -210,3 +210,7 @@ it('distinguishes an attempted last-page failure from unfinished batch reads', (
   expect(finalDesktopFailure(step(2))).toBeUndefined()
   expect(finalDesktopFailure(step(3))).toContain('stopped before all pages')
 })
+
+it.each(['app_read', 'app_text', 'look_desktop'])('keeps a structured %s failure incomplete', tool => {
+  expect(finalDesktopFailure([{ tool, args: {}, observation: JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Manual control required' }) }])).toContain('has not been verified')
+})

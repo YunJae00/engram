@@ -12,7 +12,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: () => {} }))
 import { taskRunner, type TaskTurn, type TurnOutcome } from '../src/main/task-runner.js'
 import { holdTaskResult } from '../src/main/task-result-state.js'
 
-type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome>
+type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome | undefined>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
 export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number, offered?: (channel: string) => boolean) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))

@@ -12,7 +12,7 @@ it('parks partial collection barriers in waiting without a Continuing turn', asy
       await collect.run({ status: 'blocked', summary: 'Please sign in for the second item.', evidenceStep: 1 })
       return { answer: 'Continuing' }
     } } as Engine
-    const result = await runToolSession({ engine, workdir: t.paths.workspace as EngineCwd, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'First: 42; sign in for Second' }] }, 'Read both items')
+    const result = await runToolSession({ engine, workdir: t.paths.workspace as EngineCwd, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'First: 42; HTTP 401: sign in for Second' }] }, 'Read both items')
     return { answer: result.answer, asked: result.asked === true, unfinished: !!result.incomplete, steps: result.steps.length, trail: result.steps }
   })
   await t.chat('Read both items')
