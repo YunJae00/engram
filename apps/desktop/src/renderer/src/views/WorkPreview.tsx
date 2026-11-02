@@ -13,6 +13,11 @@ export function WorkPreview({ lane, busy, state = 'recorded', lang = 'en' }: {
   const [choice, setChoice] = useState<string>()
   const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: !busy, hidden: false })
   const words = threadWords(lang).workPreview
+  const status = (frame: WorkPreviewDto) => frame.captureState === 'waiting' ? words.firstFrame
+    : frame.unavailable || frame.captureState === 'unavailable' ? words.unavailable
+    : frame.captureState === 'delayed' && frame.current !== false ? words.delayed
+    : busy && frame.current !== false && now - frame.at < 5000 ? words.recent
+    : `${words.snapshot} · ${Math.max(0, Math.floor((now - frame.at) / 1000))}s`
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
   useEffect(() => {
     let alive = true, received = false
@@ -39,8 +44,8 @@ export function WorkPreview({ lane, busy, state = 'recorded', lang = 'en' }: {
     {!view.collapsed && <>
       <div className="work-preview-deck">
         {ordered.map((frame, depth) => <figure key={frame.id} className="work-preview-card" data-frame={frame.id} style={{ '--depth': depth } as CSSProperties}>
-          <figcaption><span className="work-preview-title">{frame.title}</span><small>{frame.unavailable || !frame.data ? words.unavailable : busy && now - frame.at < 5000 ? words.recent : `${words.snapshot} · ${Math.max(0, Math.floor((now - frame.at) / 1000))}s`}</small></figcaption>
-          {frame.data ? <img src={frame.data} alt={frame.title} /> : <div className="work-preview-placeholder">{words.unavailable}</div>}
+          <figcaption><span className="work-preview-title">{frame.title}</span><small>{status(frame)}</small></figcaption>
+          {frame.data ? <img src={frame.data} alt={frame.title} /> : <div className="work-preview-placeholder">{status(frame)}</div>}
         </figure>)}
       </div>
       {frames.length > 1 && <nav className="work-preview-tabs" aria-label={words.choose}>{frames.map(frame => <button key={frame.id} aria-pressed={frame.id === ordered[0]?.id} onClick={() => setChoice(frame.id)}>{frame.title}</button>)}</nav>}

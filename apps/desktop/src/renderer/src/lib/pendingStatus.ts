@@ -45,7 +45,7 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   find_files: arg => `Finding files named like “${arg}”`, open_skill: 'Reading a how-to it was shown',
   look_in_parallel: 'Looking into several things at once',
   outage: arg => `${arg} is not answering on its side; sending again shortly`,
-  page_do: 'Working through the page', app_do: 'Working in the app', task_plan: 'Planning the steps', report_result_check: 'Reporting the check',
+  page_do: 'Working through the page', app_do: 'Working in the app', task_plan: 'Planning the steps', report_result_check: 'Reporting the check', collect_results: 'Checking collected details',
   artifact_read: arg => `Reading ${fileName(arg)}`,
 }
 // Lines the host writes about the turn rather than a tool call.
@@ -108,7 +108,7 @@ function englishWorkLabel(line: string): string {
   if (/^(search_memory|read_note|find_procedure|open_skill)/.test(tool)) return 'Using your memory'
   if (tool === 'task_plan') return 'Planning the work'
   if (/^(Bash|PowerShell|Shell)$/.test(tool)) return 'Running commands'
-  if (/^(report_result_check|verification|note)$/.test(tool)) return 'Checking the result'
+  if (/^(collect_results|report_result_check|verification|note)$/.test(tool)) return 'Checking the result'
   if (/^(Read|Glob|Grep|LS|Write|Edit|MultiEdit|NotebookRead|NotebookEdit)$/.test(tool) || /file|artifact/.test(tool)) return 'Working with files'
   return tool.includes(' ') || !/^[a-z_]+$/.test(tool) ? line : tool.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase())
 }

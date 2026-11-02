@@ -12,7 +12,7 @@ test('a connected conversation edits an owned app while another conversation rec
   test.skip(process.platform !== 'darwin' || process.env.ENGRAM_LIVE_BACKGROUND !== '1', 'Requires macOS and an explicitly selected connected provider')
   test.setTimeout(240000)
   const root = fileURLToPath(new URL('../../../', import.meta.url))
-  const evidence = join(root, 'tmp/session-preview-followup')
+  const evidence = join(root, 'tmp/app-work-experience')
   await mkdir(evidence, { recursive: true })
   const data = await mkdtemp(join(evidence, 'background-live-'))
   const executable = join(data, 'OwnedFixture')
