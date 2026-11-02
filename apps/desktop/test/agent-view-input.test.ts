@@ -143,4 +143,14 @@ describe('browser view handoffs', () => {
     await input
     expect(cdp.send.mock.calls.some(call => call[1]?.type === 'mouseWheel')).toBe(false)
   })
+
+  it('refreshes the lossless frame after wheel input without waiting for a screencast event', async () => {
+    fixture('bot-one')
+    const view = await import('../src/main/agent-view.js')
+    await view.lookAtLane('bot-one')
+    await vi.waitFor(() => expect(deps.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'agent:frame' })))
+    deps.broadcast.mockClear()
+    await view.agentViewInput({ kind: 'mouse', type: 'wheel', x: 0.5, y: 0.5, deltaY: 4000 }, 'bot-one')
+    expect(deps.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'agent:frame', data: 'frame', lane: 'bot-one' }))
+  })
 })

@@ -298,11 +298,19 @@ test('mission control previews independent lanes and opens the chosen chat', asy
   await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
   const motion = await page.evaluate(async ({ url, id }) => {
     let count = 0
-    const off = window.engram.onEvent((event) => { if (event.type === 'mission:frame' && event.frame.lane === `bot-${id}` && event.frame.data) count++ })
-    await window.engram.agentGo(`${url}motion`, `bot-${id}`)
-    await new Promise((resolve) => setTimeout(resolve, 2500))
-    off()
-    return count
+    let ready!: () => void
+    const started = new Promise<void>(resolve => { ready = resolve })
+    const off = window.engram.onEvent((event) => {
+      if (event.type === 'mission:frame' && event.frame.lane === `bot-${id}` && event.frame.url === `${url}motion` && event.frame.data && ++count >= 2) ready()
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await window.engram.agentGo(`${url}motion`, `bot-${id}`)
+      await Promise.race([started, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Replacement lane stream did not start')), 20000) })])
+      count = 0
+      await new Promise(resolve => setTimeout(resolve, 2500))
+      return count
+    } finally { clearTimeout(timer); off() }
   }, { url: siteUrl, id: bots[3]!.id })
   expect(motion).toBeGreaterThan(10)
   await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()

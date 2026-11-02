@@ -269,6 +269,13 @@ test('apps used lately carry their own icon and clean name, apps that only sent 
   await mkdir(kept, { recursive: true })
   for (const toast of toasts) await writeFile(join(kept, `${toast.at.slice(0, 10)}.jsonl`), `${JSON.stringify(toast)}\n`, { flag: 'a' })
   await start()
+  // Keep this synthetic ledger fixture independent of the hosted OS icon service.
+  await app.evaluate(({ app, nativeImage }, program) => {
+    const getFileIcon = app.getFileIcon.bind(app)
+    app.getFileIcon = (path, options) => path === program
+      ? Promise.resolve(nativeImage.createFromBitmap(Buffer.from([220, 80, 30, 255]), { width: 1, height: 1 }))
+      : getFileIcon(path, options)
+  }, process.execPath)
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-memory').click()
   const apps = page.getByTestId('apps-settings')

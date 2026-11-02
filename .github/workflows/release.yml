@@ -27,7 +27,7 @@ jobs:
         include:
           - os: windows-latest
             name: windows
-          - os: macos-latest
+          - os: macos-26-intel
             name: macos
     runs-on: ${{ matrix.os }}
     steps:
