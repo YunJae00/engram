@@ -9,6 +9,7 @@ import { testDesktopBrowser } from './test-desktop-browser.mjs'
 import { testDesktopInterruption } from './test-desktop-interruption.mjs'
 import { testDesktopPartial } from './test-desktop-partial.mjs'
 import { testDesktopReplace } from './test-desktop-replace.mjs'
+import { measurePreviewCost } from './test-desktop-preview-cost.mjs'
 import { testDesktopQuiet } from './test-desktop-quiet.mjs'
 import { testDesktopRemoteBytecode } from './test-desktop-remote-bytecode.mjs'
 import { testDesktopScanner } from './test-desktop-scanner.mjs'
@@ -141,7 +142,7 @@ try {
   const target = { window: ready.window, pid: ready.pid }
   result.stage = 'quiet-app-access'
   const quietHelper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
-  try { result.quiet = await testDesktopQuiet(quietHelper, fixture, target, until) }
+  try { result.quiet = await testDesktopQuiet(quietHelper, fixture, target, until); result.previewCost = await measurePreviewCost(quietHelper, target); console.log(JSON.stringify({ previewCost: result.previewCost })) }
   finally { await quietHelper.close() }
   result.stage = 'application-frame'
   const frameHelper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { desktopFailure } from '../src/main/desktop-failure.ts'
 
 export async function testDesktopQuiet(helper, fixture, target, until) {
   await helper.ready
@@ -96,6 +97,16 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await until(() => fixture.request('state'), state => state.clicks === 1, 'Quiet invoke did not reach the button')
   assert.equal((await fixture.request('state')).foreground, press.foregroundChanged, 'Provider activation must be reported honestly')
   await fixture.request('away')
+  await fixture.request('delayNextClick')
+  const activeId = helper.sequence + 1
+  const active = helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }).then(
+    () => { throw new Error('Delayed owned action unexpectedly acknowledged before cancellation') }, error => error)
+  await until(async () => fixture.events.some(event => event.type === 'ownedActionStarted'), value => value, 'Owned action did not start')
+  await helper.request('cancel', { target: activeId })
+  const uncertain = desktopFailure(await active)
+  assert.equal(uncertain.delivery, 'delivery_uncertain')
+  assert.equal(uncertain.retry, 'unsafe')
+  assert.equal((await fixture.request('state')).clicks, 2, 'Cancellation after dispatch must not be claimed as unapplied or repeated')
   await fixture.request('quietRename')
   await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /control changed/)
 
