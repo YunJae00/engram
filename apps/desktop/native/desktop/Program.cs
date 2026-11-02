@@ -54,8 +54,7 @@ internal static class Program
     // Provider-only access: nothing here takes a lease, the foreground or the person's input.
     private static object Quiet(string method, Dictionary<string, object> request, DesktopTarget target, QuietAccess quiet, DesktopRequest queued, InputMonitor monitor)
     {
-        // Esc gives back the mouse and keyboard taken by the hands tools; these
-        // calls take neither, so only Stop or a closed helper cancels them.
+        // Background provider calls are cancelled by Stop, not unrelated keyboard input.
         Action check = delegate {
             if (Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch))
                 throw new InvalidOperationException("The desktop request was cancelled");
@@ -90,7 +89,7 @@ internal static class Program
             if (method == "openApp")
             {
                 Send(new { id = id, result = DesktopApps.Open(Text(request, "app", 64), delegate
-                { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch) && !monitor.Escaped; }) });
+                { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); }) });
                 return;
             }
             if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, working = monitor.Working, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
@@ -101,7 +100,7 @@ internal static class Program
             if (method == "applicationFrameHide") { frame.Hide(); Send(new { id = id, result = new { hidden = true } }); return; }
             if (method.StartsWith("quiet", StringComparison.Ordinal))
             {
-                if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
+                if (queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
                 // A minimized window is shown again without being activated: the person's focus stays where it is.
                 if (method != "quietState" && target.Minimized)
@@ -113,7 +112,7 @@ internal static class Program
                 Send(new { id = id, result = Quiet(method, request, target, quiet, queued, monitor) }); return;
             }
             if (method == "applicationFrame") {
-                if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
+                if (queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
                 Send(new { id = id, result = new { window = frame.Show(target) } }); return;
             }
             if (method == "activateWindow")
