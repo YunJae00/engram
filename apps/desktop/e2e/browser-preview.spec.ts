@@ -192,6 +192,8 @@ test('finished work minimizes its preview so the result remains readable', async
 
 
 test('status notices leave full and split conversation composers unobscured', async () => {
+  expect(await page.evaluate(() => CSS.supports('top', 'calc(anchor(--status-banner bottom, 44px) + 8px)'))).toBe(true)
+  await page.addStyleTag({ content: '.connect-banner { min-height: 80px }' })
   for (const layout of [1, 2]) {
     if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
     await page.getByTestId(`mission-layout-${layout}`).click()
