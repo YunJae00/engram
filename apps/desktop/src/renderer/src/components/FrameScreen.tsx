@@ -10,7 +10,7 @@ import { agentMirror } from '../lib/agentMirrorLive.js'
 
 export type FrameSource = (paint: (data: string) => void) => () => void
 
-export function FrameScreen({ className, lane, source, onSize }: { className?: string; lane?: string; source?: FrameSource; onSize?(width: number, height: number): void }) {
+export function FrameScreen({ className, lane, source, onSize, onPaint, title }: { className?: string; lane?: string; source?: FrameSource; onSize?(width: number, height: number): void; onPaint?(): void; title?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const surface = canvas.current
@@ -34,6 +34,7 @@ export function FrameScreen({ className, lane, source, onSize }: { className?: s
       // out of sight until this first drawImage, or opening the pane is a
       // black rectangle for as long as the first frame takes.
       surface.dataset['painted'] = ''
+      onPaint?.()
     }
     const read = (data: string): void => {
       if (busy) {
@@ -71,6 +72,6 @@ export function FrameScreen({ className, lane, source, onSize }: { className?: s
       alive = false
       off()
     }
-  }, [lane, source, onSize])
-  return <canvas ref={canvas} className={className} />
+  }, [lane, source, onSize, onPaint])
+  return <canvas ref={canvas} className={className} role="img" aria-label={title} />
 }
