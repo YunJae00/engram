@@ -242,7 +242,7 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   // The wall surfaces as a question in the live block, not as a failure.
   // The preview opens beside chat when the person is ready to sign in.
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
-  await page.locator('.browser-preview').getByRole('button', { name: 'Expand browser', exact: true }).click()
+  await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}gate`)
   await page.getByRole('button', { name: 'Return to small preview' }).click()
 
@@ -253,11 +253,11 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   await capture('routine-login-compact.png')
   await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
-  await expect(page.getByTestId('web-pane')).toHaveCount(0)
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await expectRoutineControlReachable('routine-wall-done-live')
   await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
-  await expect(page.getByTestId('web-pane')).toBeVisible()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
   await expectRoutineControlReachable('routine-wall-done-live')
 
   // The person signs in (the gate opens), then tells the run to continue.

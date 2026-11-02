@@ -242,10 +242,10 @@ test('session app previews stay inside the conversation and preserve drafts', as
   await app.evaluate(({ BrowserWindow }, frames) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'desktop:preview', frames })
   }, frames)
-  const preview = page.getByTestId('work-preview')
+  const preview = page.getByTestId('preview-card')
   await expect(preview).toHaveAttribute('data-lane', `bot-${one.id}`)
   await expect(page.getByTestId('bots-input')).toBeFocused()
-  await preview.getByRole('button', { name: 'Expand app activity' }).click()
+  await preview.getByRole('button', { name: 'Expand preview' }).click()
   await expect(preview).toContainText('Owned app 0')
   await expect(preview).not.toContainText('Owned app 1')
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(windows)
@@ -254,14 +254,14 @@ test('session app previews stay inside the conversation and preserve drafts', as
     return box.left >= parent.left && box.right <= parent.right && box.top >= parent.top && box.bottom <= parent.bottom
   })).toBe(true)
   await page.setViewportSize({ width: 1000, height: 600 })
-  expect(await preview.locator('.work-preview-caption').evaluate(element => {
-    const box = element.getBoundingClientRect(), parent = element.closest('.work-preview')!.getBoundingClientRect()
+  expect(await preview.locator('.preview-card-stage').evaluate(element => {
+    const box = element.getBoundingClientRect(), parent = element.closest('.preview-card')!.getBoundingClientRect()
     return box.bottom <= parent.bottom
   })).toBe(true)
   await page.setViewportSize({ width: 1440, height: 900 })
-  await preview.getByRole('button', { name: 'Hide app activity' }).click()
+  await preview.getByRole('button', { name: 'Hide preview' }).click()
   await expect(preview).toHaveCount(0)
-  await page.getByTestId('work-preview-reopen').click()
+  await page.getByTestId('preview-card-reopen').click()
   await expect(preview).toBeVisible()
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
   await page.getByTestId('bots-input-add').click()

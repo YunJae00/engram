@@ -12,7 +12,6 @@ import { useShellState } from '../state-slices.js'
 import { BrowserActions } from './BrowserActions.js'
 import { useBrowserViewport } from '../lib/useBrowserViewport.js'
 import { browserAddress } from '../lib/browser-start.js'
-import { BrowserPreview } from './BrowserPreview.js'
 import { useCompactBrowser } from '../lib/useCompactBrowser.js'
 
 const WIDTH_KEY = 'engram.webpane.width'
@@ -103,7 +102,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     void api.agentLane(channel).catch(() => {})
     void agentMirror.ask()
   }, [channel, active])
-  const { on, url, frame, lane, width: frameWidth, height: frameHeight } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   // What the store holds is whoever was mirrored last; it belongs on this
   // pane only when it is this comet's own. Another comet's page must never
   // stand in for an empty one here.
@@ -155,7 +154,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   // browser opens on a blank tab - and folded it is simply gone; the globe
   // by the composer is where it comes back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
-  if (preview) return folded ? null : <BrowserPreview key={channel} channel={channel} url={mine ? url : undefined} native={native} live={liveHere} visible={visible && active} busy={busy} width={frameWidth} height={frameHeight} compact={compact} elementRef={elementRef} />
+  if (preview) return null
   if (folded && !present) return null
   return (
     <aside

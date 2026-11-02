@@ -82,7 +82,8 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     })).toBeGreaterThanOrEqual(30)
     await page.getByTestId('bots-input-add').click()
     await page.getByTestId('composer-web').click()
-    await expect(page.getByTestId('web-pane')).toBeVisible()
+    const pane = page.getByTestId(width > 1180 ? 'web-pane' : 'preview-card')
+    await expect(pane).toBeVisible()
     if (width > 1180) {
       await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')
       await expect(page.locator('.web-pane-inner')).toHaveCSS('border-top-width', '0px')
@@ -91,12 +92,12 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
       await expect(page.getByTestId('web-pane')).toHaveCSS('box-shadow', 'none')
       await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')
     } else {
-      await expect(page.locator('.browser-preview')).toBeVisible()
+      await expect(page.locator('.preview-card')).toBeVisible()
       await expect(page.getByTestId('live-address')).toHaveCount(0)
     }
     await screenshot(`release-112-web-flat-${width}.png`)
     if (width <= 1180) {
-      await expect.poll(() => page.getByTestId('web-pane').evaluate((node) => {
+      await expect.poll(() => pane.evaluate((node) => {
         const pane = node.getBoundingClientRect()
         const host = node.closest('.bots-main')!
         const head = host.getBoundingClientRect()
@@ -106,7 +107,7 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     }
     await page.getByTestId('bots-input-add').click()
     await page.getByTestId('composer-web').click()
-    await expect(page.getByTestId('web-pane')).toHaveCount(0)
+    await expect(pane).toHaveCount(0)
     await input.fill('')
     await navigate('sky')
     await expect(page.locator('.cosmos-chat-head')).toHaveCSS('min-height', '44px')

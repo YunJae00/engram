@@ -11,7 +11,9 @@ import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { ThinkingDots } from '../components/Thinking.js'
-import { WorkPreview } from './WorkPreview.js'
+import { PreviewCard } from '../components/PreviewCard.js'
+import { usePreviewFrames } from '../components/usePreviewFrames.js'
+import { useCompactBrowser } from '../lib/useCompactBrowser.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
 import { BotComposer } from '../components/BotComposer.js'
@@ -50,6 +52,8 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   // it, the box says so instead of swallowing a send in silence.
   // Each comet works on its own tab with its own brain session: only this
   // thread's own turn locks its composer.
+  const frames = usePreviewFrames(cometChannel(selected?.id ?? ''))
+  const { compact } = useCompactBrowser()
   const locked = false
 
   // The wait, said from evidence - see pendingStatus for the order it trusts.
@@ -112,7 +116,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
           {/* Keyed by the comet: looking at another one brings its thread
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
-            <WorkPreview key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
+            <PreviewCard frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}

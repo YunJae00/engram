@@ -61,7 +61,7 @@ test('a connected conversation preserves observed progress and steering while re
     const before = await page.locator('.bubble-msg').allTextContents()
     await page.screenshot({ path: join(data, 'completed.png') })
     await page.getByTestId(`bot-${other.id}`).click()
-    await expect(page.getByTestId('work-preview')).toHaveCount(0)
+    await expect(page.getByTestId('preview-card')).toHaveCount(0)
     await page.getByTestId(`bot-${bot.id}`).click()
     await expect.poll(() => page.locator('.bubble-msg').allTextContents()).toEqual(before)
     const transcript = await page.evaluate(id => window.engram.botTranscript(id), bot.id)

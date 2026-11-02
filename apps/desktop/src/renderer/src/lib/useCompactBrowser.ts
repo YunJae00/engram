@@ -10,6 +10,7 @@ export function useCompactBrowser() {
   const elementRef = useCallback((element: HTMLElement | null) => {
     if (element) setHost(element.closest('.bots-main'))
   }, [])
+  useEffect(() => { if (!host) setHost(document.querySelector('.bots-main')) }, [host])
   useEffect(() => {
     if (!host) return
     const measure = () => {

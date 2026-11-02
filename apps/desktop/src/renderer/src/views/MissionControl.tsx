@@ -12,9 +12,7 @@ import { useCometActivity } from '../lib/useCometActivity.js'
 import { fillSeats, readSeats, replaceSeat } from '../lib/missionSeats.js'
 import { useShellState } from '../state-slices.js'
 import { SidebarDisclosure } from '../components/SidebarDisclosure.js'
-import { BrowserPreview } from '../components/BrowserPreview.js'
 import type { FrameSource } from '../components/FrameScreen.js'
-import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { onMissionFrame } from '../lib/missionFramesLive.js'
 import { compactBrowser } from '../lib/useCompactBrowser.js'
 import { MissionBrowserDialog } from '../components/MissionBrowserDialog.js'
@@ -33,7 +31,6 @@ function readFoldedChats(): Set<string> {
 
 export function MissionControl({ layout }: { layout: 2 | 4 }) {
   const { setActivity } = useShellState()
-  const native = useNativeBrowser()
   // One picture source per lane, kept across renders so its preview is not resubscribed.
   const frameSources = useRef(new Map<string, FrameSource>())
   const framesOf = (lane: string): FrameSource => {
@@ -186,9 +183,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
               {chooser(index)}
               <div className="mission-tile-body" key={bot.id} data-chat-open={!chatFolded} data-web-open={webOpen}>
                 <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} busy={['running', 'waiting'].includes(statusOf(bot))} open={() => open(bot.id)} onLiveChange={(live, url) => setPages(previous => { if (live ? previous.get(bot.id) === url : !previous.has(bot.id)) return previous; const next = new Map(previous); if (live) next.set(bot.id, url); else next.delete(bot.id); return next })} />
-                {/* A small tile keeps its conversation readable: the page floats at the corner, as in a small window. */}
-                {!webOpen && pages.has(bot.id) && <BrowserPreview channel={cometChannel(bot.id)} url={pages.get(bot.id)} native={native} live visible busy={['running', 'waiting'].includes(statusOf(bot))} width={1280} height={800} compact elementRef={() => undefined} onOpen={() => showPage(bot.id, true)} frames={framesOf(cometChannel(bot.id))} />}
-                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat botId={bot.id} webOpen={webOpen} onToggleWeb={() => showPage(bot.id, !webOpen)} /></div>
+                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat previewTile={{ url: !webOpen ? pages.get(bot.id) : undefined, frames: framesOf(cometChannel(bot.id)), onOpen: () => showPage(bot.id, true) }} botId={bot.id} webOpen={webOpen} onToggleWeb={() => showPage(bot.id, !webOpen)} /></div>
               </div>
             </article>
           )

@@ -60,27 +60,27 @@ test('connected conversations deliver visible results with isolated work surface
       await page.getByTestId('bots-input').fill(scenario.text)
       await page.getByTestId('bots-input').press('Enter')
       await expect.poll(() => events.some(e => (e as { type: string; channel?: string }).type === 'comet:step' && (e as { channel?: string }).channel === `bot-${scenario.bot.id}`), { timeout: 60000 }).toBe(true)
-      if (index === 2) await expect(page.getByTestId('work-preview').locator('img').first()).toBeVisible({ timeout: 60000 })
+      if (index === 2) await expect(page.getByTestId('preview-card').locator('img').first()).toBeVisible({ timeout: 60000 })
       await page.screenshot({ path: join(data, `session-${index}-active.png`) })
       await expect.poll(() => events.some(e => ['chat:done', 'chat:error'].includes((e as { type: string }).type) && (e as { channel?: string }).channel === `bot-${scenario.bot.id}`), { timeout: 150000 }).toBe(true)
       await expect.poll(() => page.locator('.bubble-msg.assistant .answer-actions').count()).toBe(await page.locator('.bubble-msg.assistant').count())
       if (await page.getByTestId('tour-skip').isVisible()) await page.getByTestId('tour-skip').click()
       await page.screenshot({ path: join(data, `session-${index}-result.png`) })
-      const preview = page.getByTestId('work-preview')
+      const preview = page.getByTestId('preview-card')
       if (index === 2) {
         await expect(preview).toHaveAttribute('data-lane', `bot-${calculator.id}`)
         await expect(preview).toHaveCount(1)
       }
       if (await preview.isVisible()) {
-        const expand = preview.getByRole('button', { name: /Expand app activity|앱 작업 펼치기/ })
+        const expand = preview.getByRole('button', { name: /Expand preview|미리보기 펼치기/ })
         if (await expand.isVisible()) await expand.click()
         await expect(preview.locator('img').first()).toBeVisible()
         await page.screenshot({ path: join(data, `session-${index}-preview.png`) })
         await page.getByTestId(`bot-${browser.id}`).click()
-        await expect(page.getByTestId('work-preview')).toHaveCount(0)
+        await expect(page.getByTestId('preview-card')).toHaveCount(0)
         await page.screenshot({ path: join(data, `session-${index}-switched.png`) })
         await page.getByTestId(`bot-${scenario.bot.id}`).click()
-        await expect(page.getByTestId('work-preview')).toHaveAttribute('data-lane', `bot-${scenario.bot.id}`)
+        await expect(page.getByTestId('preview-card')).toHaveAttribute('data-lane', `bot-${scenario.bot.id}`)
       }
     }
     const metadata = await app.evaluate(({ app, BrowserWindow }) => ({ version: app.getVersion(), packaged: app.isPackaged, windows: BrowserWindow.getAllWindows().map(w => ({ url: w.webContents.getURL(), focusable: w.isFocusable() })) }))

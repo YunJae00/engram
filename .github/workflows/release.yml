@@ -15,6 +15,7 @@ permissions:
 jobs:
   validate:
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
     with:
       ref: ${{ github.event.inputs.tag || github.ref }}
 
@@ -39,6 +40,12 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Import signing certificate
+        if: ${{ runner.os == 'macOS' }}
+        uses: ./.github/actions/import-macos-signing
+        env:
+          ENGRAM_MAC_SIGNING_P12: ${{ secrets.ENGRAM_MAC_SIGNING_P12 }}
+          ENGRAM_MAC_SIGNING_PASSWORD: ${{ secrets.ENGRAM_MAC_SIGNING_PASSWORD }}
       - name: Build installer
         shell: bash
         run: |
@@ -59,6 +66,10 @@ jobs:
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest*.yml
           retention-days: 7
+      - name: Delete signing keychain
+        if: ${{ always() && runner.os == 'macOS' && env.ENGRAM_MAC_SIGN_KEYCHAIN != '' }}
+        shell: bash
+        run: security delete-keychain "$ENGRAM_MAC_SIGN_KEYCHAIN"
 
   publish:
     needs: build
@@ -86,7 +97,7 @@ jobs:
             echo "- **macOS Apple Silicon** — [Engram-${version}-arm64.dmg](${base}/Engram-${version}-arm64.dmg)"
             echo "- **macOS Intel** — [Engram-${version}-x64.dmg](${base}/Engram-${version}-x64.dmg)"
             echo
-            echo 'macOS builds are ad-hoc signed, not notarized. Computer control requires Accessibility and Screen Recording permissions; Office automation additionally requires installed, activated Office apps and Automation permission.'
+            echo 'macOS builds use a stable self-signed certificate and are not notarized. Open Anyway is still required. After installing 0.8.102, remove Engram from Accessibility with − and add /Applications/Engram.app again with + once; subsequent updates should retain permission. Computer control requires Accessibility and Screen Recording permissions; Office automation additionally requires installed, activated Office apps and Automation permission.'
             echo
             echo '- **Windows:** SmartScreen says it blocked an unrecognized app. The **Run anyway** button is hidden until you click **More info** first.'
             echo 'Claude is installed separately by the user from Settings → AI or during onboarding. The official Anthropic runtime and terms apply; it is not included in this installer.'

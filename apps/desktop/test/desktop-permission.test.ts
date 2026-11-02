@@ -8,13 +8,15 @@ let rememberAccessibilityTrust: typeof import('../src/main/desktop-permission.js
 beforeEach(async () => { vi.resetModules(); ({ permissionFailure, rememberAccessibilityTrust } = await import('../src/main/desktop-permission.js')); vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin'); fake.settings = { accessibilityTrustedVersion: '' }; fake.log.mockClear(); fake.load.mockClear() })
 afterEach(() => vi.restoreAllMocks())
 const denial = 'Allow Engram in System Settings → Privacy & Security → Accessibility'
-it('escalates a previous build trust without claiming permission is repaired', async () => {
+it('guides a previous build trust without claiming permission is repaired', async () => {
   fake.settings.accessibilityTrustedVersion = '0.8.100'
   expect((await permissionFailure(denial, 'old-build')).hint).toContain('remove Engram')
 })
-it('escalates the second denial in the same conversation session', async () => {
-  expect((await permissionFailure(denial, 'repeat')).hint).toContain('allow Engram')
-  expect((await permissionFailure(denial, 'repeat')).hint).toContain('remove Engram')
+it('guides removal and re-addition on the first denial without duplicating escalation', async () => {
+  const first = await permissionFailure(denial, 'repeat')
+  expect(first.hint).toContain('remove Engram with − and add /Applications/Engram.app again with +')
+  expect(first.hint).toContain('macOS ties permission to the build')
+  expect((await permissionFailure(denial, 'repeat')).hint).toBe(first.hint)
   expect(fake.log.mock.calls[1]).toEqual(['desktop-permission', expect.stringContaining('"repeat":2')])
 })
 it('remembers only successful AX methods in existing settings', async () => {
@@ -24,7 +26,7 @@ it('remembers only successful AX methods in existing settings', async () => {
   expect(fake.settings.accessibilityTrustedVersion).toBe('0.8.101')
 })
 
-it('resets accessibility denial escalation after successful AX access', async () => {
+it('resets accessibility denial counts after successful AX access', async () => {
   await permissionFailure(denial, 'repaired')
   await permissionFailure(denial, 'repaired')
   await rememberAccessibilityTrust('listWindows')
