@@ -28,7 +28,7 @@ runs:
         security list-keychains -d user -s "$keychain" "${keychains[@]}"
         security import "$p12" -k "$keychain" -P "$ENGRAM_MAC_SIGNING_PASSWORD" -T /usr/bin/codesign
         security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
-        openssl pkcs12 -in "$p12" -nokeys -passin env:ENGRAM_MAC_SIGNING_PASSWORD -out "$cert"
+        openssl pkcs12 -legacy -in "$p12" -nokeys -passin env:ENGRAM_MAC_SIGNING_PASSWORD -out "$cert"
         sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$keychain" "$cert"
         identities="$(security find-identity -v -p codesigning "$keychain")"
         printf '%s\n' "$identities"
