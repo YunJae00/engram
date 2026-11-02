@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }))
 vi.mock('node:fs', () => ({ existsSync: () => false, mkdtempSync: vi.fn(), rmSync: vi.fn() }))
@@ -11,8 +12,8 @@ it('signs the resource helper before the app and verifies both without a local i
   vi.stubEnv('ENGRAM_MAC_SIGN_IDENTITY', '')
   await adhocSign({ electronPlatformName: 'darwin', arch: 4, appOutDir: '/tmp/sign-test', packager: { appInfo: { productFilename: 'Engram' }, info: { projectDir: '/tmp/sign-test' } } })
   const calls = vi.mocked(execFileSync).mock.calls.map(([tool, args]) => [tool, args])
-  const app = '/tmp/sign-test/Engram.app'
-  const helper = `${app}/Contents/Resources/bin/desktop/EngramDesktop`
+  const app = join('/tmp/sign-test', 'Engram.app')
+  const helper = join(app, 'Contents', 'Resources', 'bin', 'desktop', 'EngramDesktop')
   expect(calls).toEqual([
     ['codesign', ['--force', '--sign', '-', '--identifier', 'dev.engram.desktop', helper]],
     ['codesign', ['--verify', '--strict', helper]],
