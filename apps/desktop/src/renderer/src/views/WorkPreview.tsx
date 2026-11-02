@@ -14,6 +14,9 @@ export function WorkPreview({ lane, busy, state = 'recorded', lang = 'en' }: {
   const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: !busy, hidden: false })
   const words = threadWords(lang).workPreview
   const status = (frame: WorkPreviewDto) => frame.captureState === 'waiting' ? words.firstFrame
+    : frame.captureState === 'no-snapshot' ? words.noSnapshot
+    : frame.captureReason === 'screen_recording_denied' ? words.screenPermission
+    : frame.captureReason === 'capture_unsafe' ? words.captureUnsafe
     : frame.unavailable || frame.captureState === 'unavailable' ? words.unavailable
     : frame.captureState === 'delayed' && frame.current !== false ? words.delayed
     : busy && frame.current !== false && now - frame.at < 5000 ? words.recent

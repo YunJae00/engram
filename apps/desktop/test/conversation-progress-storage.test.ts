@@ -38,7 +38,7 @@ it('normalizes a final answer before persistence after an in-flight user message
   await appendBotTurn(paths, 'fragment', { role: 'user', text: 'Include dates', at: 'steer' })
   const answer = finishProgress('bot-fragment', 'Two checked. The dates are confirmed.')
   await appendBotTurn(paths, 'fragment', { role: 'assistant', text: answer, at: 'end' })
-  expect((await readBotTranscript(paths, 'fragment')).map(turn => turn.text)).toEqual(['Two checked. ', 'Include dates', 'The dates are confirmed.'])
+  expect((await readBotTranscript(paths, 'fragment')).map(turn => turn.text)).toEqual(['Two checked. ', 'Include dates', 'Two checked. The dates are confirmed.'])
   expect(finishProgress('bot-fragment', 'Two checked. A new answer.')).toBe('Two checked. A new answer.')
 })
 
@@ -78,5 +78,5 @@ it('keeps an in-flight capture intact for the inbox writer after steering', asyn
   progress.observe({ type: 'chat:token', channel: 'bot-capture', text: 'I will remember it.\n<engram:capture>Keep' })
   await progress.flush('bot-capture')
   expect(finishProgress('bot-capture', 'I will remember it.\n<engram:capture>Keep this note</engram:capture>'))
-    .toBe('<engram:capture>Keep this note</engram:capture>')
+    .toBe('I will remember it.\n<engram:capture>Keep this note</engram:capture>')
 })

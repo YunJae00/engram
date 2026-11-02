@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { NativeTools, ToolSessionJob } from 'core'
-
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home' } }))
 import { claimCodexWorkFolder, closeCodexSessions, runCodexNative, warmCodexSession, type CodexRpcFactory } from '../src/main/codex-native.js'
 import { NATIVE_TOOLS_OFF, RUNTIME_TOOLS_OFF } from '../src/main/engine-codex.js'
-
 type Data = Record<string, unknown>
 type Script = (server: { notify(method: string, params: Data): void; request(method: string, params: Data): Promise<unknown> }) => Promise<void>
-
 // An app server played from a script: what the runtime would send, in order.
 function fakeServer(script: Script, sent: { method: string; params: Data }[] = []): CodexRpcFactory {
   return (_options, notify, request) => {
@@ -28,16 +25,13 @@ function fakeServer(script: Script, sent: { method: string; params: Data }[] = [
     }
   }
 }
-
 function native(decide: NativeTools['decide']): NativeTools & { calls: string[]; results: string[] } {
   const calls: string[] = [], results: string[] = []
   return { cwd: 'C:/work/bot-1', readRoots: [], decide, calls, results, onCall: (name, input) => calls.push(`${name} ${String(input['command'] ?? input['file_path'])}`), onResult: (name, ok) => results.push(`${name} ${ok}`) }
 }
-
 const job = (hands: NativeTools): ToolSessionJob & { native: NativeTools } => ({ workdir: 'C:/vault' as ToolSessionJob['workdir'], system: 'system', prompt: 'Sum the column', tools: [], maxCalls: 10, native: hands })
 const spec = (rpc: CodexRpcFactory) => ({ rpc, env: {}, config: [], instructions: 'rules' })
 const completed = (item: Data) => ['item/completed', { item }] as const
-
 describe('ChatGPT with its own tools', () => {
   it('asks nothing before a command is wanted and answers a turn that needs none', async () => {
     const sent: { method: string; params: Data }[] = []
@@ -53,7 +47,6 @@ describe('ChatGPT with its own tools', () => {
     expect(turn).toMatchObject({ approvalPolicy: 'untrusted' })
     expect(turn['sandboxPolicy']).toEqual({ type: 'workspaceWrite', writableRoots: ['C:/work/bot-1'], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true })
   })
-
   it('puts words sent mid-turn into that turn as the person own message, and stops offering once it ends', async () => {
     const sent: { method: string; params: Data }[] = []
     let steer: ((said: string[]) => Promise<boolean>) | null = null
@@ -69,7 +62,6 @@ describe('ChatGPT with its own tools', () => {
     expect(sent.find(one => one.method === 'turn/steer')!.params).toEqual({ threadId: 't1', expectedTurnId: 'u1', input: [{ type: 'text', text: 'Only tomorrow', text_elements: [] }] })
     expect(offered.at(-1)).toBeNull()
   })
-
   it('puts the first wanted command to the person, then restarts where approval is never widened', async () => {
     const answers: unknown[] = [], sent: { method: string; params: Data }[] = []
     const decide = vi.fn<NativeTools['decide']>(async () => ({ behavior: 'allow' }))
@@ -91,7 +83,6 @@ describe('ChatGPT with its own tools', () => {
     expect(sent.map(one => one.method)).toEqual(['thread/start', 'turn/start', 'turn/interrupt', 'turn/start'])
     expect(sent.filter(one => one.method === 'turn/start').map(one => one.params['approvalPolicy'])).toEqual(['untrusted', 'never'])
   })
-
   it('runs where approval is never asked once commands are already allowed', async () => {
     const sent: { method: string; params: Data }[] = []
     const hands = native(async () => ({ behavior: 'allow' }))
@@ -104,7 +95,6 @@ describe('ChatGPT with its own tools', () => {
     expect(answers).toEqual([{ decision: 'decline' }])
     expect(sent.find(one => one.method === 'thread/start')!.params['approvalPolicy']).toBe('never')
   })
-
   it('asks once per turn: a refusal holds, escalations are never put to the person, and patches stay in the task folder', async () => {
     const answers: unknown[] = []
     const decide = vi.fn<NativeTools['decide']>(async (name, input) => ({ behavior: name === 'Write' && !String(input['file_path']).includes('Documents') ? 'allow' : 'deny' }))
@@ -391,4 +381,19 @@ it('budgets fresh tokens across cached notifications and reused turns', async ()
     await runCodexNative(request, spec(rpc))
     expect(onUsage.mock.calls).toEqual([[60], [60]])
   } finally { closeCodexSessions() }
+})
+
+it('reuses a directly opened session after spare warming without changing its work folder', async () => {
+  closeCodexSessions()
+  const sent: { method: string; params: Data }[] = []
+  const rpc = fakeServer(async server => { server.notify('turn/completed', { turn: { status: 'completed' } }) }, sent)
+  const hands = native(async () => ({ behavior: 'allow' }))
+  const first = claimCodexWorkFolder('direct', hands.cwd)
+  await runCodexNative({ ...job({ ...hands, cwd: first }), sessionKey: 'direct' }, spec(rpc))
+  await warmCodexSession(spec(rpc), { ...hands, cwd: 'C:/work/spare-after-direct' })
+  const second = claimCodexWorkFolder('direct', hands.cwd)
+  expect(second).toBe(first)
+  await runCodexNative({ ...job({ ...hands, cwd: second }), sessionKey: 'direct' }, spec(rpc))
+  expect(sent.filter(call => call.method === 'thread/start')).toHaveLength(2)
+  closeCodexSessions()
 })

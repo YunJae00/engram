@@ -1,3 +1,5 @@
+import { rememberAccessibilityTrust } from './desktop-permission.js'
+import { desktopFailure } from './desktop-failure.js'
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
 import { ProcessClient } from './process-client.js'
@@ -41,6 +43,8 @@ export class DesktopHost {
   private currentNative?: string
   private revoked = new Map<string, string>()
   private pending = new Map<number, PendingRequest>()
+  private previewInFlight = new Set<number>()
+  private previewWaits = new Map<number, number>()
   private withdrawnReads = new Map<number, ReturnType<typeof setTimeout>>()
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
@@ -65,7 +69,7 @@ export class DesktopHost {
       const fail = (cause?: unknown) => {
         if (this.ended) return
         const detail = cause instanceof Error ? cause.message.slice(0, 500) : 'The native process or its pipe exited.'
-        flog('desktop-native-connection', detail)
+        flog('desktop-native-connection', desktopFailure(detail).error)
         this.close(new Error(`The computer connection closed. ${detail}`))
       }
       this.readyTimer = setTimeout(() => fail(new Error('The native helper did not become ready within 25 seconds.')), 25000)
@@ -91,7 +95,7 @@ export class DesktopHost {
         if (message.type === 'revoked') {
           if (!nativeLease(message.lease)) { fail(); return }
           const reason = typeof message.reason === 'string' ? message.reason.slice(0, 500) : 'Computer control stopped.'
-          flog('desktop-native-revoked', reason)
+          flog('desktop-native-revoked', desktopFailure(reason).error)
           if (!this.rememberRevoked(message.lease, reason)) return
           if (message.lease === this.currentNative) {
             this.invalidate(reason)
@@ -100,6 +104,11 @@ export class DesktopHost {
           return
         }
         if (!Number.isSafeInteger(message.id)) return
+        if (this.previewInFlight.delete(message.id!) && !this.previewInFlight.size) {
+          for (const [id, started] of this.previewWaits) if (this.pending.has(id)) flog('work-preview', JSON.stringify({ waitedMs: Date.now() - started }))
+          this.previewWaits.clear()
+        }
+        this.previewWaits.delete(message.id!)
         clearTimeout(this.withdrawnReads.get(message.id!))
         this.withdrawnReads.delete(message.id!)
         const pending = this.pending.get(message.id!)
@@ -109,7 +118,7 @@ export class DesktopHost {
         if (pending.generation !== this.generation) { pending.reject(new Error('Computer action was cancelled.')); return }
         if ('error' in message && message.error !== undefined) {
           const error = new Error(typeof message.error === 'string' && message.error.trim() ? message.error.slice(0, 500) : 'The desktop request failed.')
-          flog('desktop-native-error', `${pending.method}: ${error.message}`)
+          flog('desktop-native-error', JSON.stringify({ method: pending.method, code: desktopFailure(error).error }))
           pending.reject(error)
           if ((pending.method === 'bind' || pending.method === 'prepare') && !recoverableDesktopFailure(error.message)) this.close(error)
           return
@@ -126,6 +135,7 @@ export class DesktopHost {
           }
           this.currentNative = id
         }
+        void rememberAccessibilityTrust(pending.method).catch(() => flog('desktop-permission-state', 'write-failed'))
         pending.resolve(message.result)
       })
     })
@@ -234,6 +244,8 @@ export class DesktopHost {
         }, 30000)
         try {
           pending.sent = true
+          if (pending.preview) this.previewInFlight.add(id)
+          else if (this.previewInFlight.size) this.previewWaits.set(id, Date.now())
           line = JSON.stringify({ ...JSON.parse(line), expiresAt: Date.now() + 30000 }) + '\n'
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }
@@ -268,6 +280,7 @@ export class DesktopHost {
     }
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     this.pending.clear()
+    this.previewInFlight.clear(); this.previewWaits.clear()
     for (const timer of this.withdrawnReads.values()) clearTimeout(timer)
     this.withdrawnReads.clear()
     this.onRevoked(error.message)

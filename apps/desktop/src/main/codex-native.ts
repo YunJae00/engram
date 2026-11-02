@@ -279,7 +279,7 @@ export function claimCodexWorkFolder(channel: string, fallback: string): string 
   const held = claimed.get(key)
   if (held) return held
   const spare = [...spares.values()].find(one => dirname(one.cwd) === dirname(fallback) && (!one.owner || one.owner === channel) && !one.session.stale && !one.session.busy)
-  if (!spare) return fallback
+  if (!spare) { claimed.set(key, fallback); return fallback }
   spare.owner = channel
   claimed.set(key, spare.cwd)
   return spare.cwd

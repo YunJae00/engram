@@ -133,6 +133,8 @@ export function answerHtml(text: string, sourceUrls: string[] = [], notes: strin
   const renderer = new marked.Renderer()
   const link = renderer.link.bind(renderer)
   renderer.link = token => {
+    if (token.href === 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+      return link(token).replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
     const index = notes.indexOf(token.href)
     return index >= 0 && /^note:\/\/[\w-]+$/.test(token.href) ? `<a class="answer-reference" href="${token.href}" aria-label="Memory source ${index + 1}">${index + 1}</a>` : link(token)
   }

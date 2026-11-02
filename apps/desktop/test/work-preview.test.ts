@@ -16,10 +16,10 @@ function binding(i: number): DesktopBinding {
 }
 it('keeps frames in their own sessions without creating an OS window', async () => {
   const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
-  for (let i = 1; i <= 6; i++) { showWorkPreview(binding(i)); await vi.advanceTimersByTimeAsync(1) }
+  for (let i = 1; i <= 6; i++) { const held = binding(i); held.source = 'window:shared:0'; showWorkPreview(held); await vi.advanceTimersByTimeAsync(1) }
   expect(fake.window).not.toHaveBeenCalled()
   expect(workPreviews('bot-1')).toEqual([expect.objectContaining({ lane: 'bot-1', title: 'App 1', data: 'data:image/jpeg;base64,safe' })])
-  expect(workPreviews('bot-6')).toHaveLength(1)
+  expect(workPreviews('bot-6')).toEqual([expect.objectContaining({ id: 'bot-6:window:shared:0', title: 'App 6' })])
   expect(workPreviews('other')).toEqual([])
 })
 it('does not discard an in-flight image when a second read uses the same binding', async () => {
@@ -53,7 +53,7 @@ it('cancels pending capture when the turn ends and never resurrects closed previ
   const held = binding(1); showWorkPreview(held)
   fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
   await vi.advanceTimersByTimeAsync(1)
-  expect(workPreviews(held.lane)[0]?.unavailable).toBe(true)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'no-snapshot', current: false })
   closeWorkPreview(); showWorkPreview(binding(2))
   expect(workPreviews('bot-2')).toEqual([])
 })
@@ -120,10 +120,10 @@ it('never reuses an image when a replacement binding reuses the same source iden
 it('distinguishes first-frame wait, a deferred refresh, and a previous target snapshot', async () => {
   const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
   const held = binding(1); Object.assign(held.host, { busy: true }); showWorkPreview(held)
-  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'waiting', current: true })
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'waiting', current: false })
   Object.assign(held.host, { busy: false }); await vi.advanceTimersByTimeAsync(2100)
   showWorkPreview(held)
-  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'delayed', current: true })
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'delayed', current: false })
   const next = { ...held, source: 'window:other', name: 'Other app' }
   fake.bindings.set(held.lane, next); showWorkPreview(next)
   expect(workPreviews(held.lane).find(frame => frame.title === held.name)).toMatchObject({ current: false })
@@ -136,4 +136,36 @@ it('does not request capture for a protected target even before a frame exists',
   await vi.advanceTimersByTimeAsync(1)
   expect(fake.image).not.toHaveBeenCalled()
   expect(workPreviews(held.lane)).toEqual([])
+})
+
+it('keeps the last frame stale after refresh timeout', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(3000)
+  const at = workPreviews(held.lane)[0]!.at
+  fake.image.mockImplementation((_binding, _observe, signal: AbortSignal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason))))
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(5001)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ at, data: 'data:image/jpeg;base64,safe', current: false })
+})
+it('settles first-frame waiting immediately when a deferred turn ends', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); Object.assign(held.host, { busy: true }); showWorkPreview(held)
+  fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'no-snapshot', current: false })
+})
+it.each([
+  ['Allow Engram in System Settings → Privacy & Security → Screen Recording', 'screen_recording_denied'],
+  ["This window's accessibility scan was incomplete.", 'capture_unsafe'],
+  ['The app cannot be captured safely. Observe again', 'capture_unsafe'],
+  ['Other capture failure', 'capture_unavailable'],
+])('maps preview failure to a reason code: %s', async (message, captureReason) => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  fake.image.mockRejectedValue(new Error(message))
+  const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'unavailable', captureReason })
+  if (captureReason === 'capture_unsafe') {
+    Object.assign(held.host, { busy: true })
+    fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
+    showWorkPreview(held)
+    expect(workPreviews(held.lane)[0]?.captureState).toBe('unavailable')
+  }
 })

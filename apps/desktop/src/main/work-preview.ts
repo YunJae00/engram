@@ -25,7 +25,7 @@ function publish(pruneOnly = false): void {
   const count = entries.size
   for (const [id, entry] of entries) {
     if (!valid.get(id)?.() || Date.now() - entry.at > 180_000) remove(id)
-    else entry.current = desktopBinding(entry.lane) === owners.get(id)
+    else entry.current = entry.captureState === 'ready' && active.has(entry.lane) && desktopBinding(entry.lane) === owners.get(id)
   }
   if (pruneOnly && count === entries.size) return
   const owner = desktopOwner()
@@ -52,7 +52,10 @@ export function showWorkPreview(binding: DesktopBinding): void {
         for (const [id, frame] of entries) if (frame.lane === event.channel) {
           pending.get(id)?.abort(); pending.delete(id)
           clearTimeout(deferred.get(id)); deferred.delete(id)
+          frame.current = false
+          if (frame.captureState !== 'unavailable') frame.captureState = frame.data ? 'delayed' : 'no-snapshot'
         }
+        publish()
       }
     })
   }
@@ -71,7 +74,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
   const laneEntries = [...entries.values()].filter(frame => frame.lane === binding.lane)
   for (const oldest of laneEntries.slice(0, -4)) remove(oldest.id)
   while (entries.size > 64) remove(entries.keys().next().value!)
-  entry.captureState = entry.data ? 'delayed' : 'waiting'
+  if (entry.captureReason !== 'capture_unsafe') entry.captureState = entry.data ? 'delayed' : 'waiting'
   publish()
   if (!timer) timer = setInterval(() => publish(true), 1000).unref()
   if (pending.has(key)) return
@@ -91,16 +94,33 @@ export function showWorkPreview(binding: DesktopBinding): void {
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding || !valid.get(key)?.() || controller.signal.aborted || quitting) return
     if (result.image) {
       entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 700 }).toDataURL()
-      entry.at = Date.now(); entry.unavailable = false; entry.captureState = 'ready'
+      entry.at = Date.now(); entry.unavailable = false; entry.captureState = 'ready'; delete entry.captureReason
     } else { delete entry.data; entry.unavailable = true; entry.captureState = 'unavailable' }
   }).catch((error: unknown) => {
     const preempted = error instanceof Error && error.name === 'PreviewPreempted'
-    flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, reason: preempted ? 'work-priority' : controller.signal.aborted ? 'cancelled-or-expired' : 'capture-unavailable' }))
-    if (preempted) return
-    if (entries.get(key) === entry && desktopBinding(binding.lane) === binding) { delete entry.data; entry.unavailable = true; entry.captureState = 'unavailable' }
+    const reason = preempted ? 'work-priority' : controller.signal.aborted ? 'cancelled-or-expired' : previewFailureReason(error)
+    flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, reason }))
+    if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding) return
+    if (preempted || controller.signal.aborted) {
+      entry.current = false
+      entry.captureState = entry.data ? 'delayed' : 'no-snapshot'
+      if (preempted && active.has(binding.lane) && !deferred.has(key)) deferred.set(key, setTimeout(() => {
+        deferred.delete(key)
+        if (active.has(binding.lane) && valid.get(key)?.()) showWorkPreview(binding)
+      }, 2100).unref())
+    } else {
+      delete entry.data; entry.unavailable = true; entry.captureState = 'unavailable'; entry.captureReason = previewFailureReason(error)
+    }
   }).finally(() => {
     clearTimeout(timeout)
     if (pending.get(key) === controller) pending.delete(key)
     if (!quitting) publish()
   })
+}
+
+export function previewFailureReason(error: unknown): NonNullable<WorkPreviewDto['captureReason']> {
+  const reason = error instanceof Error ? error.message : String(error)
+  if (/Allow Engram in System Settings.*Screen Recording/i.test(reason)) return 'screen_recording_denied'
+  if (/accessibility scan was incomplete|safe screenshot geometry|safely capture|captured safely|complete accessibility scan/i.test(reason)) return 'capture_unsafe'
+  return 'capture_unavailable'
 }

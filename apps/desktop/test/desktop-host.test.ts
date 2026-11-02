@@ -326,3 +326,34 @@ it('uses the Mac helper and prepares control without Windows foreground delegati
   respond({ id: latest('bind'), result: { lease: 'mac-lease' } })
   await expect(request).resolves.toEqual({ lease: 'mac-lease' })
 })
+
+it('measures real work waiting behind an already sent preview without logging contents', async () => {
+  const log = vi.spyOn(await import('../src/main/flog.js'), 'flog').mockImplementation(() => {})
+  const preview = host.request('capture', target, undefined, { preview: true })
+  const yielded = expect(preview).rejects.toMatchObject({ name: 'PreviewPreempted' })
+  await ready()
+  const captureId = latest('capture')
+  const work = host.request('observe', target)
+  await flush(); await yielded
+  await vi.advanceTimersByTimeAsync(1200)
+  respond({ id: captureId, result: {} })
+  respond({ id: latest('observe'), result: {} })
+  await work
+  expect(log).toHaveBeenCalledWith('work-preview', JSON.stringify({ waitedMs: 1200 }))
+})
+
+it('does not count canceled real work as waiting for a late preview reply', async () => {
+  const log = vi.spyOn(await import('../src/main/flog.js'), 'flog').mockImplementation(() => {})
+  const preview = host.request('capture', target, undefined, { preview: true })
+  const yielded = expect(preview).rejects.toMatchObject({ name: 'PreviewPreempted' })
+  await ready()
+  const captureId = latest('capture')
+  const controller = new AbortController()
+  const work = host.request('observe', target, controller.signal)
+  const canceled = expect(work).rejects.toThrow()
+  await flush(); await yielded
+  controller.abort(); await canceled
+  await vi.advanceTimersByTimeAsync(1200)
+  respond({ id: captureId, result: {} })
+  expect(log.mock.calls.filter(([tag]) => tag === 'work-preview')).toEqual([])
+})

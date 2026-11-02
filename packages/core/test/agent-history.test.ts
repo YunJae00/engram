@@ -28,3 +28,7 @@ it('retains a verified URL and total beyond the former assistant cutoff', () => 
   const text = 'explanation '.repeat(500) + '\nVerified total 393: https://example.test/report'
   expect(conversation([{ role: 'assistant', text }]).join('\n')).toContain('Verified total 393: https://example.test/report')
 })
+
+it('keeps the observation time in conversation history', () => {
+  expect(conversation([{ role: 'user', text: 'Read Claude', at: '2026-11-02T10:28:08.000Z' }]).join('\n')).toContain('[2026-11-02 10:28Z] User: Read Claude')
+})

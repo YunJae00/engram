@@ -2,6 +2,7 @@ import type { DesktopActionContext } from './desktop-opt-in.js'
 import { showWorkPreview } from './work-preview.js'
 import type { QuietObservationDto } from '../shared/desktop.js'
 import { desktopTools, liveDocumentTools, quietDesktopTools, type AgentTool, type ToolOutcome } from 'core'
+import { permissionFailure } from './desktop-permission.js'
 import { desktopFailure } from './desktop-failure.js'
 import { desktopImage } from './desktop-image.js'
 import { bindDesktopForLane, catalogHost, desktopBinding, desktopWindows } from './desktop-access.js'
@@ -45,7 +46,7 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
     return JSON.stringify({ ...result, appNow, ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
   } catch (error) {
     signal?.throwIfAborted()
-    return JSON.stringify({ ...result, observationMayBeStale: true, ...desktopFailure(error, { delivered: true }) })
+    return JSON.stringify({ ...result, observationMayBeStale: true, ...await permissionFailure(error, lane, { delivered: true }) })
   }
 }
 
@@ -103,7 +104,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   }
   const guardedQuiet = quiet.map(tool => ({ ...tool, async run(args, context) {
     try { return await tool.run(args, context) }
-    catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(desktopFailure(error)) }
+    catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane)) }
   } } satisfies AgentTool))
   return [...guardedQuiet, ...desktopTools({
     apps: async (signal) => { signal?.throwIfAborted(); return appCatalog() },
@@ -114,14 +115,14 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     act: (action, context) => withDesktopActivity(lane, async () => {
       quietFirst()
       try { await actOnDesktop(lane, action, context.signal) }
-      catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(desktopFailure(error)) }
+      catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane)) }
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const observation = await readControlledDesktop(lane, context.signal, true)
         return JSON.stringify({ dispatched: true, observation, requiresVerification: true })
       } catch (error) {
         context.signal?.throwIfAborted()
-        return JSON.stringify({ dispatched: true, ...desktopFailure(error, { delivered: true }), observationMayBeStale: true, requiresVerification: true })
+        return JSON.stringify({ dispatched: true, ...await permissionFailure(error, lane, { delivered: true }), observationMayBeStale: true, requiresVerification: true })
       }
     }),
     sequence: (actions, context) => withDesktopActivity(lane, async () => {
@@ -130,13 +131,16 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         const result = JSON.parse(await desktopSequence(lane, actions, context.signal)) as Record<string, unknown>
         if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
         return JSON.stringify(result)
-      } catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(desktopFailure(error)) }
+      } catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane)) }
     }),
   }), ...liveDocumentTools((method, args, context) => withDesktopActivity(lane, () => { quietFirst(); return accessLiveDocument(lane, method, args, context.signal) }))].map(tool => {
-    if (!['desktop_action', 'desktop_sequence', 'edit_live_document', 'compose_live_document'].includes(tool.name)) return tool
-    return { ...tool, async run(args, context) {
+    if (!['read_desktop', 'look_desktop', 'list_windows', 'open_app', 'desktop_action', 'desktop_sequence', 'edit_live_document', 'compose_live_document'].includes(tool.name)) return tool
+    return { ...tool, ...(tool.runRich ? { async runRich(args, context) {
+      try { return await tool.runRich!(args, context) }
+      catch (error) { context.signal?.throwIfAborted(); return { text: JSON.stringify(await permissionFailure(error, lane)) } }
+    } } : {}), async run(args, context) {
       try { return await tool.run(args, context) }
-      catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(desktopFailure(error)) }
+      catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane)) }
     } } satisfies AgentTool
   })
 }

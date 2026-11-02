@@ -44,3 +44,9 @@ export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: 
 export function acknowledgeHanded(paths: VaultPaths, id: string, handed: string[], context?: string): Promise<void> {
   return changeCheckpoint(paths, id, state => ({ ...state, context, pending: state.pending.filter(text => !handed.includes(text)) }))
 }
+
+export function checkpointResume(stored: Checkpoint, history: { role: string; text: string }[]): string {
+  const saved = new Set(history.filter(turn => turn.role === 'user').map(turn => turn.text))
+  const pending = stored.pending.filter(text => !saved.has(withoutSecrets(text, text)))
+  return [stored.context, pending.length ? `User messages saved for this model call: ${JSON.stringify(pending)}` : ''].filter(Boolean).join('\n')
+}

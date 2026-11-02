@@ -203,6 +203,7 @@ export interface EngineStatusDto {
 }
 
 export interface ChatTurnDto {
+  at?: string
   role: 'user' | 'assistant'
   text: string
   progress?: boolean

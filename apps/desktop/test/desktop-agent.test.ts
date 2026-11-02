@@ -4,12 +4,13 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
   quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
-  lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false, handedOver: true,
+  open: vi.fn(), lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false, handedOver: true,
 }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
+vi.mock('../src/main/desktop-permission.js', async () => { const { desktopFailure } = await import('../src/main/desktop-failure.js'); return { permissionFailure: async (error: unknown, _lane: string, options?: Parameters<typeof desktopFailure>[1]) => desktopFailure(error, options) } })
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
-vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: vi.fn(), readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
+vi.mock('../src/main/desktop-control.js', () => ({ openDesktopApp: fake.open, assertDesktopTurnNotStopped: vi.fn(), readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
 vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
@@ -53,7 +54,7 @@ describe('desktop image consent and capture validation', () => {
     fake.act.mockClear(); fake.read.mockClear()
     fake.read.mockRejectedValueOnce(new Error('Readback unavailable'))
     expect(JSON.parse(await tool.run(args, { task: 'Replace the entire field' }))).toEqual({
-      dispatched: true, error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe', hint: expect.any(String), observationMayBeStale: true, requiresVerification: true,
+      dispatched: true, reason: 'Readback unavailable', error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe', hint: expect.any(String), observationMayBeStale: true, requiresVerification: true,
     })
     expect(fake.act).toHaveBeenCalledOnce()
     expect(fake.read).toHaveBeenCalledOnce()
@@ -117,16 +118,16 @@ describe('desktop image consent and capture validation', () => {
     fake.read.mockResolvedValue({ ...observation(), truncated: true, captureSafe: true })
     expect((await look()).image?.mimeType).toBe('image/jpeg')
     fake.read.mockResolvedValueOnce({ ...observation(), truncated: true, captureSafe: true }).mockResolvedValueOnce({ ...observation(), truncated: true, captureSafe: false })
-    await expect(look()).rejects.toThrow('accessibility scan was incomplete')
+    expect(JSON.parse((await look()).text).reason).toContain('accessibility scan was incomplete')
   })
   it.each([true, undefined, 'false', 0])('does not capture with incomplete coverage (%s)', async (truncated) => {
     fake.read.mockResolvedValueOnce({ ...observation(), truncated })
-    await expect(look()).rejects.toThrow('Use read_desktop')
+    expect(JSON.parse((await look()).text).reason).toContain('Use read_desktop')
     expect(fake.binding.host.request).not.toHaveBeenCalled()
   })
   it.each([true, undefined, 'false', 0])('discards pixels after incomplete follow-up (%s)', async (truncated) => {
     fake.read.mockResolvedValueOnce(observation()).mockResolvedValueOnce({ ...observation(), truncated })
-    await expect(look()).rejects.toThrow('accessibility scan was incomplete')
+    expect(JSON.parse((await look()).text).reason).toContain('accessibility scan was incomplete')
     expect(fake.decode).not.toHaveBeenCalled()
   })
   it.each(['bounds', 'captureBounds', 'protectedBounds'] as const)('rejects changed %s', async (field) => {
@@ -134,7 +135,7 @@ describe('desktop image consent and capture validation', () => {
     if (field === 'protectedBounds') after.protectedBounds![0]!.x++
     else after[field]!.x++
     fake.read.mockResolvedValueOnce(observation()).mockResolvedValueOnce(after)
-    await expect(look()).rejects.toThrow('window changed')
+    expect(JSON.parse((await look()).text).reason).toContain('window changed')
     expect(fake.image).not.toHaveBeenCalled()
   })
   it.each(['missing', 'invalid', 'protected'] as const)('rejects %s geometry before capture', async (kind) => {
@@ -143,19 +144,20 @@ describe('desktop image consent and capture validation', () => {
     else if (kind === 'invalid') invalid.captureBounds!.width = Number.NaN
     else invalid.protectedBounds![0]!.height = 0
     fake.read.mockResolvedValueOnce(invalid)
-    await expect(look()).rejects.toThrow('safe screenshot geometry')
+    expect(JSON.parse((await look()).text).reason).toContain('safe screenshot geometry')
     expect(fake.binding.host.request).not.toHaveBeenCalled()
   })
   it('discards an image after identity validation fails', async () => {
     fake.read.mockResolvedValueOnce(observation()).mockRejectedValueOnce(new Error('Window replaced'))
-    await expect(look()).rejects.toThrow('replaced')
+    expect(JSON.parse((await look()).text).reason).toContain('replaced')
     expect(fake.image).not.toHaveBeenCalled()
   })
   it.each(['permission', 'replacement', 'abort'] as const)('discards delayed capture after %s', async (change) => {
     let resolve!: (value: unknown) => void
     fake.binding.host.request.mockReturnValueOnce(new Promise((done) => { resolve = done }))
     const controller = new AbortController()
-    const pending = expect(look(controller.signal)).rejects.toThrow()
+    const capture = look(controller.signal)
+    const pending = change === 'abort' ? expect(capture).rejects.toThrow() : expect(capture).resolves.toMatchObject({ text: expect.stringContaining('action_failed') })
     await vi.waitFor(() => expect(fake.binding.host.request).toHaveBeenCalled())
     if (change === 'permission') fake.binding.readable = false
     else if (change === 'replacement') fake.binding = { ...fake.binding, revision: 1 }
@@ -170,12 +172,12 @@ describe('desktop image consent and capture validation', () => {
     else if (field === 'bounds') value.bounds = observation().bounds
     else value.data = '?'
     fake.binding.host.request.mockResolvedValueOnce(value)
-    await expect(look()).rejects.toThrow('verified screenshot geometry')
+    expect(JSON.parse((await look()).text).reason).toContain('verified screenshot geometry')
     expect(fake.decode).not.toHaveBeenCalled()
   })
   it('rejects an invalid bitmap size', async () => {
     fake.bitmap.mockReturnValueOnce(Buffer.alloc(1))
-    await expect(look()).rejects.toThrow('invalid screenshot')
+    expect(JSON.parse((await look()).text).reason).toContain('invalid screenshot')
     expect(fake.image).not.toHaveBeenCalled()
   })
 })
@@ -253,8 +255,8 @@ it('allows screenshots without handover but refuses global input before dispatch
 it('requires an explicit app when no window is bound instead of reading the human foreground', async () => {
   fake.lookup.mockReturnValue(undefined)
   const read = desktopAgentTools('bot-one').find(tool => tool.name === 'read_desktop')!
-  await expect(read.run({}, { task: 'Read' })).rejects.toThrow('Name the app')
-  await expect(look()).rejects.toThrow('Name the app')
+  expect(JSON.parse(await read.run({}, { task: 'Read' })).reason).toContain('Name the app')
+  expect(JSON.parse((await look()).text).reason).toContain('Name the app')
   expect(fake.ensure).not.toHaveBeenCalled()
   expect(fake.read).not.toHaveBeenCalled()
 })
@@ -263,7 +265,7 @@ it('preserves the Accessibility permission boundary in the model observation', a
   fake.quietScan.mockRejectedValueOnce(new Error('Allow Engram in System Settings → Privacy & Security → Accessibility'))
   const tool = desktopAgentTools('bot-one').find(tool => tool.name === 'app_read')!
   const result = JSON.parse(await tool.run({ app: 'Fixture' }, { task: 'Read the fixture' }))
-  expect(result).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
+  expect(result).toMatchObject({ error: 'accessibility_denied', delivery: 'not_delivered' })
   expect(result.hint).toContain('System Settings → Privacy & Security → Accessibility')
   expect(result.hint).not.toContain('not found')
 })
@@ -297,4 +299,21 @@ it('does not press when the target conversation changes during approval', async 
   expect(JSON.parse(result)).toMatchObject({ error: 'stale_snapshot', delivery: 'not_delivered' })
   expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32))
   expect(fake.quietPress).not.toHaveBeenCalled()
+})
+
+it.each(['read_desktop', 'look_desktop', 'list_windows', 'open_app'])('wraps permission denial consistently for %s', async name => {
+  const error = new Error('Allow Engram in System Settings → Privacy & Security → Accessibility')
+  fake.ensure.mockRejectedValue(error)
+  fake.windows.mockRejectedValue(error)
+  fake.open.mockRejectedValue(error)
+  const tool = desktopAgentTools('bot-one').find(item => item.name === name)!
+  const args = name === 'open_app' ? { app: 'a'.repeat(64) } : { }
+  const result = tool.runRich ? (await tool.runRich(args, { task: 'Read' })).text : await tool.run(args, { task: 'Read' })
+  expect(JSON.parse(result)).toMatchObject({ error: 'accessibility_denied', retry: 'blocked' })
+})
+
+it('explains blocked permission retries and the settings link on app_read', () => {
+  const description = desktopAgentTools('bot-one').find(tool => tool.name === 'app_read')!.description
+  expect(description).toContain('retry:blocked')
+  expect(description).toContain('settingsUrl')
 })

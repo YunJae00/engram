@@ -214,3 +214,11 @@ it('distinguishes an attempted last-page failure from unfinished batch reads', (
 it.each(['app_read', 'app_text', 'look_desktop'])('keeps a structured %s failure incomplete', tool => {
   expect(finalDesktopFailure([{ tool, args: {}, observation: JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Manual control required' }) }])).toContain('has not been verified')
 })
+
+it('separates accepted app launch from a permission-blocked readback', () => {
+  expect(finalDesktopFailure([
+    { tool: 'open_app', args: {}, observation: JSON.stringify({ opened: true, windowVerified: false }) },
+    { tool: 'app_read', args: {}, observation: JSON.stringify({ error: 'accessibility_denied', retry: 'blocked' }) },
+  ])).toBeUndefined()
+  expect(finalDesktopFailure([{ tool: 'app_set', args: {}, observation: JSON.stringify({ landed: false }) }])).toContain('has not been verified')
+})

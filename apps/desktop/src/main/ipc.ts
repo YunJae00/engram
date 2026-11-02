@@ -1,6 +1,6 @@
 import { finishProgress, progressWork } from './conversation-progress.js'
 import { availableMemory } from './available-memory.js'
-import { acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
+import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { registerAsideIpc } from './aside-ipc.js'
@@ -1725,7 +1725,7 @@ export function registerIpc(ctx: VaultContext): void {
     runPrompt: async (name, goal, into) => {
       const kept = into ? (await loadBots(paths)).find(one => one.id === into) : undefined
       const bot = kept ?? await createBot(paths, { name: name.slice(0, 60) })
-      const history = kept ? (await readBotTranscript(paths, kept.id)).filter(turn => !turn.progress).map(turn => ({ role: turn.role, text: turn.text })) : []
+      const history = kept ? (await readBotTranscript(paths, kept.id)).filter(turn => !turn.progress).map(turn => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) : []
       const item = await addNotice(paths, { kind: 'scheduled', title: name, text: goal, botId: bot.id, running: true })
       broadcast({ type: 'bots:changed' })
       broadcast({ type: 'notices:changed' })
@@ -2650,7 +2650,7 @@ export function registerIpc(ctx: VaultContext): void {
       try {
         assertDesktopChatEngine(channel, engine)
         const stored = await readCheckpoint(paths, bot.id)
-        const resume = [stored.context, stored.pending.length ? `User messages saved for this model call: ${JSON.stringify(stored.pending)}` : ''].filter(Boolean).join('\n')
+        const resume = checkpointResume(stored, savedHistory)
         const skillLedger = await readSkillsLedger(paths)
         // The runtime's own tools, governed here: reads where the person
         // already lets it look, a work folder of its own, commands once allowed.
@@ -2701,7 +2701,7 @@ export function registerIpc(ctx: VaultContext): void {
             // their own screen; without this the turn starts blind and goes
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
-            history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text })),
+            history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })),
             onSteerable: steer => { if (steer) liveInputs.set(channel, steer); else liveInputs.delete(channel) },
             takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); const handed = [...said, ...told]; if (handed.length) handedOver.set(channel, [...(handedOver.get(channel) ?? []), ...handed]); return handed },
             // A cloud brain keeps this comet's session open between turns.
