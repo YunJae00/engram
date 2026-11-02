@@ -31,7 +31,13 @@ export function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined 
   const incomplete = 'The last computer or file result failed or may be stale and has not been verified.'
   if (step.observation.startsWith('that did not work:')) return incomplete
   try {
-    if (JSON.parse(step.observation)?.error) return incomplete
+    const error = JSON.parse(step.observation)?.error
+    if (['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_live_document'].includes(step.tool) && ['accessibility_denied', 'screen_recording_denied'].includes(error)
+      && steps.some(one => {
+        if (one.tool !== 'open_app') return false
+        try { return JSON.parse(one.observation)?.opened === true } catch { return false }
+      })) return undefined
+    if (error) return incomplete
   } catch { /* Text observations have no structured failure field. */ }
   if (step.tool === 'app_set' || step.tool === 'app_text' || step.tool === 'app_do') {
     try {

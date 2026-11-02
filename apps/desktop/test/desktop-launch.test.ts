@@ -37,3 +37,8 @@ it('closes pending launch on Stop and refuses later launches in that turn', asyn
   await expect(openDesktopApp('bot-launch', 'calculator')).rejects.toThrow('cancelled for this turn')
   expect(fake.request).toHaveBeenCalledOnce()
 })
+
+it('reports launch acceptance separately from window verification', async () => {
+  endDesktopTurn('bot-launch')
+  expect(JSON.parse(await openDesktopApp('bot-launch', 'calculator'))).toMatchObject({ opened: true, windowVerified: false })
+})

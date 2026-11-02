@@ -171,7 +171,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
     },
   }, {
     name: 'open_app',
-    description: `Open an app by its localized name, English name or bundle identity (for example "Calculator" or "Outlook"), without command arguments. When several apps match, the answer lists them with IDs: call again with the chosen ID. When none matches, it lists the app names that can be opened. After launch, read it with app_read using a word of its window title. Never retry a failed launch if the person asked to stop on the first error. ${GUIDANCE}`,
+    description: `Open an app by its localized name, English name or bundle identity (for example "Calculator" or "Outlook"), without command arguments. When several apps match, the answer lists them with IDs: call again with the chosen ID. When none matches, it lists the app names that can be opened. Launch acceptance and window verification are separate; do not claim the window opened until a read verifies it. After launch, read it with app_read using a word of its window title. Never retry a failed launch if the person asked to stop on the first error. ${GUIDANCE}`,
     argsSchema: { type: 'object', additionalProperties: false, required: ['app'], properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP } } },
     async run(args, context) {
       context.signal?.throwIfAborted()
