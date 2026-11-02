@@ -213,3 +213,16 @@ describe('desktop transport failures', () => {
     expect(revoked).toHaveBeenCalledOnce()
   })
 })
+
+it('preempts a preview when real work arrives without cancelling the real request', async () => {
+  const preview = host.request('observe', target, undefined, { preview: true })
+  const cancelled = expect(preview).rejects.toThrow('may have partly happened')
+  await ready()
+  const id = latest('observe')
+  const work = host.request('quietRead', target)
+  await cancelled; await flush()
+  expect(messages()).toContainEqual(expect.objectContaining({ method: 'cancel', target: id }))
+  respond({ id: latest('quietRead'), result: { text: 'work' } })
+  expect(await work).toEqual({ text: 'work' })
+  expect(host.closed).toBe(false)
+})

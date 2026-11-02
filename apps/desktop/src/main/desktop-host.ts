@@ -19,6 +19,8 @@ interface PendingRequest {
   method: DesktopMethod
   generation: number
   sent?: boolean
+  preview?: boolean
+  cancel?(): void
   resolve(value: unknown): void
   reject(error: Error): void
   timer?: ReturnType<typeof setTimeout>
@@ -41,6 +43,7 @@ export class DesktopHost {
   private pending = new Map<number, PendingRequest>()
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
+  get busy(): boolean { return [...this.pending.values()].some(request => !request.preview) }
   get closed(): boolean { return this.ended }
   static available(): boolean { return (process.platform === 'win32' || process.platform === 'darwin') && existsSync(DesktopHost.path()) }
   private static path(): string {
@@ -152,7 +155,7 @@ export class DesktopHost {
     catch (error) { this.close(error instanceof Error ? error : new Error('The desktop connection failed.')) }
   }
 
-  async request<T>(method: DesktopMethod, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  async request<T>(method: DesktopMethod, args: Record<string, unknown>, signal?: AbortSignal, options?: { preview?: boolean }): Promise<T> {
     signal?.throwIfAborted()
     if (!METHODS.has(method)) throw new Error('Unsupported computer action.')
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid computer action.')
@@ -161,13 +164,14 @@ export class DesktopHost {
     if (this.ended) throw new Error('Computer access ended. Reconnect the window to continue.')
     if (this.pending.size >= 32) throw new Error('Too many desktop requests are in flight.')
     if (method === 'bind' && (this.currentNative || [...this.pending.values()].some((request) => request.method === 'bind'))) throw new Error('A native control grant is already active or pending.')
+    if (!options?.preview) for (const request of this.pending.values()) if (request.preview) request.cancel?.()
     const generation = this.generation
     const id = ++this.serial
     let line = JSON.stringify({ ...args, id, method }) + '\n'
     if (line.length > 65536) throw new Error('The desktop request is too large.')
     let cancel: () => void = () => {}
     const result = new Promise<T>((resolve, reject) => {
-      const pending: PendingRequest = { method, generation, resolve: (value) => resolve(value as T), reject }
+      const pending: PendingRequest = { method, generation, ...(options?.preview ? { preview: true } : {}), resolve: (value) => resolve(value as T), reject }
       this.pending.set(id, pending)
       cancel = () => {
         if (this.pending.get(id) !== pending) return
@@ -177,6 +181,7 @@ export class DesktopHost {
         const reason = signal?.reason instanceof Error ? signal.reason.message : 'Computer action was cancelled.'
         reject(new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`))
       }
+      pending.cancel = cancel
       signal?.addEventListener('abort', cancel, { once: true })
       let ready: Promise<void>
       try { ready = this.start() }

@@ -26,3 +26,8 @@ it('preserves actionable guidance for provider routing and invalid arguments', (
   expect(desktopFailure('Fixture exposes its controls: use app_read')).toMatchObject({ error: 'policy_denied', retry: 'safe', hint: expect.stringContaining('app_read') })
   expect(desktopFailure('Invalid desktop action. Use one target.')).toMatchObject({ delivery: 'not_delivered', retry: 'safe', hint: expect.stringContaining('arguments') })
 })
+
+it('distinguishes unsent cancellation from uncertain dispatched work without retrying Stop', () => {
+  expect(desktopFailure('The request expired or was cancelled before execution; it was not run')).toMatchObject({ delivery: 'not_delivered', retry: 'unsafe' })
+  expect(desktopFailure('Stopped. It may have partly happened; read the app before retrying.')).toMatchObject({ delivery: 'delivery_uncertain', retry: 'unsafe' })
+})

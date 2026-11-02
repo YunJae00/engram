@@ -68,7 +68,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
   publish()
   if (!timer) timer = setInterval(() => publish(true), 1000).unref()
   if (pending.has(key)) return
-  if (Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
+  if (binding.host.busy || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
     if (!deferred.has(key)) deferred.set(key, setTimeout(() => {
       deferred.delete(key)
       if (active.has(binding.lane) && valid.get(key)?.()) showWorkPreview(binding)
@@ -78,8 +78,8 @@ export function showWorkPreview(binding: DesktopBinding): void {
   const controller = new AbortController()
   pending.set(key, controller); lastCapture.set(key, Date.now())
   const timeout = setTimeout(() => controller.abort(), 5000)
-  const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal)
-  void desktopImage(binding, observe, controller.signal).then(result => {
+  const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal, { preview: true })
+  void desktopImage(binding, observe, controller.signal, true).then(result => {
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding || !valid.get(key)?.() || controller.signal.aborted || quitting) return
     if (result.image) {
       entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 700 }).toDataURL()

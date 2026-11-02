@@ -11,12 +11,12 @@ function imageGeometry(observation: DesktopObservationDto): string {
   return JSON.stringify([values(observation.bounds), values(observation.captureBounds!), (observation.protectedBounds ?? []).map(values).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))])
 }
 
-export async function desktopImage(binding: DesktopBinding, observe: () => Promise<DesktopObservationDto>, signal?: AbortSignal): Promise<ToolOutcome> {
+export async function desktopImage(binding: DesktopBinding, observe: () => Promise<DesktopObservationDto>, signal?: AbortSignal, preview = false): Promise<ToolOutcome> {
   const lane = binding.lane
   const revision = binding.revision
   const before = await observe()
   const geometry = imageGeometry(before)
-  const captured = await binding.host.request<{ basis: string; bounds: DesktopObservationDto['bounds']; width: number; height: number; data: string }>('capture', { window: binding.window, pid: binding.pid, snapshot: before.snapshot }, signal)
+  const captured = await binding.host.request<{ basis: string; bounds: DesktopObservationDto['bounds']; width: number; height: number; data: string }>('capture', { window: binding.window, pid: binding.pid, snapshot: before.snapshot }, signal, ...(preview ? [{ preview: true }] : []))
   signal?.throwIfAborted()
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('The app changed before the screenshot was ready.')
   if (!captured || captured.basis !== 'client-physical' || JSON.stringify(captured.bounds) !== JSON.stringify(before.captureBounds)

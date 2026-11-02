@@ -82,3 +82,15 @@ it('preserves a confirmed snapshot when its refresh fails after switching target
   expect(workPreviews(first.lane)).toHaveLength(2)
   expect(workPreviews(first.lane)[1]).toMatchObject({ at, data: 'data:image/jpeg;base64,safe', unavailable: false })
 })
+
+it('defers preview capture while the same helper has real work pending', async () => {
+  const { showWorkPreview } = await import('../src/main/work-preview.js')
+  const held = binding(1)
+  Object.assign(held.host, { busy: true })
+  showWorkPreview(held)
+  await vi.advanceTimersByTimeAsync(2100)
+  expect(fake.image).not.toHaveBeenCalled()
+  Object.assign(held.host, { busy: false })
+  await vi.advanceTimersByTimeAsync(2100)
+  expect(fake.image).toHaveBeenCalledOnce()
+})

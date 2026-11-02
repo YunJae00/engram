@@ -25,7 +25,8 @@ export function desktopFailure(error: unknown, options: { preparing?: boolean; d
   const timeout = /timed? out|timeout|stopped responding/i.test(reason) || (error instanceof Error && error.name === 'TimeoutError')
   const known = PRECONDITIONS.find(rule => rule.pattern.test(reason))
   const safe = !options.delivered && !timeout && !STOP.test(reason) && (!!known || !!options.preparing && TRANSIENT_PREPARATION.test(reason))
-  const delivery = options.delivered ? 'delivered_unverified' : safe ? 'not_delivered' : 'delivery_uncertain'
+  const notSent = /before execution; it was not run|request was not sent|no action was sent/i.test(reason)
+  const delivery = options.delivered ? 'delivered_unverified' : safe || notSent ? 'not_delivered' : 'delivery_uncertain'
   return {
     error: timeout ? 'timeout' : known?.code ?? 'action_failed', delivery, retry: safe ? 'safe' : 'unsafe',
     hint: options.container ? 'Read the app to check the effect, then target an inner actionable cell or button with the same name instead of repeating the container press.'
