@@ -34,6 +34,7 @@ export interface CometThread {
   attachments: ChatAttachmentDto[]
   adopted: boolean
   stopped: boolean
+  streamPrefix?: string
   stopCount?: number
   startedAt: number | null
   doneSeen: number
@@ -154,7 +155,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (let at = turns.length - 2; at >= 0 && turns[at]!.role === 'user'; at--) asked.push(turns[at]!.text)
       if (tail[0]?.role === 'user' && last?.role === 'assistant' && asked.includes(tail[0].text) && turns.length >= current.messages.length) tail.length = 0
       else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
-      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}) })), ...tail], loaded: true })
+      patch(id, { messages: [...turns.map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
       const current = thread(id)
@@ -180,13 +181,14 @@ export function createCometThreads(initialSelected: string | null = null) {
     begin(id: string, message: string, attachments: string[] = [], scheduled = false, alreadyShown = false): ChatTurnDto[] {
       const current = thread(id)
       const history = current.messages
-        .filter((m) => !m.streaming && !m.error)
+        .filter((m) => !m.streaming && !m.error && !m.progress)
         .map((m) => ({ role: m.role, text: m.text, ...(m.attachments?.length ? { attachments: m.attachments } : {}) }))
       patch(id, {
         busy: true,
         awaitingModel: false,
         adopted: false,
         stopped: false,
+        streamPrefix: '',
         startedAt: Date.now(),
         workLines: [],
         keptWork: [],
@@ -215,9 +217,6 @@ export function createCometThreads(initialSelected: string | null = null) {
     noteDone(id: string): void {
       patch(id, { doneSeen: thread(id).doneSeen + 1 })
     },
-    clearStopped(id: string): void {
-      if (thread(id).stopped) patch(id, { stopped: false })
-    },
     fail,
     takeFailed(id: string): { text: string; attachments: string[] } | null {
       const messages = thread(id).messages
@@ -225,6 +224,19 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (thread(id).busy || !failed?.error || asked?.role !== 'user') return null
       patch(id, { messages: messages.slice(0, -2) })
       return { text: asked.text, attachments: asked.attachments ?? [] }
+    },
+    noteUser(id: string, text: string, attachments: string[] = []): void {
+      const current = thread(id)
+      const at = streamingAt(current.messages)
+      const messages = [...current.messages]
+      const partial = at >= 0 ? messages[at]!.text : ''
+      if (at >= 0) {
+        if (partial) messages[at] = { ...messages[at]!, streaming: false, progress: true, work: current.workLines }
+        else messages.splice(at, 1)
+      }
+      messages.push({ role: 'user', text, ...(attachments.length ? { attachments } : {}) })
+      if (current.busy) messages.push({ role: 'assistant', text: '', streaming: true })
+      patch(id, { messages, streamPrefix: (current.streamPrefix ?? '') + partial, ...(partial ? { workLines: [] } : {}) })
     },
     noteWork(id: string, line: string): void {
       const current = thread(id)
@@ -235,7 +247,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       settle(
         id,
         thread(id).messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
-        { stopped: true, stopCount: (thread(id).stopCount ?? 0) + 1, queued: [] },
+        { busy: false, taskWorking: false, awaitingModel: false, startedAt: null, stopped: true, stopCount: (thread(id).stopCount ?? 0) + 1, queued: [] },
       )
     },
     handleEvent(event: EngramEvent): string | null {
@@ -244,6 +256,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (!id) return null
       const current = thread(id)
       if (event.type === 'comet:working') {
+        if (current.stopped && event.working) return id
         patch(id, {
           taskWorking: event.working, busy: event.working,
           startedAt: event.working ? current.startedAt ?? Date.now() : null,
@@ -276,10 +289,11 @@ export function createCometThreads(initialSelected: string | null = null) {
             if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: next }, true) }
             return id
           }
-          const said = next[at]!.text.trim()
-          next[at] = { ...next[at]!, text: '' }
-          const lines = said ? [...current.workLines.slice(1 - WORK_LINES_KEPT), `said: ${said}`] : current.workLines
-          patch(id, { messages: next, workLines: lines }, true)
+          if (next[at]!.text.trim()) {
+            next[at] = { ...next[at]!, streaming: false, progress: true, work: current.workLines }
+            next.push({ role: 'assistant', text: '', streaming: true })
+          }
+          patch(id, { messages: next, streamPrefix: '', workLines: next.length > current.messages.length ? [] : current.workLines }, true)
           return id
         }
         next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: next[at]!.text + event.text }
@@ -289,7 +303,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (event.type === 'chat:done') {
         const at = streamingAt(current.messages)
         const next = [...current.messages]
-        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
+        if (at >= 0) next[at] = { ...next[at]!, text: (current.streamPrefix && event.text.startsWith(current.streamPrefix) ? event.text.slice(current.streamPrefix.length) : event.text) || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
         settle(id, next, { offer: event.offer ?? null })
         return id
       }

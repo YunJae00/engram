@@ -9,7 +9,7 @@ import { closeTestApp, openActivity } from './navigation.js'
 test('a connected conversation stops an unfinished read and resumes without another queued turn', async () => {
   test.skip(process.env.ENGRAM_LIVE_CONTINUITY !== '1', 'Requires an explicitly selected connected provider')
   test.setTimeout(240000)
-  const root = fileURLToPath(new URL('../../../tmp/session-preview-followup/', import.meta.url))
+  const root = fileURLToPath(new URL('../../../tmp/app-work-experience/', import.meta.url))
   await mkdir(root, { recursive: true })
   const data = await mkdtemp(join(root, 'continuity-live-'))
   const paths = await initVault(join(data, 'vault'), { git: false })

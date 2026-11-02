@@ -40,3 +40,15 @@ it('waits for the full adopted transcript before dispatching a queued follow-up'
   await vi.waitFor(() => expect(fixture.chatSend).toHaveBeenCalledOnce())
   expect(fixture.chatSend.mock.calls[0]?.[0]).toMatchObject({ history: [{ role: 'user', text: 'Previous question' }, { role: 'assistant', text: 'Previous answer' }], message: 'Next question' })
 })
+
+it('keeps Stop authoritative after a late completion echo and working notification', () => {
+  cometThreads.begin('stopped-echo', 'Read the app')
+  fixture.receive({ type: 'comet:working', channel: 'bot-stopped-echo', working: true })
+  cometThreads.stop('stopped-echo', 'Stopped')
+  fixture.receive({ type: 'chat:done', channel: 'bot-stopped-echo', text: 'Late answer' })
+  fixture.receive({ type: 'comet:working', channel: 'bot-stopped-echo', working: true })
+  expect(cometThreads.thread('stopped-echo').busy).toBe(false)
+  expect(cometThreads.thread('stopped-echo').messages.at(-1)?.text).toBe('Stopped')
+  cometThreads.begin('stopped-echo', 'Read again')
+  expect(cometThreads.thread('stopped-echo').busy).toBe(true)
+})

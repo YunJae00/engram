@@ -32,7 +32,7 @@ function toReason(kind: EngineErrorKind): EngineHealthReason {
 
 // Main-process listeners see the same events the windows do.
 const taps = new Set<(event: EngramEvent) => void>()
-export function tapBroadcast(tap: (event: EngramEvent) => void): void { taps.add(tap) }
+export function tapBroadcast(tap: (event: EngramEvent) => void): () => void { taps.add(tap); return () => { taps.delete(tap) } }
 
 export function broadcast(event: EngramEvent): void {
   for (const tap of taps) tap(event)

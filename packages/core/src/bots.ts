@@ -60,6 +60,8 @@ export interface TurnEvidence {
 export interface BotTurn {
   role: 'user' | 'assistant'
   text: string
+  progress?: boolean
+  work?: string[]
   at: string
   attachments?: string[]
   evidence?: TurnEvidence

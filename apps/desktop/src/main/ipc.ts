@@ -1,3 +1,4 @@
+import { finishProgress, progressWork } from './conversation-progress.js'
 import { availableMemory } from './available-memory.js'
 import { acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
@@ -1724,7 +1725,7 @@ export function registerIpc(ctx: VaultContext): void {
     runPrompt: async (name, goal, into) => {
       const kept = into ? (await loadBots(paths)).find(one => one.id === into) : undefined
       const bot = kept ?? await createBot(paths, { name: name.slice(0, 60) })
-      const history = kept ? (await readBotTranscript(paths, kept.id)).map(turn => ({ role: turn.role, text: turn.text })) : []
+      const history = kept ? (await readBotTranscript(paths, kept.id)).filter(turn => !turn.progress).map(turn => ({ role: turn.role, text: turn.text })) : []
       const item = await addNotice(paths, { kind: 'scheduled', title: name, text: goal, botId: bot.id, running: true })
       broadcast({ type: 'bots:changed' })
       broadcast({ type: 'notices:changed' })
@@ -1754,8 +1755,8 @@ export function registerIpc(ctx: VaultContext): void {
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
     deliver: async (channel, text, since, trail, evidence) => {
-      const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(text).text, since, latestResultOutputs(trail, []).map(output => output.path))
-      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
+      const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(finishProgress(channel, text)).text, since, latestResultOutputs(trail, []).map(output => output.path))
+      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer) => learnFromAnswer(ctx, question, answer),
@@ -2438,7 +2439,7 @@ export function registerIpc(ctx: VaultContext): void {
     // Short on purpose. These ride on EVERY local turn (the warm-session lane
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
-    const savedHistory = bot ? await readBotTranscript(paths, bot.id) : request.history
+    const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress)
     if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request)) {
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
@@ -2545,7 +2546,7 @@ export function registerIpc(ctx: VaultContext): void {
       rawText: string,
       offer?: Extract<EngramEvent, { type: 'chat:done' }>['offer'],
     ): Promise<void> => {
-      const { text: cleaned, captures } = extractChatCaptures(rawText)
+      const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, rawText))
       // The receipt must never claim more than the disk holds — a failed
       // inbox write is exactly when "remember this" must say it did not land.
       let saved = 0
@@ -2574,7 +2575,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, at }).catch(() => undefined)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, work: progressWork(channel), at }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
         if (firstTitle) {

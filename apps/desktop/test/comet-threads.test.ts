@@ -231,7 +231,7 @@ describe('cometThreads', () => {
 // arrives afterwards, and disk holds nothing of the exchange. The store has
 // to say so, or a reload on that event erases the question just asked.
 describe('stop leaves a mark the abort echo can read', () => {
-  it('marks the thread stopped, ignores the echo as news, and clears the mark once', () => {
+  it('marks the thread stopped, ignores the echo as news, and keeps the mark until an explicit new request', () => {
     const store = createCometThreads('a')
     store.begin('a', 'what was decided?')
     store.stop('a', 'Stopped.')
@@ -241,7 +241,7 @@ describe('stop leaves a mark the abort echo can read', () => {
     // The echo: a done for a thread that is no longer waiting is nobody's.
     expect(store.handleEvent({ type: 'chat:done', channel: 'bot-a', text: '' })).toBe(null)
     expect(store.thread('a').messages.map((m) => m.text)).toEqual(['what was decided?', 'Stopped.'])
-    store.clearStopped('a')
+    store.begin('a', 'A new request')
     expect(store.thread('a').stopped).toBe(false)
   })
 
@@ -282,17 +282,18 @@ describe('what the turn did stays readable', () => {
 })
 
 describe('words written before an action', () => {
-  it('leave the bubble but stay in the work as what it said', () => {
+  it('stay as ordered progress messages after an action begins', () => {
     const store = createCometThreads(BOT)
     store.begin(BOT, 'q')
     store.handleEvent({ type: 'chat:token', channel, text: 'Let me check the page.' })
     store.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
     const thread = store.thread(BOT)
     expect(thread.messages.at(-1)?.text).toBe('')
-    expect(thread.workLines).toEqual(['said: Let me check the page.'])
+    expect(thread.messages.at(-2)).toMatchObject({ text: 'Let me check the page.', progress: true, streaming: false })
+    expect(thread.workLines).toEqual([])
     // Nothing said, nothing noted.
     store.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
-    expect(store.thread(BOT).workLines).toHaveLength(1)
+    expect(store.thread(BOT).messages.filter(message => message.progress)).toHaveLength(1)
   })
 })
 
@@ -334,4 +335,17 @@ describe('a draft held for its check', () => {
     store.load(BOT, [{ role: 'user', text: 'Find the postings' }, { role: 'user', text: 'Only Seoul' }, { role: 'assistant', text: 'Found three' }])
     expect(store.thread(BOT).messages.map((m) => m.text)).toEqual(['Find the postings', 'Only Seoul', 'Found three'])
   })
+})
+
+it('stops the delegated task immediately and ignores its late working notification until a new request', () => {
+  const store = createCometThreads()
+  store.begin('stop-task', 'Read the items')
+  store.handleEvent({ type: 'comet:working', channel: 'bot-stop-task', working: true })
+  store.stop('stop-task', 'Stopped')
+  expect(store.thread('stop-task').busy).toBe(false)
+  store.handleEvent({ type: 'comet:working', channel: 'bot-stop-task', working: true })
+  expect(store.thread('stop-task').busy).toBe(false)
+  store.begin('stop-task', 'A new explicit request')
+  expect(store.thread('stop-task').busy).toBe(true)
+  expect(store.thread('stop-task').stopped).toBe(false)
 })

@@ -117,6 +117,8 @@ export interface BotDto {
 export interface BotTurnDto {
   role: 'user' | 'assistant'
   text: string
+  progress?: boolean
+  work?: string[]
   at: string
   attachments?: string[]
 }
@@ -203,6 +205,8 @@ export interface EngineStatusDto {
 export interface ChatTurnDto {
   role: 'user' | 'assistant'
   text: string
+  progress?: boolean
+  work?: string[]
   attachments?: string[]
   evidence?: import('core').TurnEvidence
   scheduled?: boolean

@@ -41,14 +41,15 @@ async function finish() {
 }
 async function requests() { return app.evaluate(() => (globalThis as typeof globalThis & { requests: string[] }).requests) }
 
-test('words sent during a reply appear at once at the foot of the work, answered there, with no queue', async () => {
+test('words sent during a reply stay in chronological conversation order without automatic resend', async () => {
   const input = page.getByTestId('bots-input')
   await input.fill('First'); await input.press('Enter')
   await expect(page.locator('.bubble-stop')).toBeVisible()
   await input.fill('Only the recent ones'); await input.press('Enter')
   await input.fill('Then sum it up'); await input.press('Enter')
   await expect(input).toHaveValue('')
-  await expect(page.locator('.comet-work-lines > li')).toHaveText(['Only the recent ones', 'Saved in the conversation.', 'Then sum it up', 'Saved in the conversation.'])
+  await expect(page.locator('.bubble-msg.user')).toHaveText(['First', 'Only the recent ones', 'Then sum it up'])
+  await expect(page.locator('.comet-work-lines')).toHaveCount(0)
   await expect(page.getByTestId('queued-messages')).toHaveCount(0)
   await input.fill('Draft still being typed')
   expect(await requests()).toEqual(['First'])
@@ -59,13 +60,13 @@ test('words sent during a reply appear at once at the foot of the work, answered
   await app.evaluate(({ BrowserWindow }, channel) => { for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'chat:steer-returned', channel, texts: ['Only the recent ones'] }) }, `bot-${botId}`)
   await page.waitForTimeout(500)
   expect(await requests()).toEqual(['First'])
-  await expect(page.locator('.bubble-msg.user')).toHaveCount(1)
+  await expect(page.locator('.bubble-msg.user')).toHaveCount(3)
 })
 test('Stop ends the work and what was set to follow, and nothing is sent after a reload', async () => {
   const input = page.getByTestId('bots-input')
   await input.fill('First'); await input.press('Enter')
   await input.fill('Then this'); await input.press('Enter')
-  await expect(page.locator('.comet-work-line.you')).toHaveText('Then this')
+  await expect(page.locator('.bubble-msg.user').last()).toHaveText('Then this')
   await page.locator('.bubble-stop').click()
   await expect(page.locator('.bubble-stop')).toHaveCount(0)
   await page.reload(); await expect(page.getByTestId('shell')).toBeVisible()

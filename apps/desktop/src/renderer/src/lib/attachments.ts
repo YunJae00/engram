@@ -57,7 +57,7 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     const stopCount = store.thread(botId).stopCount
     const said = chatMessage(draft, attachments)
     const words = threadT(threadLang(store.thread(botId).messages))
-    store.noteWork(botId, `you: ${said}`)
+    store.noteUser(botId, said, attachments.map(file => file.id))
     // The words left the box (sent trimmed); a reply chip leaves what is typed alone.
     if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
     // Files cannot join a turn already under way: they start the next one.
@@ -77,13 +77,16 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     }
     // A stop is said where the work ends; anything else in the running work.
     if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? ''); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
-    store.noteWork(botId, `said: ${answer.reply || words('aside.passed')}`)
+    if (answer.reply) store.noteWork(botId, `said: ${answer.reply}`)
     void flushQueuedCometMessages(api, store, botId)
     return
   }
-  // Sent again before the first one took its seat: it goes right after, shown when it starts.
+  // The previous IPC call can still be settling after its completion event.
   if (store.thread(botId).queued.length || seats(active, store).has(botId) || seats(draining, store).has(botId)) {
-    store.enqueue(botId, draft, attachments)
+    store.noteUser(botId, chatMessage(draft, attachments), attachments.map(file => file.id))
+    if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
+    if (attachments.length) store.setAttachments(botId, [])
+    store.enqueue(botId, draft, attachments, true)
     void flushQueuedCometMessages(api, store, botId)
     return
   }
