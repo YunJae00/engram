@@ -129,7 +129,9 @@ export function signMacTarget(target, identifier, deep = false) {
   const keychain = process.env.ENGRAM_MAC_SIGN_KEYCHAIN
   execFileSync('codesign', [
     '--force', ...(deep ? ['--deep'] : []), '--sign', identity || '-',
-    ...(identity && keychain ? ['--keychain', keychain] : []), '--identifier', identifier, target,
+    ...(identity && keychain ? ['--keychain', keychain] : []), '--identifier', identifier,
+    ...(identity ? ['--requirements', `=designated => identifier "${identifier}" and ${CERTIFICATE_REQUIREMENT}`] : []),
+    target,
   ], { stdio: 'inherit' })
   execFileSync('codesign', ['--verify', ...(deep ? ['--deep'] : []), '--strict', target], { stdio: 'inherit' })
   if (identity) assertCertificateRequirement(target)
