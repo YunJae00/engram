@@ -181,17 +181,19 @@ export class DesktopHost {
     const result = new Promise<T>((resolve, reject) => {
       const pending: PendingRequest = { method, generation, ...(options?.preview ? { preview: true } : {}), resolve: (value) => resolve(value as T), reject }
       this.pending.set(id, pending)
-      cancel = () => {
+      const withdraw = (preempt = false) => {
         if (this.pending.get(id) !== pending) return
         this.pending.delete(id)
         clearTimeout(pending.timer)
-        if (pending.sent) this.cancelNative(id, method)
+        if (pending.sent) this.cancelNative(id, pending.preview ? undefined : method)
         const reason = signal?.reason instanceof Error ? signal.reason.message : 'Computer action was cancelled.'
         const error = new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`)
-        if (signal?.reason instanceof Error) error.name = signal.reason.name
+        if (preempt) error.name = 'PreviewPreempted'
+        else if (signal?.reason instanceof Error) error.name = signal.reason.name
         reject(error)
       }
-      pending.cancel = cancel
+      cancel = () => withdraw()
+      pending.cancel = () => withdraw(true)
       signal?.addEventListener('abort', cancel, { once: true })
       let ready: Promise<void>
       try { ready = this.start() }
@@ -222,7 +224,7 @@ export class DesktopHost {
         pending.timer = setTimeout(() => {
           if (this.pending.get(id) !== pending) return
           this.pending.delete(id)
-          this.cancelNative(id, method)
+          this.cancelNative(id, pending.preview ? undefined : method)
           // A late bind must not leave an unclaimed input grant in the helper.
           if (method === 'bind') {
             try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'stop' }) + '\n', error => { if (error) this.close(error) }) }

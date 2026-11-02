@@ -94,3 +94,13 @@ it('defers preview capture while the same helper has real work pending', async (
   await vi.advanceTimersByTimeAsync(2100)
   expect(fake.image).toHaveBeenCalledOnce()
 })
+
+it('keeps the last confirmed image and timestamp when a refresh yields to real work', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  const previous = workPreviews(held.lane)[0]
+  await vi.advanceTimersByTimeAsync(3000)
+  fake.image.mockRejectedValue(Object.assign(new Error('Preview yielded to app work'), { name: 'PreviewPreempted' }))
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ data: previous?.data, at: previous?.at, unavailable: false })
+})

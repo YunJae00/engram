@@ -224,6 +224,7 @@ it('preempts a preview when real work arrives without cancelling the real reques
   expect(messages()).toContainEqual(expect.objectContaining({ method: 'cancel', target: id }))
   respond({ id: latest('quietRead'), result: { text: 'work' } })
   expect(await work).toEqual({ text: 'work' })
+  await vi.advanceTimersByTimeAsync(60001)
   expect(host.closed).toBe(false)
 })
 

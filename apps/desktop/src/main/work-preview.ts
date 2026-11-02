@@ -85,7 +85,8 @@ export function showWorkPreview(binding: DesktopBinding): void {
       entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 700 }).toDataURL()
       entry.at = Date.now(); entry.unavailable = false
     } else { delete entry.data; entry.unavailable = true }
-  }).catch(() => {
+  }).catch((error: unknown) => {
+    if (error instanceof Error && error.name === 'PreviewPreempted') return
     if (entries.get(key) === entry && desktopBinding(binding.lane) === binding) { delete entry.data; entry.unavailable = true }
   }).finally(() => {
     clearTimeout(timeout)
