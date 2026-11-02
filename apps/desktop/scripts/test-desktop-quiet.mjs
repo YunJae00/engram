@@ -155,6 +155,7 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.ok(recent.text.indexOf('Turn 596') < recent.text.indexOf('Turn 599'), 'Recent turns remain in document order')
   assert.equal(recent.headClipped, true)
   assert.equal(recent.truncated, false)
+  console.log(JSON.stringify({ recentTurns: { tail: recent.text.split('\n').slice(-4), headClipped: recent.headClipped, truncated: recent.truncated, scope: recent.scope } }))
   await fixture.request('clearHistory')
   return { readWithoutFocus: true, providerOnlySet: true, setActivatedWindow: set.foregroundChanged, providerOnlyPress: true, pressActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
 }

@@ -20,7 +20,7 @@ export function formatScan(observation: QuietObservationDto, find: string | unde
   const shown = find ? observation.texts : observation.texts.slice(-TEXT_TAIL)
   const hidden = observation.texts.length - shown.length + observation.skippedTexts
   const lines = [
-    ...(observation.mode || observation.truncated || observation.sparseTree || hidden > 0 ? [JSON.stringify({ mode: observation.mode ?? 'full', root: observation.root, ...(observation.sparseTree ? { sparseTree: true, hint: observation.hint } : {}), truncated: !!observation.truncated || hidden > 0, ...(observation.truncated || hidden > 0 ? { continuation: 'Use app_read mode:skeleton, then root:<region id> with that snapshot. Read only the required region; this is not the whole app.' } : {}) })] : []),
+    ...(observation.mode || observation.truncated || observation.sparseTree || hidden > 0 ? [JSON.stringify({ mode: observation.mode ?? 'full', root: observation.root, ...(observation.sparseTree ? { sparseTree: true, hint: observation.hint } : {}), truncated: !!observation.truncated || hidden > 0, ...(observation.truncated || hidden > 0 ? { continuation: 'Use app_read mode:skeleton, then root:<region id> with that snapshot. Use app_text with that snapshot and region control for its latest text. This is not the whole app.' } : {}) })] : []),
     `${observation.title} [window:${observation.window}:0] — snapshot ${observation.snapshot} (${personLine(observation.state)}${find ? `, find ${quote(find)}` : ''})`,
     `controls (${observation.controls.length}${observation.skippedControls ? `; ${observation.skippedControls} more not shown, narrow with root and snapshot` : ''}):`,
     ...observation.controls.map(controlLine),
