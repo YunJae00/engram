@@ -525,6 +525,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 }
 .notices:empty { display: none; }
 .connect-banner {
+  anchor-name: --status-banner;
   display: flex; align-items: center; gap: 8px;
   width: 100%; min-height: 32px;
   padding: var(--space-1) 0; border-radius: 0;
@@ -1992,11 +1993,10 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .github-error .setting-hint { color: var(--fg-dim); }
 
 /* ── Toast ────────────────────────────────────────────────────── */
-/* Unified floating-chrome treatment (same as the widget / help button); the
-   old 3px near-black accent bar read as a heavy stray border. Sits above the
-   help dock (16px inset + 40px button + gap) instead of on top of it. */
+/* Keep transient notices clear of the composer and connection controls. */
 .toast {
-  position: fixed; bottom: 16px; right: 16px;
+  position: fixed; top: calc(anchor(--status-banner bottom, 44px) + 8px); right: 16px;
+  max-width: min(32rem, calc(100vw - 32px));
   pointer-events: none;
   background: color-mix(in srgb, var(--widget-bg) 92%, transparent);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);

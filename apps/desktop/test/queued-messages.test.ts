@@ -16,7 +16,7 @@ it('ignores a late voice reply after stop, even after its done echo', async () =
   await sendCometMessage(client, store, 'one', 'First')
   const pending = sendCometMessage(client, store, 'one', 'Then this')
   store.stop('one', 'Stopped')
-  store.clearStopped('one')
+  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: '' })
   reply({ ok: true, action: 'later', instruction: 'Then this' })
   await pending
   expect(store.thread('one').queued).toEqual([])
@@ -46,8 +46,8 @@ it('shows words sent mid-reply at once in the running work and answers them ther
   await sendCometMessage(client, store, 'one', 'Only Seoul please')
   expect(store.thread('one').draft).toBe('')
   expect(chatSay).toHaveBeenCalledWith('bot-one', 'Only Seoul please')
-  expect(store.thread('one').workLines).toEqual(['you: Only Seoul please', 'said: I will look at Seoul only.'])
-  expect(store.thread('one').messages.map(m => m.role)).toEqual(['user', 'assistant'])
+  expect(store.thread('one').workLines).toEqual(['said: I will look at Seoul only.'])
+  expect(store.thread('one').messages.map(m => m.role)).toEqual(['user', 'user', 'assistant'])
   expect(store.thread('one').queued).toEqual([])
 })
 
@@ -90,15 +90,18 @@ it('acknowledges at once without a voice, and the words go on after this turn', 
   expect(store.thread('two').draft).toBe('still typing')
 })
 
-it('sends a second message typed before the first took its seat right after it, shown when it starts', async () => {
+it('shows a queued message immediately while the previous request settles', async () => {
   const store = createCometThreads()
   const client = api()
   let release: () => void = () => undefined
   client.chatSend.mockImplementationOnce(() => new Promise<undefined>(resolve => { release = () => resolve(undefined) }))
   const first = sendCometMessage(client, store, 'one', 'First')
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Done' })
+  store.setDraft('one', 'Second')
   await sendCometMessage(client, store, 'one', 'Second')
-  expect(store.thread('one').queued.map(one => [one.draft, !!one.shown])).toEqual([['Second', false]])
+  expect(store.thread('one').draft).toBe('')
+  expect(store.thread('one').messages.filter(m => m.role === 'user').map(m => m.text)).toEqual(['First', 'Second'])
+  expect(store.thread('one').queued.map(one => [one.draft, !!one.shown])).toEqual([['Second', true]])
   release(); await first
   await flushQueuedCometMessages(client, store, 'one')
   expect(client.chatSend.mock.calls[1]?.[0]).toMatchObject({ message: 'Second' })

@@ -1,3 +1,4 @@
+import type { DesktopActionContext } from './desktop-opt-in.js'
 import { showWorkPreview } from './work-preview.js'
 import type { QuietObservationDto } from '../shared/desktop.js'
 import { desktopTools, liveDocumentTools, quietDesktopTools, type AgentTool, type ToolOutcome } from 'core'
@@ -9,7 +10,7 @@ import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
 import { quietControlName, quietSnapshot, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
 import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
-import { formatDo, irreversibleName, quietDo } from './desktop-quiet-do.js'
+import { formatDo, irreversibleName, quietDo, quietFingerprint } from './desktop-quiet-do.js'
 import { brainConnection } from './brain-connections.js'
 
 async function lookDesktop(lane: string, signal?: AbortSignal, app?: string): Promise<ToolOutcome> {
@@ -74,15 +75,25 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     press: async (app, snapshot, control, context, options) => {
       // Only a control named like send, submit, save or delete commits; opening a chat or a menu is navigation.
       const name = quietControlName(snapshot, control)
+      if (name === undefined) return JSON.stringify(desktopFailure('This snapshot is stale. Read the app again before acting.'))
       const previous = quietSnapshot(snapshot)
       const container = /treeitem|row|group/i.test(previous?.controls.find(item => item.id === control)?.type ?? '')
+      if (!options?.action && (!name || irreversibleName(name))) {
+        if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
+        if (!await (context as DesktopActionContext).approveAppAction?.(app, name || 'Unnamed control', snapshot))
+          return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action needs explicit approval. No input was sent; continue reading or wait for the person.' })
+        const confirmed = await quietScan(lane, app, undefined, context.signal)
+        if (confirmed.window !== previous.window || confirmed.pid !== previous.pid || confirmed.title !== previous.title || quietFingerprint(confirmed) !== quietFingerprint(previous))
+          return JSON.stringify(desktopFailure('The window changed. Read it again before acting.'))
+        snapshot = confirmed.snapshot
+      }
       const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal, options))
       if (!options?.action && (!name || irreversibleName(name))) context.onCommitted?.()
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, container ? previous : undefined)
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
-    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
+    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: snapshot => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   const quietFirst = (app?: string): void => {
     const control = desktopControlStatus()

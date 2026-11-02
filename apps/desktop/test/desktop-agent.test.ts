@@ -11,7 +11,7 @@ vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, create
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: vi.fn(), readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c9' ? 'Send' : 'New chat' }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -210,7 +210,8 @@ describe('a quiet press', () => {
       expect(result).toContain('snapshot ' + 'b'.repeat(32))
       expect(committed).not.toHaveBeenCalled()
       expect(observed).toHaveBeenCalledOnce()
-      const sending = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c9' }, { task: 'Send it', onCommitted: committed })
+      fake.quietSnapshot.mockReturnValue(await fake.quietScan())
+      const sending = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c9' }, Object.assign({ task: 'Send it', onCommitted: committed }, { approveAppAction: async () => true }))
       await vi.advanceTimersByTimeAsync(400)
       await sending
       expect(committed).toHaveBeenCalledOnce()
@@ -265,4 +266,35 @@ it('preserves the Accessibility permission boundary in the model observation', a
   expect(result).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
   expect(result.hint).toContain('System Settings → Privacy & Security → Accessibility')
   expect(result.hint).not.toContain('not found')
+})
+
+it('does not treat a requested read or a model press argument as approval to send', async () => {
+  const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
+  const committed = vi.fn()
+  fake.quietSnapshot.mockReturnValue({ window: '42', pid: 55, title: 'Fixture', controls: [], texts: [] })
+  const result = await press.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c9' }, { task: 'Read the conversation', onCommitted: committed })
+  expect(JSON.parse(result)).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe' })
+  expect(fake.quietPress).not.toHaveBeenCalled()
+  expect(committed).not.toHaveBeenCalled()
+})
+
+it('returns a stale reference instead of requesting permission when a control disappeared', async () => {
+  const approveAppAction = vi.fn(async () => true)
+  const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
+  const result = await press.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c404' }, Object.assign({ task: 'Open the conversation' }, { approveAppAction }))
+  expect(JSON.parse(result)).toMatchObject({ error: 'stale_snapshot', delivery: 'not_delivered', retry: 'safe' })
+  expect(approveAppAction).not.toHaveBeenCalled()
+  expect(fake.quietPress).not.toHaveBeenCalled()
+})
+
+it('does not press when the target conversation changes during approval', async () => {
+  const before = { window: '42', pid: 55, title: 'Fixture', controls: [], texts: [{ id: 't1', text: 'Recipient A' }] }
+  fake.quietSnapshot.mockReturnValue(before)
+  fake.quietScan.mockResolvedValue({ ...before, texts: [{ id: 't1', text: 'Recipient B' }] })
+  const approveAppAction = vi.fn(async () => true)
+  const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
+  const result = await press.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c9' }, Object.assign({ task: 'Send if approved' }, { approveAppAction }))
+  expect(JSON.parse(result)).toMatchObject({ error: 'stale_snapshot', delivery: 'not_delivered' })
+  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32))
+  expect(fake.quietPress).not.toHaveBeenCalled()
 })

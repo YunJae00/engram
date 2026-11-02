@@ -35,7 +35,7 @@ export async function loadCometThread(id: string): Promise<void> {
   cometThreads.load(id, turns, seenBefore)
   const active = await api.chatActive().catch(() => [] as string[])
   const tasks = await api.tasksList().catch(() => [])
-  if (active.includes(cometChannel(id)) && cometThreads.thread(id).doneSeen === seenBefore) {
+  if (!cometThreads.thread(id).stopped && active.includes(cometChannel(id)) && cometThreads.thread(id).doneSeen === seenBefore) {
     cometThreads.adopt(id)
     if (tasks.some(task => task.botId === id && ['running', 'queued'].includes(task.state)))
       cometThreads.handleEvent({ type: 'comet:working', channel: cometChannel(id), working: true })
@@ -92,7 +92,6 @@ api.onEvent((event) => {
     if (!id || !cometThreads.getSnapshot().threads[id]) return
     cometThreads.noteDone(id)
     if (cometThreads.thread(id).stopped) {
-      cometThreads.clearStopped(id)
       return
     }
     void reloadFromDisk(id)

@@ -42,3 +42,29 @@ it('does not access apps without an approval route and checks revocation on ever
   await expect(tool!.run({}, { task: 'Find app' })).rejects.toThrow('Control apps in Settings')
   expect(run).toHaveBeenCalledOnce()
 })
+
+it('uses a separate one-shot structured approval for consequential actions while reads remain allowed', async () => {
+  const ask = vi.fn(async () => 'approve' as const)
+  let delivered = 0
+  const tool: AgentTool = { name: 'app_press', description: '', argsSchema: {}, run: async (_args, context) => {
+    if (await (context as import('../src/main/desktop-opt-in.js').DesktopActionContext).approveAppAction?.('Fixture', 'Send', 'observed-snapshot')) delivered++
+    return 'checked'
+  } }
+  const [wrapped] = desktopOptIn([tool], { enabled: async () => true, enable: vi.fn(), ask })
+  await wrapped!.run({}, { task: 'Read only' })
+  await wrapped!.run({}, { task: 'Send if approved' })
+  expect(ask).toHaveBeenCalledTimes(2)
+  expect(ask).toHaveBeenCalledWith(expect.objectContaining({ url: 'engram://app/Fixture#observed-snapshot' }))
+  expect(delivered).toBe(2)
+})
+
+it('never delivers after Stop while a consequential approval is pending', async () => {
+  const abort = new AbortController(), delivered = vi.fn()
+  const tool: AgentTool = { name: 'app_press', description: '', argsSchema: {}, run: async (_args, context) => {
+    if (await (context as import('../src/main/desktop-opt-in.js').DesktopActionContext).approveAppAction?.('Fixture', 'Send', 'observed-snapshot')) delivered()
+    return 'checked'
+  } }
+  const [wrapped] = desktopOptIn([tool], { enabled: async () => true, enable: vi.fn(), ask: async () => { abort.abort(); return 'approve' } })
+  await expect(wrapped!.run({}, { task: 'Send if approved', signal: abort.signal })).rejects.toThrow()
+  expect(delivered).not.toHaveBeenCalled()
+})

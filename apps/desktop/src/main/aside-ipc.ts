@@ -1,3 +1,4 @@
+import { conversationProgress } from './conversation-progress.js'
 import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-notify.js'
 import { ipcMain } from 'electron'
 import { appendBotTurn, withoutSecrets, type VaultPaths } from 'core'
@@ -14,10 +15,15 @@ export interface AsideIpcDeps {
   setOffersAside(botId: string): Promise<void>
 }
 
+let stopListening: (() => void) | undefined
+
 export function registerAsideIpc(deps: AsideIpcDeps): void {
   ipcMain.removeHandler('chat:queued')
   ipcMain.removeHandler('chat:say')
-  tapBroadcast((event) => {
+  stopListening?.()
+  const progress = conversationProgress(deps.paths)
+  stopListening = tapBroadcast((event) => {
+    progress.observe(event)
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
   })
   const watching = new Set<number>()
@@ -35,6 +41,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (!deps.busy(channel)) return { ok: false }
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
+    await progress.flush(channel)
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString() })
     await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] }))
     void deps.setOffersAside(botId).catch(error => flog('study', error))

@@ -189,3 +189,34 @@ test('finished work minimizes its preview so the result remains readable', async
   await page.getByRole('button', { name: 'Restore browser preview', exact: true }).click()
   await expect(page.locator('.browser-preview canvas')).toHaveAttribute('data-painted', '')
 })
+
+
+test('status notices leave full and split conversation composers unobscured', async () => {
+  expect(await page.evaluate(() => CSS.supports('top', 'calc(anchor(--status-banner bottom, 44px) + 8px)'))).toBe(true)
+  await page.addStyleTag({ content: '.connect-banner { min-height: 80px }' })
+  for (const layout of [1, 2]) {
+    if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
+    await page.getByTestId(`mission-layout-${layout}`).click()
+    for (const width of [1280, 620]) {
+      await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 850), width)
+      if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
+      console.info('NOTICE_VIEWPORT', { layout, requestedWidth: width, ...await page.evaluate(() => ({ actualWidth: innerWidth, actualHeight: innerHeight })) })
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
+        type: 'task:notice', message: 'The current task is paused. Your work has been kept; continue when ready.',
+      }))
+      await expect(page.locator('.toast')).toBeVisible()
+      const composer = page.locator(layout === 1 ? '.bots-write' : '.mini-chat-write').first()
+      await expect(composer).toBeVisible()
+      await expect.poll(async () => {
+        const notice = (await page.locator('.toast').boundingBox())!
+        const input = (await composer.boundingBox())!
+        return notice.y + notice.height <= input.y || notice.x + notice.width <= input.x || notice.x >= input.x + input.width
+      }).toBe(true)
+      for (const banner of await page.locator('.connect-banner').all()) {
+        const box = (await banner.boundingBox())!
+        expect((await page.locator('.toast').boundingBox())!.y).toBeGreaterThanOrEqual(box.y + box.height)
+      }
+      await page.screenshot({ path: join(shots, `notice-${layout}-${width}.png`) })
+    }
+  }
+})

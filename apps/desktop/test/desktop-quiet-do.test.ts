@@ -15,7 +15,7 @@ const screen = (controls: QuietControlDto[], texts: string[], snapshot = 'a'.rep
   window: '7', pid: 70, title: 'Claude', snapshot, controls, texts: texts.map((text, index) => ({ id: `t${index}`, text })), skippedControls: 0, skippedTexts: 0, ms: 50,
   state: { foreground: false, idleMs: 9000, minimized: false },
 })
-const request = { lane: 'bot-one', app: 'Claude', goal: 'Start a new chat and ask about the mail', text: 'What did the mail say?', maxSteps: 8 }
+const request = { lane: 'bot-one', app: 'Claude', goal: 'Start a new chat and ask about the mail', text: 'What did the mail say?', maxSteps: 8, signal: new AbortController().signal }
 const decided = (choice: string, confidence = 0.9) => async () => ({ choice, confidence, probabilities: { [choice]: confidence }, ms: 120 })
 
 beforeEach(() => {
@@ -100,7 +100,7 @@ describe('a short goal run by a decision model', () => {
     fake.scan.mockResolvedValueOnce(screen([control('c5', '보내기'), composer], ['New chat']))
       .mockResolvedValue(screen([control('c5', '보내기'), { ...composer, value: request.text }], ['New chat'], 'b'.repeat(32)))
     const decide = vi.fn().mockImplementationOnce(decided('set c9')).mockImplementationOnce(decided('done')).mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('ready'))
-    const replied = await quietDo({ ...request, send: true }, decide)
+    const replied = await quietDo({ ...request, send: true, approveSend: async () => true }, decide)
     expect(replied.steps.map(step => step.outcome)).toEqual(['text set', expect.stringContaining('not sent yet'), 'pressed (invoke)'])
     expect(replied).toMatchObject({ status: 'done', committed: true, reply: 'question - 2', settled: true })
     expect(fake.press).toHaveBeenCalledTimes(1)
@@ -145,4 +145,38 @@ it('offers desired states and scoped scrolling instead of a blind checkbox toggl
   fake.press.mockResolvedValue({ pressed: 'none', satisfied: true, control: 'c1' })
   await quietDo({ ...request, goal: 'Enable the option' }, vi.fn().mockImplementationOnce(decided('checked c1')).mockImplementationOnce(decided('done')))
   expect(fake.press).toHaveBeenCalledWith('bot-one', 'Claude', observation.snapshot, 'c1', expect.any(AbortSignal), { state: 'checked' })
+})
+
+it.each(['declined', 'changed'] as const)('never sends after approval is %s', async mode => {
+  const initial = screen([control('c5', 'Send'), composer], ['Recipient A'])
+  const filled = screen([control('c5', 'Send'), { ...composer, value: request.text }], ['Recipient A'])
+  fake.scan.mockResolvedValueOnce(initial).mockResolvedValue(filled)
+  const approveSend = vi.fn(async () => {
+    if (mode === 'changed') fake.scan.mockResolvedValue({ ...filled, texts: [{ id: 't1', text: 'Recipient B' }] })
+    return mode !== 'declined'
+  })
+  const decide = vi.fn().mockImplementationOnce(decided('set c9')).mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('ready'))
+  const result = await quietDo({ ...request, send: true, approveSend }, decide)
+  expect(result.status).toBe('needs-person')
+  expect(approveSend).toHaveBeenCalledOnce()
+  expect(fake.press).not.toHaveBeenCalled()
+})
+
+it('keeps a human approval pending beyond the former inner deadline', async () => {
+  vi.useFakeTimers()
+  try {
+    fake.scan.mockResolvedValueOnce(screen([control('c5', 'Send'), composer], ['Recipient A']))
+      .mockResolvedValue(screen([control('c5', 'Send'), { ...composer, value: request.text }], ['Recipient A']))
+    let finish!: (answer: boolean) => void
+    let waiting = false
+    const approveSend = () => { waiting = true; return new Promise<boolean>(resolve => { finish = resolve }) }
+    const decide = vi.fn().mockImplementationOnce(decided('set c9')).mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('ready'))
+    const result = quietDo({ ...request, send: true, approveSend }, decide)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(waiting).toBe(true)
+    await vi.advanceTimersByTimeAsync(310000)
+    finish(false)
+    expect((await result).status).toBe('needs-person')
+    expect(fake.press).not.toHaveBeenCalled()
+  } finally { vi.useRealTimers() }
 })

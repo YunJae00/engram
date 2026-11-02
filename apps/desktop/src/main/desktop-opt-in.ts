@@ -1,5 +1,10 @@
 import type { AgentTool } from 'core'
 
+type AgentToolContext = Parameters<AgentTool['run']>[1]
+export interface DesktopActionContext extends AgentToolContext {
+  approveAppAction?(app: string, control: string, snapshot: string): Promise<boolean>
+}
+
 interface Consent {
   enabled(): Promise<boolean>
   enable(): Promise<void>
@@ -18,10 +23,19 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
     await consent.enable()
     signal?.throwIfAborted()
   }
+  const scoped = (context: AgentToolContext): DesktopActionContext => ({
+    ...context,
+    approveAppAction: async (app, control, snapshot) => {
+      context.signal?.throwIfAborted()
+      const answer = await consent.ask?.({ words: `Allow "${control.slice(0, 60)}" in "${app.slice(0, 60)}"? This may send or change data.`, url: `engram://app/${encodeURIComponent(app)}#${encodeURIComponent(snapshot)}` })
+      context.signal?.throwIfAborted()
+      return answer === 'approve' && await consent.enabled()
+    },
+  })
   return tools.map(tool => ({
     ...tool,
-    run: async (args, context) => { await allow(context.signal); return tool.run(args, context) },
-    ...(tool.runRich ? { runRich: async (args, context) => { await allow(context.signal); return tool.runRich!(args, context) } } : {}),
+    run: async (args, context) => { await allow(context.signal); return tool.run(args, scoped(context)) },
+    ...(tool.runRich ? { runRich: async (args, context) => { await allow(context.signal); return tool.runRich!(args, scoped(context)) } } : {}),
   }))
 }
 

@@ -16,8 +16,8 @@ export async function botPreviews(paths: VaultPaths, bots: Bot[]): Promise<BotDt
         const stamp = `${info.mtimeMs}:${info.size}`
         let held = cached.get(path)
         if (!held || held.stamp !== stamp) {
-          const value = readBotTranscript(paths, bot.id, 1).then(turns => {
-            const turn = turns.at(-1)
+          const value = readBotTranscript(paths, bot.id).then(turns => {
+            const turn = turns.filter(turn => !turn.progress).at(-1)
             return turn ? { role: turn.role, text: turn.text.replace(/\s+/g, ' ').trim().slice(0, 200), at: turn.at } : undefined
           })
           held = { stamp, value }

@@ -1,8 +1,9 @@
 import type { DesktopBinding } from '../src/main/desktop-access.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const fake = vi.hoisted(() => ({ bindings: new Map(), send: vi.fn(), image: vi.fn(), window: vi.fn(), tap: vi.fn() }))
-vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: () => undefined }))
+const fake = vi.hoisted(() => ({ bindings: new Map(), keptOut: vi.fn(), send: vi.fn(), image: vi.fn(), window: vi.fn(), tap: vi.fn() }))
+vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
+vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: fake.keptOut }))
 vi.mock('../src/main/desktop-image.js', () => ({ desktopImage: fake.image }))
 vi.mock('../src/main/engine-health.js', () => ({ tapBroadcast: fake.tap }))
 vi.mock('electron', () => ({ nativeImage: { createFromBuffer: () => ({ resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) }, app: { once: vi.fn() }, BrowserWindow: fake.window }))
@@ -103,4 +104,36 @@ it('keeps the last confirmed image and timestamp when a refresh yields to real w
   fake.image.mockRejectedValue(Object.assign(new Error('Preview yielded to app work'), { name: 'PreviewPreempted' }))
   showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
   expect(workPreviews(held.lane)[0]).toMatchObject({ data: previous?.data, at: previous?.at, unavailable: false })
+})
+
+it('never reuses an image when a replacement binding reuses the same source identifier', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const first = binding(1); showWorkPreview(first); await vi.advanceTimersByTimeAsync(1)
+  const replacement = { ...first, name: 'Replacement app', pid: 999 }
+  fake.bindings.set(first.lane, replacement)
+  fake.image.mockImplementationOnce(() => new Promise(() => {}))
+  showWorkPreview(replacement)
+  expect(workPreviews(first.lane)[0]).toMatchObject({ title: 'Replacement app', captureState: 'waiting' })
+  expect(workPreviews(first.lane)[0]?.data).toBeUndefined()
+})
+
+it('distinguishes first-frame wait, a deferred refresh, and a previous target snapshot', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); Object.assign(held.host, { busy: true }); showWorkPreview(held)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'waiting', current: true })
+  Object.assign(held.host, { busy: false }); await vi.advanceTimersByTimeAsync(2100)
+  showWorkPreview(held)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'delayed', current: true })
+  const next = { ...held, source: 'window:other', name: 'Other app' }
+  fake.bindings.set(held.lane, next); showWorkPreview(next)
+  expect(workPreviews(held.lane).find(frame => frame.title === held.name)).toMatchObject({ current: false })
+})
+
+it('does not request capture for a protected target even before a frame exists', async () => {
+  fake.keptOut.mockReturnValueOnce('Protected window')
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(fake.image).not.toHaveBeenCalled()
+  expect(workPreviews(held.lane)).toEqual([])
 })
