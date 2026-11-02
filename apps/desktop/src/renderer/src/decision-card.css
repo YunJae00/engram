@@ -62,8 +62,6 @@
 /* The floating page preview sits over the top of the conversation; a short
    conversation starts below it, so nothing the person must answer hides
    under it. */
-.bots-main:has(.browser-preview:not(.minimized)) .bots-thread { padding-top: min(280px, 40vh); }
-.bots-main:has(.browser-preview.minimized) .bots-thread { padding-top: 64px; }
 /* A narrow card puts its answers on as many lines as they need. */
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions { flex-wrap: wrap; }
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions button { max-width: 100%; white-space: normal; }

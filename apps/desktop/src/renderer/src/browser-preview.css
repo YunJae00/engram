@@ -1,42 +1,7 @@
-.browser-preview {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 31;
-  width: min(280px, calc(100% - 24px));
-  max-height: calc(100% - 112px);
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--panel-bg) 78%, transparent);
-  backdrop-filter: blur(22px) saturate(1.15);
-  box-shadow: 0 14px 38px -14px #152c3b30, 0 2px 8px #152c3b08;
-  transform-origin: top right;
-  animation: browser-preview-in 240ms var(--ease-out);
-}
-.mission-tile .browser-preview { width: clamp(160px, 32cqw, 240px); max-width: calc(100% - 32px); }
-.browser-preview.minimized { width: min(180px, calc(100% - 32px)); }
-.mission-tile .browser-preview-bar { min-height: 30px; padding: 2px 6px; }
-.mission-tile .browser-preview-grip { display: none; }
 .mission-browser-dialog { box-sizing: border-box; width: min(1100px, calc(100vw - 40px)); height: min(760px, calc(100dvh - 112px)); max-height: calc(100dvh - 112px); margin: auto; padding: 0; border: 1px solid var(--border-soft); border-radius: 18px; background: var(--panel-bg); color: var(--fg); overflow: hidden; }
 .mission-browser-dialog[open] { display: flex; flex-direction: column; animation: browser-preview-in 160ms var(--ease-out); }
 .mission-browser-dialog::backdrop { background: #0005; backdrop-filter: blur(3px); }
 .mission-browser-dialog .dialog-title { font-size: var(--fs-body); }
 .mission-browser-dialog > .orbit-surface { flex: 1; min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .mission-browser-dialog[open] { animation: none; } }
-.browser-preview-bar { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 8px; cursor: grab; touch-action: none; user-select: none; }
-.browser-preview-bar:active { cursor: grabbing; }
-.browser-preview-grip { opacity: .2; flex-shrink: 0; }
-/* Its own layer: the turn keeps spinning evenly while the page thread is busy. */
-.browser-preview-bar .computer-spinner { display: block; flex-shrink: 0; transform-origin: 50% 50%; will-change: transform; }
-.browser-preview-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.browser-preview-bar button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--fg-dim); cursor: pointer; }
-.browser-preview-bar button:hover { background: var(--hover-bg); color: var(--fg); }
-.browser-preview-bar button:focus-visible, .browser-preview-picture:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-.browser-preview-picture { position: relative; display: block; width: 100%; max-height: min(240px, 35vh); padding: 0; border: 0; background: var(--panel-bg); overflow: hidden; cursor: pointer; }
-.browser-preview-picture canvas { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-.browser-preview-picture canvas:not([data-painted]) { visibility: hidden; }
-.browser-preview-wait { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: var(--fg-dim); }
-.browser-preview-picture:has(canvas[data-painted]) .browser-preview-wait { display: none; }
 @keyframes browser-preview-in { from { opacity: 0; transform: translateY(-5px) scale(.98); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .browser-preview { animation: none; } }
