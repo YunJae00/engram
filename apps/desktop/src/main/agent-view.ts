@@ -303,6 +303,7 @@ export async function agentViewInput(input: AgentInputDto, lane: string): Promis
         await m.cdp.send('Input.insertText', { text: input.text })
       }
     })
+    if (input.kind === 'mouse' && input.type === 'wheel' && mirror === m && activeLaneName() === lane) await shoot(m, true)
   } catch (err) {
     flog('agent-view', `input failed: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`)
   }
