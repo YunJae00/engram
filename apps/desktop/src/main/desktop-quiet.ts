@@ -165,14 +165,14 @@ export async function quietText(lane: string, app: string, snapshot: string | un
   const read = () => { showWorkFrame(binding); return request<QuietReadResultDto>(binding, 'quietRead', { ...(snapshot ? { snapshot } : {}), ...(control ? { control } : {}) }, signal) }
   const started = Date.now()
   let last = await read()
-  if (last.truncated || last.headClipped) return { ...last, settled: false, waitedMs: 0 }
+  if (last.truncated) return { ...last, settled: false, waitedMs: 0 }
   if (settleMs <= 0) return { ...last, settled: true, waitedMs: 0 }
   let stableSince = Date.now()
   let answering: string | undefined
   for (;;) {
     await pause(SETTLE_POLL_MS, signal)
     const next = await read()
-    if (next.truncated || next.headClipped) return { ...next, settled: false, waitedMs: Date.now() - started }
+    if (next.truncated) return { ...next, settled: false, waitedMs: Date.now() - started }
     if (next.text !== last.text) { last = next; stableSince = Date.now() }
     else if (Date.now() - stableSince >= settleMs) {
       answering = answeringControl(await quietScan(lane, app, undefined, signal))

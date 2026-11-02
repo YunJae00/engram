@@ -150,9 +150,17 @@ describe('quiet app access', () => {
   })
 })
 
-it('never labels a clipped or truncated answer as settled', async () => {
+it('never labels an unknown text tail as settled', async () => {
   const { request } = binding({ foreground: false, idleMs: 9000 })
   request.mockResolvedValue({ text: 'Only the old turns', chars: 18, truncated: true, headClipped: false })
   expect(await quietText('bot-one', 'Claude', undefined, undefined, 0)).toMatchObject({ settled: false, truncated: true })
   expect(await quietText('bot-one', 'Claude', undefined, undefined, 4000)).toMatchObject({ settled: false, truncated: true })
+})
+
+it('can settle a known text tail while preserving the omitted-history flag', async () => {
+  const { request } = binding({ foreground: false, idleMs: 9000 })
+  request.mockImplementation(async method => method === 'quietScan' ? { controls: [], texts: [] } : { text: 'Latest reply', chars: 12, truncated: false, headClipped: true })
+  const reading = quietText('bot-one', 'Claude', undefined, undefined, 1000)
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(await reading).toMatchObject({ settled: true, headClipped: true, truncated: false })
 })
