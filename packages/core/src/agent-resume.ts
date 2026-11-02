@@ -5,6 +5,7 @@ import { contextExcerpt } from './context-excerpt.js'
 // Historical context, not an executable plan or permission to resume input.
 export function resumeCheckpoint(task: string, result: AgentLoopResult): string | undefined {
   return withoutSecrets(JSON.stringify({
+    at: new Date().toISOString(),
     request: contextExcerpt(task, 6000),
     remaining: result.incomplete ?? result.pending ?? (result.asked ? 'Waiting for the person’s answer.' : result.stopped ? `Stopped: ${result.stopped}.` : 'No pending work reported. Do not repeat completed actions.'),
     lastResponse: contextExcerpt(result.answer, 8000),

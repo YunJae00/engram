@@ -86,7 +86,7 @@ export interface AgentLoopOptions {
   // The conversation so far. Without it a follow-up ("did you finish?") has
   // no subject, and the loop answers it from whatever the vault happened to
   // return — measured, and exactly as baffling as it sounds.
-  history?: { role: 'user' | 'assistant'; text: string }[]
+  history?: { role: 'user' | 'assistant'; text: string; at?: string; attachments?: string[] }[]
   // What this comet remembers about the person, rendered once by the caller
   // before the turn; the same bytes ride in every prompt of the turn.
   memory?: string

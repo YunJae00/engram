@@ -9,25 +9,17 @@ const secretSource = (channel: string): string => [turnGoals.get(channel) ?? '',
 export function progressWork(channel: string): string[] {
   return (work.get(channel) ?? []).map(line => withoutSecrets(line, `${line}\n${secretSource(channel)}`))
 }
-const prefixes = new Map<string, string>()
 export function finishProgress(channel: string, text: string): string {
-  const prefix = prefixes.get(channel)
-  prefixes.delete(channel)
-  // Capture markers must remain intact until the inbox writer consumes them.
-  const capture = text.indexOf('<engram:capture')
-  const consumed = prefix && text.startsWith(prefix) ? Math.min(prefix.length, capture < 0 ? text.length : capture) : 0
-  return withoutSecrets(consumed ? text.slice(consumed).trimStart() : text, secretSource(channel))
+  return withoutSecrets(text, secretSource(channel))
 }
 
 export function conversationProgress(paths: VaultPaths) {
-  work.clear(); prefixes.clear()
+  work.clear()
   const pending = new Map<string, string>()
-  const flush = (channel: string, fragment = true): Promise<void> => {
+  const flush = (channel: string): Promise<void> => {
     const text = pending.get(channel)
     pending.delete(channel)
-    if (!fragment) prefixes.delete(channel)
     if (!text?.trim()) return Promise.resolve()
-    if (fragment) prefixes.set(channel, (prefixes.get(channel) ?? '') + text)
     const lines = progressWork(channel)
     work.delete(channel)
     return appendBotTurn(paths, channel.slice(4), {
@@ -42,14 +34,14 @@ export function conversationProgress(paths: VaultPaths) {
       if (event.type === 'chat:token') {
         if (event.reset) {
           if (event.drop) pending.delete(channel)
-          else void flush(channel, false)
+          else void flush(channel)
         } else pending.set(channel, (pending.get(channel) ?? '') + event.text)
       } else if (event.type === 'comet:step') {
         if (pending.get(channel)?.trim()) broadcast({ type: 'chat:token', channel, text: '', reset: true })
         if (!/^\s*<- /.test(event.line)) work.set(channel, [...(work.get(channel) ?? []).slice(-63), event.line])
       } else if (event.type === 'chat:done' || event.type === 'chat:error') {
-        if (event.type === 'chat:error' || !event.text) void flush(channel, false)
-        pending.delete(channel); prefixes.delete(channel); work.delete(channel)
+        if (event.type === 'chat:error' || !event.text) void flush(channel)
+        pending.delete(channel); work.delete(channel)
       }
     },
   }

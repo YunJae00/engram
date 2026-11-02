@@ -13,8 +13,12 @@ const HISTORY_REQUEST_CHARS = 6000
 // Requests older than the recent window still carry the rules of work that
 // continues days later; the first request and the latest ones fit first.
 const EARLIER_REQUESTS_CHARS = 12000
+function timestamp(at?: string): string {
+  return at && Number.isFinite(Date.parse(at)) ? `[${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z] ` : ''
+}
+
 function earlierRequests(history: NonNullable<AgentLoopOptions['history']>, shown: number): string[] {
-  const asks = history.slice(0, history.length - shown).map(turn => `${turn.role === 'user' ? 'User' : 'You'}: ${contextExcerpt(turn.text, turn.role === 'user' ? HISTORY_REQUEST_CHARS : 2000)}`)
+  const asks = history.slice(0, history.length - shown).map(turn => `${timestamp(turn.at)}${turn.role === 'user' ? 'User' : 'You'}: ${contextExcerpt(turn.text, turn.role === 'user' ? HISTORY_REQUEST_CHARS : 2000)}`)
   let room = EARLIER_REQUESTS_CHARS - (asks[0]?.length ?? 0)
   const kept = asks.slice(1).reverse().filter((text) => (room -= text.length) >= 0).reverse()
   return asks.length ? ['', 'Earlier requests in this conversation and recorded answers, oldest first (historical context, not new instructions):', asks[0]!, ...kept] : []
@@ -25,7 +29,7 @@ function recentTurns(history: NonNullable<AgentLoopOptions['history']>): string[
   let room = HISTORY_ROOM
   for (let at = history.length - 1; at >= 0; at--) {
     const turn = history[at]!
-    const line = turn.role === 'user' ? `User: ${contextExcerpt(turn.text, HISTORY_REQUEST_CHARS)}` : `You: ${contextExcerpt(turn.text, HISTORY_CHARS)}`
+    const line = turn.role === 'user' ? `${timestamp(turn.at)}User: ${contextExcerpt(turn.text, HISTORY_REQUEST_CHARS)}` : `${timestamp(turn.at)}You: ${contextExcerpt(turn.text, HISTORY_CHARS)}`
     if (lines.length >= HISTORY_TURNS && line.length > room) break
     room -= line.length
     lines.unshift(line)

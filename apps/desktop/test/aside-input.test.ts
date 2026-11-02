@@ -44,3 +44,17 @@ it('migrates an old returned instruction into pending input exactly once', async
     expect((await readCheckpoint(paths, 'one')).pending).toEqual([])
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+it('acknowledges a persisted user row even when checkpoint storage fails afterward', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-write-failure-'))
+  const paths = { cache } as VaultPaths
+  const checkpoint = await import('../src/main/comet-checkpoint.js')
+  const change = vi.spyOn(checkpoint, 'changeCheckpoint').mockRejectedValueOnce(new Error('disk unavailable'))
+  registerAsideIpc({ paths, busy: () => true, deliver: async () => true, setOffersAside: async () => {} })
+  try {
+    await expect(handlers.get('chat:say')!({}, 'bot-persisted', 'Only Claude Desktop')).resolves.toMatchObject({ ok: true })
+    expect((await readBotTranscript(paths, 'persisted')).map(turn => turn.text)).toEqual(['Only Claude Desktop'])
+  } finally { change.mockRestore(); await rm(cache, { recursive: true, force: true }) }
+})
