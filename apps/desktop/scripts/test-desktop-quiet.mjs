@@ -25,6 +25,7 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.ok(nodes.every(node => Number.isInteger(node.order)), 'Observation order survives control/text separation')
   assert.ok(button?.can.press)
   assert.equal((await fixture.request('state')).foreground, false)
+  await until(() => helper.request('quietState', target), state => state.idleMs >= 4000, 'Owned same-process input must settle before provider actions')
   const option = first.controls.find(control => control.name === 'Fixture option')
   assert.equal(option?.state.checked, 'off')
   const chosen = { ...target, snapshot: first.snapshot, control: option.id, state: 'checked' }
