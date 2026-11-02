@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-26-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-26-intel]
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
@@ -130,7 +130,7 @@ jobs:
   desktop-native-macos:
     if: ${{ !inputs.native_only }}
     name: native macOS build and policy checks
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
