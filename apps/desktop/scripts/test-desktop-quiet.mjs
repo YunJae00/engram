@@ -4,7 +4,7 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await helper.ready
   await helper.request('inspectWindow', { window: target.window, pid: 0 })
   await fixture.request('away')
-  await fixture.request('foreignEscape')
+  await fixture.request('awayEscape')
   await until(() => helper.request('inputState'), state => state.escaped, 'Owned Escape input was not observed')
   assert.equal((await helper.request('quietState', target)).minimized, false, 'Escape in another window must not poison a fresh background read')
   await helper.request('stop')

@@ -189,11 +189,12 @@ internal sealed class ControlFixture : Form
             else if (method == "sparse") { if (Dense != null) { Dense.Dispose(); Dense = null; Deep = null; } }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "hidePassword") { Secret.Visible = false; Entry.Focus(); }
-            else if (method == "foreignInput" || method == "foreignEscape")
+            else if (method == "foreignInput" || method == "foreignEscape" || method == "awayEscape")
             {
-                if (GetForegroundWindow() != Handle) throw new InvalidOperationException("Only the owned foreground fixture can receive this input");
+                var inputWindow = method == "awayEscape" && Away != null ? Away.Handle : Handle;
+                if (GetForegroundWindow() != inputWindow) throw new InvalidOperationException("Only the owned foreground fixture can receive this input");
                 var marker = new UIntPtr(0x454e4752414dUL);
-                ushort key = method == "foreignEscape" ? (ushort)27 : (ushort)0x87;
+                ushort key = method == "foreignInput" ? (ushort)0x87 : (ushort)27;
                 var inputs = new[] {
                     new Input { Type = 1, Data = new Data { Key = new KeyData { Key = key, Extra = marker } } },
                     new Input { Type = 1, Data = new Data { Key = new KeyData { Key = key, Flags = 2, Extra = marker } } }
