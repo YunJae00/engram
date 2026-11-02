@@ -70,3 +70,13 @@ it('masks secrets introduced by steering in persisted progress and final output'
     expect(finishProgress(channel, 'I saw hunter2. Finished checking hunter2.')).not.toContain('hunter2')
   } finally { asides.delete(channel) }
 })
+
+it('keeps an in-flight capture intact for the inbox writer after steering', async () => {
+  const root = await mkdtemp(join(process.cwd(), 'tmp/progress-')); roots.push(root)
+  const paths = await initVault(root, { git: false })
+  const progress = conversationProgress(paths)
+  progress.observe({ type: 'chat:token', channel: 'bot-capture', text: 'I will remember it.\n<engram:capture>Keep' })
+  await progress.flush('bot-capture')
+  expect(finishProgress('bot-capture', 'I will remember it.\n<engram:capture>Keep this note</engram:capture>'))
+    .toBe('<engram:capture>Keep this note</engram:capture>')
+})

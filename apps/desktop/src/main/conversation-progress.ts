@@ -13,7 +13,10 @@ const prefixes = new Map<string, string>()
 export function finishProgress(channel: string, text: string): string {
   const prefix = prefixes.get(channel)
   prefixes.delete(channel)
-  return withoutSecrets(prefix && text.startsWith(prefix) ? text.slice(prefix.length).trimStart() : text, secretSource(channel))
+  // Capture markers must remain intact until the inbox writer consumes them.
+  const capture = text.indexOf('<engram:capture')
+  const consumed = prefix && text.startsWith(prefix) ? Math.min(prefix.length, capture < 0 ? text.length : capture) : 0
+  return withoutSecrets(consumed ? text.slice(consumed).trimStart() : text, secretSource(channel))
 }
 
 export function conversationProgress(paths: VaultPaths) {
