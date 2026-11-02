@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type Locator } from '@playwright/test'
 import { appendBotTurn, createBot, createTask, initVault, updateTask } from 'core'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
@@ -57,7 +57,13 @@ test('app preview stays inside full, split, minimized and expanded conversations
             return box.bottom <= preview.top || box.top >= preview.bottom || box.right <= preview.left || box.left >= preview.right
           })
       })).toBe(true)
-      await page.screenshot({ path: join(TMP, 'preview-captures', `${name}.png`) })
+      const image = await app.evaluate(async ({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+        await window.webContents.capturePage()
+        await new Promise(resolve => setTimeout(resolve, 400))
+        return (await window.webContents.capturePage()).toPNG().toString('base64')
+      })
+      await writeFile(join(TMP, 'preview-captures', `${name}.png`), Buffer.from(image, 'base64'))
     }
     await check(full, 'full')
     await preview.getByRole('button', { name: 'Collapse app activity' }).click()
