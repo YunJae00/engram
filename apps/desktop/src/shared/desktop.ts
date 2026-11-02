@@ -39,6 +39,9 @@ export interface DesktopObservationDto {
 // Provider-only operations avoid injected input. IDs belong to one snapshot.
 export interface QuietControlDto {
   id: string
+  state?: { checked?: 'on' | 'off' | 'indeterminate'; selected?: boolean; expanded?: string }
+  parent?: string | null
+  order?: number
   type: string
   depth?: number
   childCount?: number
@@ -46,7 +49,7 @@ export interface QuietControlDto {
   name: string
   value?: string | null
   placeholder?: string | null
-  can: { set: boolean; press: boolean; text: boolean }
+  can: { set: boolean; press: boolean; text: boolean; scroll?: boolean; scrollIntoView?: boolean }
   enabled: boolean
   offscreen: boolean
   focused: boolean
@@ -65,15 +68,15 @@ export interface QuietObservationDto {
   truncated?: boolean
   bounds?: { x: number; y: number; width: number; height: number }
   controls: QuietControlDto[]
-  texts: { id: string; text: string }[]
+  texts: { id: string; text: string; parent?: string | null; order?: number }[]
   skippedControls: number
   skippedTexts: number
   ms: number
   state: QuietStateDto
 }
 export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean }
-export interface QuietPressResultDto { pressed: string; control: string; foregroundChanged: boolean }
-export interface QuietReadResultDto { text: string; chars: number; headClipped: boolean }
+export interface QuietPressResultDto { satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean }
+export interface QuietReadResultDto { text: string; chars: number; headClipped: boolean; truncated?: boolean; scope?: string; continuation?: string | null }
 // The brain that holds the computer, named for the person: the banner on the
 // screen says who is moving the mouse.
 export type DesktopEngineId = 'claude' | 'codex'

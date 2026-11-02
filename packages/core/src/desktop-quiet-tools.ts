@@ -4,10 +4,11 @@ import { exactKeys, plainRecord, printable, requirePublicText } from './tool-arg
 
 // Provider actions avoid capture and injected input; foreground tools remain
 // a fallback for controls without a usable provider action.
+export interface QuietPressOptions { state?: 'checked' | 'unchecked' | 'selected' | 'expanded' | 'collapsed'; action?: 'scroll_up' | 'scroll_down' | 'scroll_left' | 'scroll_right' | 'scroll_into_view' }
 export interface QuietCourier {
   scan(app: string, find: string | undefined, signal?: AbortSignal, options?: DesktopReadOptions): Promise<string>
   set(app: string, snapshot: string, control: string, text: string, expected: string | undefined, context: AgentToolContext): Promise<string>
-  press(app: string, snapshot: string, control: string, context: AgentToolContext): Promise<string>
+  press(app: string, snapshot: string, control: string, context: AgentToolContext, options?: QuietPressOptions): Promise<string>
   text(app: string, snapshot: string | undefined, control: string | undefined, settleSeconds: number, signal?: AbortSignal): Promise<string>
   // A short goal carried out by a decision model picking each control; offered only when one is connected.
   do?(app: string, goal: string, text: string | undefined, send: boolean, maxSteps: number, context: AgentToolContext): Promise<string>
@@ -85,19 +86,24 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
     },
     {
       name: 'app_press',
-      description: `Request a control action directly from its app provider: a button, a list, tree or tab item, a toggle or a fold. The provider may activate its own window. Pressing send, submit or anything else that cannot be taken back is done only after the text was confirmed in its field and the person asked for it. The result includes the app read again after the press, with a new snapshot: act on that, without calling app_read again. ${QUIET_NOTE}`,
-      argsSchema: { type: 'object', additionalProperties: false, required: ['app', 'snapshot', 'control'], properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, snapshot: { type: 'string', minLength: 32, maxLength: 32 }, control: { type: 'string', pattern: '^c[0-9]+$' } } },
+      description: `Request a control action directly from its app provider: a button, a list, tree or tab item, a toggle or a fold. The provider may activate its own window. Pressing send, submit or anything else that cannot be taken back is done only after the text was confirmed in its field and the person asked for it. Use action scroll_up/down/left/right on a scrollable container or scroll_into_view on a supported item. Unsupported provider actions require an explicit handover; no physical fallback is automatic. For stateful controls, pass state to request an idempotent final state; only use states exposed by the observation. The result includes the app read again after the press, with a new snapshot: act on that, without calling app_read again. ${QUIET_NOTE}`,
+      argsSchema: { type: 'object', additionalProperties: false, required: ['app', 'snapshot', 'control'], properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, snapshot: { type: 'string', minLength: 32, maxLength: 32 }, control: { type: 'string', pattern: '^c[0-9]+$' }, state: { type: 'string', enum: ['checked', 'unchecked', 'selected', 'expanded', 'collapsed'] }, action: { type: 'string', enum: ['scroll_up', 'scroll_down', 'scroll_left', 'scroll_right', 'scroll_into_view'] } } },
       async run(args, context) {
         context.signal?.throwIfAborted()
-        if (!plainRecord(args) || !exactKeys(args, ['app', 'snapshot', 'control'])) return 'app_press takes app, snapshot and control.'
+        if (!plainRecord(args) || !exactKeys(args, ['app', 'snapshot', 'control', ...('state' in args ? ['state'] : []), ...('action' in args ? ['action'] : [])])) return 'app_press takes app, snapshot and control.'
         const app = appOf(args['app']), snapshot = snapshotOf(args['snapshot']), control = controlOf(args['control'])
         if (!app || !snapshot || !control) return 'app_press needs the snapshot and a control ID from app_read.'
-        return courier.press(app, snapshot, control, context)
+        const state = args['state']
+        if (state !== undefined && (typeof state !== 'string' || !['checked', 'unchecked', 'selected', 'expanded', 'collapsed'].includes(state))) return 'Use a supported desired state from app_read.'
+        const action = args['action']
+        if (action !== undefined && (state !== undefined || typeof action !== 'string' || !['scroll_up', 'scroll_down', 'scroll_left', 'scroll_right', 'scroll_into_view'].includes(action))) return 'Use one supported scroll action without state.'
+        const options = { ...(state ? { state } : {}), ...(action ? { action } : {}) } as QuietPressOptions
+        return courier.press(app, snapshot, control, context, ...(Object.keys(options).length ? [options] : []))
       },
     },
     {
       name: 'app_text',
-      description: `Read the text of an app, or of one control (a document or a text block) from app_read. settleSeconds waits until the text has stopped changing for that long, for an answer still being written, up to 180 seconds in all. Long text comes back as its last 12000 characters. ${QUIET_NOTE}`,
+      description: `Read the text of an app, or of one control (a document or a text block) from app_read. settleSeconds waits until the text has stopped changing for that long, for an answer still being written, up to 180 seconds in all. Observation may be partial: inspect truncated/headClipped and use a smaller container with its snapshot when needed. A stable answer is not proof that the requested number of turns was read. Long text is bounded. ${QUIET_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['app'],
         properties: { app: { type: 'string', minLength: 1, maxLength: APP_CAP }, snapshot: { type: 'string', minLength: 32, maxLength: 32 }, control: { type: 'string', pattern: '^[ct][0-9]+$' }, settleSeconds: { type: 'integer', minimum: 0, maximum: 120 } },

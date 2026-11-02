@@ -6,9 +6,6 @@ using System.Windows.Automation;
 
 internal sealed partial class QuietAccess
 {
-    // What the app shows and offers: editable fields and pressable items first, then the text on screen.
-    // A Chromium app exposes its tree only once a client has asked, and re-lays it out after a press, so a
-    // sparse or faltering first read is tried again a moment later rather than reported as the app.
     internal object Scan(DesktopTarget target, string find, string mode = null, string rootId = null, string previous = null)
     {
         ObservationTree.Skeleton(mode, rootId, previous);
@@ -41,6 +38,15 @@ internal sealed partial class QuietAccess
         var texts = new List<object>();
         var remaining = ReadLimit;
         var seen = new HashSet<string>();
+        var ids = new Dictionary<string, string>();
+        var order = new Dictionary<string, int>();
+        for (var index = 0; index < cached.Count; index++)
+        {
+            var element = cached[index];
+            var runtime = AutomationSession.RuntimeId(element);
+            ids[runtime] = Register(snapshot, element, seen, element.Cached.ControlType == ControlType.Text ? "t" : "c", index);
+            order[runtime] = index;
+        }
         var skippedControls = 0;
         var ordered = new List<AutomationElement>();
         foreach (AutomationElement element in interactive)
@@ -62,21 +68,25 @@ internal sealed partial class QuietAccess
             }
             if (wanted != null && !editable && (name.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0) && (value == null || value.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0)) continue;
             if (controls.Count >= MaxControls || remaining <= 0) { skippedControls++; continue; }
-            var id = Register(snapshot, element, seen, "c", controls.Count);
+            var runtime = AutomationSession.RuntimeId(element);
+            var id = ids[runtime];
             if (id == null) continue;
             var placeholder = value != null && value.Trim().Length > 0 && Flat(value) == Flat(info.Name);
-            var meta = metadata[AutomationSession.RuntimeId(element)];
+            var meta = metadata[runtime];
             controls.Add(new
             {
                 depth = meta.Depth, childCount = meta.ChildCount, subtreeTruncated = meta.Truncated,
+                parent = meta.Parent == null ? null : ids[AutomationSession.RuntimeId(meta.Parent.Element)], order = order[runtime],
                 id = id, type = info.ControlType.ProgrammaticName.Replace("ControlType.", ""), name = name,
                 value = value, placeholder = placeholder ? name : null,
                 can = new
                 {
                     set = editable, press = Has(element, AutomationElement.IsInvokePatternAvailableProperty) || Has(element, AutomationElement.IsTogglePatternAvailableProperty)
                         || Has(element, AutomationElement.IsSelectionItemPatternAvailableProperty) || Has(element, AutomationElement.IsExpandCollapsePatternAvailableProperty),
+                    scroll = Has(element, AutomationElement.IsScrollPatternAvailableProperty), scrollIntoView = Has(element, AutomationElement.IsScrollItemPatternAvailableProperty),
                     text = Has(element, AutomationElement.IsTextPatternAvailableProperty),
                 },
+                state = ReadState(element, true),
                 enabled = info.IsEnabled, offscreen = info.IsOffscreen, focused = info.HasKeyboardFocus, secret = info.IsPassword,
             });
             remaining = Math.Max(0, remaining - name.Length - (value == null ? 0 : value.Length));
@@ -94,10 +104,12 @@ internal sealed partial class QuietAccess
         foreach (var element in lines.Skip(skippedTexts))
         {
             if (remaining <= 0) { skippedTexts++; continue; }
-            var id = Register(snapshot, element, seen, "t", texts.Count);
+            var runtime = AutomationSession.RuntimeId(element);
+            var id = ids[runtime];
             if (id == null) continue;
             var text = Clip(element.Cached.Name, Math.Min(NameLimit, remaining));
-            texts.Add(new { id = id, text = text });
+            var meta = metadata[runtime];
+            texts.Add(new { id = id, text = text, parent = meta.Parent == null ? null : ids[AutomationSession.RuntimeId(meta.Parent.Element)], order = order[runtime] });
             remaining = Math.Max(0, remaining - text.Length);
         }
         Guard.Same(target);

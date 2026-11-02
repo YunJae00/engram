@@ -12,6 +12,10 @@ internal static class QuietPatterns
         void _VtblGap1_55();
         [PreserveSig] int GetAutoSetFocus(out int enabled);
         [PreserveSig] int SetAutoSetFocus(int enabled);
+        [PreserveSig] int GetConnectionTimeout(out uint milliseconds);
+        [PreserveSig] int SetConnectionTimeout(uint milliseconds);
+        [PreserveSig] int GetTransactionTimeout(out uint milliseconds);
+        [PreserveSig] int SetTransactionTimeout(uint milliseconds);
     }
     [ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface Element
@@ -32,6 +36,19 @@ internal static class QuietPatterns
     [ComImport, Guid("619be086-1f4e-4ee4-bafa-210128738730"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface Fold { [PreserveSig] int Expand(); [PreserveSig] int Collapse(); }
 
+    [ComImport, Guid("88f4d42a-e881-459d-a77c-73bbbb7e02dc"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface ScrollProvider { [PreserveSig] int Scroll(int horizontal, int vertical); }
+    [ComImport, Guid("b488300f-d015-4f19-9c29-bb595e3645ef"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface ScrollItem { [PreserveSig] int ScrollIntoView(); }
+
+    internal static void Scroll(DesktopTarget target, AutomationElement element, string action, Action check)
+    {
+        if (action == "scroll_into_view") Run(target, element, ScrollItemPattern.Pattern.Id, pattern => ((ScrollItem)pattern).ScrollIntoView(), check);
+        else Run(target, element, ScrollPattern.Pattern.Id, pattern => ((ScrollProvider)pattern).Scroll(
+            (int)(action == "scroll_left" ? ScrollAmount.SmallDecrement : action == "scroll_right" ? ScrollAmount.SmallIncrement : ScrollAmount.NoAmount),
+            (int)(action == "scroll_up" ? ScrollAmount.SmallDecrement : action == "scroll_down" ? ScrollAmount.SmallIncrement : ScrollAmount.NoAmount)), check);
+    }
+
     private static void Release(object value)
     { if (value != null && Marshal.IsComObject(value)) Marshal.FinalReleaseComObject(value); }
 
@@ -45,6 +62,8 @@ internal static class QuietPatterns
             client = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("e22ad333-b25f-460c-83d0-0581107395c9"), true));
             var options = (Client2)client;
             Marshal.ThrowExceptionForHR(options.SetAutoSetFocus(0));
+            Marshal.ThrowExceptionForHR(options.SetConnectionTimeout(2000));
+            Marshal.ThrowExceptionForHR(options.SetTransactionTimeout(20000));
             int enabled;
             Marshal.ThrowExceptionForHR(options.GetAutoSetFocus(out enabled));
             if (enabled != 0) throw new InvalidOperationException("Background provider focus could not be disabled");
@@ -84,7 +103,7 @@ internal static class QuietPatterns
 
     private static bool PressNativeButton(DesktopTarget target, AutomationElement element, Action check)
     {
-        if (element.Current.ControlType != ControlType.Button) return false;
+        if (element.Current.ControlType != ControlType.Button && element.Current.ControlType != ControlType.CheckBox) return false;
         var window = new IntPtr(unchecked((long)(uint)element.Current.NativeWindowHandle));
         if (window == IntPtr.Zero) return false;
         var name = new StringBuilder(256);
@@ -105,7 +124,7 @@ internal static class QuietPatterns
 
     internal static void Press(DesktopTarget target, AutomationElement element, string how, Action check)
     {
-        if (how == "invoke" && PressNativeButton(target, element, check)) return;
+        if ((how == "invoke" || how == "toggle") && PressNativeButton(target, element, check)) return;
         if (how == "invoke") Run(target, element, InvokePattern.Pattern.Id, pattern => ((Invoke)pattern).Press(), check);
         else if (how == "toggle") Run(target, element, TogglePattern.Pattern.Id, pattern => ((Toggle)pattern).Press(), check);
         else if (how == "select") Run(target, element, SelectionItemPattern.Pattern.Id, pattern => ((Selection)pattern).Select(), check);

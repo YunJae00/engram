@@ -130,6 +130,7 @@ final class DesktopHost {
             return ["text": String(value.suffix(20000)), "chars": value.count, "headClipped": value.count > 20000]
         }
         if method == "quietSet" || method == "quietPress" {
+            guard request["state"] == nil && request["action"] == nil else { throw DesktopFailure("Desired-state provider actions are not supported by this platform; no action was sent") }
             let before = monitor.state()
             let inputVersion = monitor.inputVersion(window.pid)
             guard !before.escaped, !(window.foreground && before.idle < 4000) else { throw DesktopFailure("The person is using this app") }

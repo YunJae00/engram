@@ -38,9 +38,13 @@ internal sealed class ControlFixture : Form
     private readonly Button Counter = new Button { AccessibleName = "Count click", Text = "Count click", Bounds = new Rectangle(480, 18, 130, 32) };
     private readonly FixtureScroll Scroller = new FixtureScroll { Bounds = new Rectangle(18, 100, 592, 280) };
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
+    private readonly CheckBox EnabledOption = new CheckBox { AccessibleName = "Fixture option", Text = "Fixture option", Bounds = new Rectangle(110, 390, 160, 24) };
+    private readonly ListBox Items = new ListBox { AccessibleName = "Fixture list", Bounds = new Rectangle(300, 390, 260, 24) };
+    private bool DelayClick;
     private int Clicks;
     private Form Away;
     private Panel Dense;
+    private Panel History;
     private TextBox Deep;
     private Panel Workflow;
     private TextBox Draft;
@@ -54,14 +58,15 @@ internal sealed class ControlFixture : Form
         StartPosition = FormStartPosition.Manual;
         Location = new Point(80, 80);
         ClientSize = new Size(630, 420);
-        Counter.Click += delegate { Clicks++; };
+        for (var i = 0; i < 40; i++) Items.Items.Add("Fixture item " + i);
+        Counter.Click += delegate { Clicks++; if (DelayClick) { DelayClick = false; Send(new { type = "ownedActionStarted" }); Thread.Sleep(2000); } };
         Entry.TextChanged += delegate
         {
             if (!RevealPasswordOnInput || Entry.TextLength == 0) return;
             RevealPasswordOnInput = false;
             Secret.Visible = true;
         };
-        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker });
+        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker, EnabledOption, Items });
         Shown += delegate
         {
             BeginInvoke((Action)delegate
@@ -111,6 +116,8 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "delayNextClick") { DelayClick = true; }
+            else if (method == "blockOwnedUi") { Send(new { id = id, result = new { blocking = true } }); Thread.Sleep(1000); return; }
             else if (method == "changeEntry") { Entry.Text = "Changed by application"; Entry.Focus(); }
             else if (method == "passwordDuringTyping")
             {
@@ -158,6 +165,13 @@ internal sealed class ControlFixture : Form
                 Dense.Controls.Add(new Button { AccessibleName = "Continue account", Text = "Continue account", Bounds = new Rectangle(8, 60, 150, 32) });
                 Controls.Add(Dense); Dense.BringToFront();
             }
+            else if (method == "history")
+            {
+                History = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "History region" };
+                for (var row = 0; row < 600; row++) History.Controls.Add(new Label { Text = "Turn " + row, TabIndex = row, Bounds = new Rectangle(8, row * 20, 200, 18) });
+                Controls.Add(History); History.BringToFront();
+            }
+            else if (method == "clearHistory") { History.Dispose(); History = null; }
             else if (method == "dense")
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };
@@ -189,11 +203,12 @@ internal sealed class ControlFixture : Form
             else if (method == "sparse") { if (Dense != null) { Dense.Dispose(); Dense = null; Deep = null; } }
             else if (method == "password") { Secret.Visible = true; Secret.Focus(); }
             else if (method == "hidePassword") { Secret.Visible = false; Entry.Focus(); }
-            else if (method == "foreignInput" || method == "foreignEscape")
+            else if (method == "foreignInput" || method == "foreignEscape" || method == "awayEscape")
             {
-                if (GetForegroundWindow() != Handle) throw new InvalidOperationException("Only the owned foreground fixture can receive this input");
+                var inputWindow = method == "awayEscape" && Away != null ? Away.Handle : Handle;
+                if (GetForegroundWindow() != inputWindow) throw new InvalidOperationException("Only the owned foreground fixture can receive this input");
                 var marker = new UIntPtr(0x454e4752414dUL);
-                ushort key = method == "foreignEscape" ? (ushort)27 : (ushort)0x87;
+                ushort key = method == "foreignInput" ? (ushort)0x87 : (ushort)27;
                 var inputs = new[] {
                     new Input { Type = 1, Data = new Data { Key = new KeyData { Key = key, Extra = marker } } },
                     new Input { Type = 1, Data = new Data { Key = new KeyData { Key = key, Flags = 2, Extra = marker } } }

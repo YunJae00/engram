@@ -181,17 +181,17 @@ describe('desktop image consent and capture validation', () => {
 })
 
 describe('the quiet lane keeps the apps it has read', () => {
-  it('turns the hands tools away from an app whose controls the quiet lane already exposed', async () => {
+  it('honors explicit handover even when some app controls are readable', async () => {
     fake.covered = true
     const tools = desktopAgentTools('bot-one')
     const context = { task: 'Inspect the fixture' }
     await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Fixture' }, context)
     await tools.find((tool) => tool.name === 'look_desktop')!.runRich!({ app: 'Fixture' }, context)
-    expect(JSON.parse(await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context))).toMatchObject({ error: 'policy_denied', retry: 'safe' })
-    expect(fake.read).toHaveBeenCalledTimes(3)
-    expect(fake.act).not.toHaveBeenCalled()
-    await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
+    await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context)
     expect(fake.read).toHaveBeenCalledTimes(4)
+    expect(fake.act).toHaveBeenCalledOnce()
+    await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
+    expect(fake.read).toHaveBeenCalledTimes(5)
   })
 })
 

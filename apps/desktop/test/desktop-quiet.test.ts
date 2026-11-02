@@ -27,7 +27,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.resetAllMocks(); forgetQuietCoverage()
 afterEach(() => { vi.useRealTimers() })
 
 describe('quiet app access', () => {
-  it('only allows foreground fallback after a read or an unsupported provider action', async () => {
+  it('keeps readable app coverage when one provider action is unsupported', async () => {
     const { request } = binding({ foreground: false, idleMs: 9000 })
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('unknown')
     await quietScan('bot-one', 'Claude', undefined)
@@ -41,7 +41,7 @@ describe('quiet app access', () => {
       return {}
     })
     await expect(quietSet('bot-one', 'Claude', 'snapshot', 'c1', 'draft', undefined)).rejects.toThrow('does not take text')
-    expect(quietVerdict('bot-one', 'Claude').verdict).toBe('bare')
+    expect(quietVerdict('bot-one', 'Claude').verdict).toBe('covered')
     await vi.advanceTimersByTimeAsync(15 * 60_000 + 1)
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('unknown')
   })
@@ -148,4 +148,19 @@ describe('quiet app access', () => {
     expect(result).toMatchObject({ text: '2', settled: true })
     expect(scans).toBeGreaterThanOrEqual(3)
   })
+})
+
+it('never labels an unknown text tail as settled', async () => {
+  const { request } = binding({ foreground: false, idleMs: 9000 })
+  request.mockResolvedValue({ text: 'Only the old turns', chars: 18, truncated: true, headClipped: false })
+  expect(await quietText('bot-one', 'Claude', undefined, undefined, 0)).toMatchObject({ settled: false, truncated: true })
+  expect(await quietText('bot-one', 'Claude', undefined, undefined, 4000)).toMatchObject({ settled: false, truncated: true })
+})
+
+it('can settle a known text tail while preserving the omitted-history flag', async () => {
+  const { request } = binding({ foreground: false, idleMs: 9000 })
+  request.mockImplementation(async method => method === 'quietScan' ? { controls: [], texts: [] } : { text: 'Latest reply', chars: 12, truncated: false, headClipped: true })
+  const reading = quietText('bot-one', 'Claude', undefined, undefined, 1000)
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(await reading).toMatchObject({ settled: true, headClipped: true, truncated: false })
 })

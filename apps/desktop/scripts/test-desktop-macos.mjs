@@ -43,6 +43,10 @@ try {
  for(let i=0;i<20;i++){const next=await request('quietScan');await request('quietRead',{snapshot:recent.snapshot});recent=next}
  const fresh=await request('quietScan');
  const field=fresh.controls.find(n=>n.name==='Fixture message');assert(field?.can.set);
+ await assert.rejects(request('quietSet',{snapshot:fresh.snapshot,control:field.id,text:'expired owned edit',expected:'owned fixture initial',expiresAt:Date.now()-1}),/before execution; it was not run/);
+ const unchanged=await request('quietRead',{snapshot:fresh.snapshot,control:field.id});assert.equal(unchanged.text,'owned fixture initial');
+ const withdrawnId=id+1;const withdrawn=request('quietScan',{expiresAt:Date.now()-1});const rejected=assert.rejects(withdrawn,/it was not run/);
+ await request('cancel',{target:withdrawnId});await rejected;await request('inputState');
  const set=await request('quietSet',{snapshot:fresh.snapshot,control:field.id,text:'changed by owned test',expected:'owned fixture initial'});assert(set.exact);
  const reread=await request('quietScan');
  const filled=reread.controls.find(n=>n.name==='Fixture message');

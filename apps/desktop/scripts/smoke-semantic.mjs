@@ -33,7 +33,10 @@ async function main() {
     const metadata = JSON.parse(await readFile(join(root, 'vault/workspace/.engram/vectors.json'), 'utf8'))
     assert.equal(metadata.dim, 1024)
     assert.equal(metadata.model, 'Xenova/bge-m3')
-    const runtime = await app.evaluate(({ app }) => ({ executable: process.execPath, script: `${app.getAppPath()}/out/main/codex-worker.js` }))
+    const runtime = await app.evaluate(({ app }) => ({ executable: process.execPath, resources: process.resourcesPath, script: `${app.getAppPath()}/out/main/codex-worker.js` }))
+    const helper = join(runtime.resources, 'bin', 'desktop', process.platform === 'darwin' ? 'EngramDesktop' : 'EngramDesktop.exe')
+    const native = await new Promise((resolve, reject) => execFile(helper, ['--self-test'], { timeout: 30000 }, (error, stdout) => error ? reject(error) : resolve(stdout)))
+    assert.match(String(native), /passed/i)
     const reply = await new Promise((resolve, reject) => {
       const child = execFile(runtime.executable, [runtime.script], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 15000 }, (error, stdout) => {
         if (error) reject(error)
@@ -42,7 +45,7 @@ async function main() {
       child.stdin.end(JSON.stringify({ options: { codexPathOverride: join(root, 'missing-runtime') }, thread: { workingDirectory: root, skipGitRepoCheck: true }, input: 'Unused fixture input' }) + '\n')
     })
     assert.match(reply.error, /ENOENT/)
-    console.log(JSON.stringify({ root, status, dimensions: metadata.dim }))
+    console.log(JSON.stringify({ root, status, dimensions: metadata.dim, packagedNativeSelfTest: 'passed' }))
   } finally { await app.close() }
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

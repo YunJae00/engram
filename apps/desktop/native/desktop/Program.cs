@@ -11,6 +11,9 @@ internal sealed class DesktopRequest
     internal Dictionary<string, object> Value;
     internal long Intervention;
     internal long StopEpoch;
+    internal long Expires;
+    internal int Cancelled;
+    internal bool Valid { get { return Volatile.Read(ref Cancelled) == 0 && DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond < Expires; } }
 }
 
 internal static class Program
@@ -19,6 +22,7 @@ internal static class Program
     private static readonly object OutputLock = new object();
     private static long StopEpoch;
     private static int Closed;
+    private static readonly ConcurrentDictionary<int, DesktopRequest> Pending = new ConcurrentDictionary<int, DesktopRequest>();
 
     internal static string Text(Dictionary<string, object> request, string key, int limit)
     {
@@ -54,10 +58,9 @@ internal static class Program
     // Provider-only access: nothing here takes a lease, the foreground or the person's input.
     private static object Quiet(string method, Dictionary<string, object> request, DesktopTarget target, QuietAccess quiet, DesktopRequest queued, InputMonitor monitor)
     {
-        // Esc gives back the mouse and keyboard taken by the hands tools; these
-        // calls take neither, so only Stop or a closed helper cancels them.
+        // Background provider calls are cancelled by Stop, not unrelated keyboard input.
         Action check = delegate {
-            if (Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch))
+            if (!queued.Valid || Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch))
                 throw new InvalidOperationException("The desktop request was cancelled");
         };
         check();
@@ -66,7 +69,7 @@ internal static class Program
         if (method == "quietRead") return quiet.Read(target, Optional(request, "snapshot", 100), Optional(request, "control", 32));
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         if (method == "quietSet") return quiet.Set(target, Text(request, "snapshot", 100), Text(request, "control", 32), Text(request, "text", 2000), Optional(request, "expected", 2000), check);
-        if (method == "quietPress") return quiet.Press(target, Text(request, "snapshot", 100), Text(request, "control", 32), check);
+        if (method == "quietPress") return quiet.Press(target, Text(request, "snapshot", 100), Text(request, "control", 32), check, Optional(request, "state", 16), Optional(request, "action", 24));
         throw new ArgumentException("Unsupported desktop method");
     }
 
@@ -82,6 +85,7 @@ internal static class Program
             var request = queued.Value;
             id = Number(request, "id", 1, int.MaxValue);
             method = Text(request, "method", 32);
+            if (!queued.Valid) throw new InvalidOperationException("The request expired or was cancelled before execution; it was not run");
             mutation = method == "activateWindow" || method == "documentEdit" || method == "documentCompose" || method == "openApp" || method == "prepare" || method == "bind" || method == "work" || method == "idle" || method == "click" || method == "type" || method == "replace" || method == "scroll" || method == "key";
             if (Volatile.Read(ref Closed) != 0 || (mutation && queued.StopEpoch != Interlocked.Read(ref StopEpoch)))
                 throw new InvalidOperationException("The desktop request was cancelled");
@@ -90,7 +94,7 @@ internal static class Program
             if (method == "openApp")
             {
                 Send(new { id = id, result = DesktopApps.Open(Text(request, "app", 64), delegate
-                { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch) && !monitor.Escaped; }) });
+                { return queued.Valid && Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); }) });
                 return;
             }
             if (method == "inputState") { Send(new { id = id, result = new { idleMs = monitor.IdleMilliseconds, escaped = monitor.Escaped, working = monitor.Working, intervention = monitor.Intervention.ToString(CultureInfo.InvariantCulture) } }); return; }
@@ -101,7 +105,7 @@ internal static class Program
             if (method == "applicationFrameHide") { frame.Hide(); Send(new { id = id, result = new { hidden = true } }); return; }
             if (method.StartsWith("quiet", StringComparison.Ordinal))
             {
-                if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
+                if (queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
                 // A minimized window is shown again without being activated: the person's focus stays where it is.
                 if (method != "quietState" && target.Minimized)
@@ -113,12 +117,12 @@ internal static class Program
                 Send(new { id = id, result = Quiet(method, request, target, quiet, queued, monitor) }); return;
             }
             if (method == "applicationFrame") {
-                if (monitor.Escaped || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
+                if (queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Application work was cancelled");
                 Send(new { id = id, result = new { window = frame.Show(target) } }); return;
             }
             if (method == "activateWindow")
             {
-                if (monitor.Escaped) throw new InvalidOperationException("Escape pressed");
+                if (queued.Intervention != monitor.Intervention) throw new InvalidOperationException("User input changed before activation");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
                 if (target.Minimized) DesktopNative.ShowWindowAsync(target.Handle, 9);
                 if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
@@ -137,7 +141,7 @@ internal static class Program
                     throw new InvalidOperationException(monitor.Escaped ? "Escape pressed" : "User input changed during foreground delegation");
                 if (queued.Intervention != monitor.Intervention) throw new InvalidOperationException("User input changed after approval. Request new approval");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
-                Func<bool> permitted = delegate { return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); };
+                Func<bool> permitted = delegate { return queued.Valid && Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch); };
                 if (method == "prepare")
                 {
                     monitor.Prepare(target, Text(request, "grant", 64), queued.Intervention, permitted, Overlay(request));
@@ -171,7 +175,7 @@ internal static class Program
                 Action check = delegate
                 {
                     lease.Require(state);
-                    if (Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Document access was cancelled");
+                    if (!queued.Valid || Volatile.Read(ref Closed) != 0 || queued.StopEpoch != Interlocked.Read(ref StopEpoch)) throw new InvalidOperationException("Document access was cancelled");
                     guard.Resolve(window, pid);
                 };
                 var result = documents.Run(document => method == "documentRead" ? document.Read(target, request, check) : method == "documentCompose" ? document.Compose(target, request, check) : document.Edit(target, request, check));
@@ -195,7 +199,7 @@ internal static class Program
                 automation.RequireCapture(observed, target);
                 var captured = DesktopCapture.Read(target, delegate
                 {
-                    return Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch)
+                    return queued.Valid && Volatile.Read(ref Closed) == 0 && queued.StopEpoch == Interlocked.Read(ref StopEpoch)
                         && (state == null || lease.Valid(state));
                 });
                 automation.RequireCapture(observed, target);
@@ -228,6 +232,8 @@ internal static class Program
         }
         finally
         {
+            DesktopRequest finished;
+            Pending.TryRemove(id, out finished);
             monitor.PointerAction = false;
             if (mutation && method != "bind" && method != "work" && method != "idle") automation.Invalidate();
             DesktopProfile.End(id, method);
@@ -314,6 +320,13 @@ internal static class Program
                             var reader = new JavaScriptSerializer { MaxJsonLength = 65536, RecursionLimit = 16 };
                             var request = reader.Deserialize<Dictionary<string, object>>(input);
                             id = Number(request, "id", 1, int.MaxValue);
+                            if (Text(request, "method", 32) == "cancel")
+                            {
+                                DesktopRequest pending;
+                                if (Pending.TryGetValue(Number(request, "target", 1, int.MaxValue), out pending)) Interlocked.Exchange(ref pending.Cancelled, 1);
+                                Send(new { id = id, result = new { cancelled = true } });
+                                continue;
+                            }
                             if (Text(request, "method", 32) == "stop")
                             {
                                 Interlocked.Increment(ref StopEpoch);
@@ -321,8 +334,17 @@ internal static class Program
                                 Send(new { id = id, result = new { stopped = true } });
                                 continue;
                             }
-                            if (!requests.TryAdd(new DesktopRequest { Value = request, Intervention = monitor.Intervention, StopEpoch = Interlocked.Read(ref StopEpoch) }))
+                            var expires = DateTime.UtcNow.AddSeconds(30).Ticks / TimeSpan.TicksPerMillisecond;
+                            object deadline;
+                            if (request.TryGetValue("expiresAt", out deadline))
+                                expires = Math.Min(expires, checked(Convert.ToInt64(deadline) + 62135596800000L));
+                            var queued = new DesktopRequest { Value = request, Intervention = monitor.Intervention, StopEpoch = Interlocked.Read(ref StopEpoch), Expires = expires };
+                            if (!Pending.TryAdd(id, queued)) throw new InvalidOperationException("Duplicate desktop request id");
+                            if (!requests.TryAdd(queued)) {
+                                DesktopRequest removed;
+                                Pending.TryRemove(id, out removed);
                                 throw new InvalidOperationException("Desktop request queue is full");
+                            }
                         }
                         catch (Exception error) { Error(id, error); }
                     }

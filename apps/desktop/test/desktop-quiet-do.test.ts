@@ -132,3 +132,17 @@ it('drills a truncated region without dispatching input and offers screenshot fa
   fake.scan.mockResolvedValue(sparse)
   expect((await quietDo(request, vi.fn().mockImplementation(decided('SCREEN')))).status).toBe('needs-screen')
 })
+
+it('offers desired states and scoped scrolling instead of a blind checkbox toggle', async () => {
+  const checkbox = control('c1', 'Fixture option', { state: { checked: 'off' } })
+  const item = control('c2', 'Offscreen item', { offscreen: true, can: { set: false, press: true, text: false, scrollIntoView: true } })
+  const observation = screen([checkbox, item], [])
+  const { criteria } = buildOptions(observation, false)
+  expect(criteria).toHaveProperty('checked c1')
+  expect(criteria).not.toHaveProperty('press c1')
+  expect(criteria).toHaveProperty('scroll_into_view c2')
+  fake.scan.mockResolvedValue(observation)
+  fake.press.mockResolvedValue({ pressed: 'none', satisfied: true, control: 'c1' })
+  await quietDo({ ...request, goal: 'Enable the option' }, vi.fn().mockImplementationOnce(decided('checked c1')).mockImplementationOnce(decided('done')))
+  expect(fake.press).toHaveBeenCalledWith('bot-one', 'Claude', observation.snapshot, 'c1', expect.any(AbortSignal), { state: 'checked' })
+})

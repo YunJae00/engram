@@ -66,6 +66,7 @@ internal sealed partial class QuietAccess : IDisposable
     private AutomationElement Validate(DesktopTarget target)
     {
         Guard.Same(target);
+        DesktopNative.RequireResponsive(target);
         var root = AutomationElement.FromHandle(target.Handle);
         AutomationSession.SafeAncestors(root, AutomationSession.RuntimeId(root));
         if (ControlPolicy.IsSensitive(target.Title) || Passwords.HasVisiblePassword(target.Handle, root, target.Pid, target.Started))
@@ -108,7 +109,7 @@ internal sealed partial class QuietAccess : IDisposable
         foreach (var property in new[] { AutomationElement.NameProperty, AutomationElement.ControlTypeProperty, AutomationElement.IsEnabledProperty, AutomationElement.IsOffscreenProperty,
             AutomationElement.IsPasswordProperty, AutomationElement.HasKeyboardFocusProperty, AutomationElement.IsValuePatternAvailableProperty, AutomationElement.IsInvokePatternAvailableProperty,
             AutomationElement.IsTogglePatternAvailableProperty, AutomationElement.IsSelectionItemPatternAvailableProperty, AutomationElement.IsExpandCollapsePatternAvailableProperty,
-            AutomationElement.IsTextPatternAvailableProperty, AutomationElement.RuntimeIdProperty, AutomationElement.IsKeyboardFocusableProperty, ValuePattern.IsReadOnlyProperty }) cache.Add(property);
+            AutomationElement.IsScrollPatternAvailableProperty, AutomationElement.IsScrollItemPatternAvailableProperty, AutomationElement.IsTextPatternAvailableProperty, AutomationElement.RuntimeIdProperty, AutomationElement.IsKeyboardFocusableProperty, ValuePattern.IsReadOnlyProperty }) cache.Add(property);
         cache.Add(ValuePattern.Pattern);
         return cache;
     }
@@ -216,84 +217,4 @@ internal sealed partial class QuietAccess : IDisposable
             foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
     }
 
-    // Press through the provider: a button, a list or tab item, a toggle, a fold.
-    internal object Press(DesktopTarget target, string snapshot, string control, Action check)
-    {
-        RequireOperable(target);
-        Validate(target);
-        var element = Control(target, snapshot, control).Element;
-        if (!element.Current.IsEnabled) throw new InvalidOperationException("This control is disabled right now");
-        check();
-        RequireIdle(target);
-        var foreground = GetForegroundWindow();
-        object pattern;
-        string how;
-        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) { how = "invoke"; }
-        else if (element.TryGetCurrentPattern(TogglePattern.Pattern, out pattern)) { how = "toggle"; }
-        else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) { how = "select"; }
-        else if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out pattern))
-        {
-            var fold = (ExpandCollapsePattern)pattern;
-            how = fold.Current.ExpandCollapseState == ExpandCollapseState.Expanded ? "collapse" : "expand";
-        }
-        else throw new InvalidOperationException("This control cannot be pressed without the mouse; use desktop_action for it");
-        QuietPatterns.Press(target, element, how, delegate { check(); RequireIdle(target); Validate(target); Control(target, snapshot, control); });
-        Guard.Same(target);
-        return new { pressed = how, control = control, foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
-    }
-
-    // The text of one control, or of the whole window: the tail when there is too much.
-    // Text, too, is read again when a node vanishes mid-walk: a page re-rendering is not an unreadable page.
-    internal object Read(DesktopTarget target, string snapshot, string control)
-    {
-        for (var attempt = 0; ; attempt++)
-        {
-            try { return ReadOnce(target, snapshot, control); }
-            catch (ElementNotAvailableException) { if (attempt == 1) throw; }
-            catch (System.Runtime.InteropServices.COMException) { if (attempt == 1) throw; }
-            System.Threading.Thread.Sleep(300);
-        }
-    }
-    private object ReadOnce(DesktopTarget target, string snapshot, string control)
-    {
-        if (target.Minimized) throw new InvalidOperationException("Restore this window before reading it");
-        Validate(target);
-        string text;
-        if (control != null)
-        {
-            var element = Control(target, snapshot, control).Element;
-            object pattern;
-            if (element.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
-            {
-                var range = ((TextPattern)pattern).DocumentRange;
-                range.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
-                range.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -(ReadLimit + 1));
-                text = range.GetText(ReadLimit + 1);
-            }
-            else if (element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) text = ((ValuePattern)pattern).Current.Value;
-            else text = element.Current.Name;
-        }
-        else
-        {
-            var root = AutomationElement.FromHandle(target.Handle);
-            var builder = new StringBuilder();
-            using (Cache().Activate())
-            {
-                foreach (AutomationElement element in root.FindAll(TreeScope.Descendants, TypeCondition(Textual)))
-                {
-                    string name;
-                    try { name = element.Cached.Name; } catch (ElementNotAvailableException) { continue; }
-                    if (string.IsNullOrWhiteSpace(name)) continue;
-                    builder.Append(name.Trim()).Append('\n');
-                    if (builder.Length > ReadLimit + 1) builder.Remove(0, builder.Length - ReadLimit - 1);
-                }
-            }
-            text = builder.ToString();
-        }
-        text = (text ?? "").Replace("\r\n", "\n").Trim();
-        var clipped = text.Length > ReadLimit;
-        if (clipped) text = text.Substring(text.Length - ReadLimit);
-        Guard.Same(target);
-        return new { text = text, chars = text.Length, headClipped = clipped };
-    }
 }

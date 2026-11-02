@@ -18,6 +18,9 @@ const UNSCOPED = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'l
 interface PendingRequest {
   method: DesktopMethod
   generation: number
+  sent?: boolean
+  preview?: boolean
+  cancel?(): void
   resolve(value: unknown): void
   reject(error: Error): void
   timer?: ReturnType<typeof setTimeout>
@@ -38,8 +41,10 @@ export class DesktopHost {
   private currentNative?: string
   private revoked = new Map<string, string>()
   private pending = new Map<number, PendingRequest>()
+  private withdrawnReads = new Map<number, ReturnType<typeof setTimeout>>()
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
+  get busy(): boolean { return [...this.pending.values()].some(request => !request.preview) }
   get closed(): boolean { return this.ended }
   static available(): boolean { return (process.platform === 'win32' || process.platform === 'darwin') && existsSync(DesktopHost.path()) }
   private static path(): string {
@@ -95,6 +100,8 @@ export class DesktopHost {
           return
         }
         if (!Number.isSafeInteger(message.id)) return
+        clearTimeout(this.withdrawnReads.get(message.id!))
+        this.withdrawnReads.delete(message.id!)
         const pending = this.pending.get(message.id!)
         if (!pending) return
         clearTimeout(pending.timer)
@@ -146,7 +153,17 @@ export class DesktopHost {
     }
   }
 
-  async request<T>(method: DesktopMethod, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  private cancelNative(id: number, method?: DesktopMethod): void {
+    if (method && ['observe', 'quietScan', 'quietRead', 'inspectWindow', 'listWindows', 'listApps'].includes(method) && !this.withdrawnReads.has(id)) {
+      this.withdrawnReads.set(id, setTimeout(() => {
+        this.close(new Error('The app provider did not return after cancellation. Its connection was retired; no action will be replayed. Read the app again to reconnect and check any uncertain actions.'))
+      }, 30000))
+    }
+    try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'cancel', target: id }) + '\n', error => { if (error) this.close(error) }) }
+    catch (error) { this.close(error instanceof Error ? error : new Error('The desktop connection failed.')) }
+  }
+
+  async request<T>(method: DesktopMethod, args: Record<string, unknown>, signal?: AbortSignal, options?: { preview?: boolean }): Promise<T> {
     signal?.throwIfAborted()
     if (!METHODS.has(method)) throw new Error('Unsupported computer action.')
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid computer action.')
@@ -155,20 +172,28 @@ export class DesktopHost {
     if (this.ended) throw new Error('Computer access ended. Reconnect the window to continue.')
     if (this.pending.size >= 32) throw new Error('Too many desktop requests are in flight.')
     if (method === 'bind' && (this.currentNative || [...this.pending.values()].some((request) => request.method === 'bind'))) throw new Error('A native control grant is already active or pending.')
+    if (!options?.preview) for (const request of this.pending.values()) if (request.preview) request.cancel?.()
     const generation = this.generation
     const id = ++this.serial
     let line = JSON.stringify({ ...args, id, method }) + '\n'
     if (line.length > 65536) throw new Error('The desktop request is too large.')
     let cancel: () => void = () => {}
     const result = new Promise<T>((resolve, reject) => {
-      const pending: PendingRequest = { method, generation, resolve: (value) => resolve(value as T), reject }
+      const pending: PendingRequest = { method, generation, ...(options?.preview ? { preview: true } : {}), resolve: (value) => resolve(value as T), reject }
       this.pending.set(id, pending)
-      cancel = () => {
+      const withdraw = (preempt = false) => {
         if (this.pending.get(id) !== pending) return
         this.pending.delete(id)
         clearTimeout(pending.timer)
-        reject(signal?.reason ?? new Error('Computer action was cancelled. It may have partly happened; read the app before retrying.'))
+        if (pending.sent) this.cancelNative(id, pending.preview ? undefined : method)
+        const reason = signal?.reason instanceof Error ? signal.reason.message : 'Computer action was cancelled.'
+        const error = new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`)
+        if (preempt) error.name = 'PreviewPreempted'
+        else if (signal?.reason instanceof Error) error.name = signal.reason.name
+        reject(error)
       }
+      cancel = () => withdraw()
+      pending.cancel = () => withdraw(true)
       signal?.addEventListener('abort', cancel, { once: true })
       let ready: Promise<void>
       try { ready = this.start() }
@@ -199,6 +224,7 @@ export class DesktopHost {
         pending.timer = setTimeout(() => {
           if (this.pending.get(id) !== pending) return
           this.pending.delete(id)
+          this.cancelNative(id, pending.preview ? undefined : method)
           // A late bind must not leave an unclaimed input grant in the helper.
           if (method === 'bind') {
             try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'stop' }) + '\n', error => { if (error) this.close(error) }) }
@@ -207,6 +233,8 @@ export class DesktopHost {
           reject(new DOMException('This app stopped responding to this request within 30 seconds. It may have partly happened; read the app before retrying.', 'TimeoutError'))
         }, 30000)
         try {
+          pending.sent = true
+          line = JSON.stringify({ ...JSON.parse(line), expiresAt: Date.now() + 30000 }) + '\n'
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }
       }, (error: unknown) => {
@@ -240,6 +268,8 @@ export class DesktopHost {
     }
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     this.pending.clear()
+    for (const timer of this.withdrawnReads.values()) clearTimeout(timer)
+    this.withdrawnReads.clear()
     this.onRevoked(error.message)
   }
 }

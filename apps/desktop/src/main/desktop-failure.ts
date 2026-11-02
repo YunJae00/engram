@@ -22,10 +22,13 @@ const STOP = /\besc\b|\bstop(?:ped)?\b|cancelled|canceled|permission|connection 
 
 export function desktopFailure(error: unknown, options: { preparing?: boolean; delivered?: boolean; container?: boolean } = {}): DesktopFailureObservation {
   const reason = error instanceof Error ? error.message : String(error)
+  if (!options.delivered && /does not support this background scroll action|cannot scroll on that axis|Desired-state provider actions are not supported|does not expose a checked state|does not expose selection|does not expose expansion|cannot be pressed through its provider/i.test(reason))
+    return { error: 'action_failed', delivery: 'not_delivered', retry: 'unsafe', hint: 'Only this provider operation is unsupported. Read its supported actions, choose a scrollable ancestor or another actionable control; request a deliberate foreground handover only if that operation needs physical input. Do not repeat the unsupported action.' }
   const timeout = /timed? out|timeout|stopped responding/i.test(reason) || (error instanceof Error && error.name === 'TimeoutError')
   const known = PRECONDITIONS.find(rule => rule.pattern.test(reason))
   const safe = !options.delivered && !timeout && !STOP.test(reason) && (!!known || !!options.preparing && TRANSIENT_PREPARATION.test(reason))
-  const delivery = options.delivered ? 'delivered_unverified' : safe ? 'not_delivered' : 'delivery_uncertain'
+  const notSent = /before execution; it was not run|request was not sent|no action was sent/i.test(reason)
+  const delivery = options.delivered ? 'delivered_unverified' : safe || notSent ? 'not_delivered' : 'delivery_uncertain'
   return {
     error: timeout ? 'timeout' : known?.code ?? 'action_failed', delivery, retry: safe ? 'safe' : 'unsafe',
     hint: options.container ? 'Read the app to check the effect, then target an inner actionable cell or button with the same name instead of repeating the container press.'

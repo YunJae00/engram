@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { QuietControlDto, QuietObservationDto } from '../src/shared/desktop.js'
-import { controlLine, formatScan, formatSet, formatText } from '../src/main/desktop-quiet-format.js'
+import { controlLine, formatScan, formatSet, formatText, formatPress } from '../src/main/desktop-quiet-format.js'
 
 const control = (over: Partial<QuietControlDto>): QuietControlDto => ({
   id: 'c1', type: 'Button', name: 'Send', value: null, placeholder: null, can: { set: false, press: true, text: false }, enabled: true, offscreen: false, focused: false, secret: false, ...over,
@@ -11,6 +11,15 @@ const observation = (over: Partial<QuietObservationDto> = {}): QuietObservationD
 })
 
 describe('quiet readings for the brain', () => {
+  it('retains control and text ownership and exposes scoped continuation for omitted content', () => {
+    const out = formatScan(observation({ truncated: true, controls: [control({ id: 'c2', parent: 'c1', order: 3 })],
+      texts: [{ id: 't1', text: 'Only two turns', parent: 'c1', order: 2 }], skippedTexts: 2 }), undefined)
+    expect(out).toContain('c2 parent:c1 order:3')
+    expect(out).toContain('t1 parent:c1 order:2: Only two turns')
+    expect(out).not.toContain('reads it all')
+    expect(out).toContain('root')
+    expect(out).toContain('snapshot')
+  })
   it('prints one line per control, with actions and only the flags that say something', () => {
     expect(controlLine(control({}))).toBe('c1 Button "Send" [press]')
     expect(controlLine(control({ id: 'c2', type: 'Edit', name: 'Prompt', can: { set: true, press: false, text: true }, placeholder: 'Prompt', focused: true }))).toBe('c2 Edit "Prompt" [set,text] (empty, shows placeholder) {focused}')
@@ -23,12 +32,12 @@ describe('quiet readings for the brain', () => {
     const out = formatScan(observation({ controls: [control({})], texts, skippedTexts: 10 }), undefined)
     expect(out).toContain('Claude [window:7:0] — snapshot ' + 'a'.repeat(32) + ' (person elsewhere)')
     expect(out).toContain('controls (1):')
-    expect(out).toContain('text (40 of 60; app_text reads it all):')
+    expect(out).toContain('text (40 of 60; partial text; narrow with root and snapshot):')
     expect(out).toContain('t49: line 49')
     expect(out).not.toContain('t9: line 9\n')
     const narrowed = formatScan(observation({ texts: texts.slice(0, 3), skippedControls: 5, state: { foreground: true, idleMs: 100, minimized: false } }), 'line')
     expect(narrowed).toContain('person is using this app now (changes wait), find "line"')
-    expect(narrowed).toContain('5 more not shown, narrow with find')
+    expect(narrowed).toContain('5 more not shown, narrow with root and snapshot')
     expect(narrowed).toContain('text (3):')
   })
 
@@ -43,4 +52,8 @@ describe('quiet readings for the brain', () => {
     expect(JSON.parse(formatText({ text: 'answer', chars: 6, headClipped: true, settled: true, waitedMs: 4200 }))).toMatchObject({ headClipped: true, settled: true, waitedMs: 4200 })
     expect(JSON.parse(formatText({ text: 'answer', chars: 6, headClipped: false, settled: false, waitedMs: 180000 }))).toMatchObject({ settled: false, waitedMs: 180000 })
   })
+})
+
+it('does not turn an unverified desired state into a successful press receipt', () => {
+  expect(JSON.parse(formatPress({ pressed: 'toggle', control: 'c1', foregroundChanged: false, satisfied: false }))).toMatchObject({ error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe' })
 })

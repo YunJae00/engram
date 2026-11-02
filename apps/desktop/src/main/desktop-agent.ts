@@ -71,26 +71,23 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const result = formatSet(await quietSet(lane, app, snapshot, control, text, expected, context.signal), text)
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal)
     },
-    press: async (app, snapshot, control, context) => {
+    press: async (app, snapshot, control, context, options) => {
       // Only a control named like send, submit, save or delete commits; opening a chat or a menu is navigation.
       const name = quietControlName(snapshot, control)
       const previous = quietSnapshot(snapshot)
       const container = /treeitem|row|group/i.test(previous?.controls.find(item => item.id === control)?.type ?? '')
-      const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal))
-      if (!name || irreversibleName(name)) context.onCommitted?.()
+      const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal, options))
+      if (!options?.action && (!name || irreversibleName(name))) context.onCommitted?.()
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, container ? previous : undefined)
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
     ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
-  // An app the quiet lane has read stays with the quiet lane: taking the
-  // person's mouse for it would gain nothing the providers do not offer.
   const quietFirst = (app?: string): void => {
     const control = desktopControlStatus()
     if (control.lane !== lane || !['ready', 'running'].includes(control.state)) throw new Error('Foreground input requires a deliberate handover. Ask the person to choose Allow control for this session under + → Computer controls, then read the app again. Until then, use background app tools or look_desktop; no global input was sent.')
     const found = quietVerdict(lane, app ?? desktopBinding(lane)?.name)
-    if (found.verdict === 'covered') throw new Error(`"${found.title}" exposes its controls: use app_read, app_set, app_press and app_text. Foreground control is disabled for this app in this chat. A provider may still activate its own window.`)
     if (found.verdict === 'unknown') throw new Error('Read the app with app_read first. The hands tools, which take the mouse and keyboard, are only for an app whose controls app_read reports without any action.')
   }
   const guardedQuiet = quiet.map(tool => ({ ...tool, async run(args, context) {
