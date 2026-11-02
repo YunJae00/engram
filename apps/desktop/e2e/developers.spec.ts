@@ -326,7 +326,9 @@ test('connected accounts switch without restarting and keep per-account limits',
   await page.getByTestId('settings-view').getByRole('button', { name: 'Manage ChatGPT accounts', exact: true }).click()
   await expect(work.getByRole('button', { name: 'Current', exact: true })).toBeVisible()
   await page.getByRole('dialog', { name: 'Account profiles' }).getByRole('region', { name: 'System account', exact: true }).getByRole('button', { name: 'Use account', exact: true }).click()
-  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Account profiles' })).not.toBeVisible()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.getByTestId('settings-view')).not.toBeVisible()
 })
 
 test('keeps follow-ups editable while working and distinguishes Codex steering from Claude queues', () => queueFixture({ app, page, screenshot }))
