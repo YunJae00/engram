@@ -55,6 +55,7 @@ internal sealed partial class QuietAccess
         }
         else if (desired != null) {
             if (!before.ContainsKey("expanded")) throw new InvalidOperationException("This control does not expose expansion; no action was sent");
+            if (Equals(before["expanded"], "leafnode")) throw new InvalidOperationException("This control does not expose expansion; no action was sent");
             how = desired == "expanded" ? "expand" : "collapse";
         }
         else if (element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) how = "invoke";

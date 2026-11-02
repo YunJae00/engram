@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { QuietControlDto, QuietObservationDto } from '../src/shared/desktop.js'
-import { controlLine, formatScan, formatSet, formatText } from '../src/main/desktop-quiet-format.js'
+import { controlLine, formatScan, formatSet, formatText, formatPress } from '../src/main/desktop-quiet-format.js'
 
 const control = (over: Partial<QuietControlDto>): QuietControlDto => ({
   id: 'c1', type: 'Button', name: 'Send', value: null, placeholder: null, can: { set: false, press: true, text: false }, enabled: true, offscreen: false, focused: false, secret: false, ...over,
@@ -52,4 +52,8 @@ describe('quiet readings for the brain', () => {
     expect(JSON.parse(formatText({ text: 'answer', chars: 6, headClipped: true, settled: true, waitedMs: 4200 }))).toMatchObject({ headClipped: true, settled: true, waitedMs: 4200 })
     expect(JSON.parse(formatText({ text: 'answer', chars: 6, headClipped: false, settled: false, waitedMs: 180000 }))).toMatchObject({ settled: false, waitedMs: 180000 })
   })
+})
+
+it('does not turn an unverified desired state into a successful press receipt', () => {
+  expect(JSON.parse(formatPress({ pressed: 'toggle', control: 'c1', foregroundChanged: false, satisfied: false }))).toMatchObject({ error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe' })
 })

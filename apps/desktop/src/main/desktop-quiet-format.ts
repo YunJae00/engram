@@ -35,7 +35,7 @@ export function formatSet(result: QuietSetResultDto, text: string): string {
 }
 
 export function formatPress(result: QuietPressResultDto): string {
-  return JSON.stringify({ ...result, requiresVerification: true })
+  return JSON.stringify({ ...result, requiresVerification: true, ...(result.satisfied === false ? { error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe', hint: 'The requested state or scroll effect was not verified. Read the app before deciding whether another action is needed.' } : {}) })
 }
 
 export function formatText(result: QuietReadResultDto & { settled: boolean; waitedMs: number }): string {
