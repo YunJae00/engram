@@ -4,6 +4,7 @@ import { renameWithRetry, REASONING_EFFORTS } from 'core'
 import { join } from 'node:path'
 
 export interface AppSettings {
+  accessibilityTrustedVersion?: string
   aiSelections: Record<string, { engine: 'claude' | 'codex'; model: string; effort?: import('core').ReasoningEffort; permission?: import('core').PermissionMode }>
   claudeEffort?: import('core').ReasoningEffort
   codexEffort?: import('core').ReasoningEffort

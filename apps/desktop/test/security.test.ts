@@ -60,3 +60,9 @@ describe('RENDERER_CSP', () => {
     expect(RENDERER_CSP).not.toContain('https://')
   })
 })
+
+it('allows only the exact Accessibility settings link', () => {
+  expect(isAllowedExternalUrl('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')).toBe(true)
+  expect(isAllowedExternalUrl('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles')).toBe(false)
+  expect(isAllowedExternalUrl('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility&other=1')).toBe(false)
+})

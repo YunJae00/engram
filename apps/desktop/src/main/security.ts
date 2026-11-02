@@ -18,6 +18,7 @@ const EXTERNAL_HOST_ALLOWLIST = ['github.com'] as const
  * shell.openExternal call and the setWindowOpenHandler external path.
  */
 export function isAllowedExternalUrl(raw: string): boolean {
+  if (raw === 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility') return true
   let url: URL
   try {
     url = new URL(raw)

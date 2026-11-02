@@ -127,3 +127,9 @@ Done.`
     expect(answerFiles('No files here.')).toEqual({ text: 'No files here.', files: [] })
   })
 })
+
+it('opens the exact Accessibility settings link through the external window handler', () => {
+  const html = answerHtml('[Settings](x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility)')
+  expect(html).toContain('target="_blank"')
+  expect(html).toContain('rel="noopener noreferrer"')
+})

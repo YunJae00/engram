@@ -1,3 +1,4 @@
+// Ad-hoc signatures invalidate TCC grants across builds; stable permission retention requires Developer ID.
 // Two things the macOS bundle needs after electron-builder has assembled it,
 // in this order — both edit the bundle, so the seal goes on last.
 //

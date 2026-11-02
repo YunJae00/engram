@@ -1,3 +1,5 @@
+import { rememberAccessibilityTrust } from './desktop-permission.js'
+import { desktopFailure } from './desktop-failure.js'
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
 import { ProcessClient } from './process-client.js'
@@ -65,7 +67,7 @@ export class DesktopHost {
       const fail = (cause?: unknown) => {
         if (this.ended) return
         const detail = cause instanceof Error ? cause.message.slice(0, 500) : 'The native process or its pipe exited.'
-        flog('desktop-native-connection', detail)
+        flog('desktop-native-connection', desktopFailure(detail).error)
         this.close(new Error(`The computer connection closed. ${detail}`))
       }
       this.readyTimer = setTimeout(() => fail(new Error('The native helper did not become ready within 25 seconds.')), 25000)
@@ -91,7 +93,7 @@ export class DesktopHost {
         if (message.type === 'revoked') {
           if (!nativeLease(message.lease)) { fail(); return }
           const reason = typeof message.reason === 'string' ? message.reason.slice(0, 500) : 'Computer control stopped.'
-          flog('desktop-native-revoked', reason)
+          flog('desktop-native-revoked', desktopFailure(reason).error)
           if (!this.rememberRevoked(message.lease, reason)) return
           if (message.lease === this.currentNative) {
             this.invalidate(reason)
@@ -109,7 +111,7 @@ export class DesktopHost {
         if (pending.generation !== this.generation) { pending.reject(new Error('Computer action was cancelled.')); return }
         if ('error' in message && message.error !== undefined) {
           const error = new Error(typeof message.error === 'string' && message.error.trim() ? message.error.slice(0, 500) : 'The desktop request failed.')
-          flog('desktop-native-error', `${pending.method}: ${error.message}`)
+          flog('desktop-native-error', JSON.stringify({ method: pending.method, code: desktopFailure(error).error }))
           pending.reject(error)
           if ((pending.method === 'bind' || pending.method === 'prepare') && !recoverableDesktopFailure(error.message)) this.close(error)
           return
@@ -126,6 +128,7 @@ export class DesktopHost {
           }
           this.currentNative = id
         }
+        void rememberAccessibilityTrust(pending.method).catch(() => flog('desktop-permission-state', 'write-failed'))
         pending.resolve(message.result)
       })
     })

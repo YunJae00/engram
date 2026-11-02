@@ -35,3 +35,26 @@ it('distinguishes unsent cancellation from uncertain dispatched work without ret
 it('offers a targeted alternative when only one provider operation is unsupported', () => {
   expect(desktopFailure('This control does not support this background scroll action; choose a scrollable ancestor or request a deliberate foreground handover. No action was sent')).toMatchObject({ delivery: 'not_delivered', retry: 'unsafe', hint: expect.stringContaining('scrollable ancestor') })
 })
+
+it.each([
+  ['Allow Engram in System Settings → Privacy & Security → Accessibility', 'accessibility_denied'],
+  ['Allow Engram in System Settings → Privacy & Security → Screen Recording', 'screen_recording_denied'],
+  ['Allow input monitoring and accessibility before computer control', 'input_monitoring_denied'],
+  ['The computer connection closed. Allow input monitoring and accessibility before computer control', 'input_monitoring_denied'],
+])('blocks permission retries with a distinct code: %s', (reason, error) => {
+  expect(desktopFailure(reason)).toMatchObject({ error, retry: 'blocked', delivery: 'not_delivered', reason })
+  expect(recoverablePreparation(reason)).toBe(false)
+})
+it('preserves bounded original diagnostics including window choices', () => {
+  const reason = 'No open window matches Claude. Open windows: Notes, Claude Desktop'
+  expect(desktopFailure(reason).reason).toBe(reason)
+  expect(desktopFailure('x'.repeat(500)).reason).toHaveLength(300)
+})
+it('recognizes macOS protected windows and transient preparation', () => {
+  expect(desktopFailure('This window is unavailable or requires manual control').error).toBe('policy_denied')
+  expect(recoverablePreparation('Release the keyboard modifiers')).toBe(true)
+  expect(recoverablePreparation('The selected window is no longer in front')).toBe(true)
+})
+it('reports a blocked local read without suggesting a web substitute', () => {
+  expect(desktopFailure('Allow Engram in System Settings → Privacy & Security → Screen Recording').hint).toContain('Do not replace a local app read with web search')
+})
