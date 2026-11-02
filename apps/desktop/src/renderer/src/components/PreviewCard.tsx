@@ -19,7 +19,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
   const paints = useRef(new Map<string, number>())
   const newest = [...frames].sort((a, b) => (paints.current.get(b.id) ?? b.at) - (paints.current.get(a.id) ?? a.at))[0]
   const frame = frames.find(frame => frame.id === choice) ?? newest
-  const onPaint = useCallback(() => { if (frame) paints.current.set(frame.id, Date.now()) }, [frame?.id])
+  const onPaint = useCallback(() => { if (frame) { paints.current.set(frame.id, Date.now()); frame.onPaint?.() } }, [frame?.id])
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
@@ -28,6 +28,9 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
     if (busy && preferences.has(lane)) return
     setView(before => ({ ...before, collapsed: !busy }))
   }, [busy, lane])
+  useEffect(() => {
+    if (choice && !frames.some(frame => frame.id === choice)) setChoice(undefined)
+  }, [choice, frames])
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
   if (!frame) return null
   const Icon = frame.source === 'web' ? Globe : AppWindow
@@ -35,6 +38,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
   const collapsed = view.collapsed || state === 'waiting' || Boolean(attention)
   const status = state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state
   const age = Math.max(0, Math.floor((now - (paints.current.get(frame.id) ?? frame.at)) / 1000))
+  const hasImage = frame.image && (frame.phase === 'ready' || frame.phase === 'delayed')
   const snapshot = `${words.lastSnapshot} · ${words.snapshotAge(age)}`
   const message = frame.phase === 'empty' ? words.noSite : frame.phase === 'no-snapshot' ? words.noSnapshot
     : frame.reason === 'screen_recording_denied' ? words.screenPermission : frame.reason === 'capture_unsafe' ? words.captureUnsafe
@@ -59,18 +63,18 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
       <button type="button" aria-label={words.hide} title={words.hide} onClick={() => change({ ...view, hidden: true })}><X size={14} aria-hidden /></button>
     </header>
     {!collapsed && <>
-      {frames.length > 1 && <nav className="preview-card-tabs" role="tablist" aria-label={words.choose}>{frames.map((item, index) => {
+      {frames.length > 1 && <nav className="preview-card-tabs" role="tablist" aria-label={words.choose}>{frames.map(item => {
         const SourceIcon = item.source === 'web' ? Globe : AppWindow
         return <button type="button" key={item.id} role="tab" aria-selected={item.id === frame.id} tabIndex={item.id === frame.id ? 0 : -1} title={item.title || words.browser} onClick={() => setChoice(item.id)} onKeyDown={event => {
           if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
           event.preventDefault()
-          setChoice(frames[(index + (event.key === 'ArrowRight' ? 1 : -1) + frames.length) % frames.length]!.id)
+          setChoice(frames[(frames.findIndex(item => item.id === frame.id) + (event.key === 'ArrowRight' ? 1 : -1) + frames.length) % frames.length]!.id)
         }}><SourceIcon size={12} aria-hidden /><span>{item.title || words.browser}</span></button>
       })}</nav>}
-      <div className="preview-card-stage" title={snapshot}>
-        {frame.image ? <img src={frame.image} alt={title} /> : frame.source === 'web' && frame.phase !== 'empty' && frame.phase !== 'unavailable' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
-        {!frame.image && <div className="preview-card-state">{busy && frame.phase === 'waiting' && <LoaderCircle size={12} className="computer-spinner" aria-hidden />}{message}</div>}
-        {(frame.phase === 'delayed' || (busy && age >= 5)) && (frame.image || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
+      <div className="preview-card-stage" data-phase={frame.phase} title={snapshot}>
+        {hasImage ? <img src={frame.image} alt={title} /> : frame.source === 'web' && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
+        {!hasImage && <div className="preview-card-state">{busy && frame.phase === 'waiting' && <LoaderCircle size={12} className="computer-spinner" aria-hidden />}<span>{message}</span></div>}
+        {busy && (frame.phase === 'delayed' || age >= 5) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
       </div>
     </>}
   </aside>

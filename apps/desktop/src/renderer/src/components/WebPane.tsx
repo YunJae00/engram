@@ -102,7 +102,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     void api.agentLane(channel).catch(() => {})
     void agentMirror.ask()
   }, [channel, active])
-  const { on, url, frame, lane,  } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
+  const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
   // What the store holds is whoever was mirrored last; it belongs on this
   // pane only when it is this comet's own. Another comet's page must never
   // stand in for an empty one here.

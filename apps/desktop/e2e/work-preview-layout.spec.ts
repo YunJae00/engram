@@ -7,7 +7,7 @@ import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 test('app preview stays inside full, split, minimized and expanded conversations', async () => {
-  await mkdir(join(TMP, 'preview-captures'), { recursive: true })
+  await mkdir(join(TMP, 'preview-captures-102'), { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-layout-')), { git: false })
   const bots = await Promise.all(['Preview one', 'Preview two'].map(name => createBot(paths, { name })))
   for (const bot of bots) {
@@ -33,28 +33,37 @@ test('app preview stays inside full, split, minimized and expanded conversations
     }, frames)
     await page.evaluate(ids => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map(bot => bot.id))
     await page.reload()
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 900))
     await openActivity(page, 'bots')
     await page.getByTestId(`bot-${bots[0]!.id}`).click()
     const full = page.locator('.bots-chat')
-    const preview = full.getByTestId('work-preview')
+    const preview = full.getByTestId('preview-card')
     await expect(preview).toBeVisible()
-    await preview.getByRole('button', { name: 'Expand app activity' }).click()
+    await expect(full.getByTestId('task-approvals')).toBeVisible()
+    await preview.getByRole('button', { name: 'Expand preview' }).click()
     const check = async (chat: Locator, name: string) => {
-      const pane = chat.getByTestId('work-preview')
+      const pane = chat.getByTestId('preview-card')
       await expect(pane).toBeVisible()
       await expect(chat.locator('textarea')).toBeVisible()
       const approval = chat.getByTestId('task-approvals').getByRole('button').last()
       await approval.scrollIntoViewIfNeeded()
       await expect(approval).toBeVisible()
       expect(await chat.evaluate(element => {
-        const preview = element.querySelector('.work-preview')!.getBoundingClientRect()
+        const preview = element.querySelector('.preview-card')!.getBoundingClientRect()
         const parent = element.getBoundingClientRect()
+        const thread = element.querySelector('.conversation-thread')!.getBoundingClientRect()
+        if (preview.right > innerWidth || preview.bottom > innerHeight) return false
+        const input = element.querySelector('textarea')!.getBoundingClientRect()
+        if (input.top < parent.top || input.bottom > parent.bottom) return false
         const controls = [...element.querySelectorAll('textarea, .decision-card button, .bubble-msg')]
         return preview.left >= parent.left && preview.right <= parent.right && preview.top >= parent.top && preview.bottom <= parent.bottom
-          && controls.every(control => {
+          && preview.bottom <= thread.top + 1 && controls.every(control => {
             const box = control.getBoundingClientRect()
-            return box.bottom <= preview.top || box.top >= preview.bottom || box.right <= preview.left || box.left >= preview.right
+            const inThread = !!control.closest('.conversation-thread')
+            const top = inThread ? Math.max(box.top, thread.top) : box.top
+            const bottom = inThread ? Math.min(box.bottom, thread.bottom) : box.bottom
+            if (bottom <= top) return true
+            return bottom <= preview.top || top >= preview.bottom || box.right <= preview.left || box.left >= preview.right
           })
       })).toBe(true)
       const image = await app.evaluate(async ({ BrowserWindow }) => {
@@ -63,22 +72,108 @@ test('app preview stays inside full, split, minimized and expanded conversations
         await new Promise(resolve => setTimeout(resolve, 400))
         return (await window.webContents.capturePage()).toPNG().toString('base64')
       })
-      await writeFile(join(TMP, 'preview-captures', `${name}.png`), Buffer.from(image, 'base64'))
+      await writeFile(join(TMP, 'preview-captures-102', `${name}.png`), Buffer.from(image, 'base64'))
     }
-    await check(full, 'full')
-    await preview.getByRole('button', { name: 'Collapse app activity' }).click()
-    await check(full, 'minimized')
-    await preview.getByRole('button', { name: 'Expand app activity' }).click()
-    await page.setViewportSize({ width: 1600, height: 1000 })
-    await check(full, 'expanded')
-    await openActivity(page, 'mission')
-    await page.getByTestId('mission-layout-2').click()
-    const mini = page.getByTestId(`mini-chat-${bots[0]!.id}`)
-    await expect(mini.getByTestId('work-preview')).toBeVisible()
-    const expand = mini.getByRole('button', { name: 'Expand app activity' })
-    if (await expand.isVisible()) await expand.click()
-    await expect(mini).toContainText('Owned app 1')
-    await expect(mini).not.toContainText('Owned app 2')
-    await check(mini, 'split')
+    const emit = async (events: unknown[]) => app.evaluate(({ BrowserWindow }, events) => {
+      const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+      for (const event of events) window.webContents.send('engram:event', event)
+    }, events)
+    const lane = `bot-${bots[0]!.id}`
+    const web = { type: 'agent:frame', lane, url: 'https://example.test/preview', data: frames[0]!.data.split(',')[1], width: 1280, height: 800 }
+    const expand = async () => {
+      const button = preview.getByRole('button', { name: 'Expand preview', exact: true })
+      if (await button.isVisible()) await button.click()
+    }
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => document.documentElement.setAttribute('data-theme', theme), theme)
+      await emit([{ type: 'desktop:preview', frames }, { type: 'comet:working', channel: lane, working: true }])
+      await expand()
+      await expect(preview.locator('.preview-card-stage')).toBeVisible()
+      await check(full, `${theme}-app-only`)
+      await page.getByTestId('bots-input').fill('Keep this draft focused')
+      await emit([{ type: 'desktop:preview', frames }, { type: 'comet:working', channel: lane, working: true }, { type: 'comet:step', channel: lane, line: 'read_open_page: Preview' }, web])
+      await expect(page.getByTestId('bots-input')).toBeFocused()
+      await expand()
+      await expect(preview.getByRole('tab')).toHaveCount(2)
+      const metrics = () => preview.evaluate(element => {
+        const style = getComputedStyle(element), bar = element.querySelector('header')!, stage = element.querySelector('.preview-card-stage')!
+        return { width: element.getBoundingClientRect().width, header: bar.getBoundingClientRect().height,
+          radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor, aspect: getComputedStyle(stage).aspectRatio }
+      })
+      await preview.getByRole('tab', { name: 'Owned app 1' }).click()
+      const appStyle = await metrics()
+      await preview.getByRole('tab', { name: 'example.test' }).click()
+      await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '')
+      await page.getByTestId('bots-input').fill('Still focused after a painted web frame')
+      await emit([web])
+      await expect(page.getByTestId('bots-input')).toBeFocused()
+      expect(await metrics()).toEqual(appStyle)
+      expect(appStyle.width).toBe(320)
+      expect(appStyle.header).toBe(36)
+      expect(appStyle.radius).toBe('16px')
+      expect(appStyle.aspect).toBe('16 / 10')
+      await check(full, `${theme}-mixed`)
+      await preview.getByRole('tab', { name: 'Owned app 1' }).click()
+      await preview.getByRole('tab', { name: 'Owned app 1' }).press('ArrowRight')
+      await expect(preview.getByRole('tab', { name: 'example.test' })).toHaveAttribute('aria-selected', 'true')
+      await emit([{ type: 'desktop:preview', frames: [] }])
+      await check(full, `${theme}-web-only`)
+      await emit([{ type: 'desktop:preview', frames }])
+      await expect(preview.getByRole('tab')).toHaveCount(2)
+      for (const width of [620, 948, 1400]) {
+        await app.evaluate(({ BrowserWindow }, width) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 500); win.setSize(width, 600) }, width)
+        await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
+        await expect.poll(() => page.evaluate(() => innerHeight)).toBe(600)
+        if (width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
+        await check(full, `${theme}-width-${width}`)
+      }
+      await preview.getByRole('button', { name: 'Collapse preview' }).click()
+      await emit([{ type: 'desktop:preview', frames }])
+      await expect(preview).toHaveClass(/collapsed/)
+      await expect(preview.locator('canvas, img')).toHaveCount(0)
+      await check(full, `${theme}-collapsed`)
+      await preview.getByRole('button', { name: 'Hide preview' }).click()
+      await emit([web, { type: 'desktop:preview', frames }, { type: 'comet:working', channel: lane, working: false }])
+      await page.waitForTimeout(100)
+      await emit([{ type: 'comet:working', channel: lane, working: true }])
+      await expect(preview).toHaveCount(0)
+      await expect(page.getByTestId('preview-card-reopen')).toBeVisible()
+      const shot = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!.webContents.capturePage()).toPNG().toString('base64'))
+      await writeFile(join(TMP, 'preview-captures-102', `${theme}-reopen.png`), Buffer.from(shot, 'base64'))
+      await page.getByTestId('preview-card-reopen').click()
+      await expect(preview).not.toHaveClass(/collapsed/)
+      await emit([{ type: 'comet:working', channel: lane, working: true }])
+      await expect(page.getByTestId('bots-input')).toBeVisible()
+      await page.waitForTimeout(100)
+      await emit([{ type: 'comet:working', channel: lane, working: false }])
+      await expect(preview).toHaveClass(/collapsed/)
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
+      await openActivity(page, 'mission')
+      await page.getByTestId('mission-layout-2').click()
+      const mini = page.getByTestId(`mini-chat-${bots[0]!.id}`)
+      await expect(mini.getByTestId('preview-card')).toBeVisible()
+      await expect(mini.getByTestId('task-approvals')).toBeVisible()
+      await emit([{ type: 'comet:working', channel: lane, working: true }])
+      const button = mini.getByRole('button', { name: 'Expand preview' })
+      if (await button.isVisible()) await button.click()
+      await expect(mini).toContainText('Owned app 1')
+      await expect(mini).not.toContainText('Owned app 2')
+      await check(mini, `${theme}-split`)
+      await emit([{ type: 'press:ask', channel: lane, words: 'Confirm local action', host: 'example.test' }])
+      await expect(mini.getByTestId('preview-card')).toHaveClass(/collapsed/)
+      for (const width of [620, 948, 1400]) {
+        await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 600), width)
+        await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
+        await expect.poll(() => page.evaluate(() => innerHeight)).toBe(600)
+        if (width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
+        await check(mini, `${theme}-split-width-${width}`)
+      }
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
+      await openActivity(page, 'bots')
+      await emit([{ type: 'chat:done', channel: lane, text: 'Preview complete.' }])
+      // A folded web lane makes the next theme start with app frames only.
+      await page.getByTestId('bots-input-add').click()
+      await page.getByTestId('composer-web').click()
+    }
   } finally { await closeTestApp(app) }
 })

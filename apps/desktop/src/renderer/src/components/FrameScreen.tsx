@@ -73,5 +73,5 @@ export function FrameScreen({ className, lane, source, onSize, onPaint, title }:
       off()
     }
   }, [lane, source, onSize, onPaint])
-  return <canvas ref={canvas} className={className} role="img" aria-label={title} />
+  return <canvas ref={canvas} className={className} role={title ? 'img' : undefined} aria-label={title} />
 }
