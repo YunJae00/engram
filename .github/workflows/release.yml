@@ -97,7 +97,7 @@ jobs:
             echo "- **macOS Apple Silicon** — [Engram-${version}-arm64.dmg](${base}/Engram-${version}-arm64.dmg)"
             echo "- **macOS Intel** — [Engram-${version}-x64.dmg](${base}/Engram-${version}-x64.dmg)"
             echo
-            echo 'macOS builds use a stable self-signed certificate and are not notarized. Open Anyway is still required. After installing 0.8.102, remove Engram from Accessibility with − and add /Applications/Engram.app again with + once; subsequent updates should retain permission. Computer control requires Accessibility and Screen Recording permissions; Office automation additionally requires installed, activated Office apps and Automation permission.'
+            echo 'macOS builds use a stable self-signed certificate and are not notarized. Open Anyway is still required. After installing this version, remove Engram from Accessibility with − and add /Applications/Engram.app again with + once; subsequent updates should retain permission. Computer control requires Accessibility and Screen Recording permissions; Office automation additionally requires installed, activated Office apps and Automation permission.'
             echo
             echo '- **Windows:** SmartScreen says it blocked an unrecognized app. The **Run anyway** button is hidden until you click **More info** first.'
             echo 'Claude is installed separately by the user from Settings → AI or during onboarding. The official Anthropic runtime and terms apply; it is not included in this installer.'
