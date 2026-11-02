@@ -30,6 +30,8 @@ test('app preview stays inside full, split, minimized and expanded conversations
     await app.evaluate(({ ipcMain }, frames) => {
       ipcMain.removeHandler('desktop:previews')
       ipcMain.handle('desktop:previews', (_event, lane: string) => frames.filter(frame => frame.lane === lane))
+      ipcMain.removeHandler('native:enabled')
+      ipcMain.handle('native:enabled', () => false)
     }, frames)
     await page.evaluate(ids => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map(bot => bot.id))
     await page.reload()
