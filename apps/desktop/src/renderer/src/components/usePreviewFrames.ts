@@ -23,6 +23,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
   const { activity } = useShellState()
   const active = tile ? activity === 'mission' : activity === 'bots'
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
+  useEffect(() => { setVisible(document.visibilityState === 'visible') }, [active])
   useEffect(() => {
     const changed = () => setVisible(document.visibilityState === 'visible')
     document.addEventListener('visibilitychange', changed)
