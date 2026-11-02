@@ -27,7 +27,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.resetAllMocks(); forgetQuietCoverage()
 afterEach(() => { vi.useRealTimers() })
 
 describe('quiet app access', () => {
-  it('only allows foreground fallback after a read or an unsupported provider action', async () => {
+  it('keeps readable app coverage when one provider action is unsupported', async () => {
     const { request } = binding({ foreground: false, idleMs: 9000 })
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('unknown')
     await quietScan('bot-one', 'Claude', undefined)
@@ -41,7 +41,7 @@ describe('quiet app access', () => {
       return {}
     })
     await expect(quietSet('bot-one', 'Claude', 'snapshot', 'c1', 'draft', undefined)).rejects.toThrow('does not take text')
-    expect(quietVerdict('bot-one', 'Claude').verdict).toBe('bare')
+    expect(quietVerdict('bot-one', 'Claude').verdict).toBe('covered')
     await vi.advanceTimersByTimeAsync(15 * 60_000 + 1)
     expect(quietVerdict('bot-one', 'Claude').verdict).toBe('unknown')
   })

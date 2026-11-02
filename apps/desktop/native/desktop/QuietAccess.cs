@@ -109,7 +109,7 @@ internal sealed partial class QuietAccess : IDisposable
         foreach (var property in new[] { AutomationElement.NameProperty, AutomationElement.ControlTypeProperty, AutomationElement.IsEnabledProperty, AutomationElement.IsOffscreenProperty,
             AutomationElement.IsPasswordProperty, AutomationElement.HasKeyboardFocusProperty, AutomationElement.IsValuePatternAvailableProperty, AutomationElement.IsInvokePatternAvailableProperty,
             AutomationElement.IsTogglePatternAvailableProperty, AutomationElement.IsSelectionItemPatternAvailableProperty, AutomationElement.IsExpandCollapsePatternAvailableProperty,
-            AutomationElement.IsTextPatternAvailableProperty, AutomationElement.RuntimeIdProperty, AutomationElement.IsKeyboardFocusableProperty, ValuePattern.IsReadOnlyProperty }) cache.Add(property);
+            AutomationElement.IsScrollPatternAvailableProperty, AutomationElement.IsScrollItemPatternAvailableProperty, AutomationElement.IsTextPatternAvailableProperty, AutomationElement.RuntimeIdProperty, AutomationElement.IsKeyboardFocusableProperty, ValuePattern.IsReadOnlyProperty }) cache.Add(property);
         cache.Add(ValuePattern.Pattern);
         return cache;
     }
@@ -215,32 +215,6 @@ internal sealed partial class QuietAccess : IDisposable
         // Landed says the text is in the field; exact says nothing else is. A field holding more carries text from elsewhere.
         return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
             foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
-    }
-
-    // Press through the provider: a button, a list or tab item, a toggle, a fold.
-    internal object Press(DesktopTarget target, string snapshot, string control, Action check)
-    {
-        RequireOperable(target);
-        Validate(target);
-        var element = Control(target, snapshot, control).Element;
-        if (!element.Current.IsEnabled) throw new InvalidOperationException("This control is disabled right now");
-        check();
-        RequireIdle(target);
-        var foreground = GetForegroundWindow();
-        object pattern;
-        string how;
-        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) { how = "invoke"; }
-        else if (element.TryGetCurrentPattern(TogglePattern.Pattern, out pattern)) { how = "toggle"; }
-        else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) { how = "select"; }
-        else if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out pattern))
-        {
-            var fold = (ExpandCollapsePattern)pattern;
-            how = fold.Current.ExpandCollapseState == ExpandCollapseState.Expanded ? "collapse" : "expand";
-        }
-        else throw new InvalidOperationException("This control cannot be pressed without the mouse; use desktop_action for it");
-        QuietPatterns.Press(target, element, how, delegate { check(); RequireIdle(target); Validate(target); Control(target, snapshot, control); });
-        Guard.Same(target);
-        return new { pressed = how, control = control, foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
     }
 
 }

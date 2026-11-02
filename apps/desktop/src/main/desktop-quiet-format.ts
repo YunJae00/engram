@@ -10,8 +10,8 @@ function personLine(state: QuietStateDto): string {
 }
 
 export function controlLine(control: QuietControlDto): string {
-  const can = [control.can.set ? 'set' : '', control.can.press ? 'press' : '', control.can.text && control.type !== 'Text' ? 'text' : ''].filter(Boolean)
-  const flags = [!control.enabled ? 'disabled' : '', control.offscreen ? 'offscreen' : '', control.focused ? 'focused' : '', control.secret ? 'secret' : ''].filter(Boolean)
+  const can = [control.can.scroll ? 'scroll' : '', control.can.scrollIntoView ? 'scroll_into_view' : '', control.can.set ? 'set' : '', control.can.press ? 'press' : '', control.can.text && control.type !== 'Text' ? 'text' : ''].filter(Boolean)
+  const flags = [control.state?.checked ? `checked:${control.state.checked}` : '', control.state?.selected === undefined ? '' : `selected:${control.state.selected}`, control.state?.expanded ? `expanded:${control.state.expanded}` : '', !control.enabled ? 'disabled' : '', control.offscreen ? 'offscreen' : '', control.focused ? 'focused' : '', control.secret ? 'secret' : ''].filter(Boolean)
   const value = control.can.set ? control.value ? ` = ${quote(control.value)}` : control.placeholder ? ' (empty, shows placeholder)' : ' (empty)' : ''
   return `${control.id}${control.parent ? ` parent:${control.parent}` : ''}${control.order === undefined ? '' : ` order:${control.order}`}${control.depth === undefined ? '' : ` depth:${control.depth}`} ${control.type} ${quote(control.name)}${can.length ? ` [${can.join(',')}]` : ''}${value}${flags.length ? ` {${flags.join(',')}}` : ''}${control.subtreeTruncated ? ` [truncated; children:${control.childCount ?? 'unknown'}]` : ''}`
 }

@@ -38,6 +38,8 @@ internal sealed class ControlFixture : Form
     private readonly Button Counter = new Button { AccessibleName = "Count click", Text = "Count click", Bounds = new Rectangle(480, 18, 130, 32) };
     private readonly FixtureScroll Scroller = new FixtureScroll { Bounds = new Rectangle(18, 100, 592, 280) };
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
+    private readonly CheckBox EnabledOption = new CheckBox { AccessibleName = "Fixture option", Text = "Fixture option", Bounds = new Rectangle(110, 390, 160, 24) };
+    private readonly ListBox Items = new ListBox { AccessibleName = "Fixture list", Bounds = new Rectangle(300, 390, 260, 24) };
     private int Clicks;
     private Form Away;
     private Panel Dense;
@@ -54,6 +56,7 @@ internal sealed class ControlFixture : Form
         StartPosition = FormStartPosition.Manual;
         Location = new Point(80, 80);
         ClientSize = new Size(630, 420);
+        for (var i = 0; i < 40; i++) Items.Items.Add("Fixture item " + i);
         Counter.Click += delegate { Clicks++; };
         Entry.TextChanged += delegate
         {
@@ -61,7 +64,7 @@ internal sealed class ControlFixture : Form
             RevealPasswordOnInput = false;
             Secret.Visible = true;
         };
-        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker });
+        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker, EnabledOption, Items });
         Shown += delegate
         {
             BeginInvoke((Action)delegate

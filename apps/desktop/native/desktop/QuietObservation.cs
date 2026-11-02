@@ -83,8 +83,10 @@ internal sealed partial class QuietAccess
                 {
                     set = editable, press = Has(element, AutomationElement.IsInvokePatternAvailableProperty) || Has(element, AutomationElement.IsTogglePatternAvailableProperty)
                         || Has(element, AutomationElement.IsSelectionItemPatternAvailableProperty) || Has(element, AutomationElement.IsExpandCollapsePatternAvailableProperty),
+                    scroll = Has(element, AutomationElement.IsScrollPatternAvailableProperty), scrollIntoView = Has(element, AutomationElement.IsScrollItemPatternAvailableProperty),
                     text = Has(element, AutomationElement.IsTextPatternAvailableProperty),
                 },
+                state = ReadState(element, true),
                 enabled = info.IsEnabled, offscreen = info.IsOffscreen, focused = info.HasKeyboardFocus, secret = info.IsPassword,
             });
             remaining = Math.Max(0, remaining - name.Length - (value == null ? 0 : value.Length));

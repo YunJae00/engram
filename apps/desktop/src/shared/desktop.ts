@@ -39,6 +39,7 @@ export interface DesktopObservationDto {
 // Provider-only operations avoid injected input. IDs belong to one snapshot.
 export interface QuietControlDto {
   id: string
+  state?: { checked?: 'on' | 'off' | 'indeterminate'; selected?: boolean; expanded?: string }
   parent?: string | null
   order?: number
   type: string
@@ -48,7 +49,7 @@ export interface QuietControlDto {
   name: string
   value?: string | null
   placeholder?: string | null
-  can: { set: boolean; press: boolean; text: boolean }
+  can: { set: boolean; press: boolean; text: boolean; scroll?: boolean; scrollIntoView?: boolean }
   enabled: boolean
   offscreen: boolean
   focused: boolean

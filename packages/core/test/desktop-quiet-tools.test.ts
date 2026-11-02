@@ -68,6 +68,12 @@ describe('quiet app tools', () => {
     expect(courier.set).toHaveBeenCalledTimes(2)
   })
 
+  it('passes a desired final state without turning it into another toggle', async () => {
+    const { courier, tool } = setup()
+    await tool('app_press').run({ app: 'Fixture', snapshot: SNAPSHOT, control: 'c7', state: 'checked' }, CONTEXT)
+    expect(courier.press).toHaveBeenCalledWith('Fixture', SNAPSHOT, 'c7', CONTEXT, { state: 'checked' })
+  })
+
   it('presses a control and leaves deciding what committed to the host', async () => {
     const { courier, tool } = setup()
     const onCommitted = vi.fn()

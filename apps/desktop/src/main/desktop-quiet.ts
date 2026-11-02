@@ -1,3 +1,4 @@
+import type { QuietPressOptions } from 'core'
 import { sparseDesktopTree, SCREEN_HINT } from './desktop-sparse.js'
 import { appNameMatch, type DesktopReadOptions } from 'core'
 import type { QuietObservationDto, QuietPressResultDto, QuietReadResultDto, QuietSetResultDto, QuietStateDto } from '../shared/desktop.js'
@@ -42,7 +43,6 @@ function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'b
   covered.set(lane, windows)
 }
 // A provider that offers a control but will not act on it hands the window to the hands tools.
-const PROVIDER_LIMIT = /does not take text|cannot be pressed/
 export function forgetQuietCoverage(lane?: string): void { if (lane) covered.delete(lane); else covered.clear() }
 
 // The frame around the app says which window is being worked in, without a
@@ -138,16 +138,16 @@ export async function quietSet(lane: string, app: string, snapshot: string, cont
   const binding = await windowFor(lane, app, signal)
   await awaitPersonAway(binding, signal)
   showWorkFrame(binding)
-  const result = await request<QuietSetResultDto>(binding, 'quietSet', { snapshot, control, text, ...(expected !== undefined ? { expected } : {}) }, signal).catch((error: unknown) => { if (error instanceof Error && PROVIDER_LIMIT.test(error.message)) remember(lane, binding, 'bare'); throw error })
+  const result = await request<QuietSetResultDto>(binding, 'quietSet', { snapshot, control, text, ...(expected !== undefined ? { expected } : {}) }, signal)
   signal?.throwIfAborted()
   return result
 }
 
-export async function quietPress(lane: string, app: string, snapshot: string, control: string, signal?: AbortSignal): Promise<QuietPressResultDto> {
+export async function quietPress(lane: string, app: string, snapshot: string, control: string, signal?: AbortSignal, options?: QuietPressOptions): Promise<QuietPressResultDto> {
   const binding = await windowFor(lane, app, signal)
   await awaitPersonAway(binding, signal)
   showWorkFrame(binding)
-  const result = await request<QuietPressResultDto>(binding, 'quietPress', { snapshot, control }, signal).catch((error: unknown) => { if (error instanceof Error && PROVIDER_LIMIT.test(error.message)) remember(lane, binding, 'bare'); throw error })
+  const result = await request<QuietPressResultDto>(binding, 'quietPress', { snapshot, control, ...options }, signal)
   signal?.throwIfAborted()
   return result
 }
