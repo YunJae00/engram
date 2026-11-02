@@ -3,6 +3,13 @@ import AppKit
 final class Connection: @unchecked Sendable {
     private let lock = NSLock()
     private var epoch = 0
+    private var pending: [Int: Date] = [:]
+    func register(_ id: Int, _ expires: Double?) {
+        lock.lock(); defer { lock.unlock() }
+        pending[id] = min(Date().addingTimeInterval(30), Date(timeIntervalSince1970: (expires ?? (Date().timeIntervalSince1970 * 1000 + 30000)) / 1000))
+    }
+    func cancel(_ id: Int) { lock.lock(); pending.removeValue(forKey: id); lock.unlock() }
+    func valid(_ id: Int) -> Bool { lock.lock(); defer { lock.unlock() }; return pending[id].map { $0 > Date() } ?? false }
     func cancel() { lock.lock(); epoch += 1; lock.unlock() }
     func generation() -> Int { lock.lock(); defer { lock.unlock() }; return epoch }
     func send(_ value: [String: Any]) {
@@ -69,13 +76,22 @@ final class Connection: @unchecked Sendable {
                       let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let id = request["id"] as? Int else {
                     host.monitor.stop("Invalid request"); exit(2)
                 }
+                if request["method"] as? String == "cancel", let target = request["target"] as? Int {
+                    connection.cancel(target)
+                    connection.send(["id": id, "result": ["cancelled": true]])
+                    continue
+                }
+                connection.register(id, request["expiresAt"] as? Double)
                 if request["method"] as? String == "stop" { connection.cancel(); host.monitor.stop("Computer control stopped") }
                 let epoch = connection.generation()
                 DispatchQueue.main.async {
+                    defer { connection.cancel(id) }
                     do {
+                        guard connection.valid(id) else { throw DesktopFailure("The request expired or was cancelled before execution; it was not run") }
                         guard connection.generation() == epoch else { throw DesktopFailure("Computer action was cancelled") }
                         let result = try host.receive(request)
                         guard connection.generation() == epoch else { throw DesktopFailure("Computer action was cancelled") }
+                        guard connection.valid(id) else { throw DesktopFailure("The request was cancelled after dispatch; read the app before retrying") }
                         connection.send(["id": id, "result": result])
                     } catch {
                         if ["click", "type", "replace", "scroll", "key", "bind", "prepare", "documentEdit", "documentCompose"].contains(request["method"] as? String ?? "") { host.monitor.stop(String(describing: error)); host.snapshots.removeAll() }

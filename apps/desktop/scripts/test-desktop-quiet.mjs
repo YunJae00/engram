@@ -25,6 +25,21 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.ok(nodes.every(node => Number.isInteger(node.order)), 'Observation order survives control/text separation')
   assert.ok(button?.can.press)
   assert.equal((await fixture.request('state')).foreground, false)
+  const clicksBefore = (await fixture.request('state')).clicks
+  await fixture.request('blockOwnedUi')
+  const blockedRead = helper.request('quietScan', target)
+  const expired = helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id, expiresAt: Date.now() + 50 })
+  await assert.rejects(expired, /before execution; it was not run/)
+  await blockedRead
+  assert.equal((await fixture.request('state')).clicks, clicksBefore, 'An expired queued press must never run later')
+  await fixture.request('blockOwnedUi')
+  const secondRead = helper.request('quietScan', target)
+  const cancelledId = helper.sequence + 1
+  const cancelled = helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id })
+  const notRun = assert.rejects(cancelled, /before execution; it was not run/)
+  await helper.request('cancel', { target: cancelledId })
+  await Promise.all([secondRead, notRun])
+  assert.equal((await fixture.request('state')).clicks, clicksBefore, 'A cancelled queued press must never run later')
   const textRegion = first.controls.find(control => control.name === 'Scroll area')
   assert.ok(textRegion)
   const scoped = await helper.request('quietRead', { ...target, snapshot: first.snapshot, control: textRegion.id })

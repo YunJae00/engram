@@ -18,6 +18,7 @@ const UNSCOPED = new Set<DesktopMethod>(['listApps', 'openApp', 'inputState', 'l
 interface PendingRequest {
   method: DesktopMethod
   generation: number
+  sent?: boolean
   resolve(value: unknown): void
   reject(error: Error): void
   timer?: ReturnType<typeof setTimeout>
@@ -146,6 +147,11 @@ export class DesktopHost {
     }
   }
 
+  private cancelNative(id: number): void {
+    try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'cancel', target: id }) + '\n', error => { if (error) this.close(error) }) }
+    catch (error) { this.close(error instanceof Error ? error : new Error('The desktop connection failed.')) }
+  }
+
   async request<T>(method: DesktopMethod, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
     signal?.throwIfAborted()
     if (!METHODS.has(method)) throw new Error('Unsupported computer action.')
@@ -167,7 +173,9 @@ export class DesktopHost {
         if (this.pending.get(id) !== pending) return
         this.pending.delete(id)
         clearTimeout(pending.timer)
-        reject(signal?.reason ?? new Error('Computer action was cancelled. It may have partly happened; read the app before retrying.'))
+        if (pending.sent) this.cancelNative(id)
+        const reason = signal?.reason instanceof Error ? signal.reason.message : 'Computer action was cancelled.'
+        reject(new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`))
       }
       signal?.addEventListener('abort', cancel, { once: true })
       let ready: Promise<void>
@@ -199,6 +207,7 @@ export class DesktopHost {
         pending.timer = setTimeout(() => {
           if (this.pending.get(id) !== pending) return
           this.pending.delete(id)
+          this.cancelNative(id)
           // A late bind must not leave an unclaimed input grant in the helper.
           if (method === 'bind') {
             try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'stop' }) + '\n', error => { if (error) this.close(error) }) }
@@ -207,6 +216,8 @@ export class DesktopHost {
           reject(new DOMException('This app stopped responding to this request within 30 seconds. It may have partly happened; read the app before retrying.', 'TimeoutError'))
         }, 30000)
         try {
+          pending.sent = true
+          line = JSON.stringify({ ...JSON.parse(line), expiresAt: Date.now() + 30000 }) + '\n'
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }
       }, (error: unknown) => {
