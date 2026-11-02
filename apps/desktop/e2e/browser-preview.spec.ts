@@ -193,6 +193,7 @@ test('finished work minimizes its preview so the result remains readable', async
 
 test('status notices leave full and split conversation composers unobscured', async () => {
   for (const layout of [1, 2]) {
+    if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
     await page.getByTestId(`mission-layout-${layout}`).click()
     for (const width of [1280, 620]) {
       await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 850), width)
@@ -209,6 +210,10 @@ test('status notices leave full and split conversation composers unobscured', as
         const input = (await composer.boundingBox())!
         return notice.y + notice.height <= input.y || notice.x + notice.width <= input.x || notice.x >= input.x + input.width
       }).toBe(true)
+      for (const banner of await page.locator('.connect-banner').all()) {
+        const box = (await banner.boundingBox())!
+        expect((await page.locator('.toast').boundingBox())!.y).toBeGreaterThanOrEqual(box.y + box.height)
+      }
       await page.screenshot({ path: join(shots, `notice-${layout}-${width}.png`) })
     }
   }
