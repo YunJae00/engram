@@ -41,6 +41,7 @@ export class DesktopHost {
   private currentNative?: string
   private revoked = new Map<string, string>()
   private pending = new Map<number, PendingRequest>()
+  private withdrawnReads = new Map<number, ReturnType<typeof setTimeout>>()
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
   get busy(): boolean { return [...this.pending.values()].some(request => !request.preview) }
@@ -99,6 +100,8 @@ export class DesktopHost {
           return
         }
         if (!Number.isSafeInteger(message.id)) return
+        clearTimeout(this.withdrawnReads.get(message.id!))
+        this.withdrawnReads.delete(message.id!)
         const pending = this.pending.get(message.id!)
         if (!pending) return
         clearTimeout(pending.timer)
@@ -150,7 +153,12 @@ export class DesktopHost {
     }
   }
 
-  private cancelNative(id: number): void {
+  private cancelNative(id: number, method?: DesktopMethod): void {
+    if (method && ['observe', 'quietScan', 'quietRead', 'inspectWindow', 'listWindows', 'listApps'].includes(method) && !this.withdrawnReads.has(id)) {
+      this.withdrawnReads.set(id, setTimeout(() => {
+        this.close(new Error('The app provider did not return after cancellation. Its connection was retired; no action will be replayed. Read the app again to reconnect and check any uncertain actions.'))
+      }, 30000))
+    }
     try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'cancel', target: id }) + '\n', error => { if (error) this.close(error) }) }
     catch (error) { this.close(error instanceof Error ? error : new Error('The desktop connection failed.')) }
   }
@@ -177,7 +185,7 @@ export class DesktopHost {
         if (this.pending.get(id) !== pending) return
         this.pending.delete(id)
         clearTimeout(pending.timer)
-        if (pending.sent) this.cancelNative(id)
+        if (pending.sent) this.cancelNative(id, method)
         const reason = signal?.reason instanceof Error ? signal.reason.message : 'Computer action was cancelled.'
         const error = new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`)
         if (signal?.reason instanceof Error) error.name = signal.reason.name
@@ -214,7 +222,7 @@ export class DesktopHost {
         pending.timer = setTimeout(() => {
           if (this.pending.get(id) !== pending) return
           this.pending.delete(id)
-          this.cancelNative(id)
+          this.cancelNative(id, method)
           // A late bind must not leave an unclaimed input grant in the helper.
           if (method === 'bind') {
             try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'stop' }) + '\n', error => { if (error) this.close(error) }) }
@@ -258,6 +266,8 @@ export class DesktopHost {
     }
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     this.pending.clear()
+    for (const timer of this.withdrawnReads.values()) clearTimeout(timer)
+    this.withdrawnReads.clear()
     this.onRevoked(error.message)
   }
 }

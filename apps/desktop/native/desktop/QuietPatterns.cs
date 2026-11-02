@@ -103,7 +103,7 @@ internal static class QuietPatterns
 
     private static bool PressNativeButton(DesktopTarget target, AutomationElement element, Action check)
     {
-        if (element.Current.ControlType != ControlType.Button) return false;
+        if (element.Current.ControlType != ControlType.Button && element.Current.ControlType != ControlType.CheckBox) return false;
         var window = new IntPtr(unchecked((long)(uint)element.Current.NativeWindowHandle));
         if (window == IntPtr.Zero) return false;
         var name = new StringBuilder(256);
@@ -124,7 +124,7 @@ internal static class QuietPatterns
 
     internal static void Press(DesktopTarget target, AutomationElement element, string how, Action check)
     {
-        if (how == "invoke" && PressNativeButton(target, element, check)) return;
+        if ((how == "invoke" || how == "toggle") && PressNativeButton(target, element, check)) return;
         if (how == "invoke") Run(target, element, InvokePattern.Pattern.Id, pattern => ((Invoke)pattern).Press(), check);
         else if (how == "toggle") Run(target, element, TogglePattern.Pattern.Id, pattern => ((Toggle)pattern).Press(), check);
         else if (how == "select") Run(target, element, SelectionItemPattern.Pattern.Id, pattern => ((Selection)pattern).Select(), check);

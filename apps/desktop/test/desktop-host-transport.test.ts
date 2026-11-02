@@ -226,3 +226,14 @@ it('preempts a preview when real work arrives without cancelling the real reques
   expect(await work).toEqual({ text: 'work' })
   expect(host.closed).toBe(false)
 })
+
+it('retires only a helper whose cancelled read never returns, without restarting or replaying', async () => {
+  const pending = host.request('quietScan', target)
+  const failed = expect(pending).rejects.toThrow('within 30 seconds')
+  await ready(); await vi.advanceTimersByTimeAsync(30001); await failed
+  expect(host.closed).toBe(false)
+  await vi.advanceTimersByTimeAsync(30001)
+  expect(host.closed).toBe(true)
+  expect(child.kill).toHaveBeenCalledOnce()
+  expect(deps.spawn).toHaveBeenCalledOnce()
+})
