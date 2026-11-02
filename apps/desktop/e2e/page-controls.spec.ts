@@ -24,6 +24,7 @@ test('reads current off-screen form values beyond the control cap without disclo
 test('while studying, a press that would keep something is refused and passage still goes', async () => {
   await page.setContent(`<html><body><main><button id="save" onclick="this.textContent='kept'">Save</button>
     <button id="next" onclick="document.getElementById('where').textContent='page 2'">Next</button><p id="where">page 1</p></main></body></html>`)
+  await page.locator('#next').click({ trial: true })
   const studying = Object.assign(async () => 'cancel' as const, { reading: () => true })
   expect(await pressOn(page, 'Save', undefined, studying)).toMatchObject({ ok: false, refused: 'Save' })
   expect(await page.textContent('#save')).toBe('Save')
