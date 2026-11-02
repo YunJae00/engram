@@ -58,8 +58,8 @@ export function collectionProgress(steps: AgentLoopStep[]) {
             const value = supplied[field]
             return typeof value === 'string' && value.length <= 6000 && normalize(value) && normalize(observed).includes(normalize(value)) ? [[field, value]] : []
           }))
-          if (Object.keys(known).length) verifiedFields.set(args.item, known)
-          else verifiedFields.delete(args.item)
+          if (Object.keys(known).length) verifiedFields.set(args.item, { ...verifiedFields.get(args.item), ...known })
+          else if (Object.keys(supplied).length) verifiedFields.delete(args.item)
           const unsupported = fields.filter(field => supplied[field] !== undefined && known[field] === undefined)
           items.set(args.item, null)
           unverified.set(args.item, { basis: args.unverified.trim() + (unsupported.length ? ` Unverified supplied fields: ${unsupported.join(', ')}.` : '') + (!linked ? ' No supporting observation was linked.' : contradictory ? " The cited observation does not establish this item's limitation." : ''), ...(linked ? { evidenceStep: args.evidenceStep as number } : {}) })
@@ -69,10 +69,17 @@ export function collectionProgress(steps: AgentLoopStep[]) {
           const values = args.values
           if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Supply the requested field values.')
           const record = values as Record<string, unknown>
-          for (const field of fields) {
+          const known = Object.fromEntries(fields.flatMap(field => {
             const value = record[field]
-            if (typeof value !== 'string' || value.length > 6000 || !normalize(value) || !normalize(observed).includes(normalize(value))) throw new Error(`Read and cite the actual ${field} value. Use the page's explicit empty-field marker when blank; do not guess. If unavailable, record unverified with the reason and evidenceStep, then finish partial instead of resubmitting this value.`)
-        }
+            return typeof value === 'string' && value.length <= 6000 && normalize(value) && normalize(observed).includes(normalize(value)) ? [[field, value]] : []
+          }))
+          const missingField = fields.find(field => known[field] === undefined)
+          if (missingField) {
+            if (JSON.stringify([...verifiedFields, [args.item, known]]).length > 128_000) throw new Error('Confirmed field excerpts exceed the checkpoint limit. Keep them concise.')
+            if (Object.keys(known).length) verifiedFields.set(args.item, known)
+            items.set(args.item, null)
+            throw new Error(`Read and cite the actual ${missingField} value. Separately evidenced fields are retained, but this item remains unverified. Use the page's explicit empty-field marker when blank; do not guess. If unavailable, record unverified with the reason and evidenceStep, then finish partial instead of resubmitting this value.`)
+          }
         const next = Object.fromEntries(fields.map(field => [field, record[field] as string]))
         if (JSON.stringify([...items].map(([item, value]) => [item, item === args.item ? next : value])).length > 128_000) throw new Error('Collected results exceed the checkpoint limit. Keep field excerpts concise and use a file for larger results.')
         items.set(args.item, next)

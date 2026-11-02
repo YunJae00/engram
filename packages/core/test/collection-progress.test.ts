@@ -126,3 +126,17 @@ it('does not present an invented access barrier as observed', async () => {
   await ledger.tool.run({ status: 'blocked', summary: 'Cannot continue', evidenceStep: 1 }, { task: 'Read' })
   expect(ledger.finish()).toMatchObject({ status: 'partial', summary: expect.stringContaining('No access barrier was observed') })
 })
+
+it('retains evidenced fields when another submitted field is rejected', async () => {
+  const ledger = collectionProgress([{ tool: 'read_open_page', args: {}, observation: 'Record 1. Title: Amber. Date: 2026-10-21.' }])
+  const run = (args: Record<string, unknown>) => ledger.tool.run(args, { task: 'Summarize the records' })
+  await run({ items: ['Record 1'], fields: ['title', 'summary'] })
+  await expect(run({ item: 'Record 1', values: { title: 'Amber', summary: 'A detailed invented summary' }, evidenceStep: 1 })).rejects.toThrow('actual summary')
+  await run({ item: 'Record 1', unverified: 'No summary field was shown.', evidenceStep: 1 })
+  await run({ status: 'partial', summary: 'Only the title was confirmed.' })
+  const report = JSON.parse(await run({}))
+  expect(report.verifiedFields['Record 1']).toEqual({ title: 'Amber' })
+  expect(report.checked).toBe(0)
+  expect(ledger.summary()).toContain('Confirmed fields: title: Amber')
+  await expect(run({ status: 'complete', summary: 'Everything checked', evidenceStep: 1 })).rejects.toThrow()
+})
