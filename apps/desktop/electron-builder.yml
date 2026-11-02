@@ -23,7 +23,7 @@ extraResources:
     to: bin
     filter: ["**/*"]
 asar: true
-# Seals the macOS bundle with an ad-hoc signature — see scripts/adhoc-sign.mjs
+# Seals the macOS bundle with the configured identity (ad-hoc locally) — see scripts/adhoc-sign.mjs
 # for why a missing signature is safer than the stale one electron-builder
 # would otherwise leave behind.
 afterPack: scripts/adhoc-sign.mjs

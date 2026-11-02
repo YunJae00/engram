@@ -1,0 +1,36 @@
+name: Import macOS signing certificate
+description: Import and trust the stable signing identity on the disposable macOS runner
+runs:
+  using: composite
+  steps:
+    - name: Import signing certificate
+      if: ${{ runner.os == 'macOS' && env.ENGRAM_MAC_SIGNING_P12 != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        keychain="$RUNNER_TEMP/engram-signing.keychain-db"
+        echo "ENGRAM_MAC_SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+        keychain_password="$(openssl rand -hex 32)"
+        echo "::add-mask::$keychain_password"
+        p12="$RUNNER_TEMP/engram-signing.p12"
+        cert="$RUNNER_TEMP/engram-signing.pem"
+        trap 'rm -f "$p12" "$cert"' EXIT
+        umask 077
+        printf '%s' "$ENGRAM_MAC_SIGNING_P12" | base64 --decode > "$p12"
+        security create-keychain -p "$keychain_password" "$keychain"
+        security set-keychain-settings -lut 21600 "$keychain"
+        security unlock-keychain -p "$keychain_password" "$keychain"
+        keychains=()
+        while IFS= read -r entry; do
+          entry="${entry#*\"}"
+          keychains+=("${entry%\"*}")
+        done < <(security list-keychains -d user)
+        security list-keychains -d user -s "$keychain" "${keychains[@]}"
+        security import "$p12" -k "$keychain" -P "$ENGRAM_MAC_SIGNING_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+        openssl pkcs12 -in "$p12" -nokeys -passin env:ENGRAM_MAC_SIGNING_PASSWORD -out "$cert"
+        sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$keychain" "$cert"
+        identities="$(security find-identity -v -p codesigning "$keychain")"
+        printf '%s\n' "$identities"
+        printf '%s\n' "$identities" | grep -Eq '[0-9]+\) D07AAAF365C495145F4E6CBAC17D0FB72F140DC4 "Engram Code Signing"'
+        echo 'ENGRAM_MAC_SIGN_IDENTITY=Engram Code Signing' >> "$GITHUB_ENV"

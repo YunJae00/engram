@@ -1,4 +1,5 @@
-// Ad-hoc signatures invalidate TCC grants across builds; stable permission retention requires Developer ID.
+// Ad-hoc signing invalidates TCC grants on each build; a self-signed certificate fixes the requirement.
+// A Developer ID can later use the same identity-signing path (update the pinned requirement too).
 // Two things the macOS bundle needs after electron-builder has assembled it,
 // in this order — both edit the bundle, so the seal goes on last.
 //
@@ -9,7 +10,7 @@
 //    remove, because it is not in the PNG. Every well-behaved app ships an
 //    asset catalog named by CFBundleIconName instead; actool builds ours.
 //
-// 2. AN AD-HOC SIGNATURE. electron-builder skips macOS signing outright when
+// 2. A VALID SIGNATURE. electron-builder skips macOS signing outright when
 //    it finds no certificate, which leaves the bundle wearing the signature
 //    Electron's own binary shipped with — a seal describing contents we just
 //    repacked. macOS treats a BROKEN seal far more harshly than a missing
@@ -19,8 +20,7 @@
 //    unidentified, so Gatekeeper still asks, but it asks the ordinary
 //    question that has an Open Anyway behind it.
 //
-// Real self-updates and a silent first launch need a paid Developer ID. This
-// is everything available without one.
+// Release builds use the stable certificate; local builds without an identity stay ad-hoc.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -106,11 +106,31 @@ export default async function adhocSign(context) {
   const app = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   pruneOtherChip(context, app)
   compileIcon(context, app)
-  // --deep so the nested helpers and the unpacked runtimes (spawned from real
-  // paths, outside the asar) are sealed too:
-  // on arm64 an unsigned Mach-O cannot be loaded at all.
-  execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' })
-  // Fail the build rather than ship another bundle whose seal does not hold.
-  execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' })
+  // Resource executables are not reliably covered by --deep: sign the AX helper first.
+  const helper = join(app, 'Contents', 'Resources', 'bin', 'desktop', 'EngramDesktop')
+  signMacTarget(helper, 'dev.engram.desktop')
+  signMacTarget(app, 'dev.engram.app', true)
+  if (process.env.ENGRAM_MAC_SIGN_IDENTITY) assertCertificateRequirement(helper)
   console.log(`adhoc-sign: sealed ${app}`)
+}
+
+const CERTIFICATE_REQUIREMENT = 'certificate leaf = H"d07aaaf365c495145f4e6cbac17d0fb72f140dc4"'
+
+export function assertCertificateRequirement(target) {
+  const output = execFileSync('codesign', ['-d', '-r-', target], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  // The requirement itself is on stdout; display diagnostics are on stderr.
+  console.log(output.trim())
+  if (!output.includes(CERTIFICATE_REQUIREMENT))
+    throw new Error(`Stable signing requirement missing for ${target}`)
+}
+
+export function signMacTarget(target, identifier, deep = false) {
+  const identity = process.env.ENGRAM_MAC_SIGN_IDENTITY
+  const keychain = process.env.ENGRAM_MAC_SIGN_KEYCHAIN
+  execFileSync('codesign', [
+    '--force', ...(deep ? ['--deep'] : []), '--sign', identity || '-',
+    ...(identity && keychain ? ['--keychain', keychain] : []), '--identifier', identifier, target,
+  ], { stdio: 'inherit' })
+  execFileSync('codesign', ['--verify', ...(deep ? ['--deep'] : []), '--strict', target], { stdio: 'inherit' })
+  if (identity) assertCertificateRequirement(target)
 }

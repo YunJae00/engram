@@ -141,5 +141,23 @@ jobs:
           node-version-file: '.node-version'
       - run: node apps/desktop/scripts/build-desktop.mjs
       - run: apps/desktop/native-bin/desktop/EngramDesktop --self-test
+      - name: Import signing certificate
+        if: ${{ runner.os == 'macOS' }}
+        uses: ./.github/actions/import-macos-signing
+        env:
+          ENGRAM_MAC_SIGNING_P12: ${{ secrets.ENGRAM_MAC_SIGNING_P12 }}
+          ENGRAM_MAC_SIGNING_PASSWORD: ${{ secrets.ENGRAM_MAC_SIGNING_PASSWORD }}
+      - name: Assert stable helper signing requirement
+        if: ${{ env.ENGRAM_MAC_SIGN_IDENTITY != '' }}
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import { signMacTarget } from './apps/desktop/scripts/adhoc-sign.mjs'
+          signMacTarget('apps/desktop/native-bin/desktop/EngramDesktop', 'dev.engram.desktop')
+          JS
       - name: Optional installed Office integration
         run: node apps/desktop/scripts/test-office-macos.mjs
+      - name: Delete signing keychain
+        if: ${{ always() && runner.os == 'macOS' && env.ENGRAM_MAC_SIGN_KEYCHAIN != '' }}
+        shell: bash
+        run: security delete-keychain "$ENGRAM_MAC_SIGN_KEYCHAIN"
