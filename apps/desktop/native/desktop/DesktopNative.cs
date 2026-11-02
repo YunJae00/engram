@@ -64,6 +64,12 @@ internal static class DesktopNative
     {
         if (GetForegroundWindow() != target.Handle) throw new InvalidOperationException("The selected application is no longer in the foreground");
     }
+    internal static void RequireResponsive(DesktopTarget target)
+    {
+        UIntPtr result;
+        if (SendMessageTimeout(target.Handle, 0, UIntPtr.Zero, IntPtr.Zero, 2, 2000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("The app is not responding; no action was sent. Try reading it after it responds.");
+    }
     internal static void AwaitForeground(DesktopTarget target)
     {
         UIntPtr result;
