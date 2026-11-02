@@ -40,6 +40,8 @@ try { EditDocument ([pscustomobject]@{revision='missing';file='C:\\missing.docx'
   const dir = await mkdtemp(resolve('tmp/office-script-'))
   const script = join(dir, 'check.ps1')
   await writeFile(script, '\uFEFF' + functions + checks, 'utf8')
-  const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script], { windowsHide: true, timeout: 30_000 })
+  // Allow cold PowerShell startup on hosted Windows; the checks below enforce
+  // bounded reads and explicit targets, not process startup latency.
+  const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script], { windowsHide: true, timeout: 90_000 })
   expect(stdout).toContain('BOUNDED_BEFORE_VALUE')
 })
