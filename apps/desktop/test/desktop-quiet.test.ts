@@ -149,3 +149,10 @@ describe('quiet app access', () => {
     expect(scans).toBeGreaterThanOrEqual(3)
   })
 })
+
+it('never labels a clipped or truncated answer as settled', async () => {
+  const { request } = binding({ foreground: false, idleMs: 9000 })
+  request.mockResolvedValue({ text: 'Only the old turns', chars: 18, truncated: true, headClipped: false })
+  expect(await quietText('bot-one', 'Claude', undefined, undefined, 0)).toMatchObject({ settled: false, truncated: true })
+  expect(await quietText('bot-one', 'Claude', undefined, undefined, 4000)).toMatchObject({ settled: false, truncated: true })
+})

@@ -179,7 +179,9 @@ export class DesktopHost {
         clearTimeout(pending.timer)
         if (pending.sent) this.cancelNative(id)
         const reason = signal?.reason instanceof Error ? signal.reason.message : 'Computer action was cancelled.'
-        reject(new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`))
+        const error = new Error(`${reason} ${pending.sent ? 'It may have partly happened; read the app before retrying.' : 'The request was not sent.'}`)
+        if (signal?.reason instanceof Error) error.name = signal.reason.name
+        reject(error)
       }
       pending.cancel = cancel
       signal?.addEventListener('abort', cancel, { once: true })

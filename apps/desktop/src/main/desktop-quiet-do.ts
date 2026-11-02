@@ -162,7 +162,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     if (sends) {
       const reply = await quietText(request.lane, request.app, undefined, undefined, REPLY_SETTLE_MS, request.signal)
       flog('desktop-quiet', `app_do: reply ${reply.settled ? 'settled' : 'still coming'} after ${reply.waitedMs}ms`)
-      return { ...finish('done'), committed: true, reply: replyAfter(reply.text, request.text!), settled: reply.settled, ...(reply.stillAnswering ? { stillAnswering: reply.stillAnswering } : {}) }
+      return { ...finish(reply.settled ? 'done' : 'blocked'), committed: true, reply: replyAfter(reply.text, request.text!), settled: reply.settled, ...(reply.stillAnswering ? { stillAnswering: reply.stillAnswering } : {}) }
     }
     await pause(SETTLE_MS, request.signal)
     observation = await quietScan(request.lane, request.app, undefined, request.signal)

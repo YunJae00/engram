@@ -114,7 +114,7 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
-            else if (method == "blockOwnedUi") { Send(new { id = id, result = new { blocking = true } }); Thread.Sleep(1800); return; }
+            else if (method == "blockOwnedUi") { Send(new { id = id, result = new { blocking = true } }); Thread.Sleep(1000); return; }
             else if (method == "changeEntry") { Entry.Text = "Changed by application"; Entry.Focus(); }
             else if (method == "passwordDuringTyping")
             {
