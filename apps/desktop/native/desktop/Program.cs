@@ -117,7 +117,7 @@ internal static class Program
             }
             if (method == "activateWindow")
             {
-                if (monitor.Escaped) throw new InvalidOperationException("Escape pressed");
+                if (queued.Intervention != monitor.Intervention) throw new InvalidOperationException("User input changed before activation");
                 if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
                 if (target.Minimized) DesktopNative.ShowWindowAsync(target.Handle, 9);
                 if (DesktopNative.GetForegroundWindow() != target.Handle && !DesktopNative.SetForegroundWindow(target.Handle))
