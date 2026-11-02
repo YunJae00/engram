@@ -43,6 +43,8 @@ export class DesktopHost {
   private currentNative?: string
   private revoked = new Map<string, string>()
   private pending = new Map<number, PendingRequest>()
+  private previewInFlight = new Set<number>()
+  private previewWaits = new Map<number, number>()
   private withdrawnReads = new Map<number, ReturnType<typeof setTimeout>>()
 
   constructor(private onRevoked: (reason: string) => void = () => undefined) {}
@@ -102,6 +104,11 @@ export class DesktopHost {
           return
         }
         if (!Number.isSafeInteger(message.id)) return
+        if (this.previewInFlight.delete(message.id!) && !this.previewInFlight.size) {
+          for (const [id, started] of this.previewWaits) if (this.pending.has(id)) flog('work-preview', JSON.stringify({ waitedMs: Date.now() - started }))
+          this.previewWaits.clear()
+        }
+        this.previewWaits.delete(message.id!)
         clearTimeout(this.withdrawnReads.get(message.id!))
         this.withdrawnReads.delete(message.id!)
         const pending = this.pending.get(message.id!)
@@ -237,6 +244,8 @@ export class DesktopHost {
         }, 30000)
         try {
           pending.sent = true
+          if (pending.preview) this.previewInFlight.add(id)
+          else if (this.previewInFlight.size) this.previewWaits.set(id, Date.now())
           line = JSON.stringify({ ...JSON.parse(line), expiresAt: Date.now() + 30000 }) + '\n'
           this.child.stdin.write(line, (error) => { if (error) this.close(error) })
         } catch (error) { this.close(error instanceof Error ? error : new Error('The desktop request could not be sent.')) }
@@ -271,6 +280,7 @@ export class DesktopHost {
     }
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     this.pending.clear()
+    this.previewInFlight.clear(); this.previewWaits.clear()
     for (const timer of this.withdrawnReads.values()) clearTimeout(timer)
     this.withdrawnReads.clear()
     this.onRevoked(error.message)
