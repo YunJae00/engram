@@ -44,6 +44,7 @@ internal sealed class ControlFixture : Form
     private int Clicks;
     private Form Away;
     private Panel Dense;
+    private Panel History;
     private TextBox Deep;
     private Panel Workflow;
     private TextBox Draft;
@@ -164,6 +165,13 @@ internal sealed class ControlFixture : Form
                 Dense.Controls.Add(new Button { AccessibleName = "Continue account", Text = "Continue account", Bounds = new Rectangle(8, 60, 150, 32) });
                 Controls.Add(Dense); Dense.BringToFront();
             }
+            else if (method == "history")
+            {
+                History = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "History region" };
+                for (var row = 0; row < 600; row++) History.Controls.Add(new Label { Text = "Turn " + row, TabIndex = row, Bounds = new Rectangle(8, row * 20, 200, 18) });
+                Controls.Add(History); History.BringToFront();
+            }
+            else if (method == "clearHistory") { History.Dispose(); History = null; }
             else if (method == "dense")
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };

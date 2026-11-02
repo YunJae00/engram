@@ -146,5 +146,15 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.ok(oldField)
   await helper.request('inspectWindow', { window: target.window, pid: 0 })
   assert.equal((await helper.request('quietRead', { ...target, snapshot: beforeReselect.snapshot, control: oldField.id })).text, (oldField.value ?? '').trim(), 'Another chat inspecting the same window must preserve its unchanged controls')
+  await fixture.request('history')
+  const historyView = await helper.request('quietScan', { ...target, mode: 'skeleton', find: 'History region' })
+  const history = historyView.controls.find(control => control.name === 'History region')
+  assert.ok(history)
+  const recent = await helper.request('quietRead', { ...target, snapshot: historyView.snapshot, control: history.id })
+  for (let turn = 596; turn < 600; turn++) assert.ok(recent.text.includes(`Turn ${turn}`), 'Bounded text must retain the latest four turns of the scoped history')
+  assert.ok(recent.text.indexOf('Turn 596') < recent.text.indexOf('Turn 599'), 'Recent turns remain in document order')
+  assert.equal(recent.headClipped, true)
+  assert.equal(recent.truncated, false)
+  await fixture.request('clearHistory')
   return { readWithoutFocus: true, providerOnlySet: true, setActivatedWindow: set.foregroundChanged, providerOnlyPress: true, pressActivatedWindow: press.foregroundChanged, exactReplacement: true, protectedSurfaceRejected: true, passwordRejected: true }
 }
