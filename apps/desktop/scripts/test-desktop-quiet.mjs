@@ -19,6 +19,10 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   const entry = first.controls.find(control => control.name === 'Worker input')
   const button = first.controls.find(control => control.name === 'Count click')
   assert.ok(entry?.can.set)
+  const nodes = [...first.controls, ...first.texts]
+  assert.ok(entry.parent, 'Sorted input must retain its owning container')
+  assert.ok(nodes.some(node => node.id === entry.parent), 'Input owner must be present in the unfiltered observation')
+  assert.ok(nodes.every(node => Number.isInteger(node.order)), 'Observation order survives control/text separation')
   assert.ok(button?.can.press)
   assert.equal((await fixture.request('state')).foreground, false)
   const field = { ...target, snapshot: first.snapshot, control: entry.id }

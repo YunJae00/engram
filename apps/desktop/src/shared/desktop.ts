@@ -39,6 +39,8 @@ export interface DesktopObservationDto {
 // Provider-only operations avoid injected input. IDs belong to one snapshot.
 export interface QuietControlDto {
   id: string
+  parent?: string | null
+  order?: number
   type: string
   depth?: number
   childCount?: number
@@ -65,7 +67,7 @@ export interface QuietObservationDto {
   truncated?: boolean
   bounds?: { x: number; y: number; width: number; height: number }
   controls: QuietControlDto[]
-  texts: { id: string; text: string }[]
+  texts: { id: string; text: string; parent?: string | null; order?: number }[]
   skippedControls: number
   skippedTexts: number
   ms: number

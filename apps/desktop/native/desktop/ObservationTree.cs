@@ -6,6 +6,7 @@ using System.Windows.Automation;
 internal sealed class ObservationNode
 {
     internal AutomationElement Element;
+    internal ObservationNode Parent;
     internal int Depth;
     internal int ChildCount;
     internal bool Truncated;
@@ -70,7 +71,7 @@ internal sealed class ObservationTree
                     {
                         var transparent = web && EmptyContainer(child);
                         if (!transparent && result.Nodes.Count + queuedNodes >= cap) { node.Truncated = true; break; }
-                        pending.Enqueue(new ObservationNode { Element = child, Depth = node.Depth + (skip ? 0 : 1), Transparent = transparent });
+                        pending.Enqueue(new ObservationNode { Element = child, Parent = skip ? node.Parent : node, Depth = node.Depth + (skip ? 0 : 1), Transparent = transparent });
                         if (!transparent) queuedNodes++;
                     }
                     else node.Truncated = true;
