@@ -42,6 +42,12 @@ final class Connection: @unchecked Sendable {
                 precondition(sensitiveControl(kAXGroupRole, "", "Sign in"))
                 let input = InputMonitor()
                 let initial = input.inputVersion(100)
+                let posted = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)!
+                posted.setIntegerValueField(.eventSourceUserData, value: input.marker)
+                let intervention = input.state().intervention
+                input.receiveInput(.keyDown, event: posted)
+                precondition(input.state().intervention == intervention)
+                precondition(input.inputVersion(100) == initial && !input.state().escaped)
                 input.noteInput(pid: 200, escape: false)
                 precondition(input.inputVersion(100) == initial)
                 input.noteInput(pid: 100, escape: false)

@@ -130,7 +130,7 @@ func scan(_ target: Target, root: AXUIElement? = nil, skeleton: Bool = false) th
         if secret && (try? elementBounds(element)) == nil { complete = false }
         let skip = hasActions && !secret && transparentGroup(role: role, name: label, value: stringAttribute(element, kAXValueAttribute),
             identifier: stringAttribute(element, kAXIdentifierAttribute), actionable: settable.boolValue || !((actions as? [String]) ?? []).isEmpty)
-        if !skip { controls.append(Control(id: String(controls.count + 1), depth: depth, element: element, role: role, name: secret ? "Protected control" : String(label.prefix(500)), secret: secret, bounds: try? elementBounds(element), enabled: attribute(element, kAXEnabledAttribute) as? Bool ?? true, settable: settable.boolValue && !secret, pressable: press && !secret)) }
+        if !skip { controls.append(Control(id: String(controls.count + 1), depth: depth, element: element, role: role, name: secret ? "Protected control" : String(label.prefix(500)), secret: secret, bounds: try? elementBounds(element), enabled: attribute(element, kAXEnabledAttribute) as? Bool ?? true, settable: settable.boolValue && !secret, pressable: (press || ((try? elementBounds(element)) != nil && ["AXButton", "AXLink", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton"].contains(role))) && !secret)) }
         var rawChildren: CFTypeRef?
         let status = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren)
         if status == .success, let children = rawChildren as? [AXUIElement] {

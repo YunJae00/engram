@@ -9,7 +9,7 @@ import { showWorkPreview } from './work-preview.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
-// Provider calls avoid injected input and requested focus. A mutation waits
+// Background input targets the app process. A mutation waits
 // while the person uses the target app; providers may still activate themselves.
 const STILL_MS = 4_000
 const WAIT_AT_MOST_MS = 60_000
@@ -93,7 +93,8 @@ async function request<T>(binding: DesktopBinding, method: DesktopMethod, args: 
   const result = await binding.host.request<T>(method, { ...scoped(binding), ...args }, signal)
   check()
   if (['quietSet', 'quietPress', 'quietRead'].includes(method) && result && typeof result === 'object') {
-    const receipt = result as { foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+    const receipt = result as { how?: string; pressed?: string; foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+    if ((receipt.how && receipt.how !== 'ax') || receipt.pressed === 'posted') flog('harness', JSON.stringify({ kind: 'host', operation: 'quiet-posted-input', how: receipt.how ?? receipt.pressed, method }))
     if (receipt.foregroundChanged) {
       const tool = method === 'quietSet' ? 'app_set' : method === 'quietPress' ? 'app_press' : 'app_text'
       flog('desktop-foreground', JSON.stringify({ lane: binding.lane, tool, app: binding.name, restored: receipt.foregroundRestored === true }))

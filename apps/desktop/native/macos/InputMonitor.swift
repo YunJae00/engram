@@ -55,6 +55,11 @@ final class InputMonitor: @unchecked Sendable {
         lock.unlock()
         stop(stoppedByEscape ? "Escape pressed" : "User input changed")
     }
+    func receiveInput(_ type: CGEventType, event: CGEvent) {
+        guard event.getIntegerValueField(.eventSourceUserData) != marker else { return }
+        noteInput(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                  escape: type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53)
+    }
     func start() throws {
         let ready = DispatchSemaphore(value: 0)
         Thread.detachNewThread { [self] in
@@ -64,10 +69,7 @@ final class InputMonitor: @unchecked Sendable {
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     monitor.stop("Input monitoring was interrupted")
                     if let tap = monitor.tap { CGEvent.tapEnable(tap: tap, enable: true) }
-                } else if event.getIntegerValueField(.eventSourceUserData) != monitor.marker {
-                    monitor.noteInput(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                                      escape: type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53)
-                }
+                } else { monitor.receiveInput(type, event: event) }
                 return Unmanaged.passUnretained(event)
             }, userInfo: Unmanaged.passUnretained(self).toOpaque())
             guard let tap = tap else { ready.signal(); return }
