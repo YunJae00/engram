@@ -49,7 +49,7 @@ internal sealed partial class QuietAccess
         var changedForeground = ForegroundChanged(foreground);
         var restoredForeground = false;
         if (changedForeground) {
-            try { restoredForeground = DesktopNative.SetForegroundWindow(foreground) && GetForegroundWindow() == foreground; }
+            try { restoredForeground = DesktopNative.RestoreForeground(foreground); }
             catch { }
         }
         return new { pressed = action, control = control, before = before, after = after, satisfied = intoView ? after == 0 : after != before,

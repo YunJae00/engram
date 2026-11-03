@@ -110,6 +110,7 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   await fixture.request('away')
   await fixture.request('activateNextClick')
   const activated = await helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id })
+  console.log(JSON.stringify({ quietSelfActivatingInvoke: activated }))
   assert.equal(activated.foregroundChanged, true, 'Self-activating Invoke must be reported')
   assert.equal(activated.foregroundRestored, true, 'Invoke must restore the previous foreground window')
   assert.equal((await fixture.request('state')).foreground, false, 'Owned foreground window must be restored')

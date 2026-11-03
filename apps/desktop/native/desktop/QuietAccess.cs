@@ -216,7 +216,7 @@ internal sealed partial class QuietAccess : IDisposable
         var changedForeground = ForegroundChanged(foreground);
         var restoredForeground = false;
         if (changedForeground) {
-            try { restoredForeground = DesktopNative.SetForegroundWindow(foreground) && GetForegroundWindow() == foreground; }
+            try { restoredForeground = DesktopNative.RestoreForeground(foreground); }
             catch { }
         }
         return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
