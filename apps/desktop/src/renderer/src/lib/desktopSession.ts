@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { DesktopBindingDto, DesktopControlStatusDto } from '../../../shared/desktop.js'
+import { syncAppPreviewStreams } from './appPreviewStream.js'
 import { api } from '../api.js'
 
 export type DesktopSurface = 'browser' | 'computer'
@@ -22,6 +23,7 @@ let revision = 0
 const surfaceRequests = new Map<string, number>()
 
 function publish(next: Partial<Snapshot>): void {
+  if (next.bindings) syncAppPreviewStreams(next.bindings, () => publish({}))
   snapshot = { ...snapshot, ...next }
   for (const listener of listeners) listener()
 }

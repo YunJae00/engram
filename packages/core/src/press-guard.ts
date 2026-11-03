@@ -28,7 +28,7 @@ export function pressCommits(target: PressTarget): boolean {
   if (target.shows) return false
   const label = target.words.trim()
   const korean = target.role === undefined ? KOREAN_COMMIT.test(label)
-    : target.role === 'button' && label.length <= 40 && KOREAN_ACTION.test(label)
+    : ['button', 'menuitem'].includes(target.role) && label.length <= 40 && KOREAN_ACTION.test(label)
   const commits = COMMIT_WORDS.test(label) || korean
   if (PASSAGE_WORDS.test(target.words) && !commits) return false
   if (target.navigates && !target.submits && LINK_DESTINATIONS.test(target.words.trim())) return false

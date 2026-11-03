@@ -68,14 +68,14 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
         <DecisionCard
           key={a.id}
           testId={`task-approval-${a.id}`}
-          hint={t('card.pressHint')}
+          hint={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlHint : t('card.pressHint')}
           icon={<AlertTriangle size={14} />}
           label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
-          title={a.url.startsWith('file:') ? t('card.needsOk') : t('card.press', { words: a.words })}
+          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? t('card.needsOk') : t('card.press', { words: a.words })}
           sub={a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>
-            <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve-task')}>{threadWords(t.lang).approveTask}</button>
+            {!a.url.startsWith('engram://computer-control/') && <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve-task')}>{threadWords(t.lang).approveTask}</button>}
             <button className="primary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve')}>{t('card.continue')}</button>
           </>}
         >

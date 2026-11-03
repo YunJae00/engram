@@ -6,6 +6,8 @@ import { agentMirror } from '../lib/agentMirrorLive.js'
 import { useWebPane } from '../lib/webPane.js'
 import { useNativeBrowser } from '../lib/nativeSurfaces.js'
 import { useCompactBrowser } from '../lib/useCompactBrowser.js'
+import { useDesktopSession } from '../lib/desktopSession.js'
+import { appPreviewFor } from '../lib/appPreviewStream.js'
 import type { FrameSource } from './FrameScreen.js'
 
 export type PreviewFrame = {
@@ -21,6 +23,8 @@ export function appPreviewFrame(frame: WorkPreviewDto): PreviewFrame {
     activity: frame.activity, phase: frame.unavailable ? 'unavailable' : frame.captureState ?? 'ready', reason: frame.captureReason === 'capture_unavailable' ? undefined : frame.captureReason, current: frame.current }
 }
 export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame[] {
+  const { bindings } = useDesktopSession()
+  const binding = bindings.find(item => item.lane === lane && item.readable)
   const { activity } = useShellState()
   const active = tile ? activity === 'mission' : activity === 'bots'
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
@@ -69,6 +73,14 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     return () => { alive = false; clearTimeout(timer) }
   }, [lane, live, url, tile?.frames, visible, active])
   const frames = apps.filter(frame => frame.lane === lane).map(appPreviewFrame)
+  if (binding) {
+    const id = `${lane}:${binding.source}`
+    let frame = frames.find(item => item.id === id)
+    if (!frame) { frame = { id, source: 'app', title: binding.name, at: Date.now(), phase: 'waiting' }; frames.push(frame) }
+    const stream = appPreviewFor(lane)
+    if (stream?.live) { frame.stream = stream.source; frame.phase = 'ready'; frame.image = undefined }
+    else if (stream?.image) { frame.image = stream.image; frame.at = stream.at; frame.phase = 'ready' }
+  }
   const showing = tile ? tile.url !== undefined : (pane.floating || (compact && !pane.expanded)) && !pane.folded
     && (pane.wanted || (mirror.lane === lane && (mirror.on || mirror.frame)))
   if (showing) {

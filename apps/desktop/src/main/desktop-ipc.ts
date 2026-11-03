@@ -1,4 +1,4 @@
-import { workPreviews } from './work-preview.js'
+import { setWorkPreviewStream, workPreviews } from './work-preview.js'
 import { ipcMain, session, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopHost } from './desktop-host.js'
@@ -30,6 +30,7 @@ export function registerDesktopIpc(): void {
   handle('desktop:available', () => DesktopHost.available())
   handle('desktop:visible', desktopVisible)
   handle('desktop:previews', workPreviews)
+  handle('desktop:previewStream', setWorkPreviewStream)
   handle('desktop:windows', desktopWindows)
   handle('desktop:bindings', desktopBindings)
   handle('desktop:choose', chooseDesktop)

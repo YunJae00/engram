@@ -20,6 +20,7 @@ internal sealed partial class QuietAccess
     private object ReadOnce(DesktopTarget target, string snapshot, string control)
     {
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading it");
+        var foreground = GetForegroundWindow();
         var root = Validate(target);
         var element = control == null ? root : Control(target, snapshot, control).Element;
         string text;
@@ -46,7 +47,13 @@ internal sealed partial class QuietAccess
         var clipped = text.Length > ReadLimit;
         if (clipped) text = text.Substring(text.Length - ReadLimit);
         Guard.Same(target);
-        return new { text = text, chars = text.Length, headClipped = headClipped || clipped, truncated = truncated,
+        var changedForeground = ForegroundChanged(foreground);
+        var restoredForeground = false;
+        if (changedForeground) {
+            try { restoredForeground = DesktopNative.RestoreForeground(foreground); }
+            catch { }
+        }
+        return new { foregroundChanged = changedForeground, foregroundRestored = restoredForeground, text = text, chars = text.Length, headClipped = headClipped || clipped, truncated = truncated,
             scope = control ?? "window", continuation = truncated || headClipped || clipped
                 ? "Read app_read mode:skeleton, then app_read root with its snapshot; use app_text on the required smaller container. This text is partial." : null };
     }

@@ -96,6 +96,7 @@ export interface DesktopControlStatusDto {
 }
 export interface DesktopApi {
   desktopPreviews(lane: string): Promise<WorkPreviewDto[]>
+  desktopPreviewStream(lane: string, live: boolean): Promise<void>
   desktopAvailable(): Promise<boolean>
   desktopVisible(): Promise<boolean>
   desktopWindows(): Promise<DesktopWindowDto[]>

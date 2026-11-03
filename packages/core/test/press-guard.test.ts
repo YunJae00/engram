@@ -97,3 +97,12 @@ it('distinguishes Korean action buttons from request titles and navigation', () 
   }
   expect(pressCommits({ role: 'button', words: '제출 내역 보기', submits: false })).toBe(false)
 })
+
+
+it('treats dated submission rows as navigation and short menu actions as commits', () => {
+  for (const role of ['link', 'row', 'text', 'button', 'menuitem']) {
+    expect(pressCommits({ role, words: '공가(훈련등) 제출 | 공가(훈련등) | 2026년 10월 6일', submits: false })).toBe(false)
+  }
+  expect(pressCommits({ role: 'menuitem', words: '제출하기', submits: false })).toBe(true)
+  expect(pressCommits({ role: 'link', words: '제출', submits: false })).toBe(false)
+})
