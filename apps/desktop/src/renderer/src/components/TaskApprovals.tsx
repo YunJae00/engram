@@ -55,7 +55,7 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
       </div>
     )
   }
-  const decide = async (id: string, answer: 'approve' | 'decline') => {
+  const decide = async (id: string, answer: 'approve' | 'approve-task' | 'decline') => {
     setPendingDecision(true); setError('')
     try { await api.taskDecide(task.id, id, answer) }
     catch (cause) { setError(String(cause)) }
@@ -75,6 +75,7 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
           sub={a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>
+            <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve-task')}>{threadWords(t.lang).approveTask}</button>
             <button className="primary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve')}>{t('card.continue')}</button>
           </>}
         >

@@ -304,7 +304,7 @@ test('a replayed Enter cannot bypass the submit guard', async () => {
   ] }), `${siteUrl}log`)
   await openRoutines(saved.id)
   await page.getByTestId(`routine-run-${saved.id}`).click()
-  await expect(page.getByTestId('bots-thread')).toContainText('could submit or commit', { timeout: 90_000 })
+  await expect(page.getByTestId('bots-thread')).toContainText('Send using Enter', { timeout: 90_000 })
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
   expect(posted).toEqual(before)
   const recorded = (await listRoutines(paths)).find(routine => routine.id === saved.id)!
