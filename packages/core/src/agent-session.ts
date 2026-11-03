@@ -213,7 +213,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       }
     },
     workdir: deps.workdir,
-    system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), native: options.native }),
+    system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native }),
     prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
       ...(options.attachmentContext ? [options.attachmentContext] : []),
       ...resumeLines(options.resume),
