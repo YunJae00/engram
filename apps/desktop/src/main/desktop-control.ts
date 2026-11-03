@@ -4,7 +4,7 @@ import { screen } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type DesktopReadOptions, type Engine } from 'core'
 import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } from '../shared/desktop.js'
-import { bindDesktopForLane, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
+import { bindDesktopForLane, rememberOpenedForeground, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
 import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -30,7 +30,6 @@ const observations = new Map<string, DesktopObservationDto>()
 const observationTimes = new WeakMap<DesktopObservationDto, number>()
 const operations = new Map<string, Promise<unknown>>()
 let launching: { lane: string; host: DesktopHost } | undefined
-
 setDesktopReleaseHook((lane, reason) => stopDesktopForLane(lane, reason, recoverableDesktopFailure(reason)))
 export function setDesktopEngineResolver(resolve: typeof engineForControl): void { engineForControl = resolve }
 export function assertDesktopChatEngine(lane: string, engine: DesktopEngine | undefined): void {
@@ -40,7 +39,6 @@ export function assertDesktopChatEngine(lane: string, engine: DesktopEngine | un
   stopDesktopForLane(lane, DESKTOP_TOOL_ISOLATION_MESSAGE)
   throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
 }
-
 function engineOf(id: string): DesktopEngineId { return id === 'codex' ? 'codex' : 'claude' }
 export function desktopControlStatus(): DesktopControlStatusDto {
   const state = lease.state()
@@ -52,7 +50,6 @@ export function desktopControlStatus(): DesktopControlStatusDto {
     ...(state.state === 'paused' ? { resumable: paused?.resumable === true, ...(state.lane && stoppedTurns.has(state.lane) ? { reason: stoppedTurns.get(state.lane) } : {}) } : {}),
   }
 }
-
 function announce(): void {
   const status = desktopControlStatus()
   if (status.state === 'running') updateControlOverlay(status)
@@ -121,10 +118,12 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   const abort = () => host.close()
   signal?.addEventListener('abort', abort, { once: true })
   try {
-    await host.request('openApp', { app })
+    const result = await host.request<{ pid?: number; previousFrontPid?: number; foregroundRestored?: boolean }>('openApp', { app })
+    if (result?.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane, tool: 'open_app' }))
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
-    return JSON.stringify({ opened: true, windowVerified: false, hint: 'The system accepted the launch request. Read it with app_read using a word of its name; a launch request alone does not prove the app is ready.' })
+    if (result) rememberOpenedForeground(lane, result)
+    return JSON.stringify({ opened: true, windowVerified: false, foregroundRestored: result?.foregroundRestored, hint: 'The system accepted the launch request. Read it with app_read using a word of its name; a launch request alone does not prove the app is ready.' })
   } finally {
     signal?.removeEventListener('abort', abort)
     if (launching === pending) launching = undefined

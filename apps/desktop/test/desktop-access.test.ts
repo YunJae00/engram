@@ -21,7 +21,7 @@ vi.mock('../src/main/desktop-host.js', () => ({
     revoke(reason = 'Mouse input returned control to the user') { this.changed(reason) }
   },
 }))
-import { bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
+import { rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
 
 const lane = 'bot-one'
 const other = 'bot-two'
@@ -197,4 +197,24 @@ describe('the connection through hands and closures', () => {
     await expect(chooseDesktop(lane, 'window:100:0')).rejects.toThrow('Reconnect the app window to continue.')
     expect(desktopBinding(lane)).toBeUndefined()
   })
+})
+
+it('restores the launch foreground only at the first binding of the opened process', async () => {
+  rememberOpenedForeground(lane, { pid: 201, previousFrontPid: 99 })
+  await bindDesktopForLane(lane, { app: 'Excel' })
+  expect(fake.request.mock.calls.some(([method]) => method === 'inspectWindow')).toBe(false)
+  await bindDesktopForLane(lane, { app: 'Notepad' })
+  expect(fake.request).toHaveBeenCalledWith('inspectWindow', { window: '101', pid: 201, restoreForegroundPid: 99 })
+  fake.request.mockClear()
+  await bindDesktopForLane(lane, { app: 'Notepad' })
+  expect(fake.request.mock.calls.some(([method]) => method === 'inspectWindow')).toBe(false)
+})
+
+it('unminimizes only the selected minimized window during binding', async () => {
+  fake.windows.push({ window: '103', pid: 202, title: 'Other minimized sheet - Excel', minimized: true })
+  const binding = await bindDesktopForLane(lane, { app: 'window:102:0' })
+  expect(binding.window).toBe('102')
+  expect(fake.request.mock.calls.filter(([method]) => method === 'inspectWindow')).toEqual([
+    ['inspectWindow', { window: '102', pid: 202, unminimize: true }],
+  ])
 })

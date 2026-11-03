@@ -1,11 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 
-const fake = vi.hoisted(() => ({ request: vi.fn(), close: vi.fn() }))
+const fake = vi.hoisted(() => ({ request: vi.fn(), close: vi.fn(), remember: vi.fn(), flog: vi.fn() }))
 vi.mock('electron', () => ({ screen: {} }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: class { request = fake.request; close = fake.close } }))
-vi.mock('../src/main/desktop-access.js', () => ({ setDesktopReleaseHook: vi.fn(), desktopChanged: vi.fn(), desktopBinding: vi.fn() }))
+vi.mock('../src/main/desktop-access.js', () => ({ rememberOpenedForeground: fake.remember, setDesktopReleaseHook: vi.fn(), desktopChanged: vi.fn(), desktopBinding: vi.fn() }))
 vi.mock('../src/main/desktop-overlay.js', () => ({ hideControlOverlay: vi.fn() }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
+vi.mock('../src/main/flog.js', () => ({ flog: fake.flog }))
 import { endDesktopTurn, openDesktopApp, setDesktopEngineResolver, stopDesktopFromUi } from '../src/main/desktop-control.js'
 
 beforeEach(() => {
@@ -41,4 +42,11 @@ it('closes pending launch on Stop and refuses later launches in that turn', asyn
 it('reports launch acceptance separately from window verification', async () => {
   endDesktopTurn('bot-launch')
   expect(JSON.parse(await openDesktopApp('bot-launch', 'calculator'))).toMatchObject({ opened: true, windowVerified: false })
+})
+
+it('records launch foreground restoration and retains the prior app for first binding', async () => {
+  fake.request.mockResolvedValue({ requested: true, pid: 42, previousFrontPid: 99, foregroundRestored: true })
+  await openDesktopApp('bot-launch', 'calculator')
+  expect(fake.remember).toHaveBeenCalledWith('bot-launch', expect.objectContaining({ pid: 42, previousFrontPid: 99 }))
+  expect(fake.flog).toHaveBeenCalledWith('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane: 'bot-launch', tool: 'open_app' }))
 })

@@ -85,18 +85,24 @@ final class Connection: @unchecked Sendable {
                 if request["method"] as? String == "stop" { connection.cancel(); host.monitor.stop("Computer control stopped") }
                 let epoch = connection.generation()
                 DispatchQueue.main.async {
-                    defer { connection.cancel(id) }
+                    let finish: (Result<Any, Error>) -> Void = { outcome in
+                        defer { connection.cancel(id) }
+                        do {
+                            let result = try outcome.get()
+                            guard connection.generation() == epoch else { throw DesktopFailure("Computer action was cancelled") }
+                            guard connection.valid(id) else { throw DesktopFailure("The request was cancelled after dispatch; read the app before retrying") }
+                            connection.send(["id": id, "result": result])
+                        } catch {
+                            if ["click", "type", "replace", "scroll", "key", "bind", "prepare", "documentEdit", "documentCompose"].contains(request["method"] as? String ?? "") { host.monitor.stop(String(describing: error)); host.snapshots.removeAll() }
+                            connection.send(["id": id, "error": String(describing: error)])
+                        }
+                    }
                     do {
                         guard connection.valid(id) else { throw DesktopFailure("The request expired or was cancelled before execution; it was not run") }
                         guard connection.generation() == epoch else { throw DesktopFailure("Computer action was cancelled") }
-                        let result = try host.receive(request)
-                        guard connection.generation() == epoch else { throw DesktopFailure("Computer action was cancelled") }
-                        guard connection.valid(id) else { throw DesktopFailure("The request was cancelled after dispatch; read the app before retrying") }
-                        connection.send(["id": id, "result": result])
-                    } catch {
-                        if ["click", "type", "replace", "scroll", "key", "bind", "prepare", "documentEdit", "documentCompose"].contains(request["method"] as? String ?? "") { host.monitor.stop(String(describing: error)); host.snapshots.removeAll() }
-                        connection.send(["id": id, "error": String(describing: error)])
-                    }
+                        if request["method"] as? String == "openApp" { try host.openApp(request, completion: finish) }
+                        else { finish(.success(try host.receive(request))) }
+                    } catch { finish(.failure(error)) }
                 }
             }
             connection.cancel(); host.monitor.stop("Connection closed"); exit(0)
