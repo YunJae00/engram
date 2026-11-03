@@ -41,6 +41,9 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
       for (const [channel, handler] of Object.entries(handlers)) { ipcMain.removeHandler(channel); ipcMain.handle(channel, handler) }
     }, lane)
     await page.reload()
+    // Live previews require a visible window; hidden Windows capture can stall.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.showInactive())
+    await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible')
     await openActivity(page, 'bots')
     await page.getByTestId(`bot-${bot.id}`).click()
     await page.getByTestId('preview-card-collapsed').click()
