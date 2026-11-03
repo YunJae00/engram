@@ -24,7 +24,8 @@ internal sealed class FixtureScroll : Panel
 internal sealed class FixturePostedControl : Panel
 {
     internal int Clicks;
-    internal FixturePostedControl() { AccessibleName = "Posted click target"; AccessibleRole = AccessibleRole.PushButton; }
+    // The MSAA proxy gives PushButton an Invoke pattern even with no default action.
+    internal FixturePostedControl() { AccessibleName = "Posted click target"; AccessibleRole = AccessibleRole.Grouping; }
     protected override AccessibleObject CreateAccessibilityInstance() { return new NoInvoke(this); }
     private sealed class NoInvoke : ControlAccessibleObject
     {
