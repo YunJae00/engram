@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict'
 import { desktopFailure } from '../src/main/desktop-failure.ts'
 
-export async function testDesktopQuiet(helper, fixture, target, until) {
+export async function testDesktopQuiet(helper, fixture, target, until, launchApp) {
   await helper.ready
   await helper.request('inspectWindow', { window: target.window, pid: 0 })
   await fixture.request('away')
+  const previous = (await fixture.request('state')).foregroundWindow
+  const opened = await helper.request('openApp', { app: launchApp.id })
+  assert.equal(opened.requested, true)
+  assert.equal(typeof opened.foregroundRestored, 'boolean')
+  assert.equal((await fixture.request('state')).foregroundWindow, previous, 'openApp must preserve or restore the owned foreground window')
+  console.log(JSON.stringify({ quietOpenApp: opened }))
   await fixture.request('awayEscape')
   await until(() => helper.request('inputState'), state => state.escaped, 'Owned Escape input was not observed')
   assert.equal((await helper.request('quietState', target)).minimized, false, 'Escape in another window must not poison a fresh background read')

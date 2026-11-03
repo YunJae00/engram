@@ -57,6 +57,15 @@ internal static class DesktopSelfTest
             Check(!DesktopApps.Allowed("Example", "Example", @"C:\Apps\example.bat"), "Scripts are not app launchers");
             Reject(delegate { DesktopApps.Open("../calc.exe", delegate { return true; }); }, "Model paths cannot be launched");
             Check(DesktopApps.Id("Example") == DesktopApps.Id("Example") && DesktopApps.Id("Example").Length == 64, "Catalog IDs are stable and opaque");
+            var foreground = new IntPtr(10);
+            var restores = 0;
+            Func<IntPtr, bool> restoreLaunch = delegate(IntPtr window) { restores++; foreground = window; return true; };
+            dynamic quietLaunch = DesktopApps.Launch("Owned", delegate { }, delegate { return foreground; }, restoreLaunch);
+            Check(!quietLaunch.foregroundChanged && !quietLaunch.foregroundRestored && restores == 0, "Background app launch preserves foreground without activation");
+            dynamic activeLaunch = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, restoreLaunch);
+            Check(activeLaunch.foregroundChanged && activeLaunch.foregroundRestored && foreground == new IntPtr(10) && restores == 1, "Self-activating app launch restores the previous foreground");
+            dynamic failedRestore = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, delegate { return false; });
+            Check(failedRestore.foregroundChanged && !failedRestore.foregroundRestored, "Launch restoration failures are reported honestly");
             Check(ControlPolicy.PassivePointer(0x200, false), "Physical pointer motion is not cancellation");
             Check(!ControlPolicy.PassivePointer(0x201, false), "A button press is not passive motion");
             Check(!ControlPolicy.PassivePointer(0x200, true), "Other automation still interrupts control");

@@ -309,7 +309,7 @@ internal sealed class ControlFixture : Form
             }
             else if (method != "state") throw new ArgumentException("Unsupported fixture request");
             Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, wheelEvents = Scroller.Wheels,
-                scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible,
+                foregroundWindow = GetForegroundWindow().ToInt64().ToString(), scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible,
                 protectedCharacters = Secret.TextLength, deepText = Deep == null ? null : Deep.Text,
                 draft = Draft == null ? null : Draft.Text, reviewed = Reviewed == null ? null : Reviewed.Text } });
         }

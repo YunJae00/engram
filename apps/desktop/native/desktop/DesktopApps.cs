@@ -29,6 +29,15 @@ internal static class DesktopApps
         return Regex.IsMatch(identity, @"^[A-Za-z0-9.\-_]+![A-Za-z0-9.\-_]+$")
             || (!string.IsNullOrEmpty(target) && Path.IsPathRooted(target) && string.Equals(Path.GetExtension(target), ".exe", StringComparison.OrdinalIgnoreCase));
     }
+    internal static object Launch(string name, Action open, Func<IntPtr> foreground, Func<IntPtr, bool> restore)
+    {
+        var previous = foreground();
+        try { open(); }
+        catch { if (foreground() != previous) restore(previous); throw; }
+        var changed = foreground() != previous;
+        return new { requested = true, name = name, requiresObservation = true,
+            foregroundChanged = changed, foregroundRestored = changed && restore(previous) };
+    }
     private static object Visit(string wanted, Func<bool> permitted)
     {
         if (wanted != null && !Regex.IsMatch(wanted, "^[a-f0-9]{64}$")) throw new ArgumentException("Use the app name or an ID that open_app gave. Paths and commands are not accepted.");
@@ -60,8 +69,8 @@ internal static class DesktopApps
                     else if (wanted == id)
                     {
                         if (!permitted()) throw new InvalidOperationException("The app launch was cancelled.");
-                        Call(item, "InvokeVerb", false, "open");
-                        return new { requested = true, name = name, requiresObservation = true };
+                        return Launch(name, delegate { Call(item, "InvokeVerb", false, "open"); },
+                            DesktopNative.GetForegroundWindow, DesktopNative.RestoreForeground);
                     }
                 }
                 finally { Release(item); }
