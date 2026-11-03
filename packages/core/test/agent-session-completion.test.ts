@@ -222,3 +222,16 @@ it('separates accepted app launch from a permission-blocked readback', () => {
   ])).toBeUndefined()
   expect(finalDesktopFailure([{ tool: 'app_set', args: {}, observation: JSON.stringify({ landed: false }) }])).toContain('has not been verified')
 })
+
+it('finishes a blocked collection once without rewriting it as incomplete', async () => {
+  const engine = sessionBrain(async job => {
+    await job.tools.find(tool => tool.name === 'open_page')!.run({})
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: 'Sign in to continue.', evidenceStep: 1 })
+    return { answer: 'Sign in to continue.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'The page needs the person to sign in or pass a check.' }] }, 'Read the report')
+  expect(result.answer).toBe('Sign in to continue.')
+  expect(result.asked).toBe(true)
+  expect(result.incomplete).toBeUndefined()
+  expect(result.stopped).toBeUndefined()
+})

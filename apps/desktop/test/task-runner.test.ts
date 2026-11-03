@@ -239,3 +239,12 @@ it('reuses an explicit task approval for matching url and words while reconfirmi
   expect((await t.settle('waiting')).approvals).toHaveLength(1)
   expect(confirm).toHaveBeenCalledTimes(2)
 })
+
+it('waits after a blocked collection result without rereading the barrier', async () => {
+  const t = await setup(async () => ({ ...done('Sign in to continue.'), asked: true }))
+  await t.chat('Read the report')
+  const task = await t.settle('waiting')
+  expect(task.question).toBe('Sign in to continue.')
+  expect(task.turns).toBe(1)
+  expect(t.sent).toHaveLength(1)
+})
