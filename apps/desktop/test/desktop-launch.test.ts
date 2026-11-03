@@ -18,11 +18,12 @@ beforeEach(() => {
 
 it('launches only through an isolated engine and requires observation afterward', async () => {
   expect(await openDesktopApp('bot-launch', 'calculator')).toContain('does not prove')
+  expect(await openDesktopApp('bot-launch', 'calculator')).toContain('foreground control requires an approval card')
   expect(fake.request).toHaveBeenCalledWith('openApp', { app: 'calculator' })
-  expect(fake.close).toHaveBeenCalledOnce()
+  expect(fake.close).toHaveBeenCalledTimes(2)
   setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: false }))
   await expect(openDesktopApp('bot-launch', 'calculator')).rejects.toThrow()
-  expect(fake.request).toHaveBeenCalledOnce()
+  expect(fake.request).toHaveBeenCalledTimes(2)
 })
 
 it('closes pending launch on Stop and refuses later launches in that turn', async () => {

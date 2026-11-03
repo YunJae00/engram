@@ -123,7 +123,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
     if (result) rememberOpenedForeground(lane, result)
-    return JSON.stringify({ opened: true, windowVerified: false, foregroundRestored: result?.foregroundRestored, hint: 'The system accepted the launch request. Read it with app_read using a word of its name; a launch request alone does not prove the app is ready.' })
+    return JSON.stringify({ opened: true, windowVerified: false, foregroundRestored: result?.foregroundRestored, hint: 'Apps open in the background without taking the person’s screen; results appear in the preview card, and foreground control requires an approval card. The system accepted the launch request. Read it with app_read using a word of its name; a launch request alone does not prove the app is ready.' })
   } finally {
     signal?.removeEventListener('abort', abort)
     if (launching === pending) launching = undefined
