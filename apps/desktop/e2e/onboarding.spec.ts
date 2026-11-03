@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, expandPreview, openActivity } from './navigation.js'
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -348,6 +348,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
   await page.getByTestId('welcome-input-add').click()
   await page.getByTestId('welcome-web').click()
+  await expandPreview(page)
   await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
   await expect(page.getByTestId('live-address')).toBeFocused()
   await expect(page.locator('.bots-chat')).toBeHidden()
@@ -369,6 +370,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await page.getByTestId('web-pane-expand').click()
     await expect(page.locator('.bots-chat')).toBeVisible()
     await screenshot('07-browser-and-chat.png')
+    await expandPreview(page)
     await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
     const lane = await page.evaluate(() => window.engram.agentState().then(state => state.lane!))
     await page.getByRole('button', { name: 'New tab', exact: true }).click()
@@ -380,6 +382,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
     await page.getByTestId('welcome-input-add').click()
     await page.getByTestId('welcome-web').click()
+    await expandPreview(page)
     await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
     await expect(page.getByRole('tab')).toHaveCount(1)
     expect(await page.evaluate(lane => window.engram.browserTabs(lane), lane)).toEqual(firstTabs)
