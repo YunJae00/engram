@@ -66,6 +66,13 @@ internal static class DesktopSelfTest
             Check(activeLaunch.foregroundChanged && activeLaunch.foregroundRestored && foreground == new IntPtr(10) && restores == 1, "Self-activating app launch restores the previous foreground");
             dynamic failedRestore = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, delegate { return false; });
             Check(failedRestore.foregroundChanged && !failedRestore.foregroundRestored, "Launch restoration failures are reported honestly");
+            var postedPoint = QuietPostedInput.ClientPoint(new System.Windows.Rect(-1200, 100, 80, 40), -1280, 80).ToInt32();
+            Check((short)(postedPoint & 0xffff) == 120 && (short)(postedPoint >> 16) == 40, "Posted clicks convert screen bounds to client coordinates");
+            var negativePoint = QuietPostedInput.ClientPoint(new System.Windows.Rect(-40, -30, 10, 10), 0, 0).ToInt32();
+            Check((short)(negativePoint & 0xffff) == -35 && (short)(negativePoint >> 16) == -25, "Posted coordinates preserve signed client positions");
+            Reject(delegate { QuietPostedInput.ClientPoint(System.Windows.Rect.Empty, 0, 0); }, "Posted clicks reject missing geometry");
+            Reject(delegate { QuietPostedInput.ClientPoint(new System.Windows.Rect(40000, 0, 10, 10), 0, 0); }, "Posted clicks reject overflowing coordinates");
+            Check(json.Serialize(new { pressed = "posted", requiresVerification = true }).Contains("\"pressed\":\"posted\""), "Posted press receipts serialize the delivery method");
             Check(ControlPolicy.PassivePointer(0x200, false), "Physical pointer motion is not cancellation");
             Check(!ControlPolicy.PassivePointer(0x201, false), "A button press is not passive motion");
             Check(!ControlPolicy.PassivePointer(0x200, true), "Other automation still interrupts control");

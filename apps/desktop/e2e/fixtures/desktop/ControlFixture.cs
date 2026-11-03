@@ -21,6 +21,20 @@ internal sealed class FixtureScroll : Panel
     { if (message.Msg == 0x20a) Wheels++; base.WndProc(ref message); }
 }
 
+internal sealed class FixturePostedControl : Panel
+{
+    internal int Clicks;
+    internal FixturePostedControl() { AccessibleName = "Posted click target"; AccessibleRole = AccessibleRole.PushButton; }
+    protected override AccessibleObject CreateAccessibilityInstance() { return new NoInvoke(this); }
+    private sealed class NoInvoke : ControlAccessibleObject
+    {
+        internal NoInvoke(Control owner) : base(owner) { }
+        public override string DefaultAction { get { return null; } }
+    }
+    protected override void WndProc(ref Message message)
+    { if (message.Msg == 0x0202) Clicks++; base.WndProc(ref message); }
+}
+
 internal sealed class FixtureReadLabel : Label
 {
     internal bool ActivateOnRead;
@@ -115,6 +129,7 @@ internal sealed class ControlFixture : Form
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
     private readonly CheckBox EnabledOption = new CheckBox { AccessibleName = "Fixture option", Text = "Fixture option", Bounds = new Rectangle(110, 390, 160, 24) };
     private readonly ListBox Items = new ListBox { AccessibleName = "Fixture list", Bounds = new Rectangle(300, 390, 260, 24) };
+    private readonly FixturePostedControl Posted = new FixturePostedControl { Bounds = new Rectangle(260, 60, 200, 24) };
     private bool ActivateOnSet;
     private readonly FixtureReadLabel Answer = new FixtureReadLabel { AccessibleName = "Readable answer", Text = "Readable answer", Bounds = new Rectangle(480, 60, 130, 24) };
     private bool ActivateOnClick;
@@ -146,7 +161,7 @@ internal sealed class ControlFixture : Form
             RevealPasswordOnInput = false;
             Secret.Visible = true;
         };
-        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker, EnabledOption, Items, Answer });
+        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker, EnabledOption, Items, Answer, Posted });
         Shown += delegate
         {
             BeginInvoke((Action)delegate
@@ -308,7 +323,7 @@ internal sealed class ControlFixture : Form
                 if (SendInput(2, inputs, Marshal.SizeOf(typeof(Input))) != 2) throw new InvalidOperationException("Fixture input was not accepted");
             }
             else if (method != "state") throw new ArgumentException("Unsupported fixture request");
-            Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, wheelEvents = Scroller.Wheels,
+            Send(new { id = id, result = new { text = Entry.Text, clicks = Clicks, postedClicks = Posted.Clicks, wheelEvents = Scroller.Wheels,
                 foregroundWindow = GetForegroundWindow().ToInt64().ToString(), scrollY = -Scroller.AutoScrollPosition.Y, focused = Entry.Focused, foreground = GetForegroundWindow() == Handle, passwordVisible = Secret.Visible,
                 protectedCharacters = Secret.TextLength, deepText = Deep == null ? null : Deep.Text,
                 draft = Draft == null ? null : Draft.Text, reviewed = Reviewed == null ? null : Reviewed.Text } });

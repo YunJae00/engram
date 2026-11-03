@@ -92,7 +92,7 @@ internal sealed partial class QuietAccess
                 can = new
                 {
                     set = editable, press = Has(element, AutomationElement.IsInvokePatternAvailableProperty) || Has(element, AutomationElement.IsTogglePatternAvailableProperty)
-                        || Has(element, AutomationElement.IsSelectionItemPatternAvailableProperty) || Has(element, AutomationElement.IsExpandCollapsePatternAvailableProperty),
+                        || Has(element, AutomationElement.IsSelectionItemPatternAvailableProperty) || Has(element, AutomationElement.IsExpandCollapsePatternAvailableProperty) || !element.Current.BoundingRectangle.IsEmpty,
                     scroll = Has(element, AutomationElement.IsScrollPatternAvailableProperty), scrollIntoView = Has(element, AutomationElement.IsScrollItemPatternAvailableProperty),
                     text = Has(element, AutomationElement.IsTextPatternAvailableProperty),
                 },
