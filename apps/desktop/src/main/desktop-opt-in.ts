@@ -2,6 +2,7 @@ import type { AgentTool } from 'core'
 
 type AgentToolContext = Parameters<AgentTool['run']>[1]
 export interface DesktopActionContext extends AgentToolContext {
+  approveComputerControl?(lane: string): Promise<boolean>
   approveAppAction?(app: string, control: string, snapshot: string): Promise<boolean>
 }
 
@@ -25,6 +26,12 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
   }
   const scoped = (context: AgentToolContext): DesktopActionContext => ({
     ...context,
+    approveComputerControl: async lane => {
+      context.signal?.throwIfAborted()
+      const answer = await consent.ask?.({ words: 'Allow foreground computer control for this turn? Esc or Stop ends control.', url: `engram://computer-control/${encodeURIComponent(lane)}` })
+      context.signal?.throwIfAborted()
+      return answer === 'approve' && await consent.enabled()
+    },
     approveAppAction: async (app, control, snapshot) => {
       context.signal?.throwIfAborted()
       const answer = await consent.ask?.({ words: `Allow "${control.slice(0, 60)}" in "${app.slice(0, 60)}"? This may send or change data.`, url: `engram://app/${encodeURIComponent(app)}#${encodeURIComponent(snapshot)}` })
