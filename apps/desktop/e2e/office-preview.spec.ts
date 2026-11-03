@@ -31,6 +31,7 @@ test('Office activity events show a localized card without an image', async () =
     await expect(card.locator('.preview-card-state')).toHaveText('창 없이 Office에서 읽는 중')
     await expect(card.locator('img, canvas')).toHaveCount(0)
     await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
-    await expect(pill).toBeVisible()
+    await expect(card).toBeVisible()
+    await expect(card.locator('img, canvas')).toHaveCount(0)
   } finally { await closeTestApp(app) }
 })

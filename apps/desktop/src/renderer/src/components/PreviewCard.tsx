@@ -4,6 +4,7 @@ import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { GROUP_KO } from '../lib/threadLangKo.js'
 import { useWebPane, webPane } from '../lib/webPane.js'
 import { FrameScreen } from './FrameScreen.js'
+import { setAppPreviewVisible } from '../lib/appPreviewStream.js'
 import type { PreviewFrame } from './usePreviewFrames.js'
 
 const preferences = new Map<string, { collapsed: boolean; hidden: boolean }>()
@@ -14,7 +15,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
   const words = threadWords(lang).workPreview
   const { attention } = useWebPane(lane)
   const description = useId()
-  const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: !busy, hidden: false })
+  const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: false, hidden: false })
   const [choice, setChoice] = useState<string>()
   const [now, setNow] = useState(Date.now)
   const paints = useRef(new Map<string, number>())
@@ -26,17 +27,20 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
     return () => clearInterval(timer)
   }, [])
   useEffect(() => {
-    if (busy && preferences.has(lane)) return
-    setView(before => ({ ...before, collapsed: !busy }))
-  }, [busy, lane])
+    setView(preferences.get(lane) ?? { collapsed: false, hidden: false })
+  }, [lane])
   useEffect(() => {
     if (choice && !frames.some(frame => frame.id === choice)) setChoice(undefined)
   }, [choice, frames])
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
+  const collapsed = view.collapsed || state === 'waiting' || Boolean(attention)
+  useEffect(() => {
+    setAppPreviewVisible(lane, Boolean(frame) && !view.hidden && !collapsed, busy)
+  }, [lane, Boolean(frame), view.hidden, collapsed, busy])
+  useEffect(() => () => setAppPreviewVisible(lane, false), [lane])
   if (!frame) return null
   const Icon = frame.phase === 'activity' ? frame.title === 'Outlook' ? frame.activity === 'Checking your calendar' ? Calendar : Mail : FileText : frame.source === 'web' ? Globe : AppWindow
   const title = frame.title || words.browser
-  const collapsed = view.collapsed || state === 'waiting' || Boolean(attention)
   const status = state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state
   const age = Math.max(0, Math.floor((now - (paints.current.get(frame.id) ?? frame.at)) / 1000))
   const hasImage = frame.image && (frame.phase === 'ready' || frame.phase === 'delayed')
@@ -71,8 +75,8 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
         }} />)}</nav>}
         {status === 'working' ? <LoaderCircle size={12} className="computer-spinner" aria-hidden /> : <Icon size={12} aria-hidden />}
         <span className="preview-card-label" role="status">{title} · {frame.current && activity ? activity : words[status]}</span>
-        {frame.stream && <span className="preview-card-stale">{words.live}</span>}
-        {!frame.stream && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
+        {frame.stream && busy && <span className="preview-card-stale">{words.live}</span>}
+        {(!frame.stream || !busy) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
       </div>
     </div>
   </aside>

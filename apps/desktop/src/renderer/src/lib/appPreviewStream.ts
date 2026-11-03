@@ -75,7 +75,21 @@ export function appPreviewStream(lane: string, changed: () => void) {
 
 
 const streams = new Map<string, { source: string; stopped: boolean; stream: ReturnType<typeof appPreviewStream> }>()
+const visible = new Set<string>()
+const working = new Set<string>()
+let currentBindings: DesktopBindingDto[] = []
+let notify = () => {}
+export function setAppPreviewVisible(lane: string, showing: boolean, busy = true): void {
+  if (visible.has(lane) === showing && working.has(lane) === (showing && busy)) return
+  if (showing) visible.add(lane); else visible.delete(lane)
+  if (showing && busy) working.add(lane); else working.delete(lane)
+  syncAppPreviewStreams(currentBindings, notify)
+  notify()
+}
 export function syncAppPreviewStreams(bindings: DesktopBindingDto[], changed: () => void): void {
+  currentBindings = bindings
+  notify = changed
+  bindings = bindings.filter(item => visible.has(item.lane)).map(item => ({ ...item, stopped: item.stopped || !working.has(item.lane) }))
   for (const [lane, held] of streams) {
     const binding = bindings.find(item => item.lane === lane && item.readable && item.source === held.source)
     if (!binding || held.stopped && !binding.stopped) { held.stream.close(); streams.delete(lane) }

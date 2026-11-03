@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 const { open, previewStream } = vi.hoisted(() => ({ open: vi.fn(), previewStream: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../src/renderer/src/api.js', () => ({ api: { desktopPreviewStream: previewStream } }))
 vi.mock('../src/renderer/src/lib/desktopStream.js', () => ({ openDesktopStream: open }))
-import { appPreviewStream, appPreviewFor, syncAppPreviewStreams } from '../src/renderer/src/lib/appPreviewStream.js'
+import { appPreviewStream, appPreviewFor, syncAppPreviewStreams, setAppPreviewVisible } from '../src/renderer/src/lib/appPreviewStream.js'
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 it('paints within two seconds, pauses without subscribers, and holds the stream until release', async () => {
   const callbacks = new Map<string, () => void>()
@@ -18,6 +18,7 @@ it('paints within two seconds, pauses without subscribers, and holds the stream 
   const changed = vi.fn(), received = vi.fn()
   const start = performance.now()
   const binding = { lane: 'bot-test', source: 'window:42:0', name: 'Owned', readable: true }
+  setAppPreviewVisible('bot-test', true)
   syncAppPreviewStreams([binding], changed)
   syncAppPreviewStreams([binding], changed)
   const preview = appPreviewFor('bot-test')!
@@ -51,6 +52,7 @@ it('paints within two seconds, pauses without subscribers, and holds the stream 
   expect(appPreviewFor('bot-test')?.image).toBe('data:image/jpeg;base64,frame')
   expect(stop).toHaveBeenCalledOnce()
   expect(previewStream.mock.calls).toEqual([['bot-test', true], ['bot-test', false], ['bot-test', true], ['bot-test', false]])
+  setAppPreviewVisible('bot-test', false)
   syncAppPreviewStreams([], changed)
   expect(appPreviewFor('bot-test')).toBeUndefined()
 })
@@ -65,4 +67,53 @@ it('falls back when capture cannot start', async () => {
   expect(previewStream).not.toHaveBeenCalled()
   expect(changed).toHaveBeenCalled()
   preview.close()
+})
+
+it('closes capture when the card is hidden or its conversation is left', async () => {
+  const stop = vi.fn()
+  open.mockResolvedValue({ getTracks: () => [{ stop }], getVideoTracks: () => [] })
+  vi.stubGlobal('document', { createElement: () => ({ pause: vi.fn() }), addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const binding = { lane: 'bot-visible', source: 'window:42:0', name: 'Owned', readable: true }
+  syncAppPreviewStreams([binding], vi.fn())
+  expect(appPreviewFor(binding.lane)).toBeUndefined()
+  setAppPreviewVisible(binding.lane, true)
+  await Promise.resolve()
+  expect(appPreviewFor(binding.lane)?.live).toBe(true)
+  setAppPreviewVisible(binding.lane, false)
+  expect(stop).toHaveBeenCalledOnce()
+  expect(appPreviewFor(binding.lane)).toBeUndefined()
+  syncAppPreviewStreams([], vi.fn())
+})
+
+it('closes capture after a turn, keeps its image, and restarts on the next busy turn', async () => {
+  const stop = vi.fn()
+  open.mockResolvedValue({ getTracks: () => [{ stop }], getVideoTracks: () => [] })
+  const video = { readyState: 2, videoWidth: 320, videoHeight: 200, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+  const canvas = { getContext: () => ({ drawImage: vi.fn() }), toDataURL: () => 'data:image/jpeg;base64,last' }
+  vi.stubGlobal('document', { visibilityState: 'visible', createElement: (tag: string) => tag === 'video' ? video : canvas, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  let paint!: () => void
+  vi.stubGlobal('requestAnimationFrame', (callback: () => void) => { paint = callback; return 1 })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const binding = { lane: 'bot-turn', source: 'window:42:0', name: 'Owned', readable: true }
+  setAppPreviewVisible(binding.lane, true, true)
+  syncAppPreviewStreams([binding], vi.fn())
+  await Promise.resolve()
+  const preview = appPreviewFor(binding.lane)!
+  preview.source(vi.fn())
+  await Promise.resolve(); paint()
+  setAppPreviewVisible(binding.lane, true, false)
+  expect(stop).toHaveBeenCalledOnce()
+  expect(previewStream).toHaveBeenLastCalledWith(binding.lane, false)
+  expect(appPreviewFor(binding.lane)).toBe(preview)
+  expect(preview.live).toBe(false)
+  expect(preview.image).toBe('data:image/jpeg;base64,last')
+  syncAppPreviewStreams([binding], vi.fn())
+  expect(open).toHaveBeenCalledTimes(1)
+  setAppPreviewVisible(binding.lane, true, true)
+  await Promise.resolve()
+  expect(open).toHaveBeenCalledTimes(2)
+  expect(appPreviewFor(binding.lane)?.live).toBe(true)
+  setAppPreviewVisible(binding.lane, false)
+  syncAppPreviewStreams([], vi.fn())
 })
