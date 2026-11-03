@@ -82,7 +82,7 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     })).toBeGreaterThanOrEqual(30)
     await page.getByTestId('bots-input-add').click()
     await page.getByTestId('composer-web').click()
-    const pane = page.getByTestId(width > 1180 ? 'web-pane' : 'preview-card')
+    const pane = width > 1180 ? page.getByTestId('web-pane') : page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
     await expect(pane).toBeVisible()
     if (width > 1180) {
       await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')
@@ -92,7 +92,7 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
       await expect(page.getByTestId('web-pane')).toHaveCSS('box-shadow', 'none')
       await expect(page.locator('.web-pane-bar')).toHaveCSS('min-height', '44px')
     } else {
-      await expect(page.locator('.preview-card')).toBeVisible()
+      await expect(pane).toBeVisible()
       await expect(page.getByTestId('live-address')).toHaveCount(0)
     }
     await screenshot(`release-112-web-flat-${width}.png`)

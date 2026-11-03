@@ -224,7 +224,7 @@ export interface DelegatedTaskDto {
   updatedAt: string
   finishedAt?: string
   question?: string
-  approvals: { id: string; words: string; host: string; url: string; at: string; answer?: 'approve' | 'decline'; settled?: boolean }[]
+  approvals: { id: string; words: string; host: string; url: string; at: string; answer?: 'approve' | 'approve-task' | 'decline'; settled?: boolean }[]
   result?: string
   log: { at: string; line: string }[]
 }

@@ -10,7 +10,8 @@ import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
 import { useCometState, useShellState } from './state-slices.js'
 import { t } from './i18n.js'
-import { selectComet } from './lib/cometThreadsLive.js'
+import { threadLang, threadWords } from './lib/threadLang.js'
+import { cometThreads, selectComet } from './lib/cometThreadsLive.js'
 import type { SettingsSection } from './components/SettingsNavigation.js'
 import { ArtifactSheet } from './components/ArtifactSheet.js'
 import type { FirstSetupDto, UpdateCheckDto } from '../../shared/types.js'
@@ -99,7 +100,7 @@ function Shell() {
       // A citation clicked in another window: the main process already
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
-      else if (e.type === 'task:notice') showToast(e.message)
+      else if (e.type === 'task:notice') showToast(e.foreground ? threadWords(threadLang(cometThreads.thread(e.foreground.lane.replace(/^bot-/, '')).messages)).foregroundTaken(e.foreground.app) : e.message)
       else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
       else if (e.type === 'routine:chat' || e.type === 'comet:open' || e.type === 'comet:quick') {
         if (e.type === 'comet:quick') { setSettingsOpen(false); setPalette(null); setAction(null) }

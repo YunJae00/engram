@@ -6,6 +6,7 @@ import { bindDesktopForLane, desktopBinding, type DesktopBinding } from './deskt
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import type { DesktopMethod } from './desktop-host.js'
 import { showWorkPreview } from './work-preview.js'
+import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
 // Provider calls avoid injected input and requested focus. A mutation waits
@@ -91,6 +92,17 @@ async function request<T>(binding: DesktopBinding, method: DesktopMethod, args: 
   check()
   const result = await binding.host.request<T>(method, { ...scoped(binding), ...args }, signal)
   check()
+  if (['quietSet', 'quietPress', 'quietRead'].includes(method) && result && typeof result === 'object') {
+    const receipt = result as { foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+    if (receipt.foregroundChanged) {
+      const tool = method === 'quietSet' ? 'app_set' : method === 'quietPress' ? 'app_press' : 'app_text'
+      flog('desktop-foreground', JSON.stringify({ lane: binding.lane, tool, app: binding.name, restored: receipt.foregroundRestored === true }))
+      if (!receipt.foregroundRestored) {
+        receipt.foregroundTaken = true
+        broadcast({ type: 'task:notice', message: `${binding.name} brought its window forward · continuing`, foreground: { lane: binding.lane, app: binding.name } })
+      }
+    }
+  }
   return result
 }
 

@@ -1,4 +1,4 @@
-import { expect, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 
 export async function openActivity(page: Page, activity: string): Promise<void> {
   if (activity === 'routines') {
@@ -39,4 +39,11 @@ export async function closeTestApp(app: ElectronApplication | undefined): Promis
     app.process().kill('SIGKILL')
     throw error
   } finally { clearTimeout(timer) }
+}
+
+export async function expandPreview(page: Page | Locator): Promise<void> {
+  await expect(page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')).toBeVisible()
+  const pill = page.getByTestId('preview-card-collapsed')
+  if (await pill.isVisible()) await pill.click()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
 }

@@ -1,4 +1,4 @@
-export interface WorkPreviewDto { id: string; lane: string; title: string; at: number; data?: string; unavailable?: boolean; current?: boolean; captureState?: 'waiting' | 'delayed' | 'ready' | 'unavailable' | 'no-snapshot'; captureReason?: 'screen_recording_denied' | 'capture_unsafe' | 'capture_unavailable' }
+export interface WorkPreviewDto { id: string; lane: string; title: string; at: number; data?: string; unavailable?: boolean; current?: boolean; activity?: string; captureState?: 'activity' | 'waiting' | 'delayed' | 'ready' | 'unavailable' | 'no-snapshot'; captureReason?: 'screen_recording_denied' | 'capture_unsafe' | 'capture_unavailable' }
 export interface DesktopWindowDto { aliases?: string[]; id: string; name: string; foreground?: boolean }
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {
@@ -74,9 +74,9 @@ export interface QuietObservationDto {
   ms: number
   state: QuietStateDto
 }
-export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean }
-export interface QuietPressResultDto { satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean }
-export interface QuietReadResultDto { text: string; chars: number; headClipped: boolean; truncated?: boolean; scope?: string; continuation?: string | null }
+export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+export interface QuietPressResultDto { satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+export interface QuietReadResultDto { foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean; text: string; chars: number; headClipped: boolean; truncated?: boolean; scope?: string; continuation?: string | null }
 // The brain that holds the computer, named for the person: the banner on the
 // screen says who is moving the mouse.
 export type DesktopEngineId = 'claude' | 'codex'

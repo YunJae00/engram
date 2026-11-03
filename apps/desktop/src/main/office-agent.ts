@@ -1,4 +1,5 @@
 import { officeTools, type AgentTool, type OfficeOp } from 'core'
+import { officeWorkPreview } from './work-preview.js'
 import { screen } from 'electron'
 import { officeApps, officeRequest, officeSupported } from './office-host.js'
 import { assertDesktopTurnNotStopped, endDesktopTurn } from './desktop-control.js'
@@ -43,13 +44,16 @@ export function officeAgentTools(lane: string): AgentTool[] {
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
       endDesktopTurn(lane)
-      if (op.startsWith('outlook.') || op === 'excel.workbooks') {
-        clearApplicationWork(lane)
-        return officeRun(op, args, signal, () => assertDesktopTurnNotStopped(lane))
-      }
-      const work = applicationWork(lane, signal)
-      try { return await officeRun(op, args, work.signal, () => assertDesktopTurnNotStopped(lane), work.show) }
-      catch (error) { clearApplicationWork(lane); throw error }
+      const finish = officeWorkPreview(lane, op)
+      try {
+        if (op.startsWith('outlook.') || op === 'excel.workbooks') {
+          clearApplicationWork(lane)
+          return await officeRun(op, args, signal, () => assertDesktopTurnNotStopped(lane))
+        }
+        const work = applicationWork(lane, signal)
+        try { return await officeRun(op, args, work.signal, () => assertDesktopTurnNotStopped(lane), work.show) }
+        catch (error) { clearApplicationWork(lane); throw error }
+      } finally { finish() }
     }
     const next = workQueue.then(run, run)
     workQueue = next.catch(() => undefined)

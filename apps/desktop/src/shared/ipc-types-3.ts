@@ -104,7 +104,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   noticesOpen(id: string): Promise<string>
   noticesClear(): Promise<NoticesDto>
   noticesUnschedule(id: string): Promise<NoticesDto>
-  taskDecide(id: string, approvalId: string, answer: 'approve' | 'decline'): Promise<void>
+  taskDecide(id: string, approvalId: string, answer: 'approve' | 'approve-task' | 'decline'): Promise<void>
   routineAdd(input: { name: string; steps: RoutineStepDto[] }): Promise<RoutineDto>
   routineRename(id: string, name: string): Promise<void>
   routineUpdateGoal(id: string, goal: string): Promise<void>

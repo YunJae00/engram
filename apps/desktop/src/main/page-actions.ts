@@ -146,7 +146,8 @@ export async function typeText(page: Page, target: string, text: string, enter: 
     if (!control) return missing(target)
     if (control.secret) return { ok: false, refused: 'a password field' }
     if (!control.field) return { ok: false, error: `"${target}" is not a field to type into` }
-    if (enter && (control.posts || control.editable)) return { ok: false, refused: `${control.words || target} - Enter here could send or post content; type without Enter, then use press_key for approval` }
+    if (enter && (control.posts || (control.editable && control.multiline))) return { ok: false, refused: `${control.words || target} - Enter here could send or post content; type without Enter, then use press_key for approval` }
+    if (enter && commitsFor(control)) return { ok: false, refused: `${control.words || target} - Enter here could submit or commit something` }
     const before = enter ? await signature(page) : ''
     await showHand(page, hand, 'move')
     await hand.fill(text, { timeout: FIND_TIMEOUT_MS })
@@ -307,8 +308,8 @@ export async function pressKey(page: Page, named: string, signal?: AbortSignal, 
           const child = await hand.contentFrame()
           if (child) { frame = child; continue }
           const control = await hand.evaluate(inspectControl)
-          const sends = key === 'Enter' && control.editable
-          if (control.secret || !sends && (control.posts || (!control.field && commitsFor(control, ask))))
+          const sends = key === 'Enter' && (control.posts || (control.editable && control.multiline))
+          if (control.secret || !sends && (control.posts || ((!control.field || key === 'Enter') && commitsFor(control, ask))))
             return { ok: false, refused: `${key} here could submit or commit something` }
           if (sends) {
             const url = page.url(), words = `Send using Enter in ${control.words || 'the editable field'}`

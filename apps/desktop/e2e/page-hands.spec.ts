@@ -235,7 +235,7 @@ test('activation keys inspect focused controls in forms, frames and shadow roots
       await page.getByLabel('Entry').fill('must stay local')
     }
     for (const key of ['Enter', 'Space'])
-      expect(await pressKey(page, key), `${placement}: ${key}`).toMatchObject({ ok: false, refused: expect.stringContaining('commit') })
+      expect(await pressKey(page, key), `${placement}: ${key}`).toMatchObject({ ok: false, refused: expect.stringContaining(key === 'Enter' ? 'Send using Enter' : 'commit') })
   }
   await page.setContent('<button onclick="fetch(\'/post\', {method:\'POST\'})">Send</button>')
   await page.getByRole('button').focus()

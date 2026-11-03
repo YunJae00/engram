@@ -64,6 +64,7 @@ export function taskRunner(deps: {
   const waiting = new Map<string, number>()
   const owners = new Map<string, string>()
   const approved = new Map<string, { url: string; words: string }[]>()
+  const alwaysFor = new Map<string, Set<string>>()
   const declined = new Map<string, Set<string>>()
   const trails = new Map<string, TurnStep[]>()
   const handedBack = new Set<string>()
@@ -122,14 +123,16 @@ export function taskRunner(deps: {
 
   async function takeDecisions(task: DelegatedTask): Promise<string> {
     const decided = task.approvals.filter(a => a.answer && !a.settled)
+    for (const a of decided) if (a.answer === 'approve-task') alwaysFor.set(task.id, (alwaysFor.get(task.id) ?? new Set()).add(`${a.url}\n${a.words}`))
     approved.set(task.id, decided.filter(a => a.answer === 'approve').map(a => ({ url: a.url, words: a.words })))
     for (const a of decided) if (a.answer === 'decline') declined.set(task.id, (declined.get(task.id) ?? new Set()).add(`${a.url}\n${a.words}`))
     await edit(task.id, t => { for (const a of t.approvals) if (decided.some(d => d.id === a.id)) a.settled = true })
-    return decided.map(a => `- ${a.answer === 'approve' ? 'Approved' : 'Declined'}: "${a.words}" on ${a.host} (${a.url})`).join('\n')
+    return decided.map(a => `- ${a.answer !== 'decline' ? 'Approved' : 'Declined'}: "${a.words}" on ${a.host} (${a.url})`).join('\n')
   }
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
+    if (['done', 'failed', 'stopped'].includes(task.state)) { alwaysFor.delete(task.id); declined.delete(task.id); approved.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -189,7 +192,7 @@ export function taskRunner(deps: {
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
         if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
-        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
+        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { alwaysFor.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
         owners.set(channel, task.id)
         const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
@@ -221,7 +224,7 @@ export function taskRunner(deps: {
       stopped.add(channel)
       deps.abort(channel)
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && ['queued', 'running', 'waiting'].includes(t.state))) {
-        approved.delete(task.id); trails.delete(task.id)
+        approved.delete(task.id); alwaysFor.delete(task.id); declined.delete(task.id); trails.delete(task.id)
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
@@ -244,6 +247,7 @@ export function taskRunner(deps: {
           if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
           const current = (await listTasks(paths)).find(t => t.id === id)
           if (current?.state !== 'running') return 'cancel'
+          if (alwaysFor.get(id)?.has(`${url}\n${cardWords}`)) return confirm({ words, url })
           const granted = approved.get(id) ?? []
           const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
           if (index >= 0) { granted.splice(index, 1); return confirm({ words, url }) }
@@ -258,15 +262,16 @@ export function taskRunner(deps: {
             const live = (await listTasks(paths)).find(t => t.id === id)
             if (live?.state !== 'running') return 'cancel'
             if (!live.approvals.some(a => a.url === url && a.words === cardWords && a.answer && !a.settled)) continue
-            let answer: 'approve' | 'decline' | undefined
+            let answer: 'approve' | 'approve-task' | 'decline' | undefined
             await edit(id, t => {
               if (t.state !== 'running' || stopped.has(channel)) return
               const card = t.approvals.find(a => a.url === url && a.words === cardWords && a.answer && !a.settled)
               if (card) { answer = card.answer; card.settled = true }
             })
             if (!answer) continue
+            if (answer === 'approve-task') alwaysFor.set(id, (alwaysFor.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
             if (answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
-            return answer === 'approve' ? confirm({ words, url }) : 'cancel'
+            return answer !== 'decline' ? confirm({ words, url }) : 'cancel'
           }
           return 'later'
         } finally {
@@ -277,14 +282,14 @@ export function taskRunner(deps: {
     },
     register(): void {
       ipcMain.handle('tasks:list', () => listTasks(paths))
-      ipcMain.handle('tasks:decide', async (_e, id: string, approvalId: string, answer: 'approve' | 'decline') => {
-        if (answer !== 'approve' && answer !== 'decline') throw new Error('Approve or decline.')
+      ipcMain.handle('tasks:decide', async (_e, id: string, approvalId: string, answer: 'approve' | 'approve-task' | 'decline') => {
+        if (answer !== 'approve' && answer !== 'approve-task' && answer !== 'decline') throw new Error('Approve or decline.')
         let ready = false
         const task = await edit(id, (t) => {
           if (!['waiting', 'running'].includes(t.state) || t.question || stopped.has(channelOf(t))) return
           const a = t.approvals.find((one) => one.id === approvalId && !one.answer)
           if (!a) return
-          a.answer = answer; logTask(t, `${answer === 'approve' ? 'Approved' : 'Declined'}: "${a.words}"`)
+          a.answer = answer; logTask(t, `${answer !== 'decline' ? 'Approved' : 'Declined'}: "${a.words}"`)
           if (t.state !== 'waiting') return
           ready = t.approvals.every(one => !!one.answer)
           if (ready) t.state = 'queued'

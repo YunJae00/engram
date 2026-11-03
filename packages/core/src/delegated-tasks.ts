@@ -18,7 +18,7 @@ export interface TaskApproval {
   host: string
   url: string
   at: string
-  answer?: 'approve' | 'decline'
+  answer?: 'approve' | 'approve-task' | 'decline'
   // Answered and handed to the next turn.
   settled?: boolean
 }

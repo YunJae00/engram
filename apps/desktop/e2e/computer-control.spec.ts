@@ -242,10 +242,10 @@ test('session app previews stay inside the conversation and preserve drafts', as
   await app.evaluate(({ BrowserWindow }, frames) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'desktop:preview', frames })
   }, frames)
-  const preview = page.getByTestId('preview-card')
+  const preview = page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
   await expect(preview).toHaveAttribute('data-lane', `bot-${one.id}`)
   await expect(page.getByTestId('bots-input')).toBeFocused()
-  await preview.getByRole('button', { name: 'Expand preview' }).click()
+  await page.getByTestId('preview-card-collapsed').click()
   await expect(preview).toContainText('Owned app 0')
   await expect(preview).not.toContainText('Owned app 1')
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(windows)

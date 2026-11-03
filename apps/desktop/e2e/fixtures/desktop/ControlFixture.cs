@@ -40,6 +40,7 @@ internal sealed class ControlFixture : Form
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
     private readonly CheckBox EnabledOption = new CheckBox { AccessibleName = "Fixture option", Text = "Fixture option", Bounds = new Rectangle(110, 390, 160, 24) };
     private readonly ListBox Items = new ListBox { AccessibleName = "Fixture list", Bounds = new Rectangle(300, 390, 260, 24) };
+    private bool ActivateOnClick;
     private bool DelayClick;
     private int Clicks;
     private Form Away;
@@ -59,7 +60,7 @@ internal sealed class ControlFixture : Form
         Location = new Point(80, 80);
         ClientSize = new Size(630, 420);
         for (var i = 0; i < 40; i++) Items.Items.Add("Fixture item " + i);
-        Counter.Click += delegate { Clicks++; if (DelayClick) { DelayClick = false; Send(new { type = "ownedActionStarted" }); Thread.Sleep(2000); } };
+        Counter.Click += delegate { if (ActivateOnClick) { ActivateOnClick = false; Activate(); } Clicks++; if (DelayClick) { DelayClick = false; Send(new { type = "ownedActionStarted" }); Thread.Sleep(2000); } };
         Entry.TextChanged += delegate
         {
             if (!RevealPasswordOnInput || Entry.TextLength == 0) return;
@@ -116,6 +117,7 @@ internal sealed class ControlFixture : Form
                 }
             }
             if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "activateNextClick") { ActivateOnClick = true; }
             else if (method == "delayNextClick") { DelayClick = true; }
             else if (method == "blockOwnedUi") { Send(new { id = id, result = new { blocking = true } }); Thread.Sleep(1000); return; }
             else if (method == "changeEntry") { Entry.Text = "Changed by application"; Entry.Focus(); }

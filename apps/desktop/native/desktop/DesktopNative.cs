@@ -70,6 +70,17 @@ internal static class DesktopNative
         if (SendMessageTimeout(target.Handle, 0, UIntPtr.Zero, IntPtr.Zero, 2, 2000, out result) == IntPtr.Zero)
             throw new InvalidOperationException("The app is not responding; no action was sent. Try reading it after it responds.");
     }
+    internal static bool RestoreForeground(IntPtr window)
+    {
+        if (window == IntPtr.Zero || !SetForegroundWindow(window)) return false;
+        // Cross-thread activation is queued; wait for the receiving window before checking it.
+        UIntPtr result;
+        if (SendMessageTimeout(window, 0, UIntPtr.Zero, IntPtr.Zero, 2, 250, out result) == IntPtr.Zero) return false;
+        var started = unchecked((uint)Environment.TickCount);
+        while (GetForegroundWindow() != window && unchecked((uint)Environment.TickCount - started) < 250)
+            System.Threading.Thread.Sleep(10);
+        return GetForegroundWindow() == window;
+    }
     internal static void AwaitForeground(DesktopTarget target)
     {
         UIntPtr result;

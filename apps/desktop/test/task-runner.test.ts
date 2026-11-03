@@ -72,7 +72,7 @@ it('keeps a quick answer out of the notes, and takes the next message as the ans
   expect((await listTasks(t.paths)).map((x) => x.state)).toEqual(['done', 'done'])
 })
 
-it('lets a card be answered while the turn runs, for a call that waits on it', async () => {
+it.each(['approve', 'approve-task'])('lets a card be answered with %s while the turn runs', async answer => {
   const t = await setup(async (request, _turn, _extra, runner) => {
     const ask = runner.askFor(request.channel!, async () => 'approve', 5000)!
     return done(`commands: ${await ask({ words: 'Run commands in this comet\'s work folder', url: 'file:///C:/work' })}`)
@@ -83,11 +83,11 @@ it('lets a card be answered while the turn runs, for a call that waits on it', a
     expect(task?.approvals).toHaveLength(1)
     return task
   }, { timeout: 5000 })
-  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, 'approve')
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, answer)
   await running
   const task = await t.settle('done')
   expect(task.result).toBe('commands: approve')
-  expect(task.approvals.map((a) => [a.answer, a.settled])).toEqual([['approve', true]])
+  expect(task.approvals.map((a) => [a.answer, a.settled])).toEqual([[answer, true]])
   expect(t.sent).toHaveLength(1)
 })
 
@@ -217,4 +217,25 @@ it.each(['empty', 'throw'])('keeps user Stop authoritative when cancellation ret
   expect((await t.settle('stopped')).log.at(-1)?.line).toBe('Stopped by you')
   expect(t.events.some(event => event.type === 'chat:error')).toBe(false)
   expect(t.notified.some(line => line.startsWith('failed:'))).toBe(false)
+})
+
+it('reuses an explicit task approval for matching url and words while reconfirming each action', async () => {
+  const confirm = vi.fn(async () => 'approve' as const)
+  const verdicts: string[] = []
+  const t = await setup(async (request, turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, confirm, 0)!
+    verdicts.push(await ask({ words: 'Submit', url: 'https://report.test/time' }))
+    if (turn > 1) verdicts.push(await ask({ words: 'Submit', url: 'https://report.test/time' }))
+    return done('Submitted entries')
+  })
+  await t.chat('Submit the time entries')
+  const waiting = await t.settle('waiting')
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, 'approve-task')
+  const finished = await t.settle('done')
+  expect(finished.approvals).toHaveLength(1)
+  expect(confirm).toHaveBeenCalledTimes(2)
+  expect(verdicts).toEqual(['later', 'approve', 'approve'])
+  await t.chat('Submit another report')
+  expect((await t.settle('waiting')).approvals).toHaveLength(1)
+  expect(confirm).toHaveBeenCalledTimes(2)
 })

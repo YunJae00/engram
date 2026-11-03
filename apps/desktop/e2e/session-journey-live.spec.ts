@@ -66,13 +66,13 @@ test('connected conversations deliver visible results with isolated work surface
       await expect.poll(() => page.locator('.bubble-msg.assistant .answer-actions').count()).toBe(await page.locator('.bubble-msg.assistant').count())
       if (await page.getByTestId('tour-skip').isVisible()) await page.getByTestId('tour-skip').click()
       await page.screenshot({ path: join(data, `session-${index}-result.png`) })
-      const preview = page.getByTestId('preview-card')
+      const preview = page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
       if (index === 2) {
         await expect(preview).toHaveAttribute('data-lane', `bot-${calculator.id}`)
         await expect(preview).toHaveCount(1)
       }
       if (await preview.isVisible()) {
-        const expand = preview.getByRole('button', { name: /Expand preview|미리보기 펼치기/ })
+        const expand = page.getByTestId('preview-card-collapsed')
         if (await expand.isVisible()) await expand.click()
         await expect(preview.locator('img').first()).toBeVisible()
         await page.screenshot({ path: join(data, `session-${index}-preview.png`) })
@@ -80,7 +80,7 @@ test('connected conversations deliver visible results with isolated work surface
         await expect(page.getByTestId('preview-card')).toHaveCount(0)
         await page.screenshot({ path: join(data, `session-${index}-switched.png`) })
         await page.getByTestId(`bot-${scenario.bot.id}`).click()
-        await expect(page.getByTestId('preview-card')).toHaveAttribute('data-lane', `bot-${scenario.bot.id}`)
+        await expect(preview).toHaveAttribute('data-lane', `bot-${scenario.bot.id}`)
       }
     }
     const metadata = await app.evaluate(({ app, BrowserWindow }) => ({ version: app.getVersion(), packaged: app.isPackaged, windows: BrowserWindow.getAllWindows().map(w => ({ url: w.webContents.getURL(), focusable: w.isFocusable() })) }))

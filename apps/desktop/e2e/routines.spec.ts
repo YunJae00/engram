@@ -1,20 +1,17 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { addRoutine, appendBotTurn, initVault, listCards, listRoutines, type VaultPaths } from 'core'
-import { createServer, type Server } from 'node:http'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import type { Server } from 'node:http'
+import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, expandPreview, openActivity } from './navigation.js'
+import { captureRoutine, openRoutineView, expectRoutineControlReachable as expectRoutineReachable, resizeForRoutine as resizeRoutine, routinePortal } from './routine-fixture.js'
 import { recordedSteps } from '../../../packages/core/src/routine-record.js'
-
 // Saved routines open fresh conversations and preserve the replay's gates.
-
 test.describe.configure({ mode: 'serial' })
-
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const CDP_PORT = 19222 + Math.floor(Math.random() * 400)
-
 let app: ElectronApplication
 let page: Page
 let paths: VaultPaths
@@ -26,56 +23,17 @@ let gateUnlocked = false
 // nothing was posted without approval.
 let posted: string[] = []
 let searchResult = 'Inventory available: 4 units'
-
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   const root = await mkdtemp(join(REPO_TMP, 'e2e-routine-'))
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-routine-userdata-'))
   paths = await initVault(root, { git: false })
-
   // A local portal stand-in: home → Notices, plus a gated page for the wall.
-  server = createServer((req, res) => {
-    res.setHeader('content-type', 'text/html')
-    if (req.url === '/frames')
-      res.end('<html><head><title>Embedded portal</title></head><body><iframe src="/frame-content" title="Portal tools"></iframe></body></html>')
-    else if (req.url === '/frame-content')
-      res.end('<html><body><div id="tools"></div><script>setTimeout(() => { document.getElementById("tools").attachShadow({mode:"open"}).innerHTML = \'<a href="/notices" title="Staff notices">Open notices</a>\' }, 1200)</script></body></html>')
-    else if (req.url === '/notices')
-      res.end('<html><head><title>Notices</title></head><body><main><h1>Notices</h1><p>Holiday notice: the office closes early on Friday.</p></main></body></html>')
-    else if (req.url === '/gate')
-      res.end(
-        gateUnlocked
-          ? '<html><head><title>Reports</title></head><body><main><h1>Reports</h1><p>The quarterly numbers landed safely.</p></main></body></html>'
-          : '<html><head><title>Sign in</title></head><body><main><h1>Sign in</h1><form><input name="u"/><input type="password" name="p"/></form></main></body></html>',
-      )
-    else if (req.url?.startsWith('/search?'))
-      res.end(`<html><head><title>Search results</title></head><body><main><h1>Search results</h1><p>${searchResult}</p></main></body></html>`)
-    else if (req.url === '/search')
-      res.end('<html><head><title>Inventory</title></head><body><main><form method="get" action="/search"><input aria-label="Search inventory" name="q" /></form></main></body></html>')
-    else if (req.url?.startsWith('/post')) {
-      // POST, not GET: a browser may prefetch a GET form's target on its own,
-      // which would look exactly like a post nobody approved.
-      let body = ''
-      req.on('data', (chunk) => {
-        body += String(chunk)
-      })
-      req.on('end', () => {
-        posted.push(new URLSearchParams(body).get('entry') ?? '')
-        res.end('<html><head><title>Posted</title></head><body><main><h1>Posted</h1></main></body></html>')
-      })
-    } else if (req.url === '/log')
-      res.end(
-        '<html><head><title>Log</title></head><body><main><h1>Log</h1>' +
-          '<form action="/post" method="post"><input name="entry" aria-label="Entry"/><button type="submit">Submit</button></form>' +
-          '</main></body></html>',
-      )
-    else res.end('<html><head><title>Portal</title></head><body><main><h1>Portal</h1><a href="/notices">Notices</a></main></body></html>')
-  })
+  server = routinePortal({ gateUnlocked: () => gateUnlocked, searchResult: () => searchResult, record: entry => posted.push(entry) })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('the local site did not start')
   siteUrl = `http://127.0.0.1:${address.port}/`
-
   app = await electron.launch({
     args: [MAIN_ENTRY, '--no-sandbox'],
     env: {
@@ -90,6 +48,7 @@ test.beforeAll(async () => {
     },
   })
   page = await app.firstWindow()
+  await expect(page.getByTestId('shell')).toBeVisible()
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
@@ -114,62 +73,12 @@ test.afterAll(async () => {
   }
 })
 
-async function capture(name: string): Promise<void> {
-  const png = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
-    // Wake the hidden window's compositor before capturing the current frame.
-    await window.webContents.capturePage()
-    await new Promise(resolve => setTimeout(resolve, 400))
-    return (await window.webContents.capturePage()).toPNG().toString('base64')
-  })
-  await writeFile(test.info().outputPath(name), Buffer.from(png, 'base64'))
-}
-
-async function openRoutines(id?: string): Promise<void> {
-  await page.keyboard.press('Escape')
-  await openActivity(page, 'routines')
-  const view = page.getByTestId('routines-view')
-  await expect(view).toBeVisible()
-  expect(await view.evaluate(node => node.closest('.brief-overlay, [role="dialog"]') === null)).toBe(true)
-  if (!id) return
-  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
-  await page.getByTestId(`sidebar-routine-run-${id}`).click()
-  await expect(page.getByTestId(`routine-detail-${id}`)).toBeVisible()
-}
-
-async function expectRoutineControlReachable(testId: string): Promise<void> {
-  const control = page.getByTestId(testId)
-  await control.scrollIntoViewIfNeeded()
-  await expect(control).toBeInViewport()
-  await expect.poll(() => control.evaluate(node => {
-    const box = node.getBoundingClientRect()
-    const dock = (node.closest('.bots-write') ?? node.closest('.bots-chat'))!.getBoundingClientRect()
-    const pane = document.querySelector('.web-pane')?.getBoundingClientRect()
-    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
-    return {
-      reachable: node.contains(hit) || hit?.outerHTML.slice(0, 240) || false,
-      insideDock: box.left >= dock.left && box.right <= dock.right,
-      insideViewport: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
-      clearOfWebPane: !pane || pane.bottom <= dock.top + 1 || pane.top >= dock.bottom - 1 || pane.left >= dock.right - 1 || pane.right <= dock.left + 1,
-    }
-  })).toEqual({ reachable: true, insideDock: true, insideViewport: true, clearOfWebPane: true })
-  await control.click({ trial: true })
-}
-
-async function resizeForRoutine(width: number): Promise<void> {
-  await page.setViewportSize({ width, height: 720 })
-  const actual = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
-  console.info(`[routine layout] requested ${width}x720; actual ${actual.width}x${actual.height}`)
-  expect(actual.width).toBeLessThanOrEqual(1180)
-  // A closing sidebar stays visible during its animation; do not click it again.
-  if (actual.width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') !== 'true' && await page.getByTestId('app-sidebar').isVisible()) {
-    await page.getByTestId('app-sidebar-close').click()
-    await expect(page.getByTestId('app-sidebar')).toHaveAttribute('aria-hidden', 'true')
-  }
-}
+const capture = (name: string) => captureRoutine(app, name)
+const openRoutines = (id?: string) => openRoutineView(page, id)
+const expectRoutineControlReachable = (id: string) => expectRoutineReachable(page, id)
+const resizeForRoutine = (width: number) => resizeRoutine(page, width)
 
 test('Routines replaces the workspace and selecting a saved case shows its recorded steps without running', async () => {
-  await expect(page.getByTestId('shell')).toBeVisible()
   await openRoutines()
   await expect(page.getByTestId('routines-overview')).toContainText('Saved routines')
 
@@ -239,9 +148,8 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   expect((await page.evaluate(() => window.engram.routinesList())).map(routine => routine.id)).toContain(gated.id)
   await openRoutines(gated.id)
   await page.getByTestId(`routine-run-${gated.id}`).click()
-  // The wall surfaces as a question in the live block, not as a failure.
-  // The preview opens beside chat when the person is ready to sign in.
   await expect(page.getByTestId('routine-wall-done-live')).toBeVisible({ timeout: 90_000 })
+  await expandPreview(page)
   await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}gate`)
   await page.getByRole('button', { name: 'Return to small preview' }).click()
@@ -396,7 +304,7 @@ test('a replayed Enter cannot bypass the submit guard', async () => {
   ] }), `${siteUrl}log`)
   await openRoutines(saved.id)
   await page.getByTestId(`routine-run-${saved.id}`).click()
-  await expect(page.getByTestId('bots-thread')).toContainText('could submit or commit', { timeout: 90_000 })
+  await expect(page.getByTestId('bots-thread')).toContainText('Send using Enter', { timeout: 90_000 })
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 90_000 })
   expect(posted).toEqual(before)
   const recorded = (await listRoutines(paths)).find(routine => routine.id === saved.id)!

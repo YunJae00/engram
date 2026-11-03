@@ -1,5 +1,5 @@
 import { test, expect, chromium, _electron as electron, type ElectronApplication, type Browser, type Page } from '@playwright/test'
-import { openActivity } from './navigation.js'
+import { expandPreview, openActivity } from './navigation.js'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -75,6 +75,7 @@ test('four native pages share the agent connection and keep independent input', 
   for (let i = 0; i < 4; i++) {
     const tile = shell.getByTestId(`mission-tile-${i}`)
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+    await expandPreview(tile)
     await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
     await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
   }
@@ -121,9 +122,13 @@ test('resize and chat handoffs retain the live pages and scroll', async () => {
   }
   await expect.poll(() => first.evaluate(() => scrollY)).toBeGreaterThan(100)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
-  await expect(shell.getByTestId('mission-tile-0').locator('.preview-card')).toBeVisible()
+  await expect(shell.getByTestId('mission-tile-0').locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
-  for (let i = 0; i < 4; i++) await shell.getByTestId(`mission-tile-${i}`).getByRole('button', { name: 'Open full browser', exact: true }).click()
+  for (let i = 0; i < 4; i++) {
+    const tile = shell.getByTestId(`mission-tile-${i}`)
+    await expandPreview(tile)
+    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
+  }
 })
 
 test('typing and editing a conversation after using the web does not reach the web page', async () => {
@@ -312,16 +317,16 @@ test('small split panes use a readable modal, minimize it and retain the page ac
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
   await openActivity(shell, 'mission')
   const tile = shell.getByTestId('mission-tile-0')
-  await expect(tile.locator('.preview-card')).toBeVisible()
-  const preview = tile.locator('.preview-card')
-  const expandTile = preview.getByRole('button', { name: 'Expand preview', exact: true })
+  await expect(tile.locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
+  const preview = tile.locator('.preview-card, [data-testid=preview-card-collapsed]')
+  const expandTile = tile.getByTestId('preview-card-collapsed')
   if (await expandTile.isVisible()) await expandTile.click()
   const tileBox = (await tile.boundingBox())!, previewBox = (await preview.boundingBox())!
   expect(previewBox.width).toBeLessThanOrEqual(264)
   await preview.getByRole('button', { name: 'Collapse preview', exact: true }).click()
   await expect(preview.locator('canvas')).toHaveCount(0)
   expect((await preview.boundingBox())!.height).toBeLessThan(45)
-  await preview.getByRole('button', { name: 'Expand preview', exact: true }).click()
+  await tile.getByTestId('preview-card-collapsed').click()
   await preview.getByRole('button', { name: 'Open full browser', exact: true }).click()
   const modal = shell.getByTestId('mission-browser-dialog')
   await expect(modal).toBeVisible()
@@ -334,9 +339,9 @@ test('small split panes use a readable modal, minimize it and retain the page ac
   await expect(modal).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
   await shell.getByRole('button', { name: 'Open Native 1', exact: true }).first().click()
-  const single = shell.locator('.preview-card')
+  const single = shell.locator('.preview-card, [data-testid=preview-card-collapsed]')
   await expect(single).toBeVisible()
-  const expandSingle = single.getByRole('button', { name: 'Expand preview', exact: true })
+  const expandSingle = shell.getByTestId('preview-card-collapsed')
   if (await expandSingle.isVisible()) await expandSingle.click()
   await expect(single.locator('canvas[data-painted]')).toBeVisible()
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Modal keeps this 한글')
@@ -344,5 +349,5 @@ test('small split panes use a readable modal, minimize it and retain the page ac
   await single.getByRole('button', { name: 'Collapse preview', exact: true }).click()
   await expect(single.locator('canvas')).toHaveCount(0)
   await shell.screenshot({ path: join(tmp, 'browser-minimized.png') })
-  await single.getByRole('button', { name: 'Expand preview', exact: true }).click()
+  await shell.getByTestId('preview-card-collapsed').click()
 })

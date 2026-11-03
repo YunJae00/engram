@@ -107,6 +107,13 @@ export async function testDesktopQuiet(helper, fixture, target, until) {
   assert.equal(uncertain.delivery, 'delivery_uncertain')
   assert.equal(uncertain.retry, 'unsafe')
   assert.equal((await fixture.request('state')).clicks, 2, 'Cancellation after dispatch must not be claimed as unapplied or repeated')
+  await fixture.request('away')
+  await fixture.request('activateNextClick')
+  const activated = await helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id })
+  console.log(JSON.stringify({ quietSelfActivatingInvoke: activated }))
+  assert.equal(activated.foregroundChanged, true, 'Self-activating Invoke must be reported')
+  assert.equal(activated.foregroundRestored, true, 'Invoke must restore the previous foreground window')
+  assert.equal((await fixture.request('state')).foreground, false, 'Owned foreground window must be restored')
   await fixture.request('quietRename')
   await assert.rejects(helper.request('quietPress', { ...target, snapshot: first.snapshot, control: button.id }), /control changed/)
 

@@ -1,5 +1,6 @@
 import { expect, test, chromium, type Browser, type Page } from '@playwright/test'
 import { chooseOption, pressKey, pressOn } from '../src/main/page-actions.js'
+import { inspectControl } from '../src/main/page-target.js'
 import { readFrames } from '../src/main/page-reader.js'
 
 let browser: Browser
@@ -70,4 +71,17 @@ test('keeps section identity and text outside the first main region', async () =
   const reading = await readFrames(page)
   expect(reading.text).toContain('Detail outside main')
   expect(reading.lines.filter(control => control.includes('Open'))).toEqual(expect.arrayContaining([expect.stringContaining('Monday > Project A'), expect.stringContaining('Tuesday > Project A')]))
+})
+
+test('distinguishes textarea and single-line Enter while preserving posting-form approval', async () => {
+  await page.setContent('<textarea aria-label="Notes"></textarea><input aria-label="Time cell"><form method="post"><input aria-label="Report"><button type="submit">Submit</button></form>')
+  for (const [label, multiline] of [['Notes', true], ['Time cell', false], ['Report', false]] as const) {
+    const hand = page.getByLabel(label)
+    expect(await hand.evaluate(inspectControl)).toMatchObject({ editable: true, multiline })
+    await hand.focus()
+    let asked = 0
+    const result = await pressKey(page, 'Enter', undefined, async () => { asked++; return 'cancel' })
+    expect(asked).toBe(label === 'Time cell' ? 0 : 1)
+    expect(result.ok).toBe(label === 'Time cell')
+  }
 })
