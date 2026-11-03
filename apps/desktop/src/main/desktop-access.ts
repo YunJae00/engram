@@ -2,11 +2,16 @@ import { appNameMatch, similarApps } from 'core'
 import { BrowserWindow, desktopCapturer, type DesktopCapturerSource } from 'electron'
 import type { DesktopBindingDto, DesktopWindowDto } from '../shared/desktop.js'
 import { DesktopHost } from './desktop-host.js'
+import { flog } from './flog.js'
 import { broadcast } from './engine-health.js'
 
 export interface DesktopBinding extends DesktopBindingDto { aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
 type Binding = DesktopBinding
-interface NativeWindow { protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+interface NativeWindow { barrier?: string; protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+const openedForeground = new Map<string, { pid: number; previousFrontPid: number }>()
+export function rememberOpenedForeground(lane: string, result: { pid?: number; previousFrontPid?: number }): void {
+  if (result.pid && result.previousFrontPid) openedForeground.set(lane, { pid: result.pid, previousFrontPid: result.previousFrontPid })
+}
 const bindings = new Map<string, Binding>()
 const choices = new Map<string, number>()
 let generation = 0
@@ -45,8 +50,9 @@ const changed = () => broadcast({ type: 'desktop:changed' })
 export function desktopBindings(): DesktopBindingDto[] {
   return [...bindings.values()].map(({ lane, source, name, readable, stopped }) => ({ lane, source, name, readable, stopped }))
 }
-export function closeDesktopAccess(): void { generation++; for (const key of [...bindings.keys()]) releaseDesktop(key); closeCatalogHost() }
+export function closeDesktopAccess(): void { generation++; openedForeground.clear(); for (const key of [...bindings.keys()]) releaseDesktop(key); closeCatalogHost() }
 export function releaseDesktop(lane: string): void {
+  openedForeground.delete(lane)
   releaseControl(lane, 'The app window was disconnected.')
   choices.set(lane, (choices.get(lane) ?? 0) + 1)
   bindings.get(lane)?.host.close()
@@ -133,7 +139,15 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     // The open windows travel with the miss, so the next call can name one without a separate listing.
     const open = similarApps(windows.map(one => ({ ...one, name: one.title })), wanted ?? '').map(one => one.title).map((title) => `"${title}"`).join(', ')
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
-    if (target.protected) throw new Error('This application surface requires manual control. Ask the person to complete sign-in or security steps in the app, then read it again.')
+    if (target.protected) throw new Error(`${target.barrier ?? 'This application surface requires manual control'}. Ask the person to complete sign-in or security steps in the app, then read it again.`)
+    const opened = openedForeground.get(lane)
+    const restore = opened && target.pid === opened.pid ? opened : undefined
+    if (restore || target.minimized) {
+      if (restore) openedForeground.delete(lane)
+      const receipt = await host.request<{ foregroundRestored?: boolean }>('inspectWindow', { window: target.window, pid: target.pid,
+        ...(target.minimized ? { unminimize: true } : {}), ...(restore ? { restoreForegroundPid: restore.previousFrontPid } : {}) })
+      if (receipt.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane, tool: 'app_read' }))
+    }
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     if (keptOut(target.title)) throw new Error(`The person keeps "${target.title}" out of Engram's reach in Settings. Do not work in it; say so, and that they can allow it in Settings.`)
     const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)

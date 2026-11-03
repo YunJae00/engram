@@ -70,12 +70,6 @@ final class DesktopHost {
             return ["intervention": String(current.intervention), "idleMs": current.idle, "escaped": current.escaped, "working": current.lease != nil]
         }
         if method == "listApps" { return catalog().map { ["id": $0.id, "name": $0.name, "aliases": $0.aliases] as [String: Any] } }
-        if method == "openApp" {
-            let id = try text(request, "app", limit: 64)
-            guard let entry = catalog().first(where: { $0.id == id }), !monitor.state().escaped else { throw DesktopFailure("Choose an app from the catalog") }
-            _ = try NSWorkspace.shared.launchApplication(at: entry.url, options: [.withoutActivation, .async], configuration: [:])
-            return ["requested": true, "name": entry.name, "requiresObservation": true]
-        }
         if method == "listWindows" {
             guard AXIsProcessTrusted() else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Accessibility") }
             let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -85,15 +79,22 @@ final class DesktopHost {
                     let window = try resolveWindow(id, pid: 0)
                     return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
                 } catch {
-                    guard String(describing: error) == "This application surface requires manual control",
+                    guard String(describing: error).hasPrefix("This application surface requires manual control"),
                           let pid = item[kCGWindowOwnerPID as String] as? Int32,
                           let app = NSRunningApplication(processIdentifier: pid) else { return nil }
                     return ["aliases": appAliases(url: app.bundleURL), "window": String(id), "pid": pid,
-                            "title": app.localizedName ?? "App", "minimized": false, "protected": true]
+                            "title": app.localizedName ?? "App", "minimized": false, "protected": true, "barrier": String(describing: error)]
                 }
             }]
         }
+        let previous = NSWorkspace.shared.frontmostApplication
+        let quiet = ["quietSet", "quietPress", "quietRead"].contains(method)
+        defer { if quiet { _ = restoreForeground(previous) } }
         let window = try target(request)
+        var foregroundRestored = false
+        if let pid = request["restoreForegroundPid"] as? Int32, window.foreground {
+            foregroundRestored = restoreForeground(NSRunningApplication(processIdentifier: pid))
+        }
         if let lease = request["lease"] as? String { try monitor.check(lease, window: window) }
         if method == "applicationFrameHide" { frame.hide(); return ["hidden": true] }
         if method == "applicationFrame" { return ["window": try frame.show(window)] }
@@ -101,6 +102,10 @@ final class DesktopHost {
         if method == "capture" { return try capture(request, window: window) }
         if ["click", "type", "replace", "key", "scroll"].contains(method) { return try act(request, method: method, window: window) }
         if method == "inspectWindow" || method == "activateWindow" {
+            if method == "inspectWindow" && request["unminimize"] as? Bool == true && window.minimized {
+                guard AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanFalse) == .success,
+                      !window.minimized else { throw DesktopFailure("The window is minimized and cannot be shown in the preview card") }
+            }
             if method == "activateWindow" {
                 guard !monitor.state().escaped else { throw DesktopFailure("Escape pressed") }
                 AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
@@ -108,7 +113,7 @@ final class DesktopHost {
                 guard AXUIElementPerformAction(window.element, kAXRaiseAction as CFString) == .success else { throw DesktopFailure("The window could not be activated") }
             }
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "minimized": window.minimized,
-                    "foreground": window.foreground, "bounds": rectangle(try window.bounds), "visualBounds": rectangle(try window.bounds)]
+                    "foreground": window.foreground, "foregroundRestored": foregroundRestored, "bounds": rectangle(try window.bounds), "visualBounds": rectangle(try window.bounds)]
         }
         if method == "quietState" { return state(window) }
         if method == "quietScan" || method == "observe" {
@@ -127,7 +132,7 @@ final class DesktopHost {
             if request["snapshot"] != nil { reading = try snapshot(request, window: window) } else { reading = try scan(window) }
             let selected = (request["control"] as? String).map { $0.first == "c" ? String($0.dropFirst()) : $0 }
             let value = reading.controls.filter { !$0.secret && (selected == nil || $0.id == selected) }.map { $0.value.isEmpty ? $0.name : $0.value }.joined(separator: "\n")
-            return ["text": String(value.suffix(20000)), "chars": value.count, "headClipped": value.count > 20000]
+            return ["text": String(value.suffix(20000)), "chars": value.count, "headClipped": value.count > 20000].merging(foregroundReceipt(previous)) { _, next in next }
         }
         if method == "quietSet" || method == "quietPress" {
             guard request["state"] == nil && request["action"] == nil else { throw DesktopFailure("Desired-state provider actions are not supported by this platform; no action was sent") }
@@ -149,13 +154,13 @@ final class DesktopHost {
                       !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
                 guard AXUIElementSetAttributeValue(node.element, kAXValueAttribute as CFString, value as CFString) == .success else { throw DesktopFailure("This control does not take text") }
                 let actual = node.value
-                return ["landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier]
+                return ["landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
             }
             guard node.pressable else { throw DesktopFailure("This control cannot be pressed") }
             guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
                       !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
             guard AXUIElementPerformAction(node.element, kAXPressAction as CFString) == .success else { throw DesktopFailure("This control cannot be pressed") }
-            return ["pressed": node.name, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier]
+            return ["pressed": node.name, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
         }
         if method == "prepare" {
             let grant = try text(request, "grant", limit: 64)

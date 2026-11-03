@@ -1,5 +1,5 @@
 import { setWorkPreviewStream, workPreviews } from './work-preview.js'
-import { ipcMain, session, type WebContents } from 'electron'
+import { ipcMain, session, systemPreferences, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopHost } from './desktop-host.js'
 import { captureSource, chooseDesktop, desktopBindings, desktopOwner, desktopVisible, desktopWindows, releaseDesktop, setDesktopReadAccess } from './desktop-access.js'
@@ -48,6 +48,7 @@ export function registerDesktopIpc(): void {
     const binding = desktopBindings().find((item) => item.lane === lane)
     if (!binding) throw new Error('Connect an app window before starting its live view.')
     if ((requests.get(sender.id)?.expires ?? 0) > Date.now()) throw new Error('A live view is already starting. Try again.')
+    if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') !== 'granted') return { denied: 'screen_recording' }
     const token = randomUUID()
     requests.set(sender.id, { lane, source: binding.source, token, expires: Date.now() + 10000 })
     return token
@@ -59,7 +60,7 @@ export function registerDesktopIpc(): void {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     const sender = desktopOwner()?.webContents
     const pending = sender && requests.get(sender.id)
-    if (!sender || !desktopVisible() || request.frame !== sender.mainFrame || request.audioRequested || !pending || pending.capturing || pending.expires <= Date.now()) { callback({}); return }
+    if (!sender || !desktopVisible() || request.frame !== sender.mainFrame || request.audioRequested || !pending || pending.capturing || pending.expires <= Date.now()) { callback(null as unknown as Electron.Streams); return }
     pending.capturing = true
     let answered = false
     const finish = (source?: Awaited<ReturnType<typeof captureSource>>): void => {
@@ -67,7 +68,8 @@ export function registerDesktopIpc(): void {
       answered = true
       const current = requests.get(sender.id) === pending
       if (current) requests.delete(sender.id)
-      callback(current && source ? { video: source } : {})
+      // Electron 33 accepts null for denial; an empty object throws after rejecting capture.
+      callback(current && source ? { video: source } : null as unknown as Electron.Streams)
     }
     void captureSource(pending.lane).then((source) => {
       if (desktopOwner()?.webContents !== sender || !desktopVisible() || sender.isDestroyed() || request.frame !== sender.mainFrame || pending.expires <= Date.now() || source.id !== pending.source || !desktopBindings().some((item) => item.lane === pending.lane && item.source === source.id)) { finish(); return }

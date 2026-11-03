@@ -10,7 +10,7 @@ export interface DesktopFailureObservation {
 const PRECONDITIONS: { pattern: RegExp; code: DesktopFailureObservation['error']; hint?: string }[] = [
   { pattern: /^No open window matches/, code: 'element_not_found', hint: 'No matching accessible window was found. Open the app or use a name from the window list; this does not prove the app is uninstalled.' },
   { pattern: /Allow input monitoring/i, code: 'input_monitoring_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Input Monitoring and restart Engram.' },
-  { pattern: /Allow Engram in System Settings.*Screen Recording/i, code: 'screen_recording_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Screen Recording.' },
+  { pattern: /Allow Engram in System Settings.*Screen Recording/i, code: 'screen_recording_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Screen Recording; if Engram is listed, remove it with − and add it again with +.' },
   { pattern: /Allow Engram in System Settings.*Accessibility/, code: 'accessibility_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Accessibility; if Engram is already listed and enabled, remove Engram with − and add /Applications/Engram.app again with + because macOS ties permission to the build, then read the app again.' },
   { pattern: /Foreground control was declined by the person/, code: 'policy_denied', hint: 'The person declined foreground control. No input was sent; wait for their instruction.' },
   { pattern: /Foreground input requires a deliberate handover/, code: 'policy_denied', hint: 'A foreground control approval card appears in the thread. Continue only after the person approves it.' },

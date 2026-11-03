@@ -179,7 +179,7 @@ test('preview stays within a narrow window, stays above the thread and supports 
 })
 
 
-test('finished work minimizes its preview so the result remains readable', async () => {
+test('finished work keeps its preview expanded with the last screen', async () => {
   await app.evaluate(({ BrowserWindow }, lane) => {
     const contents = BrowserWindow.getAllWindows()[0]!.webContents
     contents.send('engram:event', { type: 'comet:working', channel: lane, working: true })
@@ -194,9 +194,9 @@ test('finished work minimizes its preview so the result remains readable', async
     win.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false })
   }, lane)
   await expect(page.getByTestId('bots-thread')).toContainText('The result is ready to read.')
-  await expect(page.getByTestId('preview-card-collapsed')).toBeVisible()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
+  await expect(page.getByTestId('preview-card')).toContainText('Last snapshot')
   await page.screenshot({ path: join(shots, 'preview-finished.png') })
-  await page.getByRole('button', { name: 'Expand preview', exact: true }).click()
   await expect(page.locator('.preview-card canvas')).toHaveAttribute('data-painted', '')
 })
 

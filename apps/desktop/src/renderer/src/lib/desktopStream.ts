@@ -25,7 +25,9 @@ function startCapture(lane: string, signal?: AbortSignal): Promise<MediaStream> 
     const timer = setTimeout(() => fail(new Error('Live view took too long to start. Retry the window.')), 12000)
     signal?.addEventListener('abort', abort, { once: true })
     void (async () => {
-      token = await api.desktopPrepareCapture(lane)
+      const grant = await api.desktopPrepareCapture(lane)
+      if (typeof grant !== 'string') throw new Error('screen_recording_denied')
+      token = grant
       if (!active) { cancelGrant(); return }
       const stream = await navigator.mediaDevices.getDisplayMedia({
         audio: false,

@@ -42,7 +42,6 @@ test('app preview stays inside full, split, minimized and expanded conversations
     const preview = full.getByTestId('preview-card')
     await expect(full.getByTestId('preview-card-collapsed')).toBeVisible()
     await expect(full.getByTestId('task-approvals')).toBeVisible()
-    await full.getByTestId('preview-card-collapsed').click()
     const check = async (chat: Locator, name: string) => {
       const pane = chat.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
       await expect(pane).toBeVisible()
@@ -152,7 +151,8 @@ test('app preview stays inside full, split, minimized and expanded conversations
       await expect(page.getByTestId('bots-input')).toBeVisible()
       await page.waitForTimeout(100)
       await emit([{ type: 'comet:working', channel: lane, working: false }])
-      await expect(full.getByTestId('preview-card-collapsed')).toBeVisible()
+      await expect(preview).toBeVisible()
+      await expect(preview).toContainText('Last snapshot')
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
       await openActivity(page, 'mission')
       await page.getByTestId('mission-layout-2').click()

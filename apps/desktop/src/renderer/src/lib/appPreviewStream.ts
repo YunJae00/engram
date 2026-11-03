@@ -13,6 +13,7 @@ export function appPreviewStream(lane: string, changed: () => void) {
   let last = ''
   let at = 0
   let live = false
+  let reason: 'screen_recording_denied' | undefined
   let playback = 0
   const setLive = (next: boolean) => {
     if (live === next || next && controller.signal.aborted) return
@@ -52,7 +53,10 @@ export function appPreviewStream(lane: string, changed: () => void) {
       track.addEventListener('unmute', () => { setLive(true); changed(); update() })
     }
     changed(); update()
-  }).catch(() => { if (!controller.signal.aborted) failed() })
+  }).catch(error => {
+    if (error instanceof Error && error.message === 'screen_recording_denied') reason = 'screen_recording_denied'
+    if (!controller.signal.aborted) failed()
+  })
   const source: FrameSource = listener => {
     listeners.add(listener)
     if (last) listener(last)
@@ -61,6 +65,7 @@ export function appPreviewStream(lane: string, changed: () => void) {
   }
   return {
     source,
+    get reason() { return reason },
     get live() { return live },
     get at() { return at },
     get image() { return last ? `data:image/jpeg;base64,${last}` : undefined },
@@ -75,7 +80,21 @@ export function appPreviewStream(lane: string, changed: () => void) {
 
 
 const streams = new Map<string, { source: string; stopped: boolean; stream: ReturnType<typeof appPreviewStream> }>()
+const visible = new Set<string>()
+const working = new Set<string>()
+let currentBindings: DesktopBindingDto[] = []
+let notify = () => {}
+export function setAppPreviewVisible(lane: string, showing: boolean, busy = true): void {
+  if (visible.has(lane) === showing && working.has(lane) === (showing && busy)) return
+  if (showing) visible.add(lane); else visible.delete(lane)
+  if (showing && busy) working.add(lane); else working.delete(lane)
+  syncAppPreviewStreams(currentBindings, notify)
+  notify()
+}
 export function syncAppPreviewStreams(bindings: DesktopBindingDto[], changed: () => void): void {
+  currentBindings = bindings
+  notify = changed
+  bindings = bindings.filter(item => visible.has(item.lane)).map(item => ({ ...item, stopped: item.stopped || !working.has(item.lane) }))
   for (const [lane, held] of streams) {
     const binding = bindings.find(item => item.lane === lane && item.readable && item.source === held.source)
     if (!binding || held.stopped && !binding.stopped) { held.stream.close(); streams.delete(lane) }

@@ -142,7 +142,7 @@ try {
   const target = { window: ready.window, pid: ready.pid }
   result.stage = 'quiet-app-access'
   const quietHelper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])
-  try { result.quiet = await testDesktopQuiet(quietHelper, fixture, target, until); result.previewCost = await measurePreviewCost(quietHelper, target); console.log(JSON.stringify({ previewCost: result.previewCost })) }
+  try { result.quiet = await testDesktopQuiet(quietHelper, fixture, target, until, notepadApp); result.previewCost = await measurePreviewCost(quietHelper, target); console.log(JSON.stringify({ previewCost: result.previewCost })) }
   finally { await quietHelper.close() }
   result.stage = 'application-frame'
   const frameHelper = new Channel(path.join(output, 'EngramDesktop.exe'), ['--owner-pid', String(process.pid)])

@@ -245,7 +245,7 @@ test('session app previews stay inside the conversation and preserve drafts', as
   const preview = page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
   await expect(preview).toHaveAttribute('data-lane', `bot-${one.id}`)
   await expect(page.getByTestId('bots-input')).toBeFocused()
-  await page.getByTestId('preview-card-collapsed').click()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
   await expect(preview).toContainText('Owned app 0')
   await expect(preview).not.toContainText('Owned app 1')
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(windows)
