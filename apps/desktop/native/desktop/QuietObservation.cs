@@ -10,18 +10,27 @@ internal sealed partial class QuietAccess
     {
         ObservationTree.Skeleton(mode, rootId, previous);
         object result = null;
+        var activationAttempted = false;
         for (var attempt = 0; attempt < 3; attempt++)
         {
             int nodes;
-            try { result = ScanOnce(target, find, mode, rootId, previous, out nodes); }
+            bool cold;
+            try { result = ScanOnce(target, find, mode, rootId, previous, activationAttempted, out nodes, out cold); }
             catch (ElementNotAvailableException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
             catch (System.Runtime.InteropServices.COMException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
-            if (mode == "skeleton" || rootId != null || nodes >= SparseNodes || attempt == 2) break;
+            if (mode == "skeleton" || rootId != null || attempt == 2) break;
+            if (cold && !activationAttempted && string.IsNullOrWhiteSpace(find)) {
+                Guard.Same(target);
+                ChromiumAccessibility.Wake(target.Handle);
+                activationAttempted = true;
+                System.Threading.Thread.Sleep(1500);
+                continue;
+            } else if (nodes >= SparseNodes || activationAttempted) break;
             System.Threading.Thread.Sleep(400);
         }
         return result;
     }
-    private object ScanOnce(DesktopTarget target, string find, string mode, string rootId, string previous, out int nodes)
+    private object ScanOnce(DesktopTarget target, string find, string mode, string rootId, string previous, bool activationAttempted, out int nodes, out bool cold)
     {
         if (target.Minimized) throw new InvalidOperationException("Restore this window before reading it");
         var root = Validate(target);
@@ -30,6 +39,7 @@ internal sealed partial class QuietAccess
         var watch = Stopwatch.StartNew();
         var readingRoot = rootId == null ? root : Control(target, previous, rootId).Element;
         var tree = ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1");
+        cold = ChromiumAccessibility.IsCold(root.Current.ClassName, tree);
         var metadata = tree.Nodes.ToDictionary(node => AutomationSession.RuntimeId(node.Element));
         var cached = tree.Nodes.Select(node => node.Element.GetUpdatedCache(Cache())).ToList();
         var interactive = cached.Where(element => element.Cached.ControlType != ControlType.Text).ToList();
@@ -117,7 +127,7 @@ internal sealed partial class QuietAccess
         nodes = controls.Count + texts.Count;
         return new
         {
-            window = target.Id, pid = target.Pid, title = target.Title, snapshot = snapshot.Id, controls = controls, texts = texts,
+            accessibilityRescanned = activationAttempted, window = target.Id, pid = target.Pid, title = target.Title, snapshot = snapshot.Id, controls = controls, texts = texts,
             bounds = AutomationSession.Bounds(DesktopNative.Bounds(target.Handle)), mode = mode ?? "full", root = rootId,
             truncated = tree.Truncated || skippedControls > 0 || skippedTexts > 0 || remaining <= 0,
             skippedControls = skippedControls, skippedTexts = skippedTexts, ms = watch.ElapsedMilliseconds, state = State(target),

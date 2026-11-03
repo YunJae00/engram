@@ -21,6 +21,81 @@ internal sealed class FixtureScroll : Panel
     { if (message.Msg == 0x20a) Wheels++; base.WndProc(ref message); }
 }
 
+internal sealed class FixtureReadLabel : Label
+{
+    internal bool ActivateOnRead;
+    protected override AccessibleObject CreateAccessibilityInstance() { return new Reading(this); }
+    private sealed class Reading : ControlAccessibleObject
+    {
+        private readonly FixtureReadLabel Label;
+        internal Reading(FixtureReadLabel label) : base(label) { Label = label; }
+        public override AccessibleRole Role { get { return AccessibleRole.StaticText; } }
+        public override string Name
+        {
+            get {
+                if (Label.ActivateOnRead) {
+                    Label.ActivateOnRead = false;
+                    Label.BeginInvoke((Action)delegate { Label.FindForm().Activate(); });
+                }
+                return base.Name;
+            }
+            set { base.Name = value; }
+        }
+    }
+}
+
+internal sealed class ColdChromiumFixture
+{
+    private delegate IntPtr WindowProcedure(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct WindowClass
+    {
+        internal uint Style;
+        internal WindowProcedure Procedure;
+        internal int ClassExtra, WindowExtra;
+        internal IntPtr Instance, Icon, Cursor, Background;
+        internal string Menu, Name;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern ushort RegisterClass(ref WindowClass value);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr DefWindowProc(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateWindowEx(uint extended, string cls, string name, uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string name);
+    private static readonly Dictionary<IntPtr, ColdChromiumFixture> Windows = new Dictionary<IntPtr, ColdChromiumFixture>();
+    private static readonly WindowProcedure Procedure = Dispatch;
+    private static readonly ushort Class = Register();
+    private readonly bool Reveal;
+    internal readonly IntPtr Handle;
+    internal int Wakes;
+    private static ushort Register()
+    {
+        var value = new WindowClass { Procedure = Procedure, Instance = GetModuleHandle(null), Name = "Chrome_WidgetWin_1" };
+        return RegisterClass(ref value);
+    }
+    internal ColdChromiumFixture(bool reveal)
+    {
+        if (Class == 0) throw new InvalidOperationException("Cannot register owned Chromium fixture");
+        Reveal = reveal;
+        Handle = CreateWindowEx(0, "Chrome_WidgetWin_1", "Cold Chromium fixture", 0x00cf0000, 80, 80, 400, 240, IntPtr.Zero, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
+        if (Handle == IntPtr.Zero) throw new InvalidOperationException("Cannot create owned Chromium fixture");
+        Windows.Add(Handle, this);
+    }
+    internal void Show() { ShowWindow(Handle, 4); }
+    internal void Close() { Windows.Remove(Handle); DestroyWindow(Handle); }
+    private static IntPtr Dispatch(IntPtr window, uint message, IntPtr wparam, IntPtr lparam)
+    {
+        ColdChromiumFixture fixture;
+        if (message == 0x003d && lparam == new IntPtr(1) && Windows.TryGetValue(window, out fixture)) {
+            fixture.Wakes++;
+            if (fixture.Reveal && fixture.Wakes == 1) {
+                CreateWindowEx(0, "STATIC", "Conversation list", 0x50000000, 10, 10, 200, 24, window, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
+                CreateWindowEx(0, "BUTTON", "Open conversation", 0x50000000, 10, 40, 200, 30, window, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
+            }
+        }
+        return DefWindowProc(window, message, wparam, lparam);
+    }
+}
+
 internal sealed class ControlFixture : Form
 {
     [StructLayout(LayoutKind.Sequential)] private struct KeyData { internal ushort Key, Scan; internal uint Flags, Time; internal UIntPtr Extra; }
@@ -40,10 +115,13 @@ internal sealed class ControlFixture : Form
     private readonly Panel Marker = new Panel { Bounds = new Rectangle(24, 390, 40, 20), BackColor = Color.Magenta };
     private readonly CheckBox EnabledOption = new CheckBox { AccessibleName = "Fixture option", Text = "Fixture option", Bounds = new Rectangle(110, 390, 160, 24) };
     private readonly ListBox Items = new ListBox { AccessibleName = "Fixture list", Bounds = new Rectangle(300, 390, 260, 24) };
+    private bool ActivateOnSet;
+    private readonly FixtureReadLabel Answer = new FixtureReadLabel { AccessibleName = "Readable answer", Text = "Readable answer", Bounds = new Rectangle(480, 60, 130, 24) };
     private bool ActivateOnClick;
     private bool DelayClick;
     private int Clicks;
     private Form Away;
+    private ColdChromiumFixture Chromium;
     private Panel Dense;
     private Panel History;
     private TextBox Deep;
@@ -63,11 +141,12 @@ internal sealed class ControlFixture : Form
         Counter.Click += delegate { if (ActivateOnClick) { ActivateOnClick = false; Activate(); } Clicks++; if (DelayClick) { DelayClick = false; Send(new { type = "ownedActionStarted" }); Thread.Sleep(2000); } };
         Entry.TextChanged += delegate
         {
+            if (ActivateOnSet) { ActivateOnSet = false; BeginInvoke((Action)Activate); }
             if (!RevealPasswordOnInput || Entry.TextLength == 0) return;
             RevealPasswordOnInput = false;
             Secret.Visible = true;
         };
-        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker, EnabledOption, Items });
+        Controls.AddRange(new Control[] { Entry, Secret, Counter, Scroller, Marker, EnabledOption, Items, Answer });
         Shown += delegate
         {
             BeginInvoke((Action)delegate
@@ -116,7 +195,18 @@ internal sealed class ControlFixture : Form
                     return;
                 }
             }
-            if (method == "focus") { Activate(); Entry.Focus(); }
+            if (method == "chromiumCold" || method == "chromiumSparse") {
+                if (Chromium != null) Chromium.Close();
+                Chromium = new ColdChromiumFixture(method == "chromiumCold");
+                Chromium.Show();
+                Send(new { id = id, result = new { window = Chromium.Handle.ToInt64().ToString(), pid = System.Diagnostics.Process.GetCurrentProcess().Id } });
+                return;
+            }
+            if (method == "chromiumState") { Send(new { id = id, result = new { wakes = Chromium.Wakes } }); return; }
+            if (method == "chromiumClose") { Chromium.Close(); Chromium = null; }
+            else if (method == "focus") { Activate(); Entry.Focus(); }
+            else if (method == "activateNextSet") { ActivateOnSet = true; }
+            else if (method == "activateNextRead") { Answer.ActivateOnRead = true; }
             else if (method == "activateNextClick") { ActivateOnClick = true; }
             else if (method == "delayNextClick") { DelayClick = true; }
             else if (method == "blockOwnedUi") { Send(new { id = id, result = new { blocking = true } }); Thread.Sleep(1000); return; }

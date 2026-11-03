@@ -7,7 +7,7 @@ vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: 
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
 vi.mock('../src/main/flog.js', () => ({ flog: deps.flog }))
-import { awaitPersonAway, forgetQuietCoverage, quietScan, quietSet, quietText, quietVerdict } from '../src/main/desktop-quiet.js'
+import { awaitPersonAway, forgetQuietCoverage, quietScan, quietSet, quietPress, quietText, quietVerdict } from '../src/main/desktop-quiet.js'
 
 function binding(state: { foreground: boolean; idleMs: number }, texts: string[] = ['answer']) {
   let reads = 0
@@ -166,11 +166,31 @@ it('can settle a known text tail while preserving the omitted-history flag', asy
   expect(await reading).toMatchObject({ settled: true, headClipped: true, truncated: false })
 })
 
-it.each([true, false])('reports provider activation with restoration=%s', async restored => {
+it.each(['app_set', 'app_press', 'app_text'] as const)('reports provider activation and restoration for %s', async tool => {
+  for (const restored of [true, false]) {
+    vi.clearAllMocks()
+    const { request } = binding({ foreground: false, idleMs: 9000 })
+    const method = tool === 'app_set' ? 'quietSet' : tool === 'app_press' ? 'quietPress' : 'quietRead'
+    request.mockImplementation(async name => name === method ? { landed: true, text: 'answer', foregroundChanged: true, foregroundRestored: restored } : { foreground: false, idleMs: 9000 })
+    const result = tool === 'app_set' ? await quietSet('bot-one', 'Claude', 'snapshot', 'c1', 'hello', undefined)
+      : tool === 'app_press' ? await quietPress('bot-one', 'Claude', 'snapshot', 'c1') : await quietText('bot-one', 'Claude', undefined, undefined, 0)
+    expect(deps.flog).toHaveBeenCalledWith('desktop-foreground', JSON.stringify({ lane: 'bot-one', tool, app: 'Claude', restored }))
+    expect(deps.flog.mock.calls.some(([kind, line]) => kind === 'harness' && JSON.parse(line).operation === 'foreground-restored')).toBe(restored)
+    expect(result.foregroundTaken).toBe(restored ? undefined : true)
+    expect(deps.broadcast).toHaveBeenCalledTimes(restored ? 0 : 1)
+  }
+})
+
+it.each([false, true])('records coverage only after the native activation rescan settles (still sparse=%s)', async sparse => {
   const { request } = binding({ foreground: false, idleMs: 9000 })
-  request.mockImplementation(async method => method === 'quietSet' ? { landed: true, foregroundChanged: true, foregroundRestored: restored } : { foreground: false, idleMs: 9000 })
-  const result = await quietSet('bot-one', 'Claude', 'snapshot', 'c1', 'hello', undefined)
-  expect(deps.flog).toHaveBeenCalledWith('desktop-foreground', JSON.stringify({ lane: 'bot-one', tool: 'app_set', app: 'Claude', restored }))
-  expect(result.foregroundTaken).toBe(restored ? undefined : true)
-  expect(deps.broadcast).toHaveBeenCalledTimes(restored ? 0 : 1)
+  let finish!: (value: unknown) => void
+  request.mockImplementation(async method => method === 'quietScan' ? new Promise(resolve => { finish = resolve }) : {})
+  const pending = quietScan('bot-one', 'Claude', undefined)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(quietVerdict('bot-one', 'Claude').verdict).toBe('unknown')
+  finish({ snapshot: 'rescanned', accessibilityRescanned: true, truncated: false, bounds: { x: 0, y: 0, width: 800, height: 600 }, controls: sparse ? [] : Array.from({ length: 6 }, (_, i) => ({ id: `c${i}`, name: `Conversation ${i}`, type: 'Button', enabled: true, offscreen: false, can: { press: true } })), texts: sparse ? [] : [{ id: 't1', text: 'Recent conversations' }] })
+  const result = await pending
+  expect(result.sparseTree).toBe(sparse)
+  expect(quietVerdict('bot-one', 'Claude').verdict).toBe(sparse ? 'bare' : 'covered')
+  if (sparse) expect(result.hint).toContain('look_desktop')
 })
