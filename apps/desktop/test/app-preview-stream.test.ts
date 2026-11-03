@@ -1,0 +1,57 @@
+import { afterEach, expect, it, vi } from 'vitest'
+const { open, previewStream } = vi.hoisted(() => ({ open: vi.fn(), previewStream: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../src/renderer/src/api.js', () => ({ api: { desktopPreviewStream: previewStream } }))
+vi.mock('../src/renderer/src/lib/desktopStream.js', () => ({ openDesktopStream: open }))
+import { appPreviewStream, appPreviewFor, syncAppPreviewStreams } from '../src/renderer/src/lib/appPreviewStream.js'
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+it('paints within two seconds, pauses without subscribers, and holds the stream until release', async () => {
+  const callbacks = new Map<string, () => void>()
+  const stop = vi.fn()
+  const track = { stop, addEventListener: (name: string, callback: () => void) => callbacks.set(name, callback) }
+  open.mockResolvedValue({ getTracks: () => [track], getVideoTracks: () => [track] })
+  const video = { muted: false, playsInline: false, srcObject: null, readyState: 2, videoWidth: 800, videoHeight: 600, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+  const canvas = { width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }), toDataURL: () => 'data:image/jpeg;base64,frame' }
+  vi.stubGlobal('document', { visibilityState: 'visible', createElement: (tag: string) => tag === 'video' ? video : canvas, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  let paint!: () => void
+  const raf = vi.fn(callback => { paint = callback; return 1 })
+  vi.stubGlobal('requestAnimationFrame', raf); vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const changed = vi.fn(), received = vi.fn()
+  const start = performance.now()
+  const binding = { lane: 'bot-test', source: 'window:42:0', name: 'Owned', readable: true }
+  syncAppPreviewStreams([binding], changed)
+  syncAppPreviewStreams([binding], changed)
+  const preview = appPreviewFor('bot-test')!
+  await Promise.resolve()
+  expect(open).toHaveBeenCalledExactlyOnceWith('bot-test', expect.any(AbortSignal))
+  expect(previewStream).toHaveBeenCalledExactlyOnceWith('bot-test', true)
+  expect(raf).not.toHaveBeenCalled()
+  const off = preview.source(received)
+  await Promise.resolve(); paint()
+  expect(received).toHaveBeenCalledWith('frame')
+  expect(performance.now() - start).toBeLessThan(2000)
+  off(); expect(stop).not.toHaveBeenCalled()
+  callbacks.get('mute')!()
+  expect(preview.live).toBe(false)
+  expect(previewStream).toHaveBeenLastCalledWith('bot-test', false)
+  callbacks.get('unmute')!()
+  expect(previewStream).toHaveBeenLastCalledWith('bot-test', true)
+  expect(preview.image).toBe('data:image/jpeg;base64,frame')
+  syncAppPreviewStreams([{ ...binding, stopped: true }], changed)
+  expect(appPreviewFor('bot-test')?.image).toBe('data:image/jpeg;base64,frame')
+  expect(stop).toHaveBeenCalledOnce()
+  expect(previewStream.mock.calls).toEqual([['bot-test', true], ['bot-test', false], ['bot-test', true], ['bot-test', false]])
+  syncAppPreviewStreams([], changed)
+  expect(appPreviewFor('bot-test')).toBeUndefined()
+})
+it('falls back when capture cannot start', async () => {
+  open.mockRejectedValue(new Error('unavailable'))
+  vi.stubGlobal('document', { createElement: () => ({ pause: vi.fn() }), addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const changed = vi.fn()
+  const preview = appPreviewStream('bot-test', changed)
+  await Promise.resolve(); await Promise.resolve()
+  expect(preview.live).toBe(false); expect(preview.image).toBeUndefined()
+  expect(previewStream).not.toHaveBeenCalled()
+  expect(changed).toHaveBeenCalled()
+  preview.close()
+})

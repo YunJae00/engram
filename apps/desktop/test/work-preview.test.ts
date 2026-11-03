@@ -47,13 +47,14 @@ it('drops delayed images after the target changes or access is revoked', async (
   finish({ image: { data: 'stale' } }); await vi.advanceTimersByTimeAsync(1)
   expect(workPreviews(held.lane)).toEqual([])
 })
-it('cancels pending capture when the turn ends and never resurrects closed previews', async () => {
-  fake.image.mockImplementation((_binding, _observe, signal: AbortSignal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))))
+it('lets the final capture finish after a turn and never resurrects closed previews', async () => {
+  let finish!: (value: unknown) => void
+  fake.image.mockImplementation(() => new Promise(resolve => { finish = resolve }))
   const { showWorkPreview, workPreviews, closeWorkPreview } = await import('../src/main/work-preview.js')
   const held = binding(1); showWorkPreview(held)
   fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
-  await vi.advanceTimersByTimeAsync(1)
-  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'no-snapshot', current: false })
+  finish({ image: { data: 'safe' } }); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'ready', current: false })
   closeWorkPreview(); showWorkPreview(binding(2))
   expect(workPreviews('bot-2')).toEqual([])
 })
@@ -84,13 +85,13 @@ it('preserves a confirmed snapshot when its refresh fails after switching target
   expect(workPreviews(first.lane)[1]).toMatchObject({ at, data: 'data:image/jpeg;base64,safe', unavailable: false })
 })
 
-it('defers preview capture while the same helper has real work pending', async () => {
+it('protects the first frame even while the same helper has real work pending', async () => {
   const { showWorkPreview } = await import('../src/main/work-preview.js')
   const held = binding(1)
   Object.assign(held.host, { busy: true })
   showWorkPreview(held)
   await vi.advanceTimersByTimeAsync(2100)
-  expect(fake.image).not.toHaveBeenCalled()
+  expect(fake.image).toHaveBeenCalledOnce()
   Object.assign(held.host, { busy: false })
   await vi.advanceTimersByTimeAsync(2100)
   expect(fake.image).toHaveBeenCalledOnce()
@@ -119,14 +120,15 @@ it('never reuses an image when a replacement binding reuses the same source iden
 
 it('distinguishes first-frame wait, a deferred refresh, and a previous target snapshot', async () => {
   const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  fake.image.mockImplementationOnce(() => new Promise(() => {}))
   const held = binding(1); Object.assign(held.host, { busy: true }); showWorkPreview(held)
   expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'waiting', current: false })
   Object.assign(held.host, { busy: false }); await vi.advanceTimersByTimeAsync(2100)
   showWorkPreview(held)
-  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'delayed', current: false })
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'waiting', current: false })
   const next = { ...held, source: 'window:other', name: 'Other app' }
   fake.bindings.set(held.lane, next); showWorkPreview(next)
-  expect(workPreviews(held.lane).find(frame => frame.title === held.name)).toMatchObject({ current: false })
+  expect(workPreviews(held.lane).find(frame => frame.title === held.name)).toBeUndefined()
 })
 
 it('does not request capture for a protected target even before a frame exists', async () => {
@@ -183,7 +185,7 @@ it('publishes an Office activity DTO without a binding or capture and retains it
   expect(workPreviews('mail-lane')[0]).toMatchObject({ captureState: 'activity', current: false })
 })
 
-it('protects the fourth capture after three consecutive lane preemptions', async () => {
+it('protects every attempt until the lane has its first frame', async () => {
   const { showWorkPreview } = await import('../src/main/work-preview.js')
   const held = binding(1)
   const request = vi.fn().mockRejectedValue(Object.assign(new Error('yield'), { name: 'PreviewPreempted' }))
@@ -191,8 +193,42 @@ it('protects the fourth capture after three consecutive lane preemptions', async
   fake.image.mockImplementation((_binding, observe) => observe())
   showWorkPreview(held)
   await vi.advanceTimersByTimeAsync(6301)
-  expect(request.mock.calls.slice(0, 4).map(call => call[3])).toEqual([{ preview: true }, { preview: true }, { preview: true }, {}])
-  expect(fake.image.mock.calls.slice(0, 4).map(call => call[3])).toEqual([true, true, true, false])
+  expect(request.mock.calls.slice(0, 4).map(call => call[3])).toEqual([{}, {}, {}, {}])
+  expect(fake.image.mock.calls.slice(0, 4).map(call => call[3])).toEqual([false, false, false, false])
   await vi.advanceTimersByTimeAsync(2100)
-  expect(request.mock.calls[4]?.[3]).toEqual({ preview: true })
+  expect(request.mock.calls[4]?.[3]).toEqual({})
+})
+
+
+it('skips snapshot requests and deferred refreshes while streaming and resumes after it ends', async () => {
+  const { showWorkPreview, setWorkPreviewStream, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1)
+  const request = vi.fn().mockResolvedValue({})
+  Object.assign(held.host, { request })
+  fake.image.mockImplementation(async (_binding, observe) => { await observe(); return { image: { data: 'safe' } } })
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  showWorkPreview(held) // Queue a refresh during the existing capture cooldown.
+  request.mockClear(); fake.image.mockClear()
+  setWorkPreviewStream(held.lane, true)
+  showWorkPreview(held)
+  await vi.advanceTimersByTimeAsync(6301)
+  expect(request).not.toHaveBeenCalled()
+  expect(fake.image).not.toHaveBeenCalled()
+  expect(workPreviews(held.lane)).toHaveLength(1)
+  setWorkPreviewStream(held.lane, false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(request).toHaveBeenCalledOnce()
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'ready' })
+
+  for (const reset of ['replace', 'release', 'error']) {
+    setWorkPreviewStream(held.lane, true)
+    if (reset === 'replace') fake.bindings.set(held.lane, { ...held })
+    if (reset === 'release') fake.bindings.delete(held.lane)
+    fake.tap.mock.calls[0]![0](reset === 'error' ? { type: 'chat:error', channel: held.lane } : { type: 'desktop:changed' })
+    fake.bindings.set(held.lane, held)
+    await vi.advanceTimersByTimeAsync(2100)
+    request.mockClear()
+    showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+    expect(request).toHaveBeenCalledOnce()
+  }
 })

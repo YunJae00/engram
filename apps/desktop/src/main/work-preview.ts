@@ -11,12 +11,30 @@ const valid = new Map<string, () => boolean>()
 const pending = new Map<string, AbortController>()
 const deferred = new Map<string, ReturnType<typeof setTimeout>>()
 const active = new Set<string>()
+const streaming = new Set<string>()
+const streamOwners = new Map<string, DesktopBinding>()
 const preemptions = new Map<string, number>()
 const lastCapture = new Map<string, number>()
 let timer: ReturnType<typeof setInterval> | undefined
 let quitting = false
 let hooked = false
 
+export function setWorkPreviewStream(lane: string, live: boolean): void {
+  if (typeof lane !== 'string' || typeof live !== 'boolean') throw new Error('Choose a valid chat and stream state.')
+  const binding = desktopBinding(lane)
+  if (live) {
+    if (quitting || !binding?.readable || binding.stopped || binding.host.closed || keptOut(binding.name)) return
+    hookPreviewEvents()
+    streaming.add(lane); streamOwners.set(lane, binding)
+    for (const [id, frame] of entries) if (frame.lane === lane) {
+      clearTimeout(deferred.get(id)); deferred.delete(id)
+      pending.get(id)?.abort()
+    }
+  } else {
+    streaming.delete(lane); streamOwners.delete(lane)
+    if (binding && active.has(lane)) showWorkPreview(binding)
+  }
+}
 function remove(id: string): void {
   entries.delete(id); owners.delete(id); valid.delete(id); lastCapture.delete(id)
   clearTimeout(deferred.get(id)); deferred.delete(id)
@@ -38,7 +56,7 @@ export function workPreviews(lane: string): WorkPreviewDto[] {
   return [...entries.values()].filter(frame => frame.lane === lane).reverse()
 }
 export function closeWorkPreview(): void {
-  quitting = true; active.clear(); preemptions.clear()
+  quitting = true; active.clear(); preemptions.clear(); streaming.clear(); streamOwners.clear()
   for (const id of entries.keys()) remove(id)
   clearInterval(timer); timer = undefined
 }
@@ -47,10 +65,15 @@ function hookPreviewEvents(): void {
     hooked = true
     app.once('before-quit', closeWorkPreview)
     tapBroadcast(event => {
+      if (event.type === 'desktop:changed') for (const [lane, binding] of streamOwners) {
+        if (desktopBinding(lane) !== binding || !binding.readable || binding.stopped || binding.host.closed) {
+          streaming.delete(lane); streamOwners.delete(lane)
+        }
+      }
+      if (event.type === 'chat:error' && event.channel) { streaming.delete(event.channel); streamOwners.delete(event.channel) }
       if ((event.type === 'chat:done' || event.type === 'chat:error') && event.channel) {
         active.delete(event.channel); preemptions.delete(event.channel)
         for (const [id, frame] of entries) if (frame.lane === event.channel) {
-          pending.get(id)?.abort(); pending.delete(id)
           clearTimeout(deferred.get(id)); deferred.delete(id)
           frame.current = false
           if (frame.captureState !== 'unavailable' && frame.captureState !== 'activity') frame.captureState = frame.data ? 'delayed' : 'no-snapshot'
@@ -95,8 +118,8 @@ export function showWorkPreview(binding: DesktopBinding): void {
   if (entry.captureReason !== 'capture_unsafe') entry.captureState = entry.data ? 'delayed' : 'waiting'
   publish()
   if (!timer) timer = setInterval(() => publish(true), 1000).unref()
-  if (pending.has(key)) return
-  if (binding.host.busy && (preemptions.get(binding.lane) ?? 0) < 3 || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
+  if (streaming.has(binding.lane) || pending.has(key)) return
+  if (entry.data && binding.host.busy && (preemptions.get(binding.lane) ?? 0) < 3 || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
     if (!deferred.has(key)) deferred.set(key, setTimeout(() => {
       deferred.delete(key)
       if (active.has(binding.lane) && valid.get(key)?.()) showWorkPreview(binding)
@@ -107,7 +130,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
   pending.set(key, controller); lastCapture.set(key, Date.now())
   const started = Date.now()
   const timeout = setTimeout(() => controller.abort(), 5000)
-  const protectedCapture = (preemptions.get(binding.lane) ?? 0) >= 3
+  const protectedCapture = !entry.data || (preemptions.get(binding.lane) ?? 0) >= 3
   if (protectedCapture) preemptions.set(binding.lane, 0)
   const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal, protectedCapture ? {} : { preview: true })
   void desktopImage(binding, observe, controller.signal, !protectedCapture).then(result => {
@@ -127,7 +150,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
     if (preempted || controller.signal.aborted) {
       entry.current = false
       entry.captureState = entry.data ? 'delayed' : 'no-snapshot'
-      if (preempted && active.has(binding.lane) && !deferred.has(key)) deferred.set(key, setTimeout(() => {
+      if (preempted && active.has(binding.lane) && !streaming.has(binding.lane) && !deferred.has(key)) deferred.set(key, setTimeout(() => {
         deferred.delete(key)
         if (active.has(binding.lane) && valid.get(key)?.()) showWorkPreview(binding)
       }, 2100).unref())

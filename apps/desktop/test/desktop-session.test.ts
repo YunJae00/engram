@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ settings: vi.fn(), engines: vi.fn(), bindings: vi.fn(), access: vi.fn() }))
+vi.mock('../src/renderer/src/lib/appPreviewStream.js', () => ({ syncAppPreviewStreams: vi.fn() }))
 vi.mock('react', () => ({ useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }))
 vi.mock('../src/renderer/src/api.js', () => ({ api: {
   desktopAvailable: async () => true, desktopBindings: fake.bindings, desktopReadAccess: fake.access, desktopControlStatus: async () => ({ state: 'idle' }),

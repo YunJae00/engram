@@ -54,7 +54,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
   return <aside className="preview-card" data-testid="preview-card" data-source={frame.source} data-lane={lane} aria-label={words.title} aria-describedby={description}>
     <div className="preview-card-stage" data-phase={frame.phase} title={snapshot}>
       <span id={description} className="sr-only">{words.description}</span>
-      {hasImage ? <img src={frame.image} alt={title} /> : frame.source === 'web' && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
+      {hasImage ? <img src={frame.image} alt={title} /> : (frame.stream || frame.source === 'web') && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
       {!hasImage && <div className="preview-card-state"><Icon size={16} aria-hidden /><span>{message}</span></div>}
       <div className="preview-card-actions">
         {frame.source === 'web' && <button type="button" aria-label={compact ? words.openFull : words.openBeside} title={compact ? words.openFull : words.openBeside} onClick={open}><PanelRight size={14} aria-hidden /></button>}
@@ -71,7 +71,8 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
         }} />)}</nav>}
         {status === 'working' ? <LoaderCircle size={12} className="computer-spinner" aria-hidden /> : <Icon size={12} aria-hidden />}
         <span className="preview-card-label" role="status">{title} · {frame.current && activity ? activity : words[status]}</span>
-        {busy && (frame.phase === 'delayed' || age >= 5) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
+        {frame.stream && <span className="preview-card-stale">{words.live}</span>}
+        {!frame.stream && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
       </div>
     </div>
   </aside>
