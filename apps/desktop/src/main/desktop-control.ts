@@ -26,6 +26,8 @@ let starting: Promise<DesktopBinding> | undefined
 let startingLane: string | undefined
 let cancellation = 0
 const stoppedTurns = new Map<string, string>()
+const handoverResets = new Map<string, () => void>()
+export function setDesktopHandoverReset(lane: string, reset: () => void): void { handoverResets.set(lane, reset) }
 const observations = new Map<string, DesktopObservationDto>()
 const observationTimes = new WeakMap<DesktopObservationDto, number>()
 const operations = new Map<string, Promise<unknown>>()
@@ -56,13 +58,14 @@ function announce(): void {
   else hideControlOverlay()
   broadcast({ type: 'desktop:control', control: status })
 }
-
 export function stopDesktopControl(reason = 'You stopped computer control.', resumable = false): void {
   if (!resumable) {
     cancellation++
     const lane = active?.binding.lane ?? paused?.lane ?? startingLane ?? launching?.lane
     if (lane) stoppedTurns.set(lane, reason)
   }
+  const lane = active?.binding.lane ?? paused?.lane ?? startingLane ?? launching?.lane
+  if (lane) handoverResets.get(lane)?.()
   if (active || startingLane) flog('desktop-control-stop', reason)
   const held = active
   launching?.host.close()
@@ -78,18 +81,13 @@ export function stopDesktopControl(reason = 'You stopped computer control.', res
   paused?.release?.()
   announce()
 }
-
 function stoppedError(lane: string): Error {
   const reason = stoppedTurns.get(lane) ?? lease.state().reason ?? 'Computer control stopped.'
-  const detail = /^(You stopped computer control\.?|Escape pressed|Stopped by the user)$/i.test(reason)
-    ? 'The person took the computer back with Esc or Stop.' : reason
-  return new Error(`${detail} Computer control was cancelled for this turn. Ask before using it again.`)
+  return new Error(`Computer control stopped: ${reason.replace(/[.]+$/, '')}. Ask the person before requesting it again.`)
 }
-
 export function assertDesktopTurnNotStopped(lane: string): void {
   if (stoppedTurns.has(lane)) throw stoppedError(lane)
 }
-
 export function cancelDesktopTurn(lane: string, reason: string): void {
   stoppedTurns.set(lane, reason)
   stopDesktopForLane(lane, reason)
@@ -131,6 +129,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   }
 }
 export function endDesktopTurn(lane: string): void {
+  handoverResets.delete(lane)
   stoppedTurns.delete(lane)
   if (active?.binding.lane !== lane && lease.state().lane !== lane && startingLane !== lane) return
   const held = active

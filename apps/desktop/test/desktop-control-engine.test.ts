@@ -58,7 +58,7 @@ describe('desktop connection isolation capability gate', () => {
     const engine = deferred<Choice>()
     fake.engine.mockReturnValueOnce(engine.promise)
     const pending = control.startDesktopControl('bot-one')
-    const rejected = expect(pending).rejects.toThrow('cancelled')
+    const rejected = expect(pending).rejects.toThrow('Computer control stopped:')
     control.stopDesktopForLane('bot-one')
     engine.resolve(good)
     await rejected
@@ -70,7 +70,7 @@ describe('desktop connection isolation capability gate', () => {
     const engine = deferred<Choice>()
     fake.engine.mockReturnValueOnce(engine.promise)
     const pending = control.startDesktopControl('bot-one')
-    const rejected = expect(pending).rejects.toThrow('cancelled')
+    const rejected = expect(pending).rejects.toThrow('Computer control stopped:')
     control.stopDesktopForLane('bot-one')
     engine.resolve(good)
     await rejected

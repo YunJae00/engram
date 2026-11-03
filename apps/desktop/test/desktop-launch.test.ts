@@ -30,13 +30,13 @@ it('closes pending launch on Stop and refuses later launches in that turn', asyn
   let done!: () => void
   fake.request.mockImplementation(() => new Promise<void>((resolve) => { done = resolve }))
   const pending = openDesktopApp('bot-launch', 'calculator')
-  const rejected = expect(pending).rejects.toThrow('cancelled for this turn')
+  const rejected = expect(pending).rejects.toThrow('Computer control stopped:')
   await vi.waitFor(() => expect(done).toBeTypeOf('function'))
   stopDesktopFromUi()
   expect(fake.close).toHaveBeenCalled()
   done()
   await rejected
-  await expect(openDesktopApp('bot-launch', 'calculator')).rejects.toThrow('cancelled for this turn')
+  await expect(openDesktopApp('bot-launch', 'calculator')).rejects.toThrow('Computer control stopped:')
   expect(fake.request).toHaveBeenCalledOnce()
 })
 
