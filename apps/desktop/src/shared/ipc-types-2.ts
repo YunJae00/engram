@@ -79,7 +79,7 @@ export type EngramEvent =
   | { type: 'comet:remembered'; channel: string; botId: string; added: number; touched: number }
   | { type: 'bots:changed' }
   | { type: 'tasks:changed' }
-  | { type: 'task:notice'; message: string }
+  | { type: 'task:notice'; message: string; foreground?: { lane: string; app: string } }
   | { type: 'comet:continue'; channel: string; botId: string }
   | { type: 'comet:working'; channel: string; working: boolean }
   | { type: 'comet:observed'; channel: string }

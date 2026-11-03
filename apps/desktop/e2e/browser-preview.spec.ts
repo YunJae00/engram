@@ -130,6 +130,8 @@ test('small windows open from the composer as a preview and expand only on reque
   await page.getByTestId('bots-input-add').click()
   await page.getByTestId('composer-web').click()
   const preview = page.locator('.preview-card')
+  const collapsed = page.getByTestId('preview-card-collapsed')
+  if (await collapsed.isVisible()) await collapsed.click()
   await expect(preview).toBeVisible()
   await expect(preview).toHaveCSS('animation-name', 'preview-card-in')
   await expect(page.getByTestId('live-address')).toHaveCount(0)

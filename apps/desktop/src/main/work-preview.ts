@@ -11,6 +11,7 @@ const valid = new Map<string, () => boolean>()
 const pending = new Map<string, AbortController>()
 const deferred = new Map<string, ReturnType<typeof setTimeout>>()
 const active = new Set<string>()
+const preemptions = new Map<string, number>()
 const lastCapture = new Map<string, number>()
 let timer: ReturnType<typeof setInterval> | undefined
 let quitting = false
@@ -37,7 +38,7 @@ export function workPreviews(lane: string): WorkPreviewDto[] {
   return [...entries.values()].filter(frame => frame.lane === lane).reverse()
 }
 export function closeWorkPreview(): void {
-  quitting = true; active.clear()
+  quitting = true; active.clear(); preemptions.clear()
   for (const id of entries.keys()) remove(id)
   clearInterval(timer); timer = undefined
 }
@@ -47,7 +48,7 @@ function hookPreviewEvents(): void {
     app.once('before-quit', closeWorkPreview)
     tapBroadcast(event => {
       if ((event.type === 'chat:done' || event.type === 'chat:error') && event.channel) {
-        active.delete(event.channel)
+        active.delete(event.channel); preemptions.delete(event.channel)
         for (const [id, frame] of entries) if (frame.lane === event.channel) {
           pending.get(id)?.abort(); pending.delete(id)
           clearTimeout(deferred.get(id)); deferred.delete(id)
@@ -95,7 +96,7 @@ export function showWorkPreview(binding: DesktopBinding): void {
   publish()
   if (!timer) timer = setInterval(() => publish(true), 1000).unref()
   if (pending.has(key)) return
-  if (binding.host.busy || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
+  if (binding.host.busy && (preemptions.get(binding.lane) ?? 0) < 3 || Date.now() - (lastCapture.get(key) ?? 0) < 2000 || pending.size >= 2) {
     if (!deferred.has(key)) deferred.set(key, setTimeout(() => {
       deferred.delete(key)
       if (active.has(binding.lane) && valid.get(key)?.()) showWorkPreview(binding)
@@ -106,15 +107,20 @@ export function showWorkPreview(binding: DesktopBinding): void {
   pending.set(key, controller); lastCapture.set(key, Date.now())
   const started = Date.now()
   const timeout = setTimeout(() => controller.abort(), 5000)
-  const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal, { preview: true })
-  void desktopImage(binding, observe, controller.signal, true).then(result => {
+  const protectedCapture = (preemptions.get(binding.lane) ?? 0) >= 3
+  if (protectedCapture) preemptions.set(binding.lane, 0)
+  const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal, protectedCapture ? {} : { preview: true })
+  void desktopImage(binding, observe, controller.signal, !protectedCapture).then(result => {
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding || !valid.get(key)?.() || controller.signal.aborted || quitting) return
+    preemptions.delete(binding.lane)
     if (result.image) {
       entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 700 }).toDataURL()
       entry.at = Date.now(); entry.unavailable = false; entry.captureState = 'ready'; delete entry.captureReason
     } else { delete entry.data; entry.unavailable = true; entry.captureState = 'unavailable' }
   }).catch((error: unknown) => {
     const preempted = error instanceof Error && error.name === 'PreviewPreempted'
+    if (preempted) preemptions.set(binding.lane, (preemptions.get(binding.lane) ?? 0) + 1)
+    else preemptions.delete(binding.lane)
     const reason = preempted ? 'work-priority' : controller.signal.aborted ? 'cancelled-or-expired' : previewFailureReason(error)
     flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, reason }))
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding) return

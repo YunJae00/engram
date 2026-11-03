@@ -10,7 +10,7 @@ import { flog } from './flog.js'
 // Bounded provider actions; uncertain or consequential outcomes stop the loop.
 export interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; send?: boolean; maxSteps: number; signal?: AbortSignal; approveSend?: (snapshot: string) => Promise<boolean> }
 export interface QuietDoStep { action: string; control?: string; name?: string; confidence: number; ms: number; outcome: string }
-export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure' | 'needs-screen'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean; committed?: boolean; reply?: string; settled?: boolean; stillAnswering?: string; replyPartial?: boolean }
+export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure' | 'needs-screen'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean; foregroundTaken?: boolean; committed?: boolean; reply?: string; settled?: boolean; stillAnswering?: string; replyPartial?: boolean }
 
 const IRREVERSIBLE = /\b(send|submit|post|publish|delete|remove|pay|purchase|buy|save|apply|confirm order|sign out|log out)\b|보내기|전송|제출|게시|삭제|제거|결제|구매|저장|적용|주문|로그아웃/i
 const OPTION_CAP = 250
@@ -107,10 +107,11 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
   let pressed = false
   let textSet = !request.text
   let foregroundChanged = false
+  let foregroundTaken = false
   let lastFingerprint = ''
   let lastChoice = ''
   let observation = await quietScan(request.lane, request.app, undefined, request.signal)
-  const finish = (status: QuietDoResult['status']): QuietDoResult => ({ status, steps, pressed, foregroundChanged, screen: observation.texts.slice(-TEXT_TAIL).map(text => text.text).join('\n') })
+  const finish = (status: QuietDoResult['status']): QuietDoResult => ({ status, steps, pressed, foregroundChanged, ...(foregroundTaken ? { foregroundTaken: true } : {}), screen: observation.texts.slice(-TEXT_TAIL).map(text => text.text).join('\n') })
   for (let step = 0; step < request.maxSteps; step++) {
     request.signal?.throwIfAborted()
     const { criteria, controls } = buildOptions(observation, !!request.text)
@@ -171,6 +172,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
       if (kind === 'set') {
         const result = await quietSet(request.lane, request.app, observation.snapshot, id, request.text!, undefined, request.signal)
         foregroundChanged ||= result.foregroundChanged === true
+        foregroundTaken ||= result.foregroundTaken === true
         if (!result.landed || !result.exact) throw new Error('Text could not be confirmed exactly. Read the field before doing anything else.')
         outcome = 'text set'
         textSet = true
@@ -178,6 +180,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
         const options = kind === 'press' ? undefined : kind.startsWith('scroll_') ? { action: kind } : { state: kind }
         const result = await quietPress(request.lane, request.app, observation.snapshot, id, request.signal, ...(options ? [options as QuietPressOptions] : []))
         foregroundChanged ||= result.foregroundChanged === true
+        foregroundTaken ||= result.foregroundTaken === true
         pressed ||= result.pressed !== 'none'; outcome = `pressed (${result.pressed})`
         if (result.satisfied === false) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'The requested final state was not verified; read before further action.' }); return finish('blocked') }
       }
@@ -190,6 +193,8 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     flog('desktop-quiet', `app_do: ${decision.choice} (${decision.confidence.toFixed(2)}, ${decision.ms}ms)`)
     if (sends) {
       const reply = await quietText(request.lane, request.app, undefined, undefined, REPLY_SETTLE_MS, request.signal)
+      foregroundChanged ||= reply.foregroundChanged === true
+      foregroundTaken ||= reply.foregroundTaken === true
       flog('desktop-quiet', `app_do: reply ${reply.settled ? 'settled' : 'still coming'} after ${reply.waitedMs}ms`)
       return { ...finish(reply.settled ? 'done' : 'blocked'), committed: true, reply: replyAfter(reply.text, request.text!), settled: reply.settled, replyPartial: !!reply.headClipped || !!reply.truncated, ...(reply.stillAnswering ? { stillAnswering: reply.stillAnswering } : {}) }
     }

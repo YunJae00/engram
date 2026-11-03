@@ -46,7 +46,13 @@ internal sealed partial class QuietAccess
             Thread.Sleep(50);
         } while (watch.ElapsedMilliseconds < 800);
         Guard.Same(target);
+        var changedForeground = ForegroundChanged(foreground);
+        var restoredForeground = false;
+        if (changedForeground) {
+            try { restoredForeground = DesktopNative.SetForegroundWindow(foreground) && GetForegroundWindow() == foreground; }
+            catch { }
+        }
         return new { pressed = action, control = control, before = before, after = after, satisfied = intoView ? after == 0 : after != before,
-            foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
+            foregroundChanged = changedForeground, foregroundRestored = restoredForeground, requiresVerification = true };
     }
 }

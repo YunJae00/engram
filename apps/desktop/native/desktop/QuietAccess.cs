@@ -213,8 +213,14 @@ internal sealed partial class QuietAccess : IDisposable
         }
         Guard.Same(target);
         // Landed says the text is in the field; exact says nothing else is. A field holding more carries text from elsewhere.
+        var changedForeground = ForegroundChanged(foreground);
+        var restoredForeground = false;
+        if (changedForeground) {
+            try { restoredForeground = DesktopNative.SetForegroundWindow(foreground) && GetForegroundWindow() == foreground; }
+            catch { }
+        }
         return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
-            foregroundChanged = ForegroundChanged(foreground), requiresVerification = true };
+            foregroundChanged = changedForeground, foregroundRestored = restoredForeground, requiresVerification = true };
     }
 
 }

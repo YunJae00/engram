@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DesktopMethod } from '../src/main/desktop-host.js'
 
-const deps = vi.hoisted(() => ({ bind: vi.fn(), current: vi.fn(), stopped: vi.fn(), flog: vi.fn() }))
+const deps = vi.hoisted(() => ({ bind: vi.fn(), current: vi.fn(), stopped: vi.fn(), flog: vi.fn(), broadcast: vi.fn() }))
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: deps.bind, desktopBinding: deps.current }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: deps.stopped }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
+vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
 vi.mock('../src/main/flog.js', () => ({ flog: deps.flog }))
 import { awaitPersonAway, forgetQuietCoverage, quietScan, quietSet, quietText, quietVerdict } from '../src/main/desktop-quiet.js'
 
@@ -163,4 +164,13 @@ it('can settle a known text tail while preserving the omitted-history flag', asy
   const reading = quietText('bot-one', 'Claude', undefined, undefined, 1000)
   await vi.advanceTimersByTimeAsync(2000)
   expect(await reading).toMatchObject({ settled: true, headClipped: true, truncated: false })
+})
+
+it.each([true, false])('reports provider activation with restoration=%s', async restored => {
+  const { request } = binding({ foreground: false, idleMs: 9000 })
+  request.mockImplementation(async method => method === 'quietSet' ? { landed: true, foregroundChanged: true, foregroundRestored: restored } : { foreground: false, idleMs: 9000 })
+  const result = await quietSet('bot-one', 'Claude', 'snapshot', 'c1', 'hello', undefined)
+  expect(deps.flog).toHaveBeenCalledWith('desktop-foreground', JSON.stringify({ lane: 'bot-one', tool: 'app_set', app: 'Claude', restored }))
+  expect(result.foregroundTaken).toBe(restored ? undefined : true)
+  expect(deps.broadcast).toHaveBeenCalledTimes(restored ? 0 : 1)
 })

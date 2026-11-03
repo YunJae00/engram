@@ -182,3 +182,17 @@ it('publishes an Office activity DTO without a binding or capture and retains it
   fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: 'mail-lane' })
   expect(workPreviews('mail-lane')[0]).toMatchObject({ captureState: 'activity', current: false })
 })
+
+it('protects the fourth capture after three consecutive lane preemptions', async () => {
+  const { showWorkPreview } = await import('../src/main/work-preview.js')
+  const held = binding(1)
+  const request = vi.fn().mockRejectedValue(Object.assign(new Error('yield'), { name: 'PreviewPreempted' }))
+  Object.assign(held.host, { request })
+  fake.image.mockImplementation((_binding, observe) => observe())
+  showWorkPreview(held)
+  await vi.advanceTimersByTimeAsync(6301)
+  expect(request.mock.calls.slice(0, 4).map(call => call[3])).toEqual([{ preview: true }, { preview: true }, { preview: true }, {}])
+  expect(fake.image.mock.calls.slice(0, 4).map(call => call[3])).toEqual([true, true, true, false])
+  await vi.advanceTimersByTimeAsync(2100)
+  expect(request.mock.calls[4]?.[3]).toEqual({ preview: true })
+})
