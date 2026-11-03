@@ -23,8 +23,13 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
       navigator.mediaDevices.getDisplayMedia = async () => {
         const canvas = document.createElement('canvas')
         canvas.width = 320; canvas.height = 200
-        canvas.getContext('2d')!.fillRect(0, 0, 320, 200)
-        return canvas.captureStream(24)
+        const context = canvas.getContext('2d')!
+        const stream = canvas.captureStream(24)
+        // Canvas capture produces new frames only when the source is painted.
+        let frame = 0
+        const timer = setInterval(() => { context.fillStyle = `rgb(${frame++ % 255}, 80, 120)`; context.fillRect(0, 0, 320, 200) }, 40)
+        stream.getVideoTracks()[0]!.addEventListener('ended', () => clearInterval(timer))
+        return stream
       }
     })
     await app.evaluate(({ ipcMain }, lane) => {

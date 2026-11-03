@@ -30,6 +30,17 @@ it('paints within two seconds, pauses without subscribers, and holds the stream 
   expect(received).toHaveBeenCalledWith('frame')
   expect(performance.now() - start).toBeLessThan(2000)
   off(); expect(stop).not.toHaveBeenCalled()
+  // A pause during folding can reject an earlier play promise after reopening.
+  let rejectPlay!: (error: Error) => void
+  video.play.mockImplementationOnce(() => new Promise((_, reject) => { rejectPlay = reject }))
+  const offPending = preview.source(received)
+  offPending()
+  const offReopened = preview.source(received)
+  rejectPlay(new DOMException('Playback was paused', 'AbortError'))
+  await Promise.resolve(); await Promise.resolve()
+  expect(preview.live).toBe(true)
+  expect(previewStream).toHaveBeenCalledTimes(1)
+  offReopened()
   callbacks.get('mute')!()
   expect(preview.live).toBe(false)
   expect(previewStream).toHaveBeenLastCalledWith('bot-test', false)

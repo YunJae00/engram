@@ -13,6 +13,7 @@ export function appPreviewStream(lane: string, changed: () => void) {
   let last = ''
   let at = 0
   let live = false
+  let playback = 0
   const setLive = (next: boolean) => {
     if (live === next || next && controller.signal.aborted) return
     live = next
@@ -34,9 +35,10 @@ export function appPreviewStream(lane: string, changed: () => void) {
     frame = requestAnimationFrame(paint)
   }
   const update = () => {
+    const revision = ++playback
     stopPainting()
     if (live && listeners.size && document.visibilityState !== 'hidden') {
-      void video.play().then(() => { if (!frame && live && listeners.size) frame = requestAnimationFrame(paint) }).catch(failed)
+      void video.play().then(() => { if (revision === playback && !frame && live && listeners.size) frame = requestAnimationFrame(paint) }).catch(() => { if (revision === playback) failed() })
     } else video.pause()
   }
   const failed = () => { setLive(false); stopPainting(); video.pause(); changed() }
@@ -63,7 +65,7 @@ export function appPreviewStream(lane: string, changed: () => void) {
     get at() { return at },
     get image() { return last ? `data:image/jpeg;base64,${last}` : undefined },
     close() {
-      controller.abort(); setLive(false); stopPainting(); listeners.clear()
+      controller.abort(); playback++; setLive(false); stopPainting(); listeners.clear()
       document.removeEventListener('visibilitychange', update)
       video.pause(); video.srcObject = null
       stream?.getTracks().forEach(track => track.stop())
