@@ -33,6 +33,8 @@ final class Connection: @unchecked Sendable {
                 }
                 let selectAll = try keyChord("Control+A")
                 precondition(selectAll.1 == .maskCommand)
+                precondition(sensitiveReason("Account alice@example.test — Sign in 123456") == "Sign in")
+                precondition(sensitiveReason("로그인 — private account") == "로그인")
                 precondition(sensitive("Password") && sensitive("비밀번호") && !sensitive("Quarterly report"))
                 precondition(!sensitiveControl(kAXTextAreaRole, "", "Discuss terminal and 로그인 here"))
                 precondition(!sensitiveControl(kAXStaticTextRole, "", "password"))

@@ -31,6 +31,11 @@ func rectangle(_ bounds: CGRect) -> [String: Double] {
 func sensitive(_ value: String) -> Bool {
     value.range(of: #"(?i)\b(sign[ -]?in|log[ -]?in|password|passkey|credential|authentication|verification code|security code|terminal|keychain|system settings|system preferences|security settings)\b|로그인|비밀번호|암호|인증"#, options: .regularExpression) != nil
 }
+func sensitiveReason(_ value: String) -> String {
+    let pattern = #"(?i)sign[ -]?in|log[ -]?in|password|passkey|credential|authentication|verification code|security code|terminal|keychain|system settings|system preferences|security settings|로그인|비밀번호|암호|인증"#
+    guard let range = value.range(of: pattern, options: .regularExpression) else { return "protected" }
+    return String(value[range])
+}
 func protectedApplication(_ identifier: String) -> Bool {
     ["com.apple.systempreferences", "com.apple.securityagent", "com.apple.loginwindow"].contains(identifier.lowercased()) || sensitive(identifier)
 }
@@ -61,9 +66,10 @@ func resolveWindow(_ id: CGWindowID, pid: pid_t) throws -> Target {
           let application = NSRunningApplication(processIdentifier: owner),
           application.activationPolicy == .regular,
           let rawBounds = info[kCGWindowBounds as String] as? NSDictionary,
-          let bounds = CGRect(dictionaryRepresentation: rawBounds),
-          !sensitive(application.localizedName ?? ""),
-          !protectedApplication(application.bundleIdentifier ?? "") else { throw DesktopFailure("This window is unavailable or requires manual control") }
+          let bounds = CGRect(dictionaryRepresentation: rawBounds) else { throw DesktopFailure("This window is unavailable or requires manual control") }
+    if sensitive(application.localizedName ?? "") || protectedApplication(application.bundleIdentifier ?? "") {
+        throw DesktopFailure("This application surface requires manual control (application: \(application.bundleIdentifier ?? "protected"))")
+    }
     let app = AXUIElementCreateApplication(owner)
     AXUIElementSetMessagingTimeout(app, 1)
     guard let candidates = attribute(app, kAXWindowsAttribute) as? [AXUIElement] else { throw DesktopFailure("This app did not expose its windows") }
@@ -73,7 +79,7 @@ func resolveWindow(_ id: CGWindowID, pid: pid_t) throws -> Target {
     }
     guard matches.count == 1, let window = matches.first else { throw DesktopFailure("The window identity is ambiguous. Observe it again") }
     let title = stringAttribute(window, kAXTitleAttribute)
-    guard !sensitive(title) else { throw DesktopFailure("This application surface requires manual control") }
+    guard !sensitive(title) else { throw DesktopFailure("This application surface requires manual control (window: \(sensitiveReason(title)))") }
     return Target(id: id, pid: owner, element: window, title: "\(title) — \(application.localizedName ?? "App")")
 }
 struct Control {

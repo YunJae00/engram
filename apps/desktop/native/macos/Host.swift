@@ -79,11 +79,11 @@ final class DesktopHost {
                     let window = try resolveWindow(id, pid: 0)
                     return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
                 } catch {
-                    guard String(describing: error) == "This application surface requires manual control",
+                    guard String(describing: error).hasPrefix("This application surface requires manual control"),
                           let pid = item[kCGWindowOwnerPID as String] as? Int32,
                           let app = NSRunningApplication(processIdentifier: pid) else { return nil }
                     return ["aliases": appAliases(url: app.bundleURL), "window": String(id), "pid": pid,
-                            "title": app.localizedName ?? "App", "minimized": false, "protected": true]
+                            "title": app.localizedName ?? "App", "minimized": false, "protected": true, "barrier": String(describing: error)]
                 }
             }]
         }

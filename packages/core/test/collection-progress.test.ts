@@ -140,3 +140,22 @@ it('retains evidenced fields when another submitted field is rejected', async ()
   expect(ledger.summary()).toContain('Confirmed fields: title: Amber')
   await expect(run({ status: 'complete', summary: 'Everything checked', evidenceStep: 1 })).rejects.toThrow()
 })
+
+it.each(['{"error":"accessibility_denied"}', '{"error":"screen_recording_denied"}', '{"error":"input_monitoring_denied"}', '{"error":"policy_denied"}', 'requires manual control (window: 로그인)', 'complete sign-in or security steps'])('reports an observed access barrier honestly: %s', async observation => {
+  const ledger = collectionProgress([{ tool: 'app_read', args: {}, observation }])
+  await ledger.tool.run({ status: 'blocked', summary: 'Cannot continue', evidenceStep: 1 }, { task: 'Read the app' })
+  expect(ledger.finish()).toMatchObject({ status: 'blocked', summary: expect.stringContaining('Blocked by a permission or security screen') })
+  expect(ledger.finish()?.summary).not.toContain('No access barrier')
+})
+it('localizes the access barrier for a Korean task', async () => {
+  const ledger = collectionProgress([{ tool: 'app_read', args: {}, observation: '{"error":"screen_recording_denied"}' }])
+  await ledger.tool.run({ status: 'partial', summary: '확인하지 못했어요', evidenceStep: 1 }, { task: '앱을 읽어 주세요' })
+  expect(ledger.finish()?.summary).toContain('권한 또는 보안 화면에 막혔어요')
+})
+
+it.each(['Sign in', '로그인', 'Log in', 'security screen', '보안 화면', 'accessibility_denied'])('does not infer an access barrier from screen text: %s', async observation => {
+  const ledger = collectionProgress([{ tool: 'app_read', args: {}, observation }])
+  await ledger.tool.run({ status: 'blocked', summary: 'Cannot continue', evidenceStep: 1 }, { task: 'Read the app' })
+  expect(ledger.finish()).toMatchObject({ status: 'partial', summary: expect.stringContaining('No access barrier was observed') })
+  expect(ledger.finish()?.summary).not.toContain('Blocked by a permission or security screen')
+})

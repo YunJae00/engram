@@ -25,12 +25,13 @@ export function collectionProgress(steps: AgentLoopStep[]) {
       context.signal?.throwIfAborted()
       if (args.status !== undefined) {
         if (!['complete', 'partial', 'blocked'].includes(String(args.status)) || typeof args.summary !== 'string' || !args.summary.trim() || args.summary.length > 2000) throw new Error('Supply complete, partial or blocked and a short explanation against the original request.')
-        const status = args.status === 'blocked' && !steps.some(step => step.observation.startsWith('that did not work:') || /\bHTTP [45]\d\d\b|"error"\s*:\s*"policy_denied"|^The page needs the person to sign in or pass a check\./i.test(step.observation) || step.tool === 'read_pages' && parseReadBatch(step.observation)?.pages.some(page => !page.ready)) ? 'partial' : String(args.status)
+        const barrier = steps.some(step => /"error"\s*:\s*"(?:accessibility|screen_recording|input_monitoring|policy)_denied"|requires manual control|complete sign-in or security steps/i.test(step.observation))
+        const status = args.status === 'blocked' && !barrier && !steps.some(step => step.observation.startsWith('that did not work:') || /\bHTTP [45]\d\d\b|"error"\s*:\s*"policy_denied"|^The page needs the person to sign in or pass a check\./i.test(step.observation) || step.tool === 'read_pages' && parseReadBatch(step.observation)?.pages.some(page => !page.ready)) ? 'partial' : String(args.status)
         if (args.status === 'complete' && missing().length) throw new Error(pending() ?? 'Unverified items remain. Finish partial and disclose them.')
         const evidence = typeof args.evidenceStep === 'number' && Number.isInteger(args.evidenceStep) ? steps[args.evidenceStep - 1] : undefined
         if (args.status === 'complete' && (!evidence || evidence.tool === 'collect_results' || !evidence.observation.trim() || evidence.observation.startsWith('that did not work:'))) throw new Error('Cite the observation that establishes the result or barrier.')
         if (status === 'partial') for (const item of missing()) if (!unverified.has(item)) unverified.set(item, { basis: 'No verified result was recorded.' })
-        finish = { status, summary: args.summary.trim() + (status !== args.status ? ' No access barrier was observed; this work remains unverified.' : '') }
+        finish = { status, summary: args.summary.trim() + (barrier && status !== 'complete' ? /[가-힣]/.test(context.task + args.summary) ? ' 권한 또는 보안 화면에 막혔어요.' : ' Blocked by a permission or security screen.' : status !== args.status ? ' No access barrier was observed; this work remains unverified.' : '') }
       }
       if (args.items !== undefined) {
         finish = undefined
