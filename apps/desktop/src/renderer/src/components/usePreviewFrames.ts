@@ -78,6 +78,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     let frame = frames.find(item => item.id === id)
     if (!frame) { frame = { id, source: 'app', title: binding.name, at: Date.now(), phase: 'waiting' }; frames.push(frame) }
     const stream = appPreviewFor(lane)
+    if (stream?.reason) { frame.reason = stream.reason; if (!frame.image) frame.phase = 'unavailable' }
     if (stream?.live) { frame.stream = stream.source; frame.phase = 'ready'; frame.image = undefined }
     else if (stream?.image) { frame.image = stream.image; frame.at = stream.at; frame.phase = 'ready' }
   }

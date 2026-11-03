@@ -10,9 +10,10 @@ const deps = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(), captureHandler: undefined as CaptureHandler | undefined,
   owner: undefined as { webContents: Sender } | undefined, visible: true,
   bindings: [] as { lane: string; source: string; name: string; readable: boolean }[],
-  capture: vi.fn(), read: vi.fn(), start: vi.fn(), stop: vi.fn(),
+  media: vi.fn(), capture: vi.fn(), read: vi.fn(), start: vi.fn(), stop: vi.fn(),
 }))
 vi.mock('electron', () => ({
+  systemPreferences: { getMediaAccessStatus: deps.media },
   ipcMain: { handle: (name: string, handler: IpcHandler) => deps.handlers.set(name, handler) },
   session: { defaultSession: { setDisplayMediaRequestHandler: (handler: CaptureHandler) => { deps.captureHandler = handler } } },
 }))
@@ -54,6 +55,7 @@ beforeEach(async () => {
   vi.resetModules()
   vi.useFakeTimers()
   vi.setSystemTime(0)
+  deps.media.mockReset().mockReturnValue('granted')
   deps.handlers.clear()
   deps.captureHandler = undefined
   sender = { id: 1, mainFrame: {}, isDestroyed: vi.fn(() => false) }
@@ -115,12 +117,12 @@ describe('desktop IPC ownership and permissions', () => {
 
 describe('single-use selected-window capture', () => {
   it('denies audio, unprepared and foreign-frame capture without enumerating windows', () => {
-    expect(capture()).toHaveBeenCalledWith({})
+    expect(capture()).toHaveBeenCalledWith(null)
     prepare()
-    expect(capture(true)).toHaveBeenCalledWith({})
+    expect(capture(true)).toHaveBeenCalledWith(null)
     const callback = vi.fn()
     deps.captureHandler!({ frame: {}, audioRequested: false }, callback)
-    expect(callback).toHaveBeenCalledWith({})
+    expect(callback).toHaveBeenCalledWith(null)
     expect(deps.capture).not.toHaveBeenCalled()
   })
 
@@ -130,7 +132,7 @@ describe('single-use selected-window capture', () => {
     await flush()
     expect(callback).toHaveBeenCalledExactlyOnceWith({ video: source })
     expect(deps.capture).toHaveBeenCalledExactlyOnceWith(lane)
-    expect(capture()).toHaveBeenCalledExactlyOnceWith({})
+    expect(capture()).toHaveBeenCalledExactlyOnceWith(null)
     expect(ipc.allowDesktopCapture(sender as unknown as WebContents, 'display-capture', { isMainFrame: true })).toBe(false)
   })
 
@@ -139,7 +141,7 @@ describe('single-use selected-window capture', () => {
     deps.capture.mockReturnValue(gate.promise)
     prepare()
     const first = capture(), second = capture()
-    expect(second).toHaveBeenCalledExactlyOnceWith({})
+    expect(second).toHaveBeenCalledExactlyOnceWith(null)
     expect(deps.capture).toHaveBeenCalledOnce()
     gate.resolve(source)
     await flush()
@@ -151,7 +153,7 @@ describe('single-use selected-window capture', () => {
     call('desktop:cancelCapture', 'unrelated-token')
     expect(() => prepare()).toThrow('already starting')
     call('desktop:cancelCapture', token)
-    expect(capture()).toHaveBeenCalledExactlyOnceWith({})
+    expect(capture()).toHaveBeenCalledExactlyOnceWith(null)
     expect(deps.capture).not.toHaveBeenCalled()
   })
 
@@ -163,7 +165,7 @@ describe('single-use selected-window capture', () => {
     call('desktop:cancelCapture', token)
     gate.resolve(source)
     await flush()
-    expect(callback).toHaveBeenCalledExactlyOnceWith({})
+    expect(callback).toHaveBeenCalledExactlyOnceWith(null)
   })
 
   it('does not let a cancelled old completion consume or clear a newer capture request', async () => {
@@ -177,7 +179,7 @@ describe('single-use selected-window capture', () => {
     const second = capture()
     old.resolve(source)
     await flush()
-    expect(first).toHaveBeenCalledExactlyOnceWith({})
+    expect(first).toHaveBeenCalledExactlyOnceWith(null)
     expect(second).not.toHaveBeenCalled()
     expect(ipc.allowDesktopCapture(sender as unknown as WebContents, 'display-capture', { isMainFrame: true })).toBe(true)
     fresh.resolve(source)
@@ -199,7 +201,7 @@ describe('single-use selected-window capture', () => {
     else vi.setSystemTime(10_000)
     gate.resolve(source)
     await flush()
-    expect(callback).toHaveBeenCalledExactlyOnceWith({})
+    expect(callback).toHaveBeenCalledExactlyOnceWith(null)
   })
 
   it('rejects a different returned source even if the selected binding did not change', async () => {
@@ -207,13 +209,13 @@ describe('single-use selected-window capture', () => {
     prepare()
     const callback = capture()
     await flush()
-    expect(callback).toHaveBeenCalledExactlyOnceWith({})
+    expect(callback).toHaveBeenCalledExactlyOnceWith(null)
   })
 
   it('expires capture at the exact deadline before dispatch', () => {
     prepare()
     vi.setSystemTime(10_000)
-    expect(capture()).toHaveBeenCalledExactlyOnceWith({})
+    expect(capture()).toHaveBeenCalledExactlyOnceWith(null)
     expect(deps.capture).not.toHaveBeenCalled()
     expect(ipc.allowDesktopCapture(sender as unknown as WebContents, 'display-capture', { isMainFrame: true })).toBe(false)
   })
@@ -223,7 +225,30 @@ describe('single-use selected-window capture', () => {
     prepare()
     const callback = capture()
     await flush()
-    expect(callback).toHaveBeenCalledExactlyOnceWith({})
+    expect(callback).toHaveBeenCalledExactlyOnceWith(null)
     expect(() => prepare()).not.toThrow()
   })
+})
+
+it.each(['denied', 'not-determined', 'restricted', 'unknown'])('does not issue a macOS capture token when screen permission is %s', status => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  try {
+    deps.media.mockReturnValue(status)
+    expect(call('desktop:prepare', lane)).toEqual({ denied: 'screen_recording' })
+    expect(ipc.allowDesktopCapture(sender as unknown as WebContents, 'display-capture', { isMainFrame: true })).toBe(false)
+    expect(deps.capture).not.toHaveBeenCalled()
+  } finally { vi.restoreAllMocks() }
+})
+it('denies with null without a callback exception or unhandled rejection', async () => {
+  const unhandled = vi.fn()
+  process.on('unhandledRejection', unhandled)
+  try {
+    deps.capture.mockRejectedValue(new Error('Window ended'))
+    prepare()
+    const callback = vi.fn(value => { if (value !== null) throw new TypeError('Video was requested, but no video stream was provided') })
+    deps.captureHandler!({ frame: sender.mainFrame, audioRequested: false }, callback)
+    await flush()
+    expect(callback).toHaveBeenCalledExactlyOnceWith(null)
+    expect(unhandled).not.toHaveBeenCalled()
+  } finally { process.off('unhandledRejection', unhandled) }
 })

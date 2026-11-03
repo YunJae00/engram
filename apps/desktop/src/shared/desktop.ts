@@ -104,7 +104,7 @@ export interface DesktopApi {
   desktopChoose(lane: string, source: string): Promise<DesktopBindingDto>
   desktopRelease(lane: string): Promise<void>
   desktopReadAccess(lane: string, enabled: boolean): Promise<DesktopBindingDto>
-  desktopPrepareCapture(lane: string): Promise<string>
+  desktopPrepareCapture(lane: string): Promise<string | { denied: 'screen_recording' }>
   desktopCancelCapture(token: string): Promise<void>
   desktopObserve(lane: string): Promise<DesktopObservationDto>
   desktopControlStatus(): Promise<DesktopControlStatusDto>

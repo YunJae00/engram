@@ -13,6 +13,7 @@ export function appPreviewStream(lane: string, changed: () => void) {
   let last = ''
   let at = 0
   let live = false
+  let reason: 'screen_recording_denied' | undefined
   let playback = 0
   const setLive = (next: boolean) => {
     if (live === next || next && controller.signal.aborted) return
@@ -52,7 +53,10 @@ export function appPreviewStream(lane: string, changed: () => void) {
       track.addEventListener('unmute', () => { setLive(true); changed(); update() })
     }
     changed(); update()
-  }).catch(() => { if (!controller.signal.aborted) failed() })
+  }).catch(error => {
+    if (error instanceof Error && error.message === 'screen_recording_denied') reason = 'screen_recording_denied'
+    if (!controller.signal.aborted) failed()
+  })
   const source: FrameSource = listener => {
     listeners.add(listener)
     if (last) listener(last)
@@ -61,6 +65,7 @@ export function appPreviewStream(lane: string, changed: () => void) {
   }
   return {
     source,
+    get reason() { return reason },
     get live() { return live },
     get at() { return at },
     get image() { return last ? `data:image/jpeg;base64,${last}` : undefined },
