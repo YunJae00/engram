@@ -25,7 +25,7 @@ function publish(pruneOnly = false): void {
   const count = entries.size
   for (const [id, entry] of entries) {
     if (!valid.get(id)?.() || Date.now() - entry.at > 180_000) remove(id)
-    else entry.current = entry.captureState === 'ready' && active.has(entry.lane) && desktopBinding(entry.lane) === owners.get(id)
+    else if (entry.captureState !== 'activity') entry.current = entry.captureState === 'ready' && active.has(entry.lane) && desktopBinding(entry.lane) === owners.get(id)
   }
   if (pruneOnly && count === entries.size) return
   const owner = desktopOwner()
@@ -41,8 +41,7 @@ export function closeWorkPreview(): void {
   for (const id of entries.keys()) remove(id)
   clearInterval(timer); timer = undefined
 }
-export function showWorkPreview(binding: DesktopBinding): void {
-  if (quitting || keptOut(binding.name) || desktopBinding(binding.lane) !== binding || binding.host.closed || binding.stopped || !binding.readable) return
+function hookPreviewEvents(): void {
   if (!hooked) {
     hooked = true
     app.once('before-quit', closeWorkPreview)
@@ -53,12 +52,30 @@ export function showWorkPreview(binding: DesktopBinding): void {
           pending.get(id)?.abort(); pending.delete(id)
           clearTimeout(deferred.get(id)); deferred.delete(id)
           frame.current = false
-          if (frame.captureState !== 'unavailable') frame.captureState = frame.data ? 'delayed' : 'no-snapshot'
+          if (frame.captureState !== 'unavailable' && frame.captureState !== 'activity') frame.captureState = frame.data ? 'delayed' : 'no-snapshot'
         }
         publish()
       }
     })
   }
+}
+export function officeWorkPreview(lane: string, op: string): () => void {
+  if (quitting) return () => {}
+  hookPreviewEvents()
+  const title = op.startsWith('outlook.') ? 'Outlook' : op.startsWith('excel.') ? 'Excel' : op.startsWith('word.') ? 'Word' : 'PowerPoint'
+  const activity = op === 'outlook.calendar' ? 'Checking your calendar' : title === 'Outlook' ? 'Checking your mail' : 'Working with documents'
+  const id = `office:${lane}`
+  const entry: WorkPreviewDto = { id, lane, title, activity, at: Date.now(), captureState: 'activity', current: true }
+  valid.set(id, () => true)
+  entries.delete(id); entries.set(id, entry)
+  while (entries.size > 64) remove(entries.keys().next().value!)
+  publish()
+  if (!timer) timer = setInterval(() => publish(true), 1000).unref()
+  return () => { entry.current = false; publish() }
+}
+export function showWorkPreview(binding: DesktopBinding): void {
+  if (quitting || keptOut(binding.name) || desktopBinding(binding.lane) !== binding || binding.host.closed || binding.stopped || !binding.readable) return
+  hookPreviewEvents()
   active.add(binding.lane)
   const key = `${binding.lane}:${binding.source}`
   if (owners.has(key) && owners.get(key) !== binding || valid.has(key) && !valid.get(key)!()) remove(key)

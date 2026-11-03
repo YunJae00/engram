@@ -10,14 +10,15 @@ import type { FrameSource } from './FrameScreen.js'
 
 export type PreviewFrame = {
   id: string; source: 'app' | 'web'; title: string; at: number; image?: string; stream?: FrameSource
-  phase: 'ready' | 'waiting' | 'delayed' | 'no-snapshot' | 'unavailable' | 'empty'
+  activity?: string
+  phase: 'activity' | 'ready' | 'waiting' | 'delayed' | 'no-snapshot' | 'unavailable' | 'empty'
   onPaint?(): void
   reason?: 'screen_recording_denied' | 'capture_unsafe'; current?: boolean
 }
 export type PreviewTile = { url?: string; frames: FrameSource; onOpen(): void }
 export function appPreviewFrame(frame: WorkPreviewDto): PreviewFrame {
   return { id: frame.id, source: 'app', title: frame.title, at: frame.at, image: frame.data,
-    phase: frame.unavailable ? 'unavailable' : frame.captureState ?? 'ready', reason: frame.captureReason === 'capture_unavailable' ? undefined : frame.captureReason, current: frame.current }
+    activity: frame.activity, phase: frame.unavailable ? 'unavailable' : frame.captureState ?? 'ready', reason: frame.captureReason === 'capture_unavailable' ? undefined : frame.captureReason, current: frame.current }
 }
 export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame[] {
   const { activity } = useShellState()

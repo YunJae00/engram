@@ -1,4 +1,4 @@
-export interface WorkPreviewDto { id: string; lane: string; title: string; at: number; data?: string; unavailable?: boolean; current?: boolean; captureState?: 'waiting' | 'delayed' | 'ready' | 'unavailable' | 'no-snapshot'; captureReason?: 'screen_recording_denied' | 'capture_unsafe' | 'capture_unavailable' }
+export interface WorkPreviewDto { id: string; lane: string; title: string; at: number; data?: string; unavailable?: boolean; current?: boolean; activity?: string; captureState?: 'activity' | 'waiting' | 'delayed' | 'ready' | 'unavailable' | 'no-snapshot'; captureReason?: 'screen_recording_denied' | 'capture_unsafe' | 'capture_unavailable' }
 export interface DesktopWindowDto { aliases?: string[]; id: string; name: string; foreground?: boolean }
 export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
 export interface DesktopNodeDto {

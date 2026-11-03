@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { AppWindow, ChevronUp, Globe, LoaderCircle, PanelRight, X } from 'lucide-react'
+import { AppWindow, Calendar, ChevronUp, FileText, Globe, Mail, LoaderCircle, PanelRight, X } from 'lucide-react'
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
+import { GROUP_KO } from '../lib/threadLangKo.js'
 import { useWebPane, webPane } from '../lib/webPane.js'
 import { FrameScreen } from './FrameScreen.js'
 import type { PreviewFrame } from './usePreviewFrames.js'
@@ -33,14 +34,15 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
   }, [choice, frames])
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
   if (!frame) return null
-  const Icon = frame.source === 'web' ? Globe : AppWindow
+  const Icon = frame.phase === 'activity' ? frame.title === 'Outlook' ? frame.activity === 'Checking your calendar' ? Calendar : Mail : FileText : frame.source === 'web' ? Globe : AppWindow
   const title = frame.title || words.browser
   const collapsed = view.collapsed || state === 'waiting' || Boolean(attention)
   const status = state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state
   const age = Math.max(0, Math.floor((now - (paints.current.get(frame.id) ?? frame.at)) / 1000))
   const hasImage = frame.image && (frame.phase === 'ready' || frame.phase === 'delayed')
   const snapshot = `${words.lastSnapshot} · ${words.snapshotAge(age)}`
-  const message = frame.phase === 'empty' ? words.noSite : frame.phase === 'no-snapshot' ? words.noSnapshot
+  const activity = frame.activity && (lang === 'ko' ? GROUP_KO[frame.activity] ?? frame.activity : frame.activity)
+  const message = frame.phase === 'activity' ? words.officeActivity : frame.phase === 'empty' ? words.noSite : frame.phase === 'no-snapshot' ? words.noSnapshot
     : frame.reason === 'screen_recording_denied' ? words.screenPermission : frame.reason === 'capture_unsafe' ? words.captureUnsafe
     : frame.phase === 'unavailable' ? words.unavailable : words.firstFrame
   const open = () => {
@@ -68,7 +70,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
           event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button')[frames.indexOf(next)]?.focus()
         }} />)}</nav>}
         {status === 'working' ? <LoaderCircle size={12} className="computer-spinner" aria-hidden /> : <Icon size={12} aria-hidden />}
-        <span className="preview-card-label" role="status">{title} · {words[status]}</span>
+        <span className="preview-card-label" role="status">{title} · {frame.current && activity ? activity : words[status]}</span>
         {busy && (frame.phase === 'delayed' || age >= 5) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
       </div>
     </div>

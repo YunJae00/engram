@@ -169,3 +169,16 @@ it.each([
     expect(workPreviews(held.lane)[0]?.captureState).toBe('unavailable')
   }
 })
+
+it('publishes an Office activity DTO without a binding or capture and retains it after completion', async () => {
+  const { officeWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const finish = officeWorkPreview('mail-lane', 'outlook.mail')
+  expect(workPreviews('mail-lane')).toEqual([{ id: 'office:mail-lane', lane: 'mail-lane', title: 'Outlook', activity: 'Checking your mail', captureState: 'activity', current: true, at: expect.any(Number) }])
+  expect(fake.send).toHaveBeenCalledWith('engram:event', expect.objectContaining({ type: 'desktop:preview' }))
+  expect(fake.image).not.toHaveBeenCalled()
+  finish()
+  expect(workPreviews('mail-lane')[0]).toMatchObject({ captureState: 'activity', current: false })
+  officeWorkPreview('mail-lane', 'outlook.calendar')
+  fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: 'mail-lane' })
+  expect(workPreviews('mail-lane')[0]).toMatchObject({ captureState: 'activity', current: false })
+})
