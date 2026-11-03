@@ -46,7 +46,7 @@ it('lists two windows then binds, reads and types without cancelling its own sel
   expect(fake.request).toHaveBeenCalledWith('stop', { lease: 'native-100' })
   expect(control.desktopControlStatus()).toMatchObject({ state: 'running', name: 'Other notes - Notepad' })
   control.stopDesktopFromUi()
-  await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('took the computer back')
+  await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('Computer control stopped:')
 })
 
 it('still honours Stop during native window discovery before the first bind', async () => {
@@ -54,7 +54,7 @@ it('still honours Stop during native window discovery before the first bind', as
     control.stopDesktopFromUi()
     return { windows }
   })
-  await expect(control.readControlledDesktop(lane, undefined, true, 'Untitled')).rejects.toThrow('cancelled')
+  await expect(control.readControlledDesktop(lane, undefined, true, 'Untitled')).rejects.toThrow('Computer control stopped:')
   expect(fake.request.mock.calls.some(([method]) => method === 'bind')).toBe(false)
 })
 

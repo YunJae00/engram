@@ -42,12 +42,30 @@ final class Connection: @unchecked Sendable {
                 precondition(sensitiveControl(kAXGroupRole, "", "Sign in"))
                 let input = InputMonitor()
                 let initial = input.inputVersion(100)
+                let posted = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)!
+                posted.setIntegerValueField(.eventSourceUserData, value: input.marker)
+                let intervention = input.state().intervention
+                let target = Target(id: 1, pid: 100, element: AXUIElementCreateApplication(100), title: "Owned self-test")
+                let grant = UUID().uuidString
+                let lease = try input.bind(target, grant: grant, intervention: intervention)
+                input.receiveInput(.keyDown, event: posted)
+                precondition(input.state().intervention == intervention)
+                precondition(input.inputVersion(100) == initial && !input.state().escaped)
+                input.noteMove()
+                precondition(input.state().intervention == intervention && input.state().idle < 100)
+                precondition(input.inputVersion(100) == initial && input.state().lease == lease)
                 input.noteInput(pid: 200, escape: false)
-                precondition(input.inputVersion(100) == initial)
+                precondition(input.inputVersion(100) == initial && input.state().lease == nil)
+                do { _ = try input.bind(target, grant: grant, intervention: intervention); fatalError("Used grant accepted") }
+                catch { precondition(String(describing: error).contains("already been used")) }
+                do { _ = try input.bind(target, grant: UUID().uuidString, intervention: intervention); fatalError("Intervened grant accepted") }
+                catch { precondition(String(describing: error).contains("after approving")) }
                 input.noteInput(pid: 100, escape: false)
                 precondition(input.inputVersion(100) > initial)
                 input.noteInput(pid: 200, escape: true)
                 precondition(input.state().escaped)
+                do { _ = try input.bind(target, grant: UUID().uuidString, intervention: input.state().intervention); fatalError("Escape accepted") }
+                catch { precondition(String(describing: error).contains("Escape")) }
                 connection.send(["selfTest": "passed"])
             } catch { connection.send(["selfTest": "failed", "error": String(describing: error)]); exit(1) }
             return

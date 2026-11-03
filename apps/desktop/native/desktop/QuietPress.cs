@@ -63,8 +63,10 @@ internal sealed partial class QuietAccess
         else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) how = "select";
         else if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out pattern))
             how = ((ExpandCollapsePattern)pattern).Current.ExpandCollapseState == ExpandCollapseState.Expanded ? "collapse" : "expand";
-        else throw new InvalidOperationException("This control cannot be pressed through its provider; this action needs a deliberate foreground handover");
-        QuietPatterns.Press(target, element, how, delegate { check(); RequireIdle(target); Validate(target); Control(target, snapshot, control); });
+        else how = "posted";
+        Action current = delegate { check(); RequireIdle(target); Validate(target); Control(target, snapshot, control); };
+        if (how == "posted") QuietPostedInput.Click(target, element, current);
+        else QuietPatterns.Press(target, element, how, current);
         var after = ReadState(element);
         var watch = Stopwatch.StartNew();
         while (desired != null && !Satisfied(after, desired) && watch.ElapsedMilliseconds < 600) {

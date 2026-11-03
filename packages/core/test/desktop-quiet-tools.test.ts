@@ -94,3 +94,16 @@ describe('quiet app tools', () => {
     expect(courier.text).toHaveBeenCalledTimes(2)
   })
 })
+
+
+it('explains process input and reports background limits before any foreground request', () => {
+  const tools = quietDesktopTools({ scan: vi.fn(), set: vi.fn(), press: vi.fn(), text: vi.fn() })
+  for (const name of ['app_set', 'app_press']) {
+    const description = tools.find(tool => tool.name === name)!.description
+    expect(description).toContain('own process')
+    expect(description).toContain('how:"typed"')
+    expect(description).toContain('how:"focus-key"')
+    expect(description).toContain('focuses the control and types or presses')
+    expect(description).toContain('without requesting foreground approval')
+  }
+})

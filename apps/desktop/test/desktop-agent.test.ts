@@ -3,14 +3,14 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
-  quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
+  controlReason: undefined as string | undefined, resetHandover: undefined as (() => void) | undefined, assertNotStopped: vi.fn(), quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
   open: vi.fn(), lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), start: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false, handedOver: true,
 }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/desktop-permission.js', async () => { const { desktopFailure } = await import('../src/main/desktop-failure.js'); return { permissionFailure: async (error: unknown, _lane: string, options?: Parameters<typeof desktopFailure>[1]) => desktopFailure(error, options) } })
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
-vi.mock('../src/main/desktop-control.js', () => ({ startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: vi.fn(), readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
+vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: (_lane: string, reset: () => void) => { fake.resetHandover = reset }, startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: fake.assertNotStopped, readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.controlReason ? { lane: 'bot-one', state: 'paused', reason: fake.controlReason } : fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
 vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
@@ -30,6 +30,7 @@ beforeEach(() => {
   fake.available = true
   fake.covered = false
   fake.handedOver = true
+  fake.controlReason = undefined
   fake.start.mockImplementation(async () => { fake.handedOver = true; return { lane: 'bot-one', state: 'ready' } })
   fake.quietSnapshot.mockReturnValue(undefined)
   fake.ensure.mockImplementation(async () => fake.binding)
@@ -348,4 +349,22 @@ it('does not start foreground control after cancellation during approval', async
   await expect(tool.run({ kind: 'type', snapshot: 'fresh', text: 'Draft' }, { task: 'Draft', signal: controller.signal })).rejects.toThrow()
   expect(fake.start).not.toHaveBeenCalled()
   expect(fake.act).not.toHaveBeenCalled()
+})
+
+
+it('reports revocation after a cached handover without claiming the person declined', async () => {
+  fake.handedOver = false
+  const approveComputerControl = vi.fn(async () => true)
+  const tool = desktopAgentTools('bot-one').find(tool => tool.name === 'desktop_action')!
+  const args = { kind: 'type', snapshot: 'fresh', text: 'Draft' }
+  const context = Object.assign({ task: 'Draft' }, { approveComputerControl })
+  await tool.run(args, context)
+  fake.handedOver = false
+  fake.resetHandover?.()
+  fake.controlReason = 'User input changed'
+  const result = JSON.parse(await tool.run(args, context))
+  expect(result).toMatchObject({ error: 'policy_denied', hint: 'The person took the computer back. Ask before requesting foreground control again.' })
+  expect(result.reason).not.toContain('declined')
+  expect(approveComputerControl).toHaveBeenCalledOnce()
+  expect(fake.act).toHaveBeenCalledOnce()
 })

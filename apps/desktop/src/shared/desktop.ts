@@ -74,8 +74,8 @@ export interface QuietObservationDto {
   ms: number
   state: QuietStateDto
 }
-export interface QuietSetResultDto { landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
-export interface QuietPressResultDto { satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+export interface QuietSetResultDto { how?: 'ax' | 'typed' | 'focus-key' | 'posted'; message?: string; landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+export interface QuietPressResultDto { landed?: boolean; message?: string; how?: 'ax' | 'typed' | 'focus-key' | 'posted'; satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
 export interface QuietReadResultDto { foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean; text: string; chars: number; headClipped: boolean; truncated?: boolean; scope?: string; continuation?: string | null }
 // The brain that holds the computer, named for the person: the banner on the
 // screen says who is moving the mouse.

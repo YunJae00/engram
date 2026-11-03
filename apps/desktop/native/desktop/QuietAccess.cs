@@ -8,8 +8,7 @@ using System.Text;
 using System.Windows.Automation;
 using System.Windows.Automation.Text;
 
-// Reading and operating an app through its accessibility providers alone: no
-// requested foreground change, injected input or capture. Providers may activate
+// Background input uses providers or messages to the app process. Providers may activate
 // their own window when invoked; mutation receipts report that separately.
 internal sealed class QuietControl
 {
@@ -211,6 +210,15 @@ internal sealed partial class QuietAccess : IDisposable
             if (after == text) { landed = true; break; }
             System.Threading.Thread.Sleep(100);
         }
+        var how = "ax";
+        if (!landed) {
+            how = "posted";
+            QuietPostedInput.Text(target, element, text, delegate {
+                check(); RequireIdle(target); Validate(target); Control(target, snapshot, control);
+            });
+            after = value.Current.Value ?? "";
+            landed = after == text;
+        }
         Guard.Same(target);
         // Landed says the text is in the field; exact says nothing else is. A field holding more carries text from elsewhere.
         var changedForeground = ForegroundChanged(foreground);
@@ -219,7 +227,7 @@ internal sealed partial class QuietAccess : IDisposable
             try { restoredForeground = DesktopNative.RestoreForeground(foreground); }
             catch { }
         }
-        return new { landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
+        return new { how = how, message = landed ? "" : "The app did not take background text; its own search or field may need the person", landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
             foregroundChanged = changedForeground, foregroundRestored = restoredForeground, requiresVerification = true };
     }
 

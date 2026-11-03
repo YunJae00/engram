@@ -33,6 +33,15 @@ export async function testDesktopQuiet(helper, fixture, target, until, launchApp
   assert.ok(button?.can.press)
   assert.equal((await fixture.request('state')).foreground, false)
   await until(() => helper.request('quietState', target), state => state.idleMs >= 4000, 'Owned same-process input must settle before provider actions')
+  const postedControl = first.controls.find(control => control.name === 'Posted click target')
+  assert.ok(postedControl?.can.press, 'No-Invoke control must offer background press')
+  const postedBefore = (await fixture.request('state')).postedClicks
+  const posted = await helper.request('quietPress', { ...target, snapshot: first.snapshot, control: postedControl.id })
+  assert.equal(posted.pressed, 'posted', 'No-Invoke control must use process messages')
+  assert.equal(posted.requiresVerification, true)
+  await until(() => fixture.request('state'), state => state.postedClicks === postedBefore + 1, 'Owned no-Invoke control did not receive posted click')
+  assert.equal((await fixture.request('state')).foregroundWindow, previous, 'Posted click must preserve foreground')
+  console.log(JSON.stringify({ quietPostedClick: posted }))
   const option = first.controls.find(control => control.name === 'Fixture option')
   assert.equal(option?.state.checked, 'off')
   const chosen = { ...target, snapshot: first.snapshot, control: option.id, state: 'checked' }

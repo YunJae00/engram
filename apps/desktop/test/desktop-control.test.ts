@@ -3,6 +3,15 @@ import type { DesktopBinding } from '../src/main/desktop-access.js'
 import { binding, binds, control, deps, grants, lane, other, status } from './desktop-control-fixture.js'
 
 describe('taking the computer', () => {
+  it('clears the turn handover when control stops', async () => {
+    binding()
+    await control.readControlledDesktop(lane, undefined, true)
+    const reset = vi.fn()
+    control.setDesktopHandoverReset(lane, reset)
+    control.stopDesktopControl('User input changed')
+    expect(reset).toHaveBeenCalledOnce()
+    expect(() => control.assertDesktopTurnNotStopped(lane)).toThrow('Computer control stopped: User input changed. Ask the person before requesting it again.')
+  })
   it('refreshes an expired planned click and uses the fresh snapshot', async () => {
     const host = binding()
     const read = await control.readControlledDesktop(lane, undefined, true)
@@ -210,7 +219,7 @@ describe('the person\'s hands', () => {
     let resolve!: (value: DesktopBinding) => void
     deps.bind.mockReturnValueOnce(new Promise<DesktopBinding>((done) => { resolve = done }))
     const pending = control.readControlledDesktop(lane, undefined, true)
-    const rejected = expect(pending).rejects.toThrow('cancelled')
+    const rejected = expect(pending).rejects.toThrow('Computer control stopped:')
     await vi.advanceTimersByTimeAsync(1)
     control.stopDesktopFromUi()
     resolve(host.value)
@@ -256,7 +265,7 @@ describe('the person\'s hands', () => {
     deps.release!(lane, 'Escape pressed')
     expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: false })
     expect(deps.overlay.hide).toHaveBeenCalled()
-    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('took the computer back')
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('Computer control stopped:')
     expect(grants(host.request)).toHaveLength(1)
   })
 
@@ -267,7 +276,7 @@ describe('the person\'s hands', () => {
     expect(control.desktopControlStatus()).toMatchObject({ state: 'paused', resumable: false })
     control.stopDesktopFromUi()
     expect(control.desktopControlStatus().state).toBe('idle')
-    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('took the computer back')
+    await expect(control.readControlledDesktop(lane, undefined, true)).rejects.toThrow('Computer control stopped:')
   })
 
   it('a bind refused while a key is held is retried after stillness, not reported as failure', async () => {

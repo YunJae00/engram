@@ -6,7 +6,7 @@ import { permissionFailure } from './desktop-permission.js'
 import { desktopFailure } from './desktop-failure.js'
 import { desktopImage } from './desktop-image.js'
 import { bindDesktopForLane, catalogHost, desktopBinding, desktopWindows } from './desktop-access.js'
-import { accessLiveDocument, assertDesktopTurnNotStopped, actOnDesktop, desktopControlStatus, startDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
+import { accessLiveDocument, setDesktopHandoverReset, assertDesktopTurnNotStopped, actOnDesktop, desktopControlStatus, startDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
 import { quietControlName, quietSnapshot, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
@@ -97,13 +97,19 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: snapshot => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   let handover: Promise<void> | undefined
+  setDesktopHandoverReset(lane, () => { handover = undefined })
   const quietFirst = async (context: DesktopActionContext, app?: string): Promise<void> => {
     context.signal?.throwIfAborted()
-    assertDesktopTurnNotStopped(lane)
+    try { assertDesktopTurnNotStopped(lane) }
+    catch (error) { handover = undefined; throw error }
     const found = quietVerdict(lane, app ?? desktopBinding(lane)?.name)
     if (found.verdict === 'unknown') throw new Error('Read the app with app_read first. The hands tools, which take the mouse and keyboard, are only for an app whose controls app_read reports without any action.')
     const control = desktopControlStatus()
     if (control.lane === lane && ['ready', 'running'].includes(control.state)) return
+    if (control.lane === lane && control.state === 'paused') {
+      handover = undefined
+      throw new Error(`Computer control stopped: ${(control.reason ?? 'control is paused').replace(/[.]+$/, '')}. Ask the person before requesting it again.`)
+    }
     handover ??= (async () => {
       const binding = desktopBinding(lane)
       if (!await context.approveComputerControl?.(lane)) throw new Error('Foreground control was declined by the person. No input was sent.')
@@ -112,11 +118,20 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (desktopBinding(lane) !== binding) throw new Error('The app changed. Read it again before requesting control.')
       await startDesktopControl(lane)
     })()
-    await handover
+    try { await handover }
+    catch (error) {
+      try { assertDesktopTurnNotStopped(lane) }
+      catch (stopped) { handover = undefined; throw stopped }
+      throw error
+    }
     context.signal?.throwIfAborted()
-    assertDesktopTurnNotStopped(lane)
+    try { assertDesktopTurnNotStopped(lane) }
+    catch (error) { handover = undefined; throw error }
     const current = desktopControlStatus()
-    if (current.lane !== lane || !['ready', 'running'].includes(current.state)) throw new Error('Foreground control was declined by the person. No input was sent.')
+    if (current.lane !== lane || !['ready', 'running'].includes(current.state)) {
+      handover = undefined
+      throw new Error(`Computer control stopped: ${current.reason ?? 'control is no longer active'}. Ask the person before requesting it again.`)
+    }
   }
   const guardedQuiet = quiet.map(tool => ({ ...tool, async run(args, context) {
     try { return await tool.run(args, context) }

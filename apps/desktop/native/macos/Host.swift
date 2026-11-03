@@ -152,15 +152,23 @@ final class DesktopHost {
                 } else if !existing.isEmpty { throw DesktopFailure("The field already holds text. Pass its exact value as expected to replace it") }
                 guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
                       !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
-                guard AXUIElementSetAttributeValue(node.element, kAXValueAttribute as CFString, value as CFString) == .success else { throw DesktopFailure("This control does not take text") }
+                let how: String
+                do { how = try backgroundSet(node, value: value, window: window, inputVersion: inputVersion) }
+                catch let error as DesktopFailure where error.description == "The app's key window is not this window" {
+                    return ["landed": false, "exact": false, "value": node.value, "ms": 0, "message": error.description, "control": "c" + node.id].merging(foregroundReceipt(previous)) { _, next in next }
+                }
                 let actual = node.value
-                return ["landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
+                return ["how": how, "message": actual == value ? "" : "The app did not take background text; its own search or field may need the person", "landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
             }
             guard node.pressable else { throw DesktopFailure("This control cannot be pressed") }
             guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
                       !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
-            guard AXUIElementPerformAction(node.element, kAXPressAction as CFString) == .success else { throw DesktopFailure("This control cannot be pressed") }
-            return ["pressed": node.name, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
+            let how: String
+            do { how = try backgroundPress(node, window: window, inputVersion: inputVersion) }
+            catch let error as DesktopFailure where error.description == "The app's key window is not this window" {
+                return ["landed": false, "pressed": "", "message": error.description, "control": "c" + node.id].merging(foregroundReceipt(previous)) { _, next in next }
+            }
+            return ["how": how, "pressed": node.name, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
         }
         if method == "prepare" {
             let grant = try text(request, "grant", limit: 64)

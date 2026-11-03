@@ -31,8 +31,10 @@ final class InputMonitor: @unchecked Sendable {
     }
     func bind(_ window: Target, grant: String, intervention: UInt64) throws -> String {
         lock.lock(); defer { lock.unlock() }
-        guard UUID(uuidString: grant) != nil, !used.contains(grant), used.count < 128,
-              counter == intervention, !escaped, lease == nil else { throw DesktopFailure("Control approval expired, was interrupted, or has already been used") }
+        guard !escaped else { throw DesktopFailure("Escape pressed after control approval") }
+        guard !used.contains(grant) else { throw DesktopFailure("This control approval has already been used") }
+        guard counter == intervention else { throw DesktopFailure("The person used the mouse or keyboard after approving; ask before requesting control again") }
+        guard UUID(uuidString: grant) != nil, used.count < 128, lease == nil else { throw DesktopFailure("Fresh control approval is required") }
         used.insert(grant)
         let id = UUID().uuidString
         lease = id; target = (window.id, window.pid); expires = Date().addingTimeInterval(600)
@@ -55,6 +57,16 @@ final class InputMonitor: @unchecked Sendable {
         lock.unlock()
         stop(stoppedByEscape ? "Escape pressed" : "User input changed")
     }
+    func noteMove() {
+        lock.lock(); defer { lock.unlock() }
+        lastInput = Date()
+    }
+    func receiveInput(_ type: CGEventType, event: CGEvent) {
+        guard event.getIntegerValueField(.eventSourceUserData) != marker else { return }
+        if type == .mouseMoved { noteMove(); return }
+        noteInput(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                  escape: type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53)
+    }
     func start() throws {
         let ready = DispatchSemaphore(value: 0)
         Thread.detachNewThread { [self] in
@@ -64,10 +76,7 @@ final class InputMonitor: @unchecked Sendable {
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     monitor.stop("Input monitoring was interrupted")
                     if let tap = monitor.tap { CGEvent.tapEnable(tap: tap, enable: true) }
-                } else if event.getIntegerValueField(.eventSourceUserData) != monitor.marker {
-                    monitor.noteInput(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                                      escape: type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53)
-                }
+                } else { monitor.receiveInput(type, event: event) }
                 return Unmanaged.passUnretained(event)
             }, userInfo: Unmanaged.passUnretained(self).toOpaque())
             guard let tap = tap else { ready.signal(); return }

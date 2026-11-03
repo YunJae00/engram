@@ -21,7 +21,7 @@ internal static class ChromiumAccessibility
         }
         return true;
     }
-    internal static void Wake(IntPtr window)
+    internal static IntPtr RendererWindow(IntPtr window)
     {
         var renderer = IntPtr.Zero;
         EnumChildWindows(window, delegate(IntPtr child, IntPtr data) {
@@ -31,8 +31,12 @@ internal static class ChromiumAccessibility
             renderer = child;
             return false;
         }, IntPtr.Zero);
+        return renderer == IntPtr.Zero ? window : renderer;
+    }
+    internal static void Wake(IntPtr window)
+    {
         UIntPtr result;
-        var target = renderer == IntPtr.Zero ? window : renderer;
+        var target = RendererWindow(window);
         // Chromium compares lParam with its screen-reader honeypot id.
         SendMessageTimeout(target, 0x003d, UIntPtr.Zero, new IntPtr(1), 2, 250, out result);
         var iid = new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
