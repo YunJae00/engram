@@ -4,7 +4,8 @@ import { screen } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type DesktopReadOptions, type Engine } from 'core'
 import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } from '../shared/desktop.js'
-import { bindDesktopForLane, desktopForeground, rememberOpenedForeground, rememberHiddenApp, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
+import { bindDesktopForLane, desktopForeground, rememberOpenedForeground, rememberLaunchedApp, refreshHiddenApp, rememberHiddenApp, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
+import { showWorkPreview } from './work-preview.js'
 import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -117,6 +118,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     const binding = await bindDesktopForLane(lane, { app })
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
+    showWorkPreview(binding)
     const after = await desktopForeground()
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
@@ -135,7 +137,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   const abort = () => host.close()
   signal?.addEventListener('abort', abort, { once: true })
   try {
-    const result = await host.request<{ hidden?: boolean; hiddenFallback?: string; pid?: number; previousFrontPid?: number; foregroundRestored?: boolean; foregroundChanged?: boolean; alreadyOpen?: boolean; opened?: boolean; windowVerified?: boolean; hiddenMs?: number; cycles?: number; title?: string; name?: string; before?: unknown; after?: unknown }>('openApp', { app })
+    const result = await host.request<{ window?: string; hidden?: boolean; hiddenFallback?: string; pid?: number; previousFrontPid?: number; foregroundRestored?: boolean; foregroundChanged?: boolean; alreadyOpen?: boolean; opened?: boolean; windowVerified?: boolean; hiddenMs?: number; cycles?: number; title?: string; name?: string; before?: unknown; after?: unknown }>('openApp', { app })
     flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, hidden: result?.hidden === true, hiddenFallback: result?.hiddenFallback, before: result?.before ?? before, after: result?.after ?? await desktopForeground(), restored: result?.foregroundRestored === true, changed: result?.foregroundChanged === true, alreadyOpen: result?.alreadyOpen === true, hiddenMs: result?.hiddenMs ?? 0, cycles: result?.cycles ?? 0, windowVerified: result?.windowVerified === true }))
     if (result?.foregroundChanged && result.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane, tool: 'open_app' }))
     if (result?.hidden && !result.hiddenFallback && result.pid) { keepHiddenHost = true; rememberHiddenApp(lane, result.pid, host) }
@@ -143,12 +145,25 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     if (epoch !== cancellation) throw stoppedError(lane)
     // Only a launch that is still in front needs the next read to restore; the guard already handled the rest, and a window the person raised stays theirs.
     if (result?.opened && result.foregroundChanged && !result.foregroundRestored) rememberOpenedForeground(lane, result)
-    const readiness = result?.hiddenFallback === 'no-draw-while-hidden' ? 'The app does not draw while hidden, so it stays open behind the current window; the person sees it in the preview card.' : result?.windowVerified ? 'The app stays hidden from the screen. Read it with app_read; the person watches the preview card.' : 'No app window was verified yet. A launch request alone does not prove the app is ready.'
+    if (result?.opened && result.pid) rememberLaunchedApp(lane, result.pid)
+    if (result?.opened && result.windowVerified && result.window) {
+      try {
+        const binding = await bindDesktopForLane(lane, { app: `window:${result.window}:0` })
+        signal?.throwIfAborted()
+        if (epoch !== cancellation) throw stoppedError(lane)
+        showWorkPreview(binding)
+      } catch (error) {
+        signal?.throwIfAborted()
+        if (epoch !== cancellation) throw stoppedError(lane)
+        flog('desktop-launch-bind', String(error))
+      }
+    }
+    const readiness = result?.hiddenFallback === 'chromium-does-not-draw-hidden' ? 'This app stays open behind the current window (Chrome-family apps do not draw while hidden); the person sees it in the preview card. Read it with app_read.' : result?.hiddenFallback === 'no-draw-while-hidden' ? 'The app does not draw while hidden, so it stays open behind the current window; the person sees it in the preview card. Read it with app_read.' : result?.windowVerified ? 'The app stays hidden from the screen. Read it with app_read; the person watches the preview card.' : 'No app window was verified yet. A launch request alone does not prove the app is ready.'
     const hint = result?.foregroundChanged ? result.foregroundRestored
       ? `The app came to the front for ${result.hiddenMs ?? 0} ms and was hidden back; ${readiness}`
       : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; observe the app before proceeding.'
       : `The app did not take the foreground. ${readiness}`
-    return JSON.stringify({ hidden: result?.hidden === true && !result?.hiddenFallback, hiddenFallback: result?.hiddenFallback, opened: result?.opened === true, alreadyOpen: result?.alreadyOpen === true, windowVerified: result?.windowVerified === true, hiddenMs: result?.hiddenMs ?? 0, cycles: result?.cycles ?? 0, foregroundChanged: result?.foregroundChanged === true, foregroundRestored: result?.foregroundRestored === true, title: result?.title ?? result?.name ?? app, hint })
+    return JSON.stringify({ window: result?.window, pid: result?.pid, hidden: result?.hidden === true && !result?.hiddenFallback, hiddenFallback: result?.hiddenFallback, opened: result?.opened === true, alreadyOpen: result?.alreadyOpen === true, windowVerified: result?.windowVerified === true, hiddenMs: result?.hiddenMs ?? 0, cycles: result?.cycles ?? 0, foregroundChanged: result?.foregroundChanged === true, foregroundRestored: result?.foregroundRestored === true, title: result?.title ?? result?.name ?? app, hint })
   } finally {
     signal?.removeEventListener('abort', abort)
     if (launching === pending) launching = undefined
@@ -345,8 +360,15 @@ async function readBoundDesktop(lane: string, signal?: AbortSignal, agent = fals
 export async function readControlledDesktop(lane: string, signal?: AbortSignal, agent = false, app?: string, focusedOnly = false, options: DesktopReadOptions = {}): Promise<DesktopObservationDto> {
   const stop = () => { if (active?.binding.lane === lane) stopDesktopForLane(lane, 'This chat was cancelled.') }
   if (agent) signal?.addEventListener('abort', stop, { once: true })
-  try { return await readBoundDesktop(lane, signal, agent, app, focusedOnly, options) }
-  catch (error) {
+  try {
+    signal?.throwIfAborted()
+    const binding = desktopBinding(lane)
+    if (binding && !binding.stopped && !binding.host.closed) {
+      const refreshed = await refreshHiddenApp(binding)
+      if (refreshed !== binding) showWorkPreview(refreshed)
+    }
+    return await readBoundDesktop(lane, signal, agent, app, focusedOnly, options)
+  } catch (error) {
     if (agent && active?.binding.lane === lane && !(error instanceof Error && /still|took the computer back|Another chat/.test(error.message))) stopDesktopForLane(lane, error instanceof Error ? error.message : 'The app could not be observed safely.', recoverableDesktopFailure(String(error)))
     throw error
   } finally { signal?.removeEventListener('abort', stop) }

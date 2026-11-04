@@ -5,7 +5,9 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({ binding: undefined as DesktopBinding | undefined, request: vi.fn(), overlay: vi.fn() }))
 vi.mock('electron', () => ({ screen: { getCursorScreenPoint: () => ({ x: 10, y: 10 }) } }))
-vi.mock('../src/main/desktop-access.js', () => ({ desktopBinding: () => fake.binding, bindDesktopForLane: async () => fake.binding,
+vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
+vi.mock('../src/main/desktop-access.js', () => ({
+  rememberLaunchedApp: vi.fn(), refreshHiddenApp: async (binding: DesktopBinding) => binding, desktopBinding: () => fake.binding, bindDesktopForLane: async () => fake.binding,
   desktopChanged: () => undefined, setDesktopReleaseHook: () => undefined }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => undefined }))
 vi.mock('../src/main/desktop-overlay.js', () => ({ prepareControlOverlay: async () => '900', updateControlOverlay: fake.overlay,

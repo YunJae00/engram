@@ -26,6 +26,7 @@ export function chooseNativeBrowser(enabled: boolean): void { external = !enable
 export function setNativeBrowserOwner(window: BrowserWindow): void { owner = window }
 export function isNativePage(page: Page): boolean { return nativeContexts.has(page.context()) }
 export function isNativeContext(context: BrowserContext): boolean { return nativeContexts.has(context) }
+export function nativeBrowserPid(): number | undefined { return running?.pid }
 export function nativeBrowserRunning(): boolean { return running !== null }
 
 export async function nativeOpener(page: Page): Promise<Page | null> {
@@ -155,7 +156,9 @@ export class NativeBrowser {
   private pending = new Map<number, { resolve(value: Record<string, unknown>): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
   readonly ready: Promise<void>
 
-  constructor(private child: Pick<ChildProcessWithoutNullStreams, 'stdin' | 'stdout' | 'stderr' | 'exitCode' | 'kill'> & EventEmitter) {
+  get pid(): number | undefined { return this.child.pid }
+
+  constructor(private child: { pid?: number } & Pick<ChildProcessWithoutNullStreams, 'stdin' | 'stdout' | 'stderr' | 'exitCode' | 'kill'> & EventEmitter) {
     this.exited = new Promise((resolve) => child.once('exit', () => resolve()))
     this.ready = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Embedded browser startup timed out')), 45000)

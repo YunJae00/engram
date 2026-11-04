@@ -1,5 +1,43 @@
 import AppKit
 
+// Ignore the title strip: a transparent or flat body is not a usable preview.
+func previewHasDrawn(_ image: CGImage) -> Bool {
+    guard image.height > 40, let body = image.cropping(to: CGRect(x: 0, y: 40, width: image.width, height: image.height - 40)) else { return false }
+    var pixels = [UInt8](repeating: 0, count: 24 * 24 * 4)
+    return pixels.withUnsafeMutableBytes { bytes in
+        guard let context = CGContext(data: bytes.baseAddress, width: 24, height: 24, bitsPerComponent: 8, bytesPerRow: 24 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        context.interpolationQuality = .none
+        context.draw(body, in: CGRect(x: 0, y: 0, width: 24, height: 24))
+        var colors = Set<UInt32>()
+        for offset in stride(from: 0, to: bytes.count, by: 4) where bytes[offset + 3] > 0 {
+            colors.insert(UInt32(bytes[offset]) << 16 | UInt32(bytes[offset + 1]) << 8 | UInt32(bytes[offset + 2]))
+            if colors.count >= 3 { return true }
+        }
+        return false
+    }
+}
+
+// macOS 26 returns nil from CGWindowListCreateImage for hidden Safari windows,
+// while screencapture can still read their changing backing store.
+func hiddenProbeImage(_ id: CGWindowID, until deadline: Double) -> CGImage? {
+    guard ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+    if let image = CGWindowListCreateImage(.null, .optionIncludingWindow, id, [.boundsIgnoreFraming]) { return image }
+    guard ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    guard (try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])) != nil else { return nil }
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("probe.png")
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    child.arguments = ["-x", "-o", "-l", String(id), "-t", "png", file.path]
+    child.standardOutput = FileHandle.nullDevice; child.standardError = FileHandle.nullDevice
+    guard (try? child.run()) != nil else { return nil }
+    while child.isRunning && ProcessInfo.processInfo.systemUptime < deadline { Thread.sleep(forTimeInterval: 0.01) }
+    if child.isRunning { child.terminate(); return nil }
+    guard child.terminationStatus == 0, ProcessInfo.processInfo.systemUptime < deadline, let data = try? Data(contentsOf: file) else { return nil }
+    return NSBitmapImageRep(data: data)?.cgImage
+}
+
 extension DesktopHost {
     func capture(_ request: [String: Any], window: Target) throws -> Any {
         guard CGPreflightScreenCaptureAccess() else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Screen Recording") }
@@ -27,13 +65,7 @@ extension DesktopHost {
         if child.isRunning { child.terminate(); throw DesktopFailure("Screen capture timed out") }
         guard child.terminationStatus == 0, let source = NSImage(contentsOf: file), let bitmap = NSBitmapImageRep(data: try Data(contentsOf: file)) else { throw DesktopFailure("Screen capture failed") }
         try verifyProtection()
-        // A hidden app that has not drawn yet yields a fully transparent window image; previews report it instead of showing black.
-        if preview {
-            let drawn = stride(from: 0, to: bitmap.pixelsWide, by: max(1, bitmap.pixelsWide / 16)).contains { x in
-                stride(from: 0, to: bitmap.pixelsHigh, by: max(1, bitmap.pixelsHigh / 16)).contains { y in (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0 }
-            }
-            guard drawn else { throw DesktopFailure("The hidden window has not drawn a preview yet") }
-        }
+        if preview && !(bitmap.cgImage.map { previewHasDrawn($0) } ?? false) { throw DesktopFailure("The hidden window has not drawn a preview yet") }
         try requireCurrent(reading, target: resolveWindow(window.id, pid: window.pid))
         guard monitor.inputVersion(window.pid) == intervention else { throw DesktopFailure("The screen changed during capture") }
         if let lease = request["lease"] as? String { try monitor.check(lease, window: window) }

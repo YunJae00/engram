@@ -4,9 +4,11 @@ import { DesktopHost } from '../src/main/desktop-host.js'
 
 interface HostDouble { closed: boolean; close(): void; revoke(reason?: string): void }
 const fake = vi.hoisted(() => ({
+  pids: [] as number[],
   hosts: [] as HostDouble[], request: vi.fn(), sources: vi.fn(), release: vi.fn(), changed: vi.fn(),
-  windows: [] as { window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }[],
+  windows: [] as { bounds?: { x: number }; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }[],
 }))
+vi.mock('../src/main/agent-browser.js', () => ({ agentBrowserPids: async () => fake.pids }))
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
   desktopCapturer: { getSources: fake.sources },
@@ -22,7 +24,7 @@ vi.mock('../src/main/desktop-host.js', () => ({
     revoke(reason = 'Mouse input returned control to the user') { this.changed(reason) }
   },
 }))
-import { rememberHiddenApp, refreshHiddenApp, showDesktopApp, releaseDesktop, rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
+import { rememberLaunchedApp, rememberHiddenApp, refreshHiddenApp, showDesktopApp, releaseDesktop, rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
 
 const lane = 'bot-one'
 const other = 'bot-two'
@@ -30,6 +32,7 @@ beforeEach(() => {
   closeDesktopAccess()
   setDesktopAppsOff([])
   vi.clearAllMocks()
+  fake.pids = []
   fake.hosts = []
   fake.windows = [
     { window: '100', pid: 200, title: 'Quarterly workbook - Excel', minimized: false, foreground: true },
@@ -269,4 +272,37 @@ it('restores an unbound hidden launch when the lane reads a different app instea
   await bindDesktopForLane(lane, { app: 'Excel' })
   expect(fake.request).toHaveBeenCalledWith('unhideApp', { pid: 201, activate: false })
   await closeDesktopAccess()
+})
+
+it('excludes agent Chrome pids while binding the YouTube PWA', async () => {
+  fake.pids = [300, 301]
+  fake.windows = [
+    { window: '110', pid: 250, title: 'Home — YouTube', minimized: false },
+    { window: '111', pid: 300, title: '(3) YouTube - Google Chrome', minimized: false },
+    { window: '112', pid: 301, title: 'YouTube - Google Chrome', minimized: false },
+  ]
+  expect((await bindDesktopForLane(lane, { app: 'YouTube' })).window).toBe('110')
+  expect(await desktopWindows()).toHaveLength(1)
+})
+it('follows a new main window only for the app this lane launched', async () => {
+  const original = await bindDesktopForLane(lane)
+  fake.windows.push({ window: '103', pid: 200, title: 'New workbook - Excel', minimized: false })
+  fake.request.mockImplementation(async (method: string) => method === 'inspectWindow' ? { mainWindow: '103' } : { windows: fake.windows })
+  expect(await refreshHiddenApp(original)).toBe(original)
+  rememberLaunchedApp(other, 200)
+  expect(await refreshHiddenApp(original)).toBe(original)
+  rememberLaunchedApp(lane, 201)
+  expect(await refreshHiddenApp(original)).toBe(original)
+  rememberLaunchedApp(lane, 200)
+  const next = await refreshHiddenApp(original)
+  expect(next).not.toBe(original)
+  expect(next).toMatchObject({ window: '103', pid: 200, name: 'New workbook - Excel' })
+  expect(desktopBinding(lane)).toBe(next)
+  expect(fake.changed).toHaveBeenCalledWith({ type: 'desktop:changed' })
+})
+
+it('excludes offscreen browser windows when their pid is unknown', async () => {
+  fake.windows.push({ window: '110', pid: 300, title: 'YouTube - Google Chrome', minimized: false, bounds: { x: -4000 } })
+  expect(await desktopWindows()).toHaveLength(3)
+  await expect(bindDesktopForLane(lane, { app: 'YouTube' })).rejects.toThrow('No open window matches')
 })

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DesktopBinding } from '../src/main/desktop-access.js'
 import type { DesktopMethod } from '../src/main/desktop-host.js'
 
-const deps = vi.hoisted(() => ({ bind: vi.fn(), current: vi.fn(), stopped: vi.fn(), flog: vi.fn(), broadcast: vi.fn() }))
-vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: deps.bind, desktopBinding: deps.current }))
+const deps = vi.hoisted(() => ({ refresh: vi.fn(), bind: vi.fn(), current: vi.fn(), stopped: vi.fn(), flog: vi.fn(), broadcast: vi.fn() }))
+vi.mock('../src/main/desktop-access.js', () => ({ refreshHiddenApp: deps.refresh, bindDesktopForLane: deps.bind, desktopBinding: deps.current }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: deps.stopped }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: deps.broadcast }))
@@ -24,7 +25,7 @@ function binding(state: { foreground: boolean; idleMs: number }, texts: string[]
   return { held, request, state }
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.resetAllMocks(); forgetQuietCoverage() })
+beforeEach(() => { vi.useFakeTimers(); vi.resetAllMocks(); deps.refresh.mockImplementation(async (binding: DesktopBinding) => binding); forgetQuietCoverage() })
 afterEach(() => { vi.useRealTimers() })
 
 describe('quiet app access', () => {
@@ -193,4 +194,13 @@ it.each([false, true])('records coverage only after the native activation rescan
   expect(result.sparseTree).toBe(sparse)
   expect(quietVerdict('bot-one', 'Claude').verdict).toBe(sparse ? 'bare' : 'covered')
   if (sparse) expect(result.hint).toContain('look_desktop')
+})
+
+it('reads the newly rebound main window before app_read scans it', async () => {
+  const { held, request } = binding({ foreground: false, idleMs: 5000 })
+  const next = { ...held, window: '8', source: 'window:8:0', revision: 1 }
+  deps.refresh.mockImplementation(async () => { deps.current.mockReturnValue(next); return next })
+  await quietScan('bot-one', 'Claude', undefined)
+  expect(deps.refresh).toHaveBeenCalledWith(held)
+  expect(request).toHaveBeenCalledWith('quietScan', { window: '8', pid: 70 }, undefined)
 })

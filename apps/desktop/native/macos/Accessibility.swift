@@ -2,6 +2,19 @@ import AppKit
 import ApplicationServices
 import CryptoKit
 
+@_silgen_name("_AXUIElementGetWindow")
+func axWindowID(_ element: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
+func windowID(_ element: AXUIElement) -> CGWindowID? {
+    var id: CGWindowID = 0
+    return axWindowID(element, &id) == .success && id != 0 ? id : nil
+}
+func mainWindowID(_ pid: pid_t) -> CGWindowID? {
+    guard let raw = attribute(AXUIElementCreateApplication(pid), kAXMainWindowAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+    let element = unsafeBitCast(raw, to: AXUIElement.self)
+    guard stringAttribute(element, kAXSubroleAttribute) == kAXStandardWindowSubrole else { return nil }
+    return windowID(element)
+}
+
 struct DesktopFailure: Error, CustomStringConvertible {
     let description: String
     init(_ text: String) { description = text }
@@ -73,10 +86,12 @@ func resolveWindow(_ id: CGWindowID, pid: pid_t) throws -> Target {
     let app = AXUIElementCreateApplication(owner)
     AXUIElementSetMessagingTimeout(app, 1)
     guard let candidates = attribute(app, kAXWindowsAttribute) as? [AXUIElement] else { throw DesktopFailure("This app did not expose its windows") }
-    let matches = candidates.filter { element in
+    let identified = candidates.filter { windowID($0) == id }
+    let matches = identified.isEmpty ? candidates.filter { element in
         guard let rect = try? elementBounds(element) else { return false }
         return abs(rect.minX - bounds.minX) < 2 && abs(rect.minY - bounds.minY) < 2 && abs(rect.width - bounds.width) < 2 && abs(rect.height - bounds.height) < 2
     }
+    : identified
     guard matches.count == 1, let window = matches.first else { throw DesktopFailure("The window identity is ambiguous. Observe it again") }
     let title = stringAttribute(window, kAXTitleAttribute)
     guard !sensitive(title) else { throw DesktopFailure("This application surface requires manual control (window: \(sensitiveReason(title)))") }

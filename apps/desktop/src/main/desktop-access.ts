@@ -2,12 +2,15 @@ import { appNameMatch, similarApps } from 'core'
 import { BrowserWindow, desktopCapturer, type DesktopCapturerSource } from 'electron'
 import type { DesktopBindingDto, DesktopWindowDto } from '../shared/desktop.js'
 import { DesktopHost } from './desktop-host.js'
+import { agentBrowserPids } from './agent-browser.js'
 import { flog } from './flog.js'
 import { broadcast } from './engine-health.js'
 
 export interface DesktopBinding extends DesktopBindingDto { aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
 type Binding = DesktopBinding
-interface NativeWindow { hidden?: boolean; barrier?: string; protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+interface NativeWindow { bounds?: { x: number }; hidden?: boolean; barrier?: string; protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+const launchedApps = new Map<string, number>()
+export function rememberLaunchedApp(lane: string, pid: number): void { launchedApps.set(lane, pid) }
 const openedForeground = new Map<string, { pid: number; previousFrontPid: number }>()
 export function rememberOpenedForeground(lane: string, result: { pid?: number; previousFrontPid?: number }): void {
   if (result.pid && result.previousFrontPid) openedForeground.set(lane, { pid: result.pid, previousFrontPid: result.previousFrontPid })
@@ -35,14 +38,25 @@ export async function showDesktopApp(lane: string): Promise<void> {
   await restoreHiddenApp(lane, true)
   changed()
 }
-export async function refreshHiddenApp(binding: Binding): Promise<void> {
-  const state = await binding.host.request<{ hidden?: boolean }>('inspectWindow', { window: binding.window, pid: binding.pid })
+export async function refreshHiddenApp(binding: Binding): Promise<Binding> {
+  const state = await binding.host.request<{ hidden?: boolean; mainWindow?: string }>('inspectWindow', { window: binding.window, pid: binding.pid })
+  if (state.mainWindow && state.mainWindow !== binding.window && launchedApps.get(binding.lane) === binding.pid && bindings.get(binding.lane) === binding) {
+    const windows = await nativeWindows(binding.host)
+    const target = windows.find(one => one.window === state.mainWindow && one.pid === binding.pid && !one.minimized && !one.protected)
+    if (target && bindings.get(binding.lane) === binding) {
+      const next = await bindDesktopForLane(binding.lane, { app: `window:${target.window}:0` })
+      releaseControl(binding.lane, 'The app main window changed. Read it again before acting.')
+      flog('desktop-rebind', JSON.stringify({ lane: binding.lane, from: binding.window, to: next.window, title: next.name }))
+      return next
+    }
+  }
   if (binding.hiddenByEngram && state.hidden === false && bindings.get(binding.lane) === binding) {
     const owned = hiddenApps.get(binding.lane)
     hiddenApps.delete(binding.lane); delete binding.hiddenByEngram
     owned?.host.close()
     changed()
   }
+  return binding
 }
 export function desktopRestoring(): boolean { return hiddenApps.size > 0 || restoring.size > 0 }
 const bindings = new Map<string, Binding>()
@@ -84,7 +98,7 @@ export function desktopBindings(): DesktopBindingDto[] {
   return [...bindings.values()].map(({ lane, source, name, readable, stopped, hiddenByEngram }) => ({ lane, source, name, readable, stopped, ...(hiddenByEngram ? { hiddenByEngram } : {}) }))
 }
 export async function closeDesktopAccess(): Promise<void> {
-  generation++; openedForeground.clear()
+  generation++; openedForeground.clear(); launchedApps.clear()
   for (const key of [...hiddenApps.keys()]) restoreHiddenApp(key)
   for (const key of [...bindings.keys()]) releaseDesktop(key)
   closeCatalogHost()
@@ -92,6 +106,7 @@ export async function closeDesktopAccess(): Promise<void> {
 }
 export function releaseDesktop(lane: string): void {
   openedForeground.delete(lane)
+  launchedApps.delete(lane)
   restoreHiddenApp(lane)
   releaseControl(lane, 'The app window was disconnected.')
   choices.set(lane, (choices.get(lane) ?? 0) + 1)
@@ -158,8 +173,9 @@ export async function desktopForeground(): Promise<{ pid: number; title: string 
 }
 async function nativeWindows(host: DesktopHost): Promise<NativeWindow[]> {
   const own = new Set(BrowserWindow.getAllWindows().map((window) => window.getNativeWindowHandle().readBigUInt64LE().toString()))
+  const excluded = new Set(await agentBrowserPids())
   const result = await host.request<{ windows?: NativeWindow[] }>('listWindows', {})
-  return (result?.windows ?? []).filter((one) => typeof one?.window === 'string' && !own.has(one.window) && typeof one.title === 'string')
+  return (result?.windows ?? []).filter((one) => typeof one?.window === 'string' && !own.has(one.window) && !excluded.has(one.pid) && !(one.bounds && one.bounds.x <= -3000) && typeof one.title === 'string')
 }
 // The comet's own choice of window: the one named by a word from its title,
 // else the one in front. No picker, no dialog - reading it is the grant.

@@ -13,7 +13,7 @@ import { reserveRoom } from './memory-plan.js'
 import { observationOf, readFrames } from './page-reader.js'
 import { createWindowPage } from './browser-window-page.js'
 import { BrowserLanes } from './browser-lanes.js'
-import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeOpener, openNativeBrowser } from './native-browser.js'
+import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeBrowserPid, nativeOpener, openNativeBrowser } from './native-browser.js'
 import { nativePagesVisible } from './native-layout.js'
 import { resizePreview } from './page-preview.js'
 import { takeDownloads, watchDownloads } from './page-downloads.js'
@@ -211,6 +211,21 @@ export function classifyWall(
 }
 
 let context: Ctx | null = null
+// Playwright persistent contexts do not expose process(); CDP supplies the browser
+// pid and its renderer/utility children for both external Chrome and WebView2.
+export async function agentBrowserPids(): Promise<number[]> {
+  const nativePid = context && isNativeContext(context) ? nativeBrowserPid() : undefined
+  const pids = nativePid ? [nativePid] : []
+  const browser = context?.browser()
+  if (!browser) return pids
+  const session = await browser.newBrowserCDPSession().catch(() => null)
+  if (!session) return pids
+  try {
+    const { processInfo } = await session.send('SystemInfo.getProcessInfo')
+    return [...pids, ...processInfo.map(info => info.id)]
+  } catch { return pids }
+  finally { await session.detach().catch(() => undefined) }
+}
 let opening: Promise<Ctx> | null = null
 // A close under way: a launch waits for it, or it would trip on the profile
 // the closing process still holds.

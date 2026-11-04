@@ -5,7 +5,9 @@ import type { Engine } from 'core'
 type Choice = Pick<Engine, 'id' | 'desktopToolIsolation'>
 const fake = vi.hoisted(() => ({ binding: undefined as DesktopBinding | undefined, dialog: vi.fn(), engine: vi.fn(), changed: vi.fn() }))
 vi.mock('electron', () => ({ dialog: { showMessageBox: fake.dialog } }))
+vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/desktop-access.js', () => ({
+  rememberLaunchedApp: vi.fn(), refreshHiddenApp: async (binding: DesktopBinding) => binding,
   desktopBinding: () => fake.binding, desktopOwner: () => 'main-owner', desktopChanged: fake.changed,
   bindDesktopForLane: async () => { fake.binding!.readable = true; return fake.binding },
   setDesktopReleaseHook: vi.fn(),
