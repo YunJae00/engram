@@ -91,6 +91,10 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
         const matrix = new DOMMatrix(getComputedStyle(element).transform)
         return { rotated: Math.abs(matrix.b) > 0.02, offset: Math.abs(matrix.e) > 3, raised: matrix.f < -5 }
       })).toEqual({ rotated: true, offset: true, raised: true })
+      const front = await full.getByTestId('preview-deck').locator('[data-position="0"]').boundingBox()
+      const behind = await back.boundingBox()
+      expect(front!.y - behind!.y).toBeGreaterThanOrEqual(20)
+      await expect(back.locator('.preview-deck-title')).toBeVisible()
       const exposed = () => back.evaluate(element => {
         const box = element.getBoundingClientRect()
         for (let y = box.top + 2; y < box.top + 24; y += 2) for (let x = box.left + 8; x < box.right - 8; x += 8) {

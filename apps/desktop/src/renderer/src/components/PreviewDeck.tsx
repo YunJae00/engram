@@ -53,7 +53,7 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
   if (!frame) return null
   if (view.hidden || view.collapsed) return <button type="button" className="preview-card-reopen" data-testid={view.hidden ? 'preview-card-reopen' : 'preview-card-collapsed'} data-lane={lane} data-source={frame.source} aria-label={view.hidden ? words.show : words.expand} aria-expanded={false} onClick={() => change({ collapsed: false, hidden: false })}><AppWindow size={12} aria-hidden />{view.hidden ? words.show : `${frame.title || words.browser} · ${words[state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state]}`}</button>
-  return <div ref={surface} className="preview-deck" data-testid="preview-deck" aria-label={words.choose} tabIndex={0} onKeyDown={event => {
+  return <div ref={surface} className="preview-deck" style={{ '--deck-depth': Math.min(ordered.length - 1, 3) } as CSSProperties} data-testid="preview-deck" aria-label={words.choose} tabIndex={0} onKeyDown={event => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     setSelected(previewNeighbor(frames, frame.id, event.key === 'ArrowRight' ? 1 : -1))
@@ -63,7 +63,7 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
       const image = images.current.get(id) ?? item.image
       return <div key={id} className="preview-deck-card" data-position={position} data-frame={id} style={{ '--deck-position': position, zIndex: 4 - position } as CSSProperties}>
         {position === 0 ? <PreviewCard frame={item} busy={busy} state={state} lang={lang} lane={lane} compact={compact} onOpenWeb={onOpenWeb} onCollapse={() => change({ ...view, collapsed: true })} onHide={() => change({ ...view, hidden: true })} onSnapshot={snapshot} />
-          : <button type="button" className="preview-deck-back" aria-label={item.title || words.browser} onClick={() => { setSelected(id); setOrder([id, ...ordered.filter(other => other !== id)]); surface.current?.focus() }}>{image ? <img src={image} alt="" /> : <span className="preview-deck-title">{item.title || words.browser}</span>}</button>}
+          : <button type="button" className="preview-deck-back" aria-label={item.title || words.browser} onClick={() => { setSelected(id); setOrder([id, ...ordered.filter(other => other !== id)]); surface.current?.focus() }}>{image ? <img src={image} alt="" /> : null}<span className="preview-deck-title">{item.title || words.browser}</span></button>}
       </div>
     })}
   </div>
