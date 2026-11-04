@@ -1,7 +1,7 @@
 import { app, nativeImage } from 'electron'
 import { desktopBinding, desktopOwner, keptOut, type DesktopBinding } from './desktop-access.js'
-import type { DesktopObservationDto, WorkPreviewDto } from '../shared/desktop.js'
-import { desktopImage } from './desktop-image.js'
+import type { WorkPreviewDto } from '../shared/desktop.js'
+import { previewImage } from './desktop-image.js'
 import { tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
@@ -14,6 +14,7 @@ const active = new Set<string>()
 const streaming = new Set<string>()
 const streamOwners = new Map<string, DesktopBinding>()
 const preemptions = new Map<string, number>()
+const lastSuccess = new Map<string, number>()
 const lastCapture = new Map<string, number>()
 let timer: ReturnType<typeof setInterval> | undefined
 let quitting = false
@@ -56,7 +57,7 @@ export function workPreviews(lane: string): WorkPreviewDto[] {
   return [...entries.values()].filter(frame => frame.lane === lane).reverse()
 }
 export function closeWorkPreview(): void {
-  quitting = true; active.clear(); preemptions.clear(); streaming.clear(); streamOwners.clear()
+  quitting = true; lastSuccess.clear(); active.clear(); preemptions.clear(); streaming.clear(); streamOwners.clear()
   for (const id of entries.keys()) remove(id)
   clearInterval(timer); timer = undefined
 }
@@ -130,13 +131,20 @@ export function showWorkPreview(binding: DesktopBinding): void {
   const controller = new AbortController()
   pending.set(key, controller); lastCapture.set(key, Date.now())
   const started = Date.now()
-  const timeout = setTimeout(() => controller.abort(), 5000)
+  const timeout = setTimeout(() => controller.abort(), 8000)
   const protectedCapture = !entry.data || (preemptions.get(binding.lane) ?? 0) >= 3
   if (protectedCapture) preemptions.set(binding.lane, 0)
-  const observe = () => binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid }, controller.signal, protectedCapture ? {} : { preview: true })
-  void desktopImage(binding, observe, controller.signal, !protectedCapture).then(result => {
+  let stage: 'observe' | 'capture' | 'verify' = 'observe', stageStarted = started
+  const stages: Partial<Record<'observe' | 'capture' | 'verify', number>> = {}
+  const nextStage = (next: typeof stage) => { stages[stage] = Date.now() - stageStarted; stage = next; stageStarted = Date.now() }
+  void previewImage(binding, controller.signal, !protectedCapture, nextStage).then(result => {
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding || !valid.get(key)?.() || controller.signal.aborted || quitting) return
     preemptions.delete(binding.lane)
+    stages[stage] = Date.now() - stageStarted
+    if (Date.now() - (lastSuccess.get(binding.lane) ?? -Infinity) >= 30_000) {
+      lastSuccess.set(binding.lane, Date.now())
+      flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, stage, stages, reason: 'ok' }))
+    }
     if (result.image) {
       entry.data = nativeImage.createFromBuffer(Buffer.from(result.image.data, 'base64')).resize({ width: 700 }).toDataURL()
       entry.at = Date.now(); entry.unavailable = false; entry.captureState = 'ready'; delete entry.captureReason
@@ -146,7 +154,8 @@ export function showWorkPreview(binding: DesktopBinding): void {
     if (preempted) preemptions.set(binding.lane, (preemptions.get(binding.lane) ?? 0) + 1)
     else preemptions.delete(binding.lane)
     const reason = preempted ? 'work-priority' : controller.signal.aborted ? 'cancelled-or-expired' : previewFailureReason(error)
-    flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, reason }))
+    stages[stage] = Date.now() - stageStarted
+    flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, stage, stages, reason }))
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding) return
     if (preempted || controller.signal.aborted) {
       entry.current = false
