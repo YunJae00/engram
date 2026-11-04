@@ -320,8 +320,8 @@ test('small split panes use a readable modal, minimize it and retain the page ac
   await expect(tile.locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
   const preview = tile.locator('.preview-card, [data-testid=preview-card-collapsed]')
   await expect(shell.getByTestId('preview-card-collapsed')).toHaveCount(0)
-  const tileBox = (await tile.boundingBox())!, previewBox = (await preview.boundingBox())!
-  expect(previewBox.width).toBeLessThanOrEqual(264)
+  await expect.poll(async () => (await preview.boundingBox())!.width).toBeLessThanOrEqual(264)
+  const tileBox = (await tile.boundingBox())!
   await preview.getByRole('button', { name: 'Collapse preview', exact: true }).click()
   await expect(preview.locator('canvas')).toHaveCount(0)
   expect((await preview.boundingBox())!.height).toBeLessThan(45)
