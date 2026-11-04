@@ -115,9 +115,9 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   if (await page.getByTestId('web-pane-expand').isVisible()) await page.getByTestId('web-pane-expand').click()
   await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'press:ask', channel: lane, words: 'Submit report', host: 'example.com' }), lane)
   await expect(page.getByTestId('press-ask')).toBeVisible()
-  await expect(page.getByTestId('preview-card-collapsed')).toBeVisible()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
   await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
-  await expect(page.getByTestId('preview-card-collapsed')).toBeVisible()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
 })
 
 test('small windows open from the composer as a preview and expand only on request', async () => {
@@ -163,8 +163,8 @@ test('preview stays within a narrow window, stays above the thread and supports 
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 600); win.setSize(620, 800) })
   if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
   await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'press:ask', channel: lane, words: 'Submit report', host: 'example.com' }), lane)
-  const preview = page.getByTestId('preview-card-collapsed')
-  await expect(page.getByTestId('preview-card-collapsed')).toBeVisible()
+  const preview = page.getByTestId('preview-card')
+  await expect(page.getByTestId('preview-card')).toBeVisible()
   await page.getByTestId('press-ask').getByRole('button', { name: 'Go ahead', exact: true }).click({ trial: true })
   await expect(page.locator('.preview-card-bar')).toHaveCount(0)
   const bounds = (await preview.boundingBox())!, main = (await page.locator('.bots-chat').boundingBox())!

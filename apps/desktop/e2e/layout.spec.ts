@@ -82,7 +82,7 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
     })).toBeGreaterThanOrEqual(30)
     await page.getByTestId('bots-input-add').click()
     await page.getByTestId('composer-web').click()
-    const pane = width > 1180 ? page.getByTestId('web-pane') : page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
+    const pane = width > 1180 ? page.getByTestId('web-pane') : page.getByTestId('preview-card')
     await expect(pane).toBeVisible()
     if (width > 1180) {
       await expect(page.locator('.web-pane-inner')).toHaveCSS('border-radius', '0px')

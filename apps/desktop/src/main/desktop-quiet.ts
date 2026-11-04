@@ -98,6 +98,7 @@ async function request<T>(binding: DesktopBinding, method: DesktopMethod, args: 
     if (receipt.foregroundChanged) {
       const tool = method === 'quietSet' ? 'app_set' : method === 'quietPress' ? 'app_press' : 'app_text'
       flog('desktop-foreground', JSON.stringify({ lane: binding.lane, tool, app: binding.name, restored: receipt.foregroundRestored === true }))
+      flog('desktop-foreground', JSON.stringify({ lane: binding.lane, tool: 'restoreForeground', app: binding.name, restored: receipt.foregroundRestored === true }))
       if (receipt.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane: binding.lane, tool }))
       if (!receipt.foregroundRestored) {
         receipt.foregroundTaken = true

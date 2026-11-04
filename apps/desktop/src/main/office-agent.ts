@@ -1,8 +1,9 @@
 import { officeTools, type AgentTool, type OfficeOp } from 'core'
-import { officeWorkPreview } from './work-preview.js'
+import { officeWorkPreview, showWorkPreview } from './work-preview.js'
 import { screen } from 'electron'
 import { officeApps, officeRequest, officeSupported } from './office-host.js'
-import { assertDesktopTurnNotStopped, endDesktopTurn } from './desktop-control.js'
+import { assertDesktopTurnNotStopped } from './desktop-control.js'
+import { bindDesktopForLane } from './desktop-access.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
 
 // A new deck or document is composed as a file with a designed layout, not
@@ -35,6 +36,11 @@ async function officeRun(op: OfficeOp, args: Record<string, unknown>, signal?: A
 // and a draft mail opens for them to send. Only the applications this
 // machine registers are offered.
 // ponytail: one visible Office operation at a time; split only for isolated application sessions.
+export async function showOfficePreview(lane: string, op: OfficeOp): Promise<void> {
+  const app = op.startsWith('outlook.') ? 'Outlook' : op.startsWith('excel.') ? 'Excel' : op.startsWith('word.') ? 'Word' : 'PowerPoint'
+  try { showWorkPreview(await bindDesktopForLane(lane, { app })) }
+  catch { /* The activity card remains available when no readable window exists. */ }
+}
 let workQueue: Promise<unknown> = Promise.resolve()
 export function officeAgentTools(lane: string): AgentTool[] {
   const apps = officeApps()
@@ -43,15 +49,17 @@ export function officeAgentTools(lane: string): AgentTool[] {
     const run = async () => {
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
-      endDesktopTurn(lane)
       const finish = officeWorkPreview(lane, op)
       try {
+        await showOfficePreview(lane, op)
+        signal?.throwIfAborted()
+        assertDesktopTurnNotStopped(lane)
         if (op.startsWith('outlook.') || op === 'excel.workbooks') {
           clearApplicationWork(lane)
           return await officeRun(op, args, signal, () => assertDesktopTurnNotStopped(lane))
         }
         const work = applicationWork(lane, signal)
-        try { return await officeRun(op, args, work.signal, () => assertDesktopTurnNotStopped(lane), work.show) }
+        try { return await officeRun(op, args, work.signal, () => assertDesktopTurnNotStopped(lane), process.platform === 'win32' ? undefined : work.show) }
         catch (error) { clearApplicationWork(lane); throw error }
       } finally { finish() }
     }

@@ -319,10 +319,9 @@ test('small split panes use a readable modal, minimize it and retain the page ac
   const tile = shell.getByTestId('mission-tile-0')
   await expect(tile.locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
   const preview = tile.locator('.preview-card, [data-testid=preview-card-collapsed]')
-  const expandTile = tile.getByTestId('preview-card-collapsed')
-  if (await expandTile.isVisible()) await expandTile.click()
-  const tileBox = (await tile.boundingBox())!, previewBox = (await preview.boundingBox())!
-  expect(previewBox.width).toBeLessThanOrEqual(264)
+  await expect(shell.getByTestId('preview-card-collapsed')).toHaveCount(0)
+  await expect.poll(async () => (await preview.boundingBox())!.width).toBeLessThanOrEqual(264)
+  const tileBox = (await tile.boundingBox())!
   await preview.getByRole('button', { name: 'Collapse preview', exact: true }).click()
   await expect(preview.locator('canvas')).toHaveCount(0)
   expect((await preview.boundingBox())!.height).toBeLessThan(45)
@@ -341,8 +340,7 @@ test('small split panes use a readable modal, minimize it and retain the page ac
   await shell.getByRole('button', { name: 'Open Native 1', exact: true }).first().click()
   const single = shell.locator('.preview-card, [data-testid=preview-card-collapsed]')
   await expect(single).toBeVisible()
-  const expandSingle = shell.getByTestId('preview-card-collapsed')
-  if (await expandSingle.isVisible()) await expandSingle.click()
+  await expect(shell.getByTestId('preview-card-collapsed')).toHaveCount(0)
   await expect(single.locator('canvas[data-painted]')).toBeVisible()
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Modal keeps this 한글')
   await expect.poll(() => single.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.width / canvas.height)).toBeCloseTo(await first.evaluate(() => innerWidth / innerHeight), 1)

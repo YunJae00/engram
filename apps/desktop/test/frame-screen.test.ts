@@ -25,7 +25,8 @@ it('decodes frames natively, coalesces a burst and ignores completion after unmo
   let receive: ((data: string) => void) | undefined
   const off = vi.fn()
   const onSize = vi.fn()
-  FrameScreen({ source: (paint) => { receive = paint; return off }, onSize })
+  const onPaint = vi.fn()
+  FrameScreen({ source: (paint) => { receive = paint; return off }, onSize, onPaint })
   const unmount = state.effects[0]!()
   receive!('first')
   receive!('discarded')
@@ -38,6 +39,7 @@ it('decodes frames natively, coalesces a burst and ignores completion after unmo
   expect(state.canvas.height).toBe(1720)
   expect(drawImage).toHaveBeenCalledTimes(1)
   expect(onSize).toHaveBeenCalledExactlyOnceWith(2560, 1720)
+  expect(onPaint).toHaveBeenCalledExactlyOnceWith('data:image/jpeg;base64,first')
   unmount!()
   decoded[1]!.finish()
   await new Promise((resolve) => setTimeout(resolve, 0))

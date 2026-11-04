@@ -232,3 +232,11 @@ it('skips snapshot requests and deferred refreshes while streaming and resumes a
     expect(request).toHaveBeenCalledOnce()
   }
 })
+
+it('retains snapshots beyond three minutes but expires imageless activity', async () => {
+  const { showWorkPreview, workPreviews, officeWorkPreview } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  officeWorkPreview(held.lane, 'outlook.mail')
+  await vi.advanceTimersByTimeAsync(181000)
+  expect(workPreviews(held.lane)).toEqual([expect.objectContaining({ data: 'data:image/jpeg;base64,safe' })])
+})

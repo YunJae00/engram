@@ -7,7 +7,7 @@ vi.mock('../src/renderer/src/lib/webPane.js', () => ({ useWebPane: () => pane, w
 vi.mock('../src/renderer/src/api.js', () => ({ api: {} }))
 vi.mock('../src/renderer/src/lib/agentMirrorLive.js', () => ({ agentMirror: {} }))
 import { appPreviewFrame } from '../src/renderer/src/components/usePreviewFrames.js'
-import { PreviewCard } from '../src/renderer/src/components/PreviewCard.js'
+import { PreviewDeck } from '../src/renderer/src/components/PreviewDeck.js'
 import { threadWords } from '../src/renderer/src/lib/threadLang.js'
 
 const frame: WorkPreviewDto = { id: 'window-1', lane: 'bot-one', title: 'Document', at: 123, data: 'data:image/png;base64,safe', current: false }
@@ -34,15 +34,15 @@ it('formats snapshot age with localized seconds and whole minutes', () => {
 })
 
 it.each([true, false])('starts expanded regardless of whether the turn is busy (%s)', busy => {
-  const html = renderToStaticMarkup(createElement(PreviewCard, { frames: [appPreviewFrame(frame)], busy, state: 'recorded', lang: 'en', lane: `unit-${busy}`, compact: false }))
+  const html = renderToStaticMarkup(createElement(PreviewDeck, { frames: [appPreviewFrame(frame)], busy, state: 'recorded', lang: 'en', lane: `unit-${busy}`, compact: false }))
   expect(html).toContain('data-testid="preview-card"')
   expect(html).toContain('Last snapshot')
   expect(html).not.toContain('data-testid="preview-card-collapsed"')
 })
-it('preserves temporary folding during approval waits and attention', () => {
-  const render = (state: 'recorded' | 'waiting') => renderToStaticMarkup(createElement(PreviewCard, { frames: [appPreviewFrame(frame)], busy: false, state, lang: 'en', lane: 'unit-wait', compact: false }))
-  expect(render('waiting')).toContain('data-testid="preview-card-collapsed"')
+it('stays expanded with a waiting label during approval waits and attention', () => {
+  const render = (state: 'recorded' | 'waiting') => renderToStaticMarkup(createElement(PreviewDeck, { frames: [appPreviewFrame(frame)], busy: false, state, lang: 'en', lane: 'unit-wait', compact: false }))
+  expect(render('waiting')).toContain('Document · Needs you')
   pane.attention = true
-  try { expect(render('recorded')).toContain('data-testid="preview-card-collapsed"') }
+  try { expect(render('recorded')).toContain('Document · Needs you') }
   finally { pane.attention = false }
 })

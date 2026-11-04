@@ -61,27 +61,24 @@ it('never overwrites another physical-control overlay', async () => {
   fake.status = { state: 'idle' }
 })
 
-it('brings a hidden app forward once and uses the visible frame, not invisible resize borders', async () => {
-  const visualBounds = { x: 18, y: 20, width: 884, height: 592 }
-  fake.request.mockResolvedValueOnce({ ...target, foreground: false }).mockResolvedValueOnce({ ...target, visualBounds })
+it('keeps a background document behind the person’s app without drawing its frame', async () => {
+  fake.request.mockImplementation(async (method: string) => method === 'inputState' ? { escaped: false } : { ...target, foreground: false })
   const work = applicationWork('one')
   await work.show('100', 'Excel')
-  expect(fake.request).toHaveBeenNthCalledWith(2, 'activateWindow', { window: '100', pid: 23 })
-  expect(fake.status.application?.bounds).toEqual(visualBounds)
-  await vi.advanceTimersByTimeAsync(101)
-  expect(fake.request.mock.calls.filter(([method]) => method === 'activateWindow')).toHaveLength(1)
+  expect(fake.request.mock.calls.some(([method]) => method === 'activateWindow' || method === 'applicationFrame')).toBe(false)
+  expect(fake.status.application?.visible).toBe(false)
+  expect(work.signal.aborted).toBe(false)
 })
-it('keeps working on the verified window when Windows refuses foreground, but not on other activation failures', async () => {
-  fake.request.mockResolvedValueOnce({ ...target, foreground: false }).mockRejectedValueOnce(new Error('The application could not be brought to the foreground.')).mockResolvedValueOnce({ ...target, foreground: false }).mockResolvedValueOnce({ window: '101' }).mockResolvedValueOnce({ escaped: false }).mockResolvedValueOnce({ ...target, foreground: false })
+it('unminimizes a document through inspection without activating it', async () => {
+  fake.request.mockResolvedValueOnce({ ...target, minimized: true }).mockResolvedValueOnce({ ...target, foreground: false })
   await applicationWork('one').show('100', 'Excel')
+  expect(fake.request).toHaveBeenNthCalledWith(2, 'inspectWindow', { window: '100', pid: 23, unminimize: true })
   expect(fake.prepare).toHaveBeenCalled()
-  clearApplicationWork()
-  fake.prepare.mockClear()
-  fake.request.mockReset().mockResolvedValueOnce({ ...target, foreground: false }).mockRejectedValueOnce(new Error('This application surface requires manual control'))
-  await expect(applicationWork('two').show('100', 'Excel')).rejects.toThrow('manual control')
-  expect(fake.prepare).not.toHaveBeenCalled()
-  fake.request.mockReset().mockResolvedValueOnce({ ...target, minimized: true }).mockRejectedValueOnce(new Error('The app did not acknowledge foreground activation')).mockResolvedValueOnce({ ...target, minimized: true })
-  await expect(applicationWork('three').show('100', 'Excel')).rejects.toThrow('minimized')
+  expect(fake.request.mock.calls.some(([method]) => method === 'activateWindow' || method === 'applicationFrame')).toBe(false)
+})
+it('rejects a document that remains minimized after inspection', async () => {
+  fake.request.mockResolvedValue({ ...target, minimized: true })
+  await expect(applicationWork('one').show('100', 'Excel')).rejects.toThrow('minimized')
 })
 it('honors Escape during overlay startup before acknowledging any document work', async () => {
   fake.request.mockResolvedValueOnce(target).mockResolvedValueOnce({ window: '101' }).mockResolvedValueOnce({ escaped: true })
@@ -95,7 +92,8 @@ it('keeps document work independent when the person types in another app', async
   await work.show('100', 'Excel')
   fake.request.mockImplementation(async (method: string) => method === 'inputState' ? { escaped: false, intervention: 'new user input' } : { ...target, foreground: false })
   await vi.advanceTimersByTimeAsync(101)
-  expect(fake.status.application?.visible).toBe(true)
+  expect(fake.status.application?.visible).toBe(false)
+  expect(fake.request).toHaveBeenCalledWith('applicationFrameHide', { window: '100', pid: 23 })
   expect(work.signal.aborted).toBe(false)
   await work.show('100', 'Excel')
   expect(fake.request.mock.calls.some(([method]) => method === 'activateWindow')).toBe(false)

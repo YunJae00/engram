@@ -26,8 +26,18 @@
 .preview-card:hover .preview-card-actions, .preview-card:focus-within .preview-card-actions { opacity: 1; }
 .preview-card-actions button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: 999px; background: color-mix(in srgb, black 45%, transparent); color: inherit; cursor: pointer; }
 .preview-card-caption, .preview-card-actions { color: #fff; }
-.preview-card-dots { display: flex; gap: var(--space-1); }
-.preview-card-dots button { width: 6px; height: 6px; padding: 0; border: none; border-radius: 999px; background: currentColor; color: inherit; opacity: .5; cursor: pointer; }
-.preview-card-dots button[aria-selected="true"] { opacity: 1; }
-.preview-card-actions button:focus-visible, .preview-card-dots button:focus-visible, .preview-card-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.preview-card-actions button:focus-visible, .preview-card-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .preview-card, .preview-card-stage, .preview-card-reopen, .computer-spinner { animation: none; } }
+.preview-deck { --pc-w: 320px; position: relative; flex: 0 0 auto; align-self: flex-end; width: min(var(--pc-w), 100%); max-width: calc(100% - 2 * var(--panel-gutter)); margin: 38px var(--panel-gutter) 0; isolation: isolate; }
+.mini-chat .preview-deck { --pc-w: 264px; }
+.preview-deck-card { position: relative; transform-origin: top center; transform: translateY(calc(-10px * var(--deck-position))) scale(calc(1 - .045 * var(--deck-position))); filter: brightness(calc(1 - .08 * var(--deck-position))); transition: transform 280ms var(--ease-out), filter 280ms var(--ease-out), opacity 200ms; }
+.preview-deck-card[data-position="0"] { animation: preview-deck-forward 280ms var(--ease-out); }
+.preview-deck-card:not([data-position="0"]) { position: absolute; inset: 0; }
+.preview-deck .preview-card { width: 100%; max-width: none; margin: 0; }
+.preview-deck-back { display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); cursor: pointer; }
+.preview-deck-back img { width: 100%; height: 100%; object-fit: cover; }
+.preview-deck-title { display: grid; place-items: center; height: 100%; padding: var(--space-3); font-size: var(--fs-badge); color: var(--fg-dim); }
+.preview-deck:focus-visible, .preview-deck-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The overshoot animates the independent scale property so it composes with the transform transition instead of overriding it. */
+@keyframes preview-deck-forward { 0%, 100% { scale: 1; } 45% { scale: 1.02; } }
+@media (prefers-reduced-motion: reduce) { .preview-deck-card { transition: none; animation: none; } }

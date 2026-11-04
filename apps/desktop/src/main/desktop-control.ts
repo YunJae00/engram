@@ -117,6 +117,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   signal?.addEventListener('abort', abort, { once: true })
   try {
     const result = await host.request<{ pid?: number; previousFrontPid?: number; foregroundRestored?: boolean }>('openApp', { app })
+    flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, restored: result?.foregroundRestored === true }))
     if (result?.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane, tool: 'open_app' }))
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)

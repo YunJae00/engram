@@ -43,7 +43,7 @@ function remove(id: string): void {
 function publish(pruneOnly = false): void {
   const count = entries.size
   for (const [id, entry] of entries) {
-    if (!valid.get(id)?.() || Date.now() - entry.at > 180_000) remove(id)
+    if (!valid.get(id)?.() || (!entry.data && Date.now() - entry.at > 180_000)) remove(id)
     else if (entry.captureState !== 'activity') entry.current = entry.captureState === 'ready' && active.has(entry.lane) && desktopBinding(entry.lane) === owners.get(id)
   }
   if (pruneOnly && count === entries.size) return
@@ -92,6 +92,7 @@ export function officeWorkPreview(lane: string, op: string): () => void {
   const entry: WorkPreviewDto = { id, lane, title, activity, at: Date.now(), captureState: 'activity', current: true }
   valid.set(id, () => true)
   entries.delete(id); entries.set(id, entry)
+  for (const oldest of [...entries.values()].filter(frame => frame.lane === lane).slice(0, -4)) remove(oldest.id)
   while (entries.size > 64) remove(entries.keys().next().value!)
   publish()
   if (!timer) timer = setInterval(() => publish(true), 1000).unref()

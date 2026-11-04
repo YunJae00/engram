@@ -46,13 +46,13 @@ it('restores a pending check from disk without running it before the person resu
   expect(t.sent[0]!.extra?.verification).toBeUndefined()
 })
 
-it('leaves unfinished work waiting without automatically restarting the model', async () => {
+it('waits when consecutive unfinished turns report the same reason', async () => {
   const t = await setup(async () => ({ ...done('Half done', 4), unfinished: true }))
   await t.chat('Reconcile the invoices')
   const task = await t.settle('waiting')
-  expect(task.turns).toBe(1)
+  expect(task.turns).toBe(2)
   expect(task.result).toBe('Half done')
-  expect(t.sent).toHaveLength(1)
+  expect(t.sent).toHaveLength(2)
   expect(t.remembered).toEqual([])
 })
 
@@ -168,13 +168,13 @@ it('does not exceed the call ceiling when continuing after a question', async ()
   expect((await listTasks(t.paths))[0]!.state).toBe('failed')
 })
 
-it('stops where a turn offered another way, instead of carrying on beside the card', async () => {
+it('continues unfinished work despite an offered alternative, then waits on a repeated reason', async () => {
   const t = await setup(async () => ({ ...done('PageOne에서 연차 화면을 찾지 못했어요.', 4), unfinished: true }), true, undefined, channel => channel === 'bot-bot-1')
   await t.chat('Workday에서 연차 확인해줘')
-  const task = await t.settle('done')
-  expect(task.turns).toBe(1)
-  expect(t.sent).toHaveLength(1)
-  expect(task.log.at(-1)?.line).toContain('another way offered')
+  const task = await t.settle('waiting')
+  expect(task.turns).toBe(2)
+  expect(t.sent).toHaveLength(2)
+  expect(task.log.some(entry => entry.line === 'Continuing unfinished work (1/3)')).toBe(true)
   expect(t.remembered).toEqual([])
 })
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-test('app preview stays inside full, split, minimized and expanded conversations', async () => {
+test('app previews stack, promote back cards and stay inside full, split, minimized and expanded conversations', async () => {
   await mkdir(join(TMP, 'preview-captures-109'), { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-layout-')), { git: false })
   const bots = await Promise.all(['Preview one', 'Preview two'].map(name => createBot(paths, { name })))
@@ -40,7 +40,7 @@ test('app preview stays inside full, split, minimized and expanded conversations
     await page.getByTestId(`bot-${bots[0]!.id}`).click()
     const full = page.locator('.bots-chat')
     const preview = full.getByTestId('preview-card')
-    await expect(full.getByTestId('preview-card-collapsed')).toBeVisible()
+    await expect(preview).toBeVisible()
     await expect(full.getByTestId('task-approvals')).toBeVisible()
     const check = async (chat: Locator, name: string) => {
       const pane = chat.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
@@ -49,7 +49,7 @@ test('app preview stays inside full, split, minimized and expanded conversations
       const approval = chat.getByTestId('task-approvals').getByRole('button').last()
       await approval.scrollIntoViewIfNeeded()
       await expect(approval).toBeVisible()
-      expect(await chat.evaluate(element => {
+      await expect.poll(() => chat.evaluate(element => {
         const preview = element.querySelector('.preview-card, [data-testid=preview-card-collapsed]')!.getBoundingClientRect()
         const parent = element.getBoundingClientRect()
         const thread = element.querySelector('.conversation-thread')!.getBoundingClientRect()
@@ -85,6 +85,11 @@ test('app preview stays inside full, split, minimized and expanded conversations
       const button = full.getByTestId('preview-card-collapsed')
       if (await button.isVisible()) await button.click()
     }
+    const promote = async (name: string) => {
+      const back = full.getByTestId('preview-deck').getByRole('button', { name, exact: true })
+      await expect.poll(async () => (await preview.boundingBox())!.y - (await back.boundingBox())!.y).toBeGreaterThan(8)
+      await back.click({ position: { x: 100, y: 3 } })
+    }
     for (const theme of ['light', 'dark']) {
       await page.evaluate(theme => document.documentElement.setAttribute('data-theme', theme), theme)
       await emit([{ type: 'desktop:preview', frames }, { type: 'comet:working', channel: lane, working: true }])
@@ -97,32 +102,34 @@ test('app preview stays inside full, split, minimized and expanded conversations
       await emit([{ type: 'desktop:preview', frames }, { type: 'comet:working', channel: lane, working: true }, { type: 'comet:step', channel: lane, line: 'read_open_page: Preview' }, web])
       await expect(page.getByTestId('bots-input')).toBeFocused()
       await expand()
-      await expect(preview.getByRole('tab')).toHaveCount(2)
+      await expect(full.getByTestId('preview-deck').locator('[data-position]')).toHaveCount(2)
       const metrics = () => preview.evaluate(element => {
         const style = getComputedStyle(element), stage = element.querySelector('.preview-card-stage')!
         return { width: element.getBoundingClientRect().width, headers: element.querySelectorAll('.preview-card-bar').length,
           radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor, aspect: getComputedStyle(stage).aspectRatio }
       })
-      await preview.getByRole('tab', { name: 'Owned app 1' }).click()
+      await promote('Owned app 1')
+      await expect(full.getByTestId('preview-deck').locator('[data-position="0"]')).toHaveAttribute('data-frame', frames[0]!.id)
+      await expect.poll(async () => (await metrics()).width).toBe(320)
       const appStyle = await metrics()
-      await preview.getByRole('tab', { name: 'example.test' }).click()
+      await promote('example.test')
       await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '')
       await page.getByTestId('bots-input').fill('Still focused after a painted web frame')
       await emit([web])
       await expect(page.getByTestId('bots-input')).toBeFocused()
-      expect(await metrics()).toEqual(appStyle)
+      await expect.poll(metrics).toEqual(appStyle)
       expect(appStyle.width).toBe(320)
       expect(appStyle.headers).toBe(0)
       expect(appStyle.radius).toBe('16px')
       expect(appStyle.aspect).toBe('16 / 10')
       await check(full, `${theme}-mixed`)
-      await preview.getByRole('tab', { name: 'Owned app 1' }).click()
-      await preview.getByRole('tab', { name: 'Owned app 1' }).press('ArrowRight')
-      await expect(preview.getByRole('tab', { name: 'example.test' })).toHaveAttribute('aria-selected', 'true')
+      await full.getByTestId('preview-deck').getByRole('button', { name: 'Owned app 1', exact: true }).press('Enter')
+      await full.getByTestId('preview-deck').press('ArrowRight')
+      await expect(full.getByTestId('preview-deck').locator('[data-position="0"]')).toHaveAttribute('data-frame', `${lane}:web:https://example.test/preview`)
       await emit([{ type: 'desktop:preview', frames: [] }])
       await check(full, `${theme}-web-only`)
       await emit([{ type: 'desktop:preview', frames }])
-      await expect(preview.getByRole('tab')).toHaveCount(2)
+      await expect(full.getByTestId('preview-deck').locator('[data-position]')).toHaveCount(2)
       for (const width of [620, 948, 1400]) {
         await app.evaluate(({ BrowserWindow }, width) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 500); win.setSize(width, 600) }, width)
         await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
@@ -166,7 +173,7 @@ test('app preview stays inside full, split, minimized and expanded conversations
       await expect(mini).not.toContainText('Owned app 2')
       await check(mini, `${theme}-split`)
       await emit([{ type: 'press:ask', channel: lane, words: 'Confirm local action', host: 'example.test' }])
-      await expect(mini.getByTestId('preview-card-collapsed')).toBeVisible()
+      await expect(mini.getByTestId('preview-card')).toBeVisible()
       for (const width of [620, 948, 1400]) {
         await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 600), width)
         await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
